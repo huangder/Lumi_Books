@@ -692,6 +692,26 @@ class PageContentView(context: Context) : FrameLayout(context) {
     }
 
     /**
+     * 返回页面坐标处对应的**章节级**字符偏移；坐标不在正文上时返回 null。
+     * 竖排使用字形命中，横排复用选区层（与选词、TTS 淡高亮同一套坐标）。
+     */
+    fun characterOffsetAt(x: Float, y: Float): Int? {
+        if (showingCoverPage) return null
+        if (writingMode.isVertical) return verticalTextView.characterOffsetAt(x, y)
+        val spannable = textView.text ?: return null
+        if (spannable.isEmpty()) return null
+        val layout = textView.layout ?: return null
+        val tx = x - textView.left - textView.paddingLeft
+        val ty = y - textView.top - textView.paddingTop
+        if (tx < 0f || ty < 0f || ty >= layout.height) return null
+        val line = layout.getLineForVertical(ty.toInt())
+        val pageOffset = (textView as? RoundedHighlightTextView)
+            ?.readerOffsetForHorizontal(line, tx)
+            ?: layout.getOffsetForHorizontal(line, tx)
+        return chapterStartOffset + pageOffset.coerceIn(0, spannable.length - 1)
+    }
+
+    /**
      * Returns the EPUB image at the supplied page coordinate.
      *
      * The native [textView] is the actual visible renderer. Using its [Layout] keeps
@@ -880,6 +900,15 @@ class PageContentView(context: Context) : FrameLayout(context) {
             Selection.removeSelection(spannable)
             verticalTextView.invalidate()
         }
+        // 清掉选区后必须结束放大镜会话并刷新可见文字层，否则放大镜会留在屏幕上
+        // （长按高亮改色、删除高亮、菜单取消都会走到这里）。
+        (textView as? RoundedHighlightTextView)?.endReaderSelectionSession()
+        justifiedView.invalidate()
+    }
+
+    /** 选区菜单出现时主动收起放大镜：长按选中后系统不一定会把 ACTION_UP 送到这里。 */
+    fun endSelectionMagnifier() {
+        (textView as? RoundedHighlightTextView)?.endReaderSelectionSession()
     }
 
     /** 获取选区范围，无选区返回 null */

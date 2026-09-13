@@ -225,6 +225,15 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var rvDeferredCurlMetaState = 0
     private var pendingPageTurnDirection: PageAnimationController.Direction? = null
     private var pendingPageChangeOrigin = TtsPageChangeOrigin.LAYOUT
+    /** 听书进行中时启用“双击句子跳句”，单击动作需等待双击超时以区分两种手势。 */
+    private var ttsSentenceJumpEnabled = false
+    private var rvPendingTapAction: Runnable? = null
+    /** 单击动作已在 dispatchTouchEvent 中延后，拦截分类不要重复执行。 */
+    private var rvTapDeferred = false
+    private val rvSentenceJumpGate = SentenceJumpDoubleTapGate(
+        timeoutMs = ViewConfiguration.getDoubleTapTimeout().toLong(),
+        slopPx = ViewConfiguration.get(context).scaledDoubleTapSlop.toFloat()
+    )
 
     /** 设置已保存的笔记/高亮并刷新当前页。 */
     fun setSavedNotes(notes: List<Note>) {
@@ -243,6 +252,13 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var rvSystemBackGestureSuppressed = false
     private var rvTouchDownTime = 0L
     private var rvHasMoved = false
+    /**
+     * 本次触摸已经被判定为滑动翻页。
+     *
+     * 只在滑动路径上置位（不含点按），用于避免"甩动翻页"的收尾 UP 又被当成短按去开菜单。
+     * 点按路径永远读不到 true，因此不会影响边缘点击翻页。
+     */
+    private var rvSwipeTurnClaimed = false
     private var rvIsEdgeTouch = false
     private var rvIsHandlingPageGesture = false
     private var rvBoundaryGestureSuppressed = false
@@ -643,6 +659,17 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     fun setCallbacks(cbs: ReadViewCallbacks) {
         callbacks = cbs
+    }
+
+    /**
+     * 听书进行中开启双击句子跳句：单击（菜单/翻页/链接）会延后一个双击超时再执行，
+     * 以便区分双击。关闭时恢复即时响应并丢弃未决的延后动作。
+     */
+    fun setTtsSentenceJumpEnabled(enabled: Boolean) {
+        if (ttsSentenceJumpEnabled == enabled) return
+        ttsSentenceJumpEnabled = enabled
+        rvSentenceJumpGate.reset()
+        if (!enabled) cancelPendingReaderTap()
     }
 
     fun setBookmarkPullEnabled(enabled: Boolean) {
@@ -1356,6 +1383,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             return super.dispatchTouchEvent(ev)
         }
         if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+            rvTapDeferred = false
             val density = resources.displayMetrics.density
             rvSystemBackGestureCandidate = isSystemBackGestureStart(
                 width.toFloat(), height.toFloat(), ev.x, ev.y, density
@@ -1416,6 +1444,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 rvTouchDownTime = ev.eventTime
                 rvHasMoved = false
                 rvIsHandlingPageGesture = false
+                rvSwipeTurnClaimed = false
                 rvDeferredCurlGesture = false
                 rvDeferredCurlDirection = PageAnimationController.Direction.NONE
                 rvBoundaryGestureSuppressed = false
@@ -1555,6 +1584,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                     }
 
                     rvIsHandlingPageGesture = true
+                    // 记录"这次触摸是滑动翻页"，只用于阻止收尾 UP 再打开中央菜单。
+                    rvSwipeTurnClaimed = true
                     clearCurrentSelection()
                     if (animationController is CurlPageAnim &&
                         !prepareCurlSwipe(pageDirection)
@@ -1648,9 +1679,50 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                     rvIsHandlingPageGesture = false
                     rvBoundaryGestureSuppressed = false
                 }
+                if (ev.actionMasked == MotionEvent.ACTION_UP &&
+                    !rvHasMoved &&
+                    (ev.eventTime - rvTouchDownTime).coerceAtLeast(0L) < 300L
+                ) {
+                    // 双击判定必须发生在子视图之前：系统选词会吞掉第二次点击的 UP。
+                    if (handleShortTapGesture(ev)) return true
+                }
             }
         }
         return super.dispatchTouchEvent(ev)
+    }
+
+    /**
+     * 短按手势统一入口。听书进行中把单击动作延后一个双击超时，用于区分双击跳句；
+     * 返回 true 表示这次 UP 已被消费（双击），不能再交给子视图。
+     */
+    private fun handleShortTapGesture(ev: MotionEvent): Boolean {
+        val x = rvTouchStartX
+        val y = rvTouchStartY
+        if (!ttsSentenceJumpEnabled) {
+            rvSentenceJumpGate.reset()
+            return false
+        }
+        return when (rvSentenceJumpGate.classify(ev.eventTime, x, y)) {
+            SentenceJumpDoubleTapGate.TapDecision.DOUBLE -> {
+                cancelPendingReaderTap()
+                handleTtsSentenceDoubleTap(x, y)
+                abortChildTouchStream(ev)
+                true
+            }
+            SentenceJumpDoubleTapGate.TapDecision.SINGLE -> {
+                rvTapDeferred = true
+                scheduleReaderTap { handleShortTap(x, y) }
+                false
+            }
+        }
+    }
+
+    /** 中止子视图的原生触摸序列，避免系统把第二次点击当成选词双击。 */
+    private fun abortChildTouchStream(ev: MotionEvent) {
+        val cancel = MotionEvent.obtain(ev)
+        cancel.action = MotionEvent.ACTION_CANCEL
+        super.dispatchTouchEvent(cancel)
+        cancel.recycle()
     }
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
@@ -1658,69 +1730,109 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         when (ev.actionMasked) {
             MotionEvent.ACTION_UP -> {
                 if (!rvHasMoved && (ev.eventTime - rvTouchDownTime).coerceAtLeast(0L) < 300L) {
-                    val hitView = pageViewAt(rvTouchStartX, rvTouchStartY) ?: curPageView
-                    val link = hitView.getLinkAt(
-                        rvTouchStartX - hitView.left,
-                        rvTouchStartY - hitView.top
-                    )
-                    if (link != null) {
-                        Log.d(TAG, "EPUB link tap: $link")
-                        clearCurrentSelection()
-                        callbacks?.onLinkClick(link, rvTouchStartX, rvTouchStartY)
-                    } else {
-                        val image = hitView.getImageAt(
-                            rvTouchStartX - hitView.left,
-                            rvTouchStartY - hitView.top
-                        )
-                        when {
-                            image?.link != null -> {
-                                Log.d(TAG, "EPUB linked image tap: ${image.link}")
-                                clearCurrentSelection()
-                                callbacks?.onLinkClick(image.link, rvTouchStartX, rvTouchStartY)
-                            }
-                            image?.hasAction == true -> {
-                                // Keep action-bearing images out of the preview path.
-                                Log.d(TAG, "EPUB action image tap ignored by preview")
-                            }
-                            image != null -> {
-                                // Covers are commonly a full-page plain image. Their center tap
-                                // must behave like the rest of the reading surface; image preview
-                                // remains a long-press action.
-                                if (rvIsEdgeTouch) {
-                                    Log.d(TAG, "Plain EPUB image edge tap at x=${ev.x} -> page turn")
-                                    if (rvTouchStartX / width < 0.3f) {
-                                        animationController.onTapLeft?.invoke()
-                                    } else {
-                                        animationController.onTapRight?.invoke()
-                                    }
-                                } else {
-                                    Log.d(TAG, "Plain EPUB image center tap -> toggle menu")
-                                    clearCurrentSelection()
-                                    callbacks?.onMenuToggle()
-                                }
-                            }
-                            rvIsEdgeTouch -> {
-                                // Edge short tap: turn the page through the existing animation callback.
-                                Log.d(TAG, "Edge tap at x=${ev.x} -> page turn")
-                                if (rvTouchStartX / width < 0.3f) {
-                                    animationController.onTapLeft?.invoke()
-                                } else {
-                                    animationController.onTapRight?.invoke()
-                                }
-                            }
-                            else -> {
-                                // Center short tap: toggle the reader menu.
-                                Log.d(TAG, "Center tap detected -> toggle menu")
-                                clearCurrentSelection()
-                                callbacks?.onMenuToggle()
-                            }
-                        }
+                    if (rvTapDeferred) {
+                        rvTapDeferred = false
+                        return false
                     }
+                    val tapX = rvTouchStartX
+                    val tapY = rvTouchStartY
+                    handleShortTap(tapX, tapY)
                 }
             }
         }
         return false
     }
+
+    /** 短按（未移动）的既有行为：链接、图片、边缘翻页、中间切换菜单。 */
+    private fun handleShortTap(x: Float, y: Float) {
+        val hitView = pageViewAt(x, y) ?: curPageView
+        val link = hitView.getLinkAt(x - hitView.left, y - hitView.top)
+        if (link != null) {
+            Log.d(TAG, "EPUB link tap: $link")
+            clearCurrentSelection()
+            callbacks?.onLinkClick(link, x, y)
+            return
+        }
+        val image = hitView.getImageAt(x - hitView.left, y - hitView.top)
+        when {
+            image?.link != null -> {
+                Log.d(TAG, "EPUB linked image tap: ${image.link}")
+                clearCurrentSelection()
+                callbacks?.onLinkClick(image.link, x, y)
+            }
+            image?.hasAction == true -> {
+                // Keep action-bearing images out of the preview path.
+                Log.d(TAG, "EPUB action image tap ignored by preview")
+            }
+            image != null -> {
+                // Covers are commonly a full-page plain image. Their center tap
+                // must behave like the rest of the reading surface; image preview
+                // remains a long-press action.
+                if (rvIsEdgeTouch) {
+                    Log.d(TAG, "Plain EPUB image edge tap at x=$x -> page turn")
+                    if (x / width < 0.3f) {
+                        animationController.onTapLeft?.invoke()
+                    } else {
+                        animationController.onTapRight?.invoke()
+                    }
+                } else {
+                    Log.d(TAG, "Plain EPUB image center tap -> toggle menu")
+                    clearCurrentSelection()
+                    callbacks?.onMenuToggle()
+                }
+            }
+            rvIsEdgeTouch -> {
+                // Edge short tap: turn the page through the existing animation callback.
+                Log.d(TAG, "Edge tap at x=$x -> page turn")
+                if (x / width < 0.3f) {
+                    animationController.onTapLeft?.invoke()
+                } else {
+                    animationController.onTapRight?.invoke()
+                }
+            }
+            else -> {
+                // Center short tap: toggle the reader menu.
+                // 滑动翻页的收尾 UP 会被误判成中央短按，这里直接忽略。
+                if (rvSwipeTurnClaimed) return
+                Log.d(TAG, "Center tap detected -> toggle menu")
+                clearCurrentSelection()
+                callbacks?.onMenuToggle()
+            }
+        }
+    }
+
+    private fun scheduleReaderTap(action: () -> Unit) {
+        cancelPendingReaderTap()
+        val runnable = Runnable {
+            rvPendingTapAction = null
+            action()
+        }
+        rvPendingTapAction = runnable
+        postDelayed(runnable, rvSentenceJumpGate.timeout)
+    }
+
+    private fun cancelPendingReaderTap() {
+        rvPendingTapAction?.let { removeCallbacks(it) }
+        rvPendingTapAction = null
+    }
+
+    /** 双击正文：把点击位置换算成章节字符偏移，交给上层跳转朗读。 */
+    private fun handleTtsSentenceDoubleTap(x: Float, y: Float) {
+        val hitView = pageViewAt(x, y) ?: curPageView
+        val slot = slotManager.getSlotForView(hitView) ?: return
+        val chapterOffset = hitView.characterOffsetAt(x - hitView.left, y - hitView.top) ?: return
+        clearCurrentSelection()
+        performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+        callbacks?.onTtsSentenceDoubleTap(chapterIndexForSpreadView(slot, hitView), chapterOffset)
+    }
+
+    /** 双页对开时右半页可能属于下一章，章节索引必须按实际命中的半边解析。 */
+    private fun chapterIndexForSpreadView(slot: SlotState, view: PageContentView): Int =
+        if (slot.rightContentView === view && slot.rightIsLoaded && slot.rightChapterIndex >= 0) {
+            slot.rightChapterIndex
+        } else {
+            slot.chapterIndex
+        }
 
     private fun handlePendingImageLongPress() {
         val image = rvPendingImageLongPress ?: return

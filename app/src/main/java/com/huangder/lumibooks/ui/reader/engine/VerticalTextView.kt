@@ -328,6 +328,14 @@ internal class VerticalTextView(context: Context) : View(context) {
         return spannable.getSpans(start, end, URLSpan::class.java).firstOrNull()?.url
     }
 
+    /** 返回页面坐标处字形对应的**章节级**字符偏移。 */
+    fun characterOffsetAt(x: Float, y: Float): Int? {
+        val spannable = text ?: return null
+        if (spannable.isEmpty()) return null
+        val glyph = glyphAt(x, y) ?: return null
+        return glyph.startOffset.coerceIn(0, spannable.length - 1)
+    }
+
     fun getImageAt(x: Float, y: Float): ReaderImageHit? {
         val spannable = text ?: return null
         val image = geometry?.image ?: return null

@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.text.Layout
 import android.text.Selection
@@ -15,6 +16,7 @@ import android.text.TextPaint
 import android.text.style.AbsoluteSizeSpan
 import android.text.style.BackgroundColorSpan
 import android.text.style.ClickableSpan
+import android.text.style.DynamicDrawableSpan
 import android.text.style.ImageSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.RelativeSizeSpan
@@ -28,6 +30,9 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import com.huangder.lumibooks.domain.model.ReaderTextAlignment
+import com.huangder.lumibooks.util.parser.InlineFootnoteMarkerDrawable
+import com.huangder.lumibooks.util.parser.ReaderImageSizing
 
 data class ReaderImageHit(
     val source: String,
@@ -139,6 +144,17 @@ class JustifiedTextView @JvmOverloads constructor(
         redrawRequestCount++
         super.invalidate()
     }
+
+    private val readerHighlightPainter = ReaderHighlightPainter(
+        paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL },
+        density = resources.displayMetrics.density
+    )
+    /**
+     * 逐字坐标缓存：一次绘制会为高亮、选区、手柄多次索取同一行的坐标，
+     * 每帧重新度量整行会在连续翻页时明显掉帧。
+     */
+    private val lineOffsetsCache = HashMap<Int, ReaderLineOffsets?>()
+    private var lineOffsetsCacheLayout: Layout? = null
 
     private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = 56f
@@ -390,6 +406,9 @@ class JustifiedTextView @JvmOverloads constructor(
             justificationMode = readerJustificationMode,
             forceLastLineJustification = justifyLastLine
         )
+        // 高亮按行画圆角矩形（与选中态、已保存高亮同一套样式），
+        // 逐字方块会在字与字之间留下缝隙、相邻行又贴在一起。
+        drawHighlightBackgrounds(canvas, sl, s, geometry)
 
         for (i in 0 until sl.lineCount) {
             val lineStart = sl.getLineStart(i)
@@ -421,50 +440,70 @@ class JustifiedTextView @JvmOverloads constructor(
             val effectiveEnd = readerLineContentEnd(textStr, lineStart, lineEnd)
             if (effectiveEnd <= lineStart) continue
 
-            // 检查行内是否有 ImageSpan（图片行不做两端对齐）
-            var hasImageInLine = false
-            for (chk in lineStart until effectiveEnd) {
-                if (s.getSpans(chk, chk + 1, android.text.style.ImageSpan::class.java).isNotEmpty()) {
-                    hasImageInLine = true
-                    break
-                }
-            }
-
-            if (hasImageInLine) {
-                // 图片行：逐 span 绘制 ImageSpan，始终从左边界开始（不受首行缩进影响）
-                @Suppress("UNUSED_VALUE")
-                var x = 0f
-                var idx = lineStart
-                while (idx < effectiveEnd) {
-                    val imgSpans = s.getSpans(idx, idx + 1, android.text.style.ImageSpan::class.java)
-                    if (imgSpans.isNotEmpty()) {
-                        val drawable = imgSpans[0].drawable
-                        if (drawable != null) {
-                            val spanEnd = s.getSpanEnd(imgSpans[0])
-                            // 使用 drawable 已有的 bounds（EpubImageGetter 按页面宽度缩放设置的）
-                            val imgW = drawable.bounds.width().toFloat()
-                            val imgH = drawable.bounds.height().toFloat()
-                            val lineHeight = sl.getLineBottom(i) - sl.getLineTop(i)
-                            val imgTop = lineTop + (lineHeight - imgH) / 2f
-                            // 🔥 保存原始 bounds，绘制后恢复。防止屏幕坐标污染 StaticLayout 行高计算
-                            val savedBounds = android.graphics.Rect(drawable.bounds)
-                            drawable.setBounds(x.toInt(), imgTop.toInt(), (x + imgW).toInt(), (imgTop + imgH).toInt())
-                            drawable.draw(canvas)
-                            drawable.bounds = savedBounds
-                            x += imgW
-                            idx = if (spanEnd > idx) spanEnd else idx + 1
-                            continue
-                        }
-                    }
-                    idx++
-                }
-                continue  // 跳过普通文字的逐字绘制
-            }
+            // 含被挤压全角标点的行由阅读器自己算逐字坐标：部分厂商 Layout 会把行末
+            // 两端对齐多出来的空隙算进行末字符边界里（实测行末「马」被报成 845→916，
+            // 而行宽只有 854），直接采用会出现行尾溢出或首尾重叠。其余行维持原样。
+            val lineOffsets = computeCompressedLineOffsets(
+                line = i,
+                layout = sl,
+                geometry = geometry,
+                lineStart = lineStart,
+                contentEnd = effectiveEnd
+            )
+            // 本行正文右缘。自定义字体的比例标点墨迹可能比挤压槽位更宽，居中后会在
+            // 行末越过正文列右边缘（被平台裁掉半截），这里以行右缘作为绘制钳制上限。
+            val lineContentRight = geometry.lineRange(i)?.right
 
             for (idx in lineStart until effectiveEnd) {
-                // 跳过 U+FFFC（图片加载失败的占位字符，避免显示 "obj"）
+                // 行内图片：按排版坐标绘制，和触摸命中（PageContentView.getImageAt）保持同一套
+                // 几何。旧的“整行图片从 x=0 排列并跳过该行文字”会让脚注/注释小图标全部贴左边距，
+                // 同一行的文字整行消失，而且点按看到图标的位置命不中链接。
                 if (textStr[idx] == '￼') {
-                    skippedFFFC++
+                    val imageSpan = s.getSpans(idx, idx + 1, android.text.style.ImageSpan::class.java)
+                        .firstOrNull()
+                    val drawable = imageSpan?.drawable
+                    val spanStart = imageSpan?.let { s.getSpanStart(it) }
+                    val imageLeft = geometry.horizontalPosition(idx)
+                        ?.takeIf { it.isFinite() }
+                        ?: runCatching { sl.getPrimaryHorizontal(idx) }.getOrNull()
+                    // 一个 ImageSpan 可能覆盖多个占位字符，只在 span 起点绘制一次。
+                    if (imageSpan == null || drawable == null || spanStart != idx ||
+                        imageLeft == null || !imageLeft.isFinite()
+                    ) {
+                        skippedFFFC++
+                        continue
+                    }
+                    // 使用 drawable 已有的 bounds（EpubImageGetter 按页面宽度缩放设置的）
+                    val slotW = drawable.bounds.width().toFloat()
+                    val slotH = drawable.bounds.height().toFloat()
+                    // 注释引用图标：按正文字号缩放（原图常是 72px 大图），在排版槽位内居中绘制
+                    val isMarker = (drawable as? InlineFootnoteMarkerDrawable)
+                        ?.isInlineFootnoteMarker == true
+                    val imgW = if (isMarker) {
+                        minOf(slotW, slotH, defaultTextSize * ReaderImageSizing.INLINE_MARKER_EM)
+                    } else {
+                        slotW
+                    }
+                    val imgH = imgW
+                    val lineBottom = sl.getLineBottom(i).toFloat()
+                    val slotTop = when (imageSpan.verticalAlignment) {
+                        DynamicDrawableSpan.ALIGN_BASELINE -> baseline - slotH
+                        DynamicDrawableSpan.ALIGN_CENTER ->
+                            lineTop + (lineBottom - lineTop - slotH) / 2f
+                        else -> lineBottom - slotH
+                    }
+                    val imgLeft = imageLeft + (slotW - imgW) / 2f
+                    val imgTop = slotTop + (slotH - imgH) / 2f
+                    // 🔥 保存原始 bounds，绘制后恢复。防止屏幕坐标污染 StaticLayout 行高计算
+                    val savedBounds = Rect(drawable.bounds)
+                    drawable.setBounds(
+                        imgLeft.toInt(),
+                        imgTop.toInt(),
+                        (imgLeft + imgW).toInt(),
+                        (imgTop + imgH).toInt()
+                    )
+                    drawable.draw(canvas)
+                    drawable.bounds = savedBounds
                     continue
                 }
 
@@ -473,24 +512,31 @@ class JustifiedTextView @JvmOverloads constructor(
                 val charStr = textStr[idx].toString()
                 val charRange = geometry.horizontalRange(i, idx, idx + 1)
                     ?: continue
-                val x = charRange.left
-                val characterEnd = charRange.right
-                val backgroundColor = s.getSpans(idx, idx + 1, ReaderSearchHighlightSpan::class.java)
-                    .lastOrNull()
-                    ?.color
-                    ?: s.getSpans(idx, idx + 1, ReaderHighlightSpan::class.java)
-                        .lastOrNull()
-                        ?.color
-                    ?: s.getSpans(idx, idx + 1, BackgroundColorSpan::class.java)
-                        .lastOrNull()
-                        ?.backgroundColor
-                if (backgroundColor != null && backgroundColor ushr 24 != 0) {
-                    val textColor = textPaint.color
-                    textPaint.color = backgroundColor
-                    canvas.drawRect(x, lineTop, characterEnd, sl.getLineBottom(i).toFloat(), textPaint)
-                    textPaint.color = textColor
+                val slotWidth = charRange.right - charRange.left
+                val naturalAdvance = textPaint.measureText(charStr)
+                // 槽位一律用字体实际字宽推算：厂商 Layout 给出的字符边界在行末不可信，
+                // 用它做居中会把标点推进旁边的字里。
+                val compressed = readerIsCompressedPunctuation(s, idx)
+                val drawnSlot = if (compressed) {
+                    naturalAdvance * READER_PUNCTUATION_COMPRESSION
+                } else {
+                    naturalAdvance
                 }
-
+                val usableSlot = drawnSlot.takeIf { it.isFinite() && it > 0.01f } ?: slotWidth
+                // 标点被挤压成半宽槽位，但字形仍是原字宽：把字形挪回槽位内居中。
+                val compressionShift = if (compressed) {
+                    readerPunctuationDrawShift(textPaint, charStr, usableSlot)
+                } else {
+                    0f
+                }
+                val relaidOut = lineOffsets?.lefts?.getOrNull(idx - lineStart)
+                var x = (relaidOut ?: charRange.left) + compressionShift
+                if (compressed && lineContentRight != null && lineContentRight.isFinite()) {
+                    // 只夹绘制位置：排版槽位、逐字坐标与选区/手柄几何都保持原样。
+                    val inkRight = readerGlyphInk(textPaint, charStr).right
+                    val maxX = lineContentRight - inkRight
+                    if (x > maxX) x = maxX
+                }
                 canvas.drawText(charStr, x, baseline, textPaint)
 
                 resetPaintStyle()
@@ -502,6 +548,100 @@ class JustifiedTextView @JvmOverloads constructor(
         }
 
         canvas.restoreToCount(saveCount)
+    }
+
+    /**
+     * 已保存高亮 / 搜索高亮 / 背景色 span：按行画圆角矩形，并绘制在文字下方。
+     */
+    private fun drawHighlightBackgrounds(
+        canvas: Canvas,
+        layout: Layout,
+        text: Spanned,
+        geometry: ReaderLineGeometry
+    ) {
+        // 高亮必须和文字用同一份逐字坐标（含挤压标点的重排），否则会和字形差几个像素。
+        val offsets: (Int, Int, Int) -> ReaderLineOffsets? = { line, lineStart, contentEnd ->
+            computeCompressedLineOffsets(line, layout, geometry, lineStart, contentEnd)
+        }
+        text.getSpans(0, text.length, ReaderHighlightSpan::class.java).forEach { span ->
+            readerHighlightPainter.drawRange(
+                canvas = canvas,
+                layout = layout,
+                text = text,
+                geometry = geometry,
+                start = text.getSpanStart(span),
+                end = text.getSpanEnd(span),
+                color = span.color,
+                lineOffsets = offsets
+            )
+        }
+        text.getSpans(0, text.length, ReaderSearchHighlightSpan::class.java).forEach { span ->
+            readerHighlightPainter.drawRange(
+                canvas = canvas,
+                layout = layout,
+                text = text,
+                geometry = geometry,
+                start = text.getSpanStart(span),
+                end = text.getSpanEnd(span),
+                color = span.color,
+                lineOffsets = offsets
+            )
+        }
+        text.getSpans(0, text.length, BackgroundColorSpan::class.java).forEach { span ->
+            readerHighlightPainter.drawRange(
+                canvas = canvas,
+                layout = layout,
+                text = text,
+                geometry = geometry,
+                start = text.getSpanStart(span),
+                end = text.getSpanEnd(span),
+                color = span.backgroundColor,
+                lineOffsets = offsets
+            )
+        }
+    }
+
+    /**
+     * 含被挤压全角标点的行：按字体实际字宽重新计算每个字的左边界。
+     *
+     * 两端对齐时，行内多余的空隙按"字与字之间"平均分配，整行正好落在
+     * 行首与行右边缘之间；这样既不会越过右边距，也不会出现两个字重叠。
+     * 行内字符无法逐个度量（例如图片占位）时返回 null，交回原有坐标。
+     */
+    private fun computeCompressedLineOffsets(
+        line: Int,
+        layout: Layout,
+        geometry: ReaderLineGeometry,
+        lineStart: Int,
+        contentEnd: Int
+    ): ReaderLineOffsets? {
+        val text = spannable ?: return null
+        if (lineOffsetsCacheLayout !== layout) {
+            lineOffsetsCache.clear()
+            lineOffsetsCacheLayout = layout
+        }
+        lineOffsetsCache[line]?.let { return it }
+        val letterSpacingPx = readerExplicitLetterSpacing(textPaint.letterSpacing, defaultTextSize)
+            .takeIf { it.isFinite() }
+            ?: 0f
+        val computed = readerLineOffsets(
+            layout = layout,
+            text = text,
+            line = line,
+            lineStart = lineStart,
+            contentEnd = contentEnd,
+            justificationMode = readerJustificationMode,
+            forceLastLineJustification = justifyLastLine,
+            letterSpacingPx = letterSpacingPx
+        ) { index ->
+            applySpanStyles(text, index, textPaint)
+            // 用 CharSequence 重载避免逐字创建 String（连续翻页时的分配热点）。
+            val advance = textPaint.measureText(text, index, index + 1)
+            resetPaintStyle()
+            advance
+        }
+        lineOffsetsCache[line] = computed
+        return computed
     }
 
     /**

@@ -260,6 +260,176 @@ class RoundedHighlightRenderingInstrumentedTest {
     }
 
     @Test
+    fun savedHighlightHasNoGapBetweenAdjacentGlyphs() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+
+        instrumentation.runOnMainSync {
+            val context = instrumentation.targetContext
+            val density = context.resources.displayMetrics.density
+            val text = "大江东去，浪淘尽，千古风流人物。故垒西边，人道是，三国周郎赤壁。"
+            val highlightStart = text.indexOf('江')
+            val highlightEnd = text.indexOf('故')
+            val highlightColor = 0xFFFF5F64.toInt()
+            val view = PageContentView(context).apply {
+                setReaderBackground(Color.WHITE, null)
+                configure(
+                    fontSizePx = 20f * density,
+                    textColor = Color.BLACK,
+                    lineHeightMult = 1.6f,
+                    marginLeftPx = 20f * density,
+                    marginTopPx = 20f * density,
+                    marginRightPx = 20f * density,
+                    marginBottomPx = 20f * density
+                )
+                setPageContent(
+                    fullText = text,
+                    startChar = 0,
+                    endChar = text.length,
+                    highlights = listOf(Triple(highlightStart, highlightEnd, highlightColor))
+                )
+            }
+            val width = (420f * density).roundToInt()
+            val height = (240f * density).roundToInt()
+            view.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+            )
+            view.layout(0, 0, width, height)
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap))
+
+            val layout = requireNotNull(view.textView.layout)
+            val line = layout.getLineForOffset(highlightStart)
+            val sampleY = view.textView.totalPaddingTop +
+                (layout.getLineTop(line) + 4f * density).roundToInt()
+            val highlighted = (0 until width).filter { x ->
+                isHighlightPixel(bitmap.getPixel(x, sampleY), highlightColor)
+            }
+            assertTrue("expected a highlighted run on this line", highlighted.size > 20)
+
+            val first = highlighted.first()
+            val last = highlighted.last()
+            // 逐字绘制时字与字之间会留下数像素空档；按行合并后不应再有这种断缝。
+            val largestGap = highlighted
+                .filter { it in first..last }
+                .zipWithNext { a, b -> b - a }
+                .maxOrNull() ?: 0
+            assertTrue(
+                "highlight must not break between adjacent glyphs, largestGap=$largestGap",
+                largestGap <= 3
+            )
+        }
+    }
+
+    @Test
+    fun selectionRendersRoundedLinesWithGaps() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+
+        instrumentation.runOnMainSync {
+            val context = instrumentation.targetContext
+            val density = context.resources.displayMetrics.density
+            val text = "大江东去，浪淘尽，千古风流人物。故垒西边，人道是，三国周郎赤壁。"
+            val view = PageContentView(context).apply {
+                setReaderBackground(Color.WHITE, null)
+                configure(
+                    fontSizePx = 20f * density,
+                    textColor = Color.BLACK,
+                    lineHeightMult = 1.6f,
+                    marginLeftPx = 20f * density,
+                    marginTopPx = 20f * density,
+                    marginRightPx = 20f * density,
+                    marginBottomPx = 20f * density
+                )
+                setPageContent(fullText = text, startChar = 0, endChar = text.length)
+            }
+            val width = (420f * density).roundToInt()
+            val height = (240f * density).roundToInt()
+            view.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+            )
+            view.layout(0, 0, width, height)
+
+            val spannable = requireNotNull(view.textView.text as? Spannable)
+            val selectionColor = 0x66FF5F64
+            (view.textView as? RoundedHighlightTextView)?.readerSelectionColor = selectionColor
+            val start = text.indexOf('江')
+            val end = text.length - 1
+            Selection.setSelection(spannable, start, end)
+            val layout = requireNotNull(view.textView.layout)
+            val firstLine = layout.getLineForOffset(start)
+            val lastLine = layout.getLineForOffset(end - 1)
+            assertTrue("fixture must span more than one line", lastLine > firstLine)
+
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap))
+
+            val lineBoundaryY = view.textView.totalPaddingTop + layout.getLineBottom(firstLine)
+            val highlightedOnBoundary = (0 until width).count { x ->
+                isHighlightPixel(bitmap.getPixel(x, lineBoundaryY), selectionColor)
+            }
+            assertEquals("selection rows must stay separated", 0, highlightedOnBoundary)
+
+            val segmentLeft = layout.getPrimaryHorizontal(start)
+            val outerLeft = (
+                view.textView.totalPaddingLeft + segmentLeft - 3f * density
+                ).roundToInt().coerceIn(0, width - 1)
+            val top = (
+                view.textView.totalPaddingTop + layout.getLineTop(firstLine) + 1.5f * density
+                ).roundToInt().coerceIn(0, height - 1)
+            assertFalse(
+                "selection corner must be rounded",
+                isHighlightPixel(bitmap.getPixel(outerLeft, top), selectionColor)
+            )
+        }
+    }
+
+    @Test
+    fun clearingSelectionEndsMagnifierSession() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+
+        instrumentation.runOnMainSync {
+            val context = instrumentation.targetContext
+            val density = context.resources.displayMetrics.density
+            val text = "大江东去，浪淘尽，千古风流人物。"
+            val view = PageContentView(context).apply {
+                setReaderBackground(Color.WHITE, null)
+                configure(
+                    fontSizePx = 20f * density,
+                    textColor = Color.BLACK,
+                    lineHeightMult = 1.6f,
+                    marginLeftPx = 20f * density,
+                    marginTopPx = 20f * density,
+                    marginRightPx = 20f * density,
+                    marginBottomPx = 20f * density
+                )
+                setPageContent(fullText = text, startChar = 0, endChar = text.length)
+            }
+            val width = (420f * density).roundToInt()
+            val height = (240f * density).roundToInt()
+            view.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+            )
+            view.layout(0, 0, width, height)
+
+            val spannable = requireNotNull(view.textView.text as? Spannable)
+            Selection.setSelection(spannable, 1, 6)
+            view.clearSelection()
+
+            assertEquals(
+                Selection.getSelectionStart(spannable),
+                Selection.getSelectionEnd(spannable)
+            )
+            val selectionView = view.textView as? RoundedHighlightTextView
+            assertFalse(
+                "clearing the selection must end the magnifier session",
+                selectionView?.hasActiveReaderSelectionSession == true
+            )
+        }
+    }
+
+    @Test
     fun roundedHighlightIsCenteredOnFontMetricsInSpaciousLine() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {

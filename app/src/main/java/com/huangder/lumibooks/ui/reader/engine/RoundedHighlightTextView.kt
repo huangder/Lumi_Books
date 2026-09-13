@@ -109,6 +109,30 @@ private class OffsetSelectionHandleDrawable(
 
 internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryTextView(context) {
     private val highlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val readerHighlightPainter = ReaderHighlightPainter(
+        paint = highlightPaint,
+        density = resources.displayMetrics.density
+    )
+    /** 可见文字层按挤压标点重排过，选区/高亮必须复用同一份逐字坐标。 */
+    private fun readerLineOffsetsProvider(
+        textLayout: Layout,
+        spanned: Spanned
+    ): (Int, Int, Int) -> ReaderLineOffsets? = { line, lineStart, contentEnd ->
+        readerLineOffsets(
+            layout = textLayout,
+            text = spanned,
+            line = line,
+            lineStart = lineStart,
+            contentEnd = contentEnd,
+            justificationMode = readerJustificationMode,
+            forceLastLineJustification = readerForceLastLineJustification,
+            letterSpacingPx = readerExplicitLetterSpacing(paint.letterSpacing, paint.textSize)
+        ) { index -> paint.measureText(spanned, index, index + 1) }
+    }
+    private val selectionPainter = ReaderHighlightPainter(
+        paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL },
+        density = resources.displayMetrics.density
+    )
     private val selectionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val highlightBounds = RectF()
     private val selectionPath = Path()
@@ -354,6 +378,20 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         super.onDetachedFromWindow()
     }
 
+    /**
+     * 选区被程序清掉时（改色、删除高亮、菜单取消）同步结束放大镜会话并刷新。
+     * 只调用 Selection.removeSelection 的话放大镜会一直停在屏幕上。
+     */
+    internal fun endReaderSelectionSession() {
+        draggingSelectionHandle = null
+        endMagnifierPointerSession()
+        invalidate()
+    }
+
+    /** 测试用：当前是否还处于选区放大镜会话中。 */
+    internal val hasActiveReaderSelectionSession: Boolean
+        get() = magnifierPointerDown || selectionMagnifier?.isShowing == true
+
     override fun onVisibilityChanged(changedView: View, visibility: Int) {
         super.onVisibilityChanged(changedView, visibility)
         if (visibility != View.VISIBLE) {
@@ -413,6 +451,57 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         canvas.restoreToCount(save)
     }
 
+    /** 手柄的锚点：贴着选区高亮的角落，而不是行框底部（行高较大时会离选区很远）。 */
+    private class HandleAnchor(val x: Float, val cornerY: Float, val circleY: Float)
+
+    private fun readerHandleAnchor(
+        geometry: ReaderLineGeometry,
+        textLayout: Layout,
+        offset: Int,
+        trailing: Boolean
+    ): HandleAnchor? {
+        val line = readerHandleLine(textLayout, offset, trailing)
+        // 手柄要和选区高亮用同一份逐字坐标：文字层按挤压标点重排过，
+        // 直接用 Layout 几何会让手柄整体偏右几个像素。
+        val spanned = text as? Spanned
+        val lineStart = textLayout.getLineStart(line)
+        val lineEnd = textLayout.getLineEnd(line)
+        val contentEnd = spanned?.let { readerLineContentEnd(it, lineStart, lineEnd) } ?: lineEnd
+        val offsets = spanned?.let {
+            readerLineOffsetsProvider(textLayout, it)(line, lineStart, contentEnd)
+        }
+        val x = when {
+            offsets == null -> geometry.horizontalPosition(offset, trailing) ?: return null
+            trailing -> {
+                val lastIndex = offset - 1 - lineStart
+                when {
+                    lastIndex < 0 -> offsets.lefts.firstOrNull() ?: return null
+                    lastIndex + 1 < offsets.lefts.size -> offsets.lefts[lastIndex + 1]
+                    else -> offsets.right
+                }
+            }
+            else -> offsets.lefts.getOrNull(offset - lineStart)
+                ?: geometry.horizontalPosition(offset, trailing)
+                ?: return null
+        }
+        val density = resources.displayMetrics.density
+        val fontMetrics = paint.fontMetrics
+        val baseline = textLayout.getLineBaseline(line).toFloat()
+        val lineTop = textLayout.getLineTop(line).toFloat()
+        val lineBottom = textLayout.getLineBottom(line).toFloat()
+        // 与 ReaderHighlightPainter 完全一致的高亮下沿，保证手柄贴在选区角上。
+        val highlightTop = lineTop + 1.5f * density
+        val highlightBottom = (baseline + fontMetrics.descent + 2f * density)
+            .coerceAtMost(lineBottom - 1.5f * density)
+            .coerceAtLeast(highlightTop)
+        val radius = 8f * density
+        return HandleAnchor(
+            x = x,
+            cornerY = highlightBottom,
+            circleY = highlightBottom + radius - 2f * density
+        )
+    }
+
     private fun drawCustomHandle(
         canvas: Canvas,
         geometry: ReaderLineGeometry,
@@ -420,13 +509,10 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         offset: Int,
         trailing: Boolean
     ) {
-        val x = geometry.horizontalPosition(offset, trailing) ?: return
-        val line = readerHandleLine(textLayout, offset, trailing)
-        val bottom = textLayout.getLineBottom(line).toFloat()
-        val stemTop = bottom - 1f
-        val circleY = bottom + resources.displayMetrics.density * 7f
-        canvas.drawRect(x - 1.5f, stemTop, x + 1.5f, circleY, handlePaint)
-        canvas.drawCircle(x, circleY, resources.displayMetrics.density * 8f, handlePaint)
+        val anchor = readerHandleAnchor(geometry, textLayout, offset, trailing) ?: return
+        val radius = resources.displayMetrics.density * 8f
+        canvas.drawRect(anchor.x - 1.5f, anchor.cornerY - 1f, anchor.x + 1.5f, anchor.circleY, handlePaint)
+        canvas.drawCircle(anchor.x, anchor.circleY, radius, handlePaint)
     }
 
     private fun customHandleHit(eventX: Float, eventY: Float): Boolean {
@@ -447,16 +533,9 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         val density = resources.displayMetrics.density
         val hitRadius = 26f * density
         fun near(offset: Int, trailing: Boolean): Boolean {
-            val x = geometry.horizontalPosition(offset, trailing) ?: return false
-            val safeOffset = offset.coerceIn(0, spanned.length)
-            val line = if (trailing && safeOffset > 0 && safeOffset < spanned.length &&
-                textLayout.getLineForOffset(safeOffset) > 0 &&
-                textLayout.getLineStart(textLayout.getLineForOffset(safeOffset)) == safeOffset
-            ) textLayout.getLineForOffset(safeOffset) - 1
-            else textLayout.getLineForOffset(safeOffset.coerceAtMost(spanned.length - 1))
-            val y = textLayout.getLineBottom(line).toFloat() + density * 7f
-            return kotlin.math.abs(eventX - (x + totalPaddingLeft - scrollX)) <= hitRadius &&
-                kotlin.math.abs(eventY - (y + totalPaddingTop - scrollY)) <= hitRadius
+            val anchor = readerHandleAnchor(geometry, textLayout, offset, trailing) ?: return false
+            return kotlin.math.abs(eventX - (anchor.x + totalPaddingLeft - scrollX)) <= hitRadius &&
+                kotlin.math.abs(eventY - (anchor.circleY + totalPaddingTop - scrollY)) <= hitRadius
         }
         return when {
             near(start, false) -> {
@@ -817,18 +896,17 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         selectionPaint.color = readerSelectionColor
         val saveCount = canvas.save()
         canvas.translate(totalPaddingLeft.toFloat() - scrollX, totalPaddingTop.toFloat() - scrollY)
-        val firstLine = textLayout.getLineForOffset(start)
-        val lastLine = textLayout.getLineForOffset((end - 1).coerceAtLeast(start))
-        for (line in firstLine..lastLine) {
-            val range = geometry.horizontalRange(
-                line,
-                maxOf(start, textLayout.getLineStart(line)),
-                minOf(end, readerLineContentEnd(spanned, textLayout.getLineStart(line), textLayout.getLineEnd(line)))
-            ) ?: continue
-            val top = textLayout.getLineTop(line).toFloat()
-            val bottom = textLayout.getLineBottom(line).toFloat()
-            canvas.drawRect(range.left, top, range.right, bottom, selectionPaint)
-        }
+        // 选区与已保存高亮用同一套圆角样式，避免逐字方块带来的缝隙与行间粘连。
+        selectionPainter.drawRange(
+            canvas = canvas,
+            layout = textLayout,
+            text = spanned,
+            geometry = geometry,
+            start = start,
+            end = end,
+            color = readerSelectionColor,
+            lineOffsets = readerLineOffsetsProvider(textLayout, spanned)
+        )
         canvas.restoreToCount(saveCount)
     }
 
@@ -940,82 +1018,26 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         span: Any,
         color: Int
     ) {
-        if (color ushr 24 == 0) return
-        val spanStart = spanned.getSpanStart(span).coerceIn(0, spanned.length)
-        val spanEnd = spanned.getSpanEnd(span).coerceIn(spanStart, spanned.length)
-        if (spanStart >= spanEnd) return
-
-        val density = resources.displayMetrics.density
-        val horizontalPadding = 3f * density
-        val glyphPadding = 2f * density
-        val minimumLineGap = 1.5f * density
-        val cornerRadius = 6f * density
-        val fontMetrics = paint.fontMetrics
-        val firstLine = textLayout.getLineForOffset(spanStart)
-        val lastLine = textLayout.getLineForOffset(spanEnd - 1)
-        highlightPaint.color = color
-        val geometry = ReaderLineGeometry(
+        val spanStart = spanned.getSpanStart(span)
+        val spanEnd = spanned.getSpanEnd(span)
+        readerHighlightPainter.drawRange(
+            canvas = canvas,
             layout = textLayout,
             text = spanned,
-            justificationMode = readerJustificationMode,
-            forceLastLineJustification = readerForceLastLineJustification
-        )
-
-        for (line in firstLine..lastLine) {
-            val lineStart = textLayout.getLineStart(line)
-            val rawLineEnd = textLayout.getLineEnd(line)
-            val contentEnd = readerLineContentEnd(spanned, lineStart, rawLineEnd)
-            val segmentStart = maxOf(spanStart, lineStart)
-            val segmentEnd = minOf(spanEnd, contentEnd)
-            if (segmentStart >= segmentEnd) continue
-
-            val paragraphIsLtr = textLayout.getParagraphDirection(line) == Layout.DIR_LEFT_TO_RIGHT
-            val geometryRange = geometry.horizontalRange(line, segmentStart, segmentEnd) ?: continue
-            val segmentStartX = geometryRange.left
-            val segmentEndX = geometryRange.right
-            // In ordinary LTR text the endpoint metrics are the exact character
-            // advances used by Layout.draw(). Selection-path bounds can include an
-            // adjacent run at punctuation boundaries, so reserve them for RTL or
-            // mixed-direction lines only.
-            val hasRtlRun = !paragraphIsLtr || (segmentStart until segmentEnd)
-                .any { offset -> textLayout.isRtlCharAt(offset) }
-            val pathBounds = if (hasRtlRun) {
-                selectionPath.reset()
-                textLayout.getSelectionPath(segmentStart, segmentEnd, selectionPath)
-                RectF().also { selectionPath.computeBounds(it, true) }
-            } else {
-                null
-            }
-            val segmentLeft = if (pathBounds != null && !pathBounds.isEmpty() && !paragraphIsLtr) {
-                pathBounds.left
-            } else {
-                minOf(segmentStartX, segmentEndX)
-            }
-            val segmentRight = if (pathBounds != null && !pathBounds.isEmpty() && !paragraphIsLtr) {
-                pathBounds.right
-            } else {
-                maxOf(segmentStartX, segmentEndX)
-            }
-            if (segmentRight <= segmentLeft) continue
-
-            val lineTop = textLayout.getLineTop(line).toFloat() + minimumLineGap
-            val lineBottom = textLayout.getLineBottom(line).toFloat() - minimumLineGap
-            val baseline = textLayout.getLineBaseline(line).toFloat()
-            val glyphTop = baseline + fontMetrics.ascent - glyphPadding
-            val glyphBottom = baseline + fontMetrics.descent + glyphPadding
-            val top = glyphTop.coerceAtLeast(lineTop)
-            val bottom = glyphBottom.coerceAtMost(lineBottom)
-            if (bottom <= top) continue
-
-            highlightBounds.set(
-                (segmentLeft - horizontalPadding).coerceAtLeast(-horizontalPadding),
-                top,
-                (segmentRight + horizontalPadding).coerceAtMost(textLayout.width + horizontalPadding),
-                bottom
+            geometry = ReaderLineGeometry(
+                layout = textLayout,
+                text = spanned,
+                justificationMode = readerJustificationMode,
+                forceLastLineJustification = readerForceLastLineJustification
+            ),
+            start = spanStart,
+            end = spanEnd,
+            color = color,
+            lineOffsets = readerLineOffsetsProvider(
+                textLayout,
+                spanned
             )
-            val radius = minOf(cornerRadius, highlightBounds.height() / 2f)
-            canvas.drawRoundRect(highlightBounds, radius, radius, highlightPaint)
-        }
+        )
     }
 
     /** 褰撳墠鍙ュ彞 TTS 楂樹寒锛氭暣涓彞瀛愬潡鍏辩敤涓€涓ぇ鍦嗚鐭╁舰锛堣法琛屾暣浣?*/

@@ -45,6 +45,13 @@ interface ReadViewCallbacks {
     /** Called after a plain EPUB image is long-pressed. Coordinates are in screen pixels. */
     fun onImageLongPress(chapterIndex: Int, image: ReaderImageHit) {}
 
+    /**
+     * 听书进行中双击正文句子：请求朗读从该句开始。
+     * @param chapterIndex 所在章节索引
+     * @param characterOffset 章节级字符偏移（点击位置）
+     */
+    fun onTtsSentenceDoubleTap(chapterIndex: Int, characterOffset: Int) {}
+
     /** 正在加载内容变化 */
     fun onLoadingChanged(isLoading: Boolean)
 

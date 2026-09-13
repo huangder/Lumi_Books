@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.reader
+import com.huangder.lumibooks.BuildConfig
 import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.Manifest
@@ -224,6 +225,7 @@ import com.huangder.lumibooks.ui.reader.engine.TtsHighlightRange
 import com.huangder.lumibooks.ui.reader.engine.TtsSentenceHighlightSpan
 import com.huangder.lumibooks.ui.reader.engine.WaveUnderlineSpan
 import com.huangder.lumibooks.ui.reader.engine.RoundedHighlightTextView
+import com.huangder.lumibooks.ui.reader.engine.SentenceJumpDoubleTapGate
 import com.huangder.lumibooks.ui.reader.engine.ReaderLineGeometry
 import com.huangder.lumibooks.ui.reader.engine.ReaderBackgroundConfig
 import com.huangder.lumibooks.ui.reader.engine.ReaderLayoutConfig
@@ -363,6 +365,16 @@ private class ContinuousSelectionController {
 private class ContinuousSelectableTextView(context: Context) : RoundedHighlightTextView(context) {
     var onReaderTap: (() -> Unit)? = null
     var onLinkTap: ((String, Float, Float) -> Unit)? = null
+    /** 听书进行中双击正文：回调章节级字符偏移，交由上层跳转朗读。 */
+    var onSentenceDoubleTap: ((Int) -> Unit)? = null
+    /** 听书进行中为区分双击，单击动作需延后一个双击超时。 */
+    var ttsJumpEnabled: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            sentenceJumpGate.reset()
+            if (!value) cancelPendingTapAction()
+        }
     var onImageLongPress: ((ReaderImageHit) -> Unit)? = null
     var onSelectionChanging: (() -> Unit)? = null
     var onReaderSelection: ((ContinuousTextSelection) -> Unit)? = null
@@ -371,6 +383,19 @@ private class ContinuousSelectableTextView(context: Context) : RoundedHighlightT
     private var replacingText = false
     private var lastTapX = 0f
     private var lastTapY = 0f
+    private var tapDownX = 0f
+    private var tapDownY = 0f
+    private var tapDownTime = 0L
+    private var tapMoved = false
+    private val tapSlopPx =
+        android.view.ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+    private val tapDurationLimitMs =
+        android.view.ViewConfiguration.getLongPressTimeout().toLong()
+    private var pendingTapAction: Runnable? = null
+    private val sentenceJumpGate = SentenceJumpDoubleTapGate(
+        timeoutMs = android.view.ViewConfiguration.getDoubleTapTimeout().toLong(),
+        slopPx = android.view.ViewConfiguration.get(context).scaledDoubleTapSlop.toFloat()
+    )
     private val selectionDispatch = Runnable { dispatchReaderSelection() }
 
     init {
@@ -385,19 +410,13 @@ private class ContinuousSelectableTextView(context: Context) : RoundedHighlightT
             setTextClassifier(android.view.textclassifier.TextClassifier.NO_OP)
         }
         setOnClickListener {
+            // 听书进行中，单击/双击统一由 onTouchEvent 的手势判定处理。
+            if (ttsJumpEnabled) return@setOnClickListener
             val spannable = text as? Spannable
             val start = spannable?.let(Selection::getSelectionStart) ?: -1
             val end = spannable?.let(Selection::getSelectionEnd) ?: -1
             if (start < 0 || end <= start) {
-                val image = readerImageAt(lastTapX, lastTapY)
-                when {
-                    image?.link != null -> onLinkTap?.invoke(image.link, lastTapX, lastTapY)
-                    image?.hasAction == true -> Unit
-                    image != null -> Unit
-                    else -> readerLinkAt(lastTapX, lastTapY)
-                        ?.let { onLinkTap?.invoke(it, lastTapX, lastTapY) }
-                        ?: onReaderTap?.invoke()
-                }
+                performReaderTap(lastTapX, lastTapY)
             }
         }
         setOnLongClickListener {
@@ -418,14 +437,113 @@ private class ContinuousSelectableTextView(context: Context) : RoundedHighlightT
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.actionMasked == MotionEvent.ACTION_DOWN ||
-            event.actionMasked == MotionEvent.ACTION_MOVE ||
-            event.actionMasked == MotionEvent.ACTION_UP
-        ) {
-            lastTapX = event.x
-            lastTapY = event.y
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                lastTapX = event.x
+                lastTapY = event.y
+                tapDownX = event.x
+                tapDownY = event.y
+                tapDownTime = event.eventTime
+                tapMoved = false
+            }
+            MotionEvent.ACTION_MOVE -> {
+                lastTapX = event.x
+                lastTapY = event.y
+                if (kotlin.math.abs(event.x - tapDownX) > tapSlopPx ||
+                    kotlin.math.abs(event.y - tapDownY) > tapSlopPx
+                ) {
+                    tapMoved = true
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                lastTapX = event.x
+                lastTapY = event.y
+            }
+        }
+        if (ttsJumpEnabled && event.actionMasked == MotionEvent.ACTION_UP) {
+            val isShortTap = !tapMoved &&
+                (event.eventTime - tapDownTime).coerceAtLeast(0L) <= tapDurationLimitMs
+            if (isShortTap) {
+                val hadSelection = hasReaderSelection()
+                when (sentenceJumpGate.classify(event.eventTime, tapDownX, tapDownY)) {
+                    SentenceJumpDoubleTapGate.TapDecision.DOUBLE -> {
+                        cancelPendingTapAction()
+                        handleSentenceDoubleTap(tapDownX, tapDownY)
+                        // 中止子视图的原生触摸序列，避免系统把第二次点击当成选词双击。
+                        abortNativeTouchStream(event)
+                        return true
+                    }
+                    SentenceJumpDoubleTapGate.TapDecision.SINGLE ->
+                        scheduleTapAction {
+                            if (!hadSelection) performReaderTap(tapDownX, tapDownY)
+                        }
+                }
+            }
         }
         return super.onTouchEvent(event)
+    }
+
+    private fun hasReaderSelection(): Boolean {
+        val spannable = text as? Spannable ?: return false
+        val start = Selection.getSelectionStart(spannable)
+        val end = Selection.getSelectionEnd(spannable)
+        return start >= 0 && end > start
+    }
+
+    private fun abortNativeTouchStream(event: MotionEvent) {
+        val cancel = MotionEvent.obtain(event)
+        cancel.action = MotionEvent.ACTION_CANCEL
+        super.onTouchEvent(cancel)
+        cancel.recycle()
+    }
+
+    /** 单击的既有行为：链接、图片（图片本身不响应短按）或切换菜单。 */
+    private fun performReaderTap(x: Float, y: Float) {
+        val image = readerImageAt(x, y)
+        when {
+            image?.link != null -> onLinkTap?.invoke(image.link, x, y)
+            image?.hasAction == true -> Unit
+            image != null -> Unit
+            else -> readerLinkAt(x, y)
+                ?.let { onLinkTap?.invoke(it, x, y) }
+                ?: onReaderTap?.invoke()
+        }
+    }
+
+    private fun scheduleTapAction(action: () -> Unit) {
+        cancelPendingTapAction()
+        val runnable = Runnable {
+            pendingTapAction = null
+            action()
+        }
+        pendingTapAction = runnable
+        postDelayed(runnable, sentenceJumpGate.timeout)
+    }
+
+    private fun cancelPendingTapAction() {
+        pendingTapAction?.let { removeCallbacks(it) }
+        pendingTapAction = null
+    }
+
+    private fun handleSentenceDoubleTap(x: Float, y: Float) {
+        val offset = characterOffsetAt(x, y) ?: return
+        clearReaderSelection()
+        performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+        onSentenceDoubleTap?.invoke(offset)
+    }
+
+    /** 返回该点对应的章节级字符偏移（与 TTS 淡高亮使用同一坐标空间）。 */
+    private fun characterOffsetAt(x: Float, y: Float): Int? {
+        val spannable = text as? Spannable ?: return null
+        val textLayout = layout ?: return null
+        if (spannable.isEmpty()) return null
+        val localX = x - totalPaddingLeft + scrollX
+        val localY = y - totalPaddingTop + scrollY
+        if (localX < 0f || localY < 0f || localY >= textLayout.height) return null
+        val line = textLayout.getLineForVertical(localY.toInt())
+        return (readerOffsetForHorizontal(line, localX)
+            ?: textLayout.getOffsetForHorizontal(line, localX))
+            .coerceIn(0, spannable.length - 1)
     }
 
     private fun readerLinkAt(x: Float, y: Float): String? {
@@ -1773,13 +1891,28 @@ fun ReaderScreen(
         Color(0xFF1C1C1E)
     }
     // 胶囊按钮背景色：基于阅读主题渲染效果而非系统深色模式
-    val capsuleBgColor = when (renderingTheme) {
-        "night" -> Color(0xFF3A3A3C)
-        "sepia_dark" -> Color(0xFF3A312A)
-        "green_dark" -> Color(0xFF1E3527)
-        "sepia" -> Color(0xFFE8D5C4)
-        "green" -> Color(0xFFC8E6C9)
-        else -> Color(0xFFEEEEEE)
+    // 自定义背景（尤其背景图）时，胶囊取背景主题色，让菜单和画面同一色调；
+    // 亮度按阅读底色明暗调整，保证胶囊上的文字对比度。
+    val capsuleBgColor = if (selectedCustomBackground != null) {
+        val base = customBackgroundThemeColorInt
+        val hsl = FloatArray(3)
+        ColorUtils.colorToHSL(base, hsl)
+        if (hsl[2] < 0.35f) {
+            hsl[2] = (hsl[2] + 0.22f).coerceAtMost(0.5f)
+        } else {
+            hsl[2] = (hsl[2] - 0.12f).coerceAtLeast(0.42f)
+        }
+        hsl[1] = (hsl[1] * 0.85f).coerceIn(0f, 1f)
+        Color(ColorUtils.HSLToColor(hsl))
+    } else {
+        when (renderingTheme) {
+            "night" -> Color(0xFF3A3A3C)
+            "sepia_dark" -> Color(0xFF3A312A)
+            "green_dark" -> Color(0xFF1E3527)
+            "sepia" -> Color(0xFFE8D5C4)
+            "green" -> Color(0xFFC8E6C9)
+            else -> Color(0xFFEEEEEE)
+        }
     }
     val capsuleContentColor = if (ColorUtils.calculateLuminance(capsuleBgColor.toArgb()) < 0.4) {
         Color.White
@@ -1985,6 +2118,19 @@ fun ReaderScreen(
                     bodyFontWeight = uiState.bodyFontWeight,
                     textColorOverride = effectiveReaderTextColor,
                     theme = renderingTheme,
+                    readerBackgroundColorOverride = if (selectedCustomBackground != null) {
+                        readerBackgroundColorInt
+                    } else {
+                        null
+                    },
+                    readerBackgroundImagePath = readerBackgroundImagePath,
+                    readerBackgroundImageOpacity = uiState.readerBackgroundImageOpacity,
+                    readerBackgroundImageBlurDp = readerBackgroundImageBlurDp,
+                    autoTextColor = if (selectedCustomBackground != null) {
+                        automaticReaderTextColorInt
+                    } else {
+                        null
+                    },
                     textAlignment = uiState.textAlignment,
                     preservePublisherBackground = effectivePreserveEpubBackground,
                     bionicReadingEnabled = effectiveBionicReadingEnabled,
@@ -2263,6 +2409,9 @@ fun ReaderScreen(
                         isSelectionDragging = true
                     },
                     onSelection = { chapterIndex, selection ->
+                        // 长按选中后菜单马上出现，这里主动收起放大镜，
+                        // 否则放大镜会和菜单叠在一起（系统不保证把 ACTION_UP 送进来）。
+                        readViewRef.value?.curPageView?.endSelectionMagnifier()
                         val overlappingHighlights = findOverlappingNotes(
                             readerNotes, chapterIndex, selection.start, selection.end, "highlight"
                         )
@@ -2289,6 +2438,11 @@ fun ReaderScreen(
                     },
                     onChapterVisible = viewModel::onContinuousScrollPosition,
                     onRestoreComplete = viewModel::clearPendingPageFraction,
+                    onSentenceDoubleTap = { chapterIndex, characterOffset ->
+                        viewModel.seekTtsToSentence(chapterIndex, characterOffset)
+                    },
+                    ttsSentenceJumpEnabled = ttsState.activeBookId == uiState.book?.id &&
+                        ttsState.playbackState != TtsPlaybackState.IDLE,
                     chineseMode = uiState.chineseMode,
                     ttsCurrentSentence = ttsCurrentSentence,
                     comicModeEnabled = uiState.comicModeEnabled,
@@ -2333,6 +2487,13 @@ fun ReaderScreen(
                                 isSelectionDragging = false
                                 footnoteBubble = null
                                 viewModel.toggleMenu()
+                            }
+
+                            override fun onTtsSentenceDoubleTap(
+                                chapterIndex: Int,
+                                characterOffset: Int
+                            ) {
+                                viewModel.seekTtsToSentence(chapterIndex, characterOffset)
                             }
 
                             override fun onBookmarkPullStart() {
@@ -2607,6 +2768,10 @@ fun ReaderScreen(
                     readView.ttsHighlightRange = ttsCurrentSentence?.let {
                         TtsHighlightRange(it.chapterIndex, it.startOffset, it.endOffset)
                     }
+                    readView.setTtsSentenceJumpEnabled(
+                        ttsState.activeBookId == uiState.book?.id &&
+                            ttsState.playbackState != TtsPlaybackState.IDLE
+                    )
                 },
                 modifier = Modifier.fillMaxSize()
             )
@@ -3456,7 +3621,7 @@ fun ReaderScreen(
                 currentBackgroundSelection = effectiveReaderBackgroundSelection,
                 customBackgrounds = uiState.customReaderBackgrounds,
                 currentPreserveEpubBackground = effectivePreserveEpubBackground,
-                showPreserveEpubBackground = uiState.book?.format?.name == "EPUB" &&
+                showPreserveEpubBackground = supportsBookLayout &&
                     uiState.renderMode == EpubRenderMode.BOOK_LAYOUT,
                 currentMarginLeft = uiState.marginLeftDp,
                 currentMarginRight = uiState.marginRightDp,
@@ -5464,6 +5629,8 @@ private fun ContinuousScrollReader(
         origin: TtsPageChangeOrigin
     ) -> Unit,
     onRestoreComplete: () -> Unit,
+    onSentenceDoubleTap: (chapterIndex: Int, characterOffset: Int) -> Unit,
+    ttsSentenceJumpEnabled: Boolean,
     chineseMode: String = "original",
     ttsCurrentSentence: TtsSentencePosition? = null,
     comicModeEnabled: Boolean = false,
@@ -5489,7 +5656,9 @@ private fun ContinuousScrollReader(
     LaunchedEffect(contentWidthPx) {
         if (contentWidthPx > 0) viewModel.updateReaderContentWidth(contentWidthPx)
     }
-    // 原始章节文本缓存：相邻章节提前拉取，衔接处不再出现“只有标题/空白、松手后突然加载”
+    // 原始章节文本缓存：相邻章节提前拉取，衔接处不再出现“只有标题/空白、松手后突然加载”。
+    // 只允许存放「框架绘制」变体（getFrameworkDrawnChapterText）：上下滚动用的是原生 TextView，
+    // 混入「阅读器自绘」变体会让框架按整字宽画半字宽槽位，行尾标点被正文列右边缘裁掉半截。
     val rawChapterTextCache = remember(chapterCount, contentRevision, textAlignment, contentWidthPx) {
         mutableStateMapOf<Int, CharSequence>()
     }
@@ -5562,7 +5731,7 @@ private fun ContinuousScrollReader(
             .filter { it in 0 until chapterCount && it !in rawChapterTextCache }
             .forEach { neighbor ->
                 kotlinx.coroutines.withContext(Dispatchers.IO) {
-                    viewModel.getChapterText(neighbor, contentWidthPx.takeIf { it > 0 })
+                    viewModel.getFrameworkDrawnChapterText(neighbor, contentWidthPx.takeIf { it > 0 })
                         ?.let { rawChapterTextCache[neighbor] = it }
                 }
             }
@@ -5616,7 +5785,7 @@ private fun ContinuousScrollReader(
             listOf(index + 1, index + 2).forEach { neighbor ->
                 if (neighbor in 0 until chapterCount && neighbor !in rawChapterTextCache) {
                     kotlinx.coroutines.withContext(Dispatchers.IO) {
-                        viewModel.getChapterText(neighbor, contentWidthPx.takeIf { it > 0 })
+                        viewModel.getFrameworkDrawnChapterText(neighbor, contentWidthPx.takeIf { it > 0 })
                             ?.let { rawChapterTextCache[neighbor] = it }
                     }
                 }
@@ -5716,10 +5885,38 @@ private fun ContinuousScrollReader(
                     cached
                 } else {
                     withContext(Dispatchers.IO) {
-                        viewModel.getChapterText(chapterIndex, contentWidthPx.takeIf { it > 0 })
+                        // 上下滚动用原生 TextView 绘制，标点挤压要靠
+                        // ReplacementSpan 自己把字形居中画进半宽槽位。
+                        viewModel.getFrameworkDrawnChapterText(
+                            chapterIndex,
+                            contentWidthPx.takeIf { it > 0 }
+                        )
                     }.also { loaded ->
                         if (loaded != null) rawChapterTextCache[chapterIndex] = loaded
                     }
+                }
+                if (BuildConfig.DEBUG) {
+                    val spanned = rawText as? android.text.Spanned
+                    val replacementSpans = spanned
+                        ?.getSpans(
+                            0,
+                            spanned.length,
+                            com.huangder.lumibooks.ui.reader.engine.ReaderPunctuationReplacementSpan::class.java
+                        )
+                        ?.size ?: 0
+                    val measureOnlySpans = spanned
+                        ?.getSpans(
+                            0,
+                            spanned.length,
+                            com.huangder.lumibooks.ui.reader.engine.ReaderPunctuationCompressionSpan::class.java
+                        )
+                        ?.size ?: 0
+                    Log.d(
+                        "ContinuousReader",
+                        "chapter=$chapterIndex source=" +
+                            (if (cached != null) "prefetch-cache" else "direct") +
+                            " replacementSpans=$replacementSpans measureOnlySpans=$measureOnlySpans"
+                    )
                 }
                 value = rawText?.let {
                     // LeadingMarginSpan (first-line indent), image spans, and paragraph spacing must
@@ -5776,6 +5973,10 @@ private fun ContinuousScrollReader(
                     },
                     update = { textView ->
                         textView.onReaderTap = onMenuToggle
+                        textView.ttsJumpEnabled = ttsSentenceJumpEnabled
+                        textView.onSentenceDoubleTap = { characterOffset ->
+                            onSentenceDoubleTap(chapterIndex, characterOffset)
+                        }
                         textView.onLinkTap = { href, tapX, tapY ->
                             val location = IntArray(2)
                             textView.getLocationInWindow(location)
