@@ -37,6 +37,10 @@ internal class ReaderSelectionMagnifier(
     private var sink: ReaderMagnifierSink? = null
     private var drawListener: ViewTreeObserver.OnDrawListener? = null
     private val updateRunnable = Runnable { refreshContent() }
+    // Position of the magnified view when the floating window was last placed.
+    private val shownHostLocation = IntArray(2)
+    private val currentHostLocation = IntArray(2)
+    private var shownHostLocationValid = false
 
     /** Test-only override. When set, it takes precedence over [sinkFactory]. */
     internal var sinkOverride: ReaderMagnifierSink? = null
@@ -68,7 +72,10 @@ internal class ReaderSelectionMagnifier(
             activeSink.show(anchorX, anchorY, windowCenterX, windowCenterY)
         }.isSuccess
         isShowing = shown
-        if (shown) attachDrawListener()
+        if (shown) {
+            rememberHostLocation()
+            attachDrawListener()
+        }
     }
 
     /** Refreshes the copied content, e.g. after the selection highlight itself changed. */
@@ -81,11 +88,32 @@ internal class ReaderSelectionMagnifier(
         host.removeCallbacks(updateRunnable)
         runCatching { activeSink()?.dismiss() }
         isShowing = false
+        shownHostLocationValid = false
     }
 
     private fun refreshContent() {
         if (!isShowing || !host.isAttachedToWindow) return
+        if (hostMovedSinceShown()) {
+            // The floating window sits at the screen position captured on show(); once
+            // the page itself moves (page-turn animation, continuous scroll, jump) the
+            // copied content would be left hanging over the old spot with no touch left
+            // to close it, so the magnifier is closed here instead.
+            dismiss()
+            return
+        }
         runCatching { activeSink()?.update() }
+    }
+
+    private fun rememberHostLocation() {
+        host.getLocationOnScreen(shownHostLocation)
+        shownHostLocationValid = true
+    }
+
+    private fun hostMovedSinceShown(): Boolean {
+        if (!shownHostLocationValid || !host.isAttachedToWindow) return false
+        host.getLocationOnScreen(currentHostLocation)
+        return currentHostLocation[0] != shownHostLocation[0] ||
+            currentHostLocation[1] != shownHostLocation[1]
     }
 
     private fun activeSink(): ReaderMagnifierSink? = sinkOverride ?: sink
