@@ -293,4 +293,32 @@ class EpubDocumentTransformerTest {
         assertEquals("width=1200,height=1600", document.selectFirst("meta[name=viewport]")!!.attr("content"))
         assertFalse(output.contains("img, svg, video, canvas"))
     }
+
+    @Test
+    fun readerBackgroundOnlyYieldsToBookImageBackgrounds() {
+        val source = """
+            <html><body><p>Chapter</p></body></html>
+        """.trimIndent()
+
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("chapter.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE
+        ).toString(Charsets.UTF_8)
+
+        // Reader background drives the page paper fallback and auto text color.
+        assertTrue(output.contains("state.readerBackgroundColor = config.backgroundColor"))
+        assertTrue(output.contains("state.autoTextColor = config.autoTextColor"))
+        assertTrue(output.contains("if (state.readerBackgroundColor) color = state.readerBackgroundColor;"))
+        assertTrue(output.contains("applyReaderAutoTextColor(config, readerBackgroundActive)"))
+        assertTrue(output.contains("lumi-reader-auto-text"))
+        // Only image/gradient book backgrounds keep the book paper; plain colors lose.
+        assertTrue(output.contains("function hasPublisherBackgroundImage(style)"))
+        assertTrue(output.contains("state.publisherHasImageBackground = hasPublisherBackgroundImage(source)"))
+        assertTrue(output.contains("if (!state.publisherHasImageBackground) return;"))
+        assertTrue(
+            output.contains(
+                "var readerBackgroundActive = !state.preservePublisherBackground ||"
+            )
+        )
+    }
 }

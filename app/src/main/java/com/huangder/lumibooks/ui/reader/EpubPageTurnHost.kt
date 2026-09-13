@@ -17,7 +17,9 @@ import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
 import android.widget.FrameLayout
+import android.widget.ImageView
 import com.huangder.lumibooks.BuildConfig
+import com.huangder.lumibooks.util.ReaderBackgroundBlurTransformation
 import com.huangder.lumibooks.ui.reader.engine.CurlFrameSource
 import com.huangder.lumibooks.ui.reader.engine.CurlPageAnim
 import com.huangder.lumibooks.ui.reader.engine.CurlTurnInput
@@ -35,7 +37,10 @@ import com.huangder.lumibooks.ui.reader.engine.isSystemBackGestureStart
 import com.huangder.lumibooks.ui.reader.engine.isSystemBackGestureSwipe
 import com.huangder.lumibooks.domain.model.ReaderPageAnimationSettings
 import com.huangder.lumibooks.util.performance.ReaderPageTurnPerformance
+import coil.load
+import java.io.File
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 private const val BUSY_CURL_TAP_MOVE_LIMIT_PX = 12f
 
@@ -208,7 +213,22 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         WebViewRole.NEXT -> PreloadSlot.NEXT
         WebViewRole.ACTIVE, null -> null
     }
-    private val preloadMask = View(context)
+    /**
+     * 预加载遮罩：翻页时临时盖住还没准备好的页面。
+     * 它停留在 active WebView 下方且翻页后仍保持可见，所以必须画出与页面相同的底色与背景图，
+     * 否则会把下方的阅读背景整块盖住（表现为"翻完页背景只剩纯色"）。
+     */
+    private val preloadMask = ImageView(context).apply {
+        scaleType = ImageView.ScaleType.CENTER_CROP
+        isClickable = false
+        isFocusable = false
+    }
+    private val backgroundImageView = ImageView(context).apply {
+        scaleType = ImageView.ScaleType.CENTER_CROP
+        isClickable = false
+        isFocusable = false
+        visibility = View.GONE
+    }
     private val bitmapLeases = RenderResourcePool<Bitmap> { bitmap ->
         if (!bitmap.isRecycled) bitmap.recycle()
     }
@@ -238,6 +258,11 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
     private var controller: PageAnimationController = SlidePageAnim(liveSlideSurface)
     private var transition = "slide"
     private var transitionDurationMs = ReaderPageAnimationSettings.SLIDE_DEFAULT_MS
+    /**
+     * 有自定义背景图时翻页必须走位图快照：此时页面是透明的（为了露出下层背景图），
+     * 直接滑动两个 WebView 会让上一页和下一页的文字叠在一起。
+     */
+    private var snapshotPagesForBackgroundImage = false
     private var nativePagingEnabled = true
     private var nativeTouchPagingEnabled = true
     private var bookmarkPullEnabled = false
@@ -296,6 +321,9 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
     private var frozenPreviousTarget: EpubPageTarget? = null
     private var frozenNextTarget: EpubPageTarget? = null
     private var pageBackgroundColor = Color.WHITE
+    private var backgroundImagePath: String? = null
+    private var backgroundImageOpacity = 1f
+    private var backgroundImageBlurDp = 0f
 
     private var previousPreparedBitmap: Bitmap? = null
     private var nextPreparedBitmap: Bitmap? = null
@@ -318,6 +346,9 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         clipToPadding = true
         setWillNotDraw(false)
 
+        // Reader background sits below every page so publisher paint (an image
+        // background in the book itself) always wins where it exists.
+        addView(backgroundImageView, matchParentParams())
         addView(previousWebView, matchParentParams())
         addView(nextWebView, matchParentParams())
         addView(preloadMask, matchParentParams())
@@ -339,9 +370,78 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         pageBackgroundColor = color
         setBackgroundColor(color)
         preloadMask.setBackgroundColor(color)
+        applyWebViewBackgroundColor()
+    }
+
+    /**
+     * Reader background under the pages. The book's own image/gradient background
+     * still paints above this, so it is only visible where the book has none.
+     */
+    fun setReaderBackgroundImage(path: String?, opacity: Float, blurDp: Float) {
+        val resolvedPath = path?.takeIf { it.isNotBlank() && File(it).isFile }
+        setReaderBackgroundUsesSnapshotPages(resolvedPath != null)
+        val normalizedOpacity = opacity.coerceIn(0f, 1f)
+        val normalizedBlur = blurDp.coerceIn(0f, 40f)
+        if (resolvedPath == backgroundImagePath &&
+            kotlin.math.abs(normalizedOpacity - backgroundImageOpacity) < 0.001f &&
+            kotlin.math.abs(normalizedBlur - backgroundImageBlurDp) < 0.001f
+        ) {
+            applyWebViewBackgroundColor()
+            return
+        }
+        backgroundImagePath = resolvedPath
+        backgroundImageOpacity = normalizedOpacity
+        backgroundImageBlurDp = normalizedBlur
+        backgroundImageView.alpha = normalizedOpacity
+        if (resolvedPath == null) {
+            backgroundImageView.setImageDrawable(null)
+            backgroundImageView.visibility = View.GONE
+            preloadMask.setImageDrawable(null)
+        } else {
+            backgroundImageView.visibility = View.VISIBLE
+            val radiusPx = normalizedBlur * resources.displayMetrics.density
+            backgroundImageView.load(File(resolvedPath)) {
+                allowHardware(false)
+                crossfade(false)
+                if (radiusPx >= 0.5f) {
+                    transformations(ReaderBackgroundBlurTransformation(radiusPx.roundToInt()))
+                }
+            }
+            // 遮罩层同样铺这张图，避免它把阅读背景盖成纯色。
+            preloadMask.load(File(resolvedPath)) {
+                allowHardware(false)
+                crossfade(false)
+                if (radiusPx >= 0.5f) {
+                    transformations(ReaderBackgroundBlurTransformation(radiusPx.roundToInt()))
+                }
+            }
+        }
+        applyWebViewBackgroundColor()
+    }
+
+    /**
+     * WebViews stay transparent while a reader background image is active so the
+     * image layer shows through; pages still paint their own backgrounds on top.
+     */
+    private fun applyWebViewBackgroundColor() {
+        val color = if (backgroundImagePath != null) Color.TRANSPARENT else pageBackgroundColor
         previousWebView.setBackgroundColor(color)
         activeWebView.setBackgroundColor(color)
         nextWebView.setBackgroundColor(color)
+    }
+
+    private fun setReaderBackgroundUsesSnapshotPages(enabled: Boolean) {
+        if (snapshotPagesForBackgroundImage == enabled) return
+        snapshotPagesForBackgroundImage = enabled
+        if (transition != "curl") {
+            setTransition(transition, transitionDurationMs)
+        }
+    }
+
+    /** Draws the flat reader color plus the background image into a page snapshot. */
+    private fun drawReaderBackground(canvas: Canvas) {
+        if (backgroundImagePath == null || backgroundImageView.visibility != View.VISIBLE) return
+        backgroundImageView.draw(canvas)
     }
 
     fun setReverseAxis(reverse: Boolean) {
@@ -420,14 +520,15 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         clearPendingSlideInput()
         transition = normalized
         transitionDurationMs = sanitizedDuration
+        val slideSurface = if (snapshotPagesForBackgroundImage) snapshotSurface else liveSlideSurface
         controller = when (normalized) {
             "curl" -> CurlPageAnim(
                 snapshotSurface,
                 trackCornerTouchDirectly = true,
                 baseDurationMs = transitionDurationMs
             )
-            "scroll" -> ScrollPageAnim(liveSlideSurface, transitionDurationMs)
-            else -> SlidePageAnim(liveSlideSurface, transitionDurationMs)
+            "scroll" -> ScrollPageAnim(slideSurface, transitionDurationMs)
+            else -> SlidePageAnim(slideSurface, transitionDurationMs)
         }
         bindControllerCallbacks()
         resetAnimationOverlay()
@@ -1891,6 +1992,7 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         bitmap.density = resources.displayMetrics.densityDpi
         bitmap.eraseColor(pageBackgroundColor)
         val bitmapCanvas = Canvas(bitmap)
+        drawReaderBackground(bitmapCanvas)
         val savedAlpha = view.alpha
         val savedTranslationX = view.translationX
         val savedTranslationY = view.translationY
@@ -1920,6 +2022,7 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
             val savedTranslationY = view.translationY
             try {
                 recordingCanvas.drawColor(pageBackgroundColor)
+                drawReaderBackground(recordingCanvas)
                 view.alpha = 1f
                 view.translationX = 0f
                 view.translationY = 0f

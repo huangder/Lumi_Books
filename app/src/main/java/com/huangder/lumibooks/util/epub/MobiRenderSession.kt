@@ -31,6 +31,8 @@ class MobiRenderSession internal constructor(
     private val documentCache = mutableMapOf<Int, Document>()
     private val readerFontFiles = mutableMapOf<String, File>()
     private val readerFontKeysByPath = mutableMapOf<String, String>()
+    private val readerBackgroundFiles = mutableMapOf<String, File>()
+    private val readerBackgroundKeysByPath = mutableMapOf<String, String>()
     private val documentLock = Any()
 
     override val assetLoader: WebViewAssetLoader by lazy {
@@ -73,10 +75,13 @@ class MobiRenderSession internal constructor(
                     null
                 }
             })
-            .addPathHandler("/mobi/$sessionToken/reader-font/", WebViewAssetLoader.PathHandler { requestedPath ->
-                openReaderFont(requestedPath)
-            })
-            .build()
+                .addPathHandler("/mobi/$sessionToken/reader-font/", WebViewAssetLoader.PathHandler { requestedPath ->
+                    openReaderFont(requestedPath)
+                })
+                .addPathHandler("/mobi/$sessionToken/reader-background/", WebViewAssetLoader.PathHandler { requestedPath ->
+                    openReaderBackground(requestedPath)
+                })
+                .build()
     }
 
     override fun chapterUrl(chapterIndex: Int, fragment: String?): String {
@@ -158,6 +163,39 @@ class MobiRenderSession internal constructor(
         }
         readerFontFiles[key] = canonical
         return "https://$ASSET_DOMAIN/mobi/$sessionToken/reader-font/$key"
+    }
+
+    @Synchronized
+    override fun readerBackgroundUrl(filePath: String?): String? {
+        val file = filePath?.takeIf(String::isNotBlank)?.let(::File) ?: return null
+        val canonical = runCatching { file.canonicalFile }.getOrNull() ?: return null
+        if (!canonical.isFile || canonical.length() <= 0L) return null
+        val extension = canonical.extension.lowercase().takeIf { it.isNotBlank() } ?: "jpg"
+        val key = readerBackgroundKeysByPath.getOrPut(canonical.path) {
+            UUID.randomUUID().toString() + "." + extension
+        }
+        readerBackgroundFiles[key] = canonical
+        return "https://$ASSET_DOMAIN/mobi/$sessionToken/reader-background/$key"
+    }
+
+    @Synchronized
+    private fun openReaderBackground(requestedPath: String): WebResourceResponse? {
+        val file = readerBackgroundFiles[requestedPath] ?: return null
+        val canonical = runCatching { file.canonicalFile }.getOrNull() ?: return null
+        if (canonical != file || !canonical.isFile || canonical.length() <= 0L) return null
+        val mimeType = when (canonical.extension.lowercase()) {
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            "gif" -> "image/gif"
+            "bmp" -> "image/bmp"
+            else -> "image/jpeg"
+        }
+        return WebResourceResponse(mimeType, null, FileInputStream(canonical)).apply {
+            responseHeaders = mapOf(
+                "Cache-Control" to "private, max-age=3600",
+                "X-Content-Type-Options" to "nosniff"
+            )
+        }
     }
 
     @Synchronized

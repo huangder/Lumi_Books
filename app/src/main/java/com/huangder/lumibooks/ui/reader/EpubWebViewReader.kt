@@ -283,6 +283,17 @@ internal fun EpubWebViewReader(
     bodyFontWeight: Int = 400,
     textColorOverride: Int?,
     theme: String,
+    /**
+     * Base color under the pages when the reader uses its own background
+     * (custom preset or custom image). Null keeps the built-in theme colors so
+     * day/night/sepia/green stay pixel-identical to before.
+     */
+    readerBackgroundColorOverride: Int? = null,
+    readerBackgroundImagePath: String? = null,
+    readerBackgroundImageOpacity: Float = 1f,
+    readerBackgroundImageBlurDp: Float = 0f,
+    /** Auto-derived text color, applied only where the reader background shows. */
+    autoTextColor: Int? = null,
     textAlignment: ReaderTextAlignment = ReaderTextAlignment.NATURAL,
     preservePublisherBackground: Boolean = true,
     bionicReadingEnabled: Boolean = false,
@@ -348,6 +359,11 @@ internal fun EpubWebViewReader(
     val latestBodyFontWeight = rememberUpdatedState(bodyFontWeight)
     val latestTextColorOverride = rememberUpdatedState(textColorOverride)
     val latestTheme = rememberUpdatedState(theme)
+    val latestReaderBackgroundColorOverride = rememberUpdatedState(readerBackgroundColorOverride)
+    val latestReaderBackgroundImagePath = rememberUpdatedState(readerBackgroundImagePath)
+    val latestReaderBackgroundImageOpacity = rememberUpdatedState(readerBackgroundImageOpacity)
+    val latestReaderBackgroundImageBlurDp = rememberUpdatedState(readerBackgroundImageBlurDp)
+    val latestAutoTextColor = rememberUpdatedState(autoTextColor)
     val latestTextAlignment = rememberUpdatedState(textAlignment)
     val latestPreservePublisherBackground = rememberUpdatedState(preservePublisherBackground)
     val latestBionicReadingEnabled = rememberUpdatedState(bionicReadingEnabled)
@@ -537,6 +553,10 @@ internal fun EpubWebViewReader(
                     bodyFontWeight = latestBodyFontWeight.value,
                     textColorOverride = latestTextColorOverride.value,
                     theme = latestTheme.value,
+                    readerBackgroundColor = latestReaderBackgroundColorOverride.value,
+                    autoTextColor = latestAutoTextColor.value,
+                    readerBackgroundHasImage = latestReaderBackgroundImagePath.value != null,
+                    readerBackgroundUrl = session.readerBackgroundUrl(latestReaderBackgroundImagePath.value),
                     textAlignment = latestTextAlignment.value,
                     preservePublisherBackground = latestPreservePublisherBackground.value,
                     bionicReadingEnabled = latestBionicReadingEnabled.value,
@@ -563,6 +583,10 @@ internal fun EpubWebViewReader(
                     bodyFontWeight = latestBodyFontWeight.value,
                     textColorOverride = latestTextColorOverride.value,
                     theme = latestTheme.value,
+                    readerBackgroundColor = latestReaderBackgroundColorOverride.value,
+                    autoTextColor = latestAutoTextColor.value,
+                    readerBackgroundHasImage = latestReaderBackgroundImagePath.value != null,
+                    readerBackgroundUrl = session.readerBackgroundUrl(latestReaderBackgroundImagePath.value),
                     textAlignment = latestTextAlignment.value,
                     preservePublisherBackground = latestPreservePublisherBackground.value,
                     bionicReadingEnabled = latestBionicReadingEnabled.value,
@@ -611,6 +635,10 @@ internal fun EpubWebViewReader(
                         bodyFontWeight = latestBodyFontWeight.value,
                         textColorOverride = latestTextColorOverride.value,
                         theme = latestTheme.value,
+                        readerBackgroundColor = latestReaderBackgroundColorOverride.value,
+                        autoTextColor = latestAutoTextColor.value,
+                        readerBackgroundHasImage = latestReaderBackgroundImagePath.value != null,
+                        readerBackgroundUrl = session.readerBackgroundUrl(latestReaderBackgroundImagePath.value),
                         textAlignment = latestTextAlignment.value,
                         preservePublisherBackground = latestPreservePublisherBackground.value,
                         bionicReadingEnabled = latestBionicReadingEnabled.value,
@@ -1055,6 +1083,10 @@ internal fun EpubWebViewReader(
                         bodyFontWeight = latestBodyFontWeight.value,
                         textColorOverride = latestTextColorOverride.value,
                         theme = latestTheme.value,
+                        readerBackgroundColor = latestReaderBackgroundColorOverride.value,
+                        autoTextColor = latestAutoTextColor.value,
+                        readerBackgroundHasImage = latestReaderBackgroundImagePath.value != null,
+                        readerBackgroundUrl = session.readerBackgroundUrl(latestReaderBackgroundImagePath.value),
                         textAlignment = latestTextAlignment.value,
                         preservePublisherBackground = latestPreservePublisherBackground.value,
                         bionicReadingEnabled = latestBionicReadingEnabled.value,
@@ -1871,6 +1903,10 @@ internal fun EpubWebViewReader(
                                 bodyFontWeight = latestBodyFontWeight.value,
                                 textColorOverride = latestTextColorOverride.value,
                                 theme = latestTheme.value,
+                                readerBackgroundColor = latestReaderBackgroundColorOverride.value,
+                                autoTextColor = latestAutoTextColor.value,
+                                readerBackgroundHasImage = latestReaderBackgroundImagePath.value != null,
+                                readerBackgroundUrl = session.readerBackgroundUrl(latestReaderBackgroundImagePath.value),
                                 textAlignment = latestTextAlignment.value,
                                 preservePublisherBackground =
                                     latestPreservePublisherBackground.value,
@@ -2069,7 +2105,15 @@ internal fun EpubWebViewReader(
                 "green" -> Color.rgb(0xE8, 0xF5, 0xE9)
                 else -> Color.WHITE
             }
-            pageTurnHost.setPageBackgroundColor(fallbackBackground)
+            // The reader background is the base layer; the book's own paint
+            // covers it wherever the document defines one.
+            val readerBackground = readerBackgroundColorOverride ?: fallbackBackground
+            pageTurnHost.setPageBackgroundColor(readerBackground)
+            pageTurnHost.setReaderBackgroundImage(
+                path = readerBackgroundImagePath,
+                opacity = readerBackgroundImageOpacity,
+                blurDp = readerBackgroundImageBlurDp
+            )
             webView.settings.textZoom = if (isFixedLayout) {
                 100
             } else {
@@ -2084,6 +2128,10 @@ internal fun EpubWebViewReader(
                 bodyFontWeight = bodyFontWeight,
                 textColorOverride = textColorOverride,
                 theme = theme,
+                readerBackgroundColor = readerBackgroundColorOverride,
+                autoTextColor = autoTextColor,
+                readerBackgroundHasImage = readerBackgroundImagePath != null,
+                readerBackgroundUrl = session.readerBackgroundUrl(readerBackgroundImagePath),
                 textAlignment = textAlignment,
                 preservePublisherBackground = preservePublisherBackground,
                 bionicReadingEnabled = bionicReadingEnabled,
@@ -2148,6 +2196,10 @@ internal fun EpubWebViewReader(
                     bodyFontWeight = bodyFontWeight,
                     textColorOverride = textColorOverride,
                     theme = theme,
+                    readerBackgroundColor = readerBackgroundColorOverride,
+                    autoTextColor = autoTextColor,
+                    readerBackgroundHasImage = readerBackgroundImagePath != null,
+                    readerBackgroundUrl = session.readerBackgroundUrl(readerBackgroundImagePath),
                     textAlignment = textAlignment,
                     preservePublisherBackground = preservePublisherBackground,
                     bionicReadingEnabled = bionicReadingEnabled,
@@ -2345,6 +2397,10 @@ private fun configKey(
     bodyFontWeight: Int,
     textColorOverride: Int?,
     theme: String,
+    readerBackgroundColor: Int?,
+    autoTextColor: Int?,
+    readerBackgroundHasImage: Boolean,
+    readerBackgroundUrl: String?,
     textAlignment: ReaderTextAlignment,
     preservePublisherBackground: Boolean,
     bionicReadingEnabled: Boolean,
@@ -2369,6 +2425,10 @@ private fun configKey(
     bodyFontWeight,
     textColorOverride ?: -1,
     theme,
+    readerBackgroundColor ?: -1,
+    autoTextColor ?: -1,
+    readerBackgroundHasImage,
+    readerBackgroundUrl.orEmpty(),
     textAlignment.key,
     preservePublisherBackground,
     bionicReadingEnabled,
@@ -2396,6 +2456,10 @@ private fun configureReader(
     bodyFontWeight: Int,
     textColorOverride: Int?,
     theme: String,
+    readerBackgroundColor: Int?,
+    autoTextColor: Int?,
+    readerBackgroundHasImage: Boolean,
+    readerBackgroundUrl: String?,
     textAlignment: ReaderTextAlignment,
     preservePublisherBackground: Boolean,
     bionicReadingEnabled: Boolean,
@@ -2461,6 +2525,17 @@ private fun configureReader(
         .putOpt("fontUrl", readerFontUrl)
         .put("bodyFontWeight", bodyFontWeight.coerceIn(100, 900))
         .putOpt("textColor", textColorOverride?.let { String.format("#%06X", it and 0xFFFFFF) })
+        .putOpt(
+            "backgroundColor",
+            readerBackgroundColor?.let { String.format("#%06X", it and 0xFFFFFF) }
+        )
+        .putOpt(
+            "autoTextColor",
+            autoTextColor?.let { String.format("#%06X", it and 0xFFFFFF) }
+        )
+        // 图片背景不能在文档层铺底色（会盖住 WebView 下方的图片层）
+        .put("backgroundImage", readerBackgroundHasImage)
+        .putOpt("backgroundUrl", readerBackgroundUrl)
         .put("progression", progression)
         .put("progressionValue", restoreProgression.coerceIn(0f, 1f))
         .put("flow", if (continuousScroll) "scrolled" else "paginated")

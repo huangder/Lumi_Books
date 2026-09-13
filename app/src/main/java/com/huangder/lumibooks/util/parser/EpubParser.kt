@@ -184,6 +184,416 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             }
             return holder.text().trim().takeIf { it.isNotEmpty() }
         }
+
+        /** `<img>` 标签（含自闭合写法）。 */
+        internal val IMAGE_TAG_REGEX = Regex("""<img\b[^>]*>""", RegexOption.IGNORE_CASE)
+
+        private val ANCHOR_TAG_REGEX = Regex(
+            """<a\b[^>]*>.*?</a>""",
+            setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
+        )
+
+        private const val INLINE_IMAGE_PLACEHOLDER_PREFIX = "\u0001lumi-inline-image-"
+        private const val INLINE_IMAGE_PLACEHOLDER_SUFFIX = "\u0001"
+
+        internal fun inlineImagePlaceholder(index: Int): String =
+            INLINE_IMAGE_PLACEHOLDER_PREFIX + index + INLINE_IMAGE_PLACEHOLDER_SUFFIX
+
+        /**
+         * 注释引用图标（注释链接内的 `<img>`，如多看/掌阅导出的"注"字小图）是行内标记，
+         * 不能像插图那样前后插换行独占一行：否则图标会被顶到左边距，引用所在段落也被拆行。
+         * 返回处理后的 HTML 和需要还原的图片标签。
+         */
+        internal fun protectInlineFootnoteImages(html: String): Pair<String, List<String>> {
+            val images = mutableListOf<String>()
+            val result = ANCHOR_TAG_REGEX.replace(html) { match ->
+                val anchor = match.value
+                val openTagEnd = anchor.indexOf('>')
+                val closeTagStart = anchor.length - "</a>".length
+                if (openTagEnd < 0 || closeTagStart <= openTagEnd) return@replace anchor
+                val openTag = anchor.substring(0, openTagEnd + 1)
+                val innerHtml = anchor.substring(openTagEnd + 1, closeTagStart)
+                if (!isFootnoteAnchorTag(openTag, innerHtml)) return@replace anchor
+                IMAGE_TAG_REGEX.replace(anchor) { image ->
+                    images += image.value
+                    inlineImagePlaceholder(images.size - 1)
+                }
+            }
+            return result to images
+        }
+
+        /**
+         * Canvas 引擎用注释气泡呈现注释正文，正文流里不该再重复出现同一段注释。
+         *
+         * 只处理本章确实引用到的 fragment，并且按锚点自身定位要移除的块：
+         * 先匹配"自身带该 id/name 的块级元素"，再匹配"块首以该锚点开头的注释段落"。
+         * 不能改成先匹配任意 aside/section/div —— 外层 `<div class="calibre3">`
+         * 会先命中，把内层注释一起吞掉（曾经的真实事故）。
+         */
+        internal fun stripFootnoteBodies(html: String, fragments: Set<String>): String {
+            if (fragments.isEmpty()) return html
+            var result = html
+            fragments.forEach { fragment ->
+                val anchor = decodeTagEntities(fragment)
+                if (anchor.isBlank()) return@forEach
+                result = stripFootnoteTarget(result, anchor.trim())
+            }
+            return result
+        }
+
+        /** 可能承载整段注释正文的块级标签。 */
+        private const val FOOTNOTE_BLOCK_TAGS =
+            "aside|section|div|blockquote|li|dd|dt|p|td"
+
+        private val BLOCK_OPEN_REGEX = Regex(
+            """<($FOOTNOTE_BLOCK_TAGS)\b[^>]*>""",
+            RegexOption.IGNORE_CASE
+        )
+
+        private val HREF_ATTRIBUTE_REGEX = Regex("""href\s*=\s*["']([^"']*)["']""", RegexOption.IGNORE_CASE)
+
+        /** 语义上明确是注释正文的块（`epub:type="footnote"`、`class="...footnote..."` 等）。 */
+        private val FOOTNOTE_SEMANTIC_BODY_REGEX = Regex(
+            """<($FOOTNOTE_BLOCK_TAGS)\b[^>]*(?:epub:type|role|class)\s*=\s*["'][^"']*""" +
+                """(?:footnote|endnote|rearnote)[^"']*["'][^>]*>""",
+            RegexOption.IGNORE_CASE
+        )
+
+        /** 块内出现这些标记说明它是注释"引用"所在的正文段，不是注释正文。 */
+        private val FOOTNOTE_MARKER_INSIDE_REGEX = Regex(
+            """epub:type\s*=\s*["']?noteref|doc-noteref|class\s*=\s*["'][^"']*epub-footnote""",
+            RegexOption.IGNORE_CASE
+        )
+
+        /** 单条注释正文块过大时不再移除，避免误删整章外壳。 */
+        private const val MAX_FOOTNOTE_BODY_LENGTH = 16_000
+
+        /** 向前搜索承载注释的行内锚点所在块时的最大窗口。 */
+        private const val MAX_FOOTNOTE_BLOCK_SCAN = 4_000
+
+        /** 只保留标签的文本，用来判断块首是否还有正文。 */
+        private val TAG_ONLY_REGEX = Regex("""<[^>]*>""")
+
+        /**
+         * 注释段落开头允许出现的标记（注释编号、星号、圆圈数字、"注"等）。
+         * 锚点前若还有正文，说明这一块不是注释正文，保持原样。
+         */
+        private val FOOTNOTE_LEADING_MARK_REGEX = Regex(
+            """^[\s\[［【〔(（\]］】〕)）\d０-９*＊①-⑳※注:：.、，,；;]*$"""
+        )
+
+        /** 注释锚点所在的块级容器。 */
+        private data class EnclosingBlock(
+            val start: Int,
+            val contentStart: Int,
+            val tag: String
+        )
+
+        /** 一处注释引用：记下 href 属性在原文里的位置，便于重写。 */
+        private data class FootnoteReferenceAnchor(
+            val hrefStart: Int,
+            val hrefEndExclusive: Int,
+            val href: String
+        )
+
+        /** 一处注释正文块。 */
+        private data class FootnoteBodyElement(
+            val start: Int,
+            val openTagEnd: Int,
+            val openTag: String,
+            val tag: String,
+            val id: String?,
+            val contentStart: Int,
+            val closeStart: Int,
+            val closeEnd: Int
+        )
+
+        /** 注释引用与正文对齐后的结果。 */
+        internal data class FootnoteAlignment(
+            val html: String,
+            val hrefs: Set<String>,
+            val textByHref: Map<String, String>
+        )
+
+        /**
+         * 把注释"引用"和注释"正文"一一配对。
+         *
+         * 出版方导出常有错漏：正文 `<aside epub:type="footnote">` 没有 id，
+         * 或者多个引用 href 指向同一个 id（《一生之敌》就是这样）。这里先按 id 精确配对，
+         * 剩下的按文档顺序配对，然后把引用 href 改写到配对正文的 id 上；
+         * 正文缺 id 时补一个合成 id 并预先抽出正文文本，保证气泡能取到正确内容。
+         */
+        internal fun alignFootnoteReferences(html: String, idPrefix: String): FootnoteAlignment {
+            // 绝大多数章节没有注释，先做一次廉价判断，避免整章多次正则扫描。
+            val mentionsNotes = listOf("footnote", "noteref", "endnote", "rearnote", "epub:type")
+                .any { html.contains(it, ignoreCase = true) }
+            if (!mentionsNotes) {
+                return FootnoteAlignment(html, emptySet(), emptyMap())
+            }
+            val references = collectFootnoteReferences(html)
+            if (references.isEmpty()) {
+                return FootnoteAlignment(html, emptySet(), emptyMap())
+            }
+            val fragments = references.mapNotNull { footnoteFragmentOf(it.href) }.toSet()
+            val bodies = collectFootnoteBodies(html, fragments)
+            if (bodies.isEmpty()) {
+                return FootnoteAlignment(html, references.map { it.href }.toSet(), emptyMap())
+            }
+
+            val used = mutableSetOf<Int>()
+            val edits = mutableListOf<Triple<Int, Int, String>>()
+            val hrefs = linkedSetOf<String>()
+            val textByHref = linkedMapOf<String, String>()
+            var generated = 0
+
+            references.forEach { reference ->
+                val fragment = footnoteFragmentOf(reference.href)
+                var bodyIndex = bodies.indices.firstOrNull { index ->
+                    index !in used && fragment != null &&
+                        bodies[index].id?.equals(fragment, ignoreCase = true) == true
+                }
+                if (bodyIndex == null) bodyIndex = bodies.indices.firstOrNull { it !in used }
+                if (bodyIndex == null) {
+                    hrefs += reference.href
+                    return@forEach
+                }
+                used += bodyIndex
+                val body = bodies[bodyIndex]
+                var bodyId = body.id
+                if (bodyId == null) {
+                    bodyId = idPrefix + (++generated)
+                    edits += Triple(body.start, body.openTagEnd + 1, insertIdAttribute(body.openTag, bodyId))
+                    textByHref["#" + bodyId] =
+                        footnoteBodyText(html.substring(body.contentStart, body.closeStart))
+                }
+                val target = "#" + bodyId
+                hrefs += target
+                if (target != reference.href) {
+                    edits += Triple(
+                        reference.hrefStart,
+                        reference.hrefEndExclusive,
+                        """href="$target""""
+                    )
+                }
+            }
+
+            var aligned = html
+            edits.sortedByDescending { it.first }.forEach { (start, end, replacement) ->
+                if (start in 0..aligned.length && end in start..aligned.length) {
+                    aligned = aligned.replaceRange(start, end, replacement)
+                }
+            }
+            return FootnoteAlignment(aligned, hrefs, textByHref)
+        }
+
+        /** href 里的 fragment，解码后返回；没有 fragment 时返回 null。 */
+        internal fun footnoteFragmentOf(href: String): String? {
+            if ('#' !in href) return null
+            val raw = href.substringAfter('#')
+            if (raw.isBlank()) return null
+            return try {
+                java.net.URLDecoder.decode(raw.replace("+", "%2B"), "UTF-8")
+            } catch (_: Exception) {
+                raw
+            }
+        }
+
+        private fun collectFootnoteReferences(html: String): List<FootnoteReferenceAnchor> {
+            val result = mutableListOf<FootnoteReferenceAnchor>()
+            ANCHOR_TAG_REGEX.findAll(html).forEach { match ->
+                val anchor = match.value
+                val openTagEnd = anchor.indexOf('>')
+                val closeTagStart = anchor.length - "</a>".length
+                if (openTagEnd < 0 || closeTagStart <= openTagEnd) return@forEach
+                val openTag = anchor.substring(0, openTagEnd + 1)
+                val innerHtml = anchor.substring(openTagEnd + 1, closeTagStart)
+                if (!isFootnoteAnchorTag(openTag, innerHtml)) return@forEach
+                val hrefMatch = HREF_ATTRIBUTE_REGEX.find(openTag) ?: return@forEach
+                result += FootnoteReferenceAnchor(
+                    hrefStart = match.range.first + hrefMatch.range.first,
+                    hrefEndExclusive = match.range.first + hrefMatch.range.last + 1,
+                    href = decodeTagEntities(hrefMatch.groupValues[1])
+                )
+            }
+            return result
+        }
+
+        private fun collectFootnoteBodies(html: String, fragments: Set<String>): List<FootnoteBodyElement> {
+            val starts = linkedSetOf<Int>()
+            FOOTNOTE_SEMANTIC_BODY_REGEX.findAll(html).forEach { starts += it.range.first }
+            fragments.forEach { fragment ->
+                containerMatch(html, fragment)?.let { starts += it.range.first }
+            }
+            return starts.sorted().mapNotNull { footnoteBodyElementAt(html, it) }
+        }
+
+        /** 块级元素自身带 id/name 时的匹配（注释正文常见形态）。 */
+        private fun containerMatch(html: String, anchor: String): MatchResult? {
+            val pattern = Regex(
+                """<($FOOTNOTE_BLOCK_TAGS)\b[^>]*\b(?:id|name)\s*=\s*["']""" +
+                    Regex.escape(anchor) +
+                    """["'][^>]*>.*?</\1\s*>""",
+                setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
+            )
+            return pattern.find(html)
+        }
+
+        private fun footnoteBodyElementAt(html: String, start: Int): FootnoteBodyElement? {
+            val openMatch = BLOCK_OPEN_REGEX.find(html, start) ?: return null
+            if (openMatch.range.first != start) return null
+            val openTag = openMatch.value
+            val tag = Regex("""<\s*([A-Za-z0-9]+)""")
+                .find(openTag)
+                ?.groupValues
+                ?.get(1)
+                ?.lowercase()
+                ?: return null
+            val close = Regex("""</$tag\s*>""", RegexOption.IGNORE_CASE)
+                .find(html, openMatch.range.last + 1)
+                ?: return null
+            val contentStart = openMatch.range.last + 1
+            val inner = html.substring(contentStart, close.range.first)
+            if (inner.isBlank()) return null
+            // 块里还有注释标记，说明这是引用所在的正文段，不能当作注释正文。
+            if (FOOTNOTE_MARKER_INSIDE_REGEX.containsMatchIn(inner)) return null
+            return FootnoteBodyElement(
+                start = start,
+                openTagEnd = openMatch.range.last,
+                openTag = openTag,
+                tag = tag,
+                id = tagAttribute(openTag, "id") ?: tagAttribute(openTag, "name"),
+                contentStart = contentStart,
+                closeStart = close.range.first,
+                closeEnd = close.range.last + 1
+            )
+        }
+
+        /** 给开放标签补 id（自闭合标签除外）。 */
+        private fun insertIdAttribute(openTag: String, id: String): String {
+            var insertAt = openTag.lastIndexOf('>')
+            if (insertAt < 0) return openTag
+            if (insertAt > 0 && openTag[insertAt - 1] == '/') insertAt -= 1
+            return openTag.substring(0, insertAt) + """ id="$id"""" + openTag.substring(insertAt)
+        }
+
+        /** 注释正文纯文本（去脚本/返回链接/标签）。 */
+        private fun footnoteBodyText(innerHtml: String): String {
+            var text = Regex(
+                """<(script|style)\b.*?</\1\s*>""",
+                setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
+            ).replace(innerHtml, "")
+            text = Regex(
+                """<a\b[^>]*(?:backlink|doc-backlink)[^>]*>.*?</a\s*>""",
+                setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
+            ).replace(text, "")
+            text = TAG_ONLY_REGEX.replace(text, "")
+            return decodeTagEntities(text).replace(Regex("""\s+"""), " ").trim()
+        }
+
+        /**
+         * 单条注释对应正文块的移除。两种常见结构：
+         * 1. 块级元素自身带注释 id：`<aside epub:type="footnote" id="fn1">…`、`<p id="note-1">…`；
+         * 2. 行内锚点标记注释起点：`<p class="zs"><a id="id1a">〔1〕</a>注释正文…</p>`（《毛泽东选集》）。
+         */
+        private fun stripFootnoteTarget(html: String, anchor: String): String {
+            stripContainerTarget(html, anchor)?.let { return it }
+            stripInlineAnchorTarget(html, anchor)?.let { return it }
+            return html
+        }
+
+        /** 结构 1：块级元素自身带 id/name。 */
+        private fun stripContainerTarget(html: String, anchor: String): String? {
+            val match = containerMatch(html, anchor) ?: return null
+            if (match.value.length > MAX_FOOTNOTE_BODY_LENGTH) return null
+            if (linksToAnchor(match.value, anchor)) return null
+            val openTag = match.value.substringBefore('>') + ">"
+            if (!isFootnoteBodyContainer(openTag, anchor)) return null
+            return html.removeRange(match.range)
+        }
+
+        /** 结构 2：行内锚点位于块首，整块都是注释正文。 */
+        private fun stripInlineAnchorTarget(html: String, anchor: String): String? {
+            val pattern = Regex(
+                """<(a|span|sup|em|i|b|strong|font)\b[^>]*\b(?:id|name)\s*=\s*["']""" +
+                    Regex.escape(anchor) +
+                    """["'][^>]*>""",
+                RegexOption.IGNORE_CASE
+            )
+            var searchFrom = 0
+            while (true) {
+                val match = pattern.find(html, searchFrom) ?: return null
+                searchFrom = match.range.last + 1
+                val block = enclosingBlock(html, match.range.first) ?: continue
+                val leadingHtml = html.substring(block.contentStart, match.range.first)
+                // 块首只能有注释编号之类的标记，否则整块不是注释正文。
+                val leadingText = decodeTagEntities(TAG_ONLY_REGEX.replace(leadingHtml, ""))
+                if (!FOOTNOTE_LEADING_MARK_REGEX.matches(leadingText)) continue
+                val close = Regex("""</${block.tag}\s*>""", RegexOption.IGNORE_CASE)
+                    .find(html, match.range.last)
+                    ?: continue
+                val end = close.range.last + 1
+                if (end - block.start > MAX_FOOTNOTE_BODY_LENGTH) continue
+                // 块内若有指向该注释自身的链接，说明这一块是引用所在正文，不能删。
+                if (linksToAnchor(html.substring(block.start, end), anchor)) continue
+                return html.removeRange(block.start, end)
+            }
+        }
+
+        /** 片段内是否存在 `href="#anchor"` 形式的链接（即注释引用本身）。 */
+        private fun linksToAnchor(fragmentHtml: String, anchor: String): Boolean {
+            if (!fragmentHtml.contains("href", ignoreCase = true)) return false
+            val pattern = Regex(
+                """<a\b[^>]*href\s*=\s*["'][^"']*#""" + Regex.escape(anchor) + """["']""",
+                RegexOption.IGNORE_CASE
+            )
+            return pattern.containsMatchIn(fragmentHtml)
+        }
+
+        /** 从 position 向前找到包含它的最近块级元素（且该元素尚未闭合）。 */
+        private fun enclosingBlock(html: String, position: Int): EnclosingBlock? {
+            val from = (position - MAX_FOOTNOTE_BLOCK_SCAN).coerceAtLeast(0)
+            val window = html.substring(from, position)
+            val tagPattern = Regex(
+                """<($FOOTNOTE_BLOCK_TAGS)\b[^>]*>""",
+                RegexOption.IGNORE_CASE
+            )
+            tagPattern.findAll(window).toList().asReversed().forEach { candidate ->
+                val tag = Regex("""<\s*([A-Za-z0-9]+)""")
+                    .find(candidate.value)
+                    ?.groupValues
+                    ?.get(1)
+                    ?.lowercase()
+                    ?: return@forEach
+                val between = window.substring(candidate.range.last + 1)
+                if (Regex("""</$tag\s*>""", RegexOption.IGNORE_CASE).containsMatchIn(between)) {
+                    return@forEach
+                }
+                return EnclosingBlock(
+                    start = from + candidate.range.first,
+                    contentStart = from + candidate.range.last + 1,
+                    tag = tag
+                )
+            }
+            return null
+        }
+
+        /**
+         * 注释正文容器判定：`aside`/`section` 语义明确；`p`/`li` 等行文段落直接可用；
+         * `div` 可能是整章外壳，需要额外带注释语义才移除。
+         */
+        private fun isFootnoteBodyContainer(openTag: String, anchor: String): Boolean {
+            val tag = Regex("""<\s*([A-Za-z0-9]+)""")
+                .find(openTag)
+                ?.groupValues
+                ?.get(1)
+                ?.lowercase()
+                ?: return false
+            if (tag != "div") return true
+            val semantics = listOf("epub:type", "role", "class")
+                .mapNotNull { tagAttribute(openTag, it) }
+                .joinToString(" ")
+            return hasFootnoteHint(semantics) || hasFootnoteHint(anchor)
+        }
     }
 
     override var paragraphSpacingDp: Float = 0f
@@ -250,6 +660,8 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
     private val cssFileCache = mutableMapOf<String, String>()
     // 各章节中识别为注释引用的 href 集合（Canvas 引擎注释气泡用）
     private val footnoteHrefs = mutableMapOf<Int, Set<String>>()
+    // 导出错误（正文缺 id）时按顺序配对得到的注释正文，key = 重写后的 href
+    private val footnoteTextByHref = mutableMapOf<Int, Map<String, String>>()
     private val contentRevision = AtomicLong(0L)
     private val contentLoadLocks = ConcurrentHashMap<ContentLoadKey, Any>()
 
@@ -1046,7 +1458,10 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 if (!isActiveRevision(revision, zipFile)) return@chapterLoad ""
 
                 // 应用段间距和首行缩进（Canvas 引擎需要在 Spanned 层面处理）
-                val formatted = applyParagraphFormatting(spanned)
+                val formatted = applyParagraphFormatting(
+                    spanned,
+                    chapterTitle = chapters.getOrNull(chapterIndex)?.title.orEmpty()
+                )
                 val formattedAt = android.os.SystemClock.elapsedRealtime()
                 // 修剪末尾多余换行（防止章节末尾出现空白页）
                 val trimmed = trimTrailingNewlines(formatted)
@@ -1161,6 +1576,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             anchorOffsets.clear()
             cssFileCache.clear()
             footnoteHrefs.clear()
+            footnoteTextByHref.clear()
         }
     }
 
@@ -1201,8 +1617,10 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         if (chapterIndex !in chapterPaths.indices) return false
         // 章节已展示时必有缓存；这里兜底确保 href 集合已收集
         getChapterContent(chapterIndex)
+        val key = href.trim()
         return synchronized(zipLock) {
-            footnoteHrefs[chapterIndex]?.contains(href.trim()) == true
+            footnoteHrefs[chapterIndex]?.contains(key) == true ||
+                footnoteTextByHref[chapterIndex]?.containsKey(key) == true
         }
     }
 
@@ -1211,6 +1629,10 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         if (trimmed.isEmpty() || trimmed.startsWith("//")) return null
         if (LINK_SCHEME_REGEX.containsMatchIn(trimmed)) return null
         if (sourceChapterIndex !in chapterPaths.indices) return null
+
+        // 导出器漏 id 的注释正文：用配对时预抽出的文本
+        synchronized(zipLock) { footnoteTextByHref[sourceChapterIndex]?.get(trimmed) }
+            ?.let { if (it.isNotBlank()) return it }
 
         val documentHref = trimmed.substringBefore('#').substringBefore('?')
         var targetChapter = if (documentHref.isBlank()) {
@@ -1249,7 +1671,10 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
      * - 首行缩进：LeadingMarginSpan.Standard 作用于每个段落
      * - 段间距：在段落之间插入空行，用 LineHeightSpan 精确控制空行高度
      */
-    private fun applyParagraphFormatting(text: CharSequence): CharSequence {
+    private fun applyParagraphFormatting(
+        text: CharSequence,
+        chapterTitle: String = ""
+    ): CharSequence {
         val density = context?.resources?.displayMetrics?.density ?: 2.75f
         val indentPx = if (firstLineIndentChars > 0f) (firstLineIndentChars * 18f * density).toInt() else 0
         val spacingPx = if (paragraphSpacingDp > 0f) (paragraphSpacingDp * density).toInt() else 0
@@ -1269,6 +1694,8 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         var imageRangeIndex = 0
         var indentCount = 0
         var paraStart = 0
+        var firstContentParagraphSeen = false
+        val normalizedChapterTitle = normalizeHeadingText(chapterTitle)
         for (j in 0..ssb.length) {
             val isEnd = j == ssb.length
             val isNewline = !isEnd && ssb[j] == '\n'
@@ -1281,7 +1708,16 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                     }
                     val imageRange = imageRanges.getOrNull(imageRangeIndex)
                     val hasImage = imageRange != null && imageRange.first < j
-                    if (!hasImage) {
+                    // 标题不参与首行缩进：h1/h2 之类的标题同样以段落形式出现在文本里，
+                    // 用 CSS 类排版的标题则靠"首段 == 章节标题"兜底。
+                    val isHeading = isHeadingParagraph(ssb, paraStart, j)
+                    val isChapterTitle = !firstContentParagraphSeen &&
+                        isChapterTitleParagraph(
+                            ssb.subSequence(paraStart, j),
+                            normalizedChapterTitle
+                        )
+                    if (!hasImage) firstContentParagraphSeen = true
+                    if (!hasImage && !isHeading && !isChapterTitle) {
                         ssb.setSpan(
                             android.text.style.LeadingMarginSpan.Standard(indentPx, 0),
                             paraStart, j,
@@ -1858,18 +2294,35 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             .replace(Regex("""<span[^>]*>\s*</span>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
             .replace(Regex("""\n{3,}"""), "\n\n")
 
-        // 收集注释引用链接（Canvas 引擎注释气泡判定用）
-        collectFootnoteHrefs(chapterIndex, cleaned)
+        // 注释引用与正文先配对：导出器常把 href 指错、正文漏 id，配对后 href 才能稳定解析。
+        val alignment = alignFootnoteReferences(cleaned, "lumi-footnote-$chapterIndex-")
+        synchronized(zipLock) {
+            if (alignment.textByHref.isEmpty()) footnoteTextByHref.remove(chapterIndex)
+            else footnoteTextByHref[chapterIndex] = alignment.textByHref
+        }
+
+        // 收集注释引用链接（Canvas 引擎注释气泡判定用，用重写后的 href）
+        collectFootnoteHrefs(chapterIndex, alignment.html)
+
+        // 注释正文改由注释气泡呈现：只移除本章确实被引用到的注释容器，正文流里不再重复出现。
+        val withoutFootnoteBodies = stripReferencedFootnoteBodies(chapterIndex, alignment.html)
+
+        // 注释引用图标（注释链接里的 <img>）是行内标记，必须保持行内。
+        val (inlineProtected, inlineImages) = protectInlineFootnoteImages(withoutFootnoteBodies)
 
         // Html.fromHtml 会丢弃 id/name。先插入不可见占位，转成 Spanned 后再移除并记录偏移。
-        val withAnchorMarkers = insertAnchorMarkers(cleaned)
+        val withAnchorMarkers = insertAnchorMarkers(inlineProtected)
 
         // 图片前后插入换行，使其独占一行（块级效果）
-        val withImageBreaks = withAnchorMarkers.replace(
-            Regex("""(<img[^>]*/?>)""", RegexOption.IGNORE_CASE), "\n$1\n"
-        )
+        var withImageBreaks = IMAGE_TAG_REGEX.replace(withAnchorMarkers, "\n$0\n")
+        inlineImages.forEachIndexed { index, image ->
+            withImageBreaks = withImageBreaks.replace(inlineImagePlaceholder(index), image)
+        }
 
-        val imageGetter = EpubImageGetter(zipFile, contentWidth)
+        val inlineMarkerSources = inlineImages
+            .mapNotNull { image -> tagAttribute(image, "src")?.trim()?.lowercase() }
+            .toSet()
+        val imageGetter = EpubImageGetter(zipFile, contentWidth, inlineMarkerSources)
         val parsed = parseNativeHtmlInChunks(withImageBreaks, imageGetter)
         if (chapterIndex != 0) return parsed
 
@@ -1887,6 +2340,23 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             )
         }
         return cover
+    }
+
+    /**
+     * Canvas 引擎用注释气泡呈现注释正文，正文流里不该再重复出现同一段注释。
+     *
+     * 只移除本章确实检测到引用链接、且 id/name 与引用 fragment 对应的容器，
+     * 避免误删没有引用标记的注释段落（例如《毛泽东选集》式的正文注释）。
+     */
+    private fun stripReferencedFootnoteBodies(chapterIndex: Int, html: String): String {
+        val hrefs = synchronized(zipLock) { footnoteHrefs[chapterIndex] } ?: return html
+        val fragments = hrefs.mapNotNull { href ->
+            decodeTagEntities(href)
+                .substringAfter('#', "")
+                .takeIf { it.isNotBlank() }
+                ?.let(::decodeUrlComponent)
+        }.toSet()
+        return stripFootnoteBodies(html, fragments)
     }
 
     /**
@@ -2067,8 +2537,9 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         private val originalHeight: Int,
         private val pageWidth: Int,
         private val drawWidth: Int,
-        private val drawHeight: Int
-    ) : Drawable() {
+        private val drawHeight: Int,
+        override val isInlineFootnoteMarker: Boolean = false
+    ) : Drawable(), InlineFootnoteMarkerDrawable {
         private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
         private var bitmapRef: WeakReference<Bitmap>? = null
         private var decodeFailed = false
@@ -2150,7 +2621,9 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
 
     private inner class EpubImageGetter(
         private val zipFile: ZipFile,
-        private val pageContentWidth: Int = 0
+        private val pageContentWidth: Int = 0,
+        /** 本章节里作为注释引用标记的行内小图（src 原样、小写） */
+        private val inlineMarkerSources: Set<String> = emptySet()
     ) : Html.ImageGetter {
         override fun getDrawable(source: String): Drawable? {
             return try {
@@ -2187,7 +2660,16 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                     val marginPx = (44 * dm.density).toInt()
                     (dm.widthPixels - marginPx * 2).coerceAtLeast(1)
                 }
-                val imageBounds = ReaderImageSizing.bounds(originalWidth, originalHeight, pageW)
+                // 注释引用图标按正文字号留出排版槽位，而不是按图片原始像素（多为 72px 大图）
+                val isInlineMarker = source.trim().lowercase() in inlineMarkerSources
+                val targetWidth = if (isInlineMarker) {
+                    val dm = context?.resources?.displayMetrics
+                        ?: android.content.res.Resources.getSystem().displayMetrics
+                    ReaderImageSizing.inlineMarkerSizePx(dm.density)
+                } else {
+                    pageW
+                }
+                val imageBounds = ReaderImageSizing.bounds(originalWidth, originalHeight, targetWidth)
                     ?: return createErrorPlaceholder("Invalid image dimensions: ${entry.name.take(60)}")
 
                 LazyEpubImageDrawable(
@@ -2198,7 +2680,8 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                     originalHeight = originalHeight,
                     pageWidth = pageW,
                     drawWidth = imageBounds.width,
-                    drawHeight = imageBounds.height
+                    drawHeight = imageBounds.height,
+                    isInlineFootnoteMarker = isInlineMarker
                 ).apply {
                     setBounds(0, 0, imageBounds.width, imageBounds.height)
                 }

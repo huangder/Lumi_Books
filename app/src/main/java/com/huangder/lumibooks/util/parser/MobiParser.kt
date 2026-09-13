@@ -567,7 +567,9 @@ class MobiParser(private val context: Context? = null) : BookParser, BookRenderS
             for (j in 0..ssb.length) {
                 if (j == ssb.length || ssb[j] == '\n') {
                     val hasImage = ssb.getSpans(paragraphStart, j, ImageSpan::class.java).isNotEmpty()
-                    if (paragraphStart < j && !hasImage) paragraphStarts += paragraphStart
+                    // 标题同样不缩进：h1/h2 转成的"放大 + 加粗"段落会命中。
+                    val isHeading = isHeadingParagraph(ssb, paragraphStart, j)
+                    if (paragraphStart < j && !hasImage && !isHeading) paragraphStarts += paragraphStart
                     paragraphStart = j + 1
                 }
             }

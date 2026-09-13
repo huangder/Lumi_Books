@@ -34,6 +34,8 @@ class EpubRenderSession private constructor(
     }.toMap()
     private val readerFontFiles = mutableMapOf<String, File>()
     private val readerFontKeysByPath = mutableMapOf<String, String>()
+    private val readerBackgroundFiles = mutableMapOf<String, File>()
+    private val readerBackgroundKeysByPath = mutableMapOf<String, String>()
 
     override val assetLoader: WebViewAssetLoader = WebViewAssetLoader.Builder()
         .setDomain(ASSET_DOMAIN)
@@ -57,6 +59,9 @@ class EpubRenderSession private constructor(
         .addPathHandler("/reader-font/$sessionToken/", WebViewAssetLoader.PathHandler { requestedPath ->
             openReaderFont(requestedPath)
         })
+        .addPathHandler("/reader-background/$sessionToken/", WebViewAssetLoader.PathHandler { requestedPath ->
+            openReaderBackground(requestedPath)
+        })
         .build()
 
     @Synchronized
@@ -69,6 +74,39 @@ class EpubRenderSession private constructor(
         val key = readerFontKeysByPath.getOrPut(canonicalPath) { UUID.randomUUID().toString() + "." + extension }
         readerFontFiles[key] = canonical
         return "https://$ASSET_DOMAIN/reader-font/$sessionToken/$key"
+    }
+
+    @Synchronized
+    override fun readerBackgroundUrl(filePath: String?): String? {
+        val file = filePath?.takeIf(String::isNotBlank)?.let(::File) ?: return null
+        val canonical = runCatching { file.canonicalFile }.getOrNull() ?: return null
+        if (!canonical.isFile || canonical.length() <= 0L) return null
+        val extension = canonical.extension.lowercase().takeIf { it.isNotBlank() } ?: "jpg"
+        val key = readerBackgroundKeysByPath.getOrPut(canonical.path) {
+            UUID.randomUUID().toString() + "." + extension
+        }
+        readerBackgroundFiles[key] = canonical
+        return "https://$ASSET_DOMAIN/reader-background/$sessionToken/$key"
+    }
+
+    @Synchronized
+    private fun openReaderBackground(requestedPath: String): WebResourceResponse? {
+        val file = readerBackgroundFiles[requestedPath] ?: return null
+        val canonical = runCatching { file.canonicalFile }.getOrNull() ?: return null
+        if (canonical != file || !canonical.isFile || canonical.length() <= 0L) return null
+        val mimeType = when (canonical.extension.lowercase()) {
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            "gif" -> "image/gif"
+            "bmp" -> "image/bmp"
+            else -> "image/jpeg"
+        }
+        return WebResourceResponse(mimeType, null, FileInputStream(canonical)).apply {
+            responseHeaders = mapOf(
+                "Cache-Control" to "private, max-age=3600",
+                "X-Content-Type-Options" to "nosniff"
+            )
+        }
     }
 
     @Synchronized
