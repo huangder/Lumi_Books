@@ -68,6 +68,11 @@ class CurlPageAnim(
     }
     private val pageSourceRect = Rect()
     private val pageDestinationRect = Rect()
+    /**
+     * 收尾专用 Scroller：松开后要"按松手速度继续滑、再平滑收住"。
+     * 基类的 FAST_OUT_SLOW_IN 是先冲后爬，松手后会变成刚走一下突然减速。
+     */
+    private val settleScroller = android.widget.Scroller(readView.context, CURL_SETTLE_INTERPOLATOR)
     private val backTintPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val foldTextureMatrix = Matrix()
 
@@ -407,6 +412,7 @@ class CurlPageAnim(
         drawPage(canvas, underBitmap, underPageView)
 
         if (calculateCurlPoints()) {
+            buildCurlPaths(simulationFrame, path0, path1)
             // The turning sheet is outside path0 in both legado-E branches:
             // current over next for NEXT, previous over current for PREV.
             drawCurrentPageArea(canvas, turningBitmap, turningPageView)
@@ -457,15 +463,21 @@ class CurlPageAnim(
         capturedBaseDurationMs = baseDurationMs
         direction = dir
         val defaultStartY = readView.height * 0.82f
-        startY = gestureStartY
+        val replayedStartY = gestureStartY
             ?.takeIf { it.isFinite() }
             ?.coerceIn(0f, readView.height.toFloat())
-            ?: defaultStartY
-        gestureMode = curlGestureModeForStartY(
-            height = readView.height.toFloat(),
-            downY = startY,
-            physicalTurnSign = if (dir == Direction.NEXT) -1f else 1f
-        )
+        startY = replayedStartY ?: defaultStartY
+        // 点按/边缘点击翻页没有手指位置：用整页竖直卷曲。
+        // 角落卷曲（上/下 30% 起手）只在用户从角落拖出来时使用。
+        gestureMode = if (replayedStartY == null) {
+            CurlGestureMode.EDGE_VERTICAL
+        } else {
+            curlGestureModeForStartY(
+                height = readView.height.toFloat(),
+                downY = startY,
+                physicalTurnSign = if (dir == Direction.NEXT) -1f else 1f
+            )
+        }
         Log.d(
             "CurlPageAnimMode",
             "replay dir=$dir inputY=$gestureStartY startY=$startY " +
@@ -485,6 +497,8 @@ class CurlPageAnim(
 
         isFlipAnim = true
         onMotionStateChanged?.invoke(MotionState.SETTLING)
+        // 自动翻页（点按/边缘点击）：没有手指速度，可见扫过段直接用配置时长，
+        // 这样 NEXT 与 PREV 的可见扫过时间一致（收尾里的隐藏尾段另行计时）。
         settleToPage(
             if (expedited) curlExpeditedDurationMs(capturedBaseDurationMs)
             else capturedBaseDurationMs
@@ -493,10 +507,12 @@ class CurlPageAnim(
     }
 
     override fun computeScroll(): Boolean {
-        if (scroller.computeScrollOffset()) {
-            touchX = scroller.currX.toFloat()
-            touchY = scroller.currY.toFloat()
-            if (scroller.currX == scroller.finalX && scroller.currY == scroller.finalY) {
+        if (settleScroller.computeScrollOffset()) {
+            touchX = settleScroller.currX.toFloat()
+            touchY = settleScroller.currY.toFloat()
+            if (settleScroller.currX == settleScroller.finalX &&
+                settleScroller.currY == settleScroller.finalY
+            ) {
                 if (drawsDirectlyOnCanvas && useStableCornerSettling) {
                     // Both commit and bounce-back keep the overlay alive until
                     // their terminal frame has actually passed through onDraw.
@@ -538,6 +554,7 @@ class CurlPageAnim(
     override fun abortAnim() {
         settleGeneration++
         dragWatchdogGeneration++
+        if (!settleScroller.isFinished) settleScroller.abortAnimation()
         if (!scroller.isFinished) scroller.abortAnimation()
         recycleVelocityTracker()
         releaseBorrowedFrames()
@@ -568,7 +585,7 @@ class CurlPageAnim(
 
         if (drawsDirectlyOnCanvas && useStableCornerSettling) {
             if (!settleExpedited) {
-                if (!scroller.isFinished) scroller.abortAnimation()
+                if (!settleScroller.isFinished) settleScroller.abortAnimation()
                 settleExpedited = true
                 startScrollTo(
                     completionTargetX(),
@@ -601,7 +618,7 @@ class CurlPageAnim(
     private fun completeRunningFlipSynchronously(
         committedDirection: Direction
     ): RunningFlipHandoff {
-        if (!scroller.isFinished) scroller.abortAnimation()
+        if (!settleScroller.isFinished) settleScroller.abortAnimation()
         recycleVelocityTracker()
         gestureStarted = false
         settleCompletesPage = false
@@ -662,7 +679,22 @@ class CurlPageAnim(
             finishSettle()
             return
         }
-        startScrollTo(completionTargetX(), resolvedSettleTargetY(), fixedDurationMs)
+        // 与 legado-E 的 onAnimStart 一致：一趟滑到 (touchX = -viewWidth, touchY = 角所在边)，
+        // 时长按行程比例给（线性插值 = 全程匀速），中途没有阶段切换。
+        val targetX = completionTargetX()
+        val targetY = resolvedSettleTargetY()
+        val distance = hypot(targetX - touchX, targetY - touchY)
+        val durationMs = fixedDurationMs ?: curlSettleDurationMs(
+            capturedBaseDurationMs,
+            distance,
+            readView.width.toFloat()
+        )
+        Log.d(
+            "CurlPageAnimState",
+            "settle dir=$direction duration=${durationMs}ms distance=$distance " +
+                "mode=$settleGestureMode targetX=${targetX.toInt()} targetY=${targetY.toInt()}"
+        )
+        startScrollTo(targetX, targetY, durationMs)
     }
 
     private fun hasReachedCompletionTarget(): Boolean {
@@ -681,9 +713,9 @@ class CurlPageAnim(
             width,
             readView.height.toFloat(),
             simulationDirection,
-            // The snapshot-based ReadView curl uses an extended endpoint;
-            // EPUB retains its legacy one-screen endpoint.
-            extendedNextTerminal = useStableCornerSettling
+            // 与 legado-E 一致：终点就是 touchX = -viewWidth，纸角贴边滑出屏幕。
+            // 之前改成 -(viewWidth + 2·对角线) 是为了让"完全离屏"判据成立，会让纸多飞几屏并越飞越斜。
+            extendedNextTerminal = false
         )
     }
 
@@ -706,21 +738,17 @@ class CurlPageAnim(
     private fun settleTargetYFor(
         mode: CurlGestureMode,
         capturedCornerY: Float
-    ): Float = when (mode) {
-        CurlGestureMode.CORNER_TOP -> {
-            val height = readView.height.coerceAtLeast(2).toFloat()
-            val maxY = (height * 0.3f).coerceIn(1f, height - 1f)
-            startY.coerceIn(1f, maxY)
-        }
-        CurlGestureMode.CORNER_BOTTOM -> {
-            val height = readView.height.coerceAtLeast(2).toFloat()
-            val minY = (height * 0.7f).coerceIn(1f, height - 1f)
-            startY.coerceIn(minY, height - 1f)
-        }
-        CurlGestureMode.EDGE_VERTICAL -> nearCornerY(capturedCornerY)
-    }
+    ): Float =
+        // 与 legado-E 的 onAnimStart 一致：收尾终点把 touchY 收到角所在的那条边
+        // （dy = viewHeight - touchY / 1 - touchY），纸页是贴着边竖直滑出去的。
+        nearCornerY(capturedCornerY)
 
-    private fun startScrollTo(targetX: Float, targetY: Float, fixedDurationMs: Int? = null) {
+    private fun startScrollTo(
+        targetX: Float,
+        targetY: Float,
+        fixedDurationMs: Int? = null,
+        watchdogMs: Int = -1
+    ) {
         val flatX = flatTouchX()
         val flatY = nearCornerY(activeCornerY())
         val completionX = completionTargetX()
@@ -741,9 +769,11 @@ class CurlPageAnim(
         }
 
         isRunning = true
-        scroller.startScroll(touchX.toInt(), touchY.toInt(), dx, dy, duration)
+        settleScroller.startScroll(touchX.toInt(), touchY.toInt(), dx, dy, duration)
         readView.postInvalidateOnAnimation()
-        if (useStableCornerSettling) scheduleSettleWatchdog(duration)
+        if (useStableCornerSettling) {
+            scheduleSettleWatchdog(if (watchdogMs > 0) watchdogMs else duration)
+        }
     }
 
     /**
@@ -757,9 +787,14 @@ class CurlPageAnim(
                 if (destroyed || generation != settleGeneration || !isRunning || isDragging) {
                     return@watchdog
                 }
-                if (!scroller.isFinished) scroller.abortAnimation()
-                touchX = scroller.finalX.toFloat()
-                touchY = scroller.finalY.toFloat()
+                if (!settleScroller.isFinished) {
+                    // 帧循环停了：直接落到当前动画该在的终点，别停在半路。
+                    val finalX = settleScroller.finalX.toFloat()
+                    val finalY = settleScroller.finalY.toFloat()
+                    settleScroller.abortAnimation()
+                    touchX = finalX
+                    touchY = finalY
+                }
                 if (drawsDirectlyOnCanvas && useStableCornerSettling) {
                     finalFramePending = true
                     readView.postInvalidateOnAnimation()
@@ -930,9 +965,9 @@ class CurlPageAnim(
             return if (gestureMode == CurlGestureMode.EDGE_VERTICAL) nearCornerY() else pointerY
         }
         return when (gestureMode) {
+            // 与 legado-E 一致：中部起手（整页竖直卷曲）的 tip 贴在下边缘；
+            // 角落起手保留角落卷曲，tip 跟着手指走，只是不越过页面中线。
             CurlGestureMode.EDGE_VERTICAL -> nearCornerY()
-            // Keep the live fold on the selected half even if a diagonal release
-            // crosses the page midpoint; the mode itself remains locked.
             CurlGestureMode.CORNER_TOP -> pointerY.coerceIn(
                 1f,
                 (readView.height * 0.5f).coerceAtLeast(1f)
@@ -957,16 +992,23 @@ class CurlPageAnim(
         return if (capturedCornerY == 0f) 1f else readView.height - 1f
     }
 
+    /** 卷曲坐标的横向裁剪范围，与 calculateCurlPoints() 里传给几何计算的 limit 一致。 */
+    private fun curlHorizontalLimit(): Float =
+        if (useStableCornerSettling) {
+            CurlTerminalGeometry.completionDistance(
+                readView.width.toFloat(),
+                readView.height.toFloat()
+            )
+        } else {
+            readView.width * 1.2f
+        }
+
     private fun calculateCurlPoints(): Boolean {
         val width = readView.width.toFloat()
         val height = readView.height.toFloat()
         if (width <= 0f || height <= 0f) return false
 
-        val horizontalLimit = if (useStableCornerSettling) {
-            CurlTerminalGeometry.completionDistance(width, height)
-        } else {
-            width * 1.2f
-        }
+        val horizontalLimit = curlHorizontalLimit()
         val renderCornerY = activeCornerY()
         val corner = if (renderCornerY == 0f) {
             SimulationCurlCorner.TOP
@@ -1006,15 +1048,7 @@ class CurlPageAnim(
 
     private fun drawCurrentPageArea(canvas: Canvas, bitmap: Bitmap?, pageView: View?) {
         if (bitmap == null && pageView == null) return
-        path0.reset()
-        path0.moveTo(bezierStart1.x, bezierStart1.y)
-        path0.quadTo(bezierControl1.x, bezierControl1.y, bezierEnd1.x, bezierEnd1.y)
-        path0.lineTo(renderTouchX, renderTouchY)
-        path0.lineTo(bezierEnd2.x, bezierEnd2.y)
-        path0.quadTo(bezierControl2.x, bezierControl2.y, bezierStart2.x, bezierStart2.y)
-        path0.lineTo(cornerX, activeCornerY())
-        path0.close()
-
+        // path0/path1 由 drawCurl() 通过 buildCurlPaths() 统一构建，保证与收尾判据一致。
         canvas.save()
         canvas.clipOutPath(path0)
         drawPageContent(canvas, bitmap, pageView)
@@ -1201,14 +1235,48 @@ class CurlPageAnim(
         val height = readView.height
         if (width <= 0 || height <= 0) return false
 
+        return isFrameFullyOffscreenFor(path0, path1)
+    }
+
+    /** 与 drawCurl() 用的两条路径完全一致：翻起的整页形状 + 纸背形状。 */
+    private fun buildCurlPaths(
+        frame: SimulationCurlFrame,
+        pagePath: Path,
+        foldPath: Path
+    ) {
+        pagePath.reset()
+        pagePath.moveTo(frame.start1X, frame.start1Y)
+        pagePath.quadTo(frame.control1X, frame.control1Y, frame.end1X, frame.end1Y)
+        pagePath.lineTo(frame.touchX, frame.touchY)
+        pagePath.lineTo(frame.end2X, frame.end2Y)
+        pagePath.quadTo(frame.control2X, frame.control2Y, frame.start2X, frame.start2Y)
+        pagePath.lineTo(frame.cornerX, frame.cornerY)
+        pagePath.close()
+
+        foldPath.reset()
+        foldPath.moveTo(frame.vertex2X, frame.vertex2Y)
+        foldPath.lineTo(frame.vertex1X, frame.vertex1Y)
+        foldPath.lineTo(frame.end1X, frame.end1Y)
+        foldPath.lineTo(frame.touchX, frame.touchY)
+        foldPath.lineTo(frame.end2X, frame.end2Y)
+        foldPath.close()
+    }
+
+    private fun fillCurlRegions(pagePath: Path, foldPath: Path) {
+        val width = readView.width
+        val height = readView.height
         viewportRegion.set(0, 0, width, height)
         curledRegion.setEmpty()
-        curledRegion.setPath(path0, viewportRegion)
+        curledRegion.setPath(pagePath, viewportRegion)
         visibleFrontRegion.set(viewportRegion)
         visibleFrontRegion.op(curledRegion, Region.Op.DIFFERENCE)
         visibleFoldRegion.setEmpty()
-        visibleFoldRegion.setPath(path1, viewportRegion)
+        visibleFoldRegion.setPath(foldPath, viewportRegion)
         visibleFoldRegion.op(curledRegion, Region.Op.INTERSECT)
+    }
+
+    private fun isFrameFullyOffscreenFor(pagePath: Path, foldPath: Path): Boolean {
+        fillCurlRegions(pagePath, foldPath)
         return when (direction) {
             Direction.NEXT ->
                 isNegligible(visibleFrontRegion) && isNegligible(visibleFoldRegion)
@@ -1225,14 +1293,6 @@ class CurlPageAnim(
     }
 
     private fun drawFoldedBack(canvas: Canvas) {
-        path1.reset()
-        path1.moveTo(bezierVertex2.x, bezierVertex2.y)
-        path1.lineTo(bezierVertex1.x, bezierVertex1.y)
-        path1.lineTo(bezierEnd1.x, bezierEnd1.y)
-        path1.lineTo(renderTouchX, renderTouchY)
-        path1.lineTo(bezierEnd2.x, bezierEnd2.y)
-        path1.close()
-
         canvas.save()
         canvas.clipPath(path0)
         canvas.clipPath(path1)
