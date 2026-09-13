@@ -817,7 +817,13 @@
     <string name="reader_external_link_message">這本 EPUB 想要開啟外部應用程式或網站：\n%1$s</string>
     <string name="reader_external_link_open">開啟</string>
     <string name="preserve_epub_background">保留原書背景</string>
-    <string name="preserve_epub_background_hint">關閉後使用目前選擇的 Lumi 閱讀背景</string>
+    <string name="preserve_epub_background_hint">原書自帶圖片背景的頁保留原書背景，其餘頁使用 Lumi 閱讀背景；關閉後所有頁都用 Lumi 閱讀背景</string>
+    <string name="reader_layout_editing_reader">目前編輯：閱讀器排版</string>
+    <string name="reader_layout_editing_book">目前編輯：書籍原排版</string>
+    <string name="reader_layout_editor_reader">閱讀器排版</string>
+    <string name="reader_layout_editor_book">書籍原排版</string>
+    <string name="reader_layout_editor_reader_hint">僅影響閱讀器排版（TXT 與 EPUB/MOBI 閱讀器模式）</string>
+    <string name="reader_layout_editor_book_hint">僅影響書籍原排版（EPUB/MOBI 原書排版）</string>
     <string name="epub_layout_first_open_title">EPUB 排版提示</string>
     <string name="epub_layout_first_open_message">如果本書內建排版，可點擊螢幕中央，在「主題」中選擇「書籍原排版」。</string>
     <string name="epub_layout_first_open_confirm">知道了</string>
@@ -1117,6 +1123,7 @@
     <string name="floating_subtitle_preview_text">懸浮字幕會顯示在這裡</string>
     <string name="tts_listen">聽書</string>
     <string name="tts_next_sentence">下一句</string>
+    <string name="tts_speech_rate">語速</string>
     <string name="tts_no_readable_text">目前頁面沒有可朗讀的文字</string>
     <string name="tts_notification_channel">聽書播放</string>
     <string name="tts_notification_channel_description">文字轉語音播放控制</string>

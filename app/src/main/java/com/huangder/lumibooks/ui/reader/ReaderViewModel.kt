@@ -26,6 +26,7 @@ import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
+import com.huangder.lumibooks.domain.model.ReaderLayoutTarget
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.domain.model.ReaderPageAnimationSettings
 import com.huangder.lumibooks.domain.model.ReaderPageTransition
@@ -77,6 +78,7 @@ import com.huangder.lumibooks.util.epub.BookRenderSource
 import com.huangder.lumibooks.util.epub.EpubLocator
 import com.huangder.lumibooks.util.epub.BookSearchSource
 import com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatter
+import com.huangder.lumibooks.ui.reader.engine.applyReaderPunctuationCompression
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.service.TtsForegroundService
 import com.huangder.lumibooks.tts.TtsController
@@ -422,6 +424,17 @@ internal fun continuousTtsPageFraction(pageIndex: Int, totalPages: Int): Float? 
     return ((pageIndex + 0.5f) / totalPages.toFloat()).coerceIn(0f, 0.9999f)
 }
 
+/**
+ * 连续滚动模式下的听书起点：用章节内滚动比例估算章节字符偏移。
+ * 该屏幕不经过分页引擎，页数索引不可用，只能按文本长度近似。
+ */
+internal fun continuousStartCharacterOffset(chapterFraction: Float, chapterLength: Int): Int? {
+    if (chapterLength <= 0) return null
+    return (chapterFraction.coerceIn(0f, 0.9999f) * chapterLength)
+        .toInt()
+        .coerceIn(0, chapterLength - 1)
+}
+
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
@@ -757,6 +770,10 @@ class ReaderViewModel @Inject constructor(
             }
         }
         val effectiveSuite = suiteState.suites.firstOrNull { it.id == effectiveSuiteId }
+        val layoutTarget = readerLayoutTargetFor(
+            format = _uiState.value.book?.format?.name,
+            renderMode = preferences.renderMode
+        )
         var nextState = _uiState.value.copy(
             fontSize = preferences.fontSize,
             lineHeight = preferences.lineHeight,
@@ -808,7 +825,7 @@ class ReaderViewModel @Inject constructor(
         )
         if (effectiveSuite != null) {
             nextState = nextState
-                .withReaderThemeSettings(effectiveSuite.settings)
+                .withReaderThemeSettings(effectiveSuite.settingsFor(layoutTarget))
                 .copy(
                     readerThemeSuites = suiteState.suites,
                     activeReaderThemeSuiteId = effectiveSuiteId,
@@ -972,7 +989,9 @@ class ReaderViewModel @Inject constructor(
                     activeReaderThemeSuiteId = effectiveId,
                     globalActiveReaderThemeSuiteId = state.activeSuiteId
                 )
-                _uiState.value = effectiveSuite?.let { updated.withReaderThemeSettings(it.settings) }
+                _uiState.value = effectiveSuite?.let {
+                    updated.withReaderThemeSettings(it.settingsFor(current.readerLayoutTarget()))
+                }
                     ?.copy(
                         readerThemeSuites = state.suites,
                         activeReaderThemeSuiteId = effectiveId,
@@ -1211,7 +1230,9 @@ class ReaderViewModel @Inject constructor(
         parser?.paragraphSpacingDp = suite.settings.paragraphSpacing
         parser?.firstLineIndentChars = suite.settings.firstLineIndent
         parser?.clearHtmlCache()
-        _uiState.value = state.withReaderThemeSettings(suite.settings).copy(
+        _uiState.value = state.withReaderThemeSettings(
+            suite.settingsFor(state.readerLayoutTarget())
+        ).copy(
             activeReaderThemeSuiteId = suiteId,
             globalActiveReaderThemeSuiteId = if (state.readerThemeSuiteBookScoped) {
                 state.globalActiveReaderThemeSuiteId
@@ -1241,7 +1262,7 @@ class ReaderViewModel @Inject constructor(
         parser?.firstLineIndentChars = suite.settings.firstLineIndent
         parser?.clearHtmlCache()
         _uiState.value = state
-            .withReaderThemeSettings(suite.settings)
+            .withReaderThemeSettings(suite.settingsFor(state.readerLayoutTarget()))
             .copy(
                 activeReaderThemeSuiteId = nextActiveId,
                 globalActiveReaderThemeSuiteId = state.globalActiveReaderThemeSuiteId,
@@ -1279,7 +1300,9 @@ class ReaderViewModel @Inject constructor(
         parser?.paragraphSpacingDp = suite.settings.paragraphSpacing
         parser?.firstLineIndentChars = suite.settings.firstLineIndent
         parser?.clearHtmlCache()
-        _uiState.value = state.withReaderThemeSettings(suite.settings).copy(
+        _uiState.value = state.withReaderThemeSettings(
+            suite.settingsFor(state.readerLayoutTarget())
+        ).copy(
             readerThemeSuites = updated,
             activeReaderThemeSuiteId = suite.id,
             globalActiveReaderThemeSuiteId = if (state.readerThemeSuiteBookScoped) {
@@ -1339,7 +1362,9 @@ class ReaderViewModel @Inject constructor(
         parser?.firstLineIndentChars = replacement.settings.firstLineIndent
         parser?.clearHtmlCache()
         val resolvedGlobalId = if (removedGlobalActive) replacement.id else nextGlobalId
-        _uiState.value = state.withReaderThemeSettings(replacement.settings).copy(
+        _uiState.value = state.withReaderThemeSettings(
+            replacement.settingsFor(state.readerLayoutTarget())
+        ).copy(
             readerThemeSuites = remaining,
             activeReaderThemeSuiteId = replacement.id,
             globalActiveReaderThemeSuiteId = resolvedGlobalId
@@ -1411,19 +1436,22 @@ class ReaderViewModel @Inject constructor(
     }
 
     private fun ReaderUiState.withUpdatedActiveThemeSettings(
+        layout: ReaderLayoutTarget = readerLayoutTarget(),
         transform: ReaderThemeSettings.() -> ReaderThemeSettings
     ): ReaderUiState = copy(
         readerThemeSuites = readerThemeSuites.map { suite ->
             if (suite.id == activeReaderThemeSuiteId) {
-                suite.copy(settings = suite.settings.transform())
+                suite.withSettings(layout, suite.settingsFor(layout).transform())
             } else {
                 suite
             }
         }
     )
 
-    private fun ReaderUiState.currentThemeSettings(): ReaderThemeSettings =
-        readerThemeSuites.firstOrNull { it.id == activeReaderThemeSuiteId }?.settings
+    private fun ReaderUiState.currentThemeSettings(
+        layout: ReaderLayoutTarget = readerLayoutTarget()
+    ): ReaderThemeSettings =
+        readerThemeSuites.firstOrNull { it.id == activeReaderThemeSuiteId }?.settingsFor(layout)
             ?: ReaderThemeSettings(
                 backgroundSelection = readerBackgroundSelection,
                 backgroundColorSelection = readerBackgroundColorSelection,
@@ -1444,22 +1472,39 @@ class ReaderViewModel @Inject constructor(
                 marginBottom = marginBottomDp
             )
 
-    private fun persistCurrentThemeSettings(settings: ReaderThemeSettings) {
+    private fun persistCurrentThemeSettings(
+        settings: ReaderThemeSettings,
+        layout: ReaderLayoutTarget = _uiState.value.readerLayoutTarget()
+    ) {
         val suiteId = _uiState.value.activeReaderThemeSuiteId
         viewModelScope.launch {
-            dataStoreManager.updateReaderThemeSuite(suiteId, settings)
+            dataStoreManager.updateReaderThemeSuite(suiteId, layout, settings)
         }
+    }
+
+    /**
+     * 把当前排版模式对应的那套设置同步到扁平字段。
+     * 打开过程的早期还不知道书籍格式（判断不出该用哪套），书籍信息到位后需要补一次。
+     */
+    private fun applyActiveThemeSettingsForCurrentLayout() {
+        val state = _uiState.value
+        val suite = state.readerThemeSuites.firstOrNull { it.id == state.activeReaderThemeSuiteId }
+            ?: return
+        _uiState.value = state.withReaderThemeSettings(
+            suite.settingsFor(state.readerLayoutTarget())
+        )
     }
 
     private fun updateCurrentThemeSettings(
         transform: ReaderThemeSettings.() -> ReaderThemeSettings
     ): ReaderThemeSettings {
         val state = _uiState.value
-        val updated = state.currentThemeSettings().transform()
+        val layout = state.readerLayoutTarget()
+        val updated = state.currentThemeSettings(layout).transform()
         _uiState.value = state
-            .withUpdatedActiveThemeSettings { transform() }
+            .withUpdatedActiveThemeSettings(layout) { transform() }
             .withReaderThemeSettings(updated)
-        persistCurrentThemeSettings(updated)
+        persistCurrentThemeSettings(updated, layout)
         return updated
     }
 
@@ -1467,9 +1512,7 @@ class ReaderViewModel @Inject constructor(
     private fun reconcileProcessedBackgrounds() {
         processedBackgroundJob?.cancel()
         val state = _uiState.value
-        val settings = state.readerThemeSuites
-            .firstOrNull { it.id == state.activeReaderThemeSuiteId }
-            ?.settings ?: return
+        val settings = state.currentThemeSettings()
         val selected = state.customReaderBackgrounds.firstOrNull {
             it.selectionKey == settings.backgroundSelection && it.type == ReaderBackgroundType.IMAGE
         } ?: return
@@ -1490,9 +1533,7 @@ class ReaderViewModel @Inject constructor(
             } ?: return@launch
 
             val latestState = _uiState.value
-            val latestSettings = latestState.readerThemeSuites
-                .firstOrNull { it.id == latestState.activeReaderThemeSuiteId }
-                ?.settings ?: return@launch
+            val latestSettings = latestState.currentThemeSettings()
             val latestSelected = latestState.customReaderBackgrounds.firstOrNull {
                 it.id == selected.id && it.value == selected.value &&
                     it.selectionKey == latestSettings.backgroundSelection
@@ -1583,19 +1624,23 @@ class ReaderViewModel @Inject constructor(
         val remaining = state.customReaderBackgrounds.filterNot { it.id == id }
         val wasSelected = state.readerBackgroundSelection == removed.selectionKey
         val repairedSuites = state.readerThemeSuites.map { suite ->
-            if (suite.settings.backgroundSelection == removed.selectionKey) {
-                suite.copy(
-                    settings = suite.settings.copy(
-                        backgroundSelection = suite.settings.backgroundColorSelection
+            ReaderLayoutTarget.entries.fold(suite) { acc, layout ->
+                val layoutSettings = acc.settingsFor(layout)
+                if (layoutSettings.backgroundSelection == removed.selectionKey) {
+                    acc.withSettings(
+                        layout,
+                        layoutSettings.copy(
+                            backgroundSelection = layoutSettings.backgroundColorSelection
+                        )
                     )
-                )
-            } else {
-                suite
+                } else {
+                    acc
+                }
             }
         }
         val restoredSelection = repairedSuites
             .firstOrNull { it.id == state.activeReaderThemeSuiteId }
-            ?.settings
+            ?.settingsFor(state.readerLayoutTarget())
             ?.backgroundSelection
             ?: ReaderThemeSuites.DAY_ID
         val restoredTheme = restoredSelection.takeIf { it in ReaderThemeSuites.BUILT_IN_IDS }
@@ -1627,16 +1672,20 @@ class ReaderViewModel @Inject constructor(
     }
 
     private fun saveAddedReaderBackground(preset: ReaderBackgroundPreset) {
-        val updated = _uiState.value.customReaderBackgrounds + preset
-        val updatedSuites = _uiState.value.readerThemeSuites.map { suite ->
-            if (suite.id == _uiState.value.activeReaderThemeSuiteId) {
-                suite.copy(
-                    settings = suite.settings.copy(
+        val state = _uiState.value
+        val layout = state.readerLayoutTarget()
+        val updated = state.customReaderBackgrounds + preset
+        val updatedSuites = state.readerThemeSuites.map { suite ->
+            if (suite.id == state.activeReaderThemeSuiteId) {
+                val current = suite.settingsFor(layout)
+                suite.withSettings(
+                    layout,
+                    current.copy(
                         backgroundSelection = preset.selectionKey,
                         backgroundColorSelection = if (preset.type == ReaderBackgroundType.COLOR) {
                             preset.selectionKey
                         } else {
-                            suite.settings.backgroundColorSelection
+                            current.backgroundColorSelection
                         }
                     )
                 )
@@ -1655,18 +1704,13 @@ class ReaderViewModel @Inject constructor(
                 _uiState.value.readerBackgroundColorSelection
             }
         )
-        val targetSuiteId = _uiState.value.activeReaderThemeSuiteId
-        val settings = _uiState.value.currentThemeSettings().copy(
-            backgroundSelection = preset.selectionKey,
-            backgroundColorSelection = if (preset.type == ReaderBackgroundType.COLOR) {
-                preset.selectionKey
-            } else {
-                _uiState.value.readerBackgroundColorSelection
-            }
-        )
+        val targetSuiteId = state.activeReaderThemeSuiteId
+        val settings = updatedSuites.firstOrNull { it.id == targetSuiteId }
+            ?.settingsFor(layout)
+            ?: return
         viewModelScope.launch {
             dataStoreManager.saveCustomReaderBackgrounds(updated)
-            dataStoreManager.updateReaderThemeSuite(targetSuiteId, settings)
+            dataStoreManager.updateReaderThemeSuite(targetSuiteId, layout, settings)
         }
     }
 
@@ -1711,10 +1755,13 @@ class ReaderViewModel @Inject constructor(
         val deletedPath = current.customFonts.find { it.id == id }?.path
         val deletedFontKey = "custom:$id"
         val repairedSuites = current.readerThemeSuites.map { suite ->
-            if (suite.settings.fontType == deletedFontKey) {
-                suite.copy(settings = suite.settings.copy(fontType = "system"))
-            } else {
-                suite
+            ReaderLayoutTarget.entries.fold(suite) { acc, layout ->
+                val layoutSettings = acc.settingsFor(layout)
+                if (layoutSettings.fontType == deletedFontKey) {
+                    acc.withSettings(layout, layoutSettings.copy(fontType = "system"))
+                } else {
+                    acc
+                }
             }
         }
         // 如果当前用的是被删字体，切回 system
@@ -1856,7 +1903,10 @@ class ReaderViewModel @Inject constructor(
             state.pendingPageFraction
         }.coerceIn(0f, 1f)
         saveProgress()
-        _uiState.value = state.copy(
+        val nextLayout = readerLayoutTargetFor(format, mode)
+        val nextSuite = state.readerThemeSuites
+            .firstOrNull { it.id == state.activeReaderThemeSuiteId }
+        val switched = state.copy(
             renderMode = mode,
             currentPageIndex = 0,
             totalPages = 0,
@@ -1870,6 +1920,11 @@ class ReaderViewModel @Inject constructor(
             pendingReaderPosition = null,
             epubLocatorJson = null
         )
+        // Each layout keeps its own typography/background; mirror the newly
+        // active bucket into the flat reader fields right away.
+        _uiState.value = nextSuite
+            ?.let { switched.withReaderThemeSettings(it.settingsFor(nextLayout)) }
+            ?: switched
         viewModelScope.launch {
             runCatching {
                 dataStoreManager.saveRenderMode(bookId, mode)
@@ -2400,7 +2455,9 @@ class ReaderViewModel @Inject constructor(
         parser?.paragraphSpacingDp = 2f
         parser?.firstLineIndentChars = 2f
         parser?.clearHtmlCache()
-        val resetSettings = _uiState.value.currentThemeSettings().copy(
+        val resetSettings = _uiState.value.currentThemeSettings(
+            ReaderLayoutTarget.READER_LAYOUT
+        ).copy(
             textColor = null,
             fontType = "system",
             lineHeight = 1.5f,
@@ -2414,7 +2471,7 @@ class ReaderViewModel @Inject constructor(
             marginBottom = 64f
         )
         _uiState.value = _uiState.value
-            .withUpdatedActiveThemeSettings { resetSettings }
+            .withUpdatedActiveThemeSettings(ReaderLayoutTarget.READER_LAYOUT) { resetSettings }
             .withReaderThemeSettings(resetSettings)
             .copy(
                 lineHeight = 1.5f,
@@ -2448,6 +2505,8 @@ class ReaderViewModel @Inject constructor(
 
     /** 从 URI 导入字体文件到内部存储，注册到自定义字体列表，返回新建的 CustomFontPreset */
     fun resetBookLayoutReaderSettings() {
+        // Only reachable while the book layout sheet is open, so every save*
+        // call below lands in the book layout bucket of the active suite.
         saveFontType("system")
         saveTextAlignment(ReaderTextAlignment.NATURAL)
         saveMarginLeft(38f)
@@ -2711,6 +2770,11 @@ class ReaderViewModel @Inject constructor(
                         twoPageSpreadEnabled = twoPageSpreadEnabled,
                         error = null
                     )
+
+                    // 书还没加载时 applyReaderPreferences 判断不出排版模式归属
+                    // （format 为空 → 一律按阅读器排版取设置），书籍信息到位后必须再同步一次，
+                    // 否则书籍原排版会套用阅读器排版那套背景/边距/字号。
+                    applyActiveThemeSettingsForCurrentLayout()
 
                     if (supportsBookLayout && renderMode == EpubRenderMode.BOOK_LAYOUT) {
                         withContext(Dispatchers.IO) { getRenderSession() }
@@ -3144,22 +3208,14 @@ class ReaderViewModel @Inject constructor(
         val book = state.book ?: return
         if (!state.useNewEngine || state.isLoading) return
         val startChapter = state.currentChapterIndex
-        val startPage = if (state.readerWritingMode.usesContinuousScroll(
-                state.pageTransition,
-                state.eInkModeEnabled
-            )
-        ) {
-            // 连续滚动模式下，currentPageIndex 是 scaled 值（chapterFraction * CONTINUOUS_PROGRESS_SCALE），
-            // 需转换为真实页码才能被 TTS 的 pageProvider 正确使用
-            val totalPages = pageLayoutEngine.getChapterPageCount(startChapter)
-            if (totalPages > 0) {
-                val chapterFraction = state.currentPageIndex.toFloat() / CONTINUOUS_PROGRESS_SCALE
-                (chapterFraction.coerceIn(0f, 0.9999f) * totalPages).toInt()
-                    .coerceIn(0, totalPages - 1)
-            } else 0
-        } else {
-            state.currentPageIndex
-        }
+        val isContinuousScroll = state.readerWritingMode.usesContinuousScroll(
+            state.pageTransition,
+            state.eInkModeEnabled
+        )
+        // 连续滚动模式下 currentPageIndex 是 scaled 值（chapterFraction * CONTINUOUS_PROGRESS_SCALE），
+        // 且分页引擎未按当前排版工作。改用“章节内滚动比例 × 章节文本长度”换算起始字符偏移，
+        // 否则起始页会退化为 0，从本章第一句开始朗读。
+        val continuousChapterFraction = state.currentPageIndex.toFloat() / CONTINUOUS_PROGRESS_SCALE
         val source = ReflowTtsPageSource(
             layoutEngine = pageLayoutEngine,
             chapterCount = state.chapterCount,
@@ -3168,7 +3224,30 @@ class ReaderViewModel @Inject constructor(
                 withContext(Dispatchers.IO) { getChapterText(chapterIndex) }
             }
         )
-        startTtsSession(book.id, book.title, source, startChapter, startPage)
+        if (!isContinuousScroll) {
+            startTtsSession(
+                bookId = book.id,
+                bookTitle = book.title,
+                source = source,
+                startChapter = startChapter,
+                startPage = state.currentPageIndex
+            )
+            return
+        }
+        viewModelScope.launch {
+            val chapterLength = withContext(Dispatchers.IO) {
+                getChapterText(startChapter)?.length ?: 0
+            }
+            val startOffset = continuousStartCharacterOffset(continuousChapterFraction, chapterLength)
+            startTtsSession(
+                bookId = book.id,
+                bookTitle = book.title,
+                source = source,
+                startChapter = startChapter,
+                startPage = 0,
+                startCharacterOffset = startOffset
+            )
+        }
     }
 
     internal fun startBookLayoutTts(
@@ -3216,14 +3295,21 @@ class ReaderViewModel @Inject constructor(
         bookTitle: String,
         source: TtsPageSource,
         startChapter: Int,
-        startPage: Int
+        startPage: Int,
+        startCharacterOffset: Int? = null
     ) {
         ContextCompat.startForegroundService(
             context,
             TtsForegroundService.startIntent(context, bookTitle)
         )
         viewModelScope.launch {
-            val result = ttsController.start(bookId, source, startChapter, startPage)
+            val result = ttsController.start(
+                bookId = bookId,
+                source = source,
+                startChapter = startChapter,
+                startPage = startPage,
+                startCharacterOffset = startCharacterOffset
+            )
             if (result.isFailure) {
                 _ttsState.value = _ttsState.value.copy(
                     errorMessage = ttsErrorMessage(result.exceptionOrNull())
@@ -3306,6 +3392,16 @@ class ReaderViewModel @Inject constructor(
 
     fun ttsSkipBackward() {
         ttsController.skip(forward = false)
+    }
+
+    /** 听书进行中双击某句：朗读从该句开始，阅读页保持不动。 */
+    fun seekTtsToSentence(chapterIndex: Int, characterOffset: Int) {
+        // 只允许调整当前这本书的朗读会话，避免影响其他书籍或已停止的会话。
+        if (_ttsState.value.activeBookId != bookId) return
+        ttsController.seekTo(
+            chapterIndex = chapterIndex.coerceAtLeast(0),
+            characterOffset = characterOffset.coerceAtLeast(0)
+        )
     }
 
     fun setTtsSpeechRate(rate: Float) {
@@ -3456,8 +3552,29 @@ class ReaderViewModel @Inject constructor(
      *
      *  contentWidthPx 非空表示调用方（连续滚动阅读器）已量出真实内容宽度；
      *  用它刷新解析器的图片基准宽度，插图尺寸才能跟随左右边距。
+     *
+     *  这里的标点挤压是「阅读器自绘」变体（只改测量值），供分页引擎、TTS、设置预览等
+     *  自己逐字绘制正文的通道使用。需要框架（原生 TextView）直接绘制正文的上下滚动模式，
+     *  必须改用 [getFrameworkDrawnChapterText]：两套 span 不能混用，否则行末标点会被裁切。
      */
-    fun getChapterText(index: Int, contentWidthPx: Int? = null): CharSequence? {
+    fun getChapterText(index: Int, contentWidthPx: Int? = null): CharSequence? =
+        buildChapterText(index, contentWidthPx, frameworkDrawsText = false)
+
+    /**
+     * 供框架直接绘制正文的通道使用（上下滚动模式的原生 TextView）。
+     *
+     * 标点改用 [com.huangder.lumibooks.ui.reader.engine.ReaderPunctuationReplacementSpan]：
+     * 框架按半个字宽排版，并由 span 自己把整字宽字形居中画进槽位。若这里误用自绘变体，
+     * 框架会按整字宽落笔，行内标点之后的内容整体右移，行尾会越过正文列右边缘被裁掉半截。
+     */
+    fun getFrameworkDrawnChapterText(index: Int, contentWidthPx: Int? = null): CharSequence? =
+        buildChapterText(index, contentWidthPx, frameworkDrawsText = true)
+
+    private fun buildChapterText(
+        index: Int,
+        contentWidthPx: Int?,
+        frameworkDrawsText: Boolean
+    ): CharSequence? {
         if (contentWidthPx != null) updateReaderContentWidth(contentWidthPx)
         val raw = if (firstChapterDecodeTraced.compareAndSet(false, true)) {
             ReaderOpenPerformance.traceStage(bookId, ReaderOpenStage.FIRST_CHAPTER_DECODE) {
@@ -3520,7 +3637,12 @@ class ReaderViewModel @Inject constructor(
         } else {
             chapterText
         }
-        return applyReaderTextAlignment(formatted, state.textAlignment)
+        val aligned = applyReaderTextAlignment(formatted, state.textAlignment)
+        // 竖排由独立排版器逐字度量，不识别挤压 span，保持原字宽以免分页与绘制错位。
+        if (state.readerWritingMode.isVertical) return aligned
+        // 全角标点挤压：标点只占半个汉字宽，行内更紧凑、行尾也更容易对齐。
+        // 放在最后一步，段落缩进/对齐都会连同 span 一起复制。
+        return applyReaderPunctuationCompression(aligned, frameworkDrawsText = frameworkDrawsText)
     }
 
     internal fun resolveTxtEditorCharOffset(chapterIndex: Int, readerOffset: Int): Int {

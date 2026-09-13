@@ -23,12 +23,33 @@ data class ReaderThemeSettings(
     val marginBottom: Float = 64f
 )
 
+/** Which reader layout a set of typography/background settings belongs to. */
+enum class ReaderLayoutTarget {
+    /** Reader layout (TXT and EPUB/MOBI reflow). */
+    READER_LAYOUT,
+
+    /** Publisher layout (EPUB/MOBI book layout). */
+    BOOK_LAYOUT
+}
+
 data class ReaderThemeSuite(
     val id: String,
     val customName: String? = null,
-    val settings: ReaderThemeSettings
+    val settings: ReaderThemeSettings,
+    val bookLayoutSettings: ReaderThemeSettings = settings
 ) {
     val isBuiltIn: Boolean get() = id in ReaderThemeSuites.BUILT_IN_IDS
+
+    fun settingsFor(layout: ReaderLayoutTarget): ReaderThemeSettings = when (layout) {
+        ReaderLayoutTarget.READER_LAYOUT -> settings
+        ReaderLayoutTarget.BOOK_LAYOUT -> bookLayoutSettings
+    }
+
+    fun withSettings(layout: ReaderLayoutTarget, updated: ReaderThemeSettings): ReaderThemeSuite =
+        when (layout) {
+            ReaderLayoutTarget.READER_LAYOUT -> copy(settings = updated)
+            ReaderLayoutTarget.BOOK_LAYOUT -> copy(bookLayoutSettings = updated)
+        }
 }
 
 data class ReaderThemeSuiteState(
@@ -86,7 +107,11 @@ object ReaderThemeSuites {
         val activeId = settings.backgroundSelection.takeIf { it in BUILT_IN_IDS } ?: DAY_ID
         return ReaderThemeSuiteState(
             suites = defaults().map { suite ->
-                if (suite.id == activeId) suite.copy(settings = settings) else suite
+                if (suite.id == activeId) {
+                    suite.copy(settings = settings, bookLayoutSettings = settings)
+                } else {
+                    suite
+                }
             },
             activeSuiteId = activeId
         )
@@ -97,9 +122,17 @@ object ReaderThemeSuites {
         val sanitized = suites.mapNotNull { suite ->
             if (suite.id.isBlank() || !seen.add(suite.id)) return@mapNotNull null
             when {
-                suite.isBuiltIn -> suite.copy(customName = null, settings = suite.settings.sanitized())
+                suite.isBuiltIn -> suite.copy(
+                    customName = null,
+                    settings = suite.settings.sanitized(),
+                    bookLayoutSettings = suite.bookLayoutSettings.sanitized()
+                )
                 suite.customName.isNullOrBlank() -> null
-                else -> suite.copy(customName = suite.customName.trim(), settings = suite.settings.sanitized())
+                else -> suite.copy(
+                    customName = suite.customName.trim(),
+                    settings = suite.settings.sanitized(),
+                    bookLayoutSettings = suite.bookLayoutSettings.sanitized()
+                )
             }
         }.toMutableList()
 
@@ -136,6 +169,7 @@ object ReaderThemeSuiteCodec {
                 put("id", suite.id)
                 suite.customName?.let { put("name", it) }
                 put("settings", suite.settings.toJson())
+                put("bookLayoutSettings", suite.bookLayoutSettings.toJson())
             })
         }
         return array.toString()
@@ -150,12 +184,18 @@ object ReaderThemeSuiteCodec {
                     val item = array.optJSONObject(index) ?: continue
                     val id = item.optString("id")
                     val settings = item.optJSONObject("settings")?.toThemeSettings() ?: continue
+                    // Older payloads only carry one set; the reader layout values
+                    // start as the baseline for both layouts so nothing shifts on upgrade.
+                    val bookLayoutSettings = item.optJSONObject("bookLayoutSettings")
+                        ?.toThemeSettings()
+                        ?: settings
                     if (id.isNotBlank()) {
                         add(
                             ReaderThemeSuite(
                                 id = id,
                                 customName = item.optString("name").takeIf(String::isNotBlank),
-                                settings = settings
+                                settings = settings,
+                                bookLayoutSettings = bookLayoutSettings
                             )
                         )
                     }

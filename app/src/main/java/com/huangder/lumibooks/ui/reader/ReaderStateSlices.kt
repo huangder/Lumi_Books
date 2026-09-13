@@ -6,6 +6,7 @@ import com.huangder.lumibooks.domain.model.CustomFontPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
+import com.huangder.lumibooks.domain.model.ReaderLayoutTarget
 import com.huangder.lumibooks.domain.model.ReaderPageAnimationSettings
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.domain.model.ReaderTextAlignment
@@ -200,3 +201,20 @@ internal fun ReaderUiState.toControlsState() = ReaderControlsState(
     readerBottomRightContent = readerBottomRightContent,
     selectionMenuItems = selectionMenuItems
 )
+
+/**
+ * Settings bucket a book edits right now. Only EPUB/MOBI books can leave the
+ * reader layout, so everything else always maps to [ReaderLayoutTarget.READER_LAYOUT].
+ */
+internal fun readerLayoutTargetFor(
+    format: String?,
+    renderMode: EpubRenderMode
+): ReaderLayoutTarget =
+    if ((format == "EPUB" || format == "MOBI") && renderMode == EpubRenderMode.BOOK_LAYOUT) {
+        ReaderLayoutTarget.BOOK_LAYOUT
+    } else {
+        ReaderLayoutTarget.READER_LAYOUT
+    }
+
+internal fun ReaderUiState.readerLayoutTarget(): ReaderLayoutTarget =
+    readerLayoutTargetFor(book?.format?.name, renderMode)

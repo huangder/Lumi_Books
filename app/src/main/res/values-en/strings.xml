@@ -509,6 +509,7 @@
     <string name="tts_stop">Stop listening</string>
     <string name="tts_previous_sentence">Previous sentence</string>
     <string name="tts_next_sentence">Next sentence</string>
+    <string name="tts_speech_rate">Speech rate</string>
     <string name="tts_page_not_ready">The current page is not ready</string>
     <string name="tts_no_readable_text">There is no readable text on the current page.</string>
     <string name="tts_unavailable">Text-to-speech could not start. Check the system voice engine and language data.</string>
@@ -962,7 +963,13 @@
     <string name="reader_external_link_message">This EPUB wants to open an external app or website:\n%1$s</string>
     <string name="reader_external_link_open">Open</string>
     <string name="preserve_epub_background">Keep original book background</string>
-    <string name="preserve_epub_background_hint">Turn off to use the selected Lumi reading background</string>
+    <string name="preserve_epub_background_hint">Pages that ship their own image background keep the book background; other pages use the Lumi reading background. Turn off to use the Lumi background everywhere</string>
+    <string name="reader_layout_editing_reader">Editing: Reader layout</string>
+    <string name="reader_layout_editing_book">Editing: Book layout</string>
+    <string name="reader_layout_editor_reader">Reader layout</string>
+    <string name="reader_layout_editor_book">Book layout</string>
+    <string name="reader_layout_editor_reader_hint">Affects reader layout only (TXT and EPUB/MOBI reader mode)</string>
+    <string name="reader_layout_editor_book_hint">Affects book layout only (EPUB/MOBI publisher layout)</string>
     <string name="epub_layout_first_open_title">EPUB layout</string>
     <string name="epub_layout_first_open_message">If this book includes its own layout, tap the center of the screen, open Theme, and choose Book layout.</string>
     <string name="epub_layout_first_open_confirm">Got it</string>

@@ -38,6 +38,7 @@ import com.huangder.lumibooks.domain.model.ReaderThemeSuite
 import com.huangder.lumibooks.domain.model.ReaderThemeSuiteCodec
 import com.huangder.lumibooks.domain.model.ReaderThemeSuiteState
 import com.huangder.lumibooks.domain.model.ReaderThemeSuites
+import com.huangder.lumibooks.domain.model.ReaderLayoutTarget
 import com.huangder.lumibooks.domain.model.PdfPageMode
 import com.huangder.lumibooks.domain.model.ReaderPageAnimationSettings
 import com.huangder.lumibooks.domain.model.ReaderPageTransition
@@ -1516,7 +1517,7 @@ class DataStoreManager @Inject constructor(
                 }
                 preferences[READER_THEME_SUITES] = ReaderThemeSuiteCodec.encode(normalized)
                 preferences[ACTIVE_READER_THEME_SUITE_ID] = activeId
-                preferences[READER_THEME_SUITES_VERSION] = 2
+                preferences[READER_THEME_SUITES_VERSION] = 3
                 return@edit
             }
 
@@ -1527,7 +1528,7 @@ class DataStoreManager @Inject constructor(
             val migrated = ReaderThemeSuites.fromLegacy(currentSettings)
             preferences[READER_THEME_SUITES] = ReaderThemeSuiteCodec.encode(migrated.suites)
             preferences[ACTIVE_READER_THEME_SUITE_ID] = migrated.activeSuiteId
-            preferences[READER_THEME_SUITES_VERSION] = 2
+            preferences[READER_THEME_SUITES_VERSION] = 3
         }
     }
 
@@ -1542,7 +1543,7 @@ class DataStoreManager @Inject constructor(
                 ?: ReaderThemeSuites.DAY_ID
             preferences[READER_THEME_SUITES] = ReaderThemeSuiteCodec.encode(normalized)
             preferences[ACTIVE_READER_THEME_SUITE_ID] = resolvedActiveId
-            preferences[READER_THEME_SUITES_VERSION] = 2
+            preferences[READER_THEME_SUITES_VERSION] = 3
             if (applyActiveSuite) {
                 normalized.firstOrNull { it.id == resolvedActiveId }
                     ?.settings
@@ -1561,17 +1562,24 @@ class DataStoreManager @Inject constructor(
         }
     }
 
-    /** Saves one suite without changing which suite is active. */
-    suspend fun updateReaderThemeSuite(suiteId: String, settings: ReaderThemeSettings) {
+    /** Saves one layout set of a suite without changing which suite is active. */
+    suspend fun updateReaderThemeSuite(
+        suiteId: String,
+        layout: ReaderLayoutTarget,
+        settings: ReaderThemeSettings
+    ) {
         context.dataStore.edit { preferences ->
             val suites = readThemeSuites(preferences)
             if (suites.none { it.id == suiteId }) return@edit
             val updated = ReaderThemeSuites.normalized(suites.map { suite ->
-                if (suite.id == suiteId) suite.copy(settings = settings) else suite
+                if (suite.id == suiteId) suite.withSettings(layout, settings) else suite
             })
             preferences[READER_THEME_SUITES] = ReaderThemeSuiteCodec.encode(updated)
-            preferences[READER_THEME_SUITES_VERSION] = 2
-            if (preferences[ACTIVE_READER_THEME_SUITE_ID] == suiteId) {
+            preferences[READER_THEME_SUITES_VERSION] = 3
+            // Legacy flat keys keep mirroring the reader-layout set only.
+            if (layout == ReaderLayoutTarget.READER_LAYOUT &&
+                preferences[ACTIVE_READER_THEME_SUITE_ID] == suiteId
+            ) {
                 preferences.applyReaderThemeSettings(updated.first { it.id == suiteId }.settings)
             }
         }

@@ -66,4 +66,64 @@ class ReaderThemeSuiteCodecTest {
         assertEquals(0f, settings.backgroundImageBlurDp)
         assertEquals(900, settings.bodyFontWeight)
     }
+
+    @Test
+    fun bookLayoutSettingsRoundTripIndependently() {
+        val suites = listOf(
+            ReaderThemeSuite(
+                id = "day",
+                settings = ReaderThemeSettings(marginLeft = 38f, fontSize = 16f),
+                bookLayoutSettings = ReaderThemeSettings(marginLeft = 12f, fontSize = 22f)
+            )
+        )
+
+        val decoded = ReaderThemeSuiteCodec.decode(ReaderThemeSuiteCodec.encode(suites))
+            .first { it.id == "day" }
+
+        assertEquals(38f, decoded.settings.marginLeft)
+        assertEquals(16f, decoded.settings.fontSize)
+        assertEquals(12f, decoded.bookLayoutSettings.marginLeft)
+        assertEquals(22f, decoded.bookLayoutSettings.fontSize)
+    }
+
+    @Test
+    fun legacyPayloadCopiesSingleSettingsToBothLayouts() {
+        val raw =
+            """[{"id":"day","settings":{"background":"sepia","fontSize":19,"marginLeft":24}}]"""
+
+        val suite = ReaderThemeSuiteCodec.decode(raw).single()
+
+        assertEquals(19f, suite.settings.fontSize)
+        assertEquals(19f, suite.bookLayoutSettings.fontSize)
+        assertEquals(24f, suite.bookLayoutSettings.marginLeft)
+        assertEquals(suite.settings, suite.bookLayoutSettings)
+    }
+
+    @Test
+    fun normalizationClampsBothLayouts() {
+        val suite = ReaderThemeSuite(
+            id = "custom",
+            customName = "Custom",
+            settings = ReaderThemeSettings(marginLeft = 200f),
+            bookLayoutSettings = ReaderThemeSettings(marginTop = 500f, fontSize = 2f)
+        )
+
+        val normalized = ReaderThemeSuites.normalized(listOf(suite)).first { it.id == "custom" }
+
+        assertEquals(80f, normalized.settings.marginLeft)
+        assertEquals(120f, normalized.bookLayoutSettings.marginTop)
+        assertEquals(12f, normalized.bookLayoutSettings.fontSize)
+    }
+
+    @Test
+    fun settingsForAndWithSettingsTargetTheRequestedLayout() {
+        val suite = ReaderThemeSuites.defaults().first { it.id == ReaderThemeSuites.SEPIA_ID }
+        val bookSettings = suite.settingsFor(ReaderLayoutTarget.BOOK_LAYOUT).copy(marginLeft = 8f)
+
+        val updated = suite.withSettings(ReaderLayoutTarget.BOOK_LAYOUT, bookSettings)
+
+        assertEquals("serif", suite.settingsFor(ReaderLayoutTarget.READER_LAYOUT).fontType)
+        assertEquals(8f, updated.bookLayoutSettings.marginLeft)
+        assertEquals(suite.settings, updated.settings)
+    }
 }

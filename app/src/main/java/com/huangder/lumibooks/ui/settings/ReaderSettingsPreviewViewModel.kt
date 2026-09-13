@@ -9,6 +9,7 @@ import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.CustomFontPreset
 import com.huangder.lumibooks.domain.model.ReaderPageAnimationSettings
+import com.huangder.lumibooks.domain.model.ReaderLayoutTarget
 import com.huangder.lumibooks.domain.model.ReaderThemeSettings
 import com.huangder.lumibooks.domain.model.ReaderThemeSuite
 import com.huangder.lumibooks.domain.model.ReaderThemeSuites
@@ -37,10 +38,15 @@ data class ReaderSettingsPreviewUiState(
     val customFonts: List<CustomFontPreset> = emptyList(),
     val animationSettings: ReaderPageAnimationSettings = ReaderPageAnimationSettings(),
     val animationMode: String = ReaderPageAnimationSettings.MODE_SLIDE,
-    val eInkMode: Boolean = false
+    val eInkMode: Boolean = false,
+    /** Which layout bucket the editor is touching. */
+    val editingLayout: ReaderLayoutTarget = ReaderLayoutTarget.READER_LAYOUT
 ) {
     val editingSuite: ReaderThemeSuite?
         get() = suites.firstOrNull { it.id == editingSuiteId }
+
+    val editingSettings: ReaderThemeSettings?
+        get() = editingSuite?.settingsFor(editingLayout)
 }
 
 @HiltViewModel
@@ -66,7 +72,7 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
                 // change has already persisted the theme. Reconcile that state here so
                 // a blurred copy is still produced instead of leaving the reader on
                 // the original image.
-                val editingSettings = _uiState.value.editingSuite?.settings ?: return@collectLatest
+                val editingSettings = _uiState.value.editingSettings ?: return@collectLatest
                 val prepared = withContext(Dispatchers.IO) {
                     prepareProcessedBackground(editingSettings, backgrounds)
                 }
@@ -110,6 +116,11 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
         _uiState.update { it.copy(editingSuiteId = null) }
     }
 
+    fun selectEditingLayout(layout: ReaderLayoutTarget) {
+        if (_uiState.value.editingLayout == layout) return
+        _uiState.update { it.copy(editingLayout = layout) }
+    }
+
     fun createTheme(name: String) {
         val normalized = name.trim()
         if (normalized.isBlank()) return
@@ -127,10 +138,11 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
 
     fun previewTheme(settings: ReaderThemeSettings) {
         val suiteId = _uiState.value.editingSuiteId ?: return
+        val layout = _uiState.value.editingLayout
         _uiState.update { state ->
             state.copy(
                 suites = state.suites.map { suite ->
-                    if (suite.id == suiteId) suite.copy(settings = settings) else suite
+                    if (suite.id == suiteId) suite.withSettings(layout, settings) else suite
                 }
             )
         }
@@ -138,6 +150,7 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
 
     fun updateTheme(settings: ReaderThemeSettings) {
         val suiteId = _uiState.value.editingSuiteId ?: return
+        val layout = _uiState.value.editingLayout
         previewTheme(settings)
         themeUpdateJob?.cancel()
         themeUpdateJob = viewModelScope.launch {
@@ -148,14 +161,16 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
                 prepareProcessedBackground(settings, availableBackgrounds)
             }
             val latestSuite = _uiState.value.suites.firstOrNull { it.id == suiteId }
-            if (_uiState.value.editingSuiteId != suiteId || latestSuite?.settings != settings) {
+            if (_uiState.value.editingSuiteId != suiteId ||
+                latestSuite?.settingsFor(layout) != settings
+            ) {
                 return@launch
             }
             if (backgrounds != availableBackgrounds) {
                 dataStoreManager.saveCustomReaderBackgrounds(backgrounds)
                 _uiState.update { it.copy(backgrounds = backgrounds) }
             }
-            dataStoreManager.updateReaderThemeSuite(suiteId, settings)
+            dataStoreManager.updateReaderThemeSuite(suiteId, layout, settings)
         }
     }
 
@@ -248,27 +263,34 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
             val state = _uiState.value
             dataStoreManager.saveCustomReaderBackgrounds(state.backgrounds + preset)
             val suite = state.suites.firstOrNull { it.id == suiteId } ?: return@launch
+            val layout = state.editingLayout
             dataStoreManager.updateReaderThemeSuite(
                 suiteId,
-                suite.settings.copy(backgroundSelection = preset.selectionKey)
+                layout,
+                suite.settingsFor(layout).copy(backgroundSelection = preset.selectionKey)
             )
         }
     }
 
     fun removeBackgroundPhoto() {
-        val suite = _uiState.value.editingSuite ?: return
+        val state = _uiState.value
+        val suite = state.editingSuite ?: return
+        val layout = state.editingLayout
         val preset = _uiState.value.backgrounds.firstOrNull {
-            it.selectionKey == suite.settings.backgroundSelection
+            it.selectionKey == suite.settingsFor(layout).backgroundSelection
         }
-        val updatedSettings = suite.settings.copy(
-            backgroundSelection = suite.settings.backgroundColorSelection,
+        val currentSettings = suite.settingsFor(layout)
+        val updatedSettings = currentSettings.copy(
+            backgroundSelection = currentSettings.backgroundColorSelection,
             backgroundImageOpacity = 1f,
             backgroundImageBlurDp = 0f
         )
         viewModelScope.launch {
-            dataStoreManager.updateReaderThemeSuite(suite.id, updatedSettings)
+            dataStoreManager.updateReaderThemeSuite(suite.id, layout, updatedSettings)
             val usedByAnotherSuite = preset != null && _uiState.value.suites.any {
-                it.id != suite.id && it.settings.backgroundSelection == preset.selectionKey
+                it.id != suite.id && ReaderLayoutTarget.entries.any { target ->
+                    it.settingsFor(target).backgroundSelection == preset.selectionKey
+                }
             }
             if (preset?.type == ReaderBackgroundType.IMAGE && !usedByAnotherSuite) {
                 dataStoreManager.saveCustomReaderBackgrounds(
@@ -327,14 +349,17 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
     }
 
     fun selectBackgroundColor(selection: String) {
-        val suite = _uiState.value.editingSuite ?: return
+        val state = _uiState.value
+        val suite = state.editingSuite ?: return
+        val layout = state.editingLayout
+        val currentSettings = suite.settingsFor(layout)
         val currentIsImage = _uiState.value.backgrounds.any {
-            it.selectionKey == suite.settings.backgroundSelection &&
+            it.selectionKey == currentSettings.backgroundSelection &&
                 it.type == ReaderBackgroundType.IMAGE
         }
-        val updatedSettings = suite.settings.copy(
+        val updatedSettings = currentSettings.copy(
             backgroundSelection = if (currentIsImage) {
-                suite.settings.backgroundSelection
+                currentSettings.backgroundSelection
             } else {
                 selection
             },
@@ -343,13 +368,14 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
         _uiState.update { state ->
             state.copy(
                 suites = state.suites.map {
-                    if (it.id == suite.id) it.copy(settings = updatedSettings) else it
+                    if (it.id == suite.id) it.withSettings(layout, updatedSettings) else it
                 }
             )
         }
         viewModelScope.launch {
             dataStoreManager.updateReaderThemeSuite(
                 suite.id,
+                layout,
                 updatedSettings
             )
         }

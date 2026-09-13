@@ -817,7 +817,13 @@
     <string name="reader_external_link_message">この EPUB は外部アプリまたはウェブサイトを開こうとしています：\n%1$s</string>
     <string name="reader_external_link_open">開く</string>
     <string name="preserve_epub_background">原書の背景を保持</string>
-    <string name="preserve_epub_background_hint">オフにすると、現在選択中の Lumi 読書背景を使用します</string>
+    <string name="preserve_epub_background_hint">本の画像背景があるページは本の背景を保持し、それ以外のページは Lumi の読書背景を使います。オフにすると全ページで Lumi の背景を使います</string>
+    <string name="reader_layout_editing_reader">編集中：リーダーレイアウト</string>
+    <string name="reader_layout_editing_book">編集中：書籍レイアウト</string>
+    <string name="reader_layout_editor_reader">リーダーレイアウト</string>
+    <string name="reader_layout_editor_book">書籍レイアウト</string>
+    <string name="reader_layout_editor_reader_hint">リーダーレイアウト（TXT と EPUB/MOBI リーダーモード）のみに適用</string>
+    <string name="reader_layout_editor_book_hint">書籍レイアウト（EPUB/MOBI 原本レイアウト）のみに適用</string>
     <string name="epub_layout_first_open_title">EPUB レイアウトのヒント</string>
     <string name="epub_layout_first_open_message">この本に独自のレイアウトが含まれている場合は、画面中央をタップし、「テーマ」から「書籍の元レイアウト」を選択できます。</string>
     <string name="epub_layout_first_open_confirm">了解</string>
@@ -1118,6 +1124,7 @@
     <string name="floating_subtitle_preview_text">フローティング字幕はここに表示されます</string>
     <string name="tts_listen">聴く</string>
     <string name="tts_next_sentence">次の文</string>
+    <string name="tts_speech_rate">読み上げ速度</string>
     <string name="tts_no_readable_text">現在のページに読み上げ可能な文字がありません</string>
     <string name="tts_notification_channel">読み上げ再生</string>
     <string name="tts_notification_channel_description">音声読み上げの再生コントロール</string>

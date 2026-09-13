@@ -131,6 +131,8 @@ import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.domain.model.CustomFontPreset
 import com.huangder.lumibooks.domain.model.ReaderThemeSuite
 import com.huangder.lumibooks.domain.model.ReaderThemeSuites
+import com.huangder.lumibooks.domain.model.ReaderThemeSettings
+import com.huangder.lumibooks.domain.model.ReaderLayoutTarget
 import com.huangder.lumibooks.domain.model.resolveImageSource
 import com.huangder.lumibooks.domain.model.normalizeReaderThemeSuiteName
 import com.huangder.lumibooks.domain.model.readerThemeSuiteNameCodePointCount
@@ -564,6 +566,13 @@ fun ThemeSettingsSheet(
                     activeSuiteId = activeReaderThemeSuiteId,
                     customBackgrounds = customBackgrounds,
                     customFonts = customFonts,
+                    layout = if (supportsBookLayout &&
+                        currentRenderMode == EpubRenderMode.BOOK_LAYOUT
+                    ) {
+                        ReaderLayoutTarget.BOOK_LAYOUT
+                    } else {
+                        ReaderLayoutTarget.READER_LAYOUT
+                    },
                     onSelect = onThemeSuiteSelect,
                     onCreate = onThemeSuiteCreate,
                     onDelete = onThemeSuiteDelete,
@@ -758,6 +767,7 @@ private fun ReaderThemeSuiteSelector(
     activeSuiteId: String,
     customBackgrounds: List<ReaderBackgroundPreset>,
     customFonts: List<CustomFontPreset>,
+    layout: ReaderLayoutTarget,
     onSelect: (String) -> Unit,
     onCreate: (String) -> Unit,
     onDelete: (String) -> Unit,
@@ -935,6 +945,7 @@ private fun ReaderThemeSuiteSelector(
                 isDragging = isDragging,
                 customBackgrounds = customBackgrounds,
                 customFonts = customFonts,
+                layout = layout,
                 modifier = Modifier
                     .then(
                         if (!isDragging) {
@@ -1035,19 +1046,21 @@ private fun ThemeSuiteCard(
     isDragging: Boolean,
     customBackgrounds: List<ReaderBackgroundPreset>,
     customFonts: List<CustomFontPreset>,
+    layout: ReaderLayoutTarget,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
     val shape = RoundedCornerShape(14.dp)
+    val settings = suite.settingsFor(layout)
     val backgroundPreset = customBackgrounds.firstOrNull {
-        it.selectionKey == suite.settings.backgroundSelection
+        it.selectionKey == settings.backgroundSelection
     }
-    val fallbackBackground = suiteBackgroundColor(suite, backgroundPreset)
-    val textColor = suiteTextColor(suite, backgroundPreset, fallbackBackground)
-    val fontFamily = rememberSuiteFontFamily(suite, customFonts)
+    val fallbackBackground = suiteBackgroundColor(settings, backgroundPreset)
+    val textColor = suiteTextColor(settings, backgroundPreset, fallbackBackground)
+    val fontFamily = rememberSuiteFontFamily(settings, customFonts)
     val backgroundImageSource = backgroundPreset
-        ?.resolveImageSource(suite.settings.backgroundImageBlurDp)
+        ?.resolveImageSource(settings.backgroundImageBlurDp)
 
     Box(
         modifier = modifier
@@ -1273,10 +1286,10 @@ private fun NewThemeSuiteDialog(
 
 @Composable
 private fun rememberSuiteFontFamily(
-    suite: ReaderThemeSuite,
+    settings: ReaderThemeSettings,
     customFonts: List<CustomFontPreset>
 ): FontFamily {
-    val fontType = suite.settings.fontType
+    val fontType = settings.fontType
     val customPath = customFonts.firstOrNull { fontType == "custom:${it.id}" }?.path
     val fangSongFamilyValue = fangSongFamily()
     return remember(fontType, customPath, fangSongFamilyValue) {
@@ -1293,25 +1306,25 @@ private fun rememberSuiteFontFamily(
 }
 
 private fun suiteBackgroundColor(
-    suite: ReaderThemeSuite,
+    settings: ReaderThemeSettings,
     preset: ReaderBackgroundPreset?
 ): Color = when {
     preset?.type == ReaderBackgroundType.COLOR -> runCatching {
         Color(android.graphics.Color.parseColor(preset.value))
     }.getOrDefault(ReaderDayBg)
     preset?.dominantColor != null -> Color(preset.dominantColor)
-    suite.settings.backgroundSelection == ReaderThemeSuites.NIGHT_ID -> ReaderNightBg
-    suite.settings.backgroundSelection == ReaderThemeSuites.SEPIA_ID -> ReaderSepiaBg
-    suite.settings.backgroundSelection == ReaderThemeSuites.GREEN_ID -> ReaderGreenBg
+    settings.backgroundSelection == ReaderThemeSuites.NIGHT_ID -> ReaderNightBg
+    settings.backgroundSelection == ReaderThemeSuites.SEPIA_ID -> ReaderSepiaBg
+    settings.backgroundSelection == ReaderThemeSuites.GREEN_ID -> ReaderGreenBg
     else -> ReaderDayBg
 }
 
 private fun suiteTextColor(
-    suite: ReaderThemeSuite,
+    settings: ReaderThemeSettings,
     preset: ReaderBackgroundPreset?,
     backgroundColor: Color
 ): Color {
-    suite.settings.textColor?.let { return Color(it) }
+    settings.textColor?.let { return Color(it) }
     if (preset != null) {
         return if (ColorUtils.calculateLuminance(backgroundColor.toArgb()) < 0.42) {
             Color(0xFFE8E8EA)
@@ -1319,7 +1332,7 @@ private fun suiteTextColor(
             Color(0xFF333333)
         }
     }
-    return when (suite.settings.backgroundSelection) {
+    return when (settings.backgroundSelection) {
         ReaderThemeSuites.NIGHT_ID -> Color(0xFFCCCCCC)
         ReaderThemeSuites.SEPIA_ID -> Color(0xFF4A3728)
         ReaderThemeSuites.GREEN_ID -> Color(0xFF2E7D32)
@@ -2208,6 +2221,15 @@ fun AdvancedSettingsSheet(
                     .verticalScroll(settingsScrollState)
                     .padding(start = 24.dp, top = 16.dp, end = 24.dp, bottom = 24.dp)
             ) {
+                Text(
+                    text = stringResource(
+                        if (preservePublisherLayout) R.string.reader_layout_editing_book
+                        else R.string.reader_layout_editing_reader
+                    ),
+                    fontSize = 12.sp,
+                    color = LightTextSecondary
+                )
+                Spacer(Modifier.height(10.dp))
                 if (!eInkModeEnabled) {
                     AdvancedSettingsGroup(eInkModeEnabled) {
                         Text(

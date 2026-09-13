@@ -94,6 +94,7 @@ import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.CustomFontPreset
 import com.huangder.lumibooks.domain.model.ReaderPageAnimationSettings
+import com.huangder.lumibooks.domain.model.ReaderLayoutTarget
 import com.huangder.lumibooks.domain.model.ReaderTextAlignment
 import com.huangder.lumibooks.domain.model.ReaderThemeSettings
 import com.huangder.lumibooks.domain.model.ReaderThemeSuite
@@ -211,6 +212,7 @@ class ReaderSettingsPreviewActivity : ComponentActivity() {
                         onAddColor = viewModel::addBackgroundColor,
                         onAddPhoto = viewModel::addBackgroundPhoto,
                         onRemovePhoto = viewModel::removeBackgroundPhoto,
+                        onLayoutChange = viewModel::selectEditingLayout,
                         onModeChange = viewModel::setAnimationMode,
                         onDurationPreview = viewModel::previewAnimationDuration,
                         onDurationChange = viewModel::setAnimationDuration
@@ -256,6 +258,7 @@ private fun ReaderSettingsPreviewContent(
     onAddColor: (String) -> Unit,
     onAddPhoto: (android.net.Uri) -> Unit,
     onRemovePhoto: () -> Unit,
+    onLayoutChange: (ReaderLayoutTarget) -> Unit,
     onModeChange: (String) -> Unit,
     onDurationPreview: (String, Int) -> Unit,
     onDurationChange: (String, Int) -> Unit
@@ -310,6 +313,8 @@ private fun ReaderSettingsPreviewContent(
                                     suite = suite,
                                     backgrounds = state.backgrounds,
                                     customFonts = state.customFonts,
+                                    layout = state.editingLayout,
+                                    onLayoutChange = onLayoutChange,
                                     onExit = onExitEditor,
                                     onPreviewUpdate = onPreviewUpdate,
                                     onUpdate = onUpdate,
@@ -700,6 +705,8 @@ private fun ThemeEditorScreen(
     suite: ReaderThemeSuite,
     backgrounds: List<ReaderBackgroundPreset>,
     customFonts: List<CustomFontPreset>,
+    layout: ReaderLayoutTarget,
+    onLayoutChange: (ReaderLayoutTarget) -> Unit,
     onExit: () -> Unit,
     onPreviewUpdate: (ReaderThemeSettings) -> Unit,
     onUpdate: (ReaderThemeSettings) -> Unit,
@@ -710,13 +717,15 @@ private fun ThemeEditorScreen(
 ) {
     var panel by remember { mutableStateOf(ThemePanel.NONE) }
     val motionEnabled = LocalMotionEnabled.current
+    val settings = suite.settingsFor(layout)
+    val preservePublisherLayout = layout == ReaderLayoutTarget.BOOK_LAYOUT
     val previewBackdrop = rememberLayerBackdrop()
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) {
         it?.let(onAddPhoto)
     }
     val sample = rememberSampleText()
     val imagePreset = backgrounds.firstOrNull {
-        it.selectionKey == suite.settings.backgroundSelection && it.type == ReaderBackgroundType.IMAGE
+        it.selectionKey == settings.backgroundSelection && it.type == ReaderBackgroundType.IMAGE
     }
     Box(Modifier.fillMaxSize()) {
         Box(
@@ -725,12 +734,13 @@ private fun ThemeEditorScreen(
                 .layerBackdrop(previewBackdrop)
         ) {
             PreviewReadView(
-                settings = suite.settings,
+                settings = settings,
                 backgrounds = backgrounds,
                 customFonts = customFonts,
                 pageTransition = "slide",
                 pageDurationMs = ReaderPageAnimationSettings.SLIDE_DEFAULT_MS,
-                sample = sample
+                sample = sample,
+                preservePublisherLayout = preservePublisherLayout
             )
         }
         ProvideLiquidGlassBackdrop(previewBackdrop) {
@@ -741,6 +751,35 @@ private fun ThemeEditorScreen(
                     .statusBarsPadding()
                     .padding(AppSpace.sm)
             )
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = AppSpace.sm),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OptionCapsule(
+                        label = stringResource(R.string.reader_layout_editor_reader),
+                        selected = layout == ReaderLayoutTarget.READER_LAYOUT,
+                        onClick = { onLayoutChange(ReaderLayoutTarget.READER_LAYOUT) }
+                    )
+                    OptionCapsule(
+                        label = stringResource(R.string.reader_layout_editor_book),
+                        selected = layout == ReaderLayoutTarget.BOOK_LAYOUT,
+                        onClick = { onLayoutChange(ReaderLayoutTarget.BOOK_LAYOUT) }
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(
+                        if (preservePublisherLayout) R.string.reader_layout_editor_book_hint
+                        else R.string.reader_layout_editor_reader_hint
+                    ),
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary
+                )
+            }
             AnimatedContent(
                 targetState = panel,
                 modifier = Modifier
@@ -779,7 +818,7 @@ private fun ThemeEditorScreen(
                     ReaderFloatingPanel {
                         when (targetPanel) {
                             ThemePanel.BACKGROUND -> BackgroundPanel(
-                                settings = suite.settings,
+                                settings = settings,
                                 backgrounds = backgrounds,
                                 hasImage = imagePreset != null,
                                 onPreviewUpdate = onPreviewUpdate,
@@ -790,8 +829,9 @@ private fun ThemeEditorScreen(
                                 onRemovePhoto = onRemovePhoto
                             )
                             ThemePanel.TEXT -> TextPanel(
-                                suite.settings,
+                                settings,
                                 customFonts,
+                                preservePublisherLayout,
                                 onPreviewUpdate,
                                 onUpdate
                             )
@@ -969,6 +1009,7 @@ private fun BackgroundPanel(
 private fun TextPanel(
     settings: ReaderThemeSettings,
     customFonts: List<CustomFontPreset>,
+    preservePublisherLayout: Boolean,
     onPreviewUpdate: (ReaderThemeSettings) -> Unit,
     onUpdate: (ReaderThemeSettings) -> Unit
 ) {
@@ -1039,24 +1080,26 @@ private fun TextPanel(
                 onUpdate(settings.copy(bodyFontWeight = (it / 100).roundToInt() * 100))
             }
         )
-        SettingSlider(
-            stringResource(R.string.label_line_height),
-            settings.lineHeight,
-            1f..2.5f,
-            14,
-            "×",
-            onPreview = { onPreviewUpdate(settings.copy(lineHeight = it)) },
-            onChange = { onUpdate(settings.copy(lineHeight = it)) }
-        )
-        SettingSlider(
-            stringResource(R.string.label_letter_spacing),
-            settings.letterSpacing,
-            0f..10f,
-            19,
-            "dp",
-            onPreview = { onPreviewUpdate(settings.copy(letterSpacing = it)) },
-            onChange = { onUpdate(settings.copy(letterSpacing = it)) }
-        )
+        if (!preservePublisherLayout) {
+            SettingSlider(
+                stringResource(R.string.label_line_height),
+                settings.lineHeight,
+                1f..2.5f,
+                14,
+                "×",
+                onPreview = { onPreviewUpdate(settings.copy(lineHeight = it)) },
+                onChange = { onUpdate(settings.copy(lineHeight = it)) }
+            )
+            SettingSlider(
+                stringResource(R.string.label_letter_spacing),
+                settings.letterSpacing,
+                0f..10f,
+                19,
+                "dp",
+                onPreview = { onPreviewUpdate(settings.copy(letterSpacing = it)) },
+                onChange = { onUpdate(settings.copy(letterSpacing = it)) }
+            )
+        }
         Text(
             stringResource(R.string.label_text_alignment),
             fontSize = AppType.BodySmall,
@@ -1072,18 +1115,20 @@ private fun TextPanel(
             ),
             settings.textAlignment.key
         ) { onUpdate(settings.copy(textAlignment = ReaderTextAlignment.fromKey(it))) }
-        SettingSlider(
-            stringResource(R.string.label_paragraph_spacing),
-            settings.paragraphSpacing, 0f..30f, 29, "dp",
-            onPreview = { onPreviewUpdate(settings.copy(paragraphSpacing = it)) },
-            onChange = { onUpdate(settings.copy(paragraphSpacing = it)) }
-        )
-        SettingSlider(
-            stringResource(R.string.label_first_line_indent),
-            settings.firstLineIndent, 0f..4f, 7, stringResource(R.string.reader_unit_character),
-            onPreview = { onPreviewUpdate(settings.copy(firstLineIndent = it)) },
-            onChange = { onUpdate(settings.copy(firstLineIndent = it)) }
-        )
+        if (!preservePublisherLayout) {
+            SettingSlider(
+                stringResource(R.string.label_paragraph_spacing),
+                settings.paragraphSpacing, 0f..30f, 29, "dp",
+                onPreview = { onPreviewUpdate(settings.copy(paragraphSpacing = it)) },
+                onChange = { onUpdate(settings.copy(paragraphSpacing = it)) }
+            )
+            SettingSlider(
+                stringResource(R.string.label_first_line_indent),
+                settings.firstLineIndent, 0f..4f, 7, stringResource(R.string.reader_unit_character),
+                onPreview = { onPreviewUpdate(settings.copy(firstLineIndent = it)) },
+                onChange = { onUpdate(settings.copy(firstLineIndent = it)) }
+            )
+        }
         SettingSlider(
             stringResource(R.string.label_margin_left), settings.marginLeft, 0f..80f, 79, "dp",
             onPreview = { onPreviewUpdate(settings.copy(marginLeft = it)) },
@@ -1253,21 +1298,34 @@ private fun PreviewReadView(
     customFonts: List<CustomFontPreset>,
     pageTransition: String,
     pageDurationMs: Int,
-    sample: String
+    sample: String,
+    preservePublisherLayout: Boolean = false
 ) {
     val density = LocalDensity.current.density
+    // Publisher layout keeps the book's own typography, so the sample mirrors
+    // the controls the reader sheet hides in that mode.
+    val effectiveSettings = if (preservePublisherLayout) {
+        settings.copy(
+            lineHeight = 1.5f,
+            letterSpacing = 0f,
+            paragraphSpacing = 0f,
+            firstLineIndent = 0f
+        )
+    } else {
+        settings
+    }
     val formattedSample = remember(
         sample,
-        settings.firstLineIndent,
-        settings.paragraphSpacing,
-        settings.fontSize,
+        effectiveSettings.firstLineIndent,
+        effectiveSettings.paragraphSpacing,
+        effectiveSettings.fontSize,
         density
     ) {
         ReaderParagraphFormatter.applyFirstLineIndent(
             text = sample,
-            indentCharacters = settings.firstLineIndent,
-            textSizePx = settings.fontSize * density,
-            paragraphSpacingPx = settings.paragraphSpacing * density,
+            indentCharacters = effectiveSettings.firstLineIndent,
+            textSizePx = effectiveSettings.fontSize * density,
+            paragraphSpacingPx = effectiveSettings.paragraphSpacing * density,
             skipFirstNonEmptyParagraph = true
         )
     }
@@ -1278,15 +1336,15 @@ private fun PreviewReadView(
             view.forceRelayout()
         }
     }
-    val background = backgrounds.firstOrNull { it.selectionKey == settings.backgroundSelection }
-    val baseBackground = backgrounds.firstOrNull { it.selectionKey == settings.backgroundColorSelection }
-    val color = backgroundColor(settings.backgroundColorSelection, baseBackground)
+    val background = backgrounds.firstOrNull { it.selectionKey == effectiveSettings.backgroundSelection }
+    val baseBackground = backgrounds.firstOrNull { it.selectionKey == effectiveSettings.backgroundColorSelection }
+    val color = backgroundColor(effectiveSettings.backgroundColorSelection, baseBackground)
     val imagePreset = background?.takeIf { it.type == ReaderBackgroundType.IMAGE }
-    val imageSource = imagePreset?.resolveImageSource(settings.backgroundImageBlurDp)
+    val imageSource = imagePreset?.resolveImageSource(effectiveSettings.backgroundImageBlurDp)
     val imagePath = imageSource?.path
     val imageBlurDp = imageSource?.runtimeBlurDp ?: 0f
-    val textColor = settings.textColor ?: automaticTextColor(color)
-    val customFontPath = settings.fontType.takeIf { it.startsWith("custom:") }
+    val textColor = effectiveSettings.textColor ?: automaticTextColor(color)
+    val customFontPath = effectiveSettings.fontType.takeIf { it.startsWith("custom:") }
         ?.removePrefix("custom:")
         ?.let { id -> customFonts.firstOrNull { it.id == id }?.path }
     AndroidView(
@@ -1311,23 +1369,23 @@ private fun PreviewReadView(
         update = { view ->
             view.post {
                 view.configure(
-                    fontSizePx = settings.fontSize * density,
+                    fontSizePx = effectiveSettings.fontSize * density,
                     theme = "day",
                     chapterCount = 1,
                     startChapter = 0,
                     startPage = view.slotManager.getCurSlot().pageIndex.coerceAtLeast(0),
-                    lineHeightMult = settings.lineHeight,
-                    letterSpacingDp = settings.letterSpacing,
-                    textAlignment = settings.textAlignment,
-                    fontType = settings.fontType,
+                    lineHeightMult = effectiveSettings.lineHeight,
+                    letterSpacingDp = effectiveSettings.letterSpacing,
+                    textAlignment = effectiveSettings.textAlignment,
+                    fontType = effectiveSettings.fontType,
                     customFontPath = customFontPath,
-                    marginLeftDp = settings.marginLeft,
-                    marginRightDp = settings.marginRight,
-                    marginTopDp = settings.marginTop,
-                    marginBottomDp = settings.marginBottom,
-                    paragraphSpacingDp = settings.paragraphSpacing,
-                    firstLineIndent = settings.firstLineIndent,
-                    bodyFontWeight = settings.bodyFontWeight,
+                    marginLeftDp = effectiveSettings.marginLeft,
+                    marginRightDp = effectiveSettings.marginRight,
+                    marginTopDp = effectiveSettings.marginTop,
+                    marginBottomDp = effectiveSettings.marginBottom,
+                    paragraphSpacingDp = effectiveSettings.paragraphSpacing,
+                    firstLineIndent = effectiveSettings.firstLineIndent,
+                    bodyFontWeight = effectiveSettings.bodyFontWeight,
                     width = view.width,
                     height = view.height
                 )
@@ -1335,7 +1393,7 @@ private fun PreviewReadView(
                     color,
                     textColor,
                     imagePath,
-                    settings.backgroundImageOpacity,
+                    effectiveSettings.backgroundImageOpacity,
                     imageBlurDp
                 )
                 view.setPageTransitionTiming(pageTransition, pageDurationMs)
