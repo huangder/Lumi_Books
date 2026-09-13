@@ -99,6 +99,8 @@ fun BookContextMenuOverlay(
     val book = state.selectedBook ?: return
     val coverBounds = state.coverBounds
     val coverScale = state.coverScale.value
+
+
     val menuAlpha = state.menuAlpha.value
     val actionsAlpha = state.actionsAlpha.value
     Box(
