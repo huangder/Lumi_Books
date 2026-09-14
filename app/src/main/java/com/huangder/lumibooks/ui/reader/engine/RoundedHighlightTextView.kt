@@ -308,6 +308,11 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         nativeSelectionSuppressed = true
         internalSelectionMutation = true
         try {
+            // 🔥 摘控制器之前，先让框架/OEM 的手柄会话正常收尾。
+            // 选区手柄（Editor.HandleView）只有收到 ACTION_UP / ACTION_CANCEL 才会
+            // dismiss 自己那个放大镜浮动窗口；ColorOS 上我们是在拖拽过程中摘掉控制器，
+            // 手柄永远等不到结束事件，那个窗口就被留在屏幕上（翻页、滚动后依然在）。
+            cancelPlatformSelectionDrag()
             // setTextIsSelectable(false) detaches ColorOS' popup controller.
             // Restore a Spannable copy immediately because the platform method
             // otherwise changes the buffer to NORMAL and drops selection spans.
@@ -327,6 +332,28 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         }
         updateSelectionHandleOffsets()
         invalidate()
+    }
+
+    /**
+     * 只把「手势结束」喂给框架 TextView（Editor 与选区手柄），不经过本类的
+     * onTouchEvent，避免影响我们自己的选区会话、自绘手柄与放大镜跟随。
+     */
+    private fun cancelPlatformSelectionDrag() {
+        val now = android.os.SystemClock.uptimeMillis()
+        val cancel = android.view.MotionEvent.obtain(
+            now,
+            now,
+            android.view.MotionEvent.ACTION_CANCEL,
+            magnifierLastTouchX,
+            magnifierLastTouchY,
+            0
+        )
+        cancel.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+        try {
+            super.onTouchEvent(cancel)
+        } finally {
+            cancel.recycle()
+        }
     }
 
     private fun restoreNativeSelectionController() {
