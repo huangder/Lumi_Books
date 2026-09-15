@@ -158,6 +158,13 @@ internal fun readerMagnifierWindowCenterY(
 ): Float = anchorY -
     (windowHeightPx / 2f + lineHeightPx.coerceAtLeast(0f) / 2f + 8f * density)
 
+/**
+ * 系统放大镜默认圆角只有 2dp（框架 default_magnifier_corner_radius，窗口 100×48dp），
+ * 在阅读页里显得偏方。这里取接近胶囊的 22dp —— 与选区菜单胶囊（RoundedCornerShape(22.dp)）
+ * 保持同一圆润度；要更圆或更方，只改这一个常量即可。
+ */
+private const val READER_MAGNIFIER_CORNER_RADIUS_DP = 22f
+
 private fun createPlatformSink(view: View): ReaderMagnifierSink? =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         runCatching { PlatformReaderMagnifierSink(view) }.getOrNull()
@@ -166,12 +173,18 @@ private fun createPlatformSink(view: View): ReaderMagnifierSink? =
     }
 
 /**
- * Public-API wrapper around the system magnifier with framework defaults (size, zoom,
- * corner radius, elevation and overlay untouched).
+ * Public-API wrapper around the system magnifier. Size, zoom, elevation and overlay keep
+ * the framework defaults; only the corner radius is enlarged (see
+ * [READER_MAGNIFIER_CORNER_RADIUS_DP]), because the platform default (2dp on a 100x48dp
+ * window) reads as a square next to the reader's capsule-styled menus.
  */
 @RequiresApi(Build.VERSION_CODES.Q)
 private class PlatformReaderMagnifierSink(view: View) : ReaderMagnifierSink {
-    private val magnifier: Magnifier = Magnifier.Builder(view).build()
+    private val magnifier: Magnifier = Magnifier.Builder(view)
+        .setCornerRadius(
+            READER_MAGNIFIER_CORNER_RADIUS_DP * view.resources.displayMetrics.density
+        )
+        .build()
 
     override val windowHeightPx: Int
         get() = magnifier.height
