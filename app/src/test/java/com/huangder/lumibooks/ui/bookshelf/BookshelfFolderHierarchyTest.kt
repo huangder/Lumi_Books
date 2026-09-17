@@ -5,6 +5,7 @@ import com.huangder.lumibooks.domain.model.BookFolderLink
 import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.domain.model.LibraryFolder
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BookshelfFolderHierarchyTest {
@@ -68,6 +69,40 @@ class BookshelfFolderHierarchyTest {
             listOf(directBook, childBook),
             booksInFolderTree(books, links, folders, rootA.id)
         )
+    }
+
+    @Test
+    fun flattenFolderTreeListsParentsBeforeChildrenWithDepth() {
+        val rows = flattenFolderTree(folders)
+
+        assertEquals(listOf(rootA.id, childA.id, grandchildA.id, rootB.id), rows.map { it.folder.id })
+        assertEquals(listOf(0, 1, 2, 0), rows.map { it.depth })
+        assertEquals(listOf(true, true, false, false), rows.map { it.hasChildren })
+    }
+
+    @Test
+    fun flattenFolderTreeHidesTheSubtreeOfACollapsedFolder() {
+        val collapsedRoot = flattenFolderTree(folders, collapsedFolderIds = setOf(rootA.id))
+
+        assertEquals(listOf(rootA.id, rootB.id), collapsedRoot.map { it.folder.id })
+        assertTrue(collapsedRoot.first().hasChildren)
+
+        val collapsedChild = flattenFolderTree(folders, collapsedFolderIds = setOf(childA.id))
+
+        assertEquals(listOf(rootA.id, childA.id, rootB.id), collapsedChild.map { it.folder.id })
+        assertEquals(listOf(0, 1, 0), collapsedChild.map { it.depth })
+        assertTrue(collapsedChild[1].hasChildren)
+    }
+
+    @Test
+    fun flattenFolderTreeSkipsFoldersThatAreNotReachableFromTheRoot() {
+        val folders = listOf(
+            folder("root-a", "Root A"),
+            folder("self", "Self", "self"),
+            folder("orphan", "Orphan", "missing")
+        )
+
+        assertEquals(listOf("root-a"), flattenFolderTree(folders).map { it.folder.id })
     }
 
     private fun folder(id: String, name: String, parentId: String? = null) =

@@ -1294,6 +1294,8 @@
     <string name="webdav_disabled">WebDAV 未启用</string>
     <string name="webdav_password_missing">未配置 WebDAV 密码</string>
     <string name="webdav_different_library">此书属于另一个 WebDAV 书库</string>
+    <string name="category_folder_expand">展开子文件夹</string>
+    <string name="category_folder_collapse">折叠子文件夹</string>
     <string name="webdav_manifest_missing">未找到云端书库目录</string>
     <string name="webdav_book_unavailable">此书已不在 WebDAV 中</string>
     <string name="webdav_book_deleted">此书已从 WebDAV 删除</string>

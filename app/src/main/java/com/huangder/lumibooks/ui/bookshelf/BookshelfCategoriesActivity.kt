@@ -12,6 +12,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -42,6 +44,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -49,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
@@ -441,7 +445,17 @@ private fun CategoryListPage(
     onFolderSelected: (LibraryFolder) -> Unit,
     onFolderLongClick: (LibraryFolder) -> Unit
 ) {
-    val folderRows = remember(folders) { flattenFolderTree(folders) }
+    var collapsedFolderIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    val folderRows = remember(folders, collapsedFolderIds) {
+        flattenFolderTree(folders, collapsedFolderIds.toSet())
+    }
+    val toggleFolderCollapse: (LibraryFolder) -> Unit = { folder ->
+        collapsedFolderIds = if (folder.id in collapsedFolderIds) {
+            collapsedFolderIds - folder.id
+        } else {
+            collapsedFolderIds + folder.id
+        }
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -491,6 +505,16 @@ private fun CategoryListPage(
                         icon = AppIcons.Folder,
                         linked = row.folder.storageDocumentUri != null,
                         startIndent = (row.depth * 20).dp,
+                        disclosure = if (row.hasChildren) {
+                            CategoryDisclosure(
+                                expanded = row.folder.id !in collapsedFolderIds,
+                                onToggle = { toggleFolderCollapse(row.folder) }
+                            )
+                        } else {
+                            null
+                        },
+                        reserveDisclosureSpace = true,
+                        modifier = Modifier.animateItem(),
                         onClick = { onFolderSelected(row.folder) },
                         onLongClick = { onFolderLongClick(row.folder) }
                     )
@@ -573,12 +597,15 @@ private fun CategoryRow(
     linked: Boolean = false,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
-    startIndent: Dp = 0.dp
+    startIndent: Dp = 0.dp,
+    disclosure: CategoryDisclosure? = null,
+    reserveDisclosureSpace: Boolean = false,
+    modifier: Modifier = Modifier
 ) {
     Surface(
         shape = RoundedCornerShape(22.dp),
         color = AppColors.CardBg,
-        modifier = Modifier
+        modifier = modifier
             .padding(start = startIndent)
             .fillMaxWidth()
             .height(64.dp)
@@ -590,6 +617,10 @@ private fun CategoryRow(
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            when {
+                disclosure != null -> CategoryDisclosureButton(disclosure)
+                reserveDisclosureSpace -> Spacer(Modifier.width(CategoryDisclosureSlot))
+            }
             Icon(icon, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(14.dp))
             Text(
@@ -624,21 +655,43 @@ private fun CategoryRow(
     }
 }
 
-private data class FolderTreeRow(val folder: LibraryFolder, val depth: Int)
+/** 自定义分类里父文件夹的折叠开关状态。 */
+private data class CategoryDisclosure(
+    val expanded: Boolean,
+    val onToggle: () -> Unit
+)
 
-private fun flattenFolderTree(folders: List<LibraryFolder>): List<FolderTreeRow> {
-    val children = folders.groupBy { it.parentId }
-    val rows = mutableListOf<FolderTreeRow>()
-    val visited = mutableSetOf<String>()
-    fun append(parentId: String?, depth: Int) {
-        children[parentId].orEmpty().forEach { folder ->
-            if (!visited.add(folder.id)) return@forEach
-            rows += FolderTreeRow(folder, depth)
-            append(folder.id, depth + 1)
-        }
+private val CategoryDisclosureSlot = 34.dp
+
+@Composable
+private fun CategoryDisclosureButton(disclosure: CategoryDisclosure) {
+    val rotation by animateFloatAsState(
+        targetValue = if (disclosure.expanded) 0f else -90f,
+        animationSpec = tween(160),
+        label = "categoryFolderArrow"
+    )
+    Box(
+        modifier = Modifier
+            .size(CategoryDisclosureSlot)
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = disclosure.onToggle
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = AppIcons.CaretDown,
+            contentDescription = stringResource(
+                if (disclosure.expanded) R.string.category_folder_collapse
+                else R.string.category_folder_expand
+            ),
+            tint = AppColors.TextSecondary,
+            modifier = Modifier
+                .size(19.dp)
+                .graphicsLayer { rotationZ = rotation }
+        )
     }
-    append(null, 0)
-    return rows
 }
 
 @Composable

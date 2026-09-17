@@ -1194,6 +1194,8 @@
     <string name="webdav_book_deleted">この書籍は WebDAV から削除されました</string>
     <string name="webdav_books_deleted">WebDAV から %1$d 冊を削除しました</string>
     <string name="webdav_delete_failed">WebDAV の削除に失敗しました：%1$s</string>
+    <string name="category_folder_expand">サブフォルダを展開</string>
+    <string name="category_folder_collapse">サブフォルダを折りたたむ</string>
     <string name="no_books_selected">書籍が選択されていません</string>
     <string name="delete_cloud_book_choice">選択した %1$d 冊にはクラウドコピーがあります。削除範囲を選択してください。</string>
     <string name="delete_local_only">端末のみ削除</string>

@@ -69,3 +69,37 @@ internal fun booksInFolderTree(
         .mapTo(mutableSetOf()) { it.bookId }
     return books.filter { it.id in bookIds }
 }
+
+/**
+ * 自定义分类列表里的一行文件夹。
+ *
+ * @param depth 层级，用于计算左侧缩进。
+ * @param hasChildren 是否有可折叠的子文件夹，决定这一行是否显示折叠按钮。
+ */
+internal data class FolderTreeRow(
+    val folder: LibraryFolder,
+    val depth: Int,
+    val hasChildren: Boolean
+)
+
+/**
+ * 把文件夹树按「父在前、子在后」的顺序摊平成列表，[collapsedFolderIds] 里的文件夹不再展开其后代。
+ */
+internal fun flattenFolderTree(
+    folders: List<LibraryFolder>,
+    collapsedFolderIds: Set<String> = emptySet()
+): List<FolderTreeRow> {
+    val children = folders.groupBy { it.parentId }
+    val rows = mutableListOf<FolderTreeRow>()
+    val visited = mutableSetOf<String>()
+    fun append(parentId: String?, depth: Int) {
+        children[parentId].orEmpty().forEach { folder ->
+            if (!visited.add(folder.id)) return@forEach
+            val hasChildren = children[folder.id].orEmpty().any { it.id !in visited }
+            rows += FolderTreeRow(folder, depth, hasChildren)
+            if (folder.id !in collapsedFolderIds) append(folder.id, depth + 1)
+        }
+    }
+    append(null, 0)
+    return rows
+}

@@ -1193,6 +1193,8 @@
     <string name="webdav_book_deleted">此書已從 WebDAV 刪除</string>
     <string name="webdav_books_deleted">已從 WebDAV 刪除 %1$d 本書</string>
     <string name="webdav_delete_failed">WebDAV 刪除失敗：%1$s</string>
+    <string name="category_folder_expand">展開子資料夾</string>
+    <string name="category_folder_collapse">摺疊子資料夾</string>
     <string name="no_books_selected">未選擇書籍</string>
     <string name="delete_cloud_book_choice">所選 %1$d 本書包含雲端副本。請選擇刪除範圍。</string>
     <string name="delete_local_only">僅刪除本機</string>

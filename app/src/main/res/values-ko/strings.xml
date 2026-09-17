@@ -1194,6 +1194,8 @@
     <string name="webdav_book_deleted">이 책은 WebDAV에서 삭제되었습니다</string>
     <string name="webdav_books_deleted">WebDAV에서 %1$d권을 삭제했습니다</string>
     <string name="webdav_delete_failed">WebDAV 삭제 실패: %1$s</string>
+    <string name="category_folder_expand">하위 폴더 펼치기</string>
+    <string name="category_folder_collapse">하위 폴더 접기</string>
     <string name="no_books_selected">선택한 책이 없습니다</string>
     <string name="delete_cloud_book_choice">선택한 %1$d권에 클라우드 사본이 있습니다. 삭제 범위를 선택하세요.</string>
     <string name="delete_local_only">로컬에서만 삭제</string>

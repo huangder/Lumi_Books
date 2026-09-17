@@ -1274,6 +1274,8 @@
     <string name="webdav_delete_failed">WebDAV delete failed: %1$s</string>
     <string name="no_books_selected">No books selected</string>
     <string name="delete_cloud_book_choice">The selected %1$d books include cloud copies. Choose where to delete them.</string>
+    <string name="category_folder_expand">Expand subfolders</string>
+    <string name="category_folder_collapse">Collapse subfolders</string>
     <string name="delete_local_only">Delete local only</string>
     <string name="delete_local_and_cloud">Delete local and cloud</string>
     <string name="force_delete">Force delete</string>
