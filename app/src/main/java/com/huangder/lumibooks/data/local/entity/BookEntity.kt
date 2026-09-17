@@ -33,7 +33,7 @@ data class BookEntity(
 )
 
 enum class BookFormat {
-    EPUB, PDF, TXT, MOBI;
+    EPUB, PDF, TXT, MOBI, CBZ;
 
     companion object {
         fun fromString(format: String): BookFormat {
@@ -42,6 +42,7 @@ enum class BookFormat {
                 "PDF" -> PDF
                 "TXT" -> TXT
                 "MOBI" -> MOBI
+                "CBZ" -> CBZ
                 else -> TXT
             }
         }

@@ -296,10 +296,16 @@ internal fun EpubWebViewReader(
     autoTextColor: Int? = null,
     textAlignment: ReaderTextAlignment = ReaderTextAlignment.NATURAL,
     preservePublisherBackground: Boolean = true,
+    /** 整页图片按屏幕比例裁切铺满（默认等比留白）。 */
+    imagePageCrop: Boolean = false,
+    /** 「原排版」套装：阅读器不参与配色，底色与文字颜色完全交给书籍自己。 */
+    publisherPaintOnly: Boolean = false,
     bionicReadingEnabled: Boolean = false,
     chineseMode: String = "original",
     restoreLocatorJson: String?,
     restoreProgression: Float,
+    /** 恢复分数是否为"页尾"语义（书籍原排版按 (pageIndex+1)/totalPages 存档）。 */
+    restoreProgressionInclusive: Boolean = false,
     initialFragment: String? = null,
     continuousScroll: Boolean = false,
     pageTransition: String = "slide",
@@ -366,10 +372,13 @@ internal fun EpubWebViewReader(
     val latestAutoTextColor = rememberUpdatedState(autoTextColor)
     val latestTextAlignment = rememberUpdatedState(textAlignment)
     val latestPreservePublisherBackground = rememberUpdatedState(preservePublisherBackground)
+    val latestImagePageCrop = rememberUpdatedState(imagePageCrop)
+    val latestPublisherPaintOnly = rememberUpdatedState(publisherPaintOnly)
     val latestBionicReadingEnabled = rememberUpdatedState(bionicReadingEnabled)
     val latestChineseMode = rememberUpdatedState(chineseMode)
     val latestRestoreLocator = rememberUpdatedState(restoreLocatorJson)
     val latestRestoreProgression = rememberUpdatedState(restoreProgression)
+    val latestRestoreProgressionInclusive = rememberUpdatedState(restoreProgressionInclusive)
     val latestInitialFragment = rememberUpdatedState(initialFragment)
     val latestContinuousScroll = rememberUpdatedState(continuousScroll)
     val latestPageTransition = rememberUpdatedState(pageTransition)
@@ -559,6 +568,9 @@ internal fun EpubWebViewReader(
                     readerBackgroundUrl = session.readerBackgroundUrl(latestReaderBackgroundImagePath.value),
                     textAlignment = latestTextAlignment.value,
                     preservePublisherBackground = latestPreservePublisherBackground.value,
+                    imagePageCrop = latestImagePageCrop.value,
+                    publisherPaintOnly = latestPublisherPaintOnly.value,
+                    restoreProgressionInclusive = latestRestoreProgressionInclusive.value,
                     bionicReadingEnabled = latestBionicReadingEnabled.value,
                     chineseMode = latestChineseMode.value,
                     continuousScroll = false,
@@ -589,6 +601,9 @@ internal fun EpubWebViewReader(
                     readerBackgroundUrl = session.readerBackgroundUrl(latestReaderBackgroundImagePath.value),
                     textAlignment = latestTextAlignment.value,
                     preservePublisherBackground = latestPreservePublisherBackground.value,
+                    imagePageCrop = latestImagePageCrop.value,
+                    publisherPaintOnly = latestPublisherPaintOnly.value,
+                    restoreProgressionInclusive = latestRestoreProgressionInclusive.value,
                     bionicReadingEnabled = latestBionicReadingEnabled.value,
                     chineseMode = latestChineseMode.value,
                     continuousScroll = false,
@@ -641,6 +656,9 @@ internal fun EpubWebViewReader(
                         readerBackgroundUrl = session.readerBackgroundUrl(latestReaderBackgroundImagePath.value),
                         textAlignment = latestTextAlignment.value,
                         preservePublisherBackground = latestPreservePublisherBackground.value,
+                        imagePageCrop = latestImagePageCrop.value,
+                        publisherPaintOnly = latestPublisherPaintOnly.value,
+                        restoreProgressionInclusive = latestRestoreProgressionInclusive.value,
                         bionicReadingEnabled = latestBionicReadingEnabled.value,
                         chineseMode = latestChineseMode.value,
                         restoreLocatorJson = null,
@@ -662,7 +680,21 @@ internal fun EpubWebViewReader(
                             chapterIndex = target.chapterIndex,
                             pageIndex = target.pageIndex
                         ),
-                        preparePageRequest = true
+                        preparePageRequest = true,
+                        onConfigured = { configured ->
+                            // 文档没跑起阅读器脚本（例如上一次加载被 stopLoading 打断，页面只剩空白），
+                            // 这时 preparePage 永远不会有回应；重新加载该章来自愈。
+                            if (!configured) {
+                                android.util.Log.w(
+                                    "EpubWebViewReader",
+                                    "preload document missing reader script, reloading chapter " +
+                                        target.chapterIndex
+                                )
+                                loadedChapterByView.remove(view)
+                                preloadConfigurationByView.remove(view)
+                                view.loadUrl(session.chapterUrl(target.chapterIndex))
+                            }
+                        }
                     )
                     preloadConfigurationByView[view] = configurationKey
                 }
@@ -693,6 +725,10 @@ internal fun EpubWebViewReader(
                     val reusedCurrentPage = pageTurnHost.markPreloadLoading(slot, target, generation)
                     if (target == null) {
                         view.stopLoading()
+                        // 中断加载后不能再认为这一章已经装好：否则后续对同一目标的预加载
+                        // 只会往空白文档上发 preparePage，永远等不到"已准备"。
+                        loadedChapterByView.remove(view)
+                        preloadConfigurationByView.remove(view)
                         return
                     }
                     if (reusedCurrentPage) return
@@ -1089,6 +1125,9 @@ internal fun EpubWebViewReader(
                         readerBackgroundUrl = session.readerBackgroundUrl(latestReaderBackgroundImagePath.value),
                         textAlignment = latestTextAlignment.value,
                         preservePublisherBackground = latestPreservePublisherBackground.value,
+                        imagePageCrop = latestImagePageCrop.value,
+                        publisherPaintOnly = latestPublisherPaintOnly.value,
+                        restoreProgressionInclusive = latestRestoreProgressionInclusive.value,
                         bionicReadingEnabled = latestBionicReadingEnabled.value,
                         chineseMode = latestChineseMode.value,
                         restoreLocatorJson = null,
@@ -1754,7 +1793,15 @@ internal fun EpubWebViewReader(
                             error: WebResourceError
                         ) {
                             super.onReceivedError(sourceView, failedRequest, error)
-                            if (!failedRequest.isForMainFrame) return
+                            if (!failedRequest.isForMainFrame) {
+                                // 原排版丢图时先分清「资源没读出来」和「读出来了没画」：
+                                // 子资源加载失败只记一条日志，不影响翻页流程。
+                                logSubresourceFailure(
+                                    failedRequest.url?.toString(),
+                                    error.description?.toString()
+                                )
+                                return
+                            }
                             val contentView = sourceView as? EpubContentWebView ?: return
                             val navigation = navigationInFlight
                             if (navigation?.view === contentView) {
@@ -1785,7 +1832,13 @@ internal fun EpubWebViewReader(
                                 failedRequest,
                                 errorResponse
                             )
-                            if (!failedRequest.isForMainFrame) return
+                            if (!failedRequest.isForMainFrame) {
+                                logSubresourceFailure(
+                                    failedRequest.url?.toString(),
+                                    "HTTP ${errorResponse.statusCode}"
+                                )
+                                return
+                            }
                             val contentView = sourceView as? EpubContentWebView ?: return
                             val navigation = navigationInFlight
                             if (navigation?.view === contentView) {
@@ -1910,6 +1963,9 @@ internal fun EpubWebViewReader(
                                 textAlignment = latestTextAlignment.value,
                                 preservePublisherBackground =
                                     latestPreservePublisherBackground.value,
+                                    imagePageCrop = latestImagePageCrop.value,
+                                    publisherPaintOnly = latestPublisherPaintOnly.value,
+                                    restoreProgressionInclusive = latestRestoreProgressionInclusive.value,
                                 bionicReadingEnabled = latestBionicReadingEnabled.value,
                                 chineseMode = latestChineseMode.value,
                                 restoreLocatorJson = latestRestoreLocator.value,
@@ -2134,6 +2190,9 @@ internal fun EpubWebViewReader(
                 readerBackgroundUrl = session.readerBackgroundUrl(readerBackgroundImagePath),
                 textAlignment = textAlignment,
                 preservePublisherBackground = preservePublisherBackground,
+                imagePageCrop = imagePageCrop,
+                publisherPaintOnly = publisherPaintOnly,
+                restoreProgressionInclusive = restoreProgressionInclusive,
                 bionicReadingEnabled = bionicReadingEnabled,
                 chineseMode = chineseMode,
                 continuousScroll = continuousScroll,
@@ -2202,6 +2261,9 @@ internal fun EpubWebViewReader(
                     readerBackgroundUrl = session.readerBackgroundUrl(readerBackgroundImagePath),
                     textAlignment = textAlignment,
                     preservePublisherBackground = preservePublisherBackground,
+                    imagePageCrop = imagePageCrop,
+                    publisherPaintOnly = publisherPaintOnly,
+                    restoreProgressionInclusive = restoreProgressionInclusive,
                     bionicReadingEnabled = bionicReadingEnabled,
                     chineseMode = chineseMode,
                     restoreLocatorJson = restoreLocatorJson,
@@ -2388,6 +2450,19 @@ internal fun usesNativeEpubPageTurn(
     }
 }
 
+/**
+ * 原排版子资源（图片/字体/样式）加载失败最多记 20 条，避免整本书缺图时刷屏，
+ * 又能在排查「图没出来」时看到具体是哪个资源。
+ */
+private val loggedSubresourceFailures = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+private fun logSubresourceFailure(url: String?, reason: String?) {
+    val path = url?.takeIf(String::isNotBlank) ?: return
+    if (loggedSubresourceFailures.size >= 20) return
+    if (!loggedSubresourceFailures.add(path)) return
+    android.util.Log.w("EpubWebViewReader", "subresource failed: $path ($reason)")
+}
+
 private fun configKey(
     chapterIndex: Int,
     fontSizeSp: Float,
@@ -2403,6 +2478,9 @@ private fun configKey(
     readerBackgroundUrl: String?,
     textAlignment: ReaderTextAlignment,
     preservePublisherBackground: Boolean,
+    imagePageCrop: Boolean,
+    publisherPaintOnly: Boolean,
+    restoreProgressionInclusive: Boolean,
     bionicReadingEnabled: Boolean,
     chineseMode: String,
     continuousScroll: Boolean,
@@ -2431,6 +2509,9 @@ private fun configKey(
     readerBackgroundUrl.orEmpty(),
     textAlignment.key,
     preservePublisherBackground,
+    imagePageCrop,
+    publisherPaintOnly,
+    restoreProgressionInclusive,
     bionicReadingEnabled,
     chineseMode,
     continuousScroll,
@@ -2462,10 +2543,13 @@ private fun configureReader(
     readerBackgroundUrl: String?,
     textAlignment: ReaderTextAlignment,
     preservePublisherBackground: Boolean,
+    imagePageCrop: Boolean,
+    publisherPaintOnly: Boolean,
     bionicReadingEnabled: Boolean,
     chineseMode: String,
     restoreLocatorJson: String?,
     restoreProgression: Float,
+    restoreProgressionInclusive: Boolean,
     initialFragment: String?,
     continuousScroll: Boolean,
     nativePagingEnabled: Boolean,
@@ -2517,6 +2601,8 @@ private fun configureReader(
         )
         .put("textAlignment", textAlignment.key)
         .put("preservePublisherBackground", preservePublisherBackground)
+        .put("imagePageCrop", imagePageCrop)
+        .put("publisherPaintOnly", publisherPaintOnly)
         .put("bionicReading", bionicReadingEnabled)
         .put("chineseMode", chineseMode)
         .put("chineseSource", chineseMapping?.first.orEmpty())
@@ -2538,6 +2624,7 @@ private fun configureReader(
         .putOpt("backgroundUrl", readerBackgroundUrl)
         .put("progression", progression)
         .put("progressionValue", restoreProgression.coerceIn(0f, 1f))
+        .put("restoreProgressionInclusive", restoreProgressionInclusive)
         .put("flow", if (continuousScroll) "scrolled" else "paginated")
         .put("nativePaging", nativePagingEnabled)
         .put("transition", pageTransition)

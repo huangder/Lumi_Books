@@ -81,6 +81,17 @@
     <string name="format_epub">EPUB</string>
     <string name="format_pdf">PDF</string>
     <string name="format_txt">TXT</string>
+    <string name="format_cbz">CBZ</string>
+    <string name="cbz_open_failed">无法打开该漫画文件</string>
+    <string name="cbz_archive_empty">漫画包中没有可显示的图片</string>
+    <string name="cbz_page_load_failed">第 %1$d 页加载失败</string>
+    <string name="cbz_reading_direction">阅读方向</string>
+    <string name="cbz_direction_ltr">从左到右</string>
+    <string name="cbz_direction_rtl">从右到左</string>
+    <string name="cbz_two_page_spread">双页对开</string>
+    <string name="cbz_chapter_label">第 %1$d 话</string>
+    <string name="cbz_page_title">第 %1$d 页</string>
+    <string name="cbz_page_title_in_chapter">%1$s · 第 %2$d 页</string>
 
     <!-- 时间 -->
     <string name="time_seconds">%d 秒</string>
@@ -133,6 +144,8 @@
     <string name="label_margin_right">右边距</string>
     <string name="label_margin_top">上边距</string>
     <string name="label_margin_bottom">下边距</string>
+    <string name="label_margin_target_body">正文</string>
+    <string name="label_margin_target_corner">页眉/页脚</string>
     <string name="label_paragraph_spacing">段间距</string>
     <string name="label_first_line_indent">首行缩进</string>
 
@@ -348,6 +361,7 @@
     <string name="home_page">主页</string>
     <string name="avatar">头像</string>
     <string name="home_manage_hint">在此处管理您的本地 PDF 和 EPUB 图书</string>
+    <string name="home_pull_to_resume_recent_book">松手以继续阅读最近书籍</string>
     <string name="book_progress">图书 · %d%%</string>
     <string name="remove_favorite">取消收藏</string>
     <string name="add_favorite">收藏</string>
@@ -604,6 +618,8 @@
     <string name="replace_failed">替换失败</string>
     <string name="selection_menu_settings">浮动菜单设置</string>
     <string name="dictionary_no_app">未找到支持查词的词典或翻译应用</string>
+    <string name="reader_selection_hint_switch_page">拖拽至页面角落可切换页面</string>
+    <string name="reader_selection_hint_tap_target">单击目标结尾以完成选择</string>
     <string name="note_input_placeholder">输入笔记...</string>
     <string name="highlights_notes_title">高亮与笔记</string>
     <string name="tab_highlight">高亮</string>
@@ -1028,6 +1044,11 @@
     <string name="reader_external_link_open">&#25171;&#24320;</string>
     <string name="preserve_epub_background">保留原书背景</string>
     <string name="preserve_epub_background_hint">原书自带图片背景的页保留原书背景，其余页使用 Lumi 阅读背景；关闭后所有页都用 Lumi 阅读背景</string>
+    <string name="reader_image_page_crop">整页图裁切填满</string>
+    <string name="reader_image_page_crop_hint">书籍原排版下整页图片按屏幕比例裁切铺满；关闭时等比缩放到整页可见（可能留白）</string>
+    <string name="reader_theme_publisher">原排版</string>
+    <string name="reader_theme_publisher_hint">使用书籍自带配色，背景与文字颜色不可更改</string>
+    <string name="reader_theme_publisher_locked_background">原排版使用书籍自带的底色与文字颜色，可切换到其他套装再自定义</string>
     <string name="reader_layout_editing_reader">当前编辑：阅读器排版</string>
     <string name="reader_layout_editing_book">当前编辑：书籍原排版</string>
     <string name="reader_layout_editor_reader">阅读器排版</string>
@@ -1057,7 +1078,29 @@
 2. 授权书籍文件夹：直接读取该文件夹内的书籍原文件，不复制到应用目录，TXT 编辑也会直接保存到原文件。</string>
     <string name="import_select_files">选择文件</string>
     <string name="import_authorize_directory">授权一个书籍文件夹</string>
-    <string name="import_refresh_directories">更新书籍文件夹内容</string>
+    <string name="import_select_folder_books">选择文件夹书籍</string>
+    <string name="import_folder_books_refresh">刷新</string>
+    <string name="folder_books_level_summary">%1$d 个文件夹 · %2$d 本书 · 已选 %3$d 本</string>
+    <string name="folder_books_folder_count">%1$d 本</string>
+    <string name="folder_books_empty_folder">这个文件夹里没有书籍</string>
+    <string name="folder_books_sort_name">名称排序</string>
+    <string name="folder_books_sort_size">大小排序</string>
+    <string name="folder_books_sort_time">时间排序</string>
+    <string name="folder_books_sort_format">格式排序</string>
+    <string name="folder_books_sort_ascending">升序</string>
+    <string name="folder_books_sort_descending">降序</string>
+    <string name="folder_books_search_results">找到 %1$d 本书</string>
+    <string name="import_folder_books_empty">还没有记住这个文件夹的内容，点右上角刷新试一次吧</string>
+    <string name="import_folder_books_imported">已导入</string>
+    <string name="import_folder_books_new_found">新发现 %1$d 本书籍</string>
+    <string name="external_import_title">导入外部书籍</string>
+    <string name="external_import_message">你已授权书籍文件夹，选择如何处理这本书：</string>
+    <string name="external_import_message_multiple">你已授权书籍文件夹，选择如何处理这 %1$d 个文件：</string>
+    <string name="external_import_copy">复制到应用内文件夹</string>
+    <string name="external_import_copy_detail">复制到应用目录，原文件保留在原位置</string>
+    <string name="external_import_move_to_folder">移动到“%1$s”</string>
+    <string name="external_import_move_detail">移动原文件到该授权文件夹，不占用应用空间</string>
+    <string name="external_import_choose_folder">选择要移动到的授权文件夹</string>
     <string name="refresh_authorized_folders">刷新授权文件夹</string>
     <string name="import_selected_count">已选择 %1$d 本书籍</string>
     <string name="import_select_all">全选</string>
@@ -1251,6 +1294,8 @@
     <string name="folder_move_success">已将 %1$d 本书移动到“%2$s”</string>
     <string name="bookshelf_custom_categories">自定义分类</string>
     <string name="no_custom_categories">暂无自定义分类</string>
+    <string name="category_folder_expand">展开子文件夹</string>
+    <string name="category_folder_collapse">折叠子文件夹</string>
     <string name="rename_folder">重命名文件夹</string>
     <string name="delete_folder">删除文件夹</string>
     <string name="delete_folder_title">删除“%1$s”？</string>
@@ -1294,8 +1339,6 @@
     <string name="webdav_disabled">WebDAV 未启用</string>
     <string name="webdav_password_missing">未配置 WebDAV 密码</string>
     <string name="webdav_different_library">此书属于另一个 WebDAV 书库</string>
-    <string name="category_folder_expand">展开子文件夹</string>
-    <string name="category_folder_collapse">折叠子文件夹</string>
     <string name="webdav_manifest_missing">未找到云端书库目录</string>
     <string name="webdav_book_unavailable">此书已不在 WebDAV 中</string>
     <string name="webdav_book_deleted">此书已从 WebDAV 删除</string>
@@ -1452,4 +1495,10 @@
     <string name="epub_navigation_timeout">章节加载超时，已返回原页面</string>
     <string name="epub_renderer_recovered">原排版渲染已停止，已切换到重排模式</string>
     <string name="tts_prosody_rejected_error">当前语音引擎不支持所选语速或声调，已保留上一个设置</string>
+    <string name="bookshelf_cover_flow">Cover Flow</string>
+    <string name="coverflow_open">打开</string>
+    <string name="coverflow_info">信息</string>
+    <string name="coverflow_more">更多</string>
+    <string name="coverflow_previous">上一本</string>
+    <string name="coverflow_next">下一本</string>
 </resources>

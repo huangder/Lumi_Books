@@ -5,6 +5,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -494,6 +495,40 @@ class TtsControllerTest {
             assertEquals(TtsProsodyMode.FOLLOW_ENGINE, controller.speechRateMode.value)
             assertEquals(TtsPlaybackState.PLAYING, controller.playbackState.value)
             assertEquals(listOf("One."), engine.spokenTexts)
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun missingReaderAcknowledgementResumesPlaybackAfterTimeout() = runTest {
+        val main = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(main)
+        val engine = FakePlaybackEngine()
+        val controller = controller(engine)
+        try {
+            controller.start(
+                "book",
+                FakePageSource(
+                    page(0, "One.", next = TtsPageLocation(0, 1)),
+                    page(1, "Two.", previous = TtsPageLocation(0, 0))
+                ),
+                0,
+                0
+            )
+            engine.complete(engine.lastUtteranceId)
+            runCurrent()
+            // Waiting for the reader to show page 1 before speaking again.
+            assertEquals(listOf("One."), engine.spokenTexts)
+
+            advanceTimeBy(2_000L)
+            runCurrent()
+
+            // The reader never confirmed (app backgrounded or closed): playback must continue.
+            assertEquals(listOf("One.", "Two."), engine.spokenTexts)
+            assertEquals(TtsPlaybackState.PLAYING, controller.playbackState.value)
         } finally {
             controller.shutdown()
             runCurrent()

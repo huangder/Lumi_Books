@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.drawable.Icon
 import android.media.session.MediaSession
 import android.os.Build
@@ -42,7 +43,8 @@ class TtsNotificationManager @Inject constructor(
         bookTitle: String,
         chapterIndex: Int,
         isPlaying: Boolean,
-        mediaSessionToken: MediaSession.Token
+        mediaSessionToken: MediaSession.Token,
+        largeIcon: Bitmap? = null
     ): Notification {
         val contentIntent = PendingIntent.getActivity(
             context,
@@ -67,6 +69,7 @@ class TtsNotificationManager @Inject constructor(
 
         return builder
             .setSmallIcon(R.mipmap.ic_launcher)
+            .apply { largeIcon?.let(::setLargeIcon) }
             .setContentTitle(bookTitle.ifBlank { context.getString(R.string.app_name) })
             .setContentText(context.getString(R.string.tts_notification_chapter, chapterIndex + 1))
             .setContentIntent(contentIntent)

@@ -158,6 +158,30 @@ class EpubFootnoteAnchorTest {
     }
 
     @Test
+    fun `footnote marker anchors drop edge padding so no stray underline is drawn`() {
+        // 《一生之敌》真实结构：<a epub:type="noteref"> 与图标之间留了一个空格，
+        // 该空格同样落在 URLSpan 内，会被画成紧贴图标左侧的一小段下划线。
+        val html = """
+            <p>内阻力就像是《大白鲨》
+            <sup><a epub:type="noteref" href="#footnote-11-23"> <img src="../images/image_003.png" alt="注释" class="epub-footnote1"/></a></sup>里的那条鲨鱼。</p>
+            <p><a title="footnote 3" href="#fn3">&nbsp;<sup>[ 3 ]</sup>&#160;</a></p>
+        """.trimIndent()
+
+        val (protectedHtml, images) = EpubParser.protectInlineFootnoteImages(html)
+
+        assertEquals(1, images.size)
+        assertTrue(
+            "图标两侧空白应被去掉: $protectedHtml",
+            protectedHtml.contains(
+                """<a epub:type="noteref" href="#footnote-11-23">${EpubParser.inlineImagePlaceholder(0)}</a>"""
+            )
+        )
+        assertTrue("实体空白也应被去掉: $protectedHtml", protectedHtml.contains("""href="#fn3"><sup>[ 3 ]</sup></a>"""))
+        assertTrue(protectedHtml.contains("内阻力就像是《大白鲨》"))
+        assertTrue(protectedHtml.contains("里的那条鲨鱼。"))
+    }
+
+    @Test
     fun `referenced footnote containers are removed from the reader text`() {
         // 真实结构：注释容器嵌在章节外层 div 里（外层容器不能把内层一起吞掉）
         val html = """

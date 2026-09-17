@@ -829,11 +829,12 @@ private fun ThemeEditorScreen(
                                 onRemovePhoto = onRemovePhoto
                             )
                             ThemePanel.TEXT -> TextPanel(
-                                settings,
-                                customFonts,
-                                preservePublisherLayout,
-                                onPreviewUpdate,
-                                onUpdate
+                                settings = settings,
+                                customFonts = customFonts,
+                                preservePublisherLayout = preservePublisherLayout,
+                                lockTextColor = suite.isBookLayoutOnly,
+                                onPreviewUpdate = onPreviewUpdate,
+                                onUpdate = onUpdate
                             )
                             ThemePanel.NONE -> Unit
                         }
@@ -847,15 +848,17 @@ private fun ThemeEditorScreen(
                     .padding(bottom = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(AppSpace.sm)
             ) {
-                CapsuleButton(
-                    text = stringResource(R.string.reader_background_settings),
-                    icon = AppIcons.PalettePair,
-                    selected = panel == ThemePanel.BACKGROUND
-                ) {
-                    panel = if (panel == ThemePanel.BACKGROUND) {
-                        ThemePanel.NONE
-                    } else {
-                        ThemePanel.BACKGROUND
+                if (!suite.isBookLayoutOnly) {
+                    CapsuleButton(
+                        text = stringResource(R.string.reader_background_settings),
+                        icon = AppIcons.PalettePair,
+                        selected = panel == ThemePanel.BACKGROUND
+                    ) {
+                        panel = if (panel == ThemePanel.BACKGROUND) {
+                            ThemePanel.NONE
+                        } else {
+                            ThemePanel.BACKGROUND
+                        }
                     }
                 }
                 CapsuleButton(
@@ -1010,6 +1013,8 @@ private fun TextPanel(
     settings: ReaderThemeSettings,
     customFonts: List<CustomFontPreset>,
     preservePublisherLayout: Boolean,
+    /** 「原排版」：文字颜色不可改，隐藏色板。 */
+    lockTextColor: Boolean = false,
     onPreviewUpdate: (ReaderThemeSettings) -> Unit,
     onUpdate: (ReaderThemeSettings) -> Unit
 ) {
@@ -1023,22 +1028,30 @@ private fun TextPanel(
             fontWeight = FontWeight.SemiBold,
             color = AppColors.TextPrimary
         )
-        Text(
-            stringResource(R.string.label_text_color),
-            fontSize = AppType.BodySmall,
-            color = AppColors.TextSecondary
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            listOf(0xFF222222, 0xFF5A4636, 0xFF1E5E36, 0xFFE7E7E7).forEach { argb ->
-                ColorSwatch(Color(argb), settings.textColor == argb.toInt()) {
-                    onUpdate(settings.copy(textColor = argb.toInt()))
-                }
-            }
-            OptionCapsule(
-                label = stringResource(R.string.text_color_auto),
-                selected = settings.textColor == null,
-                onClick = { onUpdate(settings.copy(textColor = null)) }
+        if (lockTextColor) {
+            Text(
+                stringResource(R.string.reader_theme_publisher_hint),
+                fontSize = AppType.BodySmall,
+                color = AppColors.TextSecondary
             )
+        } else {
+            Text(
+                stringResource(R.string.label_text_color),
+                fontSize = AppType.BodySmall,
+                color = AppColors.TextSecondary
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                listOf(0xFF222222, 0xFF5A4636, 0xFF1E5E36, 0xFFE7E7E7).forEach { argb ->
+                    ColorSwatch(Color(argb), settings.textColor == argb.toInt()) {
+                        onUpdate(settings.copy(textColor = argb.toInt()))
+                    }
+                }
+                OptionCapsule(
+                    label = stringResource(R.string.text_color_auto),
+                    selected = settings.textColor == null,
+                    onClick = { onUpdate(settings.copy(textColor = null)) }
+                )
+            }
         }
         SettingSlider(
             stringResource(R.string.label_font_size),

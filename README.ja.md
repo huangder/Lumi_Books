@@ -12,7 +12,7 @@
 
 # Lumi — 読書のために生まれた
 
-> シンプルでエレガントな Android ローカル電子書籍リーダー。EPUB、PDF、TXT 対応。プライバシー最優先、完全オフライン。
+> シンプルでエレガントな Android ローカル電子書籍リーダー。EPUB、PDF、TXT、MOBI 電子書と CBZ 漫画に対応。プライバシー最優先、完全オフライン。
 
 [![Version](https://img.shields.io/badge/version-1.7.8-coral)](https://github.com/huangder/Lumi_Books/releases)
 [![License](https://img.shields.io/badge/license-GPLv3-green)](LICENSE)
@@ -29,8 +29,9 @@
 ## ✨ 機能
 
 ### 📖 読書体験
-- EPUB、PDF、TXT の3形式に対応
+- EPUB、PDF、TXT、MOBI の電子書と CBZ 漫画アーカイブに対応
 - **EPUB デュアルレンダリング**：ブックレイアウト（出版社の HTML/CSS/フォントを保持）+ リーダーレイアウト（統一タイポグラフィ）
+- **CBZ 漫画**：アーカイブ内の画像を直接読み込み、展開も変換も不要。話ごとのフォルダー、ComicInfo.xml、右から左へのページめくり、見開き表示に対応
 - Canvas + StaticLayout 独自レンダリングエンジン、スムーズなページめくりアニメーション
 - **4種類のページめくり効果**：スライド、スクロール、フェード、カール（リアルなめくり表現）
 - **Bionic Reading（バイオニックリーディング）**：単語の前半を太字にして読書速度と集中力を向上

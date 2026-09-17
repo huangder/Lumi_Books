@@ -182,6 +182,8 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         private const val BUSY_CURL_COMMIT_FRACTION = 0.14f
         private const val BUSY_CURL_FLING_DP_PER_SECOND = 450f
         private const val PERFORMANCE_LOG_TAG = "EpubPageTurnHost"
+        /** 卷曲目标页迟迟没准备好时的兜底时长：超过就退化成直接翻页。 */
+        private const val CURL_TURN_FALLBACK_DELAY_MS = 260L
     }
 
     enum class PreloadSlot { PREVIOUS, NEXT }
@@ -307,6 +309,9 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
     private var pendingSlideVisualDirection = PageAnimationController.Direction.NONE
     private var queuedSlideTurnDirection = PageAnimationController.Direction.NONE
     private val curlTurnSequencer = ReaderCurlTurnSequencer()
+    private var curlFallbackToken = 0
+    /** 预加载链路最近一次有进展的时间：只要还在动，卷曲翻页就继续等目标页。 */
+    private var lastPreloadActivityAtMs = 0L
     private var curlPageGeneration = 0L
     private var slideVisualPositionDirty = false
     private var lastSlideVisualDirection = PageAnimationController.Direction.NONE
@@ -669,6 +674,7 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         target: EpubPageTarget?,
         generation: Int
     ): Boolean {
+        lastPreloadActivityAtMs = android.os.SystemClock.uptimeMillis()
         when (slot) {
             PreloadSlot.PREVIOUS -> {
                 previousTarget = target
@@ -704,6 +710,7 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         actualPageCount: Int,
         sourceView: View
     ) {
+        lastPreloadActivityAtMs = android.os.SystemClock.uptimeMillis()
         val contentView = sourceView as? EpubContentWebView ?: return
         if (preloadSlotOf(contentView) != slot) return
         val actual = EpubPageTarget(requested.chapterIndex, actualPageIndex.coerceAtLeast(0))
@@ -821,6 +828,7 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
                     )
                     if (expediteRunning) controller.completeRunningFlipForNewInput()
                     post(::startQueuedCurlTurnIfReady)
+                    scheduleCurlTurnFallback(controllerDirection)
                     true
                 }
                 EpubCurlTurnDisposition.PASS_BOUNDARY -> false
@@ -1518,6 +1526,46 @@ internal class EpubPageTurnHost(context: Context) : FrameLayout(context) {
         ) {
             curlTurnSequencer.restore(turn)
         }
+    }
+
+    /**
+     * 卷曲翻页等不到目标页时的兜底：延迟一小段时间后若仍未准备好，
+     * 直接让 WebView 翻页，避免这一下操作石沉大海。
+     */
+    private fun scheduleCurlTurnFallback(direction: PageAnimationController.Direction) {
+        if (direction == PageAnimationController.Direction.NONE) return
+        val token = ++curlFallbackToken
+        postDelayed({
+            if (token != curlFallbackToken) return@postDelayed
+            val idle = !overlayActive && waitingForTarget == null && !pagingGesture &&
+                !controller.isRunning && !controller.isDragging
+            // 预加载还在持续推进时就继续等，别和正常的"目标页准备好"抢时间。
+            val sincePreloadActivity =
+                android.os.SystemClock.uptimeMillis() - lastPreloadActivityAtMs
+            if (sincePreloadActivity < CURL_TURN_FALLBACK_DELAY_MS) {
+                scheduleCurlTurnFallback(direction)
+                return@postDelayed
+            }
+            if (!shouldFallBackToDirectCurlTurn(
+                    turnPending = curlTurnSequencer.pendingSteps != 0,
+                    idle = idle,
+                    waitingForTarget = waitingForTarget != null,
+                    targetReady = canFlip(direction),
+                    potentialTurn = hasPotentialTurn(direction)
+                )
+            ) return@postDelayed
+            val view = activeWebView ?: return@postDelayed
+            android.util.Log.w(
+                "EpubPageTurnHost",
+                "curl target never became ready, turning directly dir=$direction"
+            )
+            curlTurnSequencer.clear()
+            view.evaluateJavascript(
+                "window.LumiReader&&window.LumiReader.turnPage(" +
+                    direction.toTurnDelta() + ");",
+                null
+            )
+        }, CURL_TURN_FALLBACK_DELAY_MS)
     }
 
     private fun advancePendingSlideVisualTurn(): Boolean {

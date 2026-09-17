@@ -5,3 +5,6 @@ import com.huangder.lumibooks.domain.model.BookFormat
 
 internal fun Book.isEpubMobi(): Boolean =
     format == BookFormat.EPUB || format == BookFormat.MOBI
+
+/** Bitmap page formats (PDF/CBZ) share the raster reader. */
+internal fun Book.isRasterPageFormat(): Boolean = format.isRasterPageFormat

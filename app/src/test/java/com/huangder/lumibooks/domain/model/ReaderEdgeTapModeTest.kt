@@ -110,7 +110,29 @@ class ReaderThemeSuiteTest {
 
         assertEquals(ReaderThemeSuites.BUILT_IN_IDS, defaults.map { it.id })
         assertTrue(defaults.all(ReaderThemeSuite::isBuiltIn))
+        // 「原排版」默认排第一，用户一眼就能看到书籍原排版的默认配色。
+        assertEquals(ReaderThemeSuites.PUBLISHER_ID, defaults.first().id)
         assertEquals("serif", defaults.first { it.id == ReaderThemeSuites.SEPIA_ID }.settings.fontType)
+    }
+
+    @Test
+    fun `publisher suite moves to the front once without reordering others`() {
+        val suites = listOf(
+            ReaderThemeSuite(id = "custom-a", customName = "A", settings = ReaderThemeSettings()),
+            ReaderThemeSuite(id = ReaderThemeSuites.DAY_ID, settings = ReaderThemeSettings()),
+            ReaderThemeSuite(id = ReaderThemeSuites.PUBLISHER_ID, settings = ReaderThemeSettings())
+        )
+
+        val ordered = ReaderThemeSuites.withPublisherFirst(suites)
+
+        assertEquals(
+            listOf(ReaderThemeSuites.PUBLISHER_ID, "custom-a", ReaderThemeSuites.DAY_ID),
+            ordered.map { it.id }
+        )
+        // 已在首位时保持原样；套装缺失时也不动。
+        assertEquals(ordered, ReaderThemeSuites.withPublisherFirst(ordered))
+        val withoutPublisher = suites.filterNot { it.id == ReaderThemeSuites.PUBLISHER_ID }
+        assertEquals(withoutPublisher, ReaderThemeSuites.withPublisherFirst(withoutPublisher))
     }
 
     @Test

@@ -162,6 +162,11 @@ class JustifiedTextView @JvmOverloads constructor(
         // URLSpan 按 linkColor 绘制，而 TextPaint 该字段默认 0（全透明）；不显式同步
         // 会让链接文字有位置、可点击却看不见。
         linkColor = color
+        // dip 标记的 span（TXT 章首标题的 AbsoluteSizeSpan）按 paint.density 换算字号，
+        // 而 TextPaint 的 density 默认是 1.0。本视图自己的 StaticLayout 是回退排版：
+        // 选择层布局还没建好时（翻页槽位轮转后在同一帧里换了文本）绘制会落到它身上，
+        // 那时标题会按 1/density 的字号排版、字形却仍按大字绘制，标题就挤成一团。
+        density = readerSpanPaintDensity(resources.displayMetrics.density)
     }
 
     private var spannable: Spannable? = null
@@ -171,6 +176,18 @@ class JustifiedTextView @JvmOverloads constructor(
     private var sourceLayoutProvider: (() -> Layout?)? = null
 
     var readerJustificationMode: Int = Layout.JUSTIFICATION_MODE_INTER_CHARACTER
+        set(value) {
+            if (field == value) return
+            field = value
+            rebuildLayout()
+            invalidate()
+        }
+
+    /**
+     * 回退布局的断行策略。选择层（原生 TextView）按阅读对齐方式选 SIMPLE / HIGH_QUALITY，
+     * 回退布局必须一致，否则回退帧的断行会和正式排版不同。
+     */
+    var readerBreakStrategy: Int = Layout.BREAK_STRATEGY_SIMPLE
         set(value) {
             if (field == value) return
             field = value
@@ -267,12 +284,14 @@ class JustifiedTextView @JvmOverloads constructor(
             layout = null
             return
         }
+        // 显示大小 / 字体缩放变化后，dip span 必须按最新密度度量。
+        textPaint.density = readerSpanPaintDensity(resources.displayMetrics.density)
         val w = (width - paddingLeft - paddingRight).coerceAtLeast(1)
         layout = StaticLayout.Builder.obtain(s, 0, s.length, textPaint, w)
             .setAlignment(Layout.Alignment.ALIGN_NORMAL)
             .setLineSpacing(lineSpacingExtra, lineSpacingMult)
             .setIncludePad(false)
-            .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
+            .setBreakStrategy(readerBreakStrategy)
             .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
             .setJustificationMode(readerJustificationMode)
             .build()
@@ -479,12 +498,6 @@ class JustifiedTextView @JvmOverloads constructor(
                     // 注释引用图标：按正文字号缩放（原图常是 72px 大图），在排版槽位内居中绘制
                     val isMarker = (drawable as? InlineFootnoteMarkerDrawable)
                         ?.isInlineFootnoteMarker == true
-                    val imgW = if (isMarker) {
-                        minOf(slotW, slotH, defaultTextSize * ReaderImageSizing.INLINE_MARKER_EM)
-                    } else {
-                        slotW
-                    }
-                    val imgH = imgW
                     val lineBottom = sl.getLineBottom(i).toFloat()
                     val slotTop = when (imageSpan.verticalAlignment) {
                         DynamicDrawableSpan.ALIGN_BASELINE -> baseline - slotH
@@ -492,15 +505,22 @@ class JustifiedTextView @JvmOverloads constructor(
                             lineTop + (lineBottom - lineTop - slotH) / 2f
                         else -> lineBottom - slotH
                     }
-                    val imgLeft = imageLeft + (slotW - imgW) / 2f
-                    val imgTop = slotTop + (slotH - imgH) / 2f
+                    // 等比绘制：槽位已按图片原始宽高比算好，再平方化就会把横图纵向拉伸。
+                    val imageRect = ReaderImageSizing.drawRect(
+                        slotLeft = imageLeft,
+                        slotTop = slotTop,
+                        slotWidth = slotW,
+                        slotHeight = slotH,
+                        isInlineMarker = isMarker,
+                        markerSizePx = defaultTextSize * ReaderImageSizing.INLINE_MARKER_EM
+                    )
                     // 🔥 保存原始 bounds，绘制后恢复。防止屏幕坐标污染 StaticLayout 行高计算
                     val savedBounds = Rect(drawable.bounds)
                     drawable.setBounds(
-                        imgLeft.toInt(),
-                        imgTop.toInt(),
-                        (imgLeft + imgW).toInt(),
-                        (imgTop + imgH).toInt()
+                        imageRect.left.toInt(),
+                        imageRect.top.toInt(),
+                        (imageRect.left + imageRect.width).toInt(),
+                        (imageRect.top + imageRect.height).toInt()
                     )
                     drawable.draw(canvas)
                     drawable.bounds = savedBounds
@@ -576,6 +596,19 @@ class JustifiedTextView @JvmOverloads constructor(
             )
         }
         text.getSpans(0, text.length, ReaderSearchHighlightSpan::class.java).forEach { span ->
+            readerHighlightPainter.drawRange(
+                canvas = canvas,
+                layout = layout,
+                text = text,
+                geometry = geometry,
+                start = text.getSpanStart(span),
+                end = text.getSpanEnd(span),
+                color = span.color,
+                lineOffsets = offsets
+            )
+        }
+        // 跨页选择期间由 ReadView 自持的瞬态选区，与已保存高亮同一套圆角样式。
+        text.getSpans(0, text.length, ReaderSelectionHighlightSpan::class.java).forEach { span ->
             readerHighlightPainter.drawRange(
                 canvas = canvas,
                 layout = layout,

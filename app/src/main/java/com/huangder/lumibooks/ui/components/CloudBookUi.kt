@@ -141,14 +141,15 @@ fun BookCoverProgressOverlay(
     book: Book,
     downloadState: BookDownloadState?,
     modifier: Modifier = Modifier,
-    compact: Boolean = false
+    compact: Boolean = false,
+    showReadingProgress: Boolean = true
 ) {
     val downloading = downloadState as? BookDownloadState.Downloading
     val progress = downloading?.progress ?: book.readingProgress
         .takeIf { it.isFinite() }
         ?.coerceIn(0f, 1f)
         .orEmptyProgress()
-    val showProgress = downloading != null || (progress > 0f && !book.isCloudOnly)
+    val showProgress = downloading != null || (showReadingProgress && progress > 0f && !book.isCloudOnly)
 
     Box(modifier = modifier.fillMaxSize()) {
         if (book.isCloudOnly && downloading == null) {

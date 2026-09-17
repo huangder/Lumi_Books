@@ -7,6 +7,14 @@ internal data class ReaderImageBounds(
     val height: Int
 )
 
+/** 行内图片在排版槽位里的绘制矩形（阅读器排版 Canvas 引擎用）。 */
+internal data class ReaderImageDrawRect(
+    val left: Float,
+    val top: Float,
+    val width: Float,
+    val height: Float
+)
+
 /**
  * 行内注释标记（脚注图标）的 drawable。
  *
@@ -37,6 +45,35 @@ internal object ReaderImageSizing {
             .roundToInt()
             .coerceAtLeast(1)
         return ReaderImageBounds(width, height)
+    }
+
+    /**
+     * 槽位内实际落笔的矩形。
+     *
+     * 非标记图片必须按槽位的宽高绘制：槽位尺寸由 [bounds] 按原始宽高比算好，
+     * 再按宽度平方化会把横向插图纵向拉伸（"图片被拉长"）。注释小图标保持正方形
+     * 槽位并在槽位内居中，避免比正文字号还大。
+     */
+    fun drawRect(
+        slotLeft: Float,
+        slotTop: Float,
+        slotWidth: Float,
+        slotHeight: Float,
+        isInlineMarker: Boolean,
+        markerSizePx: Float
+    ): ReaderImageDrawRect {
+        val width = if (isInlineMarker) {
+            minOf(slotWidth, slotHeight, markerSizePx).coerceAtLeast(1f)
+        } else {
+            slotWidth.coerceAtLeast(1f)
+        }
+        val height = if (isInlineMarker) width else slotHeight.coerceAtLeast(1f)
+        return ReaderImageDrawRect(
+            left = slotLeft + (slotWidth - width) / 2f,
+            top = slotTop + (slotHeight - height) / 2f,
+            width = width,
+            height = height
+        )
     }
 
     /** Keep enough decoded width for the final display bounds without upscaling low-res input. */

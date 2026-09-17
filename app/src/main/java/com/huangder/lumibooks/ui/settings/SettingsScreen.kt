@@ -1,5 +1,4 @@
 package com.huangder.lumibooks.ui.settings
-import com.huangder.lumibooks.ui.icons.directionalIcon
 import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.content.Intent
@@ -22,13 +21,9 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -57,10 +52,7 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
-import com.huangder.lumibooks.ui.theme.fangSongFamily
-import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.ui.components.LiquidGlassDialog
-import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -129,46 +121,12 @@ fun SettingsScreen(
             .fillMaxSize()
             .background(AppColors.WindowBg)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding(),
-            horizontalAlignment = Alignment.CenterHorizontally
+        CollapsingSettingsScaffold(
+            title = stringResource(R.string.settings_title),
+            onBack = onNavigateBack,
+            modifier = Modifier.fillMaxSize()
         ) {
-            // 顶栏
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = AppSpace.sm, vertical = AppSpace.sm),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                LiquidGlassIconButton(
-                    imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
-                    contentDescription = stringResource(R.string.back),
-                    onClick = onNavigateBack,
-                    settingsBackButton = true
-                )
-                Spacer(Modifier.weight(1f))
-                Spacer(Modifier.size(48.dp))
-            }
-
-            Column(
-                modifier = Modifier
-                    .widthIn(max = 840.dp)
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState())
-            ) {
-                Spacer(Modifier.height(AppSpace.sm))
-
-                Text(
-                    text = stringResource(R.string.settings_title),
-                    fontSize = AppType.Display,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = resolveAppFontFamily(fangSongFamily()),
-                    color = AppColors.TextPrimary,
-                    modifier = Modifier.padding(horizontal = AppSpace.lg, vertical = AppSpace.sm)
-                )
+            Spacer(Modifier.height(AppSpace.sm))
 
                 // 头像快捷入口
                 Row(
@@ -276,7 +234,6 @@ fun SettingsScreen(
                 }
 
                 Spacer(Modifier.height(120.dp))
-            }
         }
     }
 

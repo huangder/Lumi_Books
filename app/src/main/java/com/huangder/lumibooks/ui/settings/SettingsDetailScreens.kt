@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.settings
-import com.huangder.lumibooks.ui.icons.directionalIcon
+
+import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
 import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.content.Intent
@@ -45,7 +46,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -73,6 +73,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
@@ -97,7 +98,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -127,7 +127,6 @@ import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.huangder.lumibooks.tts.ExternalTtsConfig
 import com.huangder.lumibooks.tts.FloatingSubtitleSettings
 import com.huangder.lumibooks.tts.TtsProviderSelection
-import com.huangder.lumibooks.ui.theme.fangSongFamily
 import com.huangder.lumibooks.ui.components.LiquidGlassSwitch
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
@@ -135,7 +134,6 @@ import com.huangder.lumibooks.ui.components.LiquidGlassDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.LiquidGlassButton
 import com.huangder.lumibooks.ui.components.G2ContinuousCornerShape
-import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 import com.huangder.lumibooks.ui.components.AppUpdateDialog
 import com.huangder.lumibooks.ui.components.PolicyUpdateDialog
@@ -154,7 +152,6 @@ import com.huangder.lumibooks.domain.model.normalizeAppAccentHex
 import com.huangder.lumibooks.domain.model.parseAppAccentArgb
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.cardOutline
-import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.ui.animation.AppEasing
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -185,17 +182,6 @@ fun DetailPage(
     content: @Composable () -> Unit
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
-    val scrollState = rememberScrollState()
-    var largeTitleHeight by remember { mutableFloatStateOf(0f) }
-    val collapsedTitleAlpha = if (largeTitleHeight > 0f) {
-        detailTitleCollapseFraction(
-            titleTop = -scrollState.value.toFloat(),
-            titleHeight = largeTitleHeight,
-            viewportTop = 0f
-        )
-    } else {
-        0f
-    }
     val pageBackdrop = rememberLayerBackdrop()
     val pageControlsBackdrop = rememberLayerBackdrop()
     val activeBackdrop = pageBackdrop.takeIf { isLiquidGlass }
@@ -227,69 +213,12 @@ fun DetailPage(
                 // Page overlays sample the completed pageBackdrop. Inline controls use the
                 // background-only source so they never capture surfaces drawing that same source.
                 ProvideLiquidGlassBackdrop(activeControlsBackdrop) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .statusBarsPadding(),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                    CollapsingSettingsScaffold(
+                        title = title,
+                        onBack = onBack,
+                        modifier = Modifier.fillMaxSize()
                     ) {
-                        // 顶栏
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = AppSpace.sm, vertical = AppSpace.sm),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            LiquidGlassIconButton(
-                                imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
-                                contentDescription = stringResource(R.string.back),
-                                onClick = onBack,
-                                settingsBackButton = true
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .padding(horizontal = AppSpace.sm),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = title,
-                                    fontSize = AppType.Section,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = resolveAppFontFamily(fangSongFamily()),
-                                    color = AppColors.TextPrimary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.graphicsLayer {
-                                        alpha = collapsedTitleAlpha
-                                    }
-                                )
-                            }
-                            Spacer(Modifier.size(48.dp))
-                        }
-                        Column(
-                            modifier = Modifier
-                                .widthIn(max = 840.dp)
-                                .fillMaxWidth()
-                                .weight(1f)
-                                .imePadding()
-                                .verticalScroll(scrollState)
-                        ) {
-                            Text(
-                                text = title,
-                                modifier = Modifier
-                                    .padding(horizontal = AppSpace.lg, vertical = AppSpace.sm)
-                                    .onSizeChanged { size ->
-                                        largeTitleHeight = size.height.toFloat()
-                                    },
-                                fontSize = AppType.Display,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = resolveAppFontFamily(fangSongFamily()),
-                                color = AppColors.TextPrimary
-                            )
-                            content()
-                            Spacer(Modifier.height(120.dp))
-                        }
+                        content()
                     }
                 }
             }
@@ -681,6 +610,8 @@ private fun ReadingSettingsBasicDetail(viewModel: SettingsViewModel) {
 fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val settings = uiState.floatingSubtitleSettings
+    // 生命周期观察者只以 lifecycleOwner 为 key，必须用最新值，否则预览会一直用首次组合时的默认位置。
+    val currentSettings by rememberUpdatedState(settings)
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val configuration = LocalConfiguration.current
@@ -714,7 +645,7 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
                     hasOverlayPermission = Settings.canDrawOverlays(context)
                     viewModel.refreshFloatingSubtitlePermission()
                     viewModel.setFloatingSubtitlePreviewActive(hasOverlayPermission)
-                    if (hasOverlayPermission) viewModel.previewFloatingSubtitleSettings(settings)
+                    if (hasOverlayPermission) viewModel.previewFloatingSubtitleSettings(currentSettings)
                 }
                 Lifecycle.Event.ON_PAUSE -> viewModel.setFloatingSubtitlePreviewActive(false)
                 else -> Unit
@@ -723,12 +654,17 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
         lifecycleOwner.lifecycle.addObserver(observer)
         if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
             viewModel.setFloatingSubtitlePreviewActive(hasOverlayPermission)
-            if (hasOverlayPermission) viewModel.previewFloatingSubtitleSettings(settings)
+            if (hasOverlayPermission) viewModel.previewFloatingSubtitleSettings(currentSettings)
         }
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             viewModel.setFloatingSubtitlePreviewActive(false)
         }
+    }
+
+    // 进入页面时 DataStore 的读取晚于首次组合，参数到达后要重新应用一次预览位置。
+    LaunchedEffect(settings, hasOverlayPermission) {
+        if (hasOverlayPermission) viewModel.previewFloatingSubtitleSettings(settings)
     }
 
     DetailCard {
@@ -1830,6 +1766,7 @@ private val EInkSegmentGrays = listOf(
 private val FormatColors = mapOf(
     "EPUB" to Color(0xFF4CAF50),
     "PDF" to Color(0xFFE85D5D),
+    "CBZ" to Color(0xFFC98A3C),
     "TXT" to Color(0xFF9B9B9B)
 )
 
@@ -3766,16 +3703,18 @@ private fun DropdownSettingRow(
                 modifier = Modifier
                     .width(138.dp)
                     .height(42.dp)
+                    .liquidGlassMenuAnchor(cornerRadius = 14.dp)
                     .clip(RoundedCornerShape(14.dp))
                     .background(AppColors.WindowBg)
                     .border(1.dp, AppColors.Divider, RoundedCornerShape(14.dp))
                     .onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
                     .clickable {
-                        if (isLiquidGlass && liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
-                            liquidMenuHost.show(
+                        if (liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
+                            liquidMenuHost.toggle(
                                 LiquidGlassMenuSpec(
                                     anchorBounds = menuAnchorBounds,
                                     width = 138.dp,
+                                    anchorCornerRadius = 14.dp,
                                     items = options.map { (key, display) ->
                                         LiquidGlassMenuItem(
                                             label = display,

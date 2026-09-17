@@ -1,7 +1,6 @@
 package com.huangder.lumibooks.util.epub
 
 import android.annotation.SuppressLint
-import android.app.Instrumentation
 import android.content.Intent
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -17,15 +16,80 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * 原书排版的固定排版（pre-paginated）书籍以前完全忽略页边距：
- * 整页只按整屏等比缩放，所以“上下滚动模式下左右边距不生效”。
- * 现在改为先塞进“视口减去 insets”的盒子再按 insets 偏移。
+ * 固定排版（pre-paginated）书籍的页边距规则：
+ * 整页只有图片的页面（封面、插图页）必须满屏显示，不能被页边距缩进去一圈；
+ * 含正文的页面仍然先塞进“视口减去 insets”的盒子再按 insets 偏移。
  */
 @RunWith(AndroidJUnit4::class)
 class EpubFixedLayoutInsetsInstrumentedTest {
     @SuppressLint("SetJavaScriptEnabled")
     @Test
-    fun fixedLayoutPageIsScaledIntoInsetBox() {
+    fun fixedLayoutTextPageIsScaledIntoInsetBox() {
+        val webView = openFixedLayoutPage(
+            body = "<p>正文</p><div id=\"page\" style=\"width:1200px;height:1600px;background:#2f855a\"></div>"
+        )
+        val insetRect = measure(webView, left = 40, right = 40, top = 40, bottom = 40)
+        val fullRect = measure(webView, left = 0, right = 0, top = 0, bottom = 0)
+
+        val viewportWidth = insetRect.getDouble("viewportWidth")
+        val viewportHeight = insetRect.getDouble("viewportHeight")
+        val availableWidth = viewportWidth - 80.0
+        val availableHeight = viewportHeight - 80.0
+        val scale = minOf(availableWidth / 1200.0, availableHeight / 1600.0)
+
+        assertEquals(
+            "inset box mismatch, measured=$insetRect",
+            availableWidth,
+            insetRect.getDouble("width"),
+            3.0
+        )
+        assertEquals(40.0, insetRect.getDouble("left"), 3.0)
+        assertEquals(1600.0 * scale, insetRect.getDouble("height"), 3.0)
+        assertEquals(40.0 + (availableHeight - 1600.0 * scale) / 2.0, insetRect.getDouble("top"), 3.0)
+
+        // 去掉边距后页面必须铺得更满，证明边距真的参与了固定排版的缩放。
+        val fullViewportWidth = fullRect.getDouble("viewportWidth")
+        val fullViewportHeight = fullRect.getDouble("viewportHeight")
+        val fullScale = minOf(fullViewportWidth / 1200.0, fullViewportHeight / 1600.0)
+        assertEquals(0.0, fullRect.getDouble("left"), 3.0)
+        assertEquals(
+            (fullViewportHeight - 1600.0 * fullScale) / 2.0,
+            fullRect.getDouble("top"),
+            3.0
+        )
+        assertEquals(
+            "full box mismatch, measured=$fullRect",
+            fullViewportWidth,
+            fullRect.getDouble("width"),
+            3.0
+        )
+        assertTrue(fullRect.getDouble("width") > insetRect.getDouble("width"))
+    }
+
+    /** 整页只有图片的固定版式页面：页边距不参与，整页按完整视口居中。 */
+    @SuppressLint("SetJavaScriptEnabled")
+    @Test
+    fun fixedLayoutImagePageIgnoresMargins() {
+        val webView = openFixedLayoutPage(
+            body = "<div id=\"page\" style=\"width:1200px;height:1600px;background:#2f855a\">" +
+                "<img src=\"page.jpg\" style=\"width:1200px;height:1600px\"/></div>"
+        )
+        val insetRect = measure(webView, left = 40, right = 40, top = 40, bottom = 40)
+        val fullRect = measure(webView, left = 0, right = 0, top = 0, bottom = 0)
+
+        val viewportWidth = insetRect.getDouble("viewportWidth")
+        val viewportHeight = insetRect.getDouble("viewportHeight")
+        val scale = minOf(viewportWidth / 1200.0, viewportHeight / 1600.0)
+
+        // 加了页边距也必须和没有页边距一样：满视口居中，而不是缩进 40px。
+        assertEquals(0.0, insetRect.getDouble("left") - fullRect.getDouble("left"), 0.5)
+        assertEquals(0.0, insetRect.getDouble("top") - fullRect.getDouble("top"), 0.5)
+        assertEquals(1200.0 * scale, insetRect.getDouble("width"), 3.0)
+        assertEquals((viewportWidth - 1200.0 * scale) / 2.0, insetRect.getDouble("left"), 3.0)
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun openFixedLayoutPage(body: String): WebView {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val html = EpubDocumentTransformer.transform(
             EpubResource(
@@ -34,10 +98,7 @@ class EpubFixedLayoutInsetsInstrumentedTest {
                 (
                     "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head>" +
                         // 去掉浏览器默认的 body 8px margin，便于精确断言“视口 − insets”的盒子。
-                        "</head><body style=\"margin:0;padding:0\">" +
-                        "<svg viewBox=\"0 0 1200 1600\" width=\"1200\" height=\"1600\"></svg>" +
-                        "<div id=\"page\" style=\"width:1200px;height:1600px;background:#2f855a\">" +
-                        "</div></body></html>"
+                        "</head><body style=\"margin:0;padding:0\">" + body + "</body></html>"
                     ).toByteArray()
             ),
             EpubRenditionLayout.PRE_PAGINATED
@@ -79,53 +140,17 @@ class EpubFixedLayoutInsetsInstrumentedTest {
             host.setContentView(webView)
         }
         assertTrue("transformed fixed layout must load", loaded.await(10, TimeUnit.SECONDS))
-
-        val insetRect = measure(webView, instrumentation, left = 40, right = 40, top = 40, bottom = 40)
-        val fullRect = measure(webView, instrumentation, left = 0, right = 0, top = 0, bottom = 0)
-
-        val viewportWidth = insetRect.getDouble("viewportWidth")
-        val viewportHeight = insetRect.getDouble("viewportHeight")
-        val availableWidth = viewportWidth - 80.0
-        val availableHeight = viewportHeight - 80.0
-        val scale = minOf(availableWidth / 1200.0, availableHeight / 1600.0)
-
-        assertEquals(
-            "inset box mismatch, measured=$insetRect",
-            availableWidth,
-            insetRect.getDouble("width"),
-            3.0
-        )
-        assertEquals(40.0, insetRect.getDouble("left"), 3.0)
-        assertEquals(1600.0 * scale, insetRect.getDouble("height"), 3.0)
-        assertEquals(40.0 + (availableHeight - 1600.0 * scale) / 2.0, insetRect.getDouble("top"), 3.0)
-
-        // 去掉边距后页面必须铺得更满，证明边距真的参与了固定排版的缩放。
-        val fullViewportWidth = fullRect.getDouble("viewportWidth")
-        val fullViewportHeight = fullRect.getDouble("viewportHeight")
-        val fullScale = minOf(fullViewportWidth / 1200.0, fullViewportHeight / 1600.0)
-        assertEquals(0.0, fullRect.getDouble("left"), 3.0)
-        assertEquals(
-            (fullViewportHeight - 1600.0 * fullScale) / 2.0,
-            fullRect.getDouble("top"),
-            3.0
-        )
-        assertEquals(
-            "full box mismatch, measured=$fullRect",
-            fullViewportWidth,
-            fullRect.getDouble("width"),
-            3.0
-        )
-        assertTrue(fullRect.getDouble("width") > insetRect.getDouble("width"))
+        return webView
     }
 
     private fun measure(
         webView: WebView,
-        instrumentation: Instrumentation,
         left: Int,
         right: Int,
         top: Int,
         bottom: Int
     ): JSONObject {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
         val completed = CountDownLatch(1)
         var result: JSONObject? = null
         instrumentation.runOnMainSync {

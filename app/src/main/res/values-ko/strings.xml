@@ -77,6 +77,17 @@
     <string name="format_epub">EPUB</string>
     <string name="format_pdf">PDF</string>
     <string name="format_txt">TXT</string>
+    <string name="format_cbz">CBZ</string>
+    <string name="cbz_open_failed">이 만화 파일을 열 수 없습니다</string>
+    <string name="cbz_archive_empty">만화 압축 파일에 표시할 이미지가 없습니다</string>
+    <string name="cbz_page_load_failed">%1$d페이지를 불러오지 못했습니다</string>
+    <string name="cbz_reading_direction">읽기 방향</string>
+    <string name="cbz_direction_ltr">왼쪽에서 오른쪽</string>
+    <string name="cbz_direction_rtl">오른쪽에서 왼쪽</string>
+    <string name="cbz_two_page_spread">양면 보기</string>
+    <string name="cbz_chapter_label">%1$d화</string>
+    <string name="cbz_page_title">%1$d페이지</string>
+    <string name="cbz_page_title_in_chapter">%1$s · %2$d페이지</string>
 
     <!-- 시간 -->
     <string name="time_seconds">%d초</string>
@@ -129,6 +140,8 @@
     <string name="label_margin_right">오른쪽 여백</string>
     <string name="label_margin_top">위쪽 여백</string>
     <string name="label_margin_bottom">아래쪽 여백</string>
+    <string name="label_margin_target_body">본문</string>
+    <string name="label_margin_target_corner">머리말/꼬리말</string>
 
     <!-- 표시 및 외관 -->
     <string name="label_startup_screen">시작 화면</string>
@@ -240,6 +253,7 @@
     <string name="home_page">홈</string>
     <string name="avatar">프로필</string>
     <string name="home_manage_hint">여기서 로컬 PDF 및 EPUB 도서를 관리하세요</string>
+    <string name="home_pull_to_resume_recent_book">손을 떼면 최근 읽은 책을 이어봅니다</string>
     <string name="book_progress">도서 · %d%%</string>
     <string name="remove_favorite">즐겨찾기 해제</string>
     <string name="add_favorite">즐겨찾기</string>
@@ -818,6 +832,11 @@
     <string name="reader_external_link_open">열기</string>
     <string name="preserve_epub_background">원본 책 배경 유지</string>
     <string name="preserve_epub_background_hint">책에 이미지 배경이 있는 페이지는 책 배경을 유지하고, 나머지 페이지는 Lumi 읽기 배경을 사용합니다. 끄면 모든 페이지에서 Lumi 배경을 사용합니다</string>
+    <string name="reader_image_page_crop">전체 페이지 이미지 잘라 채우기</string>
+    <string name="reader_image_page_crop_hint">책 원본 레이아웃에서 전체 페이지 이미지를 화면 비율로 잘라 채웁니다. 끄면 여백을 두고 전체를 표시합니다</string>
+    <string name="reader_theme_publisher">원본 레이아웃</string>
+    <string name="reader_theme_publisher_hint">책의 배색을 그대로 사용합니다. 배경과 글자 색은 변경할 수 없습니다</string>
+    <string name="reader_theme_publisher_locked_background">원본 레이아웃은 책의 배경과 글자 색을 사용합니다. 변경하려면 다른 테마로 전환하세요</string>
     <string name="reader_layout_editing_reader">편집 중: 리더 레이아웃</string>
     <string name="reader_layout_editing_book">편집 중: 원본 레이아웃</string>
     <string name="reader_layout_editor_reader">리더 레이아웃</string>
@@ -1049,7 +1068,29 @@
     <string name="import_layout_mode">레이아웃 전환</string>
     <string name="import_no_authorized_directory">아직 권한 있는 책 폴더가 없습니다</string>
     <string name="import_no_new_books">새 책을 찾지 못했습니다</string>
-    <string name="import_refresh_directories">책 폴더 새로 고침</string>
+    <string name="import_select_folder_books">폴더 책 선택</string>
+    <string name="import_folder_books_refresh">새로 고침</string>
+    <string name="folder_books_level_summary">폴더 %1$d개 · 책 %2$d권 · 선택 %3$d권</string>
+    <string name="folder_books_folder_count">%1$d권</string>
+    <string name="folder_books_empty_folder">이 폴더에는 책이 없습니다</string>
+    <string name="folder_books_sort_name">이름순</string>
+    <string name="folder_books_sort_size">크기순</string>
+    <string name="folder_books_sort_time">시간순</string>
+    <string name="folder_books_sort_format">형식순</string>
+    <string name="folder_books_sort_ascending">오름차순</string>
+    <string name="folder_books_sort_descending">내림차순</string>
+    <string name="folder_books_search_results">%1$d권 찾음</string>
+    <string name="import_folder_books_empty">이 폴더의 내용이 아직 기록되지 않았습니다. 오른쪽 위 새로 고침을 눌러 주세요.</string>
+    <string name="import_folder_books_imported">가져옴</string>
+    <string name="import_folder_books_new_found">새 책 %1$d권 발견</string>
+    <string name="external_import_title">외부 책 가져오기</string>
+    <string name="external_import_message">책 폴더를 허용했습니다. 이 책을 어떻게 저장할지 선택하세요:</string>
+    <string name="external_import_message_multiple">책 폴더를 허용했습니다. 이 파일 %1$d개의 저장 방법을 선택하세요:</string>
+    <string name="external_import_copy">앱 내부 폴더로 복사</string>
+    <string name="external_import_copy_detail">앱 디렉터리로 복사하고 원본 파일은 그대로 둡니다</string>
+    <string name="external_import_move_to_folder">“%1$s”로 이동</string>
+    <string name="external_import_move_detail">원본 파일을 허용된 폴더로 이동하고 앱 공간을 사용하지 않습니다</string>
+    <string name="external_import_choose_folder">이동할 허용 폴더 선택</string>
     <string name="import_scanning_directory">책 폴더 스캔 중…</string>
     <string name="import_search_clear">검색 지우기</string>
     <string name="import_search_placeholder">파일 이름 검색</string>
@@ -1153,6 +1194,8 @@
     <string name="folder_move_success">%1$d권을 “%2$s”(으)로 이동했습니다</string>
     <string name="bookshelf_custom_categories">사용자 분류</string>
     <string name="no_custom_categories">사용자 분류가 없습니다</string>
+    <string name="category_folder_expand">하위 폴더 펼치기</string>
+    <string name="category_folder_collapse">하위 폴더 접기</string>
     <string name="rename_folder">폴더 이름 변경</string>
     <string name="delete_folder">폴더 삭제</string>
     <string name="delete_folder_title">“%1$s” 폴더를 삭제할까요?</string>
@@ -1194,8 +1237,6 @@
     <string name="webdav_book_deleted">이 책은 WebDAV에서 삭제되었습니다</string>
     <string name="webdav_books_deleted">WebDAV에서 %1$d권을 삭제했습니다</string>
     <string name="webdav_delete_failed">WebDAV 삭제 실패: %1$s</string>
-    <string name="category_folder_expand">하위 폴더 펼치기</string>
-    <string name="category_folder_collapse">하위 폴더 접기</string>
     <string name="no_books_selected">선택한 책이 없습니다</string>
     <string name="delete_cloud_book_choice">선택한 %1$d권에 클라우드 사본이 있습니다. 삭제 범위를 선택하세요.</string>
     <string name="delete_local_only">로컬에서만 삭제</string>
@@ -1370,4 +1411,10 @@
     <string name="pdf_annotation_pen">펜</string>
     <string name="pdf_annotation_highlighter">형광펜</string>
     <string name="pdf_annotation_eraser">지우개</string>
+    <string name="bookshelf_cover_flow">Cover Flow</string>
+    <string name="coverflow_open">열기</string>
+    <string name="coverflow_info">정보</string>
+    <string name="coverflow_more">더보기</string>
+    <string name="coverflow_previous">이전 책</string>
+    <string name="coverflow_next">다음 책</string>
 </resources>

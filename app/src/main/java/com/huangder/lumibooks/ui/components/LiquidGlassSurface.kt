@@ -145,6 +145,8 @@ internal fun Modifier.liquidGlassBackdrop(
     outlineWidth: Dp = 0.8.dp,
     highlightAlpha: Float = 0.18f,
     highlightColor: Color = Color.White,
+    /** Extra blur on top of the transparency-derived amount, for animated glass. */
+    blurBoostPx: Float = 0f,
     shadowRadius: Dp = 24.dp,
     shadowAlpha: Float = 0.16f,
     pressedShadowAlpha: Float = 0.08f
@@ -164,8 +166,8 @@ internal fun Modifier.liquidGlassBackdrop(
         shape = { lensShape },
         effects = {
             vibrancy()
-            if (transparency < 1f) {
-                blur((6.dp * (1f - transparency)).toPx())
+            if (transparency < 1f || blurBoostPx > 0f) {
+                blur((6.dp * (1f - transparency)).toPx() + blurBoostPx.coerceAtLeast(0f))
             }
             if (lensSupported) {
                 if (buttonInteraction) {
@@ -410,6 +412,8 @@ fun LiquidGlassSurface(
     outlineWidth: Dp = 0.8.dp,
     highlightColor: Color = fallbackColor,
     highlightAlpha: Float = 0.18f,
+    /** Extra blur used by animated glass (menus); 0 keeps the surface untouched. */
+    blurBoost: Dp = 0.dp,
     decorationModifier: Modifier? = null,
     contentAlignment: Alignment = Alignment.Center,
     content: @Composable BoxScope.() -> Unit
@@ -484,6 +488,7 @@ fun LiquidGlassSurface(
             outlineWidth = outlineWidth,
             highlightColor = highlightColor,
             highlightAlpha = highlightAlpha,
+            blurBoostPx = with(density) { blurBoost.toPx() },
             shadowRadius = 24.dp,
             shadowAlpha = 0f,
             pressedShadowAlpha = 0.02f

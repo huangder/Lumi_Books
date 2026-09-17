@@ -78,6 +78,16 @@ internal class WaveUnderlineSpan(val color: Int) : CharacterStyle(), UpdateAppea
 }
 
 /**
+ * 跨页选择期间由 ReadView 自持的瞬态选区高亮。
+ *
+ * 与 [ReaderHighlightSpan] 分开是为了让原位刷新（拖拽中只换 span，不重排版）
+ * 能精确地只清掉自己的那一段，不会误伤已保存的高亮。
+ */
+internal class ReaderSelectionHighlightSpan(val color: Int) : CharacterStyle(), UpdateAppearance {
+    override fun updateDrawState(textPaint: TextPaint) = Unit
+}
+
+/**
  * Keeps Editor's selection controller alive without exposing the OEM popup.
  * ColorOS can tint/wrap a normal transparent drawable and still paint its own
  * handle. A true no-op drawable avoids that second set of pixels; the actual
@@ -108,6 +118,11 @@ private class OffsetSelectionHandleDrawable(
 }
 
 internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryTextView(context) {
+    companion object {
+        /** 手柄拖出页面内容区多远后请求翻页。 */
+        private const val EDGE_DRAG_THRESHOLD_DP = 8f
+    }
+
     private val highlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val readerHighlightPainter = ReaderHighlightPainter(
         paint = highlightPaint,
@@ -161,6 +176,18 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
     private var draggingHandleMagnifierOffset: Int? = null
     private var draggingHandleMagnifierTrailing = false
     private var magnifierStateReady = false
+    /** 同一次手柄拖动内只上报一次越界，避免连续 MOVE 反复请求翻页。 */
+    private var handleDragBeyondEdgeNotified = false
+    /** 越界后选区所有权已交给 ReadView：吞掉残余事件，别让框架再按旧手势处理。 */
+    private var handleDragHandedOff = false
+
+    /**
+     * 选区手柄被拖出页面内容区时的回调。
+     *
+     * @param direction 1 表示向后（下一页），-1 表示向前（上一页）
+     * @param draggingStartHandle 被拖动的是起始手柄还是结束手柄
+     */
+    var onReaderHandleDragBeyondEdge: ((direction: Int, draggingStartHandle: Boolean) -> Unit)? = null
 
     /** Selection-only layers keep the native layout/controller but do not paint glyphs. */
     var readerSelectionOnly: Boolean = false
@@ -309,10 +336,13 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         internalSelectionMutation = true
         try {
             // 🔥 摘控制器之前，先让框架/OEM 的手柄会话正常收尾。
-            // 选区手柄（Editor.HandleView）只有收到 ACTION_UP / ACTION_CANCEL 才会
-            // dismiss 自己那个放大镜浮动窗口；ColorOS 上我们是在拖拽过程中摘掉控制器，
-            // 手柄永远等不到结束事件，那个窗口就被留在屏幕上（翻页、滚动后依然在）。
-            cancelPlatformSelectionDrag()
+            // 选区拖拽的清理只挂在 ACTION_UP 上：
+            // Editor.SelectionModifierCursorController.onTouchEvent() 的 ACTION_UP 分支
+            // 会调用 mEndHandle.dismissMagnifier()，而 ACTION_CANCEL 分支不做任何事。
+            // ColorOS 在 setTextIsSelectable(false) 时也不会像 AOSP 那样补 onDetached()，
+            // 所以在拖拽中途摘控制器会把 OEM 放大镜窗口留在屏幕上（会冻结在最后位置，
+            // 翻页、滚动甚至退出阅读后依然可见）。
+            endPlatformSelectionDrag()
             // setTextIsSelectable(false) detaches ColorOS' popup controller.
             // Restore a Spannable copy immediately because the platform method
             // otherwise changes the buffer to NORMAL and drops selection spans.
@@ -335,24 +365,32 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
     }
 
     /**
-     * 只把「手势结束」喂给框架 TextView（Editor 与选区手柄），不经过本类的
+     * 只把「手势正常结束」喂给框架 TextView（Editor 与选区手柄），不经过本类的
      * onTouchEvent，避免影响我们自己的选区会话、自绘手柄与放大镜跟随。
+     *
+     * 必须用 ACTION_UP 而不是 ACTION_CANCEL：框架只在 ACTION_UP 分支里调用
+     * dismissMagnifier()，ACTION_CANCEL 不会关闭 OEM 的放大镜浮动窗口。
      */
-    private fun cancelPlatformSelectionDrag() {
+    private fun endPlatformSelectionDrag() {
         val now = android.os.SystemClock.uptimeMillis()
-        val cancel = android.view.MotionEvent.obtain(
+        val up = android.view.MotionEvent.obtain(
             now,
             now,
-            android.view.MotionEvent.ACTION_CANCEL,
+            android.view.MotionEvent.ACTION_UP,
             magnifierLastTouchX,
             magnifierLastTouchY,
             0
         )
-        cancel.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+        up.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+        // The synthetic UP must not be mistaken for a tap by our click listeners
+        // (continuous mode toggles the reader menu on click).
+        val wasClickable = isClickable
+        isClickable = false
         try {
-            super.onTouchEvent(cancel)
+            super.onTouchEvent(up)
         } finally {
-            cancel.recycle()
+            isClickable = wasClickable
+            up.recycle()
         }
     }
 
@@ -411,6 +449,7 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
      */
     internal fun endReaderSelectionSession() {
         draggingSelectionHandle = null
+        handleDragBeyondEdgeNotified = false
         endMagnifierPointerSession()
         invalidate()
     }
@@ -586,11 +625,80 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         }
     }
 
+    /**
+     * 手柄被拖出页面内容区时通知上层（ReadView）接管手势并翻页。
+     *
+     * 这里只做「上报」，不自己翻页：翻页会轮转槽位视图，而系统选区手柄仍挂在
+     * 本视图上，正是旧方案崩溃的原因。上层会先结束本视图的选区会话再翻页。
+     */
+    private fun notifyHandleDragBeyondEdge(eventY: Float) {
+        val callback = onReaderHandleDragBeyondEdge ?: return
+        val density = resources.displayMetrics.density
+        val threshold = EDGE_DRAG_THRESHOLD_DP * density
+        val contentTop = totalPaddingTop.toFloat()
+        val contentBottom = (height - totalPaddingBottom).toFloat()
+        val beyondTop = eventY < contentTop - threshold
+        val beyondBottom = eventY > contentBottom + threshold
+        if (!beyondTop && !beyondBottom) {
+            handleDragBeyondEdgeNotified = false
+            return
+        }
+        if (handleDragBeyondEdgeNotified) return
+        val direction = when {
+            draggingSelectionStartHandle && beyondTop -> -1
+            !draggingSelectionStartHandle && beyondBottom -> 1
+            else -> return
+        }
+        handleDragBeyondEdgeNotified = true
+        callback(direction, draggingSelectionStartHandle)
+        // 交接后本视图不再参与这段手势：上层已经结束选区会话，下一帧会拦截事件流。
+        // 标记要放在回调之后：回调里会派发一次 CANCEL 让手柄/放大镜正常收尾。
+        handleDragHandedOff = true
+    }
+
+    /**
+     * 手柄圆点的本视图坐标（供 ReadView 自绘跨页选区手柄与命中测试复用同一几何）。
+     *
+     * @param offset 本视图（页内）的字符偏移
+     * @param trailing true 表示该偏移是选区结束端
+     */
+    internal fun readerHandleCirclePosition(offset: Int, trailing: Boolean): android.graphics.PointF? {
+        val spanned = text as? Spanned ?: return null
+        val textLayout = layout ?: return null
+        if (textLayout.lineCount == 0 || spanned.isEmpty()) return null
+        val safeOffset = offset.coerceIn(0, spanned.length)
+        val geometry = ReaderLineGeometry(
+            textLayout,
+            spanned,
+            readerJustificationMode,
+            readerForceLastLineJustification
+        )
+        val anchor = readerHandleAnchor(geometry, textLayout, safeOffset, trailing) ?: return null
+        return android.graphics.PointF(
+            anchor.x + totalPaddingLeft - scrollX,
+            anchor.circleY + totalPaddingTop - scrollY
+        )
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (handleDragHandedOff) {
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                // 新手势：恢复正常处理（长按选词、抓手柄都要能用）
+                handleDragHandedOff = false
+            } else {
+                if (event.actionMasked == MotionEvent.ACTION_UP ||
+                    event.actionMasked == MotionEvent.ACTION_CANCEL
+                ) {
+                    handleDragHandedOff = false
+                }
+                return true
+            }
+        }
         val drag = draggingSelectionHandle
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 beginMagnifierPointerSession(event.x, event.y)
+                handleDragBeyondEdgeNotified = false
                 if (customHandleHit(event.x, event.y)) {
                     // Touching a custom handle is an explicit selection gesture, so
                     // show the system magnifier immediately instead of waiting for
@@ -636,6 +744,7 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
                             else Selection.setSelection(spanned, Selection.getSelectionStart(spanned), mapped)
                         }
                     }
+                    notifyHandleDragBeyondEdge(event.y)
                     updateMagnifierForCurrentSelection()
                     return true
                 }
@@ -649,6 +758,7 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
                 // a long-press release can still touch the selection and would
                 // otherwise flash the magnifier for one frame.
                 endMagnifierPointerSession()
+                handleDragBeyondEdgeNotified = false
                 if (wasDragging) {
                     draggingSelectionHandle = null
                     parent?.requestDisallowInterceptTouchEvent(false)

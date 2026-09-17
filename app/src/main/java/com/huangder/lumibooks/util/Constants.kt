@@ -24,7 +24,7 @@ object Constants {
     const val PROGRESS_UPDATE_INTERVAL = 5000L // 5秒
 
     // 格式
-    val SUPPORTED_FORMATS = listOf("epub", "pdf", "txt")
+    val SUPPORTED_FORMATS = listOf("epub", "pdf", "txt", "mobi", "cbz")
 
     // 主题
     const val THEME_DAY = "day"

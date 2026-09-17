@@ -302,7 +302,9 @@ fun FloatingTabBar(
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(
-                top = if (isLiquidGlass) 10.dp else 14.dp,
+                // Leave enough room for the 28dp drop shadow; otherwise the outer
+                // layout bounds clip it and create a hard horizontal seam.
+                top = 32.dp,
                 bottom = if (isLiquidGlass) 10.dp else 14.dp
             ),
         contentAlignment = Alignment.Center

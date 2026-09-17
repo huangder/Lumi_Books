@@ -44,6 +44,144 @@ class EpubDocumentTransformerTest {
 
         assertFalse(document.body().hasAttr("data-lumi-cover"))
         assertFalse(document.selectFirst("img")!!.hasAttr("data-lumi-cover-media"))
+        assertFalse(document.body().hasAttr("data-lumi-media-only"))
+    }
+
+    @Test
+    fun expandsIllustrationPageInsideTheBookAsFullScreen() {
+        val source = """
+            <html><body><div class="pic"><img src="../Images/plate.jpg" alt=""/></div></body></html>
+        """.trimIndent()
+
+        // 第 500 章里的整页插图以前被页边距缩进去一圈，现在按整页图处理。
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("OPS/Text/plate.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE
+        ).toString(Charsets.UTF_8)
+        val document = Jsoup.parse(output, "", Parser.xmlParser())
+
+        assertEquals("true", document.body().attr("data-lumi-media-only"))
+        assertEquals("true", document.body().attr("data-lumi-cover"))
+        assertEquals("true", document.selectFirst("img")!!.attr("data-lumi-cover-media"))
+        assertTrue(document.body().attr("data-lumi-layout") == "reflowable")
+    }
+
+    @Test
+    fun fixedLayoutImagePageIgnoresMarginsWithoutCoverStyling() {
+        val source = """
+            <html><head><meta name="viewport" content="width=1200,height=1600"/></head>
+            <body><img src="../Images/plate.jpg" style="width:1200px;height:1600px"/></body></html>
+        """.trimIndent()
+
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("OPS/Text/page.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.PRE_PAGINATED
+        ).toString(Charsets.UTF_8)
+        val document = Jsoup.parse(output, "", Parser.xmlParser())
+
+        assertEquals("true", document.body().attr("data-lumi-media-only"))
+        assertFalse(document.body().hasAttr("data-lumi-cover"))
+        assertFalse(document.selectFirst("img")!!.hasAttr("data-lumi-cover-media"))
+    }
+
+    @Test
+    fun marksPublisherFullWidthMediaAsBleeding() {
+        val source = """
+            <html><body>
+              <img class="wide" src="../Images/banner.jpg"/>
+              <p>正文</p>
+              <img class="wide" src="../Images/second.jpg"/>
+            </body></html>
+        """.trimIndent()
+        val cssIndex = EpubCssIndex.parse(listOf("OPS/Styles/main.css" to "img.wide { width: 100%; }"))
+
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("OPS/Text/chapter.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE,
+            isCoverCandidate = false,
+            cssIndex = cssIndex
+        ).toString(Charsets.UTF_8)
+        val document = Jsoup.parse(output, "", Parser.xmlParser())
+        val images = document.select("img")
+
+        // 章首那张连顶部页边距一起取消，后面那张只取消左右。
+        assertEquals("horizontal-top", images[0].attr("data-lumi-bleed"))
+        assertEquals("horizontal", images[1].attr("data-lumi-bleed"))
+        assertTrue(output.contains("--lumi-inset-left"))
+        assertTrue(output.contains("width: calc(100% + var(--lumi-inset-left, 0px) + var(--lumi-inset-right, 0px)) !important"))
+    }
+
+    @Test
+    fun keepsHalfWidthMediaInsideTheMargins() {
+        val source = """
+            <html><body><p>正文</p><div><img src="../Images/gm.png" width="12%"/></div></body></html>
+        """.trimIndent()
+
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("OPS/Text/chapter.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE
+        ).toString(Charsets.UTF_8)
+        val document = Jsoup.parse(output, "", Parser.xmlParser())
+
+        assertFalse(document.selectFirst("img")!!.hasAttr("data-lumi-bleed"))
+    }
+
+    @Test
+    fun doesNotBleedFixedLayoutMedia() {
+        val source = """
+            <html><head><meta name="viewport" content="width=1200,height=1600"/></head>
+            <body><img class="wide" src="../Images/banner.jpg"/><p>正文</p></body></html>
+        """.trimIndent()
+        val cssIndex = EpubCssIndex.parse(listOf("main.css" to "img.wide { width: 100%; }"))
+
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("OPS/Text/page.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.PRE_PAGINATED,
+            isCoverCandidate = false,
+            cssIndex = cssIndex
+        ).toString(Charsets.UTF_8)
+        val document = Jsoup.parse(output, "", Parser.xmlParser())
+
+        assertFalse(document.selectFirst("img")!!.hasAttr("data-lumi-bleed"))
+    }
+
+    @Test
+    fun scrolledFlowKeepsFullPageImagesAtNaturalHeight() {
+        val source = """
+            <html><body><img src="../Images/plate.jpg"/></body></html>
+        """.trimIndent()
+
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("OPS/Text/plate.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE
+        ).toString(Charsets.UTF_8)
+
+        // 分页时整页图占满一屏，滚动阅读时按满宽 + 自然高度，避免中间大片空白。
+        assertTrue(output.contains("html.lumi-scrolled body[data-lumi-media-only=\"true\"]"))
+        assertTrue(output.contains("html.lumi-crop-page-image body[data-lumi-media-only=\"true\"]"))
+        assertTrue(output.contains("state.imagePageCrop = config.imagePageCrop === true"))
+    }
+
+    @Test
+    fun restoresLocatorAfterPaginationAndInvertsInclusiveProgression() {
+        val source = """
+            <html><body><p>Chapter</p></body></html>
+        """.trimIndent()
+
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("chapter.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE
+        ).toString(Charsets.UTF_8)
+
+        // 未分页时先把锚点排队，等 paginate() 算完页数再应用（否则会被夹到第 0 页丢掉）。
+        assertTrue(output.contains("if (!state.ready) {"))
+        assertTrue(output.contains("state.pendingLocator = target;"))
+        assertTrue(output.contains("applyPendingLocator();"))
+        // 书籍原排版的进度分数是"页尾"语义，必须按 ceil(f * N - ε) - 1 反解。
+        assertTrue(output.contains("function pageFromProgression(fraction, total, inclusive)"))
+        assertTrue(output.contains("Math.ceil(scaled - 0.000001) - 1"))
+        assertTrue(output.contains("pageFromProgression(restoreProgression, state.total, state.restoreProgressionInclusive)"))
+        assertTrue(output.contains("state.restoreProgressionInclusive = config.restoreProgressionInclusive === true"))
     }
 
     @Test
@@ -181,7 +319,9 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("var fixedInset = readerBox()"))
         assertTrue(output.contains("state.viewportWidth - fixedInset.left - fixedInset.right"))
         assertTrue(output.contains("state.viewportHeight - fixedInset.top - fixedInset.bottom"))
-        assertTrue(output.contains("(fixedInset.left + Math.max(0, (availableWidth - designWidth * scale) / 2))"))
+        // 裁切填满时居中偏移为负，必须原样保留；不裁切时才把负偏移钳成 0。
+        assertTrue(output.contains("var cropping = state.imagePageCrop && isMediaOnlyPage()"))
+        assertTrue(output.contains("(fixedInset.left + (cropping ? offsetX : Math.max(0, offsetX)))"))
         assertFalse(output.contains("Math.max(0, (state.viewportWidth - designWidth * scale) / 2)"))
         assertTrue(output.contains("html.lumi-scrolled"))
         assertTrue(output.contains("overflow-y: auto !important"))
@@ -195,7 +335,12 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("root.style.setProperty('background-image', 'none', 'important')"))
         assertTrue(output.contains("root.style.setProperty('background-color', 'transparent', 'important')"))
         assertTrue(output.contains("var bodyStyle = window.getComputedStyle(document.body)"))
-        assertTrue(output.contains("var computed = bodyHasPaint ?"))
+        assertTrue(output.contains("function publisherBackgroundSource(rootStyle, bodyStyle)"))
+        assertTrue(output.contains("if (hasPublisherBackgroundImage(bodyStyle)) return bodyStyle;"))
+        assertTrue(output.contains("if (hasPublisherBackgroundImage(rootStyle)) return rootStyle;"))
+        assertTrue(output.contains("var computed = publisherBackgroundComputed(rootStyle, bodyStyle)"))
+        assertFalse(output.contains("var computed = bodyHasPaint ?"))
+        assertFalse(output.contains("var source = hasPaint(rootStyle) ? rootStyle"))
         assertTrue(output.contains("lumi-publisher-background"))
         assertTrue(output.contains("width: state.viewportWidth + 'px'"))
         assertTrue(output.contains("height: state.viewportHeight + 'px'"))
@@ -273,6 +418,15 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("showFootnotePopover"))
         assertTrue(output.contains("fetch(resourceUrl"))
         assertTrue(output.contains("post('link', { href: anchor.href })"))
+        // 原排版：注释正文由气泡呈现，正文流里不再重复显示；标记不画下划线。
+        assertTrue(output.contains("resolveFootnoteBodies()"))
+        assertTrue(output.contains("pairSameDocumentFootnoteBodies"))
+        assertTrue(output.contains("lumi-footnote-auto-"))
+        assertTrue(output.contains("""[data-lumi-footnote-body="true"]"""))
+        assertTrue(output.contains("""display: none !important"""))
+        assertTrue(output.contains("""a[data-lumi-footnote-ref="true"]"""))
+        assertTrue(output.contains("""text-decoration: none !important"""))
+        assertTrue(output.contains("""node.removeAttribute('data-lumi-footnote-body')"""))
     }
 
     @Test
@@ -313,12 +467,19 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("lumi-reader-auto-text"))
         // Only image/gradient book backgrounds keep the book paper; plain colors lose.
         assertTrue(output.contains("function hasPublisherBackgroundImage(style)"))
+        assertTrue(output.contains("function publisherBackgroundSource(rootStyle, bodyStyle)"))
+        assertTrue(output.contains("if (hasPublisherBackgroundImage(bodyStyle)) return bodyStyle;"))
+        assertTrue(output.contains("if (hasPublisherBackgroundImage(rootStyle)) return rootStyle;"))
+        assertTrue(output.contains("function publisherBackgroundComputed(rootStyle, bodyStyle)"))
+        assertTrue(output.contains("var source = publisherBackgroundSource(rootStyle, bodyStyle);"))
         assertTrue(output.contains("state.publisherHasImageBackground = hasPublisherBackgroundImage(source)"))
-        assertTrue(output.contains("if (!state.publisherHasImageBackground) return;"))
+        assertTrue(output.contains("if (!state.publisherHasImageBackground || !computed) return;"))
         assertTrue(
             output.contains(
-                "var readerBackgroundActive = !state.preservePublisherBackground ||"
+                "var readerBackgroundActive = !state.publisherPaintOnly &&"
             )
         )
+        // 「原排版」套装下阅读器完全不参与配色。
+        assertTrue(output.contains("state.publisherPaintOnly = config.publisherPaintOnly === true"))
     }
 }

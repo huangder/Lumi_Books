@@ -74,6 +74,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
     override var firstLineIndentChars: Float = 0f
     override var contentWidth: Int = 0
     override var useEpubCss: Boolean = false  // TxtParser 不支持 EPUB CSS，保留接口兼容
+    override var preserveEpubBackground: Boolean = true  // TxtParser 无原书装饰，保留接口兼容
 
     private data class TxtChapterEntry(
         val index: Int,

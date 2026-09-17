@@ -12,7 +12,7 @@
 
 # Lumi — 为阅读而生
 
-> 简洁优雅的 Android 本地电子书阅读器，支持 EPUB、PDF、TXT 格式。隐私优先，本地优先。
+> 简洁优雅的 Android 本地电子书阅读器，支持 EPUB、PDF、TXT、MOBI 电子书与 CBZ 漫画。隐私优先，本地优先。
 
 [![Version](https://img.shields.io/badge/version-1.7.8-coral)](https://github.com/huangder/Lumi_Books/releases)
 [![License](https://img.shields.io/badge/license-GPLv3-green)](LICENSE)
@@ -32,8 +32,9 @@
 ## ✨ 功能特性
 
 ### 📖 阅读体验
-- 支持 EPUB、PDF、TXT 三种主流电子书格式
+- 支持 EPUB、PDF、TXT、MOBI 电子书格式与 CBZ 漫画压缩包
 - **EPUB 双渲染模式**：书版布局（保留出版方 HTML/CSS/字体）+ 阅读器布局（统一点阵排版）
+- **CBZ 漫画**：直接读取压缩包内图片，不解压、不转换；支持子目录分话、ComicInfo 元数据、右→左翻页与双页对开
 - Canvas + StaticLayout 自研渲染引擎，流畅的多种翻页动画
 - **四种翻页效果**：平滑滑动、连续滚动、淡入渐变、仿真翻页（Curl）
 - **Bionic Reading 仿生阅读**：加粗单词前缀，提升阅读速度与专注力

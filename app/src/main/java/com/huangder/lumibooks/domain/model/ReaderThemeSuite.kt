@@ -40,6 +40,12 @@ data class ReaderThemeSuite(
 ) {
     val isBuiltIn: Boolean get() = id in ReaderThemeSuites.BUILT_IN_IDS
 
+    /**
+     * 只在书籍原排版可用的内置套装（「原排版」）。阅读器排版会重排文字，
+     * 谈不上"原书配色"，因此它不出现在阅读器排版的套装列表里。
+     */
+    val isBookLayoutOnly: Boolean get() = id == ReaderThemeSuites.PUBLISHER_ID
+
     fun settingsFor(layout: ReaderLayoutTarget): ReaderThemeSettings = when (layout) {
         ReaderLayoutTarget.READER_LAYOUT -> settings
         ReaderLayoutTarget.BOOK_LAYOUT -> bookLayoutSettings
@@ -54,18 +60,60 @@ data class ReaderThemeSuite(
 
 data class ReaderThemeSuiteState(
     val suites: List<ReaderThemeSuite>,
-    val activeSuiteId: String
-)
+    val activeSuiteId: String,
+    /** 书籍原排版单独记一套活动套装，默认「原排版」。 */
+    val activeBookLayoutSuiteId: String = ReaderThemeSuites.PUBLISHER_ID
+) {
+    fun activeSuiteIdFor(layout: ReaderLayoutTarget): String = when (layout) {
+        ReaderLayoutTarget.READER_LAYOUT -> activeSuiteId
+        ReaderLayoutTarget.BOOK_LAYOUT -> activeBookLayoutSuiteId
+    }
+}
 
 object ReaderThemeSuites {
     const val DAY_ID = "day"
     const val NIGHT_ID = "night"
     const val SEPIA_ID = "sepia"
     const val GREEN_ID = "green"
+    const val PUBLISHER_ID = "publisher"
 
-    val BUILT_IN_IDS = listOf(DAY_ID, NIGHT_ID, SEPIA_ID, GREEN_ID)
+    /** 真正参与"日间/夜间/羊皮纸/护眼绿"配色的主题 id。 */
+    val THEME_IDS = listOf(DAY_ID, NIGHT_ID, SEPIA_ID, GREEN_ID)
+
+    /** 内置套装的默认顺序：「原排版」排第一，用户一眼就能看到书籍原排版的默认配色。 */
+    val BUILT_IN_IDS = listOf(PUBLISHER_ID) + THEME_IDS
+
+    fun supportsLayout(suite: ReaderThemeSuite, layout: ReaderLayoutTarget): Boolean =
+        layout != ReaderLayoutTarget.READER_LAYOUT || !suite.isBookLayoutOnly
+
+    /** 纠正某个排版模式下的活动套装 id：套装不存在或不支持该模式时回落。 */
+    fun resolveActiveId(
+        suites: List<ReaderThemeSuite>,
+        requestedId: String?,
+        layout: ReaderLayoutTarget
+    ): String {
+        val fallback = when (layout) {
+            ReaderLayoutTarget.READER_LAYOUT -> DAY_ID
+            ReaderLayoutTarget.BOOK_LAYOUT -> PUBLISHER_ID
+        }
+        val requested = requestedId?.let { id -> suites.firstOrNull { it.id == id } }
+        if (requested != null && supportsLayout(requested, layout)) return requested.id
+        return suites.firstOrNull { it.id == fallback && supportsLayout(it, layout) }?.id
+            ?: suites.firstOrNull { supportsLayout(it, layout) }?.id
+            ?: fallback
+    }
 
     fun defaults(): List<ReaderThemeSuite> = listOf(
+        // 「原排版」：背景跟随书籍自身、文字颜色不覆盖（textColor = null），
+        // 仅用于书籍原排版，且背景与文字颜色在界面上不可更改。默认排在最前面。
+        ReaderThemeSuite(
+            PUBLISHER_ID,
+            settings = ReaderThemeSettings(),
+            bookLayoutSettings = ReaderThemeSettings(
+                backgroundSelection = PUBLISHER_ID,
+                backgroundColorSelection = PUBLISHER_ID
+            )
+        ),
         ReaderThemeSuite(
             DAY_ID,
             settings = ReaderThemeSettings(
@@ -96,6 +144,13 @@ object ReaderThemeSuites {
             )
         ),
     )
+
+    /** 把「原排版」挪到列表最前面（只用于升级时的一次性排序迁移）。 */
+    fun withPublisherFirst(suites: List<ReaderThemeSuite>): List<ReaderThemeSuite> {
+        val publisher = suites.firstOrNull { it.id == PUBLISHER_ID } ?: return suites
+        if (suites.first().id == PUBLISHER_ID) return suites
+        return listOf(publisher) + suites.filterNot { it.id == PUBLISHER_ID }
+    }
 
     fun newCustom(id: String, name: String): ReaderThemeSuite = ReaderThemeSuite(
         id = id,

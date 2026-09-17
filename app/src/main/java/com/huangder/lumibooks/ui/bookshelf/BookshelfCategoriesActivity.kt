@@ -208,6 +208,7 @@ internal sealed interface BookshelfCategoryTarget {
     data class EpubMobi(override val title: String) : BookshelfCategoryTarget
     data class Pdf(override val title: String) : BookshelfCategoryTarget
     data class Txt(override val title: String) : BookshelfCategoryTarget
+    data class Comic(override val title: String) : BookshelfCategoryTarget
     data class Favorites(override val title: String) : BookshelfCategoryTarget
     data class Tag(val id: String, override val title: String) : BookshelfCategoryTarget
     data class Folder(val id: String, override val title: String) : BookshelfCategoryTarget
@@ -259,6 +260,13 @@ private fun BookshelfCategoriesScreen(
         )
         add(CategoryRowModel(BookshelfCategoryTarget.Pdf("PDF"), uiState.books.count { it.format == BookFormat.PDF }, AppIcons.FileText))
         add(CategoryRowModel(BookshelfCategoryTarget.Txt("TXT"), uiState.books.count { it.format == BookFormat.TXT }, AppIcons.FileText))
+        add(
+            CategoryRowModel(
+                BookshelfCategoryTarget.Comic(stringResource(R.string.format_cbz)),
+                uiState.books.count { it.format == BookFormat.CBZ },
+                AppIcons.FileText
+            )
+        )
         add(CategoryRowModel(BookshelfCategoryTarget.Favorites(favoritesTitle), uiState.books.count { it.isFavorite }, AppIcons.Heart.regular))
     }
     CategoryListPage(
@@ -400,6 +408,7 @@ internal fun BookshelfCategoryBooksRoute(
             is BookshelfCategoryTarget.EpubMobi -> uiState.books.filter(Book::isEpubMobi)
             is BookshelfCategoryTarget.Pdf -> uiState.books.filter { it.format == BookFormat.PDF }
             is BookshelfCategoryTarget.Txt -> uiState.books.filter { it.format == BookFormat.TXT }
+            is BookshelfCategoryTarget.Comic -> uiState.books.filter { it.format == BookFormat.CBZ }
             is BookshelfCategoryTarget.Favorites -> uiState.books.filter { it.isFavorite }
             is BookshelfCategoryTarget.Tag -> uiState.books.filter {
                 selectedTarget.id in tagIdsByBook[it.id].orEmpty()
@@ -423,7 +432,7 @@ internal fun BookshelfCategoryBooksRoute(
         books = selectedBooks,
         tagNamesByBook = tagNamesByBook,
         syncedBookIds = uiState.syncedBookIds,
-        layoutMode = uiState.bookshelfLayoutMode,
+        layoutMode = com.huangder.lumibooks.domain.model.BookshelfLayout.conventional(uiState.bookshelfLayoutMode),
         isLoading = uiState.isLoading,
         tags = uiState.tags,
         tagIdsByBook = tagIdsByBook,

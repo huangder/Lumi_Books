@@ -130,6 +130,10 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.coil-kt:coil-svg:2.7.0")
 
+    // SVG rasterisation for reader-layout images (coil-svg already pulls this in at runtime;
+    // declared explicitly so the reader can rasterise SVG illustrations itself).
+    implementation("com.caverock:androidsvg-aar:1.4")
+
     // Image dominant color extraction
     implementation("androidx.palette:palette-ktx:1.0.0")
 

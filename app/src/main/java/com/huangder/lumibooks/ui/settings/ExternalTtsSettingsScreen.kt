@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.settings
+
+import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
 import com.huangder.lumibooks.ui.icons.AppIcons
 
 import androidx.compose.animation.AnimatedVisibility
@@ -537,6 +539,7 @@ private fun ExternalTtsVoiceSelection(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp)
+                        .liquidGlassMenuAnchor(cornerRadius = 14.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .background(AppColors.WindowBg)
                         .border(1.dp, AppColors.Divider, RoundedCornerShape(14.dp))
@@ -544,11 +547,12 @@ private fun ExternalTtsVoiceSelection(
                         .clickable(
                             role = Role.Button,
                             onClick = {
-                                if (isLiquidGlass && liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
-                                    liquidMenuHost.show(
+                                if (liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
+                                    liquidMenuHost.toggle(
                                         LiquidGlassMenuSpec(
                                             anchorBounds = menuAnchorBounds,
                                             width = selectorMenuWidth,
+                                            anchorCornerRadius = 14.dp,
                                             items = presetVoices.map { preset ->
                                                 LiquidGlassMenuItem(
                                                     label = preset,

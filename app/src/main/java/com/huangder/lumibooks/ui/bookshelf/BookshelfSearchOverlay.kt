@@ -94,6 +94,10 @@ import com.huangder.lumibooks.ui.components.BookCoverProgressOverlay
 import com.huangder.lumibooks.domain.model.LibraryFolder
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.animation.HorizontalOverscrollBounce
+import com.huangder.lumibooks.ui.animation.BookCoverTitleColor
+import com.huangder.lumibooks.ui.animation.BookCoverTitleStyle
+import com.huangder.lumibooks.ui.animation.bookCoverMemoryCacheKey
+import com.huangder.lumibooks.ui.animation.bookCoverTransitionAnchor
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
@@ -485,14 +489,16 @@ internal fun BookshelfSearchResultItem(
     onBookmarksNotes: () -> Unit,
     selectionMode: Boolean = false,
     selected: Boolean = false,
-    onSelectionToggle: () -> Unit = {}
+    onSelectionToggle: () -> Unit = {},
+    coverModifier: Modifier = Modifier,
+    selectionScaleEnabled: Boolean = true
 ) {
     val haptic = LocalHapticFeedback.current
     val eInkMode = LocalEInkMode.current
     val scale by animateFloatAsState(
         targetValue = when {
             isDeleting -> 0.92f
-            selectionMode -> 0.955f
+            selectionMode && selectionScaleEnabled -> 0.955f
             else -> 1f
         },
         animationSpec = if (eInkMode) snap() else tween(180),
@@ -521,6 +527,7 @@ internal fun BookshelfSearchResultItem(
     ) {
         BookshelfSearchResultCard(
             book = book,
+            coverModifier = coverModifier,
             tagNames = tagNames,
             selected = selected,
             isSynced = isSynced,
@@ -584,7 +591,8 @@ private fun BookshelfSearchResultCard(
     selected: Boolean = false,
     isSynced: Boolean = false,
     downloadState: BookDownloadState? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    coverModifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
@@ -622,6 +630,20 @@ private fun BookshelfSearchResultCard(
                 modifier = Modifier
                     .width(70.dp)
                     .height(92.dp)
+                    .then(coverModifier)
+                    .bookCoverTransitionAnchor(
+                        bookId = book.id,
+                        cornerRadiusDp = 14f,
+                        titleStyle = BookCoverTitleStyle(
+                            fontSizeSp = AppType.Caption.value,
+                            maxLines = 2,
+                            paddingDp = 6f,
+                            color = BookCoverTitleColor.Secondary,
+                            useKaiTi = false,
+                            textAlignCenter = false,
+                            takeCharacters = 6
+                        )
+                    )
                     .clip(RoundedCornerShape(14.dp))
                     .background(AppColors.BgGray),
                 contentAlignment = Alignment.Center
@@ -630,7 +652,9 @@ private fun BookshelfSearchResultCard(
                     AsyncImage(
                         model = ImageRequest.Builder(context)
                             .data(book.coverPath)
-                            .memoryCacheKey("search_${book.id}_${book.coverPath}")
+                            .memoryCacheKey(
+                                bookCoverMemoryCacheKey(book.id, book.coverPath)
+                            )
                             .build(),
                         contentDescription = book.title,
                         modifier = Modifier.fillMaxSize(),

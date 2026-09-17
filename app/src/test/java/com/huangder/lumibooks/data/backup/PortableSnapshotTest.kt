@@ -23,6 +23,15 @@ class PortableSnapshotTest {
     }
 
     @Test
+    fun comicFormatSurvivesJsonRoundTrip() {
+        val snapshot = snapshot(deviceId = "device-a", format = "CBZ")
+
+        val restored = PortableSnapshot.fromJson(snapshot.toJson())
+
+        assertEquals("CBZ", restored.books.single().format)
+    }
+
+    @Test
     fun mergeIsIdempotentAndDoesNotInflateDeviceContributions() {
         val local = snapshot(deviceId = "device-a", records = listOf(record("device-a", 10)))
         val remote = snapshot(deviceId = "device-b", records = listOf(record("device-b", 20)))
@@ -70,6 +79,7 @@ class PortableSnapshotTest {
 
     private fun snapshot(
         deviceId: String,
+        format: String = "EPUB",
         preferences: List<PortablePreference> = emptyList(),
         records: List<ReadingRecordEntity> = emptyList(),
         bookmarks: List<BookmarkEntity> = emptyList(),
@@ -84,7 +94,7 @@ class PortableSnapshotTest {
                 id = "book-a",
                 title = "Book",
                 author = "Author",
-                format = "EPUB",
+                format = format,
                 lastReadTime = 10,
                 readingProgress = 0.25f,
                 locatorJson = null,

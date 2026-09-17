@@ -14,9 +14,17 @@ object EpubDocumentTransformer {
         resource: EpubResource,
         layout: EpubRenditionLayout,
         isCoverCandidate: Boolean = false
+    ): ByteArray = transform(resource, layout, isCoverCandidate, EpubCssIndex.EMPTY)
+
+    /** 与上同，但带上书籍样式表规则（原排版用来识别发布方声明的铺满宽图片）。 */
+    internal fun transform(
+        resource: EpubResource,
+        layout: EpubRenditionLayout,
+        isCoverCandidate: Boolean,
+        cssIndex: EpubCssIndex
     ): ByteArray {
         val document = parseAndSanitize(resource)
-        return transform(document, layout, isCoverCandidate)
+        return transform(document, layout, isCoverCandidate, cssIndex)
     }
 
     /**
@@ -28,6 +36,13 @@ object EpubDocumentTransformer {
         document: Document,
         layout: EpubRenditionLayout,
         isCoverCandidate: Boolean = false
+    ): ByteArray = transform(document, layout, isCoverCandidate, EpubCssIndex.EMPTY)
+
+    internal fun transform(
+        document: Document,
+        layout: EpubRenditionLayout,
+        isCoverCandidate: Boolean,
+        cssIndex: EpubCssIndex
     ): ByteArray {
         val head = document.head().takeIf { it.tagName().isNotBlank() }
             ?: document.prependElement("head")
@@ -41,9 +56,10 @@ object EpubDocumentTransformer {
         head.appendElement("style").attr("id", "lumi-reader-style")
             .appendChild(DataNode(READER_CSS))
         document.body().attr("data-lumi-layout", layout.name.lowercase())
-        if (isCoverCandidate && layout == EpubRenditionLayout.REFLOWABLE) {
-            markImageOnlyCover(document)
-        }
+        // 整页只有图片的页面（封面、卷首图、插图页、固定版式的整页图）在阅读器里应当满屏，
+        // 不该被页边距缩进去一圈。reflowable 沿用封面样式，固定版式只打标记、不动设计盒。
+        markMediaOnlyPage(document, allowCoverStyling = layout == EpubRenditionLayout.REFLOWABLE)
+        markFullBleedMedia(document, layout, cssIndex)
         // 必须以 DataNode 注入：文档以 XML 语法序列化，appendText 会把脚本里的
         // '<'、'>'、'&' 转义成 &lt; &gt; &amp;，浏览器在 <script> 内不会反转义，
         // 导致分页脚本语法错误、原排版空白卡死（text/html 章节尤其明显）。
@@ -52,7 +68,15 @@ object EpubDocumentTransformer {
         return document.outerHtml().toByteArray(Charsets.UTF_8)
     }
 
-    private fun markImageOnlyCover(document: Document) {
+    /**
+     * 标记「整页只有图片」的页面。
+     *
+     * 以前只认第 1 个 spine（封面），卷首图、插图页、固定版式整页图都被页边距缩了一圈。
+     * 现在任何章节只要正文里没有可见文字、且只有一张媒体，就按整页图处理：
+     * reflowable 额外套用封面样式（满屏 contain），固定版式只用 [MEDIA_ONLY_ATTR] 让脚本
+     * 忽略页边距，避免破坏出版方的设计盒。
+     */
+    private fun markMediaOnlyPage(document: Document, allowCoverStyling: Boolean) {
         val body = document.body()
         val textProbe = body.clone().apply {
             // Text inside an SVG is part of the cover artwork, not flowing chapter copy.
@@ -60,11 +84,16 @@ object EpubDocumentTransformer {
         }
         if (textProbe.text().isNotBlank()) return
 
-        val media = body.select("img, svg").filter { element ->
-            element.parents().none { parent -> parent.tagName().equals("svg", ignoreCase = true) }
+        val media = body.select("img, svg, video, canvas").filter { element ->
+            element.parents().none { parent ->
+                parent.tagName().equals("svg", ignoreCase = true) ||
+                    parent.tagName().equals("video", ignoreCase = true)
+            }
         }
         if (media.size != 1) return
 
+        body.attr(MEDIA_ONLY_ATTR, "true")
+        if (!allowCoverStyling) return
         body.attr("data-lumi-cover", "true")
         val coverMedia = media.single().attr("data-lumi-cover-media", "true")
         var ancestor = coverMedia.parent()
@@ -72,6 +101,55 @@ object EpubDocumentTransformer {
             ancestor.attr("data-lumi-cover-container", "true")
             ancestor = ancestor.parent()
         }
+    }
+
+    /**
+     * 标记出版社显式声明铺满宽度的块级图片。
+     *
+     * 判定口径：只认匹配到图片元素自身的 `width` 属性 / 内联 style / CSS 规则里的
+     * `100%`、`100vw`；父容器声明的宽度不算。命中后由阅读器样式取消左右页边距，
+     * 章首第一张这样的图连顶部页边距一起取消。固定版式不做此标记（设计盒优先）。
+     */
+    private fun markFullBleedMedia(
+        document: Document,
+        layout: EpubRenditionLayout,
+        cssIndex: EpubCssIndex
+    ) {
+        if (layout != EpubRenditionLayout.REFLOWABLE) return
+        val body = document.body()
+        // 整页图页的页边距已经归零，再叠一层贴边规则只会和封面的绝对定位规则打架。
+        if (body.hasAttr(MEDIA_ONLY_ATTR)) return
+        val media = body.select("img, svg, video, canvas").filter { element ->
+            element.parents().none { parent ->
+                parent.tagName().equals("svg", ignoreCase = true) ||
+                    parent.tagName().equals("video", ignoreCase = true)
+            }
+        }
+        val firstBlock = firstVisualContent(body)
+        media.forEach { element ->
+            if (!cssIndex.declaresFullWidth(element)) return@forEach
+            val bleedsTop = firstBlock != null &&
+                (firstBlock === element || element.parents().contains(firstBlock))
+            element.attr(
+                BLEED_ATTR,
+                if (bleedsTop) BLEED_HORIZONTAL_TOP else BLEED_HORIZONTAL
+            )
+        }
+    }
+
+    /** 正文里第一个真正有内容（含图片）的元素。 */
+    private fun firstVisualContent(body: org.jsoup.nodes.Element): org.jsoup.nodes.Element? {
+        for (child in body.children()) {
+            if (child.tagName().equals("script", ignoreCase = true) ||
+                child.tagName().equals("style", ignoreCase = true)
+            ) {
+                continue
+            }
+            if (child.text().isNotBlank() || child.selectFirst("img, svg, video, canvas") != null) {
+                return child
+            }
+        }
+        return null
     }
 
     internal fun extractSearchText(resource: EpubResource): String {
@@ -213,6 +291,16 @@ body[data-lumi-layout] a[id*="footnote" i] img {
   vertical-align: -0.14em !important;
   object-fit: contain !important;
 }
+/* 注释引用标记不画下划线：出版社在 <a> 与图标之间留的空白也会被下划线照出来，
+   表现为紧贴"注"字图标左侧的一小段横线。 */
+body[data-lumi-layout] a[data-lumi-footnote-ref="true"] {
+  text-decoration: none !important;
+}
+/* 同文档注释正文改由气泡呈现，正文流里不再重复出现（阅读器排版引擎同样如此）。
+   标记由脚本 resolveFootnoteBodies() 按注释引用启发式添加；气泡克隆内容时会去掉该属性。 */
+[data-lumi-footnote-body="true"] {
+  display: none !important;
+}
 body[data-lumi-layout="reflowable"][data-lumi-cover="true"] {
   position: relative !important;
   width: 100% !important;
@@ -247,6 +335,45 @@ body[data-lumi-layout="reflowable"] table,
 body[data-lumi-layout="reflowable"] pre {
   max-width: 100%;
   overflow-x: auto;
+}
+/* 固定版式书不给图片留兜底时，出版方写成 width/height:100% 的图会被非等比拉伸；
+   只兜底 object-fit，不动 width/height，保住出版方的设计盒。 */
+body[data-lumi-layout="pre_paginated"] img,
+body[data-lumi-layout="pre_paginated"] svg,
+body[data-lumi-layout="pre_paginated"] video,
+body[data-lumi-layout="pre_paginated"] canvas {
+  object-fit: contain;
+}
+/* 出版社显式声明铺满宽度的块级图片：取消左右页边距，贴到屏幕边缘。
+   章首第一张这样的图连顶部页边距一起取消，和原书「顶部贴边」的观感一致。 */
+body[data-lumi-layout="reflowable"] [data-lumi-bleed] {
+  max-width: none !important;
+  width: calc(100% + var(--lumi-inset-left, 0px) + var(--lumi-inset-right, 0px)) !important;
+  margin-left: calc(-1 * var(--lumi-inset-left, 0px)) !important;
+  margin-right: calc(-1 * var(--lumi-inset-right, 0px)) !important;
+}
+body[data-lumi-layout="reflowable"] [data-lumi-bleed="horizontal-top"] {
+  margin-top: calc(-1 * var(--lumi-inset-top, 0px)) !important;
+}
+/* 整页图页不参与页边距排版：reflowable 由封面规则把 margin/padding 清零，
+   固定版式保留出版方的设计盒（JS 只把缩放基准换成完整视口）。 */
+/* 连续滚动下整页图页按满宽 + 自然高度，不能沿用分页的整屏高度，
+   否则一张插图会占满一屏，滚动阅读时中间出现大片空白。 */
+html.lumi-scrolled body[data-lumi-media-only="true"] {
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+html.lumi-scrolled body[data-lumi-media-only="true"] [data-lumi-cover-media="true"] {
+  position: static !important;
+  width: 100% !important;
+  height: auto !important;
+  max-height: none !important;
+  object-fit: contain !important;
+}
+/* 「整页图裁切填满」开启时整页图按屏幕比例裁切铺满，不再等比留白。 */
+html.lumi-crop-page-image body[data-lumi-media-only="true"] [data-lumi-cover-media="true"] {
+  object-fit: cover !important;
 }
 html.lumi-ignore-publisher-background:not(.lumi-night):not(.lumi-sepia):not(.lumi-green):not(.lumi-sepia-dark):not(.lumi-green-dark) {
   background-color: transparent !important;
@@ -473,6 +600,11 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
 }
 """
 
+    private const val MEDIA_ONLY_ATTR = "data-lumi-media-only"
+    private const val BLEED_ATTR = "data-lumi-bleed"
+    private const val BLEED_HORIZONTAL = "horizontal"
+    private const val BLEED_HORIZONTAL_TOP = "horizontal-top"
+
     private val READER_SCRIPT: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
         buildString(
             READER_SCRIPT_PART_1.length + READER_SCRIPT_PART_2.length +
@@ -493,6 +625,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     viewportWidth: 0, viewportHeight: 0, paginating: false, configured: false, mediaSettled: false,
     pendingProgression: undefined, publisherBox: null, publisherBackground: null, scrollGuard: false, initialFragmentApplied: false,
     transition: 'slide', transitionDurationMs: 260, nativePaging: false, animationTimer: 0, suppressClickUntil: 0, preservePublisherBackground: true,
+    imagePageCrop: false, publisherPaintOnly: false,
+    restoreProgressionInclusive: false, pendingLocator: null,
     readerBackgroundColor: null, autoTextColor: null, publisherHasImageBackground: false,
     readerBackgroundActive: false,
     readerBackgroundHasImage: false,
@@ -1278,23 +1412,44 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     return image !== 'none' && image !== '';
   }
 
-  function capturePublisherBackground(body) {
-    if (state.publisherBackground) return;
-    var root = document.documentElement;
-    var rootStyle = window.getComputedStyle(root);
-    var bodyStyle = window.getComputedStyle(body);
-    var hasPaint = function (style) {
-      var image = String(style.backgroundImage || 'none');
-      var color = String(style.backgroundColor || 'transparent').replace(/\s+/g, '');
-      return image !== 'none' && image !== '' || !/^(transparent|rgba(0,0,0,0))$/i.test(color);
-    };
-    var source = hasPaint(rootStyle) ? rootStyle : (hasPaint(bodyStyle) ? bodyStyle : null);
-    // Only an image/gradient counts as the book's own background. A plain paper
-    // color should not hide the reader background the user picked.
-    state.publisherHasImageBackground = hasPublisherBackgroundImage(source);
-    if (!source) return;
-    var computed = {
-      color: source.backgroundColor,
+  function publisherHasPaint(style) {
+    var image = String(style && style.backgroundImage || 'none');
+    var color = String(style && style.backgroundColor || 'transparent').replace(/\s+/g, '');
+    return image !== 'none' && image !== '' ||
+      !/^(transparent|rgba(0,0,0,0))$/i.test(color);
+  }
+
+  /**
+   * 选择原书背景的实际绘制源。
+   *
+   * body 绘制在 html 之上；只要 html/body 任意一边有图片或渐变，就必须把它当成
+   * 原书背景保留下来，不能因为另一边只是白色纯色就误判为“没有背景图”。
+   */
+  function publisherBackgroundSource(rootStyle, bodyStyle) {
+    if (hasPublisherBackgroundImage(bodyStyle)) return bodyStyle;
+    if (hasPublisherBackgroundImage(rootStyle)) return rootStyle;
+    if (publisherHasPaint(rootStyle)) return rootStyle;
+    if (publisherHasPaint(bodyStyle)) return bodyStyle;
+    return null;
+  }
+
+  /**
+   * 合并 html/body 的背景参数：图片/尺寸/位置等取实际图片源，底色优先取该源的
+   * 不透明色，再回退到 html/body 的纯色底，避免透明照片失去原书纸张底色。
+   */
+  function publisherBackgroundComputed(rootStyle, bodyStyle) {
+    var source = publisherBackgroundSource(rootStyle, bodyStyle);
+    if (!source) return null;
+    var color = String(source.backgroundColor || '');
+    if (!isOpaqueBackgroundColor(color)) {
+      if (isOpaqueBackgroundColor(rootStyle.backgroundColor)) {
+        color = rootStyle.backgroundColor;
+      } else if (isOpaqueBackgroundColor(bodyStyle.backgroundColor)) {
+        color = bodyStyle.backgroundColor;
+      }
+    }
+    return {
+      color: color || source.backgroundColor,
       image: source.backgroundImage,
       size: source.backgroundSize,
       position: source.backgroundPosition,
@@ -1304,6 +1459,20 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       clip: source.backgroundClip,
       blendMode: source.backgroundBlendMode
     };
+  }
+
+  function capturePublisherBackground(body) {
+    if (state.publisherBackground) return;
+    var root = document.documentElement;
+    var rootStyle = window.getComputedStyle(root);
+    var bodyStyle = window.getComputedStyle(body);
+    var source = publisherBackgroundSource(rootStyle, bodyStyle);
+    // Only an image/gradient counts as the book's own background. A plain paper
+    // color should not hide the reader background the user picked.
+    state.publisherHasImageBackground = hasPublisherBackgroundImage(source);
+    if (!source) return;
+    var computed = publisherBackgroundComputed(rootStyle, bodyStyle);
+    if (!computed) return;
     state.publisherBackground = {
       fromBody: source === bodyStyle,
       computed: computed,
@@ -1384,26 +1553,16 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     var saved = state.publisherBackground;
     restorePublisherBackground();
     if (!state.preservePublisherBackground) return;
-    // Solid-only book paper must not cover the reader background.
-    if (!state.publisherHasImageBackground) return;
     var root = document.documentElement;
+    var rootStyle = window.getComputedStyle(root);
     var bodyStyle = window.getComputedStyle(document.body);
-    var bodyImage = String(bodyStyle.backgroundImage || 'none');
-    var bodyColor = String(bodyStyle.backgroundColor || 'transparent').replace(/\s+/g, '');
-    var bodyHasPaint = bodyImage !== 'none' && bodyImage !== '' ||
-      !/^(transparent|rgba(0,0,0,0))$/i.test(bodyColor);
-    var computed = bodyHasPaint ? {
-      color: bodyStyle.backgroundColor,
-      image: bodyStyle.backgroundImage,
-      size: bodyStyle.backgroundSize,
-      position: bodyStyle.backgroundPosition,
-      repeat: bodyStyle.backgroundRepeat,
-      attachment: bodyStyle.backgroundAttachment,
-      origin: bodyStyle.backgroundOrigin,
-      clip: bodyStyle.backgroundClip,
-      blendMode: bodyStyle.backgroundBlendMode
-    } : (saved && saved.computed ? saved.computed : null);
-    if (!computed) return;
+    var source = publisherBackgroundSource(rootStyle, bodyStyle);
+    var computed = publisherBackgroundComputed(rootStyle, bodyStyle) ||
+      (saved && saved.computed ? saved.computed : null);
+    // Solid-only book paper must not cover the reader background.
+    state.publisherHasImageBackground = hasPublisherBackgroundImage(source) ||
+      !!(computed && hasPublisherBackgroundImage({ backgroundImage: computed.image }));
+    if (!state.publisherHasImageBackground || !computed) return;
     root.style.setProperty('background-color', 'transparent', 'important');
     root.style.setProperty('background-image', 'none', 'important');
     var layer = publisherBackgroundLayer();
@@ -1424,8 +1583,12 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     document.body.style.setProperty('z-index', '1');
   }
 
+  function isMediaOnlyPage() {
+    return document.body.getAttribute('data-lumi-media-only') === 'true';
+  }
+
   function readerBox() {
-    if (document.body.getAttribute('data-lumi-cover') === 'true') {
+    if (document.body.getAttribute('data-lumi-cover') === 'true' || isMediaOnlyPage()) {
       return { top: 0, right: 0, bottom: 0, left: 0 };
     }
     var box = state.publisherBox;
@@ -1447,6 +1610,14 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     root.style.setProperty('padding-right', '0px', 'important');
   }
 
+  // 铺满宽的图需要把「正文列之外的空间」还回去，所以把两侧与顶部留白写成变量给 CSS 用。
+  function setInsetVariables(body, inset) {
+    body.style.setProperty('--lumi-inset-left', inset.left + 'px');
+    body.style.setProperty('--lumi-inset-right', inset.right + 'px');
+    body.style.setProperty('--lumi-inset-top', inset.top + 'px');
+    body.style.setProperty('--lumi-inset-bottom', inset.bottom + 'px');
+  }
+
   function applyPaginationBox(body) {
     var inset = readerBox();
     var horizontalInset = Math.min(state.viewportWidth - 1, Math.max(0, inset.left + inset.right));
@@ -1456,6 +1627,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       '--lumi-content-height',
       Math.max(1, Math.round(state.viewportHeight - inset.top - inset.bottom)) + 'px'
     );
+    setInsetVariables(body, inset);
     body.style.setProperty('--lumi-column-gap', horizontalInset + 'px');
     body.style.boxSizing = 'border-box';
     body.style.margin = '0px';
@@ -1470,6 +1642,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
 
   function applyScrolledBox(body) {
     var inset = readerBox();
+    setInsetVariables(body, inset);
     body.style.removeProperty('--lumi-page-height');
     body.style.removeProperty('--lumi-column-gap');
     body.style.boxSizing = 'border-box';
@@ -1507,6 +1680,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     state.paginating = true;
     var body = document.body;
     markFootnoteMarkers();
+    resolveFootnoteBodies();
     capturePublisherBox(body);
     capturePublisherBackground(body);
     restorePublisherBox(body);
@@ -1535,16 +1709,23 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       var designWidth = widthMatch ? parseFloat(widthMatch[1]) : (viewBox.length === 4 ? viewBox[2] : body.scrollWidth);
       var designHeight = heightMatch ? parseFloat(heightMatch[1]) : (viewBox.length === 4 ? viewBox[3] : body.scrollHeight);
       // 固定排版书籍也要尊重阅读器的页边距设置：先把整页缩放塞进“视口减去 insets”的盒子，
-      // 再按 insets 偏移。封面（data-lumi-cover）的 insets 为 0，仍然满屏。
+      // 再按 insets 偏移。整页图页（封面/插图页）的 insets 为 0，仍然满屏。
       var fixedInset = readerBox();
       var availableWidth = Math.max(1, state.viewportWidth - fixedInset.left - fixedInset.right);
       var availableHeight = Math.max(1, state.viewportHeight - fixedInset.top - fixedInset.bottom);
-      var scale = Math.min(availableWidth / Math.max(1, designWidth), availableHeight / Math.max(1, designHeight));
+      // 「整页图裁切填满」开启时按较大的比例缩放（铺满屏幕、裁掉溢出），否则等比塞进盒子。
+      var cropping = state.imagePageCrop && isMediaOnlyPage();
+      var widthRatio = availableWidth / Math.max(1, designWidth);
+      var heightRatio = availableHeight / Math.max(1, designHeight);
+      var scale = cropping ? Math.max(widthRatio, heightRatio) : Math.min(widthRatio, heightRatio);
       body.style.width = designWidth + 'px';
       body.style.height = designHeight + 'px';
       body.style.transform = 'scale(' + scale + ')';
-      body.style.marginLeft = (fixedInset.left + Math.max(0, (availableWidth - designWidth * scale) / 2)) + 'px';
-      body.style.marginTop = (fixedInset.top + Math.max(0, (availableHeight - designHeight * scale) / 2)) + 'px';
+      var offsetX = (availableWidth - designWidth * scale) / 2;
+      var offsetY = (availableHeight - designHeight * scale) / 2;
+      // 裁切时居中偏移为负（页面比视口大），必须原样保留，否则被钳成 0 后只裁右下角。
+      body.style.marginLeft = (fixedInset.left + (cropping ? offsetX : Math.max(0, offsetX))) + 'px';
+      body.style.marginTop = (fixedInset.top + (cropping ? offsetY : Math.max(0, offsetY))) + 'px';
       state.pageOffsets = [0];
       state.total = 1;
       state.page = 0;
@@ -1572,10 +1753,12 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       state.pageOffsets = collectOccupiedPages(physicalTotal - 1);
       state.total = Math.max(1, state.pageOffsets.length);
       var target = typeof restoreProgression === 'number'
-        ? Math.floor(restoreProgression * state.total + 0.000001)
+        ? pageFromProgression(restoreProgression, state.total, state.restoreProgressionInclusive)
         : state.page;
       moveToPage(target, false);
     }
+    // 早于分页到达的恢复锚点在这里生效：ready 载荷带回的才是最终页。
+    applyPendingLocator();
     body.style.visibility = 'visible';
     // 分页完成后整页容器的尺寸才确定，这时再压制覆盖整页的纯色"纸张"背景。
     neutralizeSolidPagePaint();
@@ -1982,7 +2165,15 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     };
     state.pendingProgression = typeof liveProgression === 'number' ? liveProgression :
       (typeof config.progressionValue === 'number' ? config.progressionValue : undefined);
+    // 书籍原排版的进度分数按"页尾"保存（(pageIndex + 1) / totalPages），
+    // 自研引擎用 ceil(f * N - ε) - 1 反解；这里同步这套语义，否则固定差一页。
+    state.restoreProgressionInclusive = config.restoreProgressionInclusive === true;
     state.preservePublisherBackground = config.preservePublisherBackground !== false;
+    // 整页图页是否按屏幕比例裁切铺满（默认等比留白）。
+    state.imagePageCrop = config.imagePageCrop === true;
+    document.documentElement.classList.toggle('lumi-crop-page-image', state.imagePageCrop);
+    // 「原排版」套装：阅读器完全不参与配色，原书自己的底色与文字颜色照原样渲染。
+    state.publisherPaintOnly = config.publisherPaintOnly === true;
     state.readerBackgroundColor = config.backgroundColor ? String(config.backgroundColor) : null;
     state.autoTextColor = config.autoTextColor ? String(config.autoTextColor) : null;
     state.readerBackgroundHasImage = config.backgroundImage === true;
@@ -1991,8 +2182,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     capturePublisherBackground(document.body);
     // The reader background shows whenever the book has no image/gradient of its
     // own, or when the user forces their background over the book's.
-    var readerBackgroundActive = !state.preservePublisherBackground ||
-      !state.publisherHasImageBackground;
+    var readerBackgroundActive = !state.publisherPaintOnly &&
+      (!state.preservePublisherBackground || !state.publisherHasImageBackground);
     state.readerBackgroundActive = readerBackgroundActive;
     document.documentElement.classList.toggle(
       'lumi-ignore-publisher-background',
@@ -2021,8 +2212,9 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     }
   }
 
-  function restore(target) {
-    if (!target) return false;
+  /** 文字锚点换算成页号；锚点不可用时返回 null。 */
+  function pageFromLocator(target) {
+    if (!target) return null;
     var range = null;
     if (Number(target.version || 1) >= 2 && target.exact) range = quoteRange(target);
     var node = !range ? nodeAtPath(target.domPath || []) : null;
@@ -2034,15 +2226,35 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       } catch (_) { range = null; }
     }
     if (!range) range = quoteRange(target);
-    if (range) {
-      moveToPage(Math.max(0, Math.min(state.total - 1, pageForRange(range))), true);
-      return true;
-    }
+    if (range) return Math.max(0, Math.min(state.total - 1, pageForRange(range)));
     if (typeof target.progression === 'number') {
-      moveToPage(Math.round(target.progression * Math.max(0, state.total - 1)), true);
+      return Math.round(target.progression * Math.max(0, state.total - 1));
+    }
+    return null;
+  }
+
+  function restore(target) {
+    if (!target) return false;
+    // 文档还没分页时页数只有 1，这时取页会被夹到第 0 页、精确锚点被丢掉；
+    // 先存起来，等 paginate() 算完页数再应用。
+    if (!state.ready) {
+      state.pendingLocator = target;
       return true;
     }
-    return false;
+    var page = pageFromLocator(target);
+    if (page == null) return false;
+    moveToPage(page, true);
+    return true;
+  }
+
+  /** 分页完成后应用早于分页到达的恢复锚点（不额外发页通知，由 ready 载荷带回最终页）。 */
+  function applyPendingLocator() {
+    var pending = state.pendingLocator;
+    if (!pending) return;
+    state.pendingLocator = null;
+    var page = pageFromLocator(pending);
+    if (page == null) return;
+    moveToPage(page, false);
   }
 
   function goToProgression(fraction) {
@@ -2050,6 +2262,21 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     if (!isFinite(normalized)) normalized = 0;
     normalized = Math.max(0, Math.min(1, normalized));
     moveToPage(Math.floor(normalized * state.total), true);
+  }
+
+  /**
+   * 进度分数换算成页号。
+   *
+   * `inclusive` 用于"页尾"语义的存档（书籍原排版）：分数 f = (pageIndex + 1) / totalPages 时
+   * pageIndex = ceil(f * totalPages - ε) - 1；否则按"页首"语义直接取整。
+   */
+  function pageFromProgression(fraction, total, inclusive) {
+    var value = Number(fraction);
+    if (!isFinite(value)) value = 0;
+    value = Math.max(0, Math.min(1, value));
+    var scaled = value * Math.max(1, total);
+    if (inclusive) return Math.max(0, Math.ceil(scaled - 0.000001) - 1);
+    return Math.max(0, Math.floor(scaled + 0.000001));
   }
 
   function pageText(pageIndex) {
@@ -2647,6 +2874,110 @@ private const val READER_SCRIPT_PART_3 = """
     }
   }
 
+  function sameDocumentFootnoteUrl(anchor) {
+    var url;
+    try { url = new URL(anchor.href, document.baseURI); } catch (_) { return null; }
+    if (url.origin !== location.origin || url.pathname !== location.pathname ||
+        url.search !== location.search) return null;
+    return url;
+  }
+
+  /**
+   * 注释正文候选块，按文档顺序：
+   * 1. 语义上明确标注为注释/尾注的块级元素（`<aside epub:type="footnote">` 等）；
+   * 2. 同文档注释引用所指向的正文块 —— 覆盖"段首行内锚点"形态
+   *    （`<p class="zs"><a id="id1a">〔1〕</a>注释正文…</p>`），这类段落没有注释语义、
+   *    只靠 class 是认不出来的，之前就会一直留在正文里。
+   */
+  function footnoteBodyCandidates() {
+    var result = [];
+    if (!document.body) return result;
+    var nodes = document.body.querySelectorAll('aside,section,div,blockquote,li,dd,dt,p,td');
+    for (var i = 0; i < nodes.length; i++) {
+      if (hasFootnoteSemantics(nodes[i], false)) result.push(nodes[i]);
+    }
+    var anchors = document.body.querySelectorAll('a[href]');
+    for (var a = 0; a < anchors.length; a++) {
+      var url = sameDocumentFootnoteUrl(anchors[a]);
+      if (!url || !isFootnoteReference(anchors[a])) continue;
+      var target = footnoteTarget(document, decodedFragment(url));
+      var body = footnoteContentElement(target);
+      if (body && result.indexOf(body) < 0) result.push(body);
+    }
+    return result;
+  }
+
+  /**
+   * 把同文档的注释"引用"与注释"正文"一一配对。
+   *
+   * 出版方导出常有错漏：注释正文没有 id，或多个引用指向同一段正文（《一生之敌》就是这样）。
+   * 先按 fragment 精确配对，再按文档顺序补配，并把引用 href 改写到配对正文的 id 上，
+   * 与阅读器排版引擎（EpubParser.alignFootnoteReferences）的规则保持一致。
+   * 跨文档引用不在本文档处理，避免误隐藏其它章节内容。
+   */
+  function pairSameDocumentFootnoteBodies() {
+    var pairs = [];
+    if (!document.body) return pairs;
+    var references = [];
+    var anchors = document.body.querySelectorAll('a[href]');
+    for (var a = 0; a < anchors.length; a++) {
+      if (sameDocumentFootnoteUrl(anchors[a]) && isFootnoteReference(anchors[a])) references.push(anchors[a]);
+    }
+    if (!references.length) return pairs;
+    var candidates = footnoteBodyCandidates().filter(function (node) {
+      // 引用所在的段落不是注释正文；单条注释正文过大时也不当作注释，避免误隐藏整章外壳。
+      for (var r = 0; r < references.length; r++) {
+        if (node === references[r] || node.contains(references[r])) return false;
+      }
+      return String(node.textContent || '').length <= 16000;
+    });
+    if (!candidates.length) return pairs;
+    var used = [];
+    for (var i = 0; i < references.length; i++) {
+      var anchor = references[i];
+      var fragment = decodedFragment(sameDocumentFootnoteUrl(anchor));
+      var target = fragment ? footnoteTarget(document, fragment) : null;
+      // 注释正文可能是"段首行内锚点"所在的段落，先解析成气泡实际展示的那一块再配对
+      var resolved = footnoteContentElement(target);
+      var body = null;
+      if (resolved) {
+        for (var c = 0; c < candidates.length; c++) {
+          if (used.indexOf(c) < 0 && candidates[c] === resolved) {
+            body = candidates[c];
+            used.push(c);
+            break;
+          }
+        }
+      }
+      if (!body) {
+        for (var n = 0; n < candidates.length; n++) {
+          if (used.indexOf(n) >= 0) continue;
+          body = candidates[n];
+          used.push(n);
+          break;
+        }
+        // href 指错或正文缺 id：补配后把引用改写到该正文，气泡才能取到正确内容。
+        if (body && fragment !== body.id) {
+          if (!body.id) body.id = 'lumi-footnote-auto-' + (i + 1);
+          anchor.setAttribute('href', '#' + body.id);
+        }
+      }
+      if (body) pairs.push({ anchor: anchor, body: body });
+    }
+    return pairs;
+  }
+
+  /**
+   * 同文档注释正文改由气泡呈现，正文流里不再重复出现（与阅读器排版引擎一致）。
+   * 标记由 CSS `[data-lumi-footnote-body="true"]` 隐藏；气泡克隆内容时会去掉该标记。
+   */
+  function resolveFootnoteBodies() {
+    var pairs = pairSameDocumentFootnoteBodies();
+    for (var i = 0; i < pairs.length; i++) {
+      pairs[i].body.setAttribute('data-lumi-footnote-body', 'true');
+    }
+  }
+
   function closeFootnotePopover(immediate) {
     footnoteRequestSerial++;
     var existing = document.getElementById('lumi-footnote-popover');
@@ -2722,6 +3053,7 @@ private const val READER_SCRIPT_PART_3 = """
       node.removeAttribute('class');
       node.removeAttribute('style');
       node.removeAttribute('hidden');
+      node.removeAttribute('data-lumi-footnote-body');
       node.removeAttribute('aria-hidden');
       node.removeAttribute('href');
       node.removeAttribute('target');

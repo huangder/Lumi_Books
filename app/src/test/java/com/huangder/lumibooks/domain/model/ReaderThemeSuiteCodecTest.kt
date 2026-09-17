@@ -126,4 +126,72 @@ class ReaderThemeSuiteCodecTest {
         assertEquals(8f, updated.bookLayoutSettings.marginLeft)
         assertEquals(suite.settings, updated.settings)
     }
+
+    @Test
+    fun normalizationAlwaysKeepsThePublisherSuite() {
+        val normalized = ReaderThemeSuites.normalized(
+            listOf(ReaderThemeSuite(id = "custom", customName = "Custom", settings = ReaderThemeSettings()))
+        )
+
+        val publisher = normalized.first { it.id == ReaderThemeSuites.PUBLISHER_ID }
+        assertEquals(true, publisher.isBookLayoutOnly)
+        assertEquals(ReaderThemeSuites.PUBLISHER_ID, publisher.bookLayoutSettings.backgroundSelection)
+        assertNull(publisher.bookLayoutSettings.textColor)
+    }
+
+    @Test
+    fun publisherSuiteIsNotSelectableForReaderLayout() {
+        val suites = ReaderThemeSuites.defaults()
+        val publisher = suites.first { it.id == ReaderThemeSuites.PUBLISHER_ID }
+
+        assertEquals(false, ReaderThemeSuites.supportsLayout(publisher, ReaderLayoutTarget.READER_LAYOUT))
+        assertEquals(true, ReaderThemeSuites.supportsLayout(publisher, ReaderLayoutTarget.BOOK_LAYOUT))
+    }
+
+    @Test
+    fun activeSuiteFallsBackPerLayout() {
+        val suites = ReaderThemeSuites.normalized(
+            ReaderThemeSuites.defaults() + ReaderThemeSuite(
+                id = "custom",
+                customName = "Custom",
+                settings = ReaderThemeSettings(),
+                bookLayoutSettings = ReaderThemeSettings(textColor = 0xFF112233.toInt())
+            )
+        )
+
+        // 阅读器排版不接受「原排版」，回落到日间。
+        assertEquals(
+            ReaderThemeSuites.DAY_ID,
+            ReaderThemeSuites.resolveActiveId(suites, ReaderThemeSuites.PUBLISHER_ID, ReaderLayoutTarget.READER_LAYOUT)
+        )
+        // 书籍原排版默认「原排版」，也能选中自定义套装。
+        assertEquals(
+            ReaderThemeSuites.PUBLISHER_ID,
+            ReaderThemeSuites.resolveActiveId(suites, null, ReaderLayoutTarget.BOOK_LAYOUT)
+        )
+        assertEquals(
+            "custom",
+            ReaderThemeSuites.resolveActiveId(suites, "custom", ReaderLayoutTarget.BOOK_LAYOUT)
+        )
+        // 不存在的 id 同样回落。
+        assertEquals(
+            ReaderThemeSuites.PUBLISHER_ID,
+            ReaderThemeSuites.resolveActiveId(suites, "missing", ReaderLayoutTarget.BOOK_LAYOUT)
+        )
+    }
+
+    @Test
+    fun stateResolvesActiveSuitePerLayout() {
+        val state = ReaderThemeSuiteState(
+            suites = ReaderThemeSuites.defaults(),
+            activeSuiteId = ReaderThemeSuites.NIGHT_ID,
+            activeBookLayoutSuiteId = ReaderThemeSuites.PUBLISHER_ID
+        )
+
+        assertEquals(ReaderThemeSuites.NIGHT_ID, state.activeSuiteIdFor(ReaderLayoutTarget.READER_LAYOUT))
+        assertEquals(
+            ReaderThemeSuites.PUBLISHER_ID,
+            state.activeSuiteIdFor(ReaderLayoutTarget.BOOK_LAYOUT)
+        )
+    }
 }

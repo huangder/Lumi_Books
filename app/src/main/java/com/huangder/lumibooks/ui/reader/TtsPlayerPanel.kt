@@ -1,16 +1,6 @@
 package com.huangder.lumibooks.ui.reader
 import com.huangder.lumibooks.ui.icons.AppIcons
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -20,7 +10,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -36,13 +25,23 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuAnchorKind
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
+import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
+import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -56,7 +55,6 @@ import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
-import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import java.util.Locale
@@ -98,376 +96,73 @@ fun TtsPlayerPanel(
         }
     }
     val timerActive = sleepTimerRemainingMs != null
-    var showRateMenu by remember { mutableStateOf(false) }
-    var showPitchMenu by remember { mutableStateOf(false) }
-    var showTimerMenu by remember { mutableStateOf(false) }
-    fun hideMenus() {
-        showRateMenu = false
-        showPitchMenu = false
-        showTimerMenu = false
-    }
-
+    val menuHost = LocalLiquidGlassMenuHost.current
+    val rateId = remember { Any() }
+    val pitchId = remember { Any() }
+    val timerId = remember { Any() }
+    var capsuleBounds by remember { mutableStateOf(Rect.Zero) }
+    val followEngineLabel = stringResource(R.string.tts_follow_engine)
+    val cancelTimerLabel = stringResource(R.string.tts_timer_cancel)
     val capsuleShape = RoundedCornerShape(28.dp)
-    val rateMenuShape = RoundedCornerShape(16.dp)
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
-    val motionEnabled = LocalMotionEnabled.current
     val panelBackdrop = rememberLayerBackdrop()
-    val panelHeight by animateDpAsState(
-        targetValue = if (showRateMenu || (showPitchMenu && usesAndroidTts) || showTimerMenu) {
-            328.dp
-        } else {
-            56.dp
-        },
-        animationSpec = if (motionEnabled) {
-            spring(dampingRatio = 0.82f, stiffness = 360f)
-        } else {
-            tween(120)
-        },
-        label = "ttsRateMenuHeight"
-    )
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(panelHeight)
-    ) {
-        AnimatedVisibility(
-            visible = showRateMenu,
-            enter = if (!motionEnabled) fadeIn(tween(120)) else fadeIn(spring(dampingRatio = 0.80f, stiffness = 420f)) +
-                slideInVertically(
-                    animationSpec = spring(dampingRatio = 0.72f, stiffness = 360f),
-                    initialOffsetY = { it / 5 }
-                ) +
-                scaleIn(
-                    animationSpec = spring(dampingRatio = 0.68f, stiffness = 340f),
-                    initialScale = 0.78f,
-                    transformOrigin = TransformOrigin(0.5f, 1f)
-                ),
-            exit = if (!motionEnabled) fadeOut(tween(100)) else fadeOut(spring(dampingRatio = 0.88f, stiffness = 520f)) +
-                slideOutVertically(
-                    animationSpec = spring(dampingRatio = 0.84f, stiffness = 440f),
-                    targetOffsetY = { it / 6 }
-                ) +
-                scaleOut(
-                    animationSpec = spring(dampingRatio = 0.82f, stiffness = 420f),
-                    targetScale = 0.84f,
-                    transformOrigin = TransformOrigin(0.5f, 1f)
-                ),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 64.dp)
-        ) {
-            LiquidGlassSurface(
-                shape = rateMenuShape,
-                fallbackColor = readerBackgroundColor,
-                contentScrimColor = readerBackgroundColor.copy(alpha = 0.18f),
-                forceFallback = forceSolidSurface,
-                modifier = Modifier.width(176.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(vertical = 6.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    if (usesAndroidTts) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(42.dp)
-                                .padding(horizontal = 6.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .then(
-                                    if (speechRateMode == TtsProsodyMode.FOLLOW_ENGINE) {
-                                        Modifier.background(AppColors.Accent.copy(alpha = 0.14f))
-                                    } else {
-                                        Modifier
-                                    }
-                                )
-                                .clickable(
-                                    indication = null,
-                                    interactionSource = remember { MutableInteractionSource() }
-                                ) {
-                                    hideMenus()
-                                    onRateModeChange(TtsProsodyMode.FOLLOW_ENGINE)
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = stringResource(R.string.tts_follow_engine),
-                                color = if (speechRateMode == TtsProsodyMode.FOLLOW_ENGINE) {
-                                    AppColors.Accent
-                                } else {
-                                    readerContentColor
-                                },
-                                fontSize = 13.sp,
-                                fontWeight = if (speechRateMode == TtsProsodyMode.FOLLOW_ENGINE) {
-                                    FontWeight.SemiBold
-                                } else {
-                                    FontWeight.Medium
-                                }
-                            )
-                        }
-                    }
-                    rateOptions.chunked(3).forEach { rowRates ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(42.dp)
-                                .padding(horizontal = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            rowRates.forEach { rate ->
-                                val selected = rate == speechRate &&
-                                    (!usesAndroidTts || speechRateMode == TtsProsodyMode.OVERRIDE)
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight()
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .then(
-                                            if (selected) {
-                                                Modifier.background(AppColors.Accent.copy(alpha = 0.14f))
-                                            } else {
-                                                Modifier
-                                            }
-                                        )
-                                        .clickable(
-                                            indication = null,
-                                            interactionSource = remember { MutableInteractionSource() }
-                                        ) {
-                                            showRateMenu = false
-                                            onRateChange(rate)
-                                        },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = formatSpeechRate(rate),
-                                        color = if (selected) AppColors.Accent else readerContentColor,
-                                        fontSize = 13.sp,
-                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+    fun openMenu(kind: TtsMenuKind, toggle: Boolean = true) {
+        val id = when (kind) {
+            TtsMenuKind.Rate -> rateId
+            TtsMenuKind.Pitch -> pitchId
+            TtsMenuKind.Timer -> timerId
         }
+        val options = when (kind) {
+            TtsMenuKind.Rate -> rateOptions.map { rate ->
+                TtsMenuChoice(formatSpeechRate(rate),
+                    rate == speechRate && (!usesAndroidTts || speechRateMode == TtsProsodyMode.OVERRIDE)
+                ) { onRateChange(rate) }
+            }
+            TtsMenuKind.Pitch -> pitchOptions.map { value ->
+                TtsMenuChoice(formatPitch(value),
+                    value == pitch && pitchMode == TtsProsodyMode.OVERRIDE
+                ) { onPitchChange(value) }
+            }
+            TtsMenuKind.Timer -> timerOptionsMinutes.mapIndexed { index, minutes ->
+                val remaining = sleepTimerRemainingMs?.let { ((it + 59_999) / 60_000).toInt() }
+                TtsMenuChoice(timerOptionLabels[index], minutes == remaining) { onSetSleepTimer(minutes) }
+            } + if (timerActive) listOf(TtsMenuChoice(cancelTimerLabel, destructive = true, action = onCancelSleepTimer)) else emptyList()
+        }
+        val followEngine = if (usesAndroidTts && kind != TtsMenuKind.Timer) {
+            val selected = if (kind == TtsMenuKind.Rate) speechRateMode else pitchMode
+            TtsMenuChoice(followEngineLabel, selected == TtsProsodyMode.FOLLOW_ENGINE) {
+                if (kind == TtsMenuKind.Rate) onRateModeChange(TtsProsodyMode.FOLLOW_ENGINE)
+                else onPitchModeChange(TtsProsodyMode.FOLLOW_ENGINE)
+            }
+        } else null
+        val spec = LiquidGlassMenuSpec(
+            anchorBounds = Rect.Zero,
+            sourceId = id,
+            width = if (kind == TtsMenuKind.Timer) 144.dp else 192.dp,
+            items = emptyList(),
+            preferAbove = true,
+            passThroughBounds = { capsuleBounds },
+            surfaceColor = readerBackgroundColor,
+            contentColor = readerContentColor,
+            forceSolid = forceSolidSurface,
+            content = { enabled, select ->
+                TtsMenuChoices(options, if (kind == TtsMenuKind.Timer) 1 else 3,
+                    followEngine, readerContentColor, enabled, select)
+            }
+        )
+        if (toggle) menuHost?.toggle(spec) else menuHost?.show(spec)
+    }
+    val latestOpenRate by rememberUpdatedState { openMenu(TtsMenuKind.Rate, toggle = false) }
 
-        AnimatedVisibility(
-            visible = showPitchMenu && usesAndroidTts,
-            enter = fadeIn(tween(120)) + slideInVertically(
-                animationSpec = tween(160),
-                initialOffsetY = { it / 5 }
-            ),
-            exit = fadeOut(tween(100)) + slideOutVertically(
-                animationSpec = tween(140),
-                targetOffsetY = { it / 6 }
-            ),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 64.dp)
-        ) {
-            LiquidGlassSurface(
-                shape = rateMenuShape,
-                fallbackColor = readerBackgroundColor,
-                contentScrimColor = readerBackgroundColor.copy(alpha = 0.18f),
-                forceFallback = forceSolidSurface,
-                modifier = Modifier.width(176.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(vertical = 6.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(42.dp)
-                            .padding(horizontal = 6.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .then(
-                                if (pitchMode == TtsProsodyMode.FOLLOW_ENGINE) {
-                                    Modifier.background(AppColors.Accent.copy(alpha = 0.14f))
-                                } else {
-                                    Modifier
-                                }
-                            )
-                            .clickable(
-                                indication = null,
-                                interactionSource = remember { MutableInteractionSource() }
-                            ) {
-                                hideMenus()
-                                onPitchModeChange(TtsProsodyMode.FOLLOW_ENGINE)
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = stringResource(R.string.tts_follow_engine),
-                            color = if (pitchMode == TtsProsodyMode.FOLLOW_ENGINE) {
-                                AppColors.Accent
-                            } else {
-                                readerContentColor
-                            },
-                            fontSize = 13.sp,
-                            fontWeight = if (pitchMode == TtsProsodyMode.FOLLOW_ENGINE) {
-                                FontWeight.SemiBold
-                            } else {
-                                FontWeight.Medium
-                            }
-                        )
-                    }
-                    pitchOptions.chunked(3).forEach { rowPitches ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(42.dp)
-                                .padding(horizontal = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            rowPitches.forEach { pitchOption ->
-                                val selected = pitchMode == TtsProsodyMode.OVERRIDE &&
-                                    pitchOption == pitch
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight()
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .then(
-                                            if (selected) {
-                                                Modifier.background(AppColors.Accent.copy(alpha = 0.14f))
-                                            } else {
-                                                Modifier
-                                            }
-                                        )
-                                        .clickable(
-                                            indication = null,
-                                            interactionSource = remember { MutableInteractionSource() }
-                                        ) {
-                                            hideMenus()
-                                            onPitchChange(pitchOption)
-                                        },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = formatPitch(pitchOption),
-                                        color = if (selected) AppColors.Accent else readerContentColor,
-                                        fontSize = 13.sp,
-                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
-                                    )
-                                }
-                            }
-                            repeat(3 - rowPitches.size) {
-                                Spacer(modifier = Modifier.weight(1f))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        AnimatedVisibility(
-            visible = showTimerMenu,
-            enter = if (!motionEnabled) fadeIn(tween(120)) else fadeIn(spring(dampingRatio = 0.80f, stiffness = 420f)) +
-                slideInVertically(
-                    animationSpec = spring(dampingRatio = 0.72f, stiffness = 360f),
-                    initialOffsetY = { it / 5 }
-                ) +
-                scaleIn(
-                    animationSpec = spring(dampingRatio = 0.68f, stiffness = 340f),
-                    initialScale = 0.78f,
-                    transformOrigin = TransformOrigin(0.5f, 1f)
-                ),
-            exit = if (!motionEnabled) fadeOut(tween(100)) else fadeOut(spring(dampingRatio = 0.88f, stiffness = 520f)) +
-                slideOutVertically(
-                    animationSpec = spring(dampingRatio = 0.84f, stiffness = 440f),
-                    targetOffsetY = { it / 6 }
-                ) +
-                scaleOut(
-                    animationSpec = spring(dampingRatio = 0.82f, stiffness = 420f),
-                    targetScale = 0.84f,
-                    transformOrigin = TransformOrigin(0.5f, 1f)
-                ),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 64.dp)
-        ) {
-            LiquidGlassSurface(
-                shape = rateMenuShape,
-                fallbackColor = readerBackgroundColor,
-                contentScrimColor = readerBackgroundColor.copy(alpha = 0.18f),
-                forceFallback = forceSolidSurface,
-                modifier = Modifier.width(120.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(vertical = 6.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    timerOptionsMinutes.forEachIndexed { index, minutes ->
-                        val label = timerOptionLabels[index]
-                        val offset = sleepTimerRemainingMs?.let { ((it + 59_999) / 60_000).toInt() } ?: -1
-                        val selected = timerActive && minutes == offset
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(42.dp)
-                                .padding(horizontal = 6.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .then(
-                                    if (selected) {
-                                        Modifier.background(AppColors.Accent.copy(alpha = 0.14f))
-                                    } else {
-                                        Modifier
-                                    }
-                                )
-                                .clickable(
-                                    indication = null,
-                                    interactionSource = remember { MutableInteractionSource() }
-                                ) {
-                                    hideMenus()
-                                    onSetSleepTimer(minutes)
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = label,
-                                color = if (selected) AppColors.Accent else readerContentColor,
-                                fontSize = 13.sp,
-                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
-                            )
-                        }
-                    }
-                    if (timerActive) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(42.dp)
-                                .padding(horizontal = 6.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable(
-                                    indication = null,
-                                    interactionSource = remember { MutableInteractionSource() }
-                                ) {
-                                    hideMenus()
-                                    onCancelSleepTimer()
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = stringResource(R.string.tts_timer_cancel),
-                                color = Color(0xFFE53935),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-                }
-            }
-        }
+    Box(modifier = modifier.fillMaxWidth().height(56.dp)) {
 
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .height(56.dp)
+                .onGloballyPositioned { capsuleBounds = it.boundsInWindow() }
                 .pointerInput(Unit) {
                     var totalDrag = 0f
                     detectVerticalDragGestures(
@@ -475,8 +170,7 @@ fun TtsPlayerPanel(
                         onVerticalDrag = { _, dragAmount -> totalDrag += dragAmount },
                         onDragEnd = {
                             if (totalDrag < -24f) {
-                                hideMenus()
-                                showRateMenu = true
+                                latestOpenRate()
                             }
                         }
                     )
@@ -564,16 +258,9 @@ fun TtsPlayerPanel(
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         IconButton(
-                            onClick = {
-                                if (showRateMenu) {
-                                    hideMenus()
-                                } else {
-                                    showRateMenu = true
-                                    showPitchMenu = false
-                                    showTimerMenu = false
-                                }
-                            },
+                            onClick = { openMenu(TtsMenuKind.Rate) },
                             modifier = Modifier.size(36.dp)
+                                .liquidGlassMenuAnchor(rateId, LiquidGlassMenuAnchorKind.Embedded)
                         ) {
                             Icon(
                                 AppIcons.Speedometer,
@@ -597,18 +284,13 @@ fun TtsPlayerPanel(
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier
+                                    .liquidGlassMenuAnchor(pitchId, LiquidGlassMenuAnchorKind.Embedded, 6.dp)
                                     .clip(RoundedCornerShape(6.dp))
                                     .clickable(
                                         indication = null,
                                         interactionSource = remember { MutableInteractionSource() }
                                     ) {
-                                        if (showPitchMenu) {
-                                            hideMenus()
-                                        } else {
-                                            showRateMenu = false
-                                            showPitchMenu = true
-                                            showTimerMenu = false
-                                        }
+                                        openMenu(TtsMenuKind.Pitch)
                                     }
                                     .padding(horizontal = 6.dp, vertical = 6.dp)
                             )
@@ -618,18 +300,13 @@ fun TtsPlayerPanel(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(2.dp),
                             modifier = Modifier
+                                .liquidGlassMenuAnchor(timerId, LiquidGlassMenuAnchorKind.Embedded, 6.dp)
                                 .clip(RoundedCornerShape(6.dp))
                                 .clickable(
                                     indication = null,
                                     interactionSource = remember { MutableInteractionSource() }
                                 ) {
-                                    if (showTimerMenu) {
-                                        hideMenus()
-                                    } else {
-                                        showRateMenu = false
-                                        showPitchMenu = false
-                                        showTimerMenu = true
-                                    }
+                                    openMenu(TtsMenuKind.Timer)
                                 }
                                 .padding(horizontal = 6.dp, vertical = 6.dp)
                         ) {
@@ -664,6 +341,60 @@ fun TtsPlayerPanel(
             }
             }
         }
+    }
+}
+
+internal enum class TtsMenuKind { Rate, Pitch, Timer }
+
+private data class TtsMenuChoice(
+    val label: String,
+    val selected: Boolean = false,
+    val destructive: Boolean = false,
+    val action: () -> Unit
+)
+
+@Composable
+private fun TtsMenuChoices(
+    options: List<TtsMenuChoice>,
+    columns: Int,
+    leading: TtsMenuChoice?,
+    contentColor: Color,
+    enabled: Boolean,
+    select: (() -> Unit) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        leading?.let { TtsChoice(it, contentColor, enabled, select, Modifier.fillMaxWidth()) }
+        options.chunked(columns).forEach { choices ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                choices.forEach { TtsChoice(it, contentColor, enabled, select, Modifier.weight(1f)) }
+                repeat(columns - choices.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TtsChoice(
+    choice: TtsMenuChoice,
+    contentColor: Color,
+    enabled: Boolean,
+    select: (() -> Unit) -> Unit,
+    modifier: Modifier
+) {
+    Box(
+        modifier.heightIn(min = 44.dp).clip(RoundedCornerShape(10.dp))
+            .then(if (choice.selected) Modifier.background(AppColors.Accent.copy(alpha = 0.14f)) else Modifier)
+            .clickable(enabled = enabled, indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                select(choice.action)
+            }.padding(horizontal = 4.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(choice.label, color = when {
+            choice.destructive -> Color(0xFFE53935)
+            choice.selected -> AppColors.Accent
+            else -> contentColor
+        }, fontSize = 13.sp, fontWeight = if (choice.selected) FontWeight.SemiBold else FontWeight.Medium,
+            textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 

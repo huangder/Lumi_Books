@@ -71,6 +71,10 @@ class PageContentView(context: Context) : FrameLayout(context) {
         private const val SEARCH_HIGHLIGHT_RGB = 0x00FFE082
         internal const val TTS_HIGHLIGHT_RGB = 0x00FF9E80
         internal const val UNDERLINE_FLAG = 0xFE
+        /** buildHighlights 用 alpha 字节标记「ReadView 自持的瞬态选区」。 */
+        internal const val READER_SELECTION_FLAG = 0xFD
+        /** 瞬态选区固定使用的透明度（与系统选区 readerSelectionColor 一致）。 */
+        private const val READER_SELECTION_ALPHA = 0x40
     }
 
     private val backgroundImageView = ImageView(context).apply {
@@ -273,6 +277,9 @@ class PageContentView(context: Context) : FrameLayout(context) {
 
     /** 原始 spannable（含真实 BitmapDrawable ImageSpan），供 syncText/moveSlot 使用 */
     private var originalSpannable: Spannable? = null
+    /** 最近一次写入的瞬态跨页选区（章节级），避免拖拽时重复刷同一个范围。 */
+    private var appliedReaderSelection: Pair<Int, Int>? = null
+    private var appliedReaderSelectionColor: Int = 0
     private var justifyLastLine: Boolean = false
     private var writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL
     private var verticalGeometry: VerticalPageGeometry? = null
@@ -292,6 +299,8 @@ class PageContentView(context: Context) : FrameLayout(context) {
         highlights: List<Triple<Int, Int, Int>> = emptyList(),
         verticalGeometry: VerticalPageGeometry? = null
     ) {
+        // 文本被整体重建：瞬态选区缓存失效（新 spannable 由 highlights 重新带上）
+        appliedReaderSelection = null
         this.verticalGeometry = verticalGeometry
         resetPageVerticalPosition()
         if (startChar < 0 || endChar > fullText.length || startChar >= endChar) {
@@ -425,6 +434,15 @@ class PageContentView(context: Context) : FrameLayout(context) {
                     // 涓嬪垝绾匡細浣跨敤鏂囧瓧棰滆壊 + 涓嬪垝绾匡紝涓嶇敾鑳屾櫙
                     val underlineColor = 0xFF000000.toInt() or (hColor and 0x00FFFFFF)
                     spannable.setSpan(WaveUnderlineSpan(underlineColor), localStart, localEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                } else if (hColor ushr 24 == READER_SELECTION_FLAG) {
+                    // 跨页选择：ReadView 自持的瞬态选区（不落库）
+                    spannable.setSpan(
+                        ReaderSelectionHighlightSpan(
+                            (READER_SELECTION_ALPHA shl 24) or (hColor and 0x00FFFFFF)
+                        ),
+                        localStart, localEnd,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
                 } else {
                     spannable.setSpan(
                         ReaderHighlightSpan(hColor),
@@ -465,6 +483,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         val requiresCustomTextDrawing =
             actualSpannable.getSpans(0, actualSpannable.length, ReaderHighlightSpan::class.java).isNotEmpty() ||
                 actualSpannable.getSpans(0, actualSpannable.length, ReaderSearchHighlightSpan::class.java).isNotEmpty() ||
+                actualSpannable.getSpans(0, actualSpannable.length, ReaderSelectionHighlightSpan::class.java).isNotEmpty() ||
                 actualSpannable.getSpans(0, actualSpannable.length, TtsSentenceHighlightSpan::class.java).isNotEmpty() ||
                 actualSpannable.getSpans(0, actualSpannable.length, WaveUnderlineSpan::class.java).isNotEmpty()
         val requiredLayerType = if (requiresCustomTextDrawing) {
@@ -527,6 +546,105 @@ class PageContentView(context: Context) : FrameLayout(context) {
         verticalTextView.invalidate()
         invalidate()
     }
+
+    /**
+     * 原位更新「跨页选择」的瞬态选区高亮。
+     *
+     * 只为拖拽期间服务：不改文本、不重排版、不触发父布局，因此拖动过程中
+     * 每帧调用也不会掉帧。偏移是**章节级**半开区间，页内会自动求交。
+     */
+    fun updateReaderSelection(chapterStart: Int?, chapterEnd: Int?, color: Int) {
+        val requested = if (chapterStart != null && chapterEnd != null && chapterEnd > chapterStart) {
+            chapterStart to chapterEnd
+        } else {
+            null
+        }
+        if (requested == appliedReaderSelection && color == appliedReaderSelectionColor) return
+        appliedReaderSelection = requested
+        appliedReaderSelectionColor = color
+        val actualSpannable = textView.text as? Spannable
+        val sourceSpannable = originalSpannable
+        val targets = buildList {
+            actualSpannable?.let(::add)
+            if (sourceSpannable != null && sourceSpannable !== actualSpannable) add(sourceSpannable)
+        }
+        targets.forEach { text ->
+            text.getSpans(0, text.length, ReaderSelectionHighlightSpan::class.java)
+                .forEach(text::removeSpan)
+        }
+
+        val length = actualSpannable?.length ?: 0
+        val localStart = chapterStart?.minus(chapterStartOffset)?.coerceIn(0, length)
+        val localEnd = chapterEnd?.minus(chapterStartOffset)?.coerceIn(0, length)
+        if (localStart != null && localEnd != null && localStart < localEnd) {
+            targets.forEach { text ->
+                text.setSpan(
+                    ReaderSelectionHighlightSpan(color),
+                    localStart.coerceAtMost(text.length),
+                    localEnd.coerceAtMost(text.length),
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+            if (textView.layerType != View.LAYER_TYPE_SOFTWARE) {
+                textView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+            }
+        }
+        textView.invalidate()
+        justifiedView.invalidate()
+        invalidate()
+    }
+
+    /**
+     * 结束本页的系统选区会话：清掉 Selection span、收起手柄与放大镜。
+     *
+     * 必须在页面文本被替换（翻页槽位轮转）之前调用：否则系统手柄会用失效的
+     * Layout 计算偏移，写出越界选区并崩溃。
+     */
+    fun endNativeSelection() {
+        val spannable = textView.text as? Spannable
+        if (spannable != null) {
+            if (android.text.Selection.getSelectionStart(spannable) >= 0 ||
+                android.text.Selection.getSelectionEnd(spannable) >= 0
+            ) {
+                android.text.Selection.removeSelection(spannable)
+            }
+        }
+        // 派发 CANCEL 终止手柄事件流，Editor 收到后收起选择手柄。
+        val now = android.os.SystemClock.uptimeMillis()
+        val cancel = MotionEvent.obtain(now, now, MotionEvent.ACTION_CANCEL, 0f, 0f, 0)
+        cancel.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+        try {
+            textView.dispatchTouchEvent(cancel)
+        } finally {
+            cancel.recycle()
+        }
+        (textView as? RoundedHighlightTextView)?.endReaderSelectionSession()
+        justifiedView.invalidate()
+        invalidate()
+    }
+
+    /**
+     * 章节级字符偏移处的手柄圆点位置（本 PageContentView 坐标系）。
+     * 偏移不在本页时返回 null。
+     */
+    fun readerSelectionHandlePosition(chapterOffset: Int, trailing: Boolean): android.graphics.PointF? {
+        val length = textView.text?.length ?: 0
+        val local = chapterOffset - chapterStartOffset
+        if (length <= 0 || local < 0 || local > length) return null
+        val point = (textView as? RoundedHighlightTextView)
+            ?.readerHandleCirclePosition(local, trailing) ?: return null
+        return android.graphics.PointF(
+            point.x + textView.left,
+            point.y + textView.top
+        )
+    }
+
+    /** 选区手柄被拖出页面内容区时转交给 ReadView（跨页选择）。 */
+    var onReaderHandleDragBeyondEdge: ((direction: Int, draggingStartHandle: Boolean) -> Unit)?
+        get() = (textView as? RoundedHighlightTextView)?.onReaderHandleDragBeyondEdge
+        set(value) {
+            (textView as? RoundedHighlightTextView)?.onReaderHandleDragBeyondEdge = value
+        }
 
     private fun updateCoverPage(spannable: Spannable) {
         val isMarkedCover = spannable.getSpans(
@@ -640,6 +758,8 @@ class PageContentView(context: Context) : FrameLayout(context) {
         }
         (textView as? RoundedHighlightTextView)?.readerJustificationMode = justificationMode
         justifiedView.readerJustificationMode = justificationMode
+        // 可见层在翻页槽位轮转时可能先于选择层完成排版，回退布局要跟选择层用同一条断行策略。
+        justifiedView.readerBreakStrategy = breakStrategy
         // 🔥 守卫：仅在 padding 实际变更时调用 setPadding，避免无谓的 requestLayout()
         val ml = marginLeftPx.toInt()
         val mt = marginTopPx.toInt()
@@ -704,6 +824,28 @@ class PageContentView(context: Context) : FrameLayout(context) {
         val tx = x - textView.left - textView.paddingLeft
         val ty = y - textView.top - textView.paddingTop
         if (tx < 0f || ty < 0f || ty >= layout.height) return null
+        val line = layout.getLineForVertical(ty.toInt())
+        val pageOffset = (textView as? RoundedHighlightTextView)
+            ?.readerOffsetForHorizontal(line, tx)
+            ?: layout.getOffsetForHorizontal(line, tx)
+        return chapterStartOffset + pageOffset.coerceIn(0, spannable.length - 1)
+    }
+
+    /**
+     * 同 [characterOffsetAt]，但坐标越出正文时不返回 null，而是钳制到页首/页尾的字符。
+     *
+     * 跨页选择需要它：手指拖出页面内容区时，选区应该延伸到该页的首/末字符，
+     * 而不是停在原地（否则拖动与选区对不上）。
+     */
+    fun clampedCharacterOffsetAt(x: Float, y: Float): Int? {
+        if (showingCoverPage) return null
+        val spannable = textView.text ?: return null
+        if (spannable.isEmpty()) return null
+        val layout = textView.layout ?: return null
+        if (layout.lineCount <= 0) return null
+        val tx = (x - textView.left - textView.paddingLeft).coerceIn(0f, layout.width.toFloat())
+        val ty = (y - textView.top - textView.paddingTop)
+            .coerceIn(0f, (layout.height - 1).coerceAtLeast(0).toFloat())
         val line = layout.getLineForVertical(ty.toInt())
         val pageOffset = (textView as? RoundedHighlightTextView)
             ?.readerOffsetForHorizontal(line, tx)
@@ -922,6 +1064,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
 
     /** 清除内容 */
     fun clear() {
+        appliedReaderSelection = null
         textView.text = ""
         justifyLastLine = false
         (textView as? RoundedHighlightTextView)?.readerForceLastLineJustification = false
@@ -955,6 +1098,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         chapterStartOffset: Int = 0,
         verticalGeometry: VerticalPageGeometry? = null
     ) {
+        appliedReaderSelection = null
         this.chapterStartOffset = chapterStartOffset
         this.justifyLastLine = justifyLastLine
         this.verticalGeometry = verticalGeometry

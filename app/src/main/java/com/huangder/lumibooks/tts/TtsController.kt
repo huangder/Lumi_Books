@@ -86,6 +86,7 @@ class TtsController(
     private var activeSentenceSegment: TtsTextSegment? = null
     private var pageTurnSequence = 0L
     private var pendingPageTurn: PendingPageTurn? = null
+    private var pendingPageTurnTimeoutJob: Job? = null
     private var acknowledgedPageTurn: AcknowledgedPageTurn? = null
     /**
      * When false the reader keeps its own position and playback advances on its own. Cleared by a
@@ -438,6 +439,7 @@ class TtsController(
                 }
                 if (origin != TtsPageChangeOrigin.USER) return@withLock
                 // The reader moved elsewhere while playback was waiting for it. Never block playback.
+                cancelPageTurnAckTimeout()
                 pendingPageTurn = null
                 val canContinue = pending.resumeWhenAcknowledged &&
                     _playbackState.value == TtsPlaybackState.PLAYING &&
@@ -579,6 +581,7 @@ class TtsController(
     }
 
     private suspend fun acknowledgePendingPageTurn(pending: PendingPageTurn) {
+        cancelPageTurnAckTimeout()
         acknowledgedPageTurn = AcknowledgedPageTurn(
             sourceLocation = pending.sourceLocation,
             targetLocation = pending.request.location,
@@ -591,6 +594,38 @@ class TtsController(
         ) {
             speakCurrentSegment()
         }
+    }
+
+    /**
+     * 阅读页可能已经不在（应用退到后台被回收、阅读器已关闭）或来不及翻页，
+     * 此时必须放弃等待确认继续朗读，否则会读完一页后长时间停住。
+     */
+    private fun schedulePageTurnAckTimeout(request: TtsPageTurnRequest) {
+        cancelPageTurnAckTimeout()
+        pendingPageTurnTimeoutJob = scope.launch {
+            delay(PAGE_TURN_ACK_TIMEOUT_MS)
+            commandMutex.withLock {
+                val pending = pendingPageTurn ?: return@withLock
+                if (pending.request.requestId != request.requestId) return@withLock
+                pendingPageTurn = null
+                logTtsEvent(
+                    event = "page_turn_ack_timeout",
+                    location = pending.request.location,
+                    requestId = request.requestId
+                )
+                if (pending.resumeWhenAcknowledged &&
+                    _playbackState.value == TtsPlaybackState.PLAYING &&
+                    activeUtteranceId == null
+                ) {
+                    speakCurrentSegment()
+                }
+            }
+        }
+    }
+
+    private fun cancelPageTurnAckTimeout() {
+        pendingPageTurnTimeoutJob?.cancel()
+        pendingPageTurnTimeoutJob = null
     }
 
     suspend fun setSpeechRate(rate: Float) = withContext(Dispatchers.Main.immediate) {
@@ -781,6 +816,7 @@ class TtsController(
         activeEngine.stop()
         crossPageMerge = null
         // Any new playback decision supersedes a turn we were still waiting for.
+        cancelPageTurnAckTimeout()
         pendingPageTurn = null
 
         var target = location
@@ -841,7 +877,10 @@ class TtsController(
                 null
             }
             _pageTurnRequests.emit(request)
-            if (waitForAcknowledgement) return true
+            if (waitForAcknowledgement) {
+                schedulePageTurnAckTimeout(request)
+                return true
+            }
         }
         if (_playbackState.value == TtsPlaybackState.PLAYING) speakCurrentSegment()
         return true
@@ -1041,7 +1080,8 @@ class TtsController(
         playbackSentence = null
         clauses = emptyList()
         clauseIndex = 0
-        _currentSentence.value = null
+        // 不在这里清空 currentSentence：逐句朗读时清空会让悬浮字幕在每句之间闪一下“正在朗读”。
+        // 会话真正结束时由 stopInternal() 清除。
     }
 
     private fun updateAndroidUtteranceRange(utteranceId: String, start: Int, end: Int) {
@@ -1147,12 +1187,14 @@ class TtsController(
         runCatching { pageSource?.close() }
         pageSource = null
         crossPageMerge = null
+        cancelPageTurnAckTimeout()
         pendingPageTurn = null
         acknowledgedPageTurn = null
         followReaderPageTurns = true
         segments = emptyList()
         sentenceIndex = 0
         _currentPage.value = null
+        _currentSentence.value = null
         _activeBookId.value = null
         sessionEngine = null
         pendingResume = null
@@ -1186,6 +1228,7 @@ class TtsController(
 
     private companion object {
         const val PAGE_TURN_CALLBACK_GRACE_NANOS = 1_000_000_000L
+        const val PAGE_TURN_ACK_TIMEOUT_MS = 1_200L
     }
 
     private fun currentProsodySettings() = TtsProsodySettings(

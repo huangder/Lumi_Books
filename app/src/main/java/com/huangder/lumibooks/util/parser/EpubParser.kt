@@ -12,6 +12,7 @@ import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.LeadingMarginSpan
 import android.text.style.QuoteSpan
+import kotlin.math.roundToInt
 import android.util.Base64
 import com.huangder.lumibooks.R
 import java.io.ByteArrayOutputStream
@@ -31,6 +32,7 @@ import com.huangder.lumibooks.util.SeekableBookSource
 import com.huangder.lumibooks.util.epub.EpubPackage
 import com.huangder.lumibooks.util.epub.EpubPackageReader
 import com.huangder.lumibooks.util.epub.EpubPathResolver
+import com.huangder.lumibooks.util.epub.EpubCssIndex
 import com.huangder.lumibooks.util.epub.EpubRenderSession
 import com.huangder.lumibooks.util.epub.BookRenderSource
 import com.huangder.lumibooks.util.epub.BookSearchSource
@@ -56,8 +58,14 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         private const val NATIVE_HTML_CHUNK_THRESHOLD = 192 * 1024
         private const val NATIVE_HTML_CHUNK_TARGET = 64 * 1024
         private const val IMAGE_BITMAP_CACHE_BYTES = 16L * 1024L * 1024L
+        private const val MAX_IMAGE_RESOURCE_BYTES = 64 * 1024 * 1024
+        private const val MAX_VECTOR_BITMAP_WIDTH = 2048
+        private const val MAX_VECTOR_BITMAP_HEIGHT = 4096
         private const val JPEG_HEADER_READ_LIMIT = 256 * 1024
         private const val SIMPLE_IMAGE_HEADER_READ_LIMIT = 64
+        private val hrefRegex = Regex("""href\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+        private val IMAGE_RESOURCE_EXTENSIONS =
+            setOf("jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "svg")
         private val NATIVE_HTML_BOUNDARY_REGEX = Regex(
             """</(?:p|div|blockquote|li|dd|dt|h[1-6])\s*>""",
             RegexOption.IGNORE_CASE
@@ -196,8 +204,21 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         private const val INLINE_IMAGE_PLACEHOLDER_PREFIX = "\u0001lumi-inline-image-"
         private const val INLINE_IMAGE_PLACEHOLDER_SUFFIX = "\u0001"
 
+        /**
+         * 注释引用锚点两端的空白（含不换行空格实体）。
+         * 这些空白同样落在 `URLSpan` 范围内，会被画成紧贴图标的一小段下划线。
+         */
+        private val FOOTNOTE_MARKER_PADDING_REGEX = Regex(
+            """^(?:[\s\u00A0]|&nbsp;|&#160;|&#xa0;)+|(?:[\s\u00A0]|&nbsp;|&#160;|&#xa0;)+$""",
+            RegexOption.IGNORE_CASE
+        )
+
         internal fun inlineImagePlaceholder(index: Int): String =
             INLINE_IMAGE_PLACEHOLDER_PREFIX + index + INLINE_IMAGE_PLACEHOLDER_SUFFIX
+
+        /** 去掉注释引用锚点两端的空白，标记本身保持原有顺序与行内形态。 */
+        internal fun trimFootnoteMarkerPadding(innerHtml: String): String =
+            innerHtml.replace(FOOTNOTE_MARKER_PADDING_REGEX, "")
 
         /**
          * 注释引用图标（注释链接内的 `<img>`，如多看/掌阅导出的"注"字小图）是行内标记，
@@ -214,10 +235,11 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 val openTag = anchor.substring(0, openTagEnd + 1)
                 val innerHtml = anchor.substring(openTagEnd + 1, closeTagStart)
                 if (!isFootnoteAnchorTag(openTag, innerHtml)) return@replace anchor
-                IMAGE_TAG_REGEX.replace(anchor) { image ->
+                val rewrittenInner = IMAGE_TAG_REGEX.replace(innerHtml) { image ->
                     images += image.value
                     inlineImagePlaceholder(images.size - 1)
                 }
+                openTag + trimFootnoteMarkerPadding(rewrittenInner) + "</a>"
             }
             return result to images
         }
@@ -603,6 +625,12 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
     override var contentWidth: Int = 0
     /** 是否加载 EPUB 自带 CSS 样式 */
     override var useEpubCss: Boolean = false
+    /**
+     * 阅读器排版是否还原原书背景装饰（跟随「保留原书背景」设置）。
+     *
+     * 关闭时章节正文里不再插入出版社 CSS 的 background-image 装饰图；墨水屏模式会把它关掉。
+     */
+    override var preserveEpubBackground: Boolean = true
     private var chapters: List<Chapter> = emptyList()
     private var bookTitle: String = ""
     private var bookAuthor: String = ""
@@ -658,6 +686,8 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
     private val anchorOffsets = mutableMapOf<Int, Map<String, Int>>()
     // CSS 文件内容缓存（key = ZIP 内完整路径，避免重复读取同一文件）
     private val cssFileCache = mutableMapOf<String, String>()
+    // 章节样式表规则索引缓存（key = 章节路径，小写）
+    private val cssIndexCache = mutableMapOf<String, EpubCssIndex>()
     // 各章节中识别为注释引用的 href 集合（Canvas 引擎注释气泡用）
     private val footnoteHrefs = mutableMapOf<Int, Set<String>>()
     // 导出错误（正文缺 id）时按顺序配对得到的注释正文，key = 重写后的 href
@@ -786,69 +816,22 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
      * modified and normal archives continue to use their original path.
      */
     private fun prepareCompatibleEpub(sourcePath: String): String {
-        try {
+        val appContext = context ?: run {
+            // Test-only path: surface the raw ZipException instead of consulting the cache.
             ZipFile(sourcePath).use { }
             return sourcePath
-        } catch (error: ZipException) {
-            if (!error.message.orEmpty().contains("duplicate", ignoreCase = true)) throw error
         }
-
-        val appContext = context ?: throw ZipException("EPUB contains duplicate ZIP entries")
-        val source = File(sourcePath)
-        val fingerprint = java.security.MessageDigest.getInstance("SHA-256")
-            .digest("${source.absolutePath}|${source.length()}|${source.lastModified()}".toByteArray())
-            .joinToString("") { byte -> "%02x".format(byte) }
-            .take(24)
-        val directory = File(appContext.cacheDir, "epub_compat").apply { mkdirs() }
-        val target = File(directory, "$fingerprint.epub")
-        if (target.isFile && runCatching { ZipFile(target).use { } }.isSuccess) {
+        val prepared = com.huangder.lumibooks.util.zip.ZipCompatRepair.prepare(
+            context = appContext,
+            sourcePath = sourcePath,
+            cacheDirectoryName = "epub_compat",
+            cachedExtension = "epub",
+            emptyArchiveMessage = "EPUB archive is empty"
+        )
+        if (prepared != sourcePath) {
             android.util.Log.i("EpubParser", "parse: using cached duplicate-entry repair")
-            return target.absolutePath
         }
-
-        val temporary = File(directory, "$fingerprint.tmp")
-        if (target.exists()) target.delete()
-        if (temporary.exists()) temporary.delete()
-        val seenNames = HashSet<String>()
-        try {
-            FileInputStream(source).buffered().use { fileInput ->
-                ZipInputStream(fileInput).use { input ->
-                    temporary.outputStream().buffered().use { fileOutput ->
-                        ZipOutputStream(fileOutput).use { output ->
-                            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                            while (true) {
-                                val entry = input.nextEntry ?: break
-                                val normalizedName = entry.name.replace('\\', '/')
-                                if (seenNames.add(normalizedName)) {
-                                    val copy = ZipEntry(normalizedName).apply {
-                                        entry.comment?.let { comment = it }
-                                        if (entry.time >= 0L) time = entry.time
-                                    }
-                                    output.putNextEntry(copy)
-                                    if (!entry.isDirectory) {
-                                        while (true) {
-                                            val count = input.read(buffer)
-                                            if (count < 0) break
-                                            output.write(buffer, 0, count)
-                                        }
-                                    }
-                                    output.closeEntry()
-                                }
-                                input.closeEntry()
-                            }
-                        }
-                    }
-                }
-            }
-            check(seenNames.isNotEmpty()) { "EPUB archive is empty" }
-            check(temporary.renameTo(target)) { "Unable to finalize compatible EPUB cache" }
-            ZipFile(target).use { }
-            android.util.Log.i("EpubParser", "parse: repaired duplicate ZIP entries")
-            return target.absolutePath
-        } catch (error: Throwable) {
-            temporary.delete()
-            throw error
-        }
+        return prepared
     }
 
     private fun buildLogicalChapterSources(
@@ -1578,6 +1561,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             footnoteHrefs.clear()
             footnoteTextByHref.clear()
         }
+        synchronized(cssIndexCache) { cssIndexCache.clear() }
     }
 
     internal fun decodedImageCacheSizeForTest(): Int = imageBitmapCache.size
@@ -1887,6 +1871,93 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
      * 从章节HTML中提取 <link rel="stylesheet"> 引用的CSS文件，从ZIP读取并拼接为字符串。
      * 使用 cssFileCache 避免重复读取同一文件。
      */
+    /**
+     * 章节预处理：还原出版社的背景装饰图、收下发布方的图片尺寸与内联 SVG。
+     *
+     * 页面在阅读器排版下没有 CSS 布局，背景图原本无处可画；这里把块级元素上命中的
+     * background-image 变成一张插在该元素内容前的装饰图，尽量留住原书观感。
+     */
+    private fun prepareChapterHtml(
+        chapterPath: String,
+        bodyContent: String,
+        zipFile: ZipFile
+    ): PreparedChapterHtml {
+        val cssIndex = chapterCssIndex(chapterPath, bodyContent, zipFile)
+        return ReaderChapterPreparer.prepare(
+            rawHtml = bodyContent,
+            chapterPath = chapterPath,
+            cssIndex = cssIndex,
+            includeBackgroundDecorations = preserveEpubBackground,
+            resourceExists = { path -> isImageResource(zipFile, path) }
+        )
+    }
+
+    private fun isImageResource(zipFile: ZipFile, path: String): Boolean {
+        if (path.substringAfterLast('.', "").lowercase() !in IMAGE_RESOURCE_EXTENSIONS) return false
+        return synchronized(zipLock) {
+            if (sessionZipFile !== zipFile) false else findEntry(zipFile, path) != null
+        }
+    }
+
+    private fun chapterCssIndex(
+        chapterPath: String,
+        html: String,
+        zipFile: ZipFile
+    ): EpubCssIndex {
+        if (chapterPath.isBlank()) return EpubCssIndex.EMPTY
+        val cacheKey = chapterPath.lowercase()
+        synchronized(cssIndexCache) { cssIndexCache[cacheKey] }?.let { return it }
+        val styleSheets = mutableListOf<Pair<String, String>>()
+        styleSheetPaths(chapterPath, html).forEach sheetLoop@{ cssPath ->
+            val css = readStyleSheetText(zipFile, cssPath) ?: return@sheetLoop
+            // @import 的规则排在导入它的样式表之前（CSS 语义）。
+            EpubCssIndex.imports(css).forEach importLoop@{ imported ->
+                val importedPath = EpubPathResolver.resolve(cssPath, imported) ?: return@importLoop
+                readStyleSheetText(zipFile, importedPath)?.let { styleSheets += importedPath to it }
+            }
+            styleSheets += cssPath to css
+        }
+        val index = EpubCssIndex.parse(styleSheets)
+        synchronized(cssIndexCache) { cssIndexCache[cacheKey] = index }
+        return index
+    }
+
+    private fun styleSheetPaths(chapterPath: String, html: String): List<String> {
+        if (!html.contains("stylesheet", ignoreCase = true)) return emptyList()
+        val allLinkTags = Regex("""<link\b[^>]*>""", RegexOption.IGNORE_CASE)
+            .findAll(html)
+            .filter { it.value.contains("stylesheet", ignoreCase = true) }
+            .mapNotNull { hrefRegex.find(it.value)?.groupValues?.get(1) }
+        return allLinkTags
+            .filter { href ->
+                href.isNotBlank() &&
+                    !href.startsWith("data:", ignoreCase = true) &&
+                    !href.startsWith("http://", ignoreCase = true) &&
+                    !href.startsWith("https://", ignoreCase = true)
+            }
+            .mapNotNull { href -> EpubPathResolver.resolve(chapterPath, href) }
+            .distinct()
+            .toList()
+    }
+
+    private fun readStyleSheetText(zipFile: ZipFile, cssPath: String): String? {
+        val cached = synchronized(zipLock) {
+            if (sessionZipFile !== zipFile) null else cssFileCache[cssPath]
+        }
+        if (cached != null) return cached
+        val text = synchronized(zipLock) {
+            if (sessionZipFile !== zipFile) return@synchronized null
+            val entry = findEntry(zipFile, cssPath) ?: return@synchronized null
+            runCatching {
+                zipFile.getInputStream(entry).bufferedReader().use { reader -> reader.readText() }
+            }.getOrNull()?.removePrefix("\uFEFF")
+        } ?: return null
+        synchronized(zipLock) {
+            if (sessionZipFile === zipFile) cssFileCache[cssPath] = text
+        }
+        return text
+    }
+
     private fun extractEpubCss(zipFile: ZipFile, html: String, chapterPath: String): String {
         val chapterDir = chapterPath.substringBeforeLast("/", "")
         val linkRegex = Regex(
@@ -2252,6 +2323,25 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
     private fun validImageSize(width: Int, height: Int): EncodedImageSize? =
         if (width > 0 && height > 0) EncodedImageSize(width, height) else null
 
+    /**
+     * 矢量图的固有尺寸：优先 viewBox（它决定画面比例），其次声明的 width/height。
+     *
+     * 许多封面写 `<svg width="100%" viewBox="0 0 1000 1333">`，按声明宽度算会退化成正方形。
+     */
+    private fun readVectorIntrinsicSize(markup: ByteArray): EncodedImageSize? {
+        val svg = runCatching {
+            com.caverock.androidsvg.SVG.getFromInputStream(java.io.ByteArrayInputStream(markup))
+        }.getOrNull() ?: return null
+        val viewBox = runCatching { svg.documentViewBox }.getOrNull()
+        if (viewBox != null && viewBox.width() > 0f && viewBox.height() > 0f) {
+            validImageSize(viewBox.width().roundToInt(), viewBox.height().roundToInt())?.let { return it }
+        }
+        val width = runCatching { svg.documentWidth }.getOrDefault(0f)
+        val height = runCatching { svg.documentHeight }.getOrDefault(0f)
+        if (!width.isFinite() || !height.isFinite() || width <= 0f || height <= 0f) return null
+        return validImageSize(width.roundToInt(), height.roundToInt())
+    }
+
     private fun readBigEndianInt(bytes: ByteArray, offset: Int): Int =
         ((bytes[offset].toInt() and 0xFF) shl 24) or
             ((bytes[offset + 1].toInt() and 0xFF) shl 16) or
@@ -2272,24 +2362,18 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
     private fun htmlToSpanned(chapterIndex: Int, html: String, zipFile: ZipFile): Spanned {
         val bodyContent = extractBody(html) ?: html
 
-        // 检测是否是纯图片章节（封面）：有 SVG/image 引用但没有 <img> 标签
-        val imgRefRegex = Regex("""(?:xlink:)?href\s*=\s*["']([^"']+\.(?:jpg|jpeg|png|webp|gif))["']""", RegexOption.IGNORE_CASE)
-        val existingImgRegex = Regex("""<img\s[^>]*src\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
-        val svgImageRefs = imgRefRegex.findAll(bodyContent).map { it.groupValues[1] }.distinct().toList()
-        val existingImgSrcs = existingImgRegex.findAll(bodyContent).map { it.groupValues[1] }.toSet()
+        // 出版社用 CSS/内联背景图做的装饰在阅读器排版里没有渲染路径，先把它还原成图片；
+        // 同时收下发布方给的图片尺寸（width="12%" 这类）与内联 SVG，交给 ImageSpan 处理。
+        val chapterPath = chapterSources.getOrNull(chapterIndex)?.path.orEmpty()
+        val prepared = prepareChapterHtml(chapterPath, bodyContent, zipFile)
 
-        // 如果有 SVG 图片引用且没有 <img> 标签，用 <img> 完全替换原始内容
-        val preprocessed = if (svgImageRefs.isNotEmpty() && existingImgSrcs.isEmpty()) {
-            svgImageRefs.joinToString("") { """<img src="$it"/>""" }
-        } else {
-            bodyContent
-        }
-
-        val cleaned = preprocessed
-            .replace(Regex("""<svg[^>]*>.*?</svg>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
+        val cleaned = prepared.html
             .replace(Regex("""<script[^>]*>.*?</script>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
             .replace(Regex("""<style[^>]*>.*?</style>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
-            // 清理空容器（SVG 删除后留下的空 div 等）
+            // 兜底：预处理没能转换的矢量内容（例如 jsoup 解析失败）按旧行为丢弃，
+            // 避免整段 SVG 标记被 Html.fromHtml 当正文吐成乱码。
+            .replace(Regex("""<svg[^>]*>.*?</svg>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
+            // 清理空容器（SVG 处理完留下的空 div 等）
             .replace(Regex("""<div[^>]*>\s*</div>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
             .replace(Regex("""<span[^>]*>\s*</span>""", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), "")
             .replace(Regex("""\n{3,}"""), "\n\n")
@@ -2322,7 +2406,13 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         val inlineMarkerSources = inlineImages
             .mapNotNull { image -> tagAttribute(image, "src")?.trim()?.lowercase() }
             .toSet()
-        val imageGetter = EpubImageGetter(zipFile, contentWidth, inlineMarkerSources)
+        val imageGetter = EpubImageGetter(
+            zipFile = zipFile,
+            pageContentWidth = contentWidth,
+            inlineMarkerSources = inlineMarkerSources,
+            sizeHints = prepared.sizeHints,
+            inlineSvgSources = prepared.inlineSvgSources
+        )
         val parsed = parseNativeHtmlInChunks(withImageBreaks, imageGetter)
         if (chapterIndex != 0) return parsed
 
@@ -2531,14 +2621,16 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
      */
     private inner class LazyEpubImageDrawable(
         private val zipFile: ZipFile,
-        private val entry: ZipEntry,
+        private val entry: ZipEntry?,
         private val cacheKey: String,
         private val originalWidth: Int,
         private val originalHeight: Int,
         private val pageWidth: Int,
         private val drawWidth: Int,
         private val drawHeight: Int,
-        override val isInlineFootnoteMarker: Boolean = false
+        override val isInlineFootnoteMarker: Boolean = false,
+        /** 矢量图源码：非空时按 [drawWidth] × [drawHeight] 光栅化，而不是解码位图。 */
+        private val vectorSource: ByteArray? = null
     ) : Drawable(), InlineFootnoteMarkerDrawable {
         private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
         private var bitmapRef: WeakReference<Bitmap>? = null
@@ -2562,6 +2654,16 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
 
         private fun loadBitmap(): Bitmap? {
             if (decodeFailed) return null
+            vectorSource?.let { markup ->
+                return try {
+                    renderVectorBitmap(markup, drawWidth, drawHeight)
+                } catch (error: Throwable) {
+                    decodeFailed = true
+                    android.util.Log.w("EpubParser", "Vector render failed: $cacheKey", error)
+                    null
+                }
+            }
+            val sourceEntry = entry ?: return null
             return try {
                 synchronized(zipLock) {
                     val opts = BitmapFactory.Options().apply {
@@ -2572,15 +2674,36 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                         )
                         inPreferredConfig = Bitmap.Config.ARGB_8888
                     }
-                    zipFile.getInputStream(entry).use { input ->
+                    zipFile.getInputStream(sourceEntry).use { input ->
                         BitmapFactory.decodeStream(input, null, opts)
                     }
                 }
             } catch (error: Throwable) {
                 decodeFailed = true
-                android.util.Log.w("EpubParser", "Lazy image decode failed: ${entry.name}", error)
+                android.util.Log.w("EpubParser", "Lazy image decode failed: ${sourceEntry.name}", error)
                 null
             }
+        }
+
+        private fun renderVectorBitmap(markup: ByteArray, width: Int, height: Int): Bitmap? {
+            if (width <= 0 || height <= 0) return null
+            // 超高矢量图（整页横幅）按上限降采样光栅化：绘制时仍按排版尺寸铺开，
+            // 只是像素少一点，避免一次分配几十 MB。
+            val scale = minOf(
+                1f,
+                MAX_VECTOR_BITMAP_WIDTH.toFloat() / width,
+                MAX_VECTOR_BITMAP_HEIGHT.toFloat() / height
+            )
+            val bitmapWidth = (width * scale).toInt().coerceAtLeast(1)
+            val bitmapHeight = (height * scale).toInt().coerceAtLeast(1)
+            val svg = com.caverock.androidsvg.SVG.getFromInputStream(
+                java.io.ByteArrayInputStream(markup)
+            )
+            svg.setDocumentWidth(bitmapWidth.toFloat())
+            svg.setDocumentHeight(bitmapHeight.toFloat())
+            val bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
+            svg.renderToCanvas(android.graphics.Canvas(bitmap))
+            return bitmap
         }
 
         private fun drawFailurePlaceholder(canvas: android.graphics.Canvas) {
@@ -2623,7 +2746,11 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         private val zipFile: ZipFile,
         private val pageContentWidth: Int = 0,
         /** 本章节里作为注释引用标记的行内小图（src 原样、小写） */
-        private val inlineMarkerSources: Set<String> = emptySet()
+        private val inlineMarkerSources: Set<String> = emptySet(),
+        /** 发布方给的图片尺寸（`width="12%"` 这类），key = src 原样 */
+        private val sizeHints: Map<String, ReaderImageSizeHint> = emptyMap(),
+        /** 章节里的内联矢量图，key = 虚拟 src（`lumi-inline-svg-N`） */
+        private val inlineSvgSources: Map<String, ByteArray> = emptyMap()
     ) : Html.ImageGetter {
         override fun getDrawable(source: String): Drawable? {
             return try {
@@ -2631,27 +2758,41 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 if (source.startsWith("data:", ignoreCase = true)) {
                     return decodeDataUri(source)
                 }
+                // 内联矢量图：由 ReaderChapterPreparer 换成虚拟 src，光栅化后按图片排版。
+                inlineSvgSources[source]?.let { markup ->
+                    return svgDrawable(source, markup, pageContentWidth)
+                        ?: createSvgPlaceholder()
+                }
 
                 val entryPath = resolveImagePath(source)
                 val entry = findEntry(zipFile, entryPath) ?: run {
                     android.util.Log.w("EpubParser", "getDrawable: findEntry returned null for $entryPath")
                     return createErrorPlaceholder("Image not found: ${entryPath.take(60)}")
                 }
-                if (entry.name.endsWith(".svg", ignoreCase = true)) {
-                    return createSvgPlaceholder()
-                }
-
-                val encodedSize = readEncodedImageSize(zipFile, entry) ?: run {
-                    val bounds = synchronized(zipLock) {
-                        if (sessionZipFile !== zipFile) return createErrorPlaceholder("Reader closed")
-                        BitmapFactory.Options().apply { inJustDecodeBounds = true }.also { options ->
-                            zipFile.getInputStream(entry).use { input ->
-                                BitmapFactory.decodeStream(input, null, options)
+                val density = (context?.resources?.displayMetrics
+                    ?: android.content.res.Resources.getSystem().displayMetrics).density
+                val isInlineMarker = source.trim().lowercase() in inlineMarkerSources
+                val isVector = entry.name.endsWith(".svg", ignoreCase = true)
+                val vectorMarkup = if (isVector) readEntryBytes(entry) else null
+                val encodedSize = if (isVector) {
+                    vectorMarkup?.let(::readVectorIntrinsicSize)
+                } else {
+                    readEncodedImageSize(zipFile, entry) ?: run {
+                        val bounds = synchronized(zipLock) {
+                            if (sessionZipFile !== zipFile) return createErrorPlaceholder("Reader closed")
+                            BitmapFactory.Options().apply { inJustDecodeBounds = true }.also { options ->
+                                zipFile.getInputStream(entry).use { input ->
+                                    BitmapFactory.decodeStream(input, null, options)
+                                }
                             }
                         }
+                        validImageSize(bounds.outWidth, bounds.outHeight)
                     }
-                    validImageSize(bounds.outWidth, bounds.outHeight)
-                } ?: return createErrorPlaceholder("Invalid image dimensions: ${entry.name.take(60)}")
+                } ?: return if (isVector) {
+                    createSvgPlaceholder()
+                } else {
+                    createErrorPlaceholder("Invalid image dimensions: ${entry.name.take(60)}")
+                }
                 val originalWidth = encodedSize.width
                 val originalHeight = encodedSize.height
                 val pageW = pageContentWidth.takeIf { it > 0 } ?: run {
@@ -2661,13 +2802,12 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                     (dm.widthPixels - marginPx * 2).coerceAtLeast(1)
                 }
                 // 注释引用图标按正文字号留出排版槽位，而不是按图片原始像素（多为 72px 大图）
-                val isInlineMarker = source.trim().lowercase() in inlineMarkerSources
                 val targetWidth = if (isInlineMarker) {
-                    val dm = context?.resources?.displayMetrics
-                        ?: android.content.res.Resources.getSystem().displayMetrics
-                    ReaderImageSizing.inlineMarkerSizePx(dm.density)
+                    ReaderImageSizing.inlineMarkerSizePx(density)
                 } else {
-                    pageW
+                    // 出版社给了尺寸（width="12%"、style="width:60px"）就按它排，
+                    // 装饰小图不再被拉满正文列宽。
+                    sizeHints[source]?.resolveWidthPx(pageW, density) ?: pageW
                 }
                 val imageBounds = ReaderImageSizing.bounds(originalWidth, originalHeight, targetWidth)
                     ?: return createErrorPlaceholder("Invalid image dimensions: ${entry.name.take(60)}")
@@ -2681,7 +2821,8 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                     pageWidth = pageW,
                     drawWidth = imageBounds.width,
                     drawHeight = imageBounds.height,
-                    isInlineFootnoteMarker = isInlineMarker
+                    isInlineFootnoteMarker = isInlineMarker,
+                    vectorSource = vectorMarkup
                 ).apply {
                     setBounds(0, 0, imageBounds.width, imageBounds.height)
                 }
@@ -2689,6 +2830,53 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 android.util.Log.e("EpubParser", "getDrawable: exception", e)
                 createErrorPlaceholder("Exception: ${e.message?.take(60) ?: "unknown"}")
             }
+        }
+
+        /** 内联/独立矢量图：按目标宽度等比光栅化，失败才回落到占位框。 */
+        private fun svgDrawable(source: String, markup: ByteArray, contentWidth: Int): Drawable? {
+            val intrinsic = readVectorIntrinsicSize(markup) ?: return null
+            val pageW = contentWidth.takeIf { it > 0 } ?: run {
+                val dm = context?.resources?.displayMetrics
+                    ?: android.content.res.Resources.getSystem().displayMetrics
+                (dm.widthPixels - (88 * dm.density).toInt()).coerceAtLeast(1)
+            }
+            val density = (context?.resources?.displayMetrics
+                ?: android.content.res.Resources.getSystem().displayMetrics).density
+            val targetWidth = sizeHints[source]?.resolveWidthPx(pageW, density) ?: pageW
+            val bounds = ReaderImageSizing.bounds(intrinsic.width, intrinsic.height, targetWidth)
+                ?: return null
+            return LazyEpubImageDrawable(
+                zipFile = zipFile,
+                entry = null,
+                cacheKey = "vector:$source:${bounds.width}x${bounds.height}",
+                originalWidth = intrinsic.width,
+                originalHeight = intrinsic.height,
+                pageWidth = pageW,
+                drawWidth = bounds.width,
+                drawHeight = bounds.height,
+                vectorSource = markup
+            ).apply {
+                setBounds(0, 0, bounds.width, bounds.height)
+            }
+        }
+
+        private fun readEntryBytes(entry: ZipEntry): ByteArray? = synchronized(zipLock) {
+            if (sessionZipFile !== zipFile) return@synchronized null
+            runCatching {
+                zipFile.getInputStream(entry).use { input ->
+                    val output = java.io.ByteArrayOutputStream()
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    var total = 0
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        if (total > MAX_IMAGE_RESOURCE_BYTES) return@synchronized null
+                        output.write(buffer, 0, count)
+                    }
+                    output.toByteArray()
+                }
+            }.getOrNull()
         }
 
         /** 创建 SVG 占位符 Drawable（灰色矩形 + "SVG" 文字） */
@@ -2758,8 +2946,19 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 val commaIdx = dataUri.indexOf(',')
                 if (commaIdx < 0) return null
                 val base64Part = dataUri.substring(commaIdx + 1)
-                val bytes = Base64.decode(base64Part, Base64.DEFAULT)
+                val metadata = dataUri.substring(5, commaIdx)
+                val isBase64 = metadata.split(';').any { it.equals("base64", ignoreCase = true) }
+                val bytes = if (isBase64) {
+                    Base64.decode(base64Part, Base64.DEFAULT)
+                } else {
+                    android.net.Uri.decode(base64Part).toByteArray(Charsets.UTF_8)
+                }
                 if (bytes.isEmpty()) return null
+
+                // 内联矢量图（data:image/svg+xml;base64,...）走同一条矢量光栅化路径。
+                if (metadata.contains("svg", ignoreCase = true)) {
+                    return svgDrawable(dataUri, bytes, pageContentWidth)
+                }
 
                 // 先读尺寸
                 val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }

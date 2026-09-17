@@ -934,6 +934,7 @@ class WebdavSyncManager @Inject constructor(
         "epub" -> BookFormat.EPUB
         "pdf" -> BookFormat.PDF
         "mobi" -> BookFormat.MOBI
+        "cbz" -> BookFormat.CBZ
         else -> BookFormat.TXT
     }
 
@@ -1133,6 +1134,7 @@ class WebdavSyncManager @Inject constructor(
             com.huangder.lumibooks.domain.model.BookFormat.EPUB -> ".epub"
             com.huangder.lumibooks.domain.model.BookFormat.PDF -> ".pdf"
             com.huangder.lumibooks.domain.model.BookFormat.MOBI -> ".mobi"
+            com.huangder.lumibooks.domain.model.BookFormat.CBZ -> ".cbz"
             else -> ".txt"
         }
     }
@@ -1149,6 +1151,7 @@ class WebdavSyncManager @Inject constructor(
             com.huangder.lumibooks.domain.model.BookFormat.EPUB -> "epub"
             com.huangder.lumibooks.domain.model.BookFormat.PDF -> "pdf"
             com.huangder.lumibooks.domain.model.BookFormat.MOBI -> "mobi"
+            com.huangder.lumibooks.domain.model.BookFormat.CBZ -> "cbz"
             else -> "txt"
         }
     }
@@ -1593,7 +1596,10 @@ class WebdavSyncManager @Inject constructor(
             }
         } catch (_: Exception) { null }
 
-        val (title, author) = if (format == BookFormat.EPUB || format == BookFormat.MOBI) {
+        // EPUB/MOBI carry OPF metadata, CBZ may carry ComicInfo.xml.
+        val (title, author) = if (format == BookFormat.EPUB || format == BookFormat.MOBI ||
+            format == BookFormat.CBZ
+        ) {
             try {
                 val metadataParser = com.huangder.lumibooks.util.parser.BookParserFactory.createParser(format, context)
                 try {

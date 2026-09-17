@@ -14,6 +14,7 @@ class PdfParser(private val context: Context) : BookParser {
     override var firstLineIndentChars: Float = 0f
     override var contentWidth: Int = 0
     override var useEpubCss: Boolean = false  // PdfParser 不支持 EPUB CSS，保留接口兼容
+    override var preserveEpubBackground: Boolean = true  // PdfParser 无原书装饰，保留接口兼容
     private var pdfRenderer: PdfRenderer? = null
     private var fileDescriptor: android.os.ParcelFileDescriptor? = null
     private var pageCount: Int = 0

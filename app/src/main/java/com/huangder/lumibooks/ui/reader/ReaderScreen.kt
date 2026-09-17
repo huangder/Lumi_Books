@@ -709,6 +709,29 @@ private fun darkenReaderSolidColor(color: Int): Int {
     return ColorUtils.HSLToColor(hsl)
 }
 
+/**
+ * 这次渲染实际使用的主题。
+ *
+ * 墨水屏与原书排版（「原排版」套装）都固定日间：原排版要让原书自己的底色与文字颜色
+ * 原样呈现，跟随深浅模式注入夜间主题会把整页反色，浅色底上的深色字被翻成白字而看不清。
+ */
+internal fun resolveReaderRenderingTheme(
+    eInkMode: Boolean,
+    publisherPaintSuiteActive: Boolean,
+    nightDisplay: Boolean,
+    readerTheme: String,
+    hasImageBackground: Boolean
+): String {
+    if (eInkMode || publisherPaintSuiteActive) return "day"
+    if (!nightDisplay || hasImageBackground) return readerTheme
+    return when (readerTheme) {
+        "day" -> "night"
+        "sepia" -> "sepia_dark"
+        "green" -> "green_dark"
+        else -> readerTheme
+    }
+}
+
 @OptIn(kotlinx.coroutines.FlowPreview::class)
 @Composable
 fun ReaderScreen(
@@ -726,9 +749,21 @@ fun ReaderScreen(
     val basePageTransition = if (eInkMode) "none" else uiState.pageTransition
     val effectiveReaderTheme = if (eInkMode) "day" else uiState.readerTheme
     val effectiveReaderBackgroundSelection = if (eInkMode) "day" else uiState.readerBackgroundSelection
-    val effectivePreserveEpubBackground = if (eInkMode) false else uiState.preserveEpubBackground
+    // 「原排版」套装：阅读器不参与配色，原书自己的底色/背景图/文字颜色照原样渲染。
+    // 墨水屏模式保持既有行为（强制日间、不渲染原书背景），不受该套装影响。
+    val publisherPaintSuiteActive = uiState.keepsPublisherPaint() && !eInkMode
+    val publisherFallbackPaperColor = 0xFFFBFBFC.toInt()
+    val effectivePreserveEpubBackground = when {
+        publisherPaintSuiteActive -> true
+        eInkMode -> false
+        else -> uiState.preserveEpubBackground
+    }
     val effectiveBionicReadingEnabled = if (eInkMode) false else uiState.bionicReadingEnabled
-    val effectiveReaderTextColor = if (eInkMode) 0xFF111111.toInt() else uiState.readerTextColor
+    val effectiveReaderTextColor = when {
+        publisherPaintSuiteActive -> null
+        eInkMode -> 0xFF111111.toInt()
+        else -> uiState.readerTextColor
+    }
     val selectedReaderBackgroundForTheme = uiState.customReaderBackgrounds.firstOrNull {
         it.selectionKey == effectiveReaderBackgroundSelection
     }
@@ -738,16 +773,13 @@ fun ReaderScreen(
         "night" -> true
         else -> appIsDark
     }
-    val renderingTheme = if (nightDisplay && selectedReaderBackgroundForTheme?.type != ReaderBackgroundType.IMAGE) {
-        when (effectiveReaderTheme) {
-            "day" -> "night"
-            "sepia" -> "sepia_dark"
-            "green" -> "green_dark"
-            else -> effectiveReaderTheme
-        }
-    } else {
-        effectiveReaderTheme
-    }
+    val renderingTheme = resolveReaderRenderingTheme(
+        eInkMode = eInkMode,
+        publisherPaintSuiteActive = publisherPaintSuiteActive,
+        nightDisplay = nightDisplay,
+        readerTheme = effectiveReaderTheme,
+        hasImageBackground = selectedReaderBackgroundForTheme?.type == ReaderBackgroundType.IMAGE
+    )
     val notes by viewModel.notes.collectAsState()
     val readerNotes by viewModel.readerNotes.collectAsState()
     val activeHighlightPalette = ReaderHighlightPalette
@@ -1080,7 +1112,10 @@ fun ReaderScreen(
         when {
             isBookLayout -> epubSelectionClearToken++
             isContinuousScrollMode -> continuousSelectionController.clear()
-            else -> readViewRef.value?.curPageView?.clearSelection()
+            else -> {
+                readViewRef.value?.clearReaderSelection()
+                readViewRef.value?.curPageView?.clearSelection()
+            }
         }
     }
     fun jumpToContinuousChapter(chapterIndex: Int, chapterFraction: Float = 0f) {
@@ -1507,6 +1542,8 @@ fun ReaderScreen(
     }
     // 手柄拖拽中：true → 菜单立即隐藏；false → 以新坐标重新弹出
     var isSelectionDragging by remember { mutableStateOf(false) }
+    // 选区是否已经拖到别的页面（跨页选择成立）→ 底部提示改成「单击目标结尾」
+    var selectionCrossPage by remember(bookId) { mutableStateOf(false) }
     // 每次拖拽结束后自增，触发 SelectionMenuOverlay 重置入场动画
     var menuReappearKey by remember { mutableStateOf(0) }
     // 高亮颜色选择器：true → 菜单从操作按钮切换为6色圆点
@@ -1544,6 +1581,35 @@ fun ReaderScreen(
     val dragHandler = remember { Handler(Looper.getMainLooper()) }
     var dragHideRunnable by remember { mutableStateOf<Runnable?>(null) }
     var dragWatcher by remember { mutableStateOf<SpanWatcher?>(null) }
+
+    // 把一份选区快照落成菜单状态：系统选区（单页）与 ReadView 自持的跨页选区共用。
+    fun applyReaderSelectionInfo(
+        info: com.huangder.lumibooks.ui.reader.engine.SelectionInfo
+    ) {
+        val cStart = info.startPosition
+        val cEnd = info.endPosition
+        val overlappingHighlights = findOverlappingNotes(
+            readerNotes, info.chapterIndex, cStart, cEnd, "highlight"
+        )
+        val overlappingUnderlines = findOverlappingNotes(
+            readerNotes, info.chapterIndex, cStart, cEnd, "underline"
+        )
+        selectionState = SelectionState(
+            chapterIndex = info.chapterIndex,
+            pageInChapter = 0,
+            charStart = cStart,
+            charEnd = cEnd,
+            selectedText = info.selectedText,
+            touchX = info.selStartX,
+            touchY = info.selTopY,
+            overlappingHighlights = overlappingHighlights,
+            overlappingUnderlines = overlappingUnderlines,
+            selTopY = info.selTopY,
+            selBottomY = info.selBottomY,
+            selStartX = info.selStartX,
+            selEndX = info.selEndX
+        )
+    }
 
     // TOC 跳转：当 currentChapterIndex 变化且是 TOC 触发时，跳转 ReadView
     var showToc by remember { mutableStateOf(false) }
@@ -1841,6 +1907,7 @@ fun ReaderScreen(
         else -> 0xFFFBFBFC.toInt()
     }
     val readerBackgroundColorInt = when {
+        publisherPaintSuiteActive -> publisherFallbackPaperColor
         selectedCustomBackground?.type == ReaderBackgroundType.IMAGE -> imageBaseColor
         selectedCustomBackground?.type == ReaderBackgroundType.COLOR -> {
             val base = runCatching { android.graphics.Color.parseColor(selectedCustomBackground.value) }
@@ -1858,9 +1925,11 @@ fun ReaderScreen(
     }
     val readerBackgroundImageSource = selectedCustomBackground
         ?.resolveImageSource(uiState.readerBackgroundImageBlurDp)
-    val readerBackgroundImagePath = readerBackgroundImageSource?.path
+    val readerBackgroundImagePath =
+        if (publisherPaintSuiteActive) null else readerBackgroundImageSource?.path
     val readerBackgroundImageBlurDp = readerBackgroundImageSource?.runtimeBlurDp ?: 0f
     val customBackgroundThemeColorInt = when {
+        publisherPaintSuiteActive -> publisherFallbackPaperColor
         nightDisplay && selectedCustomBackground?.type == ReaderBackgroundType.COLOR -> readerBackgroundColorInt
         selectedCustomBackground != null -> selectedCustomBackground.dominantColor ?: readerBackgroundColorInt
         else -> readerBackgroundColorInt
@@ -2012,7 +2081,11 @@ fun ReaderScreen(
     } else {
         menuBgColor.copy(alpha = 0.18f)
     }
-    val readerGlassBackdrop = rememberLayerBackdrop()
+    val readerGlassBackdrop = rememberLayerBackdrop(onDraw = {
+        // The lens must sample the paper as well as the transparent reader content.
+        drawRect(composeBgColor)
+        drawContent()
+    })
     val activeReaderGlassBackdrop = readerGlassBackdrop.takeIf { isLiquidGlass && !isBookLayout }
     val readerGlassOverlayVisible = uiState.isMenuVisible ||
         isAnySheetOpen ||
@@ -2118,7 +2191,10 @@ fun ReaderScreen(
                     bodyFontWeight = uiState.bodyFontWeight,
                     textColorOverride = effectiveReaderTextColor,
                     theme = renderingTheme,
-                    readerBackgroundColorOverride = if (selectedCustomBackground != null) {
+                    readerBackgroundColorOverride = if (publisherPaintSuiteActive) {
+                        // 只作为翻页快照/透明页的兜底纸色；文档层不会铺这个底色。
+                        publisherFallbackPaperColor
+                    } else if (selectedCustomBackground != null) {
                         readerBackgroundColorInt
                     } else {
                         null
@@ -2126,17 +2202,24 @@ fun ReaderScreen(
                     readerBackgroundImagePath = readerBackgroundImagePath,
                     readerBackgroundImageOpacity = uiState.readerBackgroundImageOpacity,
                     readerBackgroundImageBlurDp = readerBackgroundImageBlurDp,
-                    autoTextColor = if (selectedCustomBackground != null) {
+                    autoTextColor = if (publisherPaintSuiteActive) {
+                        null
+                    } else if (selectedCustomBackground != null) {
                         automaticReaderTextColorInt
                     } else {
                         null
                     },
                     textAlignment = uiState.textAlignment,
                     preservePublisherBackground = effectivePreserveEpubBackground,
+                    imagePageCrop = uiState.pageImageCrop,
+                    publisherPaintOnly = publisherPaintSuiteActive,
                     bionicReadingEnabled = effectiveBionicReadingEnabled,
                     chineseMode = uiState.chineseMode,
                     restoreLocatorJson = uiState.epubLocatorJson,
                     restoreProgression = uiState.pendingPageFraction,
+                    restoreProgressionInclusive =
+                        uiState.pendingPageFractionSemantics ==
+                            ReaderPageFractionSemantics.INCLUSIVE_PAGE_END,
                     initialFragment = epubPendingFragment,
                     continuousScroll = isBookLayoutContinuousScroll,
                     pageTransition = if (isBookLayoutContinuousScroll) "none" else effectivePageTransition,
@@ -2200,8 +2283,13 @@ fun ReaderScreen(
                         epubSearchRequest = null
                         epubLocatorRequest = null
                         epubPageRequest = null
-                        val targetChapter = uiState.currentChapterIndex + direction
-                        if (targetChapter in 0 until uiState.chapterCount) {
+                        if (isBookLayoutContinuousScroll) {
+                            // 滚动模式没有事务式翻章通道。直接切章并把"上一章章尾"
+                            // 作为恢复分数，分页完成后才能正确落到最后一页。
+                            viewModel.onEpubChapterTurn(direction)
+                        } else {
+                            val targetChapter = uiState.currentChapterIndex + direction
+                            if (targetChapter !in 0 until uiState.chapterCount) return@EpubWebViewReader
                             navigateEpub(
                                 EpubNavigationOrigin.CHAPTER_CONTROL,
                                 targetChapter,
@@ -2576,31 +2664,10 @@ fun ReaderScreen(
                                 // 若不 guard，会取消 dragHideRunnable（300ms 重弹计时器），导致菜单永不重弹
                                 if (isSelectionDragging) return
                                 showHighlightColorPicker = false
+                                selectionCrossPage = false
                                 val info = readViewRef.value?.getSelectionInfo(sourceView)
                                     ?: return
-                                val cStart = info.chapterStartOffset + info.pageStart
-                                val cEnd = info.chapterStartOffset + info.pageEnd
-                                val overlappingHighlights = findOverlappingNotes(
-                                    readerNotes, info.chapterIndex, cStart, cEnd, "highlight"
-                                )
-                                val overlappingUnderlines = findOverlappingNotes(
-                                    readerNotes, info.chapterIndex, cStart, cEnd, "underline"
-                                )
-                                selectionState = SelectionState(
-                                    chapterIndex = info.chapterIndex,
-                                    pageInChapter = 0,
-                                    charStart = cStart,
-                                    charEnd = cEnd,
-                                    selectedText = info.selectedText,
-                                    touchX = info.selStartX,
-                                    touchY = info.selTopY,
-                                    overlappingHighlights = overlappingHighlights,
-                                    overlappingUnderlines = overlappingUnderlines,
-                                    selTopY = info.selTopY,
-                                    selBottomY = info.selBottomY,
-                                    selStartX = info.selStartX,
-                                    selEndX = info.selEndX
-                                )
+                                applyReaderSelectionInfo(info)
                                 // 延迟注册拖拽检测 SpanWatcher
                                 dragHideRunnable?.let { dragHandler.removeCallbacks(it) }
                                 dragHandler.postDelayed({
@@ -2623,29 +2690,7 @@ fun ReaderScreen(
                                             val r = Runnable {
                                                 val fresh = readViewRef.value?.getSelectionInfo(sourceView)
                                                 if (fresh != null) {
-                                                    val cs = fresh.chapterStartOffset + fresh.pageStart
-                                                    val ce = fresh.chapterStartOffset + fresh.pageEnd
-                                                    val overlappingHighlights = findOverlappingNotes(
-                                                        readerNotes, fresh.chapterIndex, cs, ce, "highlight"
-                                                    )
-                                                    val overlappingUnderlines = findOverlappingNotes(
-                                                        readerNotes, fresh.chapterIndex, cs, ce, "underline"
-                                                    )
-                                                    selectionState = SelectionState(
-                                                        chapterIndex = fresh.chapterIndex,
-                                                        pageInChapter = 0,
-                                                        charStart = cs,
-                                                        charEnd = ce,
-                                                        selectedText = fresh.selectedText,
-                                                        touchX = fresh.selStartX,
-                                                        touchY = fresh.selTopY,
-                                                        overlappingHighlights = overlappingHighlights,
-                                                        overlappingUnderlines = overlappingUnderlines,
-                                                        selTopY = fresh.selTopY,
-                                                        selBottomY = fresh.selBottomY,
-                                                        selStartX = fresh.selStartX,
-                                                        selEndX = fresh.selEndX
-                                                    )
+                                                    applyReaderSelectionInfo(fresh)
                                                     menuReappearKey++
                                                 }
                                                 isSelectionDragging = false
@@ -2659,6 +2704,36 @@ fun ReaderScreen(
                                     dragWatcher = watcher
                                     sp.setSpan(watcher, 0, sp.length, Spannable.SPAN_INCLUSIVE_INCLUSIVE)
                                 }, 100L)
+                            }
+
+                            override fun onReaderSelectionChanged(
+                                info: com.huangder.lumibooks.ui.reader.engine.SelectionInfo
+                            ) {
+                                // 跨页自持选区：拖拽期间 ReadView 只在落地（松手/吸附）后回调，
+                                // 因此这里直接刷新菜单状态并按新坐标重弹。
+                                isSelectionDragging = false
+                                showHighlightColorPicker = false
+                                applyReaderSelectionInfo(info)
+                                menuReappearKey++
+                            }
+
+                            override fun onReaderSelectionCrossPageExtended() {
+                                // 已经翻到新页：提示改为「单击目标结尾以完成选择」
+                                selectionCrossPage = true
+                            }
+
+                            override fun onReaderSelectionCleared() {
+                                selectionState = null
+                                isSelectionDragging = false
+                                selectionCrossPage = false
+                                showHighlightColorPicker = false
+                            }
+
+                            override fun onReaderSelectionDragStarted() {
+                                // 跨页选区手柄被重新抓住：先收起菜单，松手后按新坐标重弹。
+                                selectionState = null
+                                isSelectionDragging = true
+                                showHighlightColorPicker = false
                             }
 
                             override fun onSelectionAction(
@@ -2874,7 +2949,8 @@ fun ReaderScreen(
         }
 
         // ── 覆盖层 UI（新旧引擎共享） ──
-        ProvideLiquidGlassBackdrop(
+        com.huangder.lumibooks.ui.components.LiquidGlassMenuHost(
+            modifier = Modifier.fillMaxSize(),
             backdrop = activeReaderGlassBackdrop
         ) {
         if (!uiState.isLoading || isAnySheetOpen || uiState.isEpubChapterHandoffInProgress) {
@@ -3270,6 +3346,16 @@ fun ReaderScreen(
 
                 // 底部阅读状态
                 if (!uiState.isMenuVisible) {
+                    // 选字过程中的引导提示：开始选字 → 拖到页角翻页；翻到新页 → 单击目标结尾。
+                    // 拖拽期间 selectionState 会被清空（菜单收起），所以同时看 isSelectionDragging，
+                    // 保证拖动过程中提示常驻。
+                    val selectionHintText = when {
+                        isBookLayout || isContinuousScrollMode -> null
+                        selectionState == null && !isSelectionDragging -> null
+                        selectionCrossPage ->
+                            stringResource(R.string.reader_selection_hint_tap_target)
+                        else -> stringResource(R.string.reader_selection_hint_switch_page)
+                    }
                     ReaderPageCornerOverlay(
                         chapterTitle = chapterTitle,
                         bookProgressPercent = bookProgressPercent,
@@ -3278,8 +3364,11 @@ fun ReaderScreen(
                         rightPageIndex = displayRightPageIndex,
                         rightChapterIndex = displayRightChapterIndex,
                         currentChapterIndex = displayedMenuSnapshot.chapterIndex,
-                        leftMarginDp = uiState.marginLeftDp,
-                        rightMarginDp = uiState.marginRightDp,
+                        // 四角信息区边距独立可调；未设置过的边沿用正文边距 / 旧版默认位置。
+                        leftMarginDp = uiState.readerCornerMargins.resolvedLeftDp(uiState.marginLeftDp),
+                        rightMarginDp = uiState.readerCornerMargins.resolvedRightDp(uiState.marginRightDp),
+                        topMarginDp = uiState.readerCornerMargins.resolvedTopDp(),
+                        bottomMarginDp = uiState.readerCornerMargins.resolvedBottomDp(),
                         topLeft = if (linkReturnLocation == null) {
                             uiState.readerTopLeftContent
                         } else {
@@ -3289,6 +3378,7 @@ fun ReaderScreen(
                         bottomLeft = uiState.readerBottomLeftContent,
                         bottomRight = uiState.readerBottomRightContent,
                         contentColor = Color(readerTextColorInt).copy(alpha = 0.45f),
+                        selectionHintText = selectionHintText,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -3621,12 +3711,16 @@ fun ReaderScreen(
                 currentBackgroundSelection = effectiveReaderBackgroundSelection,
                 customBackgrounds = uiState.customReaderBackgrounds,
                 currentPreserveEpubBackground = effectivePreserveEpubBackground,
-                showPreserveEpubBackground = supportsBookLayout &&
+                showPreserveEpubBackground = supportsBookLayout,
+                currentPageImageCrop = uiState.pageImageCrop,
+                showPageImageCrop = supportsBookLayout &&
                     uiState.renderMode == EpubRenderMode.BOOK_LAYOUT,
+                publisherSuiteActive = publisherPaintSuiteActive,
                 currentMarginLeft = uiState.marginLeftDp,
                 currentMarginRight = uiState.marginRightDp,
                 currentMarginTop = uiState.marginTopDp,
                 currentMarginBottom = uiState.marginBottomDp,
+                currentCornerMargins = uiState.readerCornerMargins,
                 currentBgColor = Color(readerBackgroundColorInt),
                 currentBackgroundImagePath = readerBackgroundImagePath,
                 currentTextColor = Color(readerTextColorInt),
@@ -3655,10 +3749,12 @@ fun ReaderScreen(
                 onAddBackgroundImage = viewModel::addCustomReaderBackgroundImage,
                 onDeleteBackground = viewModel::deleteCustomReaderBackground,
                 onPreserveEpubBackgroundChange = viewModel::savePreserveEpubBackground,
+                onPageImageCropChange = viewModel::savePageImageCrop,
                 onMarginLeftChange = { viewModel.saveMarginLeft(it) },
                 onMarginRightChange = { viewModel.saveMarginRight(it) },
                 onMarginTopChange = { viewModel.saveMarginTop(it) },
                 onMarginBottomChange = { viewModel.saveMarginBottom(it) },
+                onCornerMarginsChange = viewModel::saveReaderCornerMargins,
                 currentParagraphSpacing = uiState.paragraphSpacing,
                 currentFirstLineIndent = uiState.firstLineIndent,
                 onParagraphSpacingChange = { viewModel.saveParagraphSpacing(it) },
@@ -3845,8 +3941,8 @@ fun ReaderScreen(
                     fresh?.let {
                         viewModel.replaceAnnotationRange(
                             chapterIndex = it.chapterIndex,
-                            startPosition = it.chapterStartOffset + it.pageStart,
-                            endPosition = it.chapterStartOffset + it.pageEnd,
+                            startPosition = it.startPosition,
+                            endPosition = it.endPosition,
                             type = target.noteType,
                             color = colorReference
                         )
@@ -3871,8 +3967,8 @@ fun ReaderScreen(
             if (fresh != null) {
                 pendingSelection = PendingSelection(
                     fresh.selectedText, fresh.chapterIndex,
-                    fresh.chapterStartOffset + fresh.pageStart,
-                    fresh.chapterStartOffset + fresh.pageEnd
+                    fresh.startPosition,
+                    fresh.endPosition
                 )
                 showNoteInput = true
             } else {
@@ -3975,10 +4071,8 @@ fun ReaderScreen(
             val text = fresh?.selectedText ?: selectionState?.selectedText
             if (text != null) {
                 val chapterIndex = fresh?.chapterIndex ?: selectionState?.chapterIndex
-                val readerStart = fresh?.let { it.chapterStartOffset + it.pageStart }
-                    ?: selectionState?.charStart
-                val readerEnd = fresh?.let { it.chapterStartOffset + it.pageEnd }
-                    ?: selectionState?.charEnd
+                val readerStart = fresh?.startPosition ?: selectionState?.charStart
+                val readerEnd = fresh?.endPosition ?: selectionState?.charEnd
                 val sourceRange = if (chapterIndex != null && readerStart != null && readerEnd != null) {
                     viewModel.resolveTxtSourceRange(chapterIndex, readerStart, readerEnd)
                 } else {
@@ -4221,11 +4315,15 @@ private fun ReaderPageCornerOverlay(
     currentChapterIndex: Int? = null,
     leftMarginDp: Float,
     rightMarginDp: Float,
+    topMarginDp: Float,
+    bottomMarginDp: Float,
     topLeft: ReaderCornerContent,
     topRight: ReaderCornerContent,
     bottomLeft: ReaderCornerContent,
     bottomRight: ReaderCornerContent,
     contentColor: Color,
+    /** 选字引导提示：与底部两个角信息同一水平线居中显示；null 表示不显示。 */
+    selectionHintText: String? = null,
     modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier) {
@@ -4245,7 +4343,7 @@ private fun ReaderPageCornerOverlay(
                     .align(Alignment.TopCenter)
                     .padding(
                         start = leftMarginDp.coerceAtLeast(0f).dp,
-                        top = 20.dp,
+                        top = topMarginDp.coerceAtLeast(0f).dp,
                         end = rightMarginDp.coerceAtLeast(0f).dp
                     )
             )
@@ -4268,7 +4366,26 @@ private fun ReaderPageCornerOverlay(
                     .padding(
                         start = leftMarginDp.coerceAtLeast(0f).dp,
                         end = rightMarginDp.coerceAtLeast(0f).dp,
-                        bottom = 16.dp
+                        bottom = bottomMarginDp.coerceAtLeast(0f).dp
+                    )
+            )
+        }
+        if (selectionHintText != null) {
+            // 与底部两个角信息同一水平线（同样的底边距 + 导航栏内边距），水平居中。
+            Text(
+                text = selectionHintText,
+                color = contentColor.copy(alpha = 0.75f),
+                fontSize = AppType.Caption,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(
+                        start = leftMarginDp.coerceAtLeast(0f).dp,
+                        end = rightMarginDp.coerceAtLeast(0f).dp,
+                        bottom = bottomMarginDp.coerceAtLeast(0f).dp
                     )
             )
         }
@@ -4365,7 +4482,8 @@ private fun ReaderCornerContentValue(
             color = contentColor,
             fontSize = AppType.Caption,
             textAlign = if (alignEnd) TextAlign.End else TextAlign.Start,
-            maxLines = 2,
+            // 章节标题可能很长，角落信息区只留一行，超出部分用省略号而非换行。
+            maxLines = readerCornerContentMaxLines(content),
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth()
         )

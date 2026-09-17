@@ -28,10 +28,15 @@ import com.huangder.lumibooks.domain.repository.ReadingRepository
 import com.huangder.lumibooks.domain.repository.TagRepository
 import com.huangder.lumibooks.util.FileUtils
 import com.huangder.lumibooks.util.TimeUtils
+import com.huangder.lumibooks.util.AuthorizedFolderDocumentSnapshot
+import com.huangder.lumibooks.util.AuthorizedFolderSnapshot
+import com.huangder.lumibooks.util.AuthorizedFolderSnapshotStore
 import com.huangder.lumibooks.util.AuthorizedStorageManager
+import com.huangder.lumibooks.util.toSnapshot
 import com.huangder.lumibooks.util.parser.BookParserFactory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -72,6 +77,34 @@ data class BookImportCandidate(
     val physicalParentUri: String? get() = sourceDirectoryDocumentUri
 }
 
+/**
+ * One remembered book file of an authorized folder, as shown on the folder-books page.
+ * It carries everything the existing import pipeline needs, so selecting a row can reuse
+ * the regular destination/import flow unchanged.
+ */
+data class AuthorizedFolderFile(
+    val uri: Uri,
+    val name: String,
+    val treeUri: String,
+    val folderName: String,
+    val relativeDirectory: String?,
+    val parentDocumentUri: String?,
+    val documentKey: String?,
+    val size: Long,
+    val lastModified: Long,
+    val bindings: List<FolderRepository.StorageBinding> = emptyList(),
+    val isImported: Boolean = false,
+    val importedCoverPath: String? = null
+)
+
+/** One remembered directory of an authorized folder, used by the folder books browser. */
+data class AuthorizedFolderFolder(
+    val treeUri: String,
+    val name: String,
+    /** Null for the authorized root itself; otherwise a '/'-separated relative path. */
+    val relativePath: String?
+)
+
 data class HomeUiState(
     val books: List<Book> = emptyList(),
     val todayReadingTime: Long = 0,
@@ -86,6 +119,19 @@ data class HomeUiState(
     val importBooksLayoutMode: Int = 2,
     val importMessage: String? = null,
     val authorizedBookDirectories: List<String> = emptyList(),
+    /** Files remembered from the last scan of every authorized folder. */
+    val authorizedFolderFiles: List<AuthorizedFolderFile> = emptyList(),
+    /** Directories remembered from the last scan of every authorized folder. */
+    val authorizedFolderFolders: List<AuthorizedFolderFolder> = emptyList(),
+    /** Folder books page layout: 1 = one row per item, 2/3 = 2/3-column grid. */
+    val folderBooksLayoutMode: Int = 1,
+    /** Folder books page sorting. */
+    val folderBooksSortMode: FolderBooksSortMode = FolderBooksSortMode.NAME,
+    val folderBooksSortAscending: Boolean = true,
+    /** True while an authorized folder scan is running in the background. */
+    val authorizedFolderScanning: Boolean = false,
+    /** One-shot toast text produced by the folder-books page. */
+    val authorizedFolderMessage: String? = null,
     val tagMessage: String? = null,
     val error: String? = null,
     val tags: List<LibraryTag> = emptyList(),
@@ -117,11 +163,12 @@ class HomeViewModel @Inject constructor(
     private val dataStoreManager: DataStoreManager,
     private val application: Application,
     private val webdavSyncManager: com.huangder.lumibooks.data.sync.WebdavSyncManager,
-    private val authorizedStorageManager: AuthorizedStorageManager
+    private val authorizedStorageManager: AuthorizedStorageManager,
+    private val authorizedFolderSnapshotStore: AuthorizedFolderSnapshotStore
 ) : ViewModel() {
 
     private companion object {
-        val SUPPORTED_BOOK_EXTENSIONS = setOf("epub", "pdf", "txt", "mobi")
+        val SUPPORTED_BOOK_EXTENSIONS = setOf("epub", "pdf", "txt", "mobi", "cbz")
         const val READING_HISTORY_START_DATE = "1970-01-01"
     }
 
@@ -134,6 +181,8 @@ class HomeViewModel @Inject constructor(
     // refreshes until the whole batch is complete so the cover collage is computed once.
     private var folderPreviewInitializationSuspended = false
     private val authorizedStorageMutex = Mutex()
+    private var authorizedFolderSnapshotJob: Job? = null
+    private var authorizedFolderRefreshJob: Job? = null
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     private val dayLabels = listOf(
@@ -157,6 +206,8 @@ class HomeViewModel @Inject constructor(
         loadBookshelfLayoutMode()
         loadBookshelfSortMode()
         loadImportBooksLayoutMode()
+        loadFolderBooksLayoutMode()
+        loadFolderBooksSort()
         loadAuthorizedBookDirectories()
     }
 
@@ -324,7 +375,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun setBookshelfLayoutMode(mode: Int) {
-        val normalizedMode = mode.coerceIn(1, 3)
+        val normalizedMode = com.huangder.lumibooks.domain.model.BookshelfLayout.normalize(mode)
         _uiState.value = _uiState.value.copy(bookshelfLayoutMode = normalizedMode)
         viewModelScope.launch {
             dataStoreManager.saveBookshelfLayoutMode(normalizedMode)
@@ -336,6 +387,57 @@ class HomeViewModel @Inject constructor(
             dataStoreManager.importBooksLayoutMode.collectLatest { mode ->
                 _uiState.value = _uiState.value.copy(importBooksLayoutMode = mode)
             }
+        }
+    }
+
+    private fun loadFolderBooksLayoutMode() {
+        viewModelScope.launch {
+            dataStoreManager.folderBooksLayoutMode.collectLatest { mode ->
+                _uiState.value = _uiState.value.copy(folderBooksLayoutMode = mode)
+            }
+        }
+    }
+
+    fun setFolderBooksLayoutMode(mode: Int) {
+        val normalizedMode = mode.coerceIn(1, 3)
+        _uiState.value = _uiState.value.copy(folderBooksLayoutMode = normalizedMode)
+        viewModelScope.launch {
+            dataStoreManager.saveFolderBooksLayoutMode(normalizedMode)
+        }
+    }
+
+    private fun loadFolderBooksSort() {
+        viewModelScope.launch {
+            dataStoreManager.folderBooksSortMode.collectLatest { stored ->
+                val mode = FolderBooksSortMode.entries.firstOrNull { it.name == stored }
+                    ?: FolderBooksSortMode.NAME
+                _uiState.value = _uiState.value.copy(folderBooksSortMode = mode)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.folderBooksSortAscending.collectLatest { ascending ->
+                _uiState.value = _uiState.value.copy(folderBooksSortAscending = ascending)
+            }
+        }
+    }
+
+    /** Switching the field adopts that field's natural direction (name/format asc, size/time desc). */
+    fun setFolderBooksSortMode(mode: FolderBooksSortMode) {
+        val ascending = mode.defaultAscending
+        _uiState.value = _uiState.value.copy(
+            folderBooksSortMode = mode,
+            folderBooksSortAscending = ascending
+        )
+        viewModelScope.launch {
+            dataStoreManager.saveFolderBooksSortMode(mode.name)
+            dataStoreManager.saveFolderBooksSortAscending(ascending)
+        }
+    }
+
+    fun setFolderBooksSortAscending(ascending: Boolean) {
+        _uiState.value = _uiState.value.copy(folderBooksSortAscending = ascending)
+        viewModelScope.launch {
+            dataStoreManager.saveFolderBooksSortAscending(ascending)
         }
     }
 
@@ -611,6 +713,167 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Starts observing the remembered content of the authorized folders so the folder-books page
+     * can render without scanning. Existing installs have authorized folders but no snapshot yet,
+     * so that single gap is filled with one background scan.
+     */
+    fun startAuthorizedFolderSnapshot(context: Context) {
+        if (authorizedFolderSnapshotJob == null) {
+            authorizedFolderSnapshotJob = viewModelScope.launch {
+                withContext(Dispatchers.IO) { authorizedFolderSnapshotStore.load() }
+                combine(
+                    authorizedFolderSnapshotStore.snapshot,
+                    bookRepository.getAllBooks()
+                ) { snapshot, books -> snapshot to books }
+                    .collectLatest { (snapshot, books) ->
+                        _uiState.value = _uiState.value.copy(
+                            authorizedFolderFiles = buildAuthorizedFolderFiles(snapshot, books),
+                            authorizedFolderFolders = buildAuthorizedFolderFolders(snapshot)
+                        )
+                    }
+            }
+        }
+        if (authorizedFolderRefreshJob?.isActive == true) return
+        viewModelScope.launch {
+            val snapshot = withContext(Dispatchers.IO) { authorizedFolderSnapshotStore.load() }
+            val directories = runCatching { dataStoreManager.authorizedBookDirectories.first() }
+                .getOrDefault(emptyList())
+            if (directories.isNotEmpty() && directories.any { it !in snapshot.trees }) {
+                refreshAuthorizedFolders(context)
+            }
+        }
+    }
+
+    /**
+     * Re-runs the full authorized folder reconciliation in the background and remembers the new
+     * content. The page keeps its current list and only reports the outcome through a toast.
+     */
+    fun refreshAuthorizedFolders(context: Context) {
+        if (authorizedFolderRefreshJob?.isActive == true) return
+        _uiState.value = _uiState.value.copy(
+            authorizedFolderScanning = true,
+            authorizedFolderMessage = null
+        )
+        authorizedFolderRefreshJob = viewModelScope.launch {
+            val result = runCatching {
+                val directories = dataStoreManager.authorizedBookDirectories.first().map(Uri::parse)
+                if (directories.isEmpty()) {
+                    null
+                } else {
+                    withContext(Dispatchers.IO) { reconcileAuthorizedBooks(context, directories) }
+                }
+            }
+            val message = result.fold(
+                onSuccess = { discovery ->
+                    when {
+                        discovery == null -> application.getString(
+                            R.string.import_no_authorized_directory
+                        )
+                        discovery.newFileCount > 0 -> application.getString(
+                            R.string.import_folder_books_new_found,
+                            discovery.newFileCount
+                        )
+                        discovery.inaccessibleDirectories > 0 -> application.getString(
+                            R.string.import_directory_permission_lost
+                        )
+                        else -> application.getString(R.string.import_no_new_books)
+                    }
+                },
+                onFailure = { error ->
+                    application.getString(R.string.import_failed, error.message.orEmpty())
+                }
+            )
+            _uiState.value = _uiState.value.copy(
+                authorizedFolderScanning = false,
+                authorizedFolderMessage = message
+            )
+        }
+    }
+
+    fun clearAuthorizedFolderMessage() {
+        _uiState.value = _uiState.value.copy(authorizedFolderMessage = null)
+    }
+
+    /**
+     * Resolves the books returned by the folder books page so the caller can continue into the
+     * regular destination/import flow. Reads the remembered snapshot instead of scanning.
+     */
+    fun resolveAuthorizedFolderFiles(
+        uris: Set<String>,
+        onResolved: (List<AuthorizedFolderFile>) -> Unit
+    ) {
+        if (uris.isEmpty()) {
+            onResolved(emptyList())
+            return
+        }
+        viewModelScope.launch {
+            val files = withContext(Dispatchers.IO) {
+                val snapshot = authorizedFolderSnapshotStore.load()
+                val books = runCatching { bookRepository.getAllBooks().first() }
+                    .getOrDefault(emptyList())
+                buildAuthorizedFolderFiles(snapshot, books)
+                    .filter { it.uri.toString() in uris }
+            }
+            onResolved(files)
+        }
+    }
+
+    private fun buildAuthorizedFolderFiles(
+        snapshot: AuthorizedFolderSnapshot,
+        books: List<Book>
+    ): List<AuthorizedFolderFile> {
+        val result = mutableListOf<AuthorizedFolderFile>()
+        val seen = mutableSetOf<String>()
+        snapshot.trees.values.forEach { tree ->
+            val bindingsByPath = authorizedStorageBindingsByPath(tree.treeUri, tree.directories)
+            tree.documents.forEach { document: AuthorizedFolderDocumentSnapshot ->
+                if (!seen.add(document.identity)) return@forEach
+                val match = findMatchingAuthorizedBook(
+                    documentKey = document.documentKey,
+                    uri = document.documentUri,
+                    sha256 = null,
+                    books = books
+                )
+                result += AuthorizedFolderFile(
+                    uri = Uri.parse(document.documentUri),
+                    name = document.displayName,
+                    treeUri = tree.treeUri,
+                    folderName = tree.rootName,
+                    relativeDirectory = document.relativeDirectory,
+                    parentDocumentUri = document.parentDocumentUri,
+                    documentKey = document.documentKey,
+                    size = document.size,
+                    lastModified = document.lastModified,
+                    bindings = bindingsByPath[document.relativeDirectory.orEmpty()].orEmpty(),
+                    isImported = match != null,
+                    importedCoverPath = match?.coverPath
+                )
+            }
+        }
+        return result
+    }
+
+    private fun buildAuthorizedFolderFolders(
+        snapshot: AuthorizedFolderSnapshot
+    ): List<AuthorizedFolderFolder> {
+        val result = mutableListOf<AuthorizedFolderFolder>()
+        val seen = mutableSetOf<String>()
+        for (tree in snapshot.trees.values) {
+            for (directory in tree.directories) {
+                val key = "${tree.treeUri}|${directory.relativePath.orEmpty()}"
+                if (!seen.add(key)) continue
+                result += AuthorizedFolderFolder(
+                    treeUri = tree.treeUri,
+                    name = directory.name.takeIf { it.isNotBlank() }
+                        ?: directory.relativePath?.substringAfterLast('/').orEmpty(),
+                    relativePath = directory.relativePath
+                )
+            }
+        }
+        return result
+    }
+
     private suspend fun discoverNewBooks(
         context: Context,
         directories: List<Uri>
@@ -618,7 +881,15 @@ class HomeViewModel @Inject constructor(
         val documents = mutableListOf<BookDocument>()
         var inaccessibleDirectories = 0
         directories.forEach { treeUri ->
-            runCatching { documents += discoverBooks(context, treeUri) }
+            runCatching {
+                val scan = authorizedStorageManager.scan(context, treeUri)
+                authorizedFolderSnapshotStore.replaceTree(
+                    treeUri = treeUri,
+                    scan = scan,
+                    rootName = authorizedRootName(context, scan, treeUri)
+                )
+                documents += discoverBooks(context, treeUri, scan)
+            }
                 .onFailure {
                     inaccessibleDirectories++
                 }
@@ -669,38 +940,12 @@ class HomeViewModel @Inject constructor(
         treeUri: Uri,
         scan: AuthorizedStorageManager.ScanResult = authorizedStorageManager.scan(context, treeUri)
     ): List<BookDocument> {
-        val sourceDirectoryName = scan.directories
-            .firstOrNull { it.relativePath == null }
-            ?.name
-            ?.takeIf { it.isNotBlank() }
-            ?: resolveAuthorizedDirectoryName(context, treeUri)
-        val directoriesByPath = scan.directories.associateBy { it.relativePath.orEmpty() }
+        val sourceDirectoryName = authorizedRootName(context, scan, treeUri)
+        val bindingsByPath = authorizedStorageBindingsByPath(
+            treeUri = treeUri.toString(),
+            directories = scan.directories.map { it.toSnapshot() }
+        )
         return scan.documents.map { item ->
-            val rootBinding = scan.directories.firstOrNull { it.relativePath == null }?.let { directory ->
-                FolderRepository.StorageBinding(
-                    name = directory.name,
-                    treeUri = directory.treeUri.toString(),
-                    documentUri = directory.uri.toString(),
-                    parentUri = directory.parentUri?.toString()
-                )
-            }
-            val childBindings = item.relativeDirectory.orEmpty()
-                .split('/')
-                .filter(String::isNotBlank)
-                .runningFold("") { path, segment ->
-                    if (path.isBlank()) segment else "$path/$segment"
-                }
-                .drop(1)
-                .mapNotNull { path -> directoriesByPath[path] }
-                .map { directory ->
-                    FolderRepository.StorageBinding(
-                        name = directory.name,
-                        treeUri = directory.treeUri.toString(),
-                        documentUri = directory.uri.toString(),
-                        parentUri = directory.parentUri?.toString()
-                    )
-                }
-            val bindings = listOfNotNull(rootBinding) + childBindings
             BookDocument(
                 uri = item.uri,
                 name = item.name,
@@ -711,10 +956,20 @@ class HomeViewModel @Inject constructor(
                 sourceDocumentKey = item.documentKey,
                 sourceLastModified = item.lastModified,
                 sourceSize = item.size,
-                sourceDirectoryBindings = bindings
+                sourceDirectoryBindings = bindingsByPath[item.relativeDirectory.orEmpty()].orEmpty()
             )
         }
     }
+
+    private fun authorizedRootName(
+        context: Context,
+        scan: AuthorizedStorageManager.ScanResult,
+        treeUri: Uri
+    ): String = scan.directories
+        .firstOrNull { it.relativePath == null }
+        ?.name
+        ?.takeIf { it.isNotBlank() }
+        ?: resolveAuthorizedDirectoryName(context, treeUri)
 
     /** Reconciles authorized documents with existing records without deleting user data. */
     private suspend fun reconcileAuthorizedBooks(
@@ -725,9 +980,15 @@ class HomeViewModel @Inject constructor(
         val allDirectories = mutableListOf<AuthorizedStorageManager.ScannedDirectory>()
         val scannedTreeUris = mutableSetOf<String>()
         var inaccessibleDirectories = 0
+        var newFileCount = 0
         directories.forEach { treeUri ->
             runCatching {
                 val scan = authorizedStorageManager.scan(context, treeUri)
+                newFileCount += authorizedFolderSnapshotStore.replaceTree(
+                    treeUri = treeUri,
+                    scan = scan,
+                    rootName = authorizedRootName(context, scan, treeUri)
+                )
                 allDirectories += scan.directories
                 scannedTreeUris += treeUri.toString()
                 ensureStorageFolders(scan)
@@ -848,7 +1109,8 @@ class HomeViewModel @Inject constructor(
             documents = newDocuments,
             inaccessibleDirectories = inaccessibleDirectories,
             updatedCount = updatedCount,
-            missingCount = missingCount
+            missingCount = missingCount,
+            newFileCount = newFileCount
         )
     }
 
@@ -1091,7 +1353,9 @@ class HomeViewModel @Inject constructor(
         val inaccessibleDirectories: Int = 0,
         val noAuthorizedDirectories: Boolean = false,
         val updatedCount: Int = 0,
-        val missingCount: Int = 0
+        val missingCount: Int = 0,
+        /** Book files that appeared in the authorized folders compared with the last snapshot. */
+        val newFileCount: Int = 0
     ) {
         fun messageWhenEmpty(context: Context): String? {
             if (documents.isNotEmpty()) return null
@@ -1128,6 +1392,7 @@ class HomeViewModel @Inject constructor(
         "epub" -> BookFormat.EPUB
         "pdf" -> BookFormat.PDF
         "mobi" -> BookFormat.MOBI
+        "cbz" -> BookFormat.CBZ
         else -> BookFormat.TXT
     }
 
