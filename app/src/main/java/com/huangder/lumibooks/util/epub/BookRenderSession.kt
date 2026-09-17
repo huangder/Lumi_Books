@@ -33,6 +33,14 @@ interface BookRenderSession : AutoCloseable {
     /** 用户自定义阅读字体经 WebViewAssetLoader 提供的 URL；不使用返回 null。 */
     fun readerFontUrl(filePath: String?): String?
 
+    /**
+     * 用户自定义阅读背景图经 WebViewAssetLoader 提供的 URL。
+     *
+     * 原排版模式下背景图必须画在页面内部：页面之间才能互相遮住，
+     * 否则滑动翻页时前后两页的文字会叠在一起。不使用返回 null。
+     */
+    fun readerBackgroundUrl(filePath: String?): String?
+
     fun renditionLayout(chapterIndex: Int): EpubRenditionLayout
 
     fun pageProgressionDirection(chapterIndex: Int): EpubPageProgressionDirection

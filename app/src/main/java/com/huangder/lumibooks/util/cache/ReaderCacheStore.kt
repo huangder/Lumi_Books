@@ -74,7 +74,31 @@ data class BookFingerprint(
     }
 }
 
-/** Versioned, clearable reader cache: at most three mirrored books and 96 MiB. */
+/**
+ * Mirror pools. Comics are an order of magnitude larger than reflowable books, so they keep their
+ * own budget instead of evicting — or being evicted by — EPUB/TXT/MOBI/PDF mirrors.
+ */
+enum class MirrorBudget(
+    internal val prefix: String,
+    internal val maxSingleBytes: Long,
+    internal val maxTotalBytes: Long,
+    internal val maxBooks: Int
+) {
+    STANDARD(
+        prefix = "mirror_",
+        maxSingleBytes = 64L * 1024L * 1024L,
+        maxTotalBytes = ReaderCacheStore.MAX_BYTES,
+        maxBooks = ReaderCacheStore.MAX_BOOKS
+    ),
+    COMIC(
+        prefix = "comic_",
+        maxSingleBytes = 1024L * 1024L * 1024L,
+        maxTotalBytes = 2L * 1024L * 1024L * 1024L,
+        maxBooks = 2
+    )
+}
+
+/** Versioned, clearable reader cache: at most three mirrored books and 96 MiB per standard pool. */
 class ReaderCacheStore private constructor(private val context: Context) {
     private val root = File(context.cacheDir, "reader_cache").apply { mkdirs() }
     private val processPrefix = "process_${android.os.Process.myPid()}_"
@@ -85,15 +109,18 @@ class ReaderCacheStore private constructor(private val context: Context) {
     }
 
     @Synchronized
-    fun mirrorContentUri(location: String): File? {
+    fun mirrorContentUri(
+        location: String,
+        budget: MirrorBudget = MirrorBudget.STANDARD
+    ): File? {
         val fingerprint = BookFingerprint.resolve(context, location)
-        if (fingerprint.size > MAX_SINGLE_MIRROR_BYTES) return null
-        val prefix = if (fingerprint.reliable) "mirror_" else processPrefix
+        if (fingerprint.size > budget.maxSingleBytes) return null
+        val prefix = if (fingerprint.reliable) budget.prefix else processPrefix
         val target = File(root, "$prefix${fingerprint.key}.book")
         val metadata = File(root, "$prefix${fingerprint.key}.json")
         if (target.isFile && metadataMatches(metadata, fingerprint, target.length())) {
             writeMetadata(metadata, fingerprint, target.length(), System.currentTimeMillis())
-            trim(excludeKey = fingerprint.key)
+            trim(excludeKey = fingerprint.key, budget = budget)
             return target
         }
 
@@ -107,7 +134,7 @@ class ReaderCacheStore private constructor(private val context: Context) {
             } ?: return null
             moveAtomically(temporary, target)
             writeMetadata(metadata, fingerprint, target.length(), System.currentTimeMillis())
-            trim(excludeKey = fingerprint.key)
+            trim(excludeKey = fingerprint.key, budget = budget)
             target
         } catch (_: Throwable) {
             temporary.delete()
@@ -207,10 +234,14 @@ class ReaderCacheStore private constructor(private val context: Context) {
         moveAtomically(temporary, file)
     }
 
-    private fun trim(excludeKey: String?) {
+    private fun trim(excludeKey: String?, budget: MirrorBudget = MirrorBudget.STANDARD) {
         data class Entry(val metadata: File, val book: File, val accessedAt: Long)
+        val maxTotalBytes = effectiveMaxTotalBytes(budget)
         val entries = root.listFiles { file ->
-            file.extension == "json" && (file.name.startsWith("mirror_") || file.name.startsWith("process_"))
+            file.extension == "json" && (
+                file.name.startsWith(budget.prefix) ||
+                    (budget == MirrorBudget.STANDARD && file.name.startsWith("process_"))
+                )
         }.orEmpty().mapNotNull { metadata ->
             val json = runCatching { JSONObject(metadata.readText()) }.getOrNull() ?: return@mapNotNull null
             val book = File(root, metadata.nameWithoutExtension + ".book")
@@ -224,7 +255,7 @@ class ReaderCacheStore private constructor(private val context: Context) {
         var total = entries.sumOf { it.book.length() }
         var kept = entries.size
         entries.asReversed().forEach { entry ->
-            if (kept <= MAX_BOOKS && total <= MAX_BYTES) return@forEach
+            if (kept <= budget.maxBooks && total <= maxTotalBytes) return@forEach
             if (excludeKey != null && entry.book.name.contains(excludeKey)) return@forEach
             total -= entry.book.length()
             kept--
@@ -233,7 +264,18 @@ class ReaderCacheStore private constructor(private val context: Context) {
         }
     }
 
-    internal fun enforceLimitsForTesting() = trim(excludeKey = null)
+    /** Comic mirrors additionally yield to the device: never claim more than a quarter of cache. */
+    private fun effectiveMaxTotalBytes(budget: MirrorBudget): Long = when (budget) {
+        MirrorBudget.STANDARD -> budget.maxTotalBytes
+        MirrorBudget.COMIC -> {
+            val usable = runCatching { context.cacheDir.usableSpace }.getOrDefault(0L)
+            minOf(budget.maxTotalBytes, (usable / 4).coerceAtLeast(MIN_COMIC_MIRROR_BYTES))
+        }
+    }
+
+    internal fun enforceLimitsForTesting() {
+        MirrorBudget.entries.forEach { budget -> trim(excludeKey = null, budget = budget) }
+    }
 
     private fun moveAtomically(source: File, target: File) {
         target.parentFile?.mkdirs()
@@ -252,7 +294,7 @@ class ReaderCacheStore private constructor(private val context: Context) {
     companion object {
         const val MAX_BYTES: Long = 96L * 1024L * 1024L
         const val MAX_BOOKS: Int = 3
-        private const val MAX_SINGLE_MIRROR_BYTES: Long = 64L * 1024L * 1024L
+        private const val MIN_COMIC_MIRROR_BYTES: Long = 128L * 1024L * 1024L
         private const val VERSION = 1
         private val instances = ConcurrentHashMap<String, ReaderCacheStore>()
 

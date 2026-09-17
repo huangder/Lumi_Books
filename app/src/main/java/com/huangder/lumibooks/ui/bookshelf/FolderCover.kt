@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.bookshelf
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -15,8 +16,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -83,7 +82,7 @@ internal fun FolderCover(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Outlined.Folder,
+                    imageVector = AppIcons.Folder,
                     contentDescription = folder.name,
                     tint = AppColors.Accent,
                     modifier = Modifier.fillMaxSize(0.56f)
@@ -123,7 +122,7 @@ internal fun FolderCover(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Outlined.Folder,
+                    imageVector = AppIcons.Folder,
                     contentDescription = null,
                     tint = iconColor,
                     modifier = Modifier.size(20.dp)

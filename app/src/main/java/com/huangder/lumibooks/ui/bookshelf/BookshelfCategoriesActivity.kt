@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.bookshelf
+import com.huangder.lumibooks.ui.icons.directionalIcon
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.content.Intent
 import android.content.res.Configuration
@@ -10,6 +12,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -31,19 +35,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.BookmarkBorder
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.DriveFileMove
-import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.FolderOpen
-import androidx.compose.material.icons.outlined.KeyboardArrowRight
-import androidx.compose.material.icons.outlined.Link
-import androidx.compose.material.icons.outlined.Label
-import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -53,6 +44,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -60,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
@@ -215,6 +208,7 @@ internal sealed interface BookshelfCategoryTarget {
     data class EpubMobi(override val title: String) : BookshelfCategoryTarget
     data class Pdf(override val title: String) : BookshelfCategoryTarget
     data class Txt(override val title: String) : BookshelfCategoryTarget
+    data class Comic(override val title: String) : BookshelfCategoryTarget
     data class Favorites(override val title: String) : BookshelfCategoryTarget
     data class Tag(val id: String, override val title: String) : BookshelfCategoryTarget
     data class Folder(val id: String, override val title: String) : BookshelfCategoryTarget
@@ -256,17 +250,24 @@ private fun BookshelfCategoriesScreen(
     val epubMobiTitle = stringResource(R.string.filter_epub_mobi)
     val favoritesTitle = stringResource(R.string.filter_favorites)
     val rows = buildList {
-        add(CategoryRowModel(BookshelfCategoryTarget.All(allTitle), uiState.books.size, Icons.Outlined.MenuBook))
+        add(CategoryRowModel(BookshelfCategoryTarget.All(allTitle), uiState.books.size, AppIcons.BookOpen))
         add(
             CategoryRowModel(
                 BookshelfCategoryTarget.EpubMobi(epubMobiTitle),
                 uiState.books.count(Book::isEpubMobi),
-                Icons.Outlined.FolderOpen
+                AppIcons.FolderOpen
             )
         )
-        add(CategoryRowModel(BookshelfCategoryTarget.Pdf("PDF"), uiState.books.count { it.format == BookFormat.PDF }, Icons.Outlined.Description))
-        add(CategoryRowModel(BookshelfCategoryTarget.Txt("TXT"), uiState.books.count { it.format == BookFormat.TXT }, Icons.Outlined.Description))
-        add(CategoryRowModel(BookshelfCategoryTarget.Favorites(favoritesTitle), uiState.books.count { it.isFavorite }, Icons.Outlined.FavoriteBorder))
+        add(CategoryRowModel(BookshelfCategoryTarget.Pdf("PDF"), uiState.books.count { it.format == BookFormat.PDF }, AppIcons.FileText))
+        add(CategoryRowModel(BookshelfCategoryTarget.Txt("TXT"), uiState.books.count { it.format == BookFormat.TXT }, AppIcons.FileText))
+        add(
+            CategoryRowModel(
+                BookshelfCategoryTarget.Comic(stringResource(R.string.format_cbz)),
+                uiState.books.count { it.format == BookFormat.CBZ },
+                AppIcons.FileText
+            )
+        )
+        add(CategoryRowModel(BookshelfCategoryTarget.Favorites(favoritesTitle), uiState.books.count { it.isFavorite }, AppIcons.Heart.regular))
     }
     CategoryListPage(
         categories = rows,
@@ -407,6 +408,7 @@ internal fun BookshelfCategoryBooksRoute(
             is BookshelfCategoryTarget.EpubMobi -> uiState.books.filter(Book::isEpubMobi)
             is BookshelfCategoryTarget.Pdf -> uiState.books.filter { it.format == BookFormat.PDF }
             is BookshelfCategoryTarget.Txt -> uiState.books.filter { it.format == BookFormat.TXT }
+            is BookshelfCategoryTarget.Comic -> uiState.books.filter { it.format == BookFormat.CBZ }
             is BookshelfCategoryTarget.Favorites -> uiState.books.filter { it.isFavorite }
             is BookshelfCategoryTarget.Tag -> uiState.books.filter {
                 selectedTarget.id in tagIdsByBook[it.id].orEmpty()
@@ -430,7 +432,7 @@ internal fun BookshelfCategoryBooksRoute(
         books = selectedBooks,
         tagNamesByBook = tagNamesByBook,
         syncedBookIds = uiState.syncedBookIds,
-        layoutMode = uiState.bookshelfLayoutMode,
+        layoutMode = com.huangder.lumibooks.domain.model.BookshelfLayout.conventional(uiState.bookshelfLayoutMode),
         isLoading = uiState.isLoading,
         tags = uiState.tags,
         tagIdsByBook = tagIdsByBook,
@@ -452,7 +454,17 @@ private fun CategoryListPage(
     onFolderSelected: (LibraryFolder) -> Unit,
     onFolderLongClick: (LibraryFolder) -> Unit
 ) {
-    val folderRows = remember(folders) { flattenFolderTree(folders) }
+    var collapsedFolderIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    val folderRows = remember(folders, collapsedFolderIds) {
+        flattenFolderTree(folders, collapsedFolderIds.toSet())
+    }
+    val toggleFolderCollapse: (LibraryFolder) -> Unit = { folder ->
+        collapsedFolderIds = if (folder.id in collapsedFolderIds) {
+            collapsedFolderIds - folder.id
+        } else {
+            collapsedFolderIds + folder.id
+        }
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -499,9 +511,19 @@ private fun CategoryListPage(
                     CategoryRow(
                         title = row.folder.name,
                         count = folderBookCounts[row.folder.id] ?: 0,
-                        icon = Icons.Outlined.Folder,
+                        icon = AppIcons.Folder,
                         linked = row.folder.storageDocumentUri != null,
                         startIndent = (row.depth * 20).dp,
+                        disclosure = if (row.hasChildren) {
+                            CategoryDisclosure(
+                                expanded = row.folder.id !in collapsedFolderIds,
+                                onToggle = { toggleFolderCollapse(row.folder) }
+                            )
+                        } else {
+                            null
+                        },
+                        reserveDisclosureSpace = true,
+                        modifier = Modifier.animateItem(),
                         onClick = { onFolderSelected(row.folder) },
                         onLongClick = { onFolderLongClick(row.folder) }
                     )
@@ -527,7 +549,7 @@ private fun CategoryListPage(
                     CategoryRow(
                         title = tag.name,
                         count = tagIdsByBook.values.count { tag.id in it },
-                        icon = Icons.Outlined.Label,
+                        icon = AppIcons.Tag,
                         onClick = {
                             onTargetSelected(BookshelfCategoryTarget.Tag(tag.id, tag.name))
                         }
@@ -547,7 +569,7 @@ private fun CategoriesPageHeader(title: String, onBack: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         LiquidGlassIconButton(
-            imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+            imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
             contentDescription = stringResource(R.string.back),
             onClick = onBack,
             settingsBackButton = true
@@ -584,12 +606,15 @@ private fun CategoryRow(
     linked: Boolean = false,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
-    startIndent: Dp = 0.dp
+    startIndent: Dp = 0.dp,
+    disclosure: CategoryDisclosure? = null,
+    reserveDisclosureSpace: Boolean = false,
+    modifier: Modifier = Modifier
 ) {
     Surface(
         shape = RoundedCornerShape(22.dp),
         color = AppColors.CardBg,
-        modifier = Modifier
+        modifier = modifier
             .padding(start = startIndent)
             .fillMaxWidth()
             .height(64.dp)
@@ -601,6 +626,10 @@ private fun CategoryRow(
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            when {
+                disclosure != null -> CategoryDisclosureButton(disclosure)
+                reserveDisclosureSpace -> Spacer(Modifier.width(CategoryDisclosureSlot))
+            }
             Icon(icon, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(14.dp))
             Text(
@@ -612,7 +641,7 @@ private fun CategoryRow(
             )
             if (linked) {
                 Icon(
-                    imageVector = Icons.Outlined.Link,
+                    imageVector = AppIcons.Link,
                     contentDescription = stringResource(R.string.folder_storage_linked),
                     tint = AppColors.Accent,
                     modifier = Modifier.size(16.dp)
@@ -626,7 +655,7 @@ private fun CategoryRow(
             )
             Spacer(Modifier.width(6.dp))
             Icon(
-                Icons.Outlined.KeyboardArrowRight,
+                directionalIcon(AppIcons.CaretRight, AppIcons.CaretLeft),
                 null,
                 tint = AppColors.TextSecondary,
                 modifier = Modifier.size(20.dp)
@@ -635,21 +664,43 @@ private fun CategoryRow(
     }
 }
 
-private data class FolderTreeRow(val folder: LibraryFolder, val depth: Int)
+/** 自定义分类里父文件夹的折叠开关状态。 */
+private data class CategoryDisclosure(
+    val expanded: Boolean,
+    val onToggle: () -> Unit
+)
 
-private fun flattenFolderTree(folders: List<LibraryFolder>): List<FolderTreeRow> {
-    val children = folders.groupBy { it.parentId }
-    val rows = mutableListOf<FolderTreeRow>()
-    val visited = mutableSetOf<String>()
-    fun append(parentId: String?, depth: Int) {
-        children[parentId].orEmpty().forEach { folder ->
-            if (!visited.add(folder.id)) return@forEach
-            rows += FolderTreeRow(folder, depth)
-            append(folder.id, depth + 1)
-        }
+private val CategoryDisclosureSlot = 34.dp
+
+@Composable
+private fun CategoryDisclosureButton(disclosure: CategoryDisclosure) {
+    val rotation by animateFloatAsState(
+        targetValue = if (disclosure.expanded) 0f else -90f,
+        animationSpec = tween(160),
+        label = "categoryFolderArrow"
+    )
+    Box(
+        modifier = Modifier
+            .size(CategoryDisclosureSlot)
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = disclosure.onToggle
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = AppIcons.CaretDown,
+            contentDescription = stringResource(
+                if (disclosure.expanded) R.string.category_folder_collapse
+                else R.string.category_folder_expand
+            ),
+            tint = AppColors.TextSecondary,
+            modifier = Modifier
+                .size(19.dp)
+                .graphicsLayer { rotationZ = rotation }
+        )
     }
-    append(null, 0)
-    return rows
 }
 
 @Composable
@@ -1031,7 +1082,7 @@ private fun CategoryBooksHeader(
             }
             Spacer(Modifier.width(10.dp))
             LiquidGlassIconButton(
-                imageVector = Icons.Outlined.Delete,
+                imageVector = AppIcons.Trash,
                 contentDescription = stringResource(R.string.delete),
                 onClick = onDelete,
                 enabled = selectedCount > 0,
@@ -1044,7 +1095,7 @@ private fun CategoryBooksHeader(
             )
             Spacer(Modifier.width(10.dp))
             LiquidGlassIconButton(
-                imageVector = Icons.Outlined.Label,
+                imageVector = AppIcons.Tag,
                 contentDescription = stringResource(R.string.tag_sheet_title),
                 onClick = onTags,
                 enabled = selectedCount > 0,
@@ -1057,7 +1108,7 @@ private fun CategoryBooksHeader(
             )
             Spacer(Modifier.width(10.dp))
             LiquidGlassIconButton(
-                imageVector = Icons.Outlined.DriveFileMove,
+                imageVector = AppIcons.FolderSimple,
                 contentDescription = stringResource(R.string.move_books),
                 onClick = onMove,
                 enabled = selectedCount > 0,
@@ -1070,7 +1121,7 @@ private fun CategoryBooksHeader(
             )
         } else {
             LiquidGlassIconButton(
-                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
                 contentDescription = stringResource(R.string.back),
                 onClick = onBack,
                 settingsBackButton = true

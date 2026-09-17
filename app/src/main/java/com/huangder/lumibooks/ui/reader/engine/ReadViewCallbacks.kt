@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.reader.engine
 
+import com.huangder.lumibooks.tts.TtsPageChangeOrigin
+
 /**
  * ReadView 向外（Compose/ViewModel）的回调接口。
  */
@@ -11,7 +13,8 @@ interface ReadViewCallbacks {
         globalPage: Int,
         chapterIndex: Int,
         pageInChapter: Int,
-        chapterTotalPages: Int
+        chapterTotalPages: Int,
+        origin: TtsPageChangeOrigin
     )
 
     /**
@@ -42,6 +45,13 @@ interface ReadViewCallbacks {
     /** Called after a plain EPUB image is long-pressed. Coordinates are in screen pixels. */
     fun onImageLongPress(chapterIndex: Int, image: ReaderImageHit) {}
 
+    /**
+     * 听书进行中双击正文句子：请求朗读从该句开始。
+     * @param chapterIndex 所在章节索引
+     * @param characterOffset 章节级字符偏移（点击位置）
+     */
+    fun onTtsSentenceDoubleTap(chapterIndex: Int, characterOffset: Int) {}
+
     /** 正在加载内容变化 */
     fun onLoadingChanged(isLoading: Boolean)
 
@@ -67,4 +77,24 @@ interface ReadViewCallbacks {
 
     /** 文字选区建立时回调（SpanWatcher 检测到有效选区） */
     fun onSelectionStarted(sourceView: PageContentView? = null) {}
+
+    /**
+     * ReadView 自持的跨页选区发生变化（拖拽结束、翻页吸附后）时回调。
+     *
+     * 与 [onSelectionStarted] 的区别：系统选区只覆盖当前页，跨页选区由 ReadView
+     * 自己持有章节级范围，因此这里直接给出完整的 [SelectionInfo]。
+     */
+    fun onReaderSelectionChanged(info: SelectionInfo) {}
+
+    /** ReadView 自持的跨页选区被清除（点按正文、翻页手势、跳转等）。 */
+    fun onReaderSelectionCleared() {}
+
+    /** 用户重新抓手柄继续调整自持跨页选区：上层应立刻收起选区菜单。 */
+    fun onReaderSelectionDragStarted() {}
+
+    /**
+     * 选区因为拖到页边而翻到了新页（跨页选择成立）。
+     * 上层据此把引导提示从「拖到页角翻页」切换为「单击目标结尾」。
+     */
+    fun onReaderSelectionCrossPageExtended() {}
 }

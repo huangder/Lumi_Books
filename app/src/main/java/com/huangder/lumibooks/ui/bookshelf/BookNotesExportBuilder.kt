@@ -22,6 +22,7 @@ import com.huangder.lumibooks.ui.reader.engine.PageLayoutEngine
 import com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatter
 import com.huangder.lumibooks.ui.reader.engine.calculateReaderVerticalBalanceOffset
 import com.huangder.lumibooks.ui.reader.shouldStyleTxtChapterTitle
+import com.huangder.lumibooks.ui.reader.txtChapterTitleFontSize
 import com.huangder.lumibooks.util.parser.BookParser
 import com.huangder.lumibooks.util.parser.BookParserFactory
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -62,7 +63,9 @@ class BookNotesExportBuilder @Inject constructor(
             chapterNumber = { context.getString(R.string.chapter_number, it) }
         )
         var parserToClose: BookParser? = null
-        val parsed = if (book.format == BookFormat.PDF) {
+        // Raster page formats (PDF/CBZ) carry no reflowable text; page labels come from the
+        // page index instead of a parser pass.
+        val parsed = if (book.format.isRasterPageFormat) {
             null
         } else {
             runCatching {
@@ -84,7 +87,7 @@ class BookNotesExportBuilder @Inject constructor(
                 .orEmpty()
             val exportChapterTitles = buildMap {
                 putAll(chapterTitles)
-                if (book.format == BookFormat.PDF) {
+                if (book.format.isRasterPageFormat) {
                     (bookmarks.map { it.chapterIndex } + notes.map { it.chapterIndex })
                         .distinct()
                         .forEach { pageIndex ->
@@ -94,6 +97,7 @@ class BookNotesExportBuilder @Inject constructor(
             }
             val pageTexts = when (book.format) {
                 BookFormat.PDF -> extractPdfBookmarkPages(book, bookmarks)
+                BookFormat.CBZ -> emptyMap()
                 BookFormat.EPUB, BookFormat.TXT, BookFormat.MOBI -> parsed?.first?.let { parser ->
                     layoutBookmarkPages(parser, book.format, chapterTitles, bookmarks)
                 }.orEmpty()
@@ -104,7 +108,7 @@ class BookNotesExportBuilder @Inject constructor(
                     chapterTitle = exportChapterTitles[bookmark.chapterIndex]
                         ?.trim()
                         ?.takeIf(String::isNotEmpty)
-                        ?: if (book.format == BookFormat.PDF) {
+                        ?: if (book.format.isRasterPageFormat) {
                             context.getString(R.string.pdf_page_number, bookmark.chapterIndex + 1)
                         } else {
                             context.getString(R.string.chapter_number, bookmark.chapterIndex + 1)
@@ -247,7 +251,7 @@ class BookNotesExportBuilder @Inject constructor(
                     val body = raw.substring(newlineIndex + 1)
                     SpannableString("$title\n\n$body").apply {
                         setSpan(
-                            AbsoluteSizeSpan(22, true),
+                            AbsoluteSizeSpan(txtChapterTitleFontSize(fontSizeSp), true),
                             0,
                             title.length,
                             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE

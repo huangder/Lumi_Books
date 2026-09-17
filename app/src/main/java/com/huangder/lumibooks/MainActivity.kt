@@ -4,6 +4,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.util.Log
 import android.widget.Toast
 import android.view.ActionMode
@@ -48,8 +49,12 @@ import com.huangder.lumibooks.ui.navigation.Screen
 import com.huangder.lumibooks.ui.home.backfillMissingSourceHashes
 import com.huangder.lumibooks.ui.home.findMatchingAuthorizedBook
 import com.huangder.lumibooks.tts.TtsController
+import com.huangder.lumibooks.tts.TtsPlaybackState
+import com.huangder.lumibooks.service.TtsMediaButtons
 import com.huangder.lumibooks.ui.splash.SplashScreen
 import com.huangder.lumibooks.ui.components.AppUpdateDialog
+import com.huangder.lumibooks.ui.components.ExternalImportChoiceDialog
+import com.huangder.lumibooks.ui.components.ExternalImportFolder
 import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
 import com.huangder.lumibooks.ui.components.PolicyUpdateDialog
 import com.huangder.lumibooks.ui.components.RemoteNoticeDialog
@@ -60,6 +65,8 @@ import com.huangder.lumibooks.ui.theme.MotionPreference
 import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import com.huangder.lumibooks.util.FileUtils
+import com.huangder.lumibooks.util.AuthorizedFolderDocumentSnapshot
+import com.huangder.lumibooks.util.AuthorizedFolderSnapshotStore
 import com.huangder.lumibooks.util.AuthorizedStorageManager
 import com.huangder.lumibooks.util.BookFileAccess
 import com.huangder.lumibooks.util.BuiltinGuideSeeder
@@ -84,6 +91,9 @@ private data class PendingPolicyUpdate(
     val hasPrivacyUpdate: Boolean,
     val privacyVersion: Int
 )
+
+/** 外部打开/分享导入支持的书籍扩展名。 */
+private val SUPPORTED_IMPORT_EXTENSIONS = setOf("epub", "pdf", "txt", "mobi", "cbz")
 
 private fun Intent?.extractImportUris(): List<Uri> {
     val importIntent = this ?: return emptyList()
@@ -178,6 +188,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var ttsController: TtsController
 
+    @Inject
+    lateinit var authorizedFolderSnapshotStore: AuthorizedFolderSnapshotStore
+
     /**
      * 当 ReaderScreen 处于前台时置为 true，
      * 确保 ActionMode 拦截只在阅读页生效，不影响其他页面。
@@ -200,6 +213,14 @@ class MainActivity : ComponentActivity() {
             }
             return true
         }
+        // 部分 ROM / 耳机把媒体按键投递给前台窗口而不是 MediaSession。
+        // 听书进行中时在这里兜底处理；未听书时不拦截，仍交给系统的媒体按键路由。
+        if (TtsMediaButtons.isSupportedEvent(event) &&
+            ttsController.playbackState.value != TtsPlaybackState.IDLE
+        ) {
+            TtsMediaButtons.handle(ttsController, event.keyCode)
+            return true
+        }
         return super.dispatchKeyEvent(event)
     }
 
@@ -212,6 +233,10 @@ class MainActivity : ComponentActivity() {
 
     /** Pending terms/privacy policy update dialog; non-null means show it after startup. */
     private var pendingPolicyUpdate by mutableStateOf<PendingPolicyUpdate?>(null)
+
+    /** Externally opened files waiting for a copy/move decision. */
+    private var pendingExternalImportUris by mutableStateOf<List<Uri>>(emptyList())
+    private var pendingExternalImportFolders by mutableStateOf<List<ExternalImportFolder>>(emptyList())
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -243,12 +268,72 @@ class MainActivity : ComponentActivity() {
     private fun handleImportIntent(intent: Intent?) {
         val uris = intent.extractImportUris()
         if (uris.isEmpty()) return
+        lifecycleScope.launch {
+            val directories = runCatching { dataStoreManager.authorizedBookDirectories.first() }
+                .getOrDefault(emptyList())
+            val knownBooks = withContext(Dispatchers.IO) { bookRepository.getAllBooks().first() }
+            val needsChoice = directories.isNotEmpty() &&
+                uris.any { uri -> needsExternalImportChoice(uri, knownBooks) }
+            val folders = if (needsChoice) {
+                withContext(Dispatchers.IO) { resolveAuthorizedFolderChoices(directories) }
+            } else {
+                emptyList()
+            }
+            if (folders.isEmpty()) {
+                runExternalImport(uris, ExternalImportMode.COPY_INTO_APP, targetTreeUri = null)
+            } else {
+                pendingExternalImportFolders = folders
+                pendingExternalImportUris = uris
+            }
+        }
+    }
+
+    /** 需要用户决定保存位置：文件受支持，且书库里还没有它的记录。 */
+    private fun needsExternalImportChoice(uri: Uri, knownBooks: List<Book>): Boolean {
+        val fileName = FileUtils.getFileNameFromUri(this, uri) ?: return false
+        if (FileUtils.getFileExtension(fileName) !in SUPPORTED_IMPORT_EXTENSIONS) return false
+        if (findAppManagedBook(uri, knownBooks) != null) return false
+        return findMatchingAuthorizedBook(
+            documentKey = authorizedStorageManager.documentKey(uri),
+            uri = uri.toString(),
+            sha256 = null,
+            books = knownBooks
+        ) == null
+    }
+
+    /** 授权文件夹的展示名，读取失败时退回树 URI 的最后一段路径。 */
+    private fun resolveAuthorizedFolderChoices(directories: List<String>): List<ExternalImportFolder> =
+        directories.map { value ->
+            val name = runCatching {
+                val treeUri = Uri.parse(value)
+                authorizedStorageManager.queryDisplayName(
+                    this,
+                    authorizedStorageManager.treeRootUri(treeUri)
+                )
+            }.getOrNull()?.takeIf { it.isNotBlank() } ?: fallbackAuthorizedFolderName(value)
+            ExternalImportFolder(name = name, treeUri = value)
+        }
+
+    private fun fallbackAuthorizedFolderName(treeUri: String): String = runCatching {
+        DocumentsContract.getTreeDocumentId(Uri.parse(treeUri))
+            .substringAfter(':', missingDelimiterValue = "")
+            .trim('/')
+            .substringAfterLast('/')
+            .ifBlank { treeUri }
+    }.getOrDefault(treeUri)
+
+    private fun runExternalImport(
+        uris: List<Uri>,
+        mode: ExternalImportMode,
+        targetTreeUri: String?
+    ) {
+        if (uris.isEmpty()) return
         lifecycleScope.launch(Dispatchers.IO) {
             var imported = 0
             var opened = 0
             var failed = 0
             uris.forEach { uri ->
-                runCatching { importBookFromUri(uri) }
+                runCatching { importBookFromUri(uri, mode, targetTreeUri) }
                     .onSuccess { outcome ->
                         when (outcome) {
                             ImportOutcome.IMPORTED -> imported++
@@ -274,6 +359,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private enum class ImportOutcome { IMPORTED, OPENED, UNSUPPORTED }
+
+    /** 外部文件的保存方式：复制进应用目录，或移动进授权文件夹。 */
+    private enum class ExternalImportMode { COPY_INTO_APP, MOVE_TO_AUTHORIZED }
 
     /**
      * FileProvider URIs created by this app point at the same managed file stored in the book
@@ -304,10 +392,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private suspend fun importBookFromUri(uri: Uri): ImportOutcome {
+    private suspend fun importBookFromUri(
+        uri: Uri,
+        mode: ExternalImportMode = ExternalImportMode.COPY_INTO_APP,
+        targetTreeUri: String? = null
+    ): ImportOutcome {
         val fileName = FileUtils.getFileNameFromUri(this, uri) ?: return ImportOutcome.UNSUPPORTED
         val extension = FileUtils.getFileExtension(fileName)
-        if (extension !in listOf("epub", "pdf", "txt", "mobi")) return ImportOutcome.UNSUPPORTED
+        if (extension !in SUPPORTED_IMPORT_EXTENSIONS) return ImportOutcome.UNSUPPORTED
 
         val sourceKey = authorizedStorageManager.documentKey(uri)
         val sourceUri = uri.toString()
@@ -350,43 +442,41 @@ class MainActivity : ComponentActivity() {
             return ImportOutcome.OPENED
         }
 
-        val file = FileUtils.copyFileToInternal(this, uri, fileName) ?: return ImportOutcome.UNSUPPORTED
-        val format = when (extension) {
-            "epub" -> BookFormat.EPUB
-            "pdf" -> BookFormat.PDF
-            "mobi" -> BookFormat.MOBI
-            else -> BookFormat.TXT
-        }
-        val coverPath = runCatching {
-            val parser = BookParserFactory.createParser(format, this)
-            try {
-                parser.extractCoverPath(file.absolutePath)
-            } finally {
-                runCatching { parser.close() }
+        return when (mode) {
+            ExternalImportMode.COPY_INTO_APP -> importCopiedBook(
+                uri = uri,
+                fileName = fileName,
+                extension = extension,
+                sourceKey = sourceKey,
+                sourceHash = sourceHash
+            )
+            ExternalImportMode.MOVE_TO_AUTHORIZED -> {
+                val treeUri = targetTreeUri
+                    ?.let { value -> runCatching { Uri.parse(value) }.getOrNull() }
+                    ?: return ImportOutcome.UNSUPPORTED
+                importMovedBook(
+                    uri = uri,
+                    fileName = fileName,
+                    extension = extension,
+                    treeUri = treeUri
+                )
             }
-        }.getOrNull()
+        }
+    }
 
+    /** 复制到应用私有目录，沿用一直以来的外部打开导入行为。 */
+    private suspend fun importCopiedBook(
+        uri: Uri,
+        fileName: String,
+        extension: String,
+        sourceKey: String?,
+        sourceHash: String?
+    ): ImportOutcome {
+        val file = FileUtils.copyFileToInternal(this, uri, fileName) ?: return ImportOutcome.UNSUPPORTED
+        val format = extension.toBookFormat()
+        val coverPath = extractBookCover(file.absolutePath, format)
         // 导入时从文件解析真实标题和作者，而不是写死"未知作者"
-        val (parsedTitle, parsedAuthor) = if (format == BookFormat.EPUB || format == BookFormat.MOBI) {
-            try {
-                val parser = com.huangder.lumibooks.util.parser.BookParserFactory.createParser(format, this)
-                try {
-                    val content = parser.parse(file.absolutePath)
-                    val t = content.title.takeIf { it.isNotBlank() && it != file.nameWithoutExtension }
-                        ?: fileName.substringBeforeLast('.')
-                    val unknownAuthor = getString(R.string.book_author_unknown)
-                    val a = content.author.takeIf { it.isNotBlank() && it != unknownAuthor }
-                        ?: unknownAuthor
-                    t to a
-                } finally {
-                    runCatching { parser.close() }
-                }
-            } catch (_: Exception) {
-                fileName.substringBeforeLast('.') to getString(R.string.book_author_unknown)
-            }
-        } else {
-            fileName.substringBeforeLast('.') to getString(R.string.book_author_unknown)
-        }
+        val (parsedTitle, parsedAuthor) = resolveBookMetadata(file.absolutePath, fileName, format)
 
         val book = Book(
             id = FileUtils.generateBookId(),
@@ -415,6 +505,120 @@ class MainActivity : ComponentActivity() {
         }
         Log.d("MainActivity", "Imported book from intent: ${book.title}")
         return ImportOutcome.IMPORTED
+    }
+
+    /**
+     * 把外部文件搬进授权文件夹：先复制到授权目录，再尽力删除原文件。
+     * ACTION_VIEW 通常只授予读权限，删不掉时保留原文件，等价于复制。
+     */
+    private suspend fun importMovedBook(
+        uri: Uri,
+        fileName: String,
+        extension: String,
+        treeUri: Uri
+    ): ImportOutcome {
+        val treeRootUri = authorizedStorageManager.treeRootUri(treeUri)
+        val move = runCatching {
+            authorizedStorageManager.copyThenDelete(
+                context = this,
+                sourceLocation = uri.toString(),
+                targetParentUri = treeRootUri,
+                fileName = fileName,
+                deleteSource = false
+            )
+        }.getOrNull() ?: return ImportOutcome.UNSUPPORTED
+
+        val location = move.destinationUri.toString()
+        val sourceRemoved = runCatching {
+            DocumentsContract.deleteDocument(contentResolver, uri)
+        }.getOrDefault(false)
+        if (!sourceRemoved) {
+            Log.w("MainActivity", "Book copied into an authorized folder but the source stayed: $uri")
+        }
+
+        val format = extension.toBookFormat()
+        val coverPath = extractBookCover(location, format)
+        val (parsedTitle, parsedAuthor) = resolveBookMetadata(location, fileName, format)
+        val documentKey = authorizedStorageManager.documentKey(move.destinationUri)
+        val lastModified = authorizedStorageManager.queryLastModified(this, move.destinationUri)
+        val now = System.currentTimeMillis()
+        val book = Book(
+            id = FileUtils.generateBookId(),
+            title = parsedTitle,
+            author = parsedAuthor,
+            filePath = location,
+            coverPath = coverPath,
+            format = format,
+            lastReadTime = now,
+            readingProgress = 0f,
+            createdAt = now,
+            sourceUri = location,
+            sourceDocumentKey = documentKey,
+            sourceParentUri = treeRootUri.toString(),
+            sourceSha256 = move.sha256,
+            sourceDisplayName = fileName,
+            sourceLastModified = lastModified
+        )
+        bookRepository.insertBook(book)
+        // 让“选择文件夹书籍”页面立刻能看到这本书，无需等待下次扫描。
+        runCatching {
+            authorizedFolderSnapshotStore.addDocument(
+                treeUri = treeUri,
+                document = AuthorizedFolderDocumentSnapshot(
+                    documentUri = location,
+                    documentKey = documentKey,
+                    parentDocumentUri = treeRootUri.toString(),
+                    displayName = fileName,
+                    relativeDirectory = null,
+                    size = BookFileAccess.size(this, location),
+                    lastModified = lastModified
+                )
+            )
+        }
+        Log.d("MainActivity", "Moved book from intent into authorized folder: ${book.title}")
+        return ImportOutcome.IMPORTED
+    }
+
+    private fun extractBookCover(location: String, format: BookFormat): String? = runCatching {
+        val parser = BookParserFactory.createParser(format, this)
+        try {
+            parser.extractCoverPath(location)
+        } finally {
+            runCatching { parser.close() }
+        }
+    }.getOrNull()
+
+    private fun resolveBookMetadata(
+        location: String,
+        fileName: String,
+        format: BookFormat
+    ): Pair<String, String> {
+        val fallback = fileName.substringBeforeLast('.') to getString(R.string.book_author_unknown)
+        if (format != BookFormat.EPUB && format != BookFormat.MOBI) return fallback
+        return runCatching {
+            val parser = BookParserFactory.createParser(format, this)
+            try {
+                val content = parser.parse(location)
+                val title = content.title
+                    .takeIf { it.isNotBlank() && it != fileName.substringBeforeLast('.') }
+                    ?: fallback.first
+                val unknownAuthor = getString(R.string.book_author_unknown)
+                val author = content.author
+                    .takeIf { it.isNotBlank() && it != unknownAuthor }
+                    ?: unknownAuthor
+                title to author
+            } finally {
+                runCatching { parser.close() }
+            }
+        }.getOrDefault(fallback)
+    }
+
+    private fun String.toBookFormat(): BookFormat = when (this) {
+        "epub" -> BookFormat.EPUB
+        "pdf" -> BookFormat.PDF
+        "mobi" -> BookFormat.MOBI
+        "cbz" -> BookFormat.CBZ
+        else -> BookFormat.TXT
     }
 
     /**
@@ -569,7 +773,10 @@ class MainActivity : ComponentActivity() {
                         val globalGlassDialogVisible = !onReaderRoute && (
                             pendingAppUpdate != null ||
                                 pendingRemoteNotice != null ||
-                                policyDialog != null)
+                                policyDialog != null ||
+                                // 外部导入询问弹窗也是玻璃容器，同样需要在它显示期间捕获主内容，
+                                // 否则玻璃表面拿到的是一份没有内容的 backdrop，只剩半透明底色。
+                                pendingExternalImportUris.isNotEmpty())
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -690,6 +897,38 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         }
+                    }
+
+                    // 外部打开书籍：授权过文件夹时先问用户复制进应用还是移动进授权夹。
+                    if (pendingExternalImportUris.isNotEmpty()) {
+                        ExternalImportChoiceDialog(
+                            fileCount = pendingExternalImportUris.size,
+                            folders = pendingExternalImportFolders,
+                            onCopyIntoApp = {
+                                val uris = pendingExternalImportUris
+                                pendingExternalImportUris = emptyList()
+                                pendingExternalImportFolders = emptyList()
+                                runExternalImport(
+                                    uris = uris,
+                                    mode = ExternalImportMode.COPY_INTO_APP,
+                                    targetTreeUri = null
+                                )
+                            },
+                            onMoveToFolder = { folder ->
+                                val uris = pendingExternalImportUris
+                                pendingExternalImportUris = emptyList()
+                                pendingExternalImportFolders = emptyList()
+                                runExternalImport(
+                                    uris = uris,
+                                    mode = ExternalImportMode.MOVE_TO_AUTHORIZED,
+                                    targetTreeUri = folder.treeUri
+                                )
+                            },
+                            onDismiss = {
+                                pendingExternalImportUris = emptyList()
+                                pendingExternalImportFolders = emptyList()
+                            }
+                        )
                     }
 
                         AnimatedVisibility(

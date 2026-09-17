@@ -159,6 +159,13 @@ object TxtTocRuleBuiltIns {
             chapterRegex = "(?:第?([0-9]{1,5})[.、:：]\\s*\\S.{0,120}|([一二三四五六七八九十百千零〇两]+))",
             order = 2,
             origin = TxtTocRuleOrigin.BUILTIN
+        ),
+        TxtTocRule(
+            id = "builtin-symbol-prefixed",
+            name = "符号开头章节",
+            chapterRegex = "^[☆★✦✧◆◇●○■□▪▫•※✱✲✳✴✵✶✷✸✹✺✻✼✽✾✿]\\s*[、,.．:：\\-—–]\\s*\\S.{0,120}$",
+            order = 3,
+            origin = TxtTocRuleOrigin.BUILTIN
         )
     )
 
@@ -246,8 +253,14 @@ object TxtTocRuleSelector {
             val contiguousRatio = if (numbering.size < 2) 0f else {
                 numbering.zipWithNext().count { (a, b) -> b == a + 1 }.toFloat() / (numbering.size - 1)
             }
-            val highRiskAccepted = rule.id != "builtin-numbered" ||
-                (first >= 0 && first <= lines.size / 4 && contiguousRatio >= 0.7f)
+            val highRiskAccepted = when (rule.id) {
+                "builtin-numbered" -> first >= 0 && first <= lines.size / 4 && contiguousRatio >= 0.7f
+                // Symbol-led lines are also used for lists, so require an early first hit and
+                // keep the match count proportional for larger samples instead of capping it.
+                "builtin-symbol-prefixed" -> first >= 0 && first <= lines.size / 3 &&
+                    total <= maxOf(20, lines.size / 10)
+                else -> true
+            }
             val accepted = baseAccepted && highRiskAccepted
             TxtTocRuleDiagnostics(rule.id, rule.name, chapterCount, volumeCount, lines.size, score, accepted,
                 reason = if (accepted) null else "Fewer than two reliable headings or matches are too dense",

@@ -74,8 +74,6 @@ class ExternalTtsEngine @Inject constructor(
     private var sessionJob: Job? = null
     private var progressJob: Job? = null
     private var currentSessionId = 0L
-    private var utterancePitch = 1f
-
     private var prefetchJob: Job? = null
     private var prefetchedKey: String? = null
 
@@ -187,6 +185,12 @@ class ExternalTtsEngine @Inject constructor(
         return audioPlayer.renderedFrameOffset()
     }
 
+    override fun currentPcmFrameCount(): Long {
+        if (!audioInit) return 0L
+        val key = activeCacheKey ?: return 0L
+        return maxOf(audioCache.frameCount(key), audioPlayer.writtenFrameCount())
+    }
+
     override suspend fun prefetch(text: String) {
         if (text.isBlank()) return
         ensureAudioInitialized()
@@ -256,7 +260,11 @@ class ExternalTtsEngine @Inject constructor(
     }
 
     override suspend fun setPitch(pitch: Float) {
-        utterancePitch = pitch.coerceIn(0.5f, 2f)
+        // OpenAI Speech and MiMo Chat expose no reliable pitch parameter.
+    }
+
+    override suspend fun applyProsody(rate: Float?, pitch: Float?) {
+        setSpeechRate(rate ?: 1f)
     }
 
     override fun setListener(listener: TtsPlaybackListener) {
@@ -402,22 +410,11 @@ class ExternalTtsEngine @Inject constructor(
     }
 
     private suspend fun effectiveSettings(): ExternalTtsSettings {
-        val storedSettings = dataStoreManager.externalTtsSettings.first()
-        return storedSettings.copy(
-            styleInstructions = buildEffectiveInstructions(storedSettings.styleInstructions)
-        ).normalized()
+        return dataStoreManager.externalTtsSettings.first().normalized()
     }
 
     private suspend fun cacheLimitBytes(): Long =
         dataStoreManager.externalTtsCacheLimitMb.first().toLong() * BYTES_PER_MEBIBYTE
-
-    private fun buildEffectiveInstructions(styleInstructions: String): String {
-        val instructions = buildList {
-            if (styleInstructions.isNotBlank()) add(styleInstructions)
-            if (utterancePitch != 1f) add(ExternalTtsConfig.pitchInstruction(utterancePitch))
-        }
-        return instructions.joinToString("\n\n")
-    }
 
     private fun cancelCurrentSession() {
         progressJob?.cancel()

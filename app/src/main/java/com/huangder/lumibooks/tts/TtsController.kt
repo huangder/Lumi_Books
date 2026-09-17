@@ -13,10 +13,14 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import com.huangder.lumibooks.util.diagnostics.DiagnosticLevel
+import com.huangder.lumibooks.util.diagnostics.DiagnosticLoggerRegistry
 
 class TtsController(
     private val systemTtsEngine: TtsPlaybackEngine,
@@ -28,12 +32,25 @@ class TtsController(
     private val activeEngine: TtsPlaybackEngine
         get() = sessionEngine ?: systemTtsEngine
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val commandMutex = Mutex()
 
     private val _playbackState = MutableStateFlow(TtsPlaybackState.IDLE)
     val playbackState: StateFlow<TtsPlaybackState> = _playbackState.asStateFlow()
 
     private val _speechRate = MutableStateFlow(1f)
     val speechRate: StateFlow<Float> = _speechRate.asStateFlow()
+
+    private val _speechRateMode = MutableStateFlow(TtsProsodyMode.FOLLOW_ENGINE)
+    val speechRateMode: StateFlow<TtsProsodyMode> = _speechRateMode.asStateFlow()
+
+    private val _pitch = MutableStateFlow(1f)
+    val pitch: StateFlow<Float> = _pitch.asStateFlow()
+
+    private val _pitchMode = MutableStateFlow(TtsProsodyMode.FOLLOW_ENGINE)
+    val pitchMode: StateFlow<TtsProsodyMode> = _pitchMode.asStateFlow()
+
+    private val _usesAndroidTts = MutableStateFlow(true)
+    val usesAndroidTts: StateFlow<Boolean> = _usesAndroidTts.asStateFlow()
 
     private val _activeBookId = MutableStateFlow<String?>(null)
     val activeBookId: StateFlow<String?> = _activeBookId.asStateFlow()
@@ -69,7 +86,13 @@ class TtsController(
     private var activeSentenceSegment: TtsTextSegment? = null
     private var pageTurnSequence = 0L
     private var pendingPageTurn: PendingPageTurn? = null
+    private var pendingPageTurnTimeoutJob: Job? = null
     private var acknowledgedPageTurn: AcknowledgedPageTurn? = null
+    /**
+     * When false the reader keeps its own position and playback advances on its own. Cleared by a
+     * user page change, restored by a sentence seek or when the user returns to the spoken page.
+     */
+    private var followReaderPageTurns = true
 
     // Sleep timer
     private val _sleepTimerRemainingMs = MutableStateFlow<Long?>(null)
@@ -83,7 +106,8 @@ class TtsController(
 
     private data class PendingPageTurn(
         val request: TtsPageTurnRequest,
-        val sourceLocation: TtsPageLocation?
+        val sourceLocation: TtsPageLocation?,
+        val resumeWhenAcknowledged: Boolean
     )
 
     private data class AcknowledgedPageTurn(
@@ -92,44 +116,113 @@ class TtsController(
         val acknowledgedAtNanos: Long
     )
 
-    init {
-        val listener = object : TtsPlaybackListener {
-            override fun onStart(utteranceId: String) = Unit
-
-            override fun onDone(utteranceId: String) {
-                scope.launch { handleUtteranceDone(utteranceId) }
+    private fun playbackListener(
+        engine: TtsPlaybackEngine,
+        callbackSource: String
+    ) = object : TtsPlaybackListener {
+        override fun onStart(utteranceId: String) {
+            scope.launch {
+                commandMutex.withLock {
+                    if (engine !== activeEngine || utteranceId != activeUtteranceId) return@withLock
+                    logTtsEvent(
+                        event = "utterance_started",
+                        utteranceId = utteranceId,
+                        callbackSource = callbackSource
+                    )
+                }
             }
+        }
 
-            override fun onError(utteranceId: String, throwable: Throwable) {
-                scope.launch { handleUtteranceError(utteranceId, throwable) }
+        override fun onDone(utteranceId: String) {
+            scope.launch {
+                commandMutex.withLock {
+                    logTtsEvent(
+                        event = "utterance_done",
+                        utteranceId = utteranceId,
+                        callbackSource = callbackSource
+                    )
+                    if (engine !== activeEngine) return@withLock
+                    handleUtteranceDone(utteranceId)
+                }
             }
+        }
 
-            override fun onProgress(utteranceId: String, cacheKey: String, pcmFrameOffset: Long) {
-                scope.launch { persistExternalProgress(utteranceId, cacheKey, pcmFrameOffset) }
+        override fun onError(utteranceId: String, throwable: Throwable) {
+            scope.launch {
+                commandMutex.withLock {
+                    logTtsEvent(
+                        event = "utterance_error",
+                        utteranceId = utteranceId,
+                        callbackSource = callbackSource
+                    )
+                    if (engine !== activeEngine) return@withLock
+                    handleUtteranceError(utteranceId, throwable)
+                }
             }
+        }
 
-            override fun onPlaybackInterrupted() {
-                scope.launch {
+        override fun onProgress(utteranceId: String, cacheKey: String, pcmFrameOffset: Long) {
+            scope.launch {
+                commandMutex.withLock {
+                    if (engine !== activeEngine) return@withLock
+                    updateExternalClauseProgress(utteranceId, pcmFrameOffset)
+                    persistExternalProgress(utteranceId, cacheKey, pcmFrameOffset)
+                }
+            }
+        }
+
+        override fun onPlaybackInterrupted() {
+            scope.launch {
+                commandMutex.withLock {
+                    if (engine !== activeEngine) return@withLock
+                    logTtsEvent(
+                        event = "playback_interrupted",
+                        callbackSource = callbackSource
+                    )
                     if (_playbackState.value == TtsPlaybackState.PLAYING) {
                         _playbackState.value = TtsPlaybackState.PAUSED
+                        logTtsEvent("state_changed", state = TtsPlaybackState.PAUSED)
                     }
                 }
             }
         }
-        systemTtsEngine.setListener(listener)
-        externalTtsEngine.setListener(listener)
 
-        scope.launch {
-            dataStoreManager.ttsSpeechRate.collectLatest { rate ->
-                _speechRate.value = rate.coerceIn(0.5f, 2f)
-                systemTtsEngine.setSpeechRate(_speechRate.value)
-                externalTtsEngine.setSpeechRate(_speechRate.value)
+        override fun onRangeStart(utteranceId: String, start: Int, end: Int) {
+            scope.launch {
+                commandMutex.withLock {
+                    if (engine === activeEngine) {
+                        updateAndroidUtteranceRange(utteranceId, start, end)
+                    }
+                }
             }
         }
+    }
+
+    init {
+        systemTtsEngine.setListener(playbackListener(systemTtsEngine, "android"))
+        externalTtsEngine.setListener(playbackListener(externalTtsEngine, "external"))
+
         scope.launch {
-            dataStoreManager.ttsPitch.collectLatest { pitch ->
-                systemTtsEngine.setPitch(pitch.coerceIn(0.5f, 2f))
-                externalTtsEngine.setPitch(pitch.coerceIn(0.5f, 2f))
+            dataStoreManager.ttsProsodySettings.collect { storedSettings ->
+                val settings = storedSettings.normalized()
+                commandMutex.withLock {
+                _speechRate.value = settings.speechRate
+                _speechRateMode.value = settings.speechRateMode
+                _pitch.value = settings.pitch.coerceIn(0.5f, 2f)
+                _pitchMode.value = settings.pitchMode
+                runCatching { applyProsody(systemTtsEngine) }.exceptionOrNull()?.let { error ->
+                    if (error is SystemTtsException.ProsodyRejected) {
+                        fallBackRejectedProsody(error)
+                    } else {
+                        _errors.tryEmit(error)
+                    }
+                }
+                if (sessionEngine?.isExternal == true) {
+                    runCatching { applyProsody(externalTtsEngine) }
+                        .exceptionOrNull()
+                        ?.let(_errors::tryEmit)
+                }
+                }
             }
         }
     }
@@ -138,8 +231,10 @@ class TtsController(
         bookId: String,
         source: TtsPageSource,
         startChapter: Int,
-        startPage: Int
+        startPage: Int,
+        startCharacterOffset: Int? = null
     ): Result<Unit> = withContext(Dispatchers.Main.immediate) {
+        commandMutex.withLock {
         stopInternal()
         val generation = ++sessionGeneration
         val selection = dataStoreManager.ttsProviderSelection.first()
@@ -149,13 +244,34 @@ class TtsController(
             return@withContext Result.failure(checkNotNull(selectedEngine.exceptionOrNull()))
         }
         sessionEngine = selectedEngine.getOrThrow()
+        _usesAndroidTts.value = !activeEngine.isExternal
         pageSource = source
         _activeBookId.value = bookId
         _playbackState.value = TtsPlaybackState.INITIALIZING
+        logTtsEvent("session_start", state = TtsPlaybackState.INITIALIZING)
 
         val engine = activeEngine
-        engine.setSpeechRate(_speechRate.value)
-        val initializeResult = engine.initialize()
+        var initializeResult: Result<Unit> = Result.failure(SystemTtsException.Initialization())
+        var prosodyAttempts = 0
+        while (prosodyAttempts < 3) {
+            prosodyAttempts++
+            val applyFailure = runCatching { applyProsody(engine) }.exceptionOrNull()
+            if (applyFailure != null) {
+                if (applyFailure is SystemTtsException.ProsodyRejected) {
+                    fallBackRejectedProsody(applyFailure)
+                    continue
+                }
+                initializeResult = Result.failure(applyFailure)
+                break
+            }
+            initializeResult = engine.initialize()
+            val initializeFailure = initializeResult.exceptionOrNull()
+            if (initializeFailure is SystemTtsException.ProsodyRejected) {
+                fallBackRejectedProsody(initializeFailure)
+            } else {
+                break
+            }
+        }
         if (generation != sessionGeneration) return@withContext Result.success(Unit)
         if (initializeResult.isFailure) {
             stopInternal()
@@ -184,13 +300,21 @@ class TtsController(
         if (generation != sessionGeneration) return@withContext Result.success(Unit)
         pendingResume = resume
         _playbackState.value = TtsPlaybackState.PLAYING
+        logTtsEvent("state_changed", state = TtsPlaybackState.PLAYING)
+        val requestedOffset = resume?.characterOffset ?: startCharacterOffset
+        val locatedPage = requestedOffset
+            ?.takeIf { resume == null }
+            ?.let { offset -> locatePageWithFallback(startChapter, offset) }
         val location = resume?.let { TtsPageLocation(it.chapterIndex, it.pageIndex) }
+            ?: locatedPage?.location
             ?: TtsPageLocation(startChapter, startPage)
+        followReaderPageTurns = true
         val moved = moveToPage(
             location = location,
             startAtEnd = false,
             publishLocation = true,
-            startCharacterOffset = resume?.characterOffset
+            startCharacterOffset = resume?.characterOffset,
+            seekCharacterOffset = requestedOffset?.takeIf { resume == null && locatedPage != null }
         )
         if (generation != sessionGeneration) return@withContext Result.success(Unit)
         if (!moved) {
@@ -199,6 +323,7 @@ class TtsController(
             return@withContext Result.failure(error)
         }
         Result.success(Unit)
+        }
     }
 
     private suspend fun selectPlaybackEngine(
@@ -221,30 +346,37 @@ class TtsController(
 
     fun pause() {
         scope.launch {
-            if (_playbackState.value != TtsPlaybackState.PLAYING) return@launch
+            commandMutex.withLock {
+            if (_playbackState.value != TtsPlaybackState.PLAYING) return@withLock
             val engine = activeEngine
             if (!engine.isExternal) activeUtteranceId = null
             engine.pause()
             _playbackState.value = TtsPlaybackState.PAUSED
+            logTtsEvent("state_changed", state = TtsPlaybackState.PAUSED)
+            }
         }
     }
 
     fun resume() {
         scope.launch {
-            if (_playbackState.value != TtsPlaybackState.PAUSED || segments.isEmpty()) return@launch
+            commandMutex.withLock {
+            if (_playbackState.value != TtsPlaybackState.PAUSED || segments.isEmpty()) return@withLock
             _playbackState.value = TtsPlaybackState.PLAYING
+            logTtsEvent("state_changed", state = TtsPlaybackState.PLAYING)
             if (!activeEngine.resume()) speakCurrentSegment()
+            }
         }
     }
 
     fun stop() {
-        scope.launch { stopInternal() }
+        scope.launch { commandMutex.withLock { stopInternal() } }
     }
 
     fun skip(forward: Boolean = true) {
         scope.launch {
+            commandMutex.withLock {
             val state = _playbackState.value
-            if (state != TtsPlaybackState.PLAYING && state != TtsPlaybackState.PAUSED) return@launch
+            if (state != TtsPlaybackState.PLAYING && state != TtsPlaybackState.PAUSED) return@withLock
             activeUtteranceId = null
             resetClausePlayback()
             activeEngine.stop()
@@ -277,21 +409,46 @@ class TtsController(
                     moveToAdjacentPage(forward = false)
                 }
             }
+            }
         }
     }
 
-    fun onPageVisible(bookId: String, chapterIndex: Int, pageIndex: Int) {
+    fun onPageVisible(
+        bookId: String,
+        chapterIndex: Int,
+        pageIndex: Int,
+        origin: TtsPageChangeOrigin = TtsPageChangeOrigin.USER
+    ) {
         scope.launch {
-            if (_activeBookId.value != bookId) return@launch
+            commandMutex.withLock {
+            if (_activeBookId.value != bookId) return@withLock
             val state = _playbackState.value
-            if (state != TtsPlaybackState.PLAYING && state != TtsPlaybackState.PAUSED) return@launch
+            if (state != TtsPlaybackState.PLAYING && state != TtsPlaybackState.PAUSED) return@withLock
             val location = TtsPageLocation(chapterIndex, pageIndex)
+            logTtsEvent(
+                event = "page_visible",
+                location = location,
+                callbackOrigin = origin
+            )
             val pending = pendingPageTurn
             if (pending != null) {
-                if (pending.request.sessionId != sessionGeneration) return@launch
-                if (pending.request.location == location) acknowledgePendingPageTurn(pending)
-                return@launch
+                if (pending.request.sessionId != sessionGeneration) return@withLock
+                if (pending.request.location == location) {
+                    acknowledgePendingPageTurn(pending)
+                    return@withLock
+                }
+                if (origin != TtsPageChangeOrigin.USER) return@withLock
+                // The reader moved elsewhere while playback was waiting for it. Never block playback.
+                cancelPageTurnAckTimeout()
+                pendingPageTurn = null
+                val canContinue = pending.resumeWhenAcknowledged &&
+                    _playbackState.value == TtsPlaybackState.PLAYING &&
+                    activeUtteranceId == null
+                followReaderPageTurns = false
+                if (canContinue) speakCurrentSegment()
+                return@withLock
             }
+            // Duplicated callbacks from one page animation must not count as user navigation.
             val acknowledged = acknowledgedPageTurn
             if (acknowledged != null) {
                 val withinAnimationWindow = System.nanoTime() - acknowledged.acknowledgedAtNanos <=
@@ -299,15 +456,84 @@ class TtsController(
                 if (withinAnimationWindow &&
                     (location == acknowledged.sourceLocation ||
                         location == acknowledged.targetLocation)
-                ) return@launch
+                ) return@withLock
                 acknowledgedPageTurn = null
             }
-            if (_currentPage.value?.location == location) return@launch
-            if (crossPageMerge?.landingLocation == location) return@launch
+            // Only the reader confirming a page turn requested by playback may move playback.
+            // Manual page turns and layout callbacks leave the listening position untouched.
+            if (origin != TtsPageChangeOrigin.TTS_FOLLOW) {
+                if (origin == TtsPageChangeOrigin.USER) {
+                    followReaderPageTurns = _currentPage.value?.location == location
+                }
+                return@withLock
+            }
+            if (_currentPage.value?.location == location) return@withLock
+            if (crossPageMerge?.landingLocation == location) return@withLock
             if (!moveToPage(location, startAtEnd = false, publishLocation = false)) {
                 _errors.tryEmit(pageContentError ?: IllegalStateException("No readable text found"))
                 stopInternal()
             }
+            }
+        }
+    }
+
+    /**
+     * Jumps playback to [characterOffset] inside [chapterIndex] without moving the reading page.
+     * Used by the double-tap gesture on a sentence.
+     */
+    fun seekTo(chapterIndex: Int, characterOffset: Int) {
+        scope.launch {
+            commandMutex.withLock {
+                val state = _playbackState.value
+                if (state != TtsPlaybackState.PLAYING && state != TtsPlaybackState.PAUSED) {
+                    return@withLock
+                }
+                if (pageSource == null) return@withLock
+                val target = locatePageWithFallback(chapterIndex, characterOffset)
+                    ?: return@withLock
+                followReaderPageTurns = true
+                if (state == TtsPlaybackState.PAUSED) {
+                    _playbackState.value = TtsPlaybackState.PLAYING
+                    logTtsEvent("state_changed", state = TtsPlaybackState.PLAYING)
+                }
+                logTtsEvent(
+                    event = "sentence_seek",
+                    location = target.location,
+                    sentenceOffset = characterOffset
+                )
+                if (!moveToPage(
+                        location = target.location,
+                        startAtEnd = false,
+                        publishLocation = false,
+                        seekCharacterOffset = characterOffset
+                    )
+                ) {
+                    pageContentError?.let(_errors::tryEmit)
+                    stopInternal()
+                }
+            }
+        }
+    }
+
+    private suspend fun locatePageWithFallback(
+        chapterIndex: Int,
+        characterOffset: Int
+    ): TtsPageContent? {
+        val source = pageSource ?: return null
+        val located = try {
+            source.locatePage(chapterIndex, characterOffset)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            pageContentError = error
+            null
+        }
+        if (located != null) return located
+        val current = _currentPage.value
+        return current?.takeIf { page ->
+            page.location.chapterIndex == chapterIndex &&
+                characterOffset in page.startCharacterOffset until
+                (page.startCharacterOffset + page.text.length)
         }
     }
 
@@ -317,52 +543,211 @@ class TtsController(
             request.location == _currentPage.value?.location &&
             _playbackState.value != TtsPlaybackState.IDLE
 
+    fun pageChangeOriginFor(
+        bookId: String,
+        chapterIndex: Int,
+        pageIndex: Int
+    ): TtsPageChangeOrigin {
+        val pending = pendingPageTurn?.request
+        val source = pendingPageTurn?.sourceLocation
+        return if (pending?.bookId == bookId &&
+            pending.sessionId == sessionGeneration
+        ) {
+            if (pending.location == TtsPageLocation(chapterIndex, pageIndex) ||
+                source == TtsPageLocation(chapterIndex, pageIndex)
+            ) {
+                TtsPageChangeOrigin.TTS_FOLLOW
+            } else {
+                TtsPageChangeOrigin.LAYOUT
+            }
+        } else {
+            TtsPageChangeOrigin.USER
+        }
+    }
+
     fun acknowledgePageTurnRequest(request: TtsPageTurnRequest) {
         scope.launch {
-            if (!isPageTurnRequestActive(request)) return@launch
-            val pending = pendingPageTurn ?: return@launch
+            commandMutex.withLock {
+            if (!isPageTurnRequestActive(request)) return@withLock
+            val pending = pendingPageTurn ?: return@withLock
             if (pending.request.sessionId == request.sessionId &&
                 pending.request.requestId == request.requestId &&
                 pending.request.location == request.location
             ) {
                 acknowledgePendingPageTurn(pending)
             }
+            }
         }
     }
 
-    private fun acknowledgePendingPageTurn(pending: PendingPageTurn) {
+    private suspend fun acknowledgePendingPageTurn(pending: PendingPageTurn) {
+        cancelPageTurnAckTimeout()
         acknowledgedPageTurn = AcknowledgedPageTurn(
             sourceLocation = pending.sourceLocation,
             targetLocation = pending.request.location,
             acknowledgedAtNanos = System.nanoTime()
         )
         pendingPageTurn = null
-    }
-
-    suspend fun setSpeechRate(rate: Float) = withContext(Dispatchers.Main.immediate) {
-        val safeRate = rate.coerceIn(0.5f, 2f)
-        _speechRate.value = safeRate
-        dataStoreManager.saveTtsSpeechRate(safeRate)
-        activeEngine.setSpeechRate(safeRate)
-        if (
-            !activeEngine.isExternal &&
+        if (pending.resumeWhenAcknowledged &&
             _playbackState.value == TtsPlaybackState.PLAYING &&
-            segments.isNotEmpty()
+            activeUtteranceId == null
         ) {
-            activeUtteranceId = null
-            activeSegment = null
-            activeSentenceSegment = null
-            _currentSentence.value = null
-            activeEngine.stop()
             speakCurrentSegment()
         }
     }
 
+    /**
+     * 阅读页可能已经不在（应用退到后台被回收、阅读器已关闭）或来不及翻页，
+     * 此时必须放弃等待确认继续朗读，否则会读完一页后长时间停住。
+     */
+    private fun schedulePageTurnAckTimeout(request: TtsPageTurnRequest) {
+        cancelPageTurnAckTimeout()
+        pendingPageTurnTimeoutJob = scope.launch {
+            delay(PAGE_TURN_ACK_TIMEOUT_MS)
+            commandMutex.withLock {
+                val pending = pendingPageTurn ?: return@withLock
+                if (pending.request.requestId != request.requestId) return@withLock
+                pendingPageTurn = null
+                logTtsEvent(
+                    event = "page_turn_ack_timeout",
+                    location = pending.request.location,
+                    requestId = request.requestId
+                )
+                if (pending.resumeWhenAcknowledged &&
+                    _playbackState.value == TtsPlaybackState.PLAYING &&
+                    activeUtteranceId == null
+                ) {
+                    speakCurrentSegment()
+                }
+            }
+        }
+    }
+
+    private fun cancelPageTurnAckTimeout() {
+        pendingPageTurnTimeoutJob?.cancel()
+        pendingPageTurnTimeoutJob = null
+    }
+
+    suspend fun setSpeechRate(rate: Float) = withContext(Dispatchers.Main.immediate) {
+        commandMutex.withLock {
+        val safeRate = rate.coerceIn(0.5f, 5f)
+        val applied = runCatching {
+            applyProsody(
+                activeEngine,
+                rate = safeRate,
+                rateMode = TtsProsodyMode.OVERRIDE
+            )
+        }
+        if (applied.isFailure) {
+            _errors.tryEmit(applied.exceptionOrNull())
+            return@withContext
+        }
+        _speechRate.value = safeRate
+        _speechRateMode.value = TtsProsodyMode.OVERRIDE
+        dataStoreManager.saveTtsProsodySettings(currentProsodySettings())
+        restartAndroidUtteranceAfterProsodyChange()
+        }
+    }
+
+    suspend fun setSpeechRateMode(mode: TtsProsodyMode) = withContext(Dispatchers.Main.immediate) {
+        commandMutex.withLock {
+        if (_speechRateMode.value == mode) return@withContext
+        val applied = runCatching { applyProsody(activeEngine, rateMode = mode) }
+        if (applied.isFailure) {
+            _errors.tryEmit(applied.exceptionOrNull())
+            return@withContext
+        }
+        _speechRateMode.value = mode
+        dataStoreManager.saveTtsProsodySettings(currentProsodySettings())
+        restartAndroidUtteranceAfterProsodyChange()
+        }
+    }
+
     suspend fun setPitch(pitch: Float) = withContext(Dispatchers.Main.immediate) {
+        commandMutex.withLock {
         val safePitch = pitch.coerceIn(0.5f, 2f)
-        dataStoreManager.saveTtsPitch(safePitch)
-        systemTtsEngine.setPitch(safePitch)
-        externalTtsEngine.setPitch(safePitch)
+        if (!activeEngine.isExternal) {
+            val applied = runCatching {
+                applyProsody(
+                    activeEngine,
+                    pitch = safePitch,
+                    pitchMode = TtsProsodyMode.OVERRIDE
+                )
+            }
+            if (applied.isFailure) {
+                _errors.tryEmit(applied.exceptionOrNull())
+                return@withContext
+            }
+        }
+        _pitch.value = safePitch
+        _pitchMode.value = TtsProsodyMode.OVERRIDE
+        dataStoreManager.saveTtsProsodySettings(currentProsodySettings())
+        if (!activeEngine.isExternal) restartAndroidUtteranceAfterProsodyChange()
+        }
+    }
+
+    suspend fun setPitchMode(mode: TtsProsodyMode) = withContext(Dispatchers.Main.immediate) {
+        commandMutex.withLock {
+        if (_pitchMode.value == mode) return@withContext
+        if (!activeEngine.isExternal) {
+            val applied = runCatching { applyProsody(activeEngine, pitchMode = mode) }
+            if (applied.isFailure) {
+                _errors.tryEmit(applied.exceptionOrNull())
+                return@withContext
+            }
+        }
+        _pitchMode.value = mode
+        dataStoreManager.saveTtsProsodySettings(currentProsodySettings())
+        if (!activeEngine.isExternal) restartAndroidUtteranceAfterProsodyChange()
+        }
+    }
+
+    private suspend fun applyProsody(
+        engine: TtsPlaybackEngine,
+        rate: Float = _speechRate.value,
+        rateMode: TtsProsodyMode = _speechRateMode.value,
+        pitch: Float = _pitch.value,
+        pitchMode: TtsProsodyMode = _pitchMode.value
+    ) {
+        if (engine.isExternal) {
+            engine.applyProsody(rate = rate, pitch = null)
+        } else {
+            engine.applyProsody(
+                rate = rate.takeIf { rateMode == TtsProsodyMode.OVERRIDE },
+                pitch = pitch.takeIf { pitchMode == TtsProsodyMode.OVERRIDE }
+            )
+        }
+    }
+
+    private suspend fun fallBackRejectedProsody(error: SystemTtsException.ProsodyRejected) {
+        when (error.setting) {
+            TtsProsodySetting.RATE -> {
+                _speechRateMode.value = TtsProsodyMode.FOLLOW_ENGINE
+            }
+            TtsProsodySetting.PITCH -> {
+                _pitchMode.value = TtsProsodyMode.FOLLOW_ENGINE
+            }
+        }
+        dataStoreManager.saveTtsProsodySettings(currentProsodySettings())
+        _errors.tryEmit(error)
+    }
+
+    private suspend fun restartAndroidUtteranceAfterProsodyChange() {
+        if (activeEngine.isExternal || segments.isEmpty()) return
+        val state = _playbackState.value
+        if (state != TtsPlaybackState.PLAYING && state != TtsPlaybackState.PAUSED) return
+        activeUtteranceId = null
+        activeSegment = null
+        activeSentenceSegment = null
+        _currentSentence.value = null
+        activeEngine.stop()
+        val result = activeEngine.initialize()
+        if (result.isFailure) {
+            _errors.tryEmit(result.exceptionOrNull())
+            stopInternal()
+        } else if (state == TtsPlaybackState.PLAYING) {
+            speakCurrentSegment()
+        }
     }
 
     private suspend fun handleUtteranceDone(utteranceId: String?) {
@@ -372,12 +757,6 @@ class TtsController(
         activeSegment = null
         activeSentenceSegment = null
         pendingResume = null
-        if (clauseIndex + 1 < clauses.size) {
-            clauseIndex++
-            speakCurrentSegment()
-            return
-        }
-
         resetClausePlayback()
         if (sentenceIndex + 1 < segments.size) {
             sentenceIndex++
@@ -426,7 +805,8 @@ class TtsController(
         location: TtsPageLocation,
         startAtEnd: Boolean,
         publishLocation: Boolean,
-        startCharacterOffset: Int? = null
+        startCharacterOffset: Int? = null,
+        seekCharacterOffset: Int? = null
     ): Boolean {
         val source = pageSource ?: return false
         val token = ++pageLoadToken
@@ -435,6 +815,9 @@ class TtsController(
         resetClausePlayback()
         activeEngine.stop()
         crossPageMerge = null
+        // Any new playback decision supersedes a turn we were still waiting for.
+        cancelPageTurnAckTimeout()
+        pendingPageTurn = null
 
         var target = location
         var selectedPage: TtsPageContent? = null
@@ -469,16 +852,35 @@ class TtsController(
         val sourceLocation = _currentPage.value?.location
         _currentPage.value = page
         segments = selectedSegments
-        sentenceIndex = if (startAtEnd) segments.lastIndex else 0
-        if (publishLocation) {
+        sentenceIndex = when {
+            startAtEnd -> segments.lastIndex
+            seekCharacterOffset != null ->
+                textExtractor.segmentIndexForOffset(segments, seekCharacterOffset).coerceAtLeast(0)
+            else -> 0
+        }
+        if (publishLocation && followReaderPageTurns) {
             val request = TtsPageTurnRequest(
                 bookId = _activeBookId.value ?: return false,
                 sessionId = sessionGeneration,
                 requestId = ++pageTurnSequence,
                 location = page.location
             )
-            pendingPageTurn = PendingPageTurn(request, sourceLocation)
+            logTtsEvent(
+                event = "page_turn_requested",
+                location = page.location,
+                requestId = request.requestId
+            )
+            val waitForAcknowledgement = sourceLocation != null && sourceLocation != page.location
+            pendingPageTurn = if (waitForAcknowledgement) {
+                PendingPageTurn(request, sourceLocation, resumeWhenAcknowledged = true)
+            } else {
+                null
+            }
             _pageTurnRequests.emit(request)
+            if (waitForAcknowledgement) {
+                schedulePageTurnAckTimeout(request)
+                return true
+            }
         }
         if (_playbackState.value == TtsPlaybackState.PLAYING) speakCurrentSegment()
         return true
@@ -555,7 +957,8 @@ class TtsController(
         val generation = sessionGeneration
         val page = _currentPage.value ?: return
         val sentence = prepareCurrentSentence(page, generation) ?: return
-        val segment = clauses.getOrNull(clauseIndex) ?: return
+        val clause = clauses.getOrNull(clauseIndex) ?: return
+        val segment = sentence
         if (generation != sessionGeneration ||
             _currentPage.value?.location != page.location ||
             _playbackState.value != TtsPlaybackState.PLAYING
@@ -576,7 +979,12 @@ class TtsController(
         activeUtteranceId = utteranceId
         activeSegment = segment
         activeSentenceSegment = sentence
-        _currentSentence.value = segment
+        _currentSentence.value = if (activeEngine.isExternal) clause else sentence
+        logTtsEvent(
+            event = "utterance_requested",
+            location = page.location,
+            utteranceId = utteranceId
+        )
         val resume = pendingResume?.takeIf {
             it.chapterIndex == page.location.chapterIndex &&
                 it.pageIndex == page.location.pageIndex &&
@@ -656,6 +1064,9 @@ class TtsController(
     }
 
     private fun nextPrefetchText(): String? {
+        if (activeEngine.isExternal) {
+            return segments.getOrNull(sentenceIndex + 1)?.text
+        }
         clauses.getOrNull(clauseIndex + 1)?.let { return it.text }
         return segments.getOrNull(sentenceIndex + 1)
             ?.let { textExtractor.splitIntoClauses(it) }
@@ -669,7 +1080,23 @@ class TtsController(
         playbackSentence = null
         clauses = emptyList()
         clauseIndex = 0
-        _currentSentence.value = null
+        // 不在这里清空 currentSentence：逐句朗读时清空会让悬浮字幕在每句之间闪一下“正在朗读”。
+        // 会话真正结束时由 stopInternal() 清除。
+    }
+
+    private fun updateAndroidUtteranceRange(utteranceId: String, start: Int, end: Int) {
+        if (activeEngine.isExternal || utteranceId != activeUtteranceId) return
+        if (_playbackState.value != TtsPlaybackState.PLAYING) return
+        val sentence = activeSentenceSegment ?: return
+        val safeStart = start.coerceIn(0, sentence.text.length)
+        val safeEnd = end.coerceIn(safeStart, sentence.text.length)
+        if (safeStart == safeEnd) return
+        _currentSentence.value = TtsTextSegment(
+            text = sentence.text.substring(safeStart, safeEnd),
+            startCharacterOffset = sentence.startCharacterOffset + safeStart,
+            endCharacterOffset = sentence.startCharacterOffset + safeEnd,
+            canContinueAcrossPage = false
+        )
     }
     private suspend fun persistExternalProgress(
         utteranceId: String,
@@ -760,15 +1187,19 @@ class TtsController(
         runCatching { pageSource?.close() }
         pageSource = null
         crossPageMerge = null
+        cancelPageTurnAckTimeout()
         pendingPageTurn = null
         acknowledgedPageTurn = null
+        followReaderPageTurns = true
         segments = emptyList()
         sentenceIndex = 0
         _currentPage.value = null
+        _currentSentence.value = null
         _activeBookId.value = null
         sessionEngine = null
         pendingResume = null
         _playbackState.value = TtsPlaybackState.IDLE
+        logTtsEvent("state_changed", state = TtsPlaybackState.IDLE)
         if (clearExternalResume && activeBookId != null) {
             dataStoreManager.clearExternalTtsResumePosition(activeBookId)
         }
@@ -781,8 +1212,62 @@ class TtsController(
         externalTtsEngine.shutdown()
     }
 
+    private fun updateExternalClauseProgress(utteranceId: String, pcmFrameOffset: Long) {
+        if (!activeEngine.isExternal || utteranceId != activeUtteranceId) return
+        val sentence = activeSentenceSegment ?: return
+        val totalFrames = activeEngine.currentPcmFrameCount()
+        if (totalFrames <= 0L || clauses.size <= 1) return
+        val ratio = (pcmFrameOffset.toDouble() / totalFrames.toDouble()).coerceIn(0.0, 0.999999)
+        val targetOffset = (ratio * sentence.text.length).toInt()
+        val targetClause = clauses.indexOfLast { it.startCharacterOffset - sentence.startCharacterOffset <= targetOffset }
+            .coerceIn(0, clauses.lastIndex)
+        if (targetClause == clauseIndex) return
+        clauseIndex = targetClause
+        _currentSentence.value = clauses[targetClause]
+    }
+
     private companion object {
         const val PAGE_TURN_CALLBACK_GRACE_NANOS = 1_000_000_000L
+        const val PAGE_TURN_ACK_TIMEOUT_MS = 1_200L
+    }
+
+    private fun currentProsodySettings() = TtsProsodySettings(
+        speechRate = _speechRate.value,
+        speechRateMode = _speechRateMode.value,
+        pitch = _pitch.value,
+        pitchMode = _pitchMode.value
+    )
+
+    private fun logTtsEvent(
+        event: String,
+        state: TtsPlaybackState? = null,
+        location: TtsPageLocation? = _currentPage.value?.location,
+        callbackOrigin: TtsPageChangeOrigin? = null,
+        callbackSource: String? = null,
+        requestId: Long? = null,
+        utteranceId: String? = null,
+        sentenceOffset: Int? = null
+    ) {
+        DiagnosticLoggerRegistry.logger?.log(
+            category = "tts",
+            event = event,
+            level = DiagnosticLevel.INFO,
+            attributes = buildMap {
+                put("sessionId", sessionGeneration)
+                state?.let { put("state", it.name) }
+                location?.let {
+                    put("chapter", it.chapterIndex)
+                    put("page", it.pageIndex)
+                }
+                callbackOrigin?.let { put("callbackOrigin", it.name) }
+                callbackSource?.let { put("callbackSource", it) }
+                requestId?.let { put("requestId", it) }
+                utteranceId?.let { put("utteranceId", it) }
+                sentenceOffset?.let { put("sentenceOffset", it) }
+                put("sentenceIndex", sentenceIndex)
+            },
+            bookId = _activeBookId.value
+        )
     }
 }
 

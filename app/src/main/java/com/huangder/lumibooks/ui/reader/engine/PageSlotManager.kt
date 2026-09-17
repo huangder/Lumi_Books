@@ -1184,6 +1184,9 @@ class PageSlotManager(
     fun getSlotForView(view: PageContentView): SlotState? =
         slots.firstOrNull { it.contentView === view || it.rightContentView === view }
 
+    /** 同步返回已缓存的章节文本；章节尚未加载时返回 null（不触发 I/O）。 */
+    fun cachedChapterText(chapterIndex: Int): CharSequence? = chapterTextCache[chapterIndex]
+
     fun clearContentCache() {
         val loadingChapters = chapterLoadJobs.values.toList()
         chapterLoadJobs.clear()

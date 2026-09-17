@@ -72,6 +72,20 @@ internal class ReflowTtsPageSource(
         )
     }
 
+    override suspend fun locatePage(
+        chapterIndex: Int,
+        characterOffset: Int
+    ): TtsPageContent? {
+        if (closed || chapterIndex !in 0 until chapterCount) return null
+        val fullText = chapterText(chapterIndex)?.takeUnless { it.isEmpty() } ?: return null
+        val chapterLayout = layoutEngine.layout(chapterIndex, fullText)
+        if (closed || chapterLayout.totalPages <= 0) return null
+        val pageIndex = chapterLayout.pages.indexOfFirst { page ->
+            characterOffset < page.endCharOffset
+        }.let { index -> if (index >= 0) index else chapterLayout.totalPages - 1 }
+        return getPage(chapterIndex, pageIndex)
+    }
+
     private suspend fun chapterText(chapterIndex: Int): CharSequence? {
         chapterCache[chapterIndex]?.let { return it }
         val text = chapterProvider?.invoke(chapterIndex) ?: return null
@@ -103,6 +117,11 @@ internal class PdfTtsPageSource(
             next = (chapterIndex + 1).takeIf { it < pageCount }?.let { TtsPageLocation(it, 0) }
         )
     }
+
+    override suspend fun locatePage(
+        chapterIndex: Int,
+        characterOffset: Int
+    ): TtsPageContent? = getPage(chapterIndex, 0)
 
     override fun close() {
         closed = true

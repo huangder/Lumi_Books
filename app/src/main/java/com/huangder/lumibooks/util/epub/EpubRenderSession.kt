@@ -34,13 +34,20 @@ class EpubRenderSession private constructor(
     }.toMap()
     private val readerFontFiles = mutableMapOf<String, File>()
     private val readerFontKeysByPath = mutableMapOf<String, String>()
+    private val readerBackgroundFiles = mutableMapOf<String, File>()
+    private val readerBackgroundKeysByPath = mutableMapOf<String, String>()
+    private val cssIndexByChapterPath = mutableMapOf<String, EpubCssIndex>()
+    private val missingResourceLog = mutableSetOf<String>()
 
     override val assetLoader: WebViewAssetLoader = WebViewAssetLoader.Builder()
         .setDomain(ASSET_DOMAIN)
         .addPathHandler("/epub/$sessionToken/", WebViewAssetLoader.PathHandler { requestedPath ->
             val resource = logicalChapterIndex(requestedPath)?.let(::readLogicalChapter)
                 ?: read(requestedPath)
-                ?: return@PathHandler null
+                ?: run {
+                    logMissingResource(requestedPath)
+                    return@PathHandler null
+                }
             val isTransformedDocument = resource.bytes.containsReaderScript()
             WebResourceResponse(
                 resource.mediaType,
@@ -57,6 +64,9 @@ class EpubRenderSession private constructor(
         .addPathHandler("/reader-font/$sessionToken/", WebViewAssetLoader.PathHandler { requestedPath ->
             openReaderFont(requestedPath)
         })
+        .addPathHandler("/reader-background/$sessionToken/", WebViewAssetLoader.PathHandler { requestedPath ->
+            openReaderBackground(requestedPath)
+        })
         .build()
 
     @Synchronized
@@ -69,6 +79,39 @@ class EpubRenderSession private constructor(
         val key = readerFontKeysByPath.getOrPut(canonicalPath) { UUID.randomUUID().toString() + "." + extension }
         readerFontFiles[key] = canonical
         return "https://$ASSET_DOMAIN/reader-font/$sessionToken/$key"
+    }
+
+    @Synchronized
+    override fun readerBackgroundUrl(filePath: String?): String? {
+        val file = filePath?.takeIf(String::isNotBlank)?.let(::File) ?: return null
+        val canonical = runCatching { file.canonicalFile }.getOrNull() ?: return null
+        if (!canonical.isFile || canonical.length() <= 0L) return null
+        val extension = canonical.extension.lowercase().takeIf { it.isNotBlank() } ?: "jpg"
+        val key = readerBackgroundKeysByPath.getOrPut(canonical.path) {
+            UUID.randomUUID().toString() + "." + extension
+        }
+        readerBackgroundFiles[key] = canonical
+        return "https://$ASSET_DOMAIN/reader-background/$sessionToken/$key"
+    }
+
+    @Synchronized
+    private fun openReaderBackground(requestedPath: String): WebResourceResponse? {
+        val file = readerBackgroundFiles[requestedPath] ?: return null
+        val canonical = runCatching { file.canonicalFile }.getOrNull() ?: return null
+        if (canonical != file || !canonical.isFile || canonical.length() <= 0L) return null
+        val mimeType = when (canonical.extension.lowercase()) {
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            "gif" -> "image/gif"
+            "bmp" -> "image/bmp"
+            else -> "image/jpeg"
+        }
+        return WebResourceResponse(mimeType, null, FileInputStream(canonical)).apply {
+            responseHeaders = mapOf(
+                "Cache-Control" to "private, max-age=3600",
+                "X-Content-Type-Options" to "nosniff"
+            )
+        }
     }
 
     @Synchronized
@@ -212,6 +255,15 @@ class EpubRenderSession private constructor(
         return readPhysical(normalized)
     }
 
+    /** 书籍里引用了但压缩包中没有的资源记一条日志，方便区分「书本身缺图」和「没画出来」。 */
+    @Synchronized
+    private fun logMissingResource(requestedPath: String) {
+        val key = requestedPath.lowercase()
+        if (missingResourceLog.size >= MAX_MISSING_RESOURCE_LOGS) return
+        if (!missingResourceLog.add(key)) return
+        android.util.Log.w(TAG, "epub resource missing in package: $requestedPath")
+    }
+
     @Synchronized
     private fun readPhysical(normalized: String): EpubResource? {
         val entry = zipFile.getEntry(normalized) ?: entriesByLowercase[normalized.lowercase()] ?: return null
@@ -230,7 +282,8 @@ class EpubRenderSession private constructor(
                 bytes = EpubDocumentTransformer.transform(
                     resource = resource,
                     layout = spineItem.renditionLayout,
-                    isCoverCandidate = spineByPath[normalized.lowercase()] == 0
+                    isCoverCandidate = spineByPath[normalized.lowercase()] == 0,
+                    cssIndex = cssIndexFor(normalized, bytes)
                 )
             )
         } else resource
@@ -290,10 +343,12 @@ class EpubRenderSession private constructor(
         val chapter = logicalChapters.getOrNull(chapterIndex) ?: return null
         val spineItem = epubPackage.spine.getOrNull(chapter.spineIndex) ?: return null
         val source = readLogicalSource(chapterIndex) ?: return null
+        val cssIndex = cssIndexFor(chapter.path, source.bytes)
         val transformed = EpubDocumentTransformer.transform(
             resource = source,
             layout = spineItem.renditionLayout,
-            isCoverCandidate = chapterIndex == 0
+            isCoverCandidate = chapterIndex == 0,
+            cssIndex = cssIndex
         )
         val baseUrl = physicalChapterUrl(chapter.path)
         return source.copy(bytes = transformed.withBaseHref(baseUrl))
@@ -346,6 +401,58 @@ class EpubRenderSession private constructor(
         return "https://$ASSET_DOMAIN/epub/$sessionToken/$encodedPath"
     }
 
+    /**
+     * 章节实际引用的样式表规则索引（含一层 `@import`）。
+     *
+     * 原排版用它判断「发布方显式声明铺满宽的图片」，因此必须在转换阶段就能拿到规则，
+     * 不能在 WebView 里再读一遍 CSS。解析结果按章节路径缓存。
+     */
+    @Synchronized
+    private fun cssIndexFor(chapterPath: String, chapterBytes: ByteArray): EpubCssIndex {
+        val cacheKey = chapterPath.lowercase()
+        cssIndexByChapterPath[cacheKey]?.let { return it }
+        val html = String(chapterBytes, Charsets.UTF_8)
+        val styleSheets = mutableListOf<Pair<String, String>>()
+        linkedStyleSheetPaths(chapterPath, html).forEach sheetLoop@{ cssPath ->
+            val css = readStyleSheet(cssPath) ?: return@sheetLoop
+            // @import 的规则排在导入它的样式表之前（CSS 语义），因此先收集再追加。
+            EpubCssIndex.imports(css).forEach importLoop@{ imported ->
+                val importedPath = EpubPathResolver.resolve(cssPath, imported) ?: return@importLoop
+                readStyleSheet(importedPath)?.let { styleSheets += importedPath to it }
+            }
+            styleSheets += cssPath to css
+        }
+        val index = EpubCssIndex.parse(styleSheets)
+        cssIndexByChapterPath[cacheKey] = index
+        return index
+    }
+
+    private fun linkedStyleSheetPaths(chapterPath: String, html: String): List<String> {
+        if (!html.contains("stylesheet", ignoreCase = true)) return emptyList()
+        return LINK_TAG_REGEX.findAll(html)
+            .filter { it.value.contains("stylesheet", ignoreCase = true) }
+            .mapNotNull { tag -> HREF_REGEX.find(tag.value)?.groupValues?.get(1)?.trim() }
+            .filter { reference ->
+                reference.isNotEmpty() &&
+                    !reference.startsWith("data:", ignoreCase = true) &&
+                    !reference.startsWith("http://", ignoreCase = true) &&
+                    !reference.startsWith("https://", ignoreCase = true)
+            }
+            .mapNotNull { reference -> EpubPathResolver.resolve(chapterPath, reference) }
+            .distinct()
+            .toList()
+    }
+
+    private fun readStyleSheet(path: String): String? {
+        val normalized = EpubPathResolver.normalize(path) ?: return null
+        val entry = zipFile.getEntry(normalized) ?: entriesByLowercase[normalized.lowercase()] ?: return null
+        if (entry.isDirectory) return null
+        val bytes = runCatching {
+            zipFile.getInputStream(entry).use { input -> input.readBytes(MAX_RESOURCE_BYTES) }
+        }.getOrNull() ?: return null
+        return String(bytes, Charsets.UTF_8).removePrefix("\uFEFF")
+    }
+
     private fun ByteArray.withBaseHref(baseUrl: String): ByteArray {
         val html = String(this, Charsets.UTF_8)
         val head = Regex("<head\\b[^>]*>", RegexOption.IGNORE_CASE).find(html)
@@ -367,8 +474,12 @@ class EpubRenderSession private constructor(
 
     companion object {
         const val ASSET_DOMAIN = BookRenderSession.ASSET_DOMAIN
+        private const val TAG = "EpubRenderSession"
+        private const val MAX_MISSING_RESOURCE_LOGS = 20
         private const val MAX_RESOURCE_BYTES = 64 * 1024 * 1024
         private const val MAX_READER_FONT_BYTES = 64L * 1024L * 1024L
+        private val LINK_TAG_REGEX = Regex("""<link\b[^>]*>""", RegexOption.IGNORE_CASE)
+        private val HREF_REGEX = Regex("""href\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
         private val READER_FONT_EXTENSIONS = setOf("ttf", "otf", "woff", "woff2")
         private const val CONTENT_SECURITY_POLICY =
             "default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; " +

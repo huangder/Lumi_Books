@@ -69,6 +69,12 @@ interface BookParser {
     var useEpubCss: Boolean
 
     /**
+     * 是否还原原书背景装饰（阅读器排版下把出版社 CSS 的 background-image 装饰还原成图片）。
+     * 跟随阅读器的「保留原书背景」；不支持的格式忽略。
+     */
+    var preserveEpubBackground: Boolean
+
+    /**
      * 轻量级封面提取：只提取封面图片路径，不解析章节内容。
      * 用于导入时快速获取封面，避免解析全部章节/图片的开销。
      */

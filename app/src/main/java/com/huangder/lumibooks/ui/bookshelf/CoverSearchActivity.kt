@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.bookshelf
+import com.huangder.lumibooks.ui.icons.directionalIcon
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.app.Activity
 import android.content.Context
@@ -53,12 +55,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.outlined.CropFree
-import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
@@ -427,7 +423,7 @@ private fun CoverSearchScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Outlined.Check,
+                            imageVector = AppIcons.Check,
                             contentDescription = null,
                             tint = AppColors.OnAccent,
                             modifier = Modifier.size(36.dp)
@@ -562,7 +558,7 @@ private fun CoverSearchBottomBar(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Outlined.Check,
+                        imageVector = AppIcons.Check,
                         contentDescription = stringResource(R.string.confirm),
                         tint = AppColors.OnAccent,
                         modifier = Modifier.size(24.dp)
@@ -608,7 +604,7 @@ private fun CoverSearchBottomBar(
             modifier = Modifier.size(48.dp)
         ) {
             Icon(
-                imageVector = Icons.Outlined.CropFree,
+                imageVector = AppIcons.CornersOut,
                 contentDescription = stringResource(R.string.cover_pick_region),
                 tint = if (cropMode) AppColors.OnAccent else AppColors.TextPrimary,
                 modifier = Modifier.size(22.dp)
@@ -629,7 +625,7 @@ private fun CoverSearchTopBar(
 
     val fieldContent: @Composable RowScope.() -> Unit = {
         Icon(
-            imageVector = Icons.Outlined.Search,
+            imageVector = AppIcons.MagnifyingGlass,
             contentDescription = null,
             tint = AppColors.TextSecondary,
             modifier = Modifier.size(18.dp)
@@ -657,7 +653,7 @@ private fun CoverSearchTopBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         LiquidGlassIconButton(
-            imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+            imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
             contentDescription = stringResource(R.string.back),
             onClick = onBack,
             settingsBackButton = true
@@ -694,7 +690,7 @@ private fun CoverSearchTopBar(
         }
         Spacer(Modifier.size(AppSpace.md - AppSpace.xs))
         LiquidGlassIconButton(
-            imageVector = Icons.Outlined.Refresh,
+            imageVector = AppIcons.ArrowClockwise,
             contentDescription = stringResource(R.string.reload_page),
             onClick = onReload
         )

@@ -1,10 +1,48 @@
 package com.huangder.lumibooks.ui.home
 
 import com.huangder.lumibooks.domain.model.Book
+import com.huangder.lumibooks.domain.repository.FolderRepository
+import com.huangder.lumibooks.util.AuthorizedFolderDirectorySnapshot
+import com.huangder.lumibooks.util.authorizedSnapshotIdentity
 
 /** Stable across different tree-qualified URIs that point at the same SAF document. */
 internal fun authorizedDocumentIdentity(documentKey: String?, uri: String): String =
-    documentKey?.takeIf(String::isNotBlank)?.let { "document:$it" } ?: "uri:$uri"
+    authorizedSnapshotIdentity(documentKey, uri)
+
+/**
+ * Rebuilds the physical storage binding chain (root first, then every nested directory) for each
+ * remembered directory path. Matches what a live scan used to produce for the same folder.
+ */
+internal fun authorizedStorageBindingsByPath(
+    treeUri: String,
+    directories: List<AuthorizedFolderDirectorySnapshot>
+): Map<String, List<FolderRepository.StorageBinding>> {
+    val root = directories.firstOrNull { it.relativePath == null } ?: return emptyMap()
+    val rootBinding = root.toStorageBinding(treeUri)
+    val byPath = directories.associateBy { it.relativePath.orEmpty() }
+    return directories.associate { directory ->
+        val path = directory.relativePath.orEmpty()
+        val childBindings = path
+            .split('/')
+            .filter(String::isNotBlank)
+            .runningFold("") { prefix, segment ->
+                if (prefix.isBlank()) segment else "$prefix/$segment"
+            }
+            .drop(1)
+            .mapNotNull { byPath[it] }
+            .map { it.toStorageBinding(treeUri) }
+        path to (listOf(rootBinding) + childBindings)
+    }
+}
+
+private fun AuthorizedFolderDirectorySnapshot.toStorageBinding(
+    treeUri: String
+): FolderRepository.StorageBinding = FolderRepository.StorageBinding(
+    name = name,
+    treeUri = treeUri,
+    documentUri = documentUri,
+    parentUri = parentDocumentUri
+)
 
 /**
  * Matches in the required order. Hash matching is deliberately limited to a single record so

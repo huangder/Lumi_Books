@@ -35,8 +35,10 @@ class EpubHighlightOverlayInstrumentedTest {
         val loaded = CountDownLatch(1)
         val resultReady = CountDownLatch(1)
         val expiredResultReady = CountDownLatch(1)
+        val ttsClearedResultReady = CountDownLatch(1)
         var result: JSONObject? = null
         var expiredResult: JSONObject? = null
+        var ttsClearedResult: JSONObject? = null
         var encodedResult: String? = null
         lateinit var webView: WebView
         EpubHighlightTestActivity.current = null
@@ -85,6 +87,7 @@ class EpubHighlightOverlayInstrumentedTest {
                     "{exact:'highlight text across several wrapped lines',color:'#123456ff',type:'underline'," +
                     "start:{version:2,exact:'highlight text across several wrapped lines'," +
                     "prefix:'before repeated ',suffix:' after',progression:0.2}}]);" +
+                    "window.LumiReader.setTtsHighlight(7,7+'repeated highlight text across several wrapped lines'.length,'#ff9e8066');" +
                     "window.LumiReader.findText({version:2,exact:'repeated highlight text across several wrapped lines'," +
                     "prefix:'before ',suffix:' after',progression:0.2},101);" +
                     "window.LumiReader.findText({version:2,exact:'another line for pagination'," +
@@ -97,12 +100,14 @@ class EpubHighlightOverlayInstrumentedTest {
                             "if(p&&p.firstChild)r.selectNodeContents(p.firstChild);" +
                             "var blocks=Array.from(document.querySelectorAll('.lumi-highlight-block'))," +
                             "search=blocks.filter(function(e){return e.style.backgroundColor.indexOf('255, 193, 7')>=0})," +
+                            "tts=blocks.filter(function(e){return e.classList.contains('lumi-tts-highlight-block')})," +
                             "underlines=Array.from(document.querySelectorAll('.lumi-underline-block'))," +
                             "underlineFallbacks=blocks.filter(function(e){return e.style.backgroundColor.indexOf('18, 52, 86')>=0})," +
                             "target=document.querySelectorAll('p')[1],layer=document.getElementById('lumi-highlight-layer')," +
                             "underlineLayer=document.getElementById('lumi-underline-layer')," +
                             "targetRect=target?target.getBoundingClientRect():null,layerRect=layer?layer.getBoundingClientRect():null;" +
                             "return JSON.stringify({count:document.querySelectorAll('.lumi-highlight-block').length," +
+                            "ttsCount:tts.length,ttsColor:tts.length?tts[0].style.backgroundColor:''," +
                             "searchCount:search.length,searchTop:search.length?parseFloat(search[0].style.top):-1," +
                             "searchAnimation:search.length?getComputedStyle(search[0]).animationName:''," +
                             "underlineCount:underlines.length,underlineFallbackCount:underlineFallbacks.length," +
@@ -139,6 +144,18 @@ class EpubHighlightOverlayInstrumentedTest {
                                     runCatching { JSONObject(it) }.getOrNull()
                                 }
                                 expiredResultReady.countDown()
+                                webView.evaluateJavascript(
+                                    "window.LumiReader.setTtsHighlight(null,null,null);" +
+                                        "JSON.stringify({ttsCount:document.querySelectorAll('.lumi-tts-highlight-block').length})"
+                                ) { clearedEncoded ->
+                                    val clearedDecoded = runCatching {
+                                        JSONArray("[$clearedEncoded]").optString(0)
+                                    }.getOrNull()
+                                    ttsClearedResult = clearedDecoded?.let {
+                                        runCatching { JSONObject(it) }.getOrNull()
+                                    }
+                                    ttsClearedResultReady.countDown()
+                                }
                             }
                         }, 1800L)
                     }
@@ -153,6 +170,8 @@ class EpubHighlightOverlayInstrumentedTest {
         )
         assertEquals("6px", result?.optString("radius"))
         assertTrue("the second locator search must replace the first temporary highlight: result=$result", result?.optInt("searchCount", 0) ?: 0 > 0)
+        assertTrue("TTS range must render a dedicated cross-element overlay: result=$result", result?.optInt("ttsCount", 0) ?: 0 > 0)
+        assertTrue("TTS overlay must retain the requested CSS color: result=$result", result?.optString("ttsColor", "").orEmpty().isNotBlank())
         assertEquals("lumi-search-highlight-pulse", result?.optString("searchAnimation"))
         assertTrue(
             "a cross-element underline must render as line SVGs: result=$result",
@@ -186,6 +205,8 @@ class EpubHighlightOverlayInstrumentedTest {
             "persistent note highlights must remain after the search pulse expires: result=$expiredResult",
             expiredResult?.optInt("persistentCount", 0) ?: 0 > 0
         )
+        assertTrue("TTS clear query must complete", ttsClearedResultReady.await(5, TimeUnit.SECONDS))
+        assertEquals(0, ttsClearedResult?.optInt("ttsCount", -1))
         val gaps = result?.optJSONArray("gaps") ?: JSONArray()
         assertTrue("test content must wrap into multiple highlight rows: result=$result", gaps.length() > 0)
         for (index in 0 until gaps.length()) {

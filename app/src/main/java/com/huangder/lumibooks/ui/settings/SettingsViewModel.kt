@@ -1208,22 +1208,53 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun testWebdavConnection() {
+        if (_uiState.value.webdavTesting) return
         viewModelScope.launch {
             val config = _uiState.value.webdavConfig.normalized()
-            val password = webdavTokenStore.read() ?: ""
-            if (config.serverUrl.isBlank() || password.isBlank()) {
+            val password = webdavTokenStore.read()
+            if (config.serverUrl.isBlank()) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, R.string.webdav_required_fields, Toast.LENGTH_SHORT).show()
                 }
                 return@launch
             }
-            val result = webdavSyncManager.testConnection(config.serverUrl, config.username, password)
+            if (password.isNullOrBlank()) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, R.string.webdav_required_password, Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
+
+            _uiState.update {
+                it.copy(webdavTesting = true, webdavTestResult = "", webdavTestSucceeded = true)
+            }
+            val result = try {
+                webdavSyncManager.testConnection(
+                    serverUrl = config.serverUrl,
+                    username = config.username,
+                    password = password,
+                    syncPath = config.syncPath
+                )
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                com.huangder.lumibooks.data.sync.SyncResult(
+                    message = context.getString(
+                        R.string.webdav_test_failed_detail,
+                        error.message ?: context.getString(R.string.webdav_test_failed)
+                    ),
+                    success = false
+                )
+            }
+            _uiState.update {
+                it.copy(
+                    webdavTesting = false,
+                    webdavTestResult = result.message,
+                    webdavTestSucceeded = result.success
+                )
+            }
             withContext(Dispatchers.Main) {
-                Toast.makeText(
-                    context,
-                    if (result.success) R.string.webdav_test_success else R.string.webdav_test_failed,
-                    Toast.LENGTH_SHORT
-                ).show()
+                Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
             }
         }
     }

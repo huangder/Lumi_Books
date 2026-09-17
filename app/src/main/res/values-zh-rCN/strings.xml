@@ -78,6 +78,17 @@
     <string name="format_epub">EPUB</string>
     <string name="format_pdf">PDF</string>
     <string name="format_txt">TXT</string>
+    <string name="format_cbz">CBZ</string>
+    <string name="cbz_open_failed">无法打开该漫画文件</string>
+    <string name="cbz_archive_empty">漫画包中没有可显示的图片</string>
+    <string name="cbz_page_load_failed">第 %1$d 页加载失败</string>
+    <string name="cbz_reading_direction">阅读方向</string>
+    <string name="cbz_direction_ltr">从左到右</string>
+    <string name="cbz_direction_rtl">从右到左</string>
+    <string name="cbz_two_page_spread">双页对开</string>
+    <string name="cbz_chapter_label">第 %1$d 话</string>
+    <string name="cbz_page_title">第 %1$d 页</string>
+    <string name="cbz_page_title_in_chapter">%1$s · 第 %2$d 页</string>
 
     <!-- 时间 -->
     <string name="time_seconds">%d 秒</string>
@@ -130,6 +141,8 @@
     <string name="label_margin_right">右边距</string>
     <string name="label_margin_top">上边距</string>
     <string name="label_margin_bottom">下边距</string>
+    <string name="label_margin_target_body">正文</string>
+    <string name="label_margin_target_corner">页眉/页脚</string>
 
     <!-- 显示与外观 -->
     <string name="label_startup_screen">设置主屏</string>
@@ -282,6 +295,7 @@
     <string name="home_page">主页</string>
     <string name="avatar">头像</string>
     <string name="home_manage_hint">在此处管理您的本地 PDF 和 EPUB 图书</string>
+    <string name="home_pull_to_resume_recent_book">松手以继续阅读最近书籍</string>
     <string name="book_progress">图书 · %d%%</string>
     <string name="remove_favorite">取消收藏</string>
     <string name="add_favorite">收藏</string>
@@ -799,7 +813,7 @@
     <string name="webdav_enabled_status">已启用</string>
     <string name="webdav_not_configured">未配置</string>
     <string name="webdav_server_url_label">服务器地址</string>
-    <string name="webdav_server_url_hint">https://dav.example.com/remote.php/dav/</string>
+    <string name="webdav_server_url_hint">https://dav.example.com/dav/</string>
     <string name="webdav_username_label">用户名</string>
     <string name="webdav_password_label">密码</string>
     <string name="webdav_password_hint">输入 WebDAV 密码</string>
@@ -812,6 +826,20 @@
     <string name="webdav_test_connection">测试连接</string>
     <string name="webdav_test_success">连接成功，WebDAV 服务可用</string>
     <string name="webdav_test_failed">连接失败，请检查服务器地址、用户名和密码</string>
+    <string name="webdav_test_running">正在测试连接…</string>
+    <string name="webdav_test_failed_detail">连接失败：%1$s</string>
+    <string name="webdav_test_success_dir_pending">连接成功；同步目录将在首次同步时自动创建</string>
+    <string name="webdav_required_password">未配置 WebDAV 密码，请重新输入并保存</string>
+    <string name="webdav_error_auth">认证失败（HTTP 401）：请检查用户名与密码；若服务器开启了两步验证，请使用应用专用密码</string>
+    <string name="webdav_error_forbidden">服务器拒绝访问（HTTP 403）：请确认账号有权限，且服务器地址指向可写入的 WebDAV 目录</string>
+    <string name="webdav_error_not_found">地址不存在（HTTP 404）：请检查服务器地址与同步目录。Nextcloud 一般形如 https://主机/remote.php/dav/files/用户名/</string>
+    <string name="webdav_error_conflict">无法在服务器上创建同步目录（HTTP 409）：请确认服务器地址指向已存在的 WebDAV 目录</string>
+    <string name="webdav_error_not_supported">该地址不是可用的 WebDAV 目录（HTTP %1$d）：服务器不支持 PROPFIND/MKCOL，请确认地址是否正确</string>
+    <string name="webdav_error_network">网络请求失败：请检查网络连接、服务器地址与端口</string>
+    <string name="webdav_error_timeout">连接超时：请检查网络、服务器状态或地址是否正确</string>
+    <string name="webdav_error_tls">证书校验失败：服务器证书无效或为自签名证书，请改用受信任的 HTTPS 证书</string>
+    <string name="webdav_error_invalid_url">服务器地址无效：请以 http:// 或 https:// 开头</string>
+    <string name="webdav_server_url_help">建议填写 WebDAV 的完整访问地址，例如 https://dav.example.com/dav/，Nextcloud 为 https://主机/remote.php/dav/files/用户名/</string>
     <string name="webdav_sync_success">同步完成</string>
     <string name="webdav_sync_failed">同步失败，请检查网络和服务器状态</string>
     <string name="webdav_disable">停用 WebDAV 同步</string>
@@ -837,7 +865,18 @@
     <string name="reader_external_link_message">这本 EPUB 想要打开外部应用或网站：\n%1$s</string>
     <string name="reader_external_link_open">打开</string>
     <string name="preserve_epub_background">保留原书背景</string>
-    <string name="preserve_epub_background_hint">关闭后使用当前选择的 Lumi 阅读背景</string>
+    <string name="preserve_epub_background_hint">原书自带图片背景的页保留原书背景，其余页使用 Lumi 阅读背景；关闭后所有页都用 Lumi 阅读背景</string>
+    <string name="reader_image_page_crop">整页图裁切填满</string>
+    <string name="reader_image_page_crop_hint">书籍原排版下整页图片按屏幕比例裁切铺满；关闭时等比缩放到整页可见（可能留白）</string>
+    <string name="reader_theme_publisher">原排版</string>
+    <string name="reader_theme_publisher_hint">使用书籍自带配色，背景与文字颜色不可更改</string>
+    <string name="reader_theme_publisher_locked_background">原排版使用书籍自带的底色与文字颜色，可切换到其他套装再自定义</string>
+    <string name="reader_layout_editing_reader">当前编辑：阅读器排版</string>
+    <string name="reader_layout_editing_book">当前编辑：书籍原排版</string>
+    <string name="reader_layout_editor_reader">阅读器排版</string>
+    <string name="reader_layout_editor_book">书籍原排版</string>
+    <string name="reader_layout_editor_reader_hint">仅影响阅读器排版（TXT 与 EPUB/MOBI 阅读器模式）</string>
+    <string name="reader_layout_editor_book_hint">仅影响书籍原排版（EPUB/MOBI 原书排版）</string>
     <string name="epub_layout_first_open_title">EPUB 排版提示</string>
     <string name="epub_layout_first_open_message">如果本书内置排版，可点击屏幕中央，在“主题”中选择“书籍原排版”。</string>
     <string name="epub_layout_first_open_confirm">知道了</string>
@@ -861,7 +900,29 @@
 2. 授权书籍文件夹：直接读取该文件夹内的书籍原文件，不复制到应用目录，TXT 编辑也会直接保存到原文件。</string>
     <string name="import_select_files">选择文件</string>
     <string name="import_authorize_directory">授权一个书籍文件夹</string>
-    <string name="import_refresh_directories">更新书籍文件夹内容</string>
+    <string name="import_select_folder_books">选择文件夹书籍</string>
+    <string name="import_folder_books_refresh">刷新</string>
+    <string name="folder_books_level_summary">%1$d 个文件夹 · %2$d 本书 · 已选 %3$d 本</string>
+    <string name="folder_books_folder_count">%1$d 本</string>
+    <string name="folder_books_empty_folder">这个文件夹里没有书籍</string>
+    <string name="folder_books_sort_name">名称排序</string>
+    <string name="folder_books_sort_size">大小排序</string>
+    <string name="folder_books_sort_time">时间排序</string>
+    <string name="folder_books_sort_format">格式排序</string>
+    <string name="folder_books_sort_ascending">升序</string>
+    <string name="folder_books_sort_descending">降序</string>
+    <string name="folder_books_search_results">找到 %1$d 本书</string>
+    <string name="import_folder_books_empty">还没有记住这个文件夹的内容，点右上角刷新试一次吧</string>
+    <string name="import_folder_books_imported">已导入</string>
+    <string name="import_folder_books_new_found">新发现 %1$d 本书籍</string>
+    <string name="external_import_title">导入外部书籍</string>
+    <string name="external_import_message">你已授权书籍文件夹，选择如何处理这本书：</string>
+    <string name="external_import_message_multiple">你已授权书籍文件夹，选择如何处理这 %1$d 个文件：</string>
+    <string name="external_import_copy">复制到应用内文件夹</string>
+    <string name="external_import_copy_detail">复制到应用目录，原文件保留在原位置</string>
+    <string name="external_import_move_to_folder">移动到“%1$s”</string>
+    <string name="external_import_move_detail">移动原文件到该授权文件夹，不占用应用空间</string>
+    <string name="external_import_choose_folder">选择要移动到的授权文件夹</string>
     <string name="import_selected_count">已选择 %1$d 本书籍</string>
     <string name="import_select_all">全选</string>
     <string name="import_confirm">确认并导入</string>
@@ -913,13 +974,15 @@
     <string name="txt_toc_rule_auto_section">自动识别</string>
     <string name="txt_toc_rule_auto_message">根据标题密度和编号连续性选择最合适的内置规则。</string>
     <string name="txt_toc_rule_auto_title">自动选择</string>
-    <string name="txt_toc_rule_auto_description">自动比较下面三种规则，选择最符合当前 TXT 的一种。</string>
+    <string name="txt_toc_rule_auto_description">自动比较下面四种规则，选择最符合当前 TXT 的一种。</string>
     <string name="txt_toc_rule_multilingual_title">中英文及日韩章节</string>
     <string name="txt_toc_rule_multilingual_description">适合“第一章”、Chapter、日文“第1話”、韩文“제1장”等，也支持卷标题。</string>
     <string name="txt_toc_rule_decorated_title">括号装饰标题</string>
     <string name="txt_toc_rule_decorated_description">适合整行使用【】、[] 或 &lt;&gt; 包住的标题。</string>
     <string name="txt_toc_rule_numbered_title">数字编号章节</string>
     <string name="txt_toc_rule_numbered_description">适合“1. 开始”、“2、进入城市”、“第3：新的旅程”等编号格式。</string>
+    <string name="txt_toc_rule_symbol_title">符号开头章节</string>
+    <string name="txt_toc_rule_symbol_description">适合“☆、第一章”、“★、新的开始”、“◆：章节标题”等格式。</string>
     <string name="txt_toc_rule_current_matches">当前匹配 %1$d 行</string>
     <string name="txt_toc_rule_match_note">已结合标题密度和编号连续性评估</string>
     <string name="txt_toc_rule_custom_prefix">自定义：%1$s</string>
@@ -940,13 +1003,16 @@
     <string name="txt_toc_rule_example_regex">章节正则：^第\s*([0-9一二三四五六七八九十百千万]+)章\s+.*$</string>
     <string name="txt_toc_rule_example_template">章节标题模板：第 $1 章</string>
     <string name="txt_toc_rule_example_blank">模板留空会直接使用匹配到的整行标题。</string>
+    <string name="txt_toc_rule_symbol_example_title">符号开头示例</string>
+    <string name="txt_toc_rule_symbol_example_lines">☆、第一章 误入江湖\n★、第二章 夜探山门\n◆：终章</string>
+    <string name="txt_toc_rule_symbol_example_regex">章节正则：^[☆★◆]\s*[、:：]\s*.+$</string>
     <string name="txt_toc_rule_help">规则帮助</string>
     <string name="txt_toc_help_intro_title">TXT 目录规则是什么？</string>
     <string name="txt_toc_help_intro_body">Lumi 会按行读取 TXT。目录规则负责判断哪些行是卷名或章节名，并把它们显示在目录中。正文不会被改写。</string>
     <string name="txt_toc_help_step_one_title">第一步：先试“自动选择”</string>
-    <string name="txt_toc_help_step_one_body">自动选择会比较内置规则的命中数量和编号连续性。大多数常见 TXT 直接使用它即可。切换后如果目录不理想，再手动尝试下面的三种规则。</string>
+    <string name="txt_toc_help_step_one_body">自动选择会比较内置规则的命中数量和编号连续性。大多数常见 TXT 直接使用它即可。切换后如果目录不理想，再手动尝试下面的四种规则。</string>
     <string name="txt_toc_help_step_two_title">第二步：按标题外观选择</string>
-    <string name="txt_toc_help_step_two_body">“中英文及日韩章节”适合第一章、Chapter 1、第1話、제1장和第一卷；“括号装饰标题”适合【第一章】、[Chapter 1]；“数字编号章节”适合 1. 开始、2、出发。</string>
+    <string name="txt_toc_help_step_two_body">“中英文及日韩章节”适合第一章、Chapter 1、第1話、제1장和第一卷；“括号装饰标题”适合【第一章】、[Chapter 1]；“数字编号章节”适合 1. 开始、2、出发；“符号开头章节”适合 ☆、第一章、★、新的开始、◆：章节标题。</string>
     <string name="txt_toc_help_step_three_title">第三步：检查命中提示</string>
     <string name="txt_toc_help_step_three_body">返回规则弹窗后，每个已运行的规则下方会显示命中行数。通常章节数量应大于 1，且不应该把正文中的大量普通行都识别为章节。</string>
     <string name="txt_toc_help_custom_title">自定义规则怎么写？</string>
@@ -1129,6 +1195,7 @@
     <string name="floating_subtitle_preview_text">悬浮窗字幕会显示在这里</string>
     <string name="tts_listen">听书</string>
     <string name="tts_next_sentence">下一句</string>
+    <string name="tts_speech_rate">语速</string>
     <string name="tts_no_readable_text">当前页面没有可朗读的文字</string>
     <string name="tts_notification_channel">听书播放</string>
     <string name="tts_notification_channel_description">文字转语音播放控制</string>
@@ -1182,6 +1249,8 @@
     <string name="folder_move_success">已将 %1$d 本书移动到“%2$s”</string>
     <string name="bookshelf_custom_categories">自定义分类</string>
     <string name="no_custom_categories">暂无自定义分类</string>
+    <string name="category_folder_expand">展开子文件夹</string>
+    <string name="category_folder_collapse">折叠子文件夹</string>
     <string name="rename_folder">重命名文件夹</string>
     <string name="delete_folder">删除文件夹</string>
     <string name="delete_folder_title">删除“%1$s”？</string>
@@ -1386,4 +1455,10 @@
     <string name="pdf_annotation_pen">画笔</string>
     <string name="pdf_annotation_highlighter">荧光笔</string>
     <string name="pdf_annotation_eraser">橡皮擦</string>
+    <string name="bookshelf_cover_flow">Cover Flow</string>
+    <string name="coverflow_open">打开</string>
+    <string name="coverflow_info">信息</string>
+    <string name="coverflow_more">更多</string>
+    <string name="coverflow_previous">上一本</string>
+    <string name="coverflow_next">下一本</string>
 </resources>

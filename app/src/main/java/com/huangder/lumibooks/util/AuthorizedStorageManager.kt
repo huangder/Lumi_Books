@@ -271,6 +271,7 @@ class AuthorizedStorageManager @Inject constructor() {
         "epub" -> "application/epub+zip"
         "pdf" -> "application/pdf"
         "mobi" -> "application/x-mobipocket-ebook"
+        "cbz" -> "application/vnd.comicbook+zip"
         else -> "text/plain"
     }
 
@@ -288,6 +289,6 @@ class AuthorizedStorageManager @Inject constructor() {
     private fun MessageDigest.toHex(): String = digest().joinToString("") { "%02x".format(it) }
 
     companion object {
-        private val SUPPORTED_EXTENSIONS = setOf("epub", "pdf", "txt", "mobi")
+        private val SUPPORTED_EXTENSIONS = setOf("epub", "pdf", "txt", "mobi", "cbz")
     }
 }

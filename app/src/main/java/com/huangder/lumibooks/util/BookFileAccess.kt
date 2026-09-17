@@ -6,6 +6,7 @@ import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import android.util.Log
 import com.huangder.lumibooks.util.cache.ReaderCacheStore
+import com.huangder.lumibooks.util.cache.MirrorBudget
 import com.huangder.lumibooks.util.diagnostics.DiagnosticLevel
 import com.huangder.lumibooks.util.diagnostics.DiagnosticLoggerRegistry
 import java.io.Closeable
@@ -29,11 +30,16 @@ object BookFileAccess {
     fun isContentUri(location: String): Boolean =
         runCatching { Uri.parse(location).scheme.equals("content", ignoreCase = true) }.getOrDefault(false)
 
-    fun openSeekable(context: Context, location: String, writable: Boolean = false): SeekableBookSource {
+    fun openSeekable(
+        context: Context,
+        location: String,
+        writable: Boolean = false,
+        budget: MirrorBudget = MirrorBudget.STANDARD
+    ): SeekableBookSource {
         if (!isContentUri(location)) return SeekableBookSource(location)
 
         if (!writable) {
-            ReaderCacheStore.get(context).mirrorContentUri(location)?.let { mirror ->
+            ReaderCacheStore.get(context).mirrorContentUri(location, budget)?.let { mirror ->
                 return SeekableBookSource(path = mirror.absolutePath)
             }
         }

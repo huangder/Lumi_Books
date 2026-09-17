@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.settings
+import com.huangder.lumibooks.ui.icons.AppIcons
+import com.huangder.lumibooks.ui.icons.IconPair
 
 import android.content.Intent
 import android.net.Uri
@@ -24,19 +26,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Bolt
-import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.CloudOff
-import androidx.compose.material.icons.outlined.DeleteOutline
-import androidx.compose.material.icons.outlined.OpenInNew
-import androidx.compose.material.icons.outlined.Key
-import androidx.compose.material.icons.outlined.FileOpen
-import androidx.compose.material.icons.outlined.Public
-import androidx.compose.material.icons.outlined.Policy
-import androidx.compose.material.icons.outlined.PrivacyTip
-import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -141,14 +130,14 @@ fun MineruSettingsDetail(viewModel: SettingsViewModel) {
         MineruModeCard(
             title = stringResource(R.string.mineru_mode_agent_title),
             description = stringResource(R.string.mineru_mode_agent_description),
-            icon = Icons.Outlined.Bolt,
+            icon = AppIcons.LightningPair,
             selected = selectedMode == MineruMode.AGENT,
             onClick = { selectedMode = MineruMode.AGENT }
         )
         MineruModeCard(
             title = stringResource(R.string.mineru_mode_precise_title),
             description = stringResource(R.string.mineru_mode_precise_description),
-            icon = Icons.Outlined.Key,
+            icon = AppIcons.KeyPair,
             selected = selectedMode == MineruMode.PRECISE,
             onClick = { selectedMode = MineruMode.PRECISE }
         )
@@ -187,7 +176,7 @@ fun MineruSettingsDetail(viewModel: SettingsViewModel) {
                 trailingIcon = {
                     IconButton(onClick = { tokenVisible = !tokenVisible }) {
                         Icon(
-                            if (tokenVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                            if (tokenVisible) AppIcons.EyeSlash else AppIcons.Eye,
                             contentDescription = null
                         )
                     }
@@ -196,7 +185,7 @@ fun MineruSettingsDetail(viewModel: SettingsViewModel) {
             MineruExternalLink(
                 label = stringResource(R.string.mineru_get_token),
                 url = MineruConfig.API_MANAGEMENT_URL,
-                icon = Icons.Outlined.OpenInNew
+                icon = AppIcons.ArrowSquareOut
             )
         }
 
@@ -212,14 +201,14 @@ fun MineruSettingsDetail(viewModel: SettingsViewModel) {
         if (currentMode != MineruMode.DISABLED) {
             MineruSecondaryButton(
                 label = stringResource(R.string.mineru_disable),
-                icon = Icons.Outlined.CloudOff,
+                icon = AppIcons.CloudSlash,
                 onClick = { viewModel.disableMineru(clearToken = false) }
             )
         }
         if (uiState.mineruHasToken) {
             MineruSecondaryButton(
                 label = stringResource(R.string.mineru_clear_token),
-                icon = Icons.Outlined.DeleteOutline,
+                icon = AppIcons.Trash,
                 destructive = true,
                 onClick = viewModel::clearMineruToken
             )
@@ -300,14 +289,14 @@ private fun MineruManualSection(
         )
         MineruSecondaryButton(
             label = stringResource(R.string.mineru_manual_open_website),
-            icon = Icons.Outlined.Public,
+            icon = AppIcons.Globe,
             onClick = onOpenWebsite
         )
         MineruSecondaryButton(
             label = stringResource(
                 if (importing) R.string.mineru_manual_importing else R.string.mineru_manual_import_result
             ),
-            icon = Icons.Outlined.FileOpen,
+            icon = AppIcons.File,
             enabled = !importing,
             onClick = onImportResult
         )
@@ -334,7 +323,7 @@ private fun MineruStatusCard(mode: MineruMode) {
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                if (mode == MineruMode.DISABLED) Icons.Outlined.CloudOff else Icons.Outlined.CheckCircle,
+                if (mode == MineruMode.DISABLED) AppIcons.CloudSlash else AppIcons.CheckCircle,
                 contentDescription = null,
                 tint = if (mode == MineruMode.DISABLED) AppColors.TextSecondary else AppColors.Accent,
                 modifier = Modifier.size(22.dp)
@@ -361,7 +350,7 @@ private fun MineruStatusCard(mode: MineruMode) {
 private fun MineruModeCard(
     title: String,
     description: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: IconPair,
     selected: Boolean,
     onClick: () -> Unit
 ) {
@@ -383,7 +372,7 @@ private fun MineruModeCard(
             .padding(AppSpace.md),
         verticalAlignment = Alignment.Top
     ) {
-        Icon(icon, null, tint = if (selected) AppColors.Accent else AppColors.TextSecondary, modifier = Modifier.size(22.dp))
+        Icon(icon.resolve(selected), null, tint = if (selected) AppColors.Accent else AppColors.TextSecondary, modifier = Modifier.size(22.dp))
         Spacer(Modifier.size(AppSpace.md))
         Column(Modifier.weight(1f)) {
             Text(title, fontSize = AppType.Body, color = AppColors.TextPrimary, fontWeight = FontWeight.SemiBold)
@@ -409,7 +398,7 @@ private fun MineruDisclosureCard() {
         verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Outlined.PrivacyTip, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+            Icon(AppIcons.ShieldCheck, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
             Spacer(Modifier.size(AppSpace.sm))
             Text(
                 stringResource(R.string.mineru_third_party_title),
@@ -423,9 +412,9 @@ private fun MineruDisclosureCard() {
             fontSize = AppType.Caption,
             color = AppColors.TextSecondary
         )
-        MineruExternalLink(stringResource(R.string.mineru_service_terms), MineruConfig.SERVICE_TERMS_URL, Icons.Outlined.Policy)
-        MineruExternalLink(stringResource(R.string.mineru_privacy_policy), MineruConfig.PRIVACY_POLICY_URL, Icons.Outlined.PrivacyTip)
-        MineruExternalLink(stringResource(R.string.mineru_api_limits), MineruConfig.API_LIMITS_URL, Icons.Outlined.OpenInNew)
+        MineruExternalLink(stringResource(R.string.mineru_service_terms), MineruConfig.SERVICE_TERMS_URL, AppIcons.Scroll)
+        MineruExternalLink(stringResource(R.string.mineru_privacy_policy), MineruConfig.PRIVACY_POLICY_URL, AppIcons.ShieldCheck)
+        MineruExternalLink(stringResource(R.string.mineru_api_limits), MineruConfig.API_LIMITS_URL, AppIcons.ArrowSquareOut)
     }
 }
 
@@ -453,7 +442,7 @@ private fun MineruExternalLink(
         Icon(icon, null, tint = AppColors.Accent, modifier = Modifier.size(18.dp))
         Spacer(Modifier.size(AppSpace.sm))
         Text(label, fontSize = AppType.BodySmall, color = AppColors.Accent, modifier = Modifier.weight(1f))
-        Icon(Icons.Outlined.OpenInNew, null, tint = AppColors.Accent, modifier = Modifier.size(16.dp))
+        Icon(AppIcons.ArrowSquareOut, null, tint = AppColors.Accent, modifier = Modifier.size(16.dp))
     }
 }
 
@@ -569,8 +558,8 @@ private fun MineruConsentSheet(onDismiss: () -> Unit, onAccept: () -> Unit) {
                     .background(AppColors.BgGray)
                     .padding(horizontal = 12.dp, vertical = 2.dp)
             ) {
-                MineruExternalLink(stringResource(R.string.mineru_service_terms), MineruConfig.SERVICE_TERMS_URL, Icons.Outlined.Policy)
-                MineruExternalLink(stringResource(R.string.mineru_privacy_policy), MineruConfig.PRIVACY_POLICY_URL, Icons.Outlined.PrivacyTip)
+                MineruExternalLink(stringResource(R.string.mineru_service_terms), MineruConfig.SERVICE_TERMS_URL, AppIcons.Scroll)
+                MineruExternalLink(stringResource(R.string.mineru_privacy_policy), MineruConfig.PRIVACY_POLICY_URL, AppIcons.ShieldCheck)
             }
 
             Row(

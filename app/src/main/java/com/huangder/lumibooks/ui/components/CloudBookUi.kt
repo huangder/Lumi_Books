@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.components
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.text.format.Formatter
 import androidx.compose.foundation.background
@@ -12,8 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -142,14 +141,15 @@ fun BookCoverProgressOverlay(
     book: Book,
     downloadState: BookDownloadState?,
     modifier: Modifier = Modifier,
-    compact: Boolean = false
+    compact: Boolean = false,
+    showReadingProgress: Boolean = true
 ) {
     val downloading = downloadState as? BookDownloadState.Downloading
     val progress = downloading?.progress ?: book.readingProgress
         .takeIf { it.isFinite() }
         ?.coerceIn(0f, 1f)
         .orEmptyProgress()
-    val showProgress = downloading != null || (progress > 0f && !book.isCloudOnly)
+    val showProgress = downloading != null || (showReadingProgress && progress > 0f && !book.isCloudOnly)
 
     Box(modifier = modifier.fillMaxSize()) {
         if (book.isCloudOnly && downloading == null) {
@@ -163,7 +163,7 @@ fun BookCoverProgressOverlay(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Outlined.CloudDownload,
+                    imageVector = AppIcons.CloudArrowDown,
                     contentDescription = stringResource(R.string.download_book_file),
                     tint = Color.White,
                     modifier = Modifier.size(if (compact) 15.dp else 18.dp)

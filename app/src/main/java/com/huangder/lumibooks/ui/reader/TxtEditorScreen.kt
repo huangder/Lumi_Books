@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.reader
+import com.huangder.lumibooks.ui.icons.directionalIcon
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.content.Context
 import android.graphics.Typeface
@@ -47,16 +49,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActionScope
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.outlined.ChevronLeft
-import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.FindReplace
-import androidx.compose.material.icons.outlined.KeyboardArrowDown
-import androidx.compose.material.icons.outlined.KeyboardArrowUp
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -445,7 +437,7 @@ fun TxtEditorScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             LiquidGlassIconButton(
-                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
                 contentDescription = stringResource(R.string.reader_back),
                 onClick = handleBack,
                 size = 40.dp,
@@ -463,7 +455,7 @@ fun TxtEditorScreen(
                 modifier = Modifier.weight(1f).padding(horizontal = AppSpace.sm)
             )
             LiquidGlassIconButton(
-                imageVector = Icons.Outlined.Check,
+                imageVector = AppIcons.Check,
                 contentDescription = stringResource(R.string.confirm),
                 onClick = {
                     focusManager.clearFocus()
@@ -682,7 +674,7 @@ private fun TxtEditorBottomActions(
         verticalAlignment = Alignment.CenterVertically
     ) {
         TxtEditorActionCapsule(
-            icon = Icons.Outlined.ChevronLeft,
+            icon = AppIcons.CaretLeft,
             contentDescription = stringResource(R.string.txt_editor_previous_chapter),
             enabled = canGoPrevious,
             backdrop = backdrop,
@@ -690,7 +682,7 @@ private fun TxtEditorBottomActions(
             onClick = onPrevious
         )
         TxtEditorActionCapsule(
-            icon = Icons.Outlined.ChevronRight,
+            icon = AppIcons.CaretRight,
             contentDescription = stringResource(R.string.txt_editor_next_chapter),
             enabled = canGoNext,
             backdrop = backdrop,
@@ -698,7 +690,7 @@ private fun TxtEditorBottomActions(
             onClick = onNext
         )
         TxtEditorActionCapsule(
-            icon = Icons.Outlined.Search,
+            icon = AppIcons.MagnifyingGlass,
             label = stringResource(R.string.txt_editor_search),
             contentDescription = stringResource(R.string.txt_editor_search),
             backdrop = backdrop,
@@ -706,7 +698,7 @@ private fun TxtEditorBottomActions(
             onClick = onSearch
         )
         TxtEditorActionCapsule(
-            icon = Icons.Outlined.FindReplace,
+            icon = AppIcons.MagnifyingGlass,
             label = stringResource(R.string.txt_editor_replace),
             contentDescription = stringResource(R.string.txt_editor_replace),
             backdrop = backdrop,
@@ -835,7 +827,7 @@ private fun TxtEditorSearchSheet(
                     Spacer(Modifier.weight(1f))
                     IconButton(onClick = { isClosing = true }, modifier = Modifier.size(40.dp)) {
                         Icon(
-                            Icons.Outlined.Close,
+                            AppIcons.X,
                             contentDescription = stringResource(R.string.reader_close),
                             tint = AppColors.TextPrimary
                         )
@@ -861,7 +853,7 @@ private fun TxtEditorSearchSheet(
                             enabled = uiState.searchQuery.isNotBlank() && !uiState.isSearching
                         ) {
                             Icon(
-                                Icons.Outlined.Search,
+                                AppIcons.MagnifyingGlass,
                                 contentDescription = stringResource(
                                     if (uiState.currentMatch != null) {
                                         R.string.txt_editor_next_match
@@ -924,7 +916,7 @@ private fun TxtEditorSearchSheet(
                         border = BorderStroke(1.dp, AppColors.Divider)
                     ) {
                         Icon(
-                            Icons.Outlined.KeyboardArrowUp,
+                            AppIcons.CaretUp,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp)
                         )
@@ -939,7 +931,7 @@ private fun TxtEditorSearchSheet(
                         colors = ButtonDefaults.buttonColors(containerColor = AppColors.Accent)
                     ) {
                         Icon(
-                            Icons.Outlined.KeyboardArrowDown,
+                            AppIcons.CaretDown,
                             contentDescription = null,
                             tint = Color.White,
                             modifier = Modifier.size(18.dp)

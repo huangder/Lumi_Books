@@ -12,19 +12,11 @@ class ExternalTtsAudioPlayerTest {
     val temporaryFolder = TemporaryFolder()
 
     @Test
-    fun normalizePlaybackRate_clampsSupportedAudioTrackRange() {
+    fun normalizePlaybackRate_clampsToSupportedAppRange() {
         assertEquals(0.5f, normalizeExternalTtsPlaybackRate(0.2f), 0f)
         assertEquals(1f, normalizeExternalTtsPlaybackRate(1f), 0f)
-        assertEquals(2f, normalizeExternalTtsPlaybackRate(3f), 0f)
-    }
-
-    @Test
-    fun pitchInstruction_formatsClampedRate() {
-        val high = ExternalTtsConfig.pitchInstruction(3f)
-        val low = ExternalTtsConfig.pitchInstruction(0.1f)
-
-        assertTrue(high.contains("2.00"))
-        assertTrue(low.contains("0.50"))
+        assertEquals(3f, normalizeExternalTtsPlaybackRate(3f), 0f)
+        assertEquals(5f, normalizeExternalTtsPlaybackRate(6f), 0f)
     }
 
     @Test

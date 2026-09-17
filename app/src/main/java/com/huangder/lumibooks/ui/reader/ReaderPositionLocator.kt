@@ -22,7 +22,8 @@ data class ReaderPositionLocator(
     val chapterIndex: Int,
     val chapterFraction: Float,
     val flow: ReaderPositionFlow,
-    val characterOffset: Int? = null
+    val characterOffset: Int? = null,
+    val sourceByteOffset: Long? = null
 ) {
     fun toJson(): String = JSONObject().apply {
         put("type", TYPE)
@@ -31,17 +32,19 @@ data class ReaderPositionLocator(
         put("chapterFraction", chapterFraction.coerceIn(0f, 0.9999f).toDouble())
         put("flow", flow.value)
         characterOffset?.let { put("characterOffset", it.coerceAtLeast(0)) }
+        sourceByteOffset?.let { put("sourceByteOffset", it.coerceAtLeast(0L)) }
     }.toString()
 
     companion object {
         private const val TYPE = "lumi_reader_position"
-        private const val VERSION = 1
+        private const val VERSION = 2
 
         fun fromJson(json: String?): ReaderPositionLocator? {
             if (json.isNullOrBlank()) return null
             return runCatching {
                 val root = JSONObject(json)
-                if (root.optString("type") != TYPE || root.optInt("version") != VERSION) {
+                val version = root.optInt("version")
+                if (root.optString("type") != TYPE || version !in 1..VERSION) {
                     return@runCatching null
                 }
                 val flow = ReaderPositionFlow.fromValue(root.optString("flow"))
@@ -53,7 +56,12 @@ data class ReaderPositionLocator(
                     chapterIndex = chapterIndex,
                     chapterFraction = chapterFraction.toFloat().coerceIn(0f, 0.9999f),
                     flow = flow,
-                    characterOffset = root.optInt("characterOffset", -1).takeIf { it >= 0 }
+                    characterOffset = root.optInt("characterOffset", -1).takeIf { it >= 0 },
+                    sourceByteOffset = if (version >= 2) {
+                        root.optLong("sourceByteOffset", -1L).takeIf { it >= 0L }
+                    } else {
+                        null
+                    }
                 )
             }.getOrNull()
         }

@@ -11,6 +11,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -33,16 +34,23 @@ import kotlin.math.abs
  *     LazyColumn { ... }
  * }
  * ```
+ *
+ * 需要感知顶部下拉量时（例如"松手继续阅读"），把自己的 [OverscrollBounceState]
+ * 传进来并读取 `offset`，同时可用 [onTopPullRelease] 在松手瞬间拿到最终下拉量。
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun OverscrollBounce(
     modifier: Modifier = Modifier,
+    state: OverscrollBounceState = remember { OverscrollBounceState() },
+    onTopPullRelease: ((offsetPx: Float) -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
-    val bounceState = remember { BounceState() }
-    val connection = remember(bounceState) {
-        BounceNestedScrollConnection(bounceState)
+    val releaseCallback = rememberUpdatedState(onTopPullRelease)
+    val connection = remember(state) {
+        BounceNestedScrollConnection(state) { offset ->
+            releaseCallback.value?.invoke(offset)
+        }
     }
 
     // 禁用 Android 原生 overscroll（拉伸效果）
@@ -52,7 +60,7 @@ fun OverscrollBounce(
         Box(
             modifier = modifier
                 .nestedScroll(connection)
-                .graphicsLayer { translationY = bounceState.offset },
+                .graphicsLayer { translationY = state.offset },
             content = content
         )
     }
@@ -81,7 +89,8 @@ fun HorizontalOverscrollBounce(
 }
 
 private class BounceNestedScrollConnection(
-    private val state: BounceState
+    private val state: OverscrollBounceState,
+    private val onRelease: (offsetPx: Float) -> Unit
 ) : NestedScrollConnection {
 
     // 拖拽时：施加阻尼
@@ -107,20 +116,27 @@ private class BounceNestedScrollConnection(
         consumed: Velocity,
         available: Velocity
     ): Velocity {
+        onRelease(state.offset)
         state.animateBack()
         return super.onPostFling(consumed, available)
     }
 }
 
-private class BounceState {
+/**
+ * 垂直方向的越界下拉状态。
+ *
+ * [offset] 为内容当前的纵向位移（px）：顶部下拉为正、底部上拉为负、静置为 0。
+ * 位移量与阻尼算法由 [OverscrollBounce] 维护，外部只读取。
+ */
+class OverscrollBounceState {
     var offset by mutableFloatStateOf(0f)
-        private set
+        internal set
 
-    fun dragBy(delta: Float) {
+    internal fun dragBy(delta: Float) {
         offset += delta
     }
 
-    suspend fun animateBack() {
+    internal suspend fun animateBack() {
         if (abs(offset) <= 0.5f) {
             offset = 0f
             return

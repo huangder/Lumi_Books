@@ -215,6 +215,119 @@ class EpubLinkClickInstrumentedTest {
 
     @SuppressLint("SetJavaScriptEnabled")
     @Test
+    fun mismatchedFootnoteBodiesLeaveTheFlowAndStayReadableInThePopover() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        // 《一生之敌》序章真实结构：第 3 条注释正文没有 id，且第 3 个引用重复指向第 1 条。
+        val html = EpubDocumentTransformer.transform(
+            EpubResource(
+                "OPS/chapter.xhtml",
+                "application/xhtml+xml",
+                (
+                    "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:epub=\"http://www.idpf.org/2007/ops\">" +
+                        "<head></head><body>" +
+                        "<p>正文一<a epub:type=\"noteref\" id=\"r1\" href=\"#footnote-1\"> <img src=\"n.png\"/></a>继续</p>" +
+                        "<aside epub:type=\"footnote\" id=\"footnote-1\">第一条注释正文。</aside>" +
+                        "<aside epub:type=\"footnote\" id=\"footnote-2\">第二条注释正文。</aside>" +
+                        "<aside epub:type=\"footnote\">第三条注释正文。</aside>" +
+                        "<p>正文二<a epub:type=\"noteref\" id=\"r2\" href=\"#footnote-2\"> <img src=\"n.png\"/></a>继续</p>" +
+                        "<p>正文三<a epub:type=\"noteref\" id=\"r3\" href=\"#footnote-1\"> <img src=\"n.png\"/></a>继续</p>" +
+                        "</body></html>"
+                    ).toByteArray()
+            ),
+            EpubRenditionLayout.REFLOWABLE
+        ).toString(Charsets.UTF_8)
+
+        val loaded = CountDownLatch(1)
+        lateinit var webView: WebView
+        instrumentation.runOnMainSync {
+            webView = WebView(instrumentation.targetContext).apply {
+                settings.javaScriptEnabled = true
+                webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView, url: String?) {
+                        loaded.countDown()
+                    }
+                }
+                loadDataWithBaseURL(
+                    "https://" + EpubRenderSession.ASSET_DOMAIN + "/chapter.xhtml",
+                    html,
+                    "application/xhtml+xml",
+                    "utf-8",
+                    null
+                )
+            }
+        }
+        assertTrue("transformed document must load", loaded.await(10, TimeUnit.SECONDS))
+
+        instrumentation.runOnMainSync {
+            webView.evaluateJavascript(
+                "window.LumiReader.configure({flow:'paginated',theme:'day',nativePaging:true," +
+                    "insets:{top:0,right:0,bottom:0,left:0}});"
+            ) {}
+        }
+        val flowState = pollJson(instrumentation, webView) {
+            "(function(){var asides=document.querySelectorAll('aside');var refs=[];" +
+                "var all=document.querySelectorAll('a[href]');" +
+                "for(var i=0;i<all.length;i++){if(all[i].getAttribute('epub:type')==='noteref')refs.push(all[i]);}" +
+                "return JSON.stringify({hidden:document.querySelectorAll('[data-lumi-footnote-body=\"true\"]').length," +
+                "bodies:asides.length,thirdId:asides.length>2?asides[2].id:''," +
+                "thirdHref:refs.length>2?refs[2].getAttribute('href'):''," +
+                "thirdDisplay:asides.length>2?getComputedStyle(asides[2]).display:''});})()"
+        }
+        assertEquals("注释正文必须全部移出正文流", 3, flowState?.optInt("hidden") ?: -1)
+        assertEquals("缺 id 的注释正文应补上合成 id", "lumi-footnote-auto-3", flowState?.optString("thirdId"))
+        assertTrue(
+            "第 3 个引用应改写到配对的注释正文",
+            flowState?.optString("thirdHref")?.endsWith("#lumi-footnote-auto-3") == true
+        )
+        assertEquals("注释正文不应再占排版空间", "none", flowState?.optString("thirdDisplay"))
+
+        instrumentation.runOnMainSync {
+            webView.evaluateJavascript(
+                "(function(){var a=document.getElementById('r3');" +
+                    "a.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));})()"
+            ) {}
+        }
+        val popoverState = pollJson(instrumentation, webView) {
+            "(function(){var p=document.getElementById('lumi-footnote-popover');" +
+                "return JSON.stringify({popover:!!p," +
+                "content:(document.getElementById('lumi-footnote-content')||{}).textContent||''});})()"
+        }
+        assertTrue("改写的引用也要能弹出气泡", popoverState?.optBoolean("popover") == true)
+        assertTrue(
+            "气泡里必须是对应的第 3 条注释",
+            popoverState?.optString("content")?.contains("第三条注释正文") == true
+        )
+
+        instrumentation.runOnMainSync {
+            webView.destroy()
+        }
+    }
+
+    private fun pollJson(
+        instrumentation: android.app.Instrumentation,
+        webView: WebView,
+        timeoutSeconds: Long = 8,
+        script: () -> String
+    ): JSONObject? {
+        var state: JSONObject? = null
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
+        while (state == null && System.nanoTime() < deadline) {
+            val ready = CountDownLatch(1)
+            instrumentation.runOnMainSync {
+                webView.evaluateJavascript(script()) { encoded ->
+                    val decoded = runCatching { JSONArray("[$encoded]").optString(0) }.getOrNull()
+                    state = decoded?.let { runCatching { JSONObject(it) }.getOrNull() }
+                    ready.countDown()
+                }
+            }
+            assertTrue("evaluateJavascript must complete", ready.await(2, TimeUnit.SECONDS))
+            if (state == null) Thread.sleep(200)
+        }
+        return state
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    @Test
     fun bracketedMarkerLinkShowsPopover() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val html = EpubDocumentTransformer.transform(

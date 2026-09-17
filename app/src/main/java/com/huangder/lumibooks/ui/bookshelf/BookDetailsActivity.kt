@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.bookshelf
+import com.huangder.lumibooks.ui.icons.directionalIcon
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.content.Context
 import android.content.Intent
@@ -33,19 +35,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.BookmarkBorder
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.DriveFileMove
-import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.Favorite
-import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.Label
-import androidx.compose.material.icons.outlined.MenuBook
-import androidx.compose.material.icons.outlined.Notes
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -294,7 +283,7 @@ fun BookDetailsScreen(
         ) {
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    LiquidGlassIconButton(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back), onBack)
+                    LiquidGlassIconButton(directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight), stringResource(R.string.back), onBack)
                     Spacer(Modifier.width(AppSpace.sm))
                     Text(stringResource(R.string.book_details), fontSize = AppType.Title, fontWeight = FontWeight.Bold, color = AppColors.TextPrimary)
                 }
@@ -520,10 +509,10 @@ internal fun shouldStackDetailRow(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TagIcon(Icons.Outlined.Delete, stringResource(R.string.delete), onDelete)
-            TagIcon(Icons.Outlined.Edit, stringResource(R.string.book_detail_edit), onEdit)
-            TagIcon(Icons.Outlined.DriveFileMove, stringResource(R.string.move_to_folder), onMove)
-            TagIcon(Icons.Outlined.BookmarkBorder, stringResource(R.string.bookmarks_notes), onNotes)
+            TagIcon(AppIcons.Trash, stringResource(R.string.delete), onDelete)
+            TagIcon(AppIcons.PencilSimple, stringResource(R.string.book_detail_edit), onEdit)
+            TagIcon(AppIcons.FolderSimple, stringResource(R.string.move_to_folder), onMove)
+            TagIcon(AppIcons.Bookmark.regular, stringResource(R.string.bookmarks_notes), onNotes)
             ReadTagAction(onRead)
         }
     }
@@ -555,7 +544,7 @@ internal fun shouldStackDetailRow(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             Icon(
-                Icons.Outlined.MenuBook,
+                AppIcons.BookOpen,
                 contentDescription = null,
                 tint = if (isDark) Color.White else Color.Black,
                 modifier = Modifier.size(20.dp)

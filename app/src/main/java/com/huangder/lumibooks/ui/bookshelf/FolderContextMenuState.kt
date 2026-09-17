@@ -1,7 +1,6 @@
 package com.huangder.lumibooks.ui.bookshelf
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -50,26 +49,41 @@ internal class FolderContextMenuState(private val scope: CoroutineScope) {
         transitionJob?.cancel()
         transitionJob = scope.launch {
             coroutineScope {
-                launch { itemAlpha.animateTo(0f, tween(120, easing = AppEasing.Decelerate)) }
+                launch {
+                    itemAlpha.animateTo(
+                        0f,
+                        tween(ContextMenuMotion.ItemHideMillis, easing = AppEasing.Decelerate)
+                    )
+                }
                 launch {
                     coverScale.snapTo(1f)
-                    coverScale.animateTo(1.08f, spring(dampingRatio = 0.6f, stiffness = 300f))
+                    coverScale.animateTo(
+                        ContextMenuMotion.CoverScaleValue,
+                        ContextMenuMotion.CoverScaleEnter
+                    )
                 }
                 launch {
                     coverPositionProgress.snapTo(0f)
                     coverPositionProgress.animateTo(
                         1f,
-                        spring(dampingRatio = 0.72f, stiffness = 260f)
+                        ContextMenuMotion.CoverPositionEnter
                     )
                 }
-                launch { scrimAlpha.animateTo(1f, tween(400, easing = AppEasing.Decelerate)) }
                 launch {
-                    delay(80)
-                    menuAlpha.animateTo(1f, spring(dampingRatio = 0.70f, stiffness = 145f))
+                    scrimAlpha.animateTo(
+                        1f,
+                        tween(ContextMenuMotion.ScrimEnterMillis, easing = ContextMenuMotion.ScrimEnterEasing)
+                    )
                 }
                 launch {
-                    delay(190)
-                    actionsAlpha.animateTo(1f, spring(dampingRatio = 0.70f, stiffness = 145f))
+                    if (ContextMenuMotion.InfoPanelEnterDelayMillis > 0L) {
+                        delay(ContextMenuMotion.InfoPanelEnterDelayMillis)
+                    }
+                    menuAlpha.animateTo(1f, ContextMenuMotion.InfoPanelEnter)
+                }
+                launch {
+                    delay(ContextMenuMotion.ActionsPanelEnterDelayMillis)
+                    actionsAlpha.animateTo(1f, ContextMenuMotion.ActionsPanelEnter)
                 }
             }
             if (phase == ContextMenuPhase.Enlarging) phase = ContextMenuPhase.Visible
@@ -83,19 +97,32 @@ internal class FolderContextMenuState(private val scope: CoroutineScope) {
         transitionJob = scope.launch {
             coroutineScope {
                 launch {
-                    actionsAlpha.animateTo(0f, spring(dampingRatio = 0.86f, stiffness = 240f))
+                    actionsAlpha.animateTo(0f, ContextMenuMotion.ActionsPanelExit)
                 }
                 launch {
-                    delay(80)
-                    menuAlpha.animateTo(0f, spring(dampingRatio = 0.86f, stiffness = 240f))
+                    delay(ContextMenuMotion.InfoPanelExitDelayMillis)
+                    menuAlpha.animateTo(0f, ContextMenuMotion.InfoPanelExit)
                 }
             }
             coroutineScope {
-                launch { coverScale.animateTo(1f, tween(400, easing = AppEasing.Decelerate)) }
                 launch {
-                    coverPositionProgress.animateTo(0f, tween(400, easing = AppEasing.Decelerate))
+                    coverScale.animateTo(
+                        1f,
+                        tween(ContextMenuMotion.CoverReturnMillis, easing = ContextMenuMotion.CoverReturnEasing)
+                    )
                 }
-                launch { scrimAlpha.animateTo(0f, tween(400, easing = AppEasing.Accelerate)) }
+                launch {
+                    coverPositionProgress.animateTo(
+                        0f,
+                        tween(ContextMenuMotion.CoverReturnMillis, easing = ContextMenuMotion.CoverReturnEasing)
+                    )
+                }
+                launch {
+                    scrimAlpha.animateTo(
+                        0f,
+                        tween(ContextMenuMotion.ScrimExitMillis, easing = ContextMenuMotion.ScrimExitEasing)
+                    )
+                }
             }
             itemAlpha.snapTo(1f)
             coverScale.snapTo(1f)

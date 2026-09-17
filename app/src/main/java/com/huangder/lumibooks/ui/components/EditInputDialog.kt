@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.components
+import com.huangder.lumibooks.ui.icons.directionalIcon
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -10,9 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -115,7 +114,7 @@ fun EditInputDialog(
         ) {
             // 返回箭头（左）
             LiquidGlassIconButton(
-                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
                 contentDescription = stringResource(R.string.back),
                 onClick = onBack,
                 modifier = Modifier.align(Alignment.CenterStart),
@@ -135,7 +134,7 @@ fun EditInputDialog(
 
             // 确认按钮（右）—— 黑色圆形 + 白色对勾
             LiquidGlassIconButton(
-                imageVector = Icons.Outlined.Check,
+                imageVector = AppIcons.Check,
                 contentDescription = stringResource(R.string.confirm),
                 onClick = { onConfirm(values.map { it.value }) },
                 modifier = Modifier.align(Alignment.CenterEnd),

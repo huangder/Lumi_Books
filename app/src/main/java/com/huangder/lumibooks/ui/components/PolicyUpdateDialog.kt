@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.components
+import com.huangder.lumibooks.ui.icons.directionalIcon
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,10 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowForward
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -78,7 +76,7 @@ fun PolicyUpdateDialog(
                         subtitle = stringResource(R.string.policy_update_terms_subtitle),
                         iconContent = {
                             Icon(
-                                imageVector = Icons.Outlined.Description,
+                                imageVector = AppIcons.FileText,
                                 contentDescription = null,
                                 tint = AppColors.Accent
                             )
@@ -98,7 +96,7 @@ fun PolicyUpdateDialog(
                         subtitle = stringResource(R.string.policy_update_privacy_subtitle),
                         iconContent = {
                             Icon(
-                                imageVector = Icons.Outlined.PrivacyTip,
+                                imageVector = AppIcons.ShieldCheck,
                                 contentDescription = null,
                                 tint = AppColors.Accent
                             )
@@ -222,7 +220,7 @@ private fun PolicyUpdateItemContent(
 
         Spacer(modifier = Modifier.width(8.dp))
         Icon(
-            imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
+            imageVector = directionalIcon(AppIcons.ArrowRight, AppIcons.ArrowLeft),
             contentDescription = stringResource(R.string.policy_update_view_content),
             modifier = Modifier.size(18.dp),
             tint = AppColors.TextSecondary

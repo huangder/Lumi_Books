@@ -1,5 +1,8 @@
 package com.huangder.lumibooks.ui.home
 
+import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
+import com.huangder.lumibooks.ui.icons.AppIcons
+
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.compose.animation.AnimatedContent
@@ -41,11 +44,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Sort
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -210,7 +208,7 @@ fun ImportBooksActionSheet(
     onDismiss: () -> Unit,
     onSelectFiles: () -> Unit,
     onAuthorizeDirectory: () -> Unit,
-    onRefreshDirectories: () -> Unit
+    onOpenFolderBooks: () -> Unit
 ) {
     ImportBooksContainer(
         expanded = false,
@@ -222,7 +220,7 @@ fun ImportBooksActionSheet(
             authorizedDirectoryUris = authorizedDirectoryUris,
             onSelectFiles = onSelectFiles,
             onAuthorizeDirectory = onAuthorizeDirectory,
-            onRefreshDirectories = onRefreshDirectories
+            onOpenFolderBooks = onOpenFolderBooks
         )
     }
 }
@@ -286,7 +284,11 @@ private fun ImportBooksContainer(
             backgroundScrimColor = Color.Black.copy(alpha = 0.16f),
             contentScrimColor = AppColors.CardBg.copy(alpha = 0.70f)
         ) {
-            content(true)
+            if (expanded) {
+                com.huangder.lumibooks.ui.components.LiquidGlassMenuHost(Modifier.fillMaxSize()) {
+                    content(true)
+                }
+            } else content(true)
         }
     } else {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -302,7 +304,11 @@ private fun ImportBooksContainer(
             dragHandle = null
         ) {
             Box(modifier = sizeModifier) {
-                content(false)
+                if (expanded) {
+                    com.huangder.lumibooks.ui.components.LiquidGlassMenuHost(Modifier.fillMaxSize()) {
+                        content(false)
+                    }
+                } else content(false)
             }
         }
     }
@@ -315,7 +321,7 @@ private fun ImportActionsStage(
     authorizedDirectoryUris: List<String>,
     onSelectFiles: () -> Unit,
     onAuthorizeDirectory: () -> Unit,
-    onRefreshDirectories: () -> Unit
+    onOpenFolderBooks: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -356,8 +362,8 @@ private fun ImportActionsStage(
         )
         Spacer(Modifier.height(12.dp))
         ImportActionButton(
-            text = stringResource(R.string.import_refresh_directories),
-            onClick = onRefreshDirectories,
+            text = stringResource(R.string.import_select_folder_books),
+            onClick = onOpenFolderBooks,
             enabled = !isPreparing
         )
         if (isPreparing) {
@@ -815,7 +821,7 @@ private fun ImportSearchField(
                         innerTextField()
                     }
                     Icon(
-                        imageVector = Icons.Outlined.Search,
+                        imageVector = AppIcons.MagnifyingGlass,
                         contentDescription = stringResource(R.string.search),
                         tint = AppColors.TextSecondary,
                         modifier = Modifier.size(20.dp)
@@ -833,7 +839,7 @@ private fun ImportSearchField(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.Close,
+                                imageVector = AppIcons.X,
                                 contentDescription = stringResource(R.string.import_search_clear),
                                 tint = AppColors.TextSecondary,
                                 modifier = Modifier.size(16.dp)
@@ -868,10 +874,10 @@ private fun ImportSortButton(
 
     Box {
         LiquidGlassIconButton(
-            imageVector = Icons.Outlined.Sort,
+            imageVector = AppIcons.SortAscending,
             contentDescription = stringResource(R.string.import_sort),
             onClick = {
-                if (isLiquidGlass && menuHost != null && sortAnchorBounds != Rect.Zero) {
+                if (menuHost != null && sortAnchorBounds != Rect.Zero) {
                     if (sortExpanded) {
                         menuHost.dismiss()
                     } else {
@@ -906,7 +912,7 @@ private fun ImportSortButton(
             normalContainerColor = AppColors.BgGray,
             liquidContainerColor = AppColors.CardBg,
             liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
-            modifier = Modifier.onGloballyPositioned { sortAnchorBounds = it.boundsInRoot() }
+            modifier = Modifier.liquidGlassMenuAnchor().onGloballyPositioned { sortAnchorBounds = it.boundsInRoot() }
         )
 
         if (!isLiquidGlass) {
@@ -941,7 +947,7 @@ private fun ImportSortButton(
                         trailingIcon = if (option == sortBy) {
                             {
                                 Icon(
-                                    imageVector = Icons.Filled.Check,
+                                    imageVector = AppIcons.CheckFilled,
                                     contentDescription = null,
                                     tint = AppColors.Accent,
                                     modifier = Modifier.size(18.dp)
@@ -1037,7 +1043,7 @@ private fun SelectedBookListRow(
         ) {
             if (isSelected) {
                 Icon(
-                    imageVector = Icons.Filled.Check,
+                    imageVector = AppIcons.CheckFilled,
                     contentDescription = null,
                     tint = AppColors.OnAccent,
                     modifier = Modifier.size(16.dp)
@@ -1048,22 +1054,30 @@ private fun SelectedBookListRow(
 }
 
 @Composable
-private fun ImportBookCoverArt(
+internal fun ImportBookCoverArt(
     book: SelectedImportBook,
     shape: RoundedCornerShape,
     placeholderFontSize: androidx.compose.ui.unit.TextUnit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    coverPathOverride: String? = null
 ) {
     val context = LocalContext.current
     val extension = book.name.substringAfterLast('.', missingDelimiterValue = "").uppercase()
     val displayTitle = book.name.substringBeforeLast('.', missingDelimiterValue = book.name)
     val coverPath by produceState<String?>(
-        initialValue = null,
+        initialValue = coverPathOverride,
         key1 = book.uri,
-        key2 = extension
+        key2 = extension,
+        key3 = coverPathOverride
     ) {
+        if (coverPathOverride != null) {
+            value = coverPathOverride
+            return@produceState
+        }
         val format = runCatching { BookFormat.valueOf(extension) }.getOrNull()
-        if (format == BookFormat.EPUB || format == BookFormat.PDF || format == BookFormat.MOBI) {
+        if (format == BookFormat.EPUB || format == BookFormat.PDF || format == BookFormat.MOBI ||
+            format == BookFormat.CBZ
+        ) {
             value = withContext(Dispatchers.IO) {
                 runCatching {
                     val parser = BookParserFactory.createParser(format, context)
@@ -1080,6 +1094,7 @@ private fun ImportBookCoverArt(
         "EPUB" -> Brush.linearGradient(listOf(Color(0xFF9BB7D4), Color(0xFF657D9A)))
         "PDF" -> Brush.linearGradient(listOf(Color(0xFFDFA19C), Color(0xFFB95E5B)))
         "MOBI" -> Brush.linearGradient(listOf(Color(0xFFA8C3A0), Color(0xFF5F8A5C)))
+        "CBZ" -> Brush.linearGradient(listOf(Color(0xFFE0B87C), Color(0xFFB07A3C)))
         else -> Brush.linearGradient(listOf(Color(0xFFB8B0D6), Color(0xFF8179A8)))
     }
 

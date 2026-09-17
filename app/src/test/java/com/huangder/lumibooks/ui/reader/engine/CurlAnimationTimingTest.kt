@@ -5,33 +5,15 @@ import org.junit.Test
 
 class CurlAnimationTimingTest {
     @Test
-    fun settleDurationUsesConfiguredBaseAndRemainingFraction() {
-        assertEquals(128, curlSettleDurationMs(300, 0f, 100f))
-        assertEquals(214, curlSettleDurationMs(300, 50f, 100f))
-        assertEquals(300, curlSettleDurationMs(300, 100f, 100f))
-
-        assertEquals(340, curlSettleDurationMs(800, 0f, 100f))
-        assertEquals(570, curlSettleDurationMs(800, 50f, 100f))
-        assertEquals(800, curlSettleDurationMs(800, 100f, 100f))
-
-        assertEquals(510, curlSettleDurationMs(1200, 0f, 100f))
-        assertEquals(855, curlSettleDurationMs(1200, 50f, 100f))
-        assertEquals(1200, curlSettleDurationMs(1200, 100f, 100f))
-    }
-
-    @Test
-    fun normalizationMakesDifferentEndpointDistancesUseSameDuration() {
-        assertEquals(
-            curlSettleDurationMs(800, 500f, 1000f),
-            curlSettleDurationMs(800, 750f, 1500f)
-        )
-    }
-
-    @Test
-    fun fractionsAreClampedAndZeroPathUsesMinimum() {
-        assertEquals(340, curlSettleDurationMs(800, -20f, 100f))
-        assertEquals(800, curlSettleDurationMs(800, 200f, 100f))
-        assertEquals(340, curlSettleDurationMs(800, 20f, 0f))
+    fun settleDurationScalesWithTravelAtConstantSpeed() {
+        // 一次完整翻页 = 折角 tip 走 2 屏宽（右缘 → -viewWidth）≈ 配置时长。
+        assertEquals(800, curlSettleDurationMs(800, 2160f, 1080f))
+        assertEquals(400, curlSettleDurationMs(800, 1080f, 1080f))
+        assertEquals(300, curlSettleDurationMs(300, 2160f, 1080f))
+        // 极短行程有下限，避免 0ms 瞬移。
+        assertEquals(120, curlSettleDurationMs(800, 100f, 1080f))
+        // 配置时长本身就小于下限时按配置时长走。
+        assertEquals(120, curlSettleDurationMs(120, 2160f, 1080f))
     }
 
     @Test

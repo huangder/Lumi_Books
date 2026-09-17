@@ -64,6 +64,9 @@ class VerticalTextSelectionInstrumentedTest {
             val newStart = page.geometry.glyphs.first { it.startOffset == 0 }.bounds
             dispatch(pageView, MotionEvent.ACTION_MOVE, newStart.centerX, newStart.centerY)
             assertSelection(spannable, 0, 4)
+            val secondStart = page.geometry.glyphs.first { it.startOffset == 1 }.bounds
+            dispatch(pageView, MotionEvent.ACTION_MOVE, secondStart.centerX, secondStart.centerY)
+            assertSelection(spannable, 1, 4)
             dispatch(pageView, MotionEvent.ACTION_UP, newStart.centerX, newStart.centerY)
             assertFalse(pageView.isVerticalSelectionHandleDragActive())
 
@@ -73,7 +76,10 @@ class VerticalTextSelectionInstrumentedTest {
 
             val newEnd = page.geometry.glyphs.first { it.endOffset == 7 }.bounds
             dispatch(pageView, MotionEvent.ACTION_MOVE, newEnd.centerX, newEnd.centerY)
-            assertSelection(spannable, 0, 7)
+            assertSelection(spannable, 1, 7)
+            val secondEnd = page.geometry.glyphs.first { it.endOffset == 5 }.bounds
+            dispatch(pageView, MotionEvent.ACTION_MOVE, secondEnd.centerX, secondEnd.centerY)
+            assertSelection(spannable, 1, 5)
             dispatch(pageView, MotionEvent.ACTION_UP, newEnd.centerX, newEnd.centerY)
             assertFalse(pageView.isVerticalSelectionHandleDragActive())
         }

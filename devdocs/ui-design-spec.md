@@ -196,7 +196,7 @@ Box (全屏)
 ```
 圆形 36dp
 背景: #F2F2F7
-图标: X (Icons.Outlined.Close), 18dp, 灰色 #6E6E73
+图标: X (AppIcons.X), 18dp, 灰色 #6E6E73
 点击: 关闭 Sheet
 ```
 
@@ -226,7 +226,7 @@ LinearProgressIndicator:
 ```
 圆形 48dp
 背景: #E85D5D (带 8dp 阴影)
-图标: Icons.Outlined.Share, 20dp, 白色
+图标: AppIcons.ShareNetwork, 20dp, 白色
 点击: 打开 ShareSheet
 ```
 
@@ -605,8 +605,8 @@ Box (全屏)
 圆形 36dp
 背景: #F2F2F7
 图标选项:
-- X 图标: Icons.Outlined.Close, 18dp, #6E6E73
-- 向下箭头: Icons.Outlined.KeyboardArrowDown, 20dp, #6E6E73
+- X 图标: AppIcons.X, 18dp, #6E6E73
+- 向下箭头: AppIcons.CaretDown, 20dp, #6E6E73
 - 勾选: Text("✓"), 16sp, #E85D5D 或白色
 点击: 关闭当前 Sheet
 ```

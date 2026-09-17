@@ -1,5 +1,8 @@
 package com.huangder.lumibooks.ui.home
 
+import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
+import com.huangder.lumibooks.ui.icons.AppIcons
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -22,6 +25,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,27 +33,21 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.outlined.AccountCircle
-import androidx.compose.material.icons.outlined.Book
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.MoreVert
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,7 +63,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
@@ -79,10 +77,12 @@ import androidx.compose.ui.unit.sp
 import java.util.Calendar
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.BookDeleteMode
 import com.huangder.lumibooks.data.sync.BookDownloadState
 import com.huangder.lumibooks.ui.animation.OverscrollBounce
+import com.huangder.lumibooks.ui.animation.OverscrollBounceState
 import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
 import com.huangder.lumibooks.ui.components.BookCoverProgressOverlay
@@ -92,6 +92,8 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
 import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
+import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
+import com.huangder.lumibooks.ui.components.LocalLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
@@ -103,12 +105,17 @@ import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.huangder.lumibooks.ui.theme.SansSerif
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.ui.animation.PageEntranceItem
+import com.huangder.lumibooks.ui.animation.BookCoverTitleColor
+import com.huangder.lumibooks.ui.animation.BookCoverTitleStyle
+import com.huangder.lumibooks.ui.animation.bookCoverMemoryCacheKey
+import com.huangder.lumibooks.ui.animation.bookCoverTransitionAnchor
+import com.huangder.lumibooks.ui.layout.currentAdaptiveWindowInfo
 import com.huangder.lumibooks.util.TimeUtils
 
 @Composable
 fun HomeScreen(
     playEntranceAnimation: Boolean = false,
-    onNavigateToReader: (bookId: String, coverPath: String?, title: String, sourceBounds: Rect?) -> Unit,
+    onNavigateToReader: (book: Book, sourceBounds: Rect?) -> Unit,
     onNavigateToStatistics: () -> Unit,
     onNavigateToBookshelf: () -> Unit,
     onImportClick: () -> Unit,
@@ -122,7 +129,7 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val isMaterial3 = LocalUseMaterial3Theme.current
-    val isTablet = LocalConfiguration.current.smallestScreenWidthDp >= 600
+    val useWideLayout = currentAdaptiveWindowInfo().isMediumWidthOrLarger
     val topBlurBackdrop = rememberLayerBackdrop()
     val statusBarTopPadding = WindowInsets.statusBars
         .asPaddingValues()
@@ -148,6 +155,21 @@ fun HomeScreen(
     val lastReadBook = booksByLastRead.firstOrNull()
     val recentBooks = booksByLastRead
 
+    // 顶部下拉「松手继续阅读」：只读取下拉位移，判定与回弹都由 OverscrollBounce 维持原样。
+    val bounceState = remember { OverscrollBounceState() }
+    val pullToResumeThresholdPx = with(LocalDensity.current) {
+        PULL_TO_RESUME_THRESHOLD_DP.dp.toPx()
+    }
+    val latestNavigateToReader = rememberUpdatedState(onNavigateToReader)
+    val latestLastReadBook = rememberUpdatedState(lastReadBook)
+    val onTopPullRelease: (Float) -> Unit = { releasedOffsetPx ->
+        if (shouldOpenRecentBookOnRelease(releasedOffsetPx, pullToResumeThresholdPx)) {
+            latestLastReadBook.value?.let { book ->
+                latestNavigateToReader.value(book, null)
+            }
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -160,13 +182,15 @@ fun HomeScreen(
                 .fillMaxSize()
                 .then(
                     if (isLiquidGlass) Modifier.layerBackdrop(topBlurBackdrop) else Modifier
-                )
+                ),
+            state = bounceState,
+            onTopPullRelease = onTopPullRelease
         ) {
             LazyColumn(
                 modifier = Modifier
-                    .then(if (isTablet) Modifier.widthIn(max = 840.dp) else Modifier)
+                    .then(if (useWideLayout) Modifier.widthIn(max = 840.dp) else Modifier)
                     .fillMaxWidth()
-                    .then(if (isTablet) Modifier.align(Alignment.TopCenter) else Modifier)
+                    .then(if (useWideLayout) Modifier.align(Alignment.TopCenter) else Modifier)
             ) {
                 item(key = "header") {
                     Spacer(Modifier.height(statusBarTopPadding + AppSpace.md))
@@ -198,7 +222,7 @@ fun HomeScreen(
                             ContinueReadingCard(
                                 book = lastReadBook,
                                 downloadState = uiState.downloadStates[lastReadBook.id],
-                                onClick = { bounds -> onNavigateToReader(lastReadBook.id, lastReadBook.coverPath, lastReadBook.title, bounds) },
+                                onClick = { bounds -> onNavigateToReader(lastReadBook, bounds) },
                                 onToggleFavorite = { viewModel.updateBook(lastReadBook.copy(isFavorite = !lastReadBook.isFavorite)) },
                                 onDelete = { mode -> viewModel.deleteBook(lastReadBook, mode) },
                                 modifier = Modifier.padding(horizontal = AppSpace.lg)
@@ -217,10 +241,9 @@ fun HomeScreen(
                                 BooksReadGrid(
                                     books = recentBooks,
                                     downloadStates = uiState.downloadStates,
-                                    modifier = Modifier.padding(horizontal = AppSpace.lg),
-                                    isTablet = isTablet,
+                                    useWideLayout = useWideLayout,
                                     onBookClick = { book, bounds ->
-                                        onNavigateToReader(book.id, book.coverPath, book.title, bounds)
+                                        onNavigateToReader(book, bounds)
                                     }
                                 )
                             }
@@ -237,7 +260,7 @@ fun HomeScreen(
                             weeklyData = uiState.weeklyData,
                             onCardClick = { setShowGoalSheet(true) },
                             onContinueClick = {
-                                lastReadBook?.let { onNavigateToReader(it.id, it.coverPath, it.title, null) }
+                                lastReadBook?.let { onNavigateToReader(it, null) }
                             }
                         )
                     }
@@ -251,6 +274,14 @@ fun HomeScreen(
         } // OverscrollBounce 结束
 
         StatusGradientOverlay(backdrop = topBlurBackdrop.takeIf { isLiquidGlass })
+
+        // 提示绘制在顶部渐隐之上，避免文字被窗口色渐变冲淡；无书时整个手势都不可用。
+        if (lastReadBook != null) {
+            HomePullToResumeHint(
+                bounceState = bounceState,
+                statusBarTopPadding = statusBarTopPadding
+            )
+        }
 
         if (renderReadingGoalSheet) {
             ReadingGoalSheet(
@@ -290,7 +321,7 @@ fun HomeScreen(
                         contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                     ) {
                         Icon(
-                            Icons.Default.Add,
+                            AppIcons.Plus,
                             contentDescription = stringResource(R.string.import_books),
                             modifier = Modifier.size(24.dp)
                         )
@@ -305,7 +336,7 @@ fun HomeScreen(
                             .clickable(onClick = onImportClick),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Add, stringResource(R.string.import_books), tint = Color.White, modifier = Modifier.size(24.dp))
+                        Icon(AppIcons.Plus, stringResource(R.string.import_books), tint = Color.White, modifier = Modifier.size(24.dp))
                     }
                 }
             }
@@ -358,7 +389,7 @@ private fun HomeHeader(
                 )
             } else {
                 Icon(
-                    imageVector = Icons.Outlined.AccountCircle,
+                    imageVector = AppIcons.UserCircle,
                     contentDescription = stringResource(R.string.settings),
                     tint = AppColors.TextSecondary,
                     modifier = Modifier.size(36.dp)
@@ -383,7 +414,7 @@ private fun ImportHint(onImportClick: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Icon(
-            Icons.Outlined.Book,
+            AppIcons.Book,
             contentDescription = null,
             tint = AppColors.TextSecondary,
             modifier = Modifier.size(24.dp)
@@ -450,6 +481,18 @@ private fun ContinueReadingCard(
                 .width(72.dp)
                 .aspectRatio(0.75f)
                 .onGloballyPositioned { coverBounds.set(it.boundsInRoot()) }
+                .bookCoverTransitionAnchor(
+                    bookId = book.id,
+                    cornerRadiusDp = AppRadius.sm.value,
+                    titleStyle = BookCoverTitleStyle(
+                        fontSizeSp = AppType.Caption.value,
+                        maxLines = 3,
+                        paddingDp = AppSpace.sm.value,
+                        color = BookCoverTitleColor.Primary,
+                        useKaiTi = true,
+                        textAlignCenter = true
+                    )
+                )
                 .clip(RoundedCornerShape(AppRadius.sm))
                 .background(AppColors.BgGray)
         ) {
@@ -461,7 +504,12 @@ private fun ContinueReadingCard(
                 )
             } else {
                 AsyncImage(
-                    model = book.coverPath,
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(book.coverPath)
+                        .memoryCacheKey(
+                            bookCoverMemoryCacheKey(book.id, book.coverPath)
+                        )
+                        .build(),
                     contentDescription = book.title,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
@@ -515,22 +563,33 @@ private fun ContinueReadingCard(
             )
         }
         Box {
-            IconButton(
+            // A button instead of a bare icon, so the anchored menu has a trigger
+            // control of its own to morph out of (matches the bookshelf bar).
+            //
+            // It deliberately runs on the material fallback: the page backdrop
+            // captures this very card, and a surface that samples its own capture
+            // makes the render tree reference itself (native HWUI crash). The
+            // fallback still draws the glass gradient, outline and shadow, and the
+            // pressed stretch/highlight keeps working; only refraction is dropped.
+            CompositionLocalProvider(LocalLiquidGlassBackdrop provides null) {
+                LiquidGlassIconButton(
+                imageVector = AppIcons.DotsThreeVertical,
+                contentDescription = stringResource(R.string.more_options),
                 onClick = {
-                    if (isLiquidGlass && liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
-                        liquidMenuHost.show(
+                    if (liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
+                        liquidMenuHost.toggle(
                             LiquidGlassMenuSpec(
                                 anchorBounds = menuAnchorBounds,
                                 width = 132.dp,
                                 items = listOf(
                                     LiquidGlassMenuItem(
                                         label = favoriteMenuLabel,
-                                        icon = Icons.Outlined.FavoriteBorder,
+                                        icon = AppIcons.Heart.regular,
                                         onClick = onToggleFavorite
                                     ),
                                     LiquidGlassMenuItem(
                                         label = deleteMenuLabel,
-                                        icon = Icons.Outlined.Delete,
+                                        icon = AppIcons.Trash,
                                         destructive = true,
                                         onClick = { showDeleteConfirm = true }
                                     )
@@ -541,11 +600,13 @@ private fun ContinueReadingCard(
                         menuExpanded = true
                     }
                 },
-                modifier = Modifier
-                    .size(32.dp)
-                    .onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
-            ) {
-                Icon(Icons.Outlined.MoreVert, null, tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp))
+                size = 32.dp,
+                iconSize = 18.dp,
+                contentColor = AppColors.TextSecondary,
+                liquidContainerColor = AppColors.CardBg,
+                liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
+                modifier = Modifier.liquidGlassMenuAnchor().onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
+            )
             }
             DropdownMenu(
                 expanded = menuExpanded,
@@ -569,7 +630,7 @@ private fun ContinueReadingCard(
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Outlined.FavoriteBorder, null, modifier = Modifier.size(17.dp), tint = AppColors.TextSecondary)
+                    Icon(AppIcons.Heart.regular, null, modifier = Modifier.size(17.dp), tint = AppColors.TextSecondary)
                     Spacer(Modifier.width(6.dp))
                     Text(
                         if (book.isFavorite) stringResource(R.string.remove_favorite) else stringResource(R.string.add_favorite),
@@ -589,7 +650,7 @@ private fun ContinueReadingCard(
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Outlined.Delete, null, modifier = Modifier.size(17.dp), tint = AppColors.Accent)
+                    Icon(AppIcons.Trash, null, modifier = Modifier.size(17.dp), tint = AppColors.Accent)
                     Spacer(Modifier.width(6.dp))
                     Text(stringResource(R.string.delete_book), fontSize = AppType.BodySmall, color = AppColors.Accent)
                 }
@@ -649,6 +710,18 @@ private fun RecentBookCard(
         Box(
             modifier = Modifier
                 .size(56.dp, 74.dp)
+                .bookCoverTransitionAnchor(
+                    bookId = book.id,
+                    cornerRadiusDp = 6f,
+                    titleStyle = BookCoverTitleStyle(
+                        fontSizeSp = 10f,
+                        maxLines = 3,
+                        paddingDp = AppSpace.sm.value,
+                        color = BookCoverTitleColor.Primary,
+                        useKaiTi = true,
+                        textAlignCenter = true
+                    )
+                )
                 .clip(RoundedCornerShape(6.dp))
                 .background(AppColors.BgGray),
             contentAlignment = Alignment.Center
@@ -660,7 +733,12 @@ private fun RecentBookCard(
                 )
             } else {
                 AsyncImage(
-                    model = book.coverPath,
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(book.coverPath)
+                        .memoryCacheKey(
+                            bookCoverMemoryCacheKey(book.id, book.coverPath)
+                        )
+                        .build(),
                     contentDescription = book.title,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
@@ -905,22 +983,42 @@ private fun BooksReadGrid(
     books: List<Book>,
     downloadStates: Map<String, BookDownloadState>,
     modifier: Modifier = Modifier,
-    isTablet: Boolean = false,
+    useWideLayout: Boolean = false,
     onBookClick: (Book, Rect?) -> Unit
 ) {
     val coverShape = RoundedCornerShape(
         if (LocalAppTheme.current == "liquid_glass") 16.dp else AppRadius.md
     )
+    val coverRadiusDp = if (LocalAppTheme.current == "liquid_glass") {
+        16f
+    } else {
+        AppRadius.md.value
+    }
     val bookBounds = remember { mutableMapOf<String, Rect>() }
     LazyRow(
         modifier = modifier.fillMaxWidth(),
+        // Keep the first card aligned with the sections above while allowing
+        // the final card to scroll all the way to the screen edge.
+        contentPadding = PaddingValues(start = AppSpace.lg),
         horizontalArrangement = Arrangement.spacedBy(AppSpace.md)
     ) {
         items(books, key = { it.id }) { book ->
             Box(
                 modifier = Modifier
-                    .width(if (isTablet) 120.dp else 96.dp)
+                    .width(if (useWideLayout) 120.dp else 96.dp)
                     .aspectRatio(0.75f)
+                    .bookCoverTransitionAnchor(
+                        bookId = book.id,
+                        cornerRadiusDp = coverRadiusDp,
+                        titleStyle = BookCoverTitleStyle(
+                            fontSizeSp = AppType.BodySmall.value,
+                            maxLines = 3,
+                            paddingDp = AppSpace.sm.value,
+                            color = BookCoverTitleColor.Primary,
+                            useKaiTi = true,
+                            textAlignCenter = true
+                        )
+                    )
                     .shadow(
                         elevation = 8.dp,
                         shape = coverShape,
@@ -947,7 +1045,12 @@ private fun BooksReadGrid(
                     )
                 } else {
                     AsyncImage(
-                        model = book.coverPath,
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(book.coverPath)
+                            .memoryCacheKey(
+                                bookCoverMemoryCacheKey(book.id, book.coverPath)
+                            )
+                            .build(),
                         contentDescription = book.title,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop

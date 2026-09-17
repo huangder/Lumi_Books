@@ -28,6 +28,9 @@ interface TtsPlaybackEngine {
     /** Current rendered PCM frame offset within the active cached utterance. */
     fun currentPcmFrameOffset(): Long = 0L
 
+    /** Total cached PCM frames for the active utterance, when known. */
+    fun currentPcmFrameCount(): Long = 0L
+
     /** Pauses buffered audio when supported; system TTS implementations may stop instead. */
     suspend fun pause()
 
@@ -39,6 +42,12 @@ interface TtsPlaybackEngine {
     suspend fun setSpeechRate(rate: Float)
 
     suspend fun setPitch(pitch: Float)
+
+    /** Null values leave that property under the selected engine's control. */
+    suspend fun applyProsody(rate: Float?, pitch: Float?) {
+        rate?.let { setSpeechRate(it) }
+        pitch?.let { setPitch(it) }
+    }
 
     fun setListener(listener: TtsPlaybackListener)
 
@@ -62,6 +71,9 @@ interface TtsPlaybackListener {
      * and may restart it when the user resumes.
      */
     fun onPlaybackInterrupted()
+
+    /** Android engines may report a finer spoken range within the complete utterance. */
+    fun onRangeStart(utteranceId: String, start: Int, end: Int) = Unit
 
     /** Reports rendered PCM progress for exact external-audio resume positions. */
     fun onProgress(utteranceId: String, cacheKey: String, pcmFrameOffset: Long) = Unit

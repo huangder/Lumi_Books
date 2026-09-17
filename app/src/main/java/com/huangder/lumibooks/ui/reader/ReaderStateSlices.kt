@@ -6,6 +6,7 @@ import com.huangder.lumibooks.domain.model.CustomFontPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
+import com.huangder.lumibooks.domain.model.ReaderLayoutTarget
 import com.huangder.lumibooks.domain.model.ReaderPageAnimationSettings
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.domain.model.ReaderTextAlignment
@@ -16,6 +17,7 @@ import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
 import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.util.parser.TocEntry
 import com.huangder.lumibooks.util.parser.TxtEncoding
+import com.huangder.lumibooks.util.parser.TxtIndexState
 
 data class ReaderDocumentState(
     val book: Book? = null,
@@ -25,6 +27,8 @@ data class ReaderDocumentState(
     val chapterHtml: String = "",
     val isLoading: Boolean = true,
     val pageReady: Boolean = false,
+    val txtIndexState: TxtIndexState = TxtIndexState.COMPLETE,
+    val txtIndexProgress: Float? = null,
     val isEpubChapterHandoffInProgress: Boolean = false,
     val error: String? = null,
     val useNewEngine: Boolean = true,
@@ -54,6 +58,7 @@ data class ReaderRenderSettingsState(
     val readerBackgroundImageOpacity: Float = 1f,
     val readerBackgroundImageBlurDp: Float = 0f,
     val preserveEpubBackground: Boolean = true,
+    val pageImageCrop: Boolean = false,
     val readerTextColor: Int? = null,
     val chineseMode: String = "original",
     val pageTransition: String = "slide",
@@ -83,6 +88,8 @@ data class ReaderControlsState(
     val customReaderBackgrounds: List<ReaderBackgroundPreset> = emptyList(),
     val readerThemeSuites: List<ReaderThemeSuite> = ReaderThemeSuites.defaults(),
     val activeReaderThemeSuiteId: String = ReaderThemeSuites.DAY_ID,
+    val activeReaderLayoutThemeSuiteId: String = ReaderThemeSuites.DAY_ID,
+    val activeBookLayoutThemeSuiteId: String = ReaderThemeSuites.PUBLISHER_ID,
     val showEpubLayoutHint: Boolean = false,
     val showMobiLayoutHint: Boolean = false,
     val txtEncoding: TxtEncoding = TxtEncoding.AUTO,
@@ -117,6 +124,8 @@ internal fun ReaderUiState.toDocumentState() = ReaderDocumentState(
     chapterHtml = chapterHtml,
     isLoading = isLoading,
     pageReady = pageReady,
+    txtIndexState = txtIndexState,
+    txtIndexProgress = txtIndexProgress,
     isEpubChapterHandoffInProgress = isEpubChapterHandoffInProgress,
     error = error,
     useNewEngine = useNewEngine,
@@ -146,6 +155,7 @@ internal fun ReaderUiState.toRenderSettingsState() = ReaderRenderSettingsState(
     readerBackgroundImageOpacity = readerBackgroundImageOpacity,
     readerBackgroundImageBlurDp = readerBackgroundImageBlurDp,
     preserveEpubBackground = preserveEpubBackground,
+    pageImageCrop = pageImageCrop,
     readerTextColor = readerTextColor,
     chineseMode = chineseMode,
     pageTransition = pageTransition,
@@ -175,6 +185,8 @@ internal fun ReaderUiState.toControlsState() = ReaderControlsState(
     customReaderBackgrounds = customReaderBackgrounds,
     readerThemeSuites = readerThemeSuites,
     activeReaderThemeSuiteId = activeReaderThemeSuiteId,
+    activeReaderLayoutThemeSuiteId = activeReaderLayoutThemeSuiteId,
+    activeBookLayoutThemeSuiteId = activeBookLayoutThemeSuiteId,
     showEpubLayoutHint = showEpubLayoutHint,
     showMobiLayoutHint = showMobiLayoutHint,
     txtEncoding = txtEncoding,
@@ -195,3 +207,41 @@ internal fun ReaderUiState.toControlsState() = ReaderControlsState(
     readerBottomRightContent = readerBottomRightContent,
     selectionMenuItems = selectionMenuItems
 )
+
+/**
+ * Settings bucket a book edits right now. Only EPUB/MOBI books can leave the
+ * reader layout, so everything else always maps to [ReaderLayoutTarget.READER_LAYOUT].
+ */
+internal fun readerLayoutTargetFor(
+    format: String?,
+    renderMode: EpubRenderMode
+): ReaderLayoutTarget =
+    if ((format == "EPUB" || format == "MOBI") && renderMode == EpubRenderMode.BOOK_LAYOUT) {
+        ReaderLayoutTarget.BOOK_LAYOUT
+    } else {
+        ReaderLayoutTarget.READER_LAYOUT
+    }
+
+internal fun ReaderUiState.readerLayoutTarget(): ReaderLayoutTarget =
+    readerLayoutTargetFor(book?.format?.name, renderMode)
+
+/**
+ * 当前排版模式正在使用的活动套装配额：阅读器排版与书籍原排版各记一套，
+ * 默认分别是日间与「原排版」。
+ */
+internal fun ReaderUiState.activeThemeSuiteIdFor(layout: ReaderLayoutTarget): String =
+    when (layout) {
+        ReaderLayoutTarget.READER_LAYOUT -> activeReaderLayoutThemeSuiteId
+        ReaderLayoutTarget.BOOK_LAYOUT -> activeBookLayoutThemeSuiteId
+    }
+
+internal fun ReaderUiState.activeThemeSuiteId(): String =
+    activeThemeSuiteIdFor(readerLayoutTarget())
+
+internal fun ReaderUiState.activeThemeSuite(): ReaderThemeSuite? =
+    readerThemeSuites.firstOrNull { it.id == activeThemeSuiteId() }
+
+/** 「原排版」套装：阅读器不参与配色，原书自己的底色与文字颜色照原样渲染。 */
+internal fun ReaderUiState.keepsPublisherPaint(): Boolean =
+    readerLayoutTarget() == ReaderLayoutTarget.BOOK_LAYOUT &&
+        activeThemeSuite()?.isBookLayoutOnly == true

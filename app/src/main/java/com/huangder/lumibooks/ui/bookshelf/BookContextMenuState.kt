@@ -2,7 +2,6 @@ package com.huangder.lumibooks.ui.bookshelf
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -96,8 +95,10 @@ class BookContextMenuState(private val scope: CoroutineScope) {
      *
      * 入场时序：
      * 0ms   - 封面 spring 放大 + 震动 + 遮罩淡入
-     * 100ms - 信息面板淡入
-     * 250ms - 操作项依次淡出（由 composable 层交错驱动）
+     * 0ms   - 信息面板淡入
+     * 60ms  - 操作面板淡入（较信息面板慢一拍）
+     *
+     * 参数见 [ContextMenuMotion]：入场约 200ms 成形，不再有可感知的等待。
      */
     fun onLongPressConfirmed(
         book: Book,
@@ -113,7 +114,7 @@ class BookContextMenuState(private val scope: CoroutineScope) {
         scope.launch {
             itemAlpha.animateTo(
                 targetValue = 0f,
-                animationSpec = tween(120, easing = AppEasing.Decelerate)
+                animationSpec = tween(ContextMenuMotion.ItemHideMillis, easing = AppEasing.Decelerate)
             )
         }
 
@@ -127,56 +128,52 @@ class BookContextMenuState(private val scope: CoroutineScope) {
                 launch {
                     coverScale.snapTo(1f)
                     coverScale.animateTo(
-                        targetValue = 1.08f,
-                        animationSpec = spring(
-                            dampingRatio = 0.6f,
-                            stiffness = 300f
-                        )
+                        targetValue = ContextMenuMotion.CoverScaleValue,
+                        animationSpec = ContextMenuMotion.CoverScaleEnter
                     )
                 }
                 launch {
                     coverPositionProgress.snapTo(0f)
                     coverPositionProgress.animateTo(
                         targetValue = 1f,
-                        animationSpec = spring(
-                            dampingRatio = 0.72f,
-                            stiffness = 260f
-                        )
+                        animationSpec = ContextMenuMotion.CoverPositionEnter
                     )
                 }
                 // 遮罩淡入
                 launch {
                     scrimAlpha.animateTo(
                         targetValue = 1f,
-                        animationSpec = tween(400, easing = AppEasing.Decelerate)
+                        animationSpec = tween(
+                            ContextMenuMotion.ScrimEnterMillis,
+                            easing = ContextMenuMotion.ScrimEnterEasing
+                        )
                     )
                 }
                 // pressScale 恢复
                 launch {
                     pressScale.animateTo(
                         targetValue = 1f,
-                        animationSpec = tween(200, easing = AppEasing.Decelerate)
+                        animationSpec = tween(
+                            ContextMenuMotion.PressReleaseMillis,
+                            easing = AppEasing.Decelerate
+                        )
                     )
                 }
                 // 两个玻璃面板作为完整单元先后弹性进入。
                 launch {
-                    delay(80)
+                    if (ContextMenuMotion.InfoPanelEnterDelayMillis > 0L) {
+                        delay(ContextMenuMotion.InfoPanelEnterDelayMillis)
+                    }
                     menuAlpha.animateTo(
                         targetValue = 1f,
-                        animationSpec = spring(
-                            dampingRatio = 0.70f,
-                            stiffness = 145f
-                        )
+                        animationSpec = ContextMenuMotion.InfoPanelEnter
                     )
                 }
                 launch {
-                    delay(190)
+                    delay(ContextMenuMotion.ActionsPanelEnterDelayMillis)
                     actionsAlpha.animateTo(
                         targetValue = 1f,
-                        animationSpec = spring(
-                            dampingRatio = 0.70f,
-                            stiffness = 145f
-                        )
+                        animationSpec = ContextMenuMotion.ActionsPanelEnter
                     )
                 }
             }
@@ -206,20 +203,14 @@ class BookContextMenuState(private val scope: CoroutineScope) {
                 launch {
                     actionsAlpha.animateTo(
                         targetValue = 0f,
-                        animationSpec = spring(
-                            dampingRatio = 0.86f,
-                            stiffness = 240f
-                        )
+                        animationSpec = ContextMenuMotion.ActionsPanelExit
                     )
                 }
                 launch {
-                    delay(80)
+                    delay(ContextMenuMotion.InfoPanelExitDelayMillis)
                     menuAlpha.animateTo(
                         targetValue = 0f,
-                        animationSpec = spring(
-                            dampingRatio = 0.86f,
-                            stiffness = 240f
-                        )
+                        animationSpec = ContextMenuMotion.InfoPanelExit
                     )
                 }
             }
@@ -228,19 +219,28 @@ class BookContextMenuState(private val scope: CoroutineScope) {
                 launch {
                     coverScale.animateTo(
                         targetValue = 1f,
-                        animationSpec = tween(400, easing = AppEasing.Decelerate)
+                        animationSpec = tween(
+                            ContextMenuMotion.CoverReturnMillis,
+                            easing = ContextMenuMotion.CoverReturnEasing
+                        )
                     )
                 }
                 launch {
                     coverPositionProgress.animateTo(
                         targetValue = 0f,
-                        animationSpec = tween(400, easing = AppEasing.Decelerate)
+                        animationSpec = tween(
+                            ContextMenuMotion.CoverReturnMillis,
+                            easing = ContextMenuMotion.CoverReturnEasing
+                        )
                     )
                 }
                 launch {
                     scrimAlpha.animateTo(
                         targetValue = 0f,
-                        animationSpec = tween(400, easing = AppEasing.Accelerate)
+                        animationSpec = tween(
+                            ContextMenuMotion.ScrimExitMillis,
+                            easing = ContextMenuMotion.ScrimExitEasing
+                        )
                     )
                 }
             }

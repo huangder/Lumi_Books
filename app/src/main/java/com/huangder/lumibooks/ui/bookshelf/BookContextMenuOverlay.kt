@@ -1,10 +1,12 @@
 package com.huangder.lumibooks.ui.bookshelf
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,19 +21,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.outlined.Bookmark
-import androidx.compose.material.icons.outlined.DriveFileMove
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.Label
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Restore
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,7 +37,6 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -107,7 +99,11 @@ fun BookContextMenuOverlay(
     val book = state.selectedBook ?: return
     val coverBounds = state.coverBounds
     val coverScale = state.coverScale.value
-    val coverPositionProgress = state.coverPositionProgress.value
+
+
+
+
+
     val menuAlpha = state.menuAlpha.value
     val actionsAlpha = state.actionsAlpha.value
     Box(
@@ -130,8 +126,7 @@ fun BookContextMenuOverlay(
         HighlightedCover(
             book = book,
             coverBounds = coverBounds,
-            coverScale = coverScale,
-            positionProgress = coverPositionProgress
+            coverScale = coverScale
         )
 
         // ── 3. 菜单布局（信息面板或操作面板任一可见时显示） ──
@@ -170,11 +165,9 @@ fun BookContextMenuOverlay(
 private fun HighlightedCover(
     book: Book,
     coverBounds: Rect,
-    coverScale: Float,
-    positionProgress: Float
+    coverScale: Float
 ) {
     val density = LocalDensity.current
-    val configuration = LocalConfiguration.current
 
     val coverLeftDp = with(density) { coverBounds.left.toDp() }
     val coverTopDp = with(density) { coverBounds.top.toDp() }
@@ -183,15 +176,9 @@ private fun HighlightedCover(
     val context = LocalContext.current
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val coverShape = RoundedCornerShape(if (isLiquidGlass) 16.dp else AppRadius.sm)
-    val finalScaledOverflow = coverHeightDp * 0.08f / 2f
-    val visualBottom = coverTopDp + coverHeightDp + finalScaledOverflow
-    val maxVisualBottom = configuration.screenHeightDp.dp - 196.dp
-    val coverOffsetY = if (isLiquidGlass) {
-        val safeOffset = (visualBottom - maxVisualBottom).coerceAtLeast(0.dp)
-        coverTopDp - safeOffset * positionProgress.coerceIn(0f, 1f)
-    } else {
-        coverTopDp
-    }
+    // Keep the highlighted cover anchored to its original position. Moving it to make
+    // room for the menu causes a large jump when the pressed book is near the bottom.
+    val coverOffsetY = coverTopDp
 
     Box(
         modifier = Modifier
@@ -255,60 +242,60 @@ private fun ContextMenuLayout(
     onEditInfo: () -> Unit
 ) {
     val density = LocalDensity.current
-    val configuration = LocalConfiguration.current
-    val screenWidthDp = configuration.screenWidthDp.dp
-    val screenHeightDp = configuration.screenHeightDp.dp
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        // Use the actual Compose container bounds. Configuration height includes system
+        // bars on some devices, which previously let the menu extend below the viewport.
+        val screenWidthDp = maxWidth
+        val screenHeightDp = maxHeight
+        val coverLeftDp = with(density) { coverBounds.left.toDp() }
+        val coverTopDp = with(density) { coverBounds.top.toDp() }
+        val coverBottomDp = with(density) { coverBounds.bottom.toDp() }
+        val coverWidthDp = with(density) { coverBounds.width.toDp() }
+        val horizontalMargin = 12.dp
+        val regularPanelWidth = minOf(170.dp, (screenWidthDp - horizontalMargin * 2).coerceAtLeast(120.dp))
+        val regularPanelGap = 12.dp
+        val availableLeft = coverLeftDp - horizontalMargin
+        val availableRight = screenWidthDp - (coverLeftDp + coverWidthDp) - horizontalMargin
+        val canFitRegularLeft = availableLeft >= regularPanelWidth + regularPanelGap
+        val canFitRegularRight = availableRight >= regularPanelWidth + regularPanelGap
+        val useCompactMiddlePanel = !canFitRegularLeft && !canFitRegularRight
+        val panelWidth = if (useCompactMiddlePanel) minOf(148.dp, regularPanelWidth) else regularPanelWidth
+        val horizontalPanelGap = if (useCompactMiddlePanel) 8.dp else regularPanelGap
+        val verticalPanelGap = 12.dp
+        val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+        val placePanelOnRight = when {
+            canFitRegularRight -> true
+            canFitRegularLeft -> false
+            else -> availableRight >= availableLeft
+        }
+        val desiredPanelX = if (placePanelOnRight) {
+            coverLeftDp + coverWidthDp + horizontalPanelGap
+        } else {
+            coverLeftDp - panelWidth - horizontalPanelGap
+        }
+        val maxPanelX = (screenWidthDp - panelWidth - horizontalMargin).coerceAtLeast(horizontalMargin)
+        val panelX = desiredPanelX.coerceIn(horizontalMargin, maxPanelX)
+        val estimatedMenuHeight = 520.dp
+        val bottomMargin = if (isLiquidGlass) 24.dp else 16.dp
+        val topMargin = with(density) { WindowInsets.statusBars.getTop(this).toDp() } + 8.dp
+        val maxMenuHeight = (screenHeightDp - topMargin - bottomMargin).coerceAtLeast(180.dp)
+        val maxPanelY = (screenHeightDp - minOf(estimatedMenuHeight, maxMenuHeight) - bottomMargin)
+            .coerceAtLeast(topMargin)
+        val desiredPanelY = if (coverTopDp + estimatedMenuHeight > screenHeightDp - bottomMargin) {
+            coverBottomDp - estimatedMenuHeight
+        } else {
+            coverTopDp
+        }
+        val panelY = desiredPanelY.coerceIn(topMargin, maxPanelY)
 
-    val coverLeftDp = with(density) { coverBounds.left.toDp() }
-    val coverTopDp = with(density) { coverBounds.top.toDp() }
-    val coverBottomDp = with(density) { coverBounds.bottom.toDp() }
-    val coverWidthDp = with(density) { coverBounds.width.toDp() }
-
-    val horizontalMargin = 8.dp
-    val regularPanelWidth = 170.dp
-    val regularPanelGap = 12.dp
-    val availableLeft = coverLeftDp - horizontalMargin
-    val availableRight = screenWidthDp - (coverLeftDp + coverWidthDp) - horizontalMargin
-    val canFitRegularLeft = availableLeft >= regularPanelWidth + regularPanelGap
-    val canFitRegularRight = availableRight >= regularPanelWidth + regularPanelGap
-    val useCompactMiddlePanel = !canFitRegularLeft && !canFitRegularRight
-    val panelWidth = if (useCompactMiddlePanel) 136.dp else regularPanelWidth
-    val horizontalPanelGap = if (useCompactMiddlePanel) 6.dp else regularPanelGap
-    val verticalPanelGap = 12.dp
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
-
-    val placePanelOnRight = when {
-        canFitRegularRight -> true
-        canFitRegularLeft -> false
-        else -> availableRight >= availableLeft
-    }
-    val desiredPanelX = if (placePanelOnRight) {
-        coverLeftDp + coverWidthDp + horizontalPanelGap
-    } else {
-        coverLeftDp - panelWidth - horizontalPanelGap
-    }
-    val maxPanelX = (screenWidthDp - panelWidth - horizontalMargin).coerceAtLeast(horizontalMargin)
-    val panelX = desiredPanelX.coerceIn(horizontalMargin, maxPanelX)
-
-    // 菜单面板顶部与封面顶部对齐；如果面板超出屏幕底部，则改为底部对齐
-    // 液态主题需要为悬浮 Tag 栏、间距和系统导航区预留完整安全区。
-    val estimatedMenuHeight = 520.dp
-    val bottomMargin = if (isLiquidGlass) 148.dp else 48.dp
-    val topMargin = with(density) { WindowInsets.statusBars.getTop(this).toDp() } + 14.dp
-    val maxPanelY = (screenHeightDp - estimatedMenuHeight - bottomMargin).coerceAtLeast(topMargin)
-    val desiredPanelY = if (coverTopDp + estimatedMenuHeight > screenHeightDp - bottomMargin) {
-        coverBottomDp - estimatedMenuHeight
-    } else {
-        coverTopDp
-    }
-    val panelY = desiredPanelY.coerceIn(topMargin, maxPanelY)
-
-    Column(
-        modifier = Modifier
-            .offset(x = panelX, y = panelY)
-            .width(panelWidth),
-        verticalArrangement = Arrangement.spacedBy(verticalPanelGap)
-    ) {
+        Column(
+            modifier = Modifier
+                .offset(x = panelX, y = panelY)
+                .width(panelWidth)
+                .heightIn(max = maxMenuHeight)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(verticalPanelGap)
+        ) {
         // 上部：信息面板（整体淡入）
         BookInfoPanel(
             book = book,
@@ -327,6 +314,7 @@ private fun ContextMenuLayout(
             hasCustomCover = com.huangder.lumibooks.util.FileUtils.isCustomCover(book.coverPath),
             onAction = onAction
         )
+        }
     }
 }
 
@@ -399,7 +387,7 @@ private fun BookInfoPanel(
                 .padding(vertical = 4.dp)
         ) {
             Icon(
-                imageVector = Icons.Outlined.Edit,
+                imageVector = AppIcons.PencilSimple,
                 contentDescription = null,
                 tint = AppColors.Accent,
                 modifier = Modifier.size(16.dp)
@@ -430,6 +418,19 @@ private fun MenuActionsPanel(
         if (LocalAppTheme.current == "liquid_glass") 24.dp else AppRadius.md
     )
     val motionProgress = actionsAlpha.coerceIn(-0.08f, 1.08f)
+    val favoriteIcon = AppIcons.Heart.resolve(isFavorite)
+    val favoriteLabel = if (isFavorite) stringResource(R.string.remove_favorite_short) else stringResource(R.string.favorite)
+    data class MenuItem(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val action: ContextMenuAction)
+    val menuItems = buildList {
+        add(MenuItem(stringResource(R.string.book_details), AppIcons.Info, ContextMenuAction.BookDetails))
+        add(MenuItem(favoriteLabel, favoriteIcon, ContextMenuAction.Favorite))
+        add(MenuItem(stringResource(R.string.add_tag), AppIcons.Tag, ContextMenuAction.Tags))
+        add(MenuItem(stringResource(R.string.move_to_folder), AppIcons.FolderSimple, ContextMenuAction.MoveToFolder))
+        add(MenuItem(stringResource(R.string.bookmarks_notes), AppIcons.Bookmark.regular, ContextMenuAction.BookmarksNotes))
+        add(MenuItem(stringResource(R.string.custom_cover), AppIcons.Image, ContextMenuAction.CustomCover))
+        if (hasCustomCover) add(MenuItem(stringResource(R.string.remove_custom_cover), AppIcons.ArrowCounterClockwise, ContextMenuAction.RemoveCustomCover))
+        add(MenuItem(stringResource(R.string.delete), AppIcons.Trash, ContextMenuAction.Delete))
+    }
     LiquidGlassSurface(
         shape = shape,
         fallbackColor = AppColors.CardBg,
@@ -441,35 +442,15 @@ private fun MenuActionsPanel(
             scaleY = scale
         },
         contentAlignment = Alignment.TopStart
-    ) {
-        Column(
+        ) {
+        LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 360.dp)
-                .verticalScroll(rememberScrollState())
+                .heightIn(min = 48.dp, max = 360.dp)
                 .padding(if (compact) 8.dp else 12.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-        val favoriteIcon = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder
-        val favoriteLabel = if (isFavorite) stringResource(R.string.remove_favorite_short) else stringResource(R.string.favorite)
-
-        // 动态构建菜单项列表
-        data class MenuItem(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val action: ContextMenuAction)
-
-        val items = buildList {
-            add(MenuItem(stringResource(R.string.book_details), Icons.Outlined.Info, ContextMenuAction.BookDetails))
-            add(MenuItem(favoriteLabel, favoriteIcon, ContextMenuAction.Favorite))
-            add(MenuItem(stringResource(R.string.add_tag), Icons.Outlined.Label, ContextMenuAction.Tags))
-            add(MenuItem(stringResource(R.string.move_to_folder), Icons.Outlined.DriveFileMove, ContextMenuAction.MoveToFolder))
-            add(MenuItem(stringResource(R.string.bookmarks_notes), Icons.Outlined.Bookmark, ContextMenuAction.BookmarksNotes))
-            add(MenuItem(stringResource(R.string.custom_cover), Icons.Outlined.Image, ContextMenuAction.CustomCover))
-            if (hasCustomCover) {
-                add(MenuItem(stringResource(R.string.remove_custom_cover), Icons.Outlined.Restore, ContextMenuAction.RemoveCustomCover))
-            }
-            add(MenuItem(stringResource(R.string.delete), Icons.Outlined.Delete, ContextMenuAction.Delete))
-        }
-
-        items.forEach { item ->
+        items(menuItems, key = { it.label }) { item ->
             MenuActionItem(
                 label = item.label,
                 icon = item.icon,

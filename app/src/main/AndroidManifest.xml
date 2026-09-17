@@ -167,6 +167,27 @@
                 <data android:mimeType="application/x-mobipocket-ebook" />
             </intent-filter>
 
+            <!-- CBZ 漫画文件关联 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/vnd.comicbook+zip" />
+                <data android:mimeType="application/x-cbz" />
+            </intent-filter>
+
+            <!-- 兜底：部分文件管理器把 .cbz 报成 application/octet-stream，按扩展名匹配 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.cbz" />
+                <data android:pathPattern=".*\\.CBZ" />
+            </intent-filter>
+
             <!-- 在系统分享菜单中显示 LUMI，并支持一次导入一本或多本书 -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -176,6 +197,8 @@
                 <data android:mimeType="application/epub+zip" />
                 <data android:mimeType="text/plain" />
                 <data android:mimeType="application/x-mobipocket-ebook" />
+                <data android:mimeType="application/vnd.comicbook+zip" />
+                <data android:mimeType="application/x-cbz" />
             </intent-filter>
         </activity>
 
@@ -268,10 +291,26 @@
             android:theme="@style/Theme.EBookReader"
             android:windowSoftInputMode="adjustResize" />
 
+        <activity
+            android:name=".ui.home.AuthorizedFolderBooksActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
+            android:theme="@style/Theme.EBookReader"
+            android:windowSoftInputMode="adjustResize" />
+
         <service
             android:name=".service.TtsForegroundService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+
+        <!-- 耳机线控 / 蓝牙媒体按键（Android 12+ 由 MediaSession 指向此接收器） -->
+        <receiver
+            android:name=".service.TtsMediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
 
         <receiver
             android:name=".widget.ContinueReadingWidgetProvider"

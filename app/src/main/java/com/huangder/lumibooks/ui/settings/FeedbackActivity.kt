@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.settings
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.content.Intent
 import android.graphics.BitmapFactory
@@ -32,14 +33,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.outlined.BugReport
-import androidx.compose.material.icons.outlined.PlayArrow
-import androidx.compose.material.icons.outlined.Stop
-import androidx.compose.material.icons.outlined.AddPhotoAlternate
-import androidx.compose.material.icons.outlined.Share
-import androidx.compose.material.icons.outlined.SaveAlt
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -422,7 +415,7 @@ private fun DiagnosticComposer(
             verticalArrangement = Arrangement.spacedBy(AppSpace.md)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.BugReport, contentDescription = null, tint = AppColors.Accent)
+                Icon(AppIcons.Bug, contentDescription = null, tint = AppColors.Accent)
                 Spacer(Modifier.width(AppSpace.sm))
                 Text(
                     stringResource(R.string.diagnostic_capture_title),
@@ -482,7 +475,7 @@ private fun DiagnosticComposer(
             shape = RoundedCornerShape(AppRadius.capsule),
             modifier = Modifier.fillMaxWidth().height(52.dp)
         ) {
-            Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = null)
+            Icon(AppIcons.ImageSquare, contentDescription = null)
             Spacer(Modifier.width(AppSpace.xs))
             Text("${stringResource(R.string.diagnostic_add_screenshot)} ($screenshotCount/3)")
         }
@@ -504,7 +497,7 @@ private fun DiagnosticComposer(
                     prominentShadow = true,
                     modifier = Modifier.fillMaxWidth().height(52.dp)
                 ) {
-                    Icon(Icons.Outlined.PlayArrow, contentDescription = null, tint = Color.White)
+                    Icon(AppIcons.Play, contentDescription = null, tint = Color.White)
                     Spacer(Modifier.width(AppSpace.xs))
                     Text(stringResource(R.string.diagnostic_start), color = Color.White)
                 }
@@ -518,7 +511,7 @@ private fun DiagnosticComposer(
                     prominentShadow = true,
                     modifier = Modifier.fillMaxWidth().height(52.dp)
                 ) {
-                    Icon(Icons.Outlined.Stop, contentDescription = null, tint = Color.White)
+                    Icon(AppIcons.Stop, contentDescription = null, tint = Color.White)
                     Spacer(Modifier.width(AppSpace.xs))
                     Text(stringResource(R.string.diagnostic_stop), color = Color.White)
                 }
@@ -557,7 +550,7 @@ private fun DiagnosticComposer(
                     contentColor = AppColors.TextPrimary,
                     shape = RoundedCornerShape(AppRadius.capsule)
                 ) {
-                    Icon(Icons.Outlined.Share, contentDescription = null)
+                    Icon(AppIcons.ShareNetwork, contentDescription = null)
                     Spacer(Modifier.width(AppSpace.xs))
                     Text(stringResource(R.string.diagnostic_share), maxLines = 1)
                 }
@@ -568,7 +561,7 @@ private fun DiagnosticComposer(
                     contentColor = AppColors.TextPrimary,
                     shape = RoundedCornerShape(AppRadius.capsule)
                 ) {
-                    Icon(Icons.Outlined.SaveAlt, contentDescription = null)
+                    Icon(AppIcons.DownloadSimple, contentDescription = null)
                     Spacer(Modifier.width(AppSpace.xs))
                     Text(stringResource(R.string.diagnostic_save), maxLines = 1)
                 }
@@ -688,7 +681,7 @@ private fun FeedbackLinkSection(
             )
             Spacer(Modifier.width(AppSpace.sm))
             Icon(
-                imageVector = Icons.Outlined.ChevronRight,
+                imageVector = AppIcons.CaretRight,
                 contentDescription = null,
                 tint = AppColors.TextSecondary,
                 modifier = Modifier.size(20.dp)

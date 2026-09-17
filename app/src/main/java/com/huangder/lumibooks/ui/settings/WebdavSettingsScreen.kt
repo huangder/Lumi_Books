@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.settings
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,15 +18,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.CloudOff
-import androidx.compose.material.icons.outlined.DeleteOutline
-import androidx.compose.material.icons.outlined.NetworkCheck
-import androidx.compose.material.icons.outlined.Sync
-import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.VisibilityOff
-import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -113,13 +105,26 @@ fun WebdavSettingsDetail(
             )
 
             WebdavSecondaryButton(
-                label = stringResource(R.string.webdav_test_connection),
-                icon = Icons.Outlined.NetworkCheck,
+                label = stringResource(
+                    if (uiState.webdavTesting) R.string.webdav_test_running
+                    else R.string.webdav_test_connection
+                ),
+                icon = AppIcons.Pulse,
+                enabled = !uiState.webdavTesting,
                 onClick = viewModel::testWebdavConnection
             )
+            if (uiState.webdavTestResult.isNotBlank()) {
+                Text(
+                    text = uiState.webdavTestResult,
+                    fontSize = AppType.Caption,
+                    color = if (uiState.webdavTestSucceeded) AppColors.TextSecondary
+                        else MaterialTheme.colorScheme.error,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
             WebdavSecondaryButton(
                 label = stringResource(R.string.webdav_sync_now),
-                icon = Icons.Outlined.Sync,
+                icon = AppIcons.ArrowsClockwise,
                 onClick = { if (!uiState.isWebdavSyncing) viewModel.syncWebdavNow() }
             )
             if (uiState.webdavSyncResult.isNotBlank()) {
@@ -135,12 +140,12 @@ fun WebdavSettingsDetail(
         if (isEnabled) {
             WebdavSecondaryButton(
                 label = stringResource(R.string.webdav_disable),
-                icon = Icons.Outlined.CloudOff,
+                icon = AppIcons.CloudSlash,
                 onClick = { viewModel.disableWebdav(clearKey = false) }
             )
             WebdavSecondaryButton(
                 label = stringResource(R.string.webdav_clear_config),
-                icon = Icons.Outlined.DeleteOutline,
+                icon = AppIcons.Trash,
                 destructive = true,
                 onClick = { viewModel.clearWebdavConfig() }
             )
@@ -217,6 +222,7 @@ fun WebdavConfigurationDetail(
             onValueChange = { draftServerUrl = it; serverUrlError = false },
             label = { Text(stringResource(R.string.webdav_server_url_label)) },
             placeholder = { Text(stringResource(R.string.webdav_server_url_hint)) },
+            supportingText = { Text(stringResource(R.string.webdav_server_url_help)) },
             isError = serverUrlError,
             singleLine = true,
             shape = RoundedCornerShape(12.dp),
@@ -245,8 +251,8 @@ fun WebdavConfigurationDetail(
             trailingIcon = {
                 IconButton(onClick = { passwordVisible = !passwordVisible }) {
                     Icon(
-                        imageVector = if (passwordVisible) Icons.Outlined.VisibilityOff
-                            else Icons.Outlined.Visibility,
+                        imageVector = if (passwordVisible) AppIcons.EyeSlash
+                            else AppIcons.Eye,
                         contentDescription = if (passwordVisible)
                             stringResource(R.string.webdav_hide_password)
                         else stringResource(R.string.webdav_show_password)
@@ -310,7 +316,7 @@ private fun WebdavStatusCard(
                 modifier = Modifier.align(Alignment.Center)
             ) {
                 Icon(
-                    imageVector = if (isEnabled) Icons.Outlined.CheckCircle else Icons.Outlined.CloudOff,
+                    imageVector = if (isEnabled) AppIcons.CheckCircle else AppIcons.CloudSlash,
                     contentDescription = null,
                     tint = if (isEnabled) AppColors.Accent else AppColors.TextSecondary,
                     modifier = Modifier.size(20.dp)
@@ -379,14 +385,21 @@ private fun WebdavSecondaryButton(
     label: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     destructive: Boolean = false,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
+    val contentColor = when {
+        destructive -> MaterialTheme.colorScheme.error
+        enabled -> AppColors.TextPrimary
+        else -> AppColors.TextSecondary
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadius.md))
             .background(AppColors.CardBg)
             .clickable(
+                enabled = enabled,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick
@@ -404,7 +417,7 @@ private fun WebdavSecondaryButton(
         Text(
             text = label,
             fontSize = AppType.Body,
-            color = if (destructive) MaterialTheme.colorScheme.error else AppColors.TextPrimary
+            color = contentColor
         )
     }
 }
@@ -420,7 +433,7 @@ private fun WebdavDisclosureCard() {
         verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Outlined.Sync, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+            Icon(AppIcons.ArrowsClockwise, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
             Spacer(Modifier.size(AppSpace.sm))
             Text(
                 stringResource(R.string.webdav_third_party_title),
@@ -574,7 +587,7 @@ private fun WebdavSyncContentRow(
         ) {
             if (checked) {
                 Icon(
-                    imageVector = Icons.Rounded.Check,
+                    imageVector = AppIcons.Check,
                     contentDescription = null,
                     tint = Color.White,
                     modifier = Modifier.size(16.dp)

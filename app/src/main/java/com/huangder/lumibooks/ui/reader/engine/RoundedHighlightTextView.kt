@@ -2,14 +2,30 @@ package com.huangder.lumibooks.ui.reader.engine
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.ColorFilter
+import android.graphics.PixelFormat
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
 import android.text.Layout
+import android.text.Selection
+import android.text.Spannable
 import android.text.Spanned
 import android.text.TextPaint
 import android.text.style.CharacterStyle
+import android.text.style.ImageSpan
 import android.text.style.UpdateAppearance
-import android.widget.TextView
+import android.os.Handler
+import android.os.Looper
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewConfiguration
+import android.widget.ReaderGeometryTextView
+import kotlin.math.roundToInt
 
 /** A non-persistent highlight whose opacity is animated after navigating to a search result. */
 internal class ReaderSearchHighlightSpan(var alpha: Int) : CharacterStyle(), UpdateAppearance {
@@ -28,7 +44,10 @@ internal class TtsSentenceHighlightSpan(val color: Int) : CharacterStyle(), Upda
     override fun updateDrawState(textPaint: TextPaint) = Unit
 
     companion object {
-        fun computeHighlightColor(bgColor: Int, delta: Float = 0.06f): Int {
+        /** Small theme-aware contrast boost used by every TTS renderer. */
+        const val DEFAULT_CONTRAST_DELTA = 0.10f
+
+        fun computeHighlightColor(bgColor: Int, delta: Float = DEFAULT_CONTRAST_DELTA): Int {
             val r = android.graphics.Color.red(bgColor)
             val g = android.graphics.Color.green(bgColor)
             val b = android.graphics.Color.blue(bgColor)
@@ -57,14 +76,998 @@ internal class TtsSentenceHighlightSpan(val color: Int) : CharacterStyle(), Upda
 internal class WaveUnderlineSpan(val color: Int) : CharacterStyle(), UpdateAppearance {
     override fun updateDrawState(textPaint: TextPaint) = Unit
 }
-internal open class RoundedHighlightTextView(context: Context) : TextView(context) {
+
+/**
+ * 跨页选择期间由 ReadView 自持的瞬态选区高亮。
+ *
+ * 与 [ReaderHighlightSpan] 分开是为了让原位刷新（拖拽中只换 span，不重排版）
+ * 能精确地只清掉自己的那一段，不会误伤已保存的高亮。
+ */
+internal class ReaderSelectionHighlightSpan(val color: Int) : CharacterStyle(), UpdateAppearance {
+    override fun updateDrawState(textPaint: TextPaint) = Unit
+}
+
+/**
+ * Keeps Editor's selection controller alive without exposing the OEM popup.
+ * ColorOS can tint/wrap a normal transparent drawable and still paint its own
+ * handle. A true no-op drawable avoids that second set of pixels; the actual
+ * handle is drawn and hit-tested in this view below.
+ */
+private class OffsetSelectionHandleDrawable(
+    private val delegate: Drawable,
+    private val extraWidthPx: Int,
+    private val isStartHandle: Boolean
+) : Drawable() {
+    var offsetX: Float = 0f
+    var isRtlRun: Boolean = false
+
+    override fun draw(canvas: Canvas) = Unit
+
+    override fun setAlpha(alpha: Int) { delegate.alpha = alpha; invalidateSelf() }
+    override fun setColorFilter(colorFilter: ColorFilter?) { delegate.colorFilter = colorFilter; invalidateSelf() }
+    override fun getOpacity(): Int = if (delegate.opacity == PixelFormat.OPAQUE) PixelFormat.OPAQUE else PixelFormat.TRANSLUCENT
+    // A 1px popup minimizes the chance that the OEM window intercepts touches
+    // intended for the corrected in-view handle. The in-view hit radius is the
+    // real touch target.
+    override fun getIntrinsicWidth(): Int = 1
+    override fun getIntrinsicHeight(): Int = 1
+    override fun onBoundsChange(bounds: Rect) = Unit
+    override fun setTint(tintColor: Int) = Unit
+    override fun setTintList(tint: android.content.res.ColorStateList?) = Unit
+    override fun setTintMode(tintMode: android.graphics.PorterDuff.Mode?) = Unit
+}
+
+internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryTextView(context) {
+    companion object {
+        /** 手柄拖出页面内容区多远后请求翻页。 */
+        private const val EDGE_DRAG_THRESHOLD_DP = 8f
+    }
+
     private val highlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val readerHighlightPainter = ReaderHighlightPainter(
+        paint = highlightPaint,
+        density = resources.displayMetrics.density
+    )
+    /** 可见文字层按挤压标点重排过，选区/高亮必须复用同一份逐字坐标。 */
+    private fun readerLineOffsetsProvider(
+        textLayout: Layout,
+        spanned: Spanned
+    ): (Int, Int, Int) -> ReaderLineOffsets? = { line, lineStart, contentEnd ->
+        readerLineOffsets(
+            layout = textLayout,
+            text = spanned,
+            line = line,
+            lineStart = lineStart,
+            contentEnd = contentEnd,
+            justificationMode = readerJustificationMode,
+            forceLastLineJustification = readerForceLastLineJustification,
+            letterSpacingPx = readerExplicitLetterSpacing(paint.letterSpacing, paint.textSize)
+        ) { index -> paint.measureText(spanned, index, index + 1) }
+    }
+    private val selectionPainter = ReaderHighlightPainter(
+        paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL },
+        density = resources.displayMetrics.density
+    )
+    private val selectionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val highlightBounds = RectF()
+    private val selectionPath = Path()
+    private var leftSelectionHandle: OffsetSelectionHandleDrawable? = null
+    private var rightSelectionHandle: OffsetSelectionHandleDrawable? = null
+    private var selectionHandleColor: Int? = null
+    private var draggingSelectionHandle: Boolean? = null
+    private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private var nativeSelectionSuppressed = false
+    private var internalSelectionMutation = false
+    // Not `by lazy`: TextView constructors invoke onTextChanged/visibility callbacks
+    // before Kotlin property initializers run, and a lazy delegate getter would NPE.
+    private var selectionMagnifier: ReaderSelectionMagnifier? = null
+    private val magnifierLongPressRunnable = Runnable { onMagnifierLongPressReady() }
+    private val magnifierHandler = Handler(Looper.getMainLooper())
+    private val magnifierLongPressTimeout =
+        ViewConfiguration.getLongPressTimeout().toLong()
+    private val magnifierTouchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+    private var magnifierPointerDown = false
+    private var magnifierLongPressReady = false
+    private var magnifierDownX = 0f
+    private var magnifierDownY = 0f
+    private var magnifierLastTouchX = 0f
+    private var magnifierLastTouchY = 0f
+    private var draggingSelectionStartHandle = false
+    private var draggingHandleMagnifierOffset: Int? = null
+    private var draggingHandleMagnifierTrailing = false
+    private var magnifierStateReady = false
+    /** 同一次手柄拖动内只上报一次越界，避免连续 MOVE 反复请求翻页。 */
+    private var handleDragBeyondEdgeNotified = false
+    /** 越界后选区所有权已交给 ReadView：吞掉残余事件，别让框架再按旧手势处理。 */
+    private var handleDragHandedOff = false
+
+    /**
+     * 选区手柄被拖出页面内容区时的回调。
+     *
+     * @param direction 1 表示向后（下一页），-1 表示向前（上一页）
+     * @param draggingStartHandle 被拖动的是起始手柄还是结束手柄
+     */
+    var onReaderHandleDragBeyondEdge: ((direction: Int, draggingStartHandle: Boolean) -> Unit)? = null
+
+    /** Selection-only layers keep the native layout/controller but do not paint glyphs. */
+    var readerSelectionOnly: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+        }
+
+    /** Page slots may justify their final visible line when the page ends mid-paragraph. */
+    var readerForceLastLineJustification: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            updateSelectionHandleOffsets()
+            invalidate()
+        }
+
+    /** The mode used by the visible TextView's Layout while drawing. */
+    var readerJustificationMode: Int = Layout.JUSTIFICATION_MODE_NONE
+        set(value) {
+            if (field == value) return
+            field = value
+            installReaderOffsetMapper()
+            updateSelectionHandleOffsets()
+            invalidate()
+        }
+
+    /** Color for the custom selection background; native Layout selection is disabled. */
+    var readerSelectionColor: Int = 0x40007AFF
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+        }
+
+    init {
+        magnifierStateReady = true
+        installReaderOffsetMapper()
+    }
+
+    /**
+     * Editor's handle drag path uses getOffsetAtCoordinate(), which is not
+     * exposed as an overridable public API from the app package. The superclass
+     * bridge lives in android.widget and forwards this mapper to the same
+     * geometry used by selection painting and hit testing.
+     */
+    private fun installReaderOffsetMapper() {
+        readerOffsetMapper = { targetLayout, line, x ->
+            val spanned = text as? Spanned
+            if (spanned == null || readerJustificationMode == Layout.JUSTIFICATION_MODE_NONE ||
+                line !in 0 until targetLayout.lineCount || !x.isFinite()
+            ) {
+                null
+            } else {
+                ReaderLineGeometry(
+                    layout = targetLayout,
+                    text = spanned,
+                    justificationMode = readerJustificationMode,
+                    forceLastLineJustification = readerForceLastLineJustification
+                ).offsetForHorizontal(line, x)
+            }
+        }
+    }
+
+    /** Public counterpart used by framework/OEM code paths that skip the bridge. */
+    override fun getOffsetForPosition(x: Float, y: Float): Int {
+        if (readerJustificationMode == Layout.JUSTIFICATION_MODE_NONE) {
+            return super.getOffsetForPosition(x, y)
+        }
+        val spanned = text as? Spanned ?: return super.getOffsetForPosition(x, y)
+        val textLayout = layout ?: return super.getOffsetForPosition(x, y)
+        val localX = x - totalPaddingLeft + scrollX
+        val localY = y - totalPaddingTop + scrollY
+        if (!localX.isFinite() || !localY.isFinite() || textLayout.lineCount == 0) {
+            return super.getOffsetForPosition(x, y)
+        }
+        val line = textLayout.getLineForVertical(localY.toInt())
+        val mapped = ReaderLineGeometry(
+            layout = textLayout,
+            text = spanned,
+            justificationMode = readerJustificationMode,
+            forceLastLineJustification = readerForceLastLineJustification
+        ).offsetForHorizontal(line, localX)
+        return mapped ?: super.getOffsetForPosition(x, y)
+    }
+
+    internal fun configureReaderSelectionHandles(color: Int) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return
+        if (selectionHandleColor == color &&
+            leftSelectionHandle != null && rightSelectionHandle != null
+        ) return
+        val density = resources.displayMetrics.density
+        // HandleView already guarantees a platform minimum touch target (normally
+        // 48dp). Add only a modest transparent gutter so the correction does not
+        // make the two selection popups overlap and steal each other's touches.
+        val extraWidth = (24f * density).roundToInt()
+        fun newHandle(isStart: Boolean): OffsetSelectionHandleDrawable {
+            val drawable = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                // The real handle is drawn in-view below. Keep the framework
+                // Popup/controller alive, but do not expose its OEM-positioned
+                // pixels or let its stale window be mistaken for the handle.
+                setColor(Color.TRANSPARENT)
+                setSize((14 * density).toInt(), (18 * density).toInt())
+            }
+            return OffsetSelectionHandleDrawable(drawable, extraWidth, isStart)
+        }
+        val left = newHandle(isStart = true)
+        val right = newHandle(isStart = false)
+        leftSelectionHandle = left
+        rightSelectionHandle = right
+        selectionHandleColor = color
+        setTextSelectHandleLeft(left)
+        setTextSelectHandleRight(right)
+        setTextSelectHandle(right)
+        updateSelectionHandleOffsets()
+        invalidate()
+    }
+
+    override fun onSelectionChanged(selStart: Int, selEnd: Int) {
+        super.onSelectionChanged(selStart, selEnd)
+        // Editor may move its handle popup without causing another draw pass on
+        // the TextView. Refresh the drawable offsets as soon as the range moves.
+        updateSelectionHandleOffsets()
+        invalidate()
+        postInvalidateOnAnimation()
+        if (!internalSelectionMutation) {
+            updateMagnifierForCurrentSelection()
+        }
+        // Let Editor finish creating its action mode, then detach only its
+        // selection controller. The Editable and Selection spans remain intact,
+        // so copy/menu callbacks continue to read the exact same range.
+        if (!internalSelectionMutation && selStart >= 0 && selEnd >= 0 && selStart != selEnd) {
+            post { suppressNativeSelectionController() }
+        }
+    }
+
+    private fun suppressNativeSelectionController() {
+        if (nativeSelectionSuppressed || internalSelectionMutation) return
+        val source = text as? Spannable ?: return
+        val start = Selection.getSelectionStart(source)
+        val end = Selection.getSelectionEnd(source)
+        if (start < 0 || end <= start) return
+        nativeSelectionSuppressed = true
+        internalSelectionMutation = true
+        try {
+            // 🔥 摘控制器之前，先让框架/OEM 的手柄会话正常收尾。
+            // 选区拖拽的清理只挂在 ACTION_UP 上：
+            // Editor.SelectionModifierCursorController.onTouchEvent() 的 ACTION_UP 分支
+            // 会调用 mEndHandle.dismissMagnifier()，而 ACTION_CANCEL 分支不做任何事。
+            // ColorOS 在 setTextIsSelectable(false) 时也不会像 AOSP 那样补 onDetached()，
+            // 所以在拖拽中途摘控制器会把 OEM 放大镜窗口留在屏幕上（会冻结在最后位置，
+            // 翻页、滚动甚至退出阅读后依然可见）。
+            endPlatformSelectionDrag()
+            // setTextIsSelectable(false) detaches ColorOS' popup controller.
+            // Restore a Spannable copy immediately because the platform method
+            // otherwise changes the buffer to NORMAL and drops selection spans.
+            val copy = android.text.SpannableStringBuilder(source)
+            setTextIsSelectable(false)
+            setText(copy, android.widget.TextView.BufferType.SPANNABLE)
+            (text as? Spannable)?.let {
+                Selection.setSelection(it, start.coerceIn(0, it.length), end.coerceIn(0, it.length))
+                // setText() replaced the Editable, so listeners attached to the
+                // previous buffer no longer observe subsequent handle movement.
+                // Give the owning page a chance to re-register them on this live
+                // buffer before the drag continues.
+                onReaderTextReplaced?.invoke(it)
+            }
+        } finally {
+            internalSelectionMutation = false
+        }
+        updateSelectionHandleOffsets()
+        invalidate()
+    }
+
+    /**
+     * 只把「手势正常结束」喂给框架 TextView（Editor 与选区手柄），不经过本类的
+     * onTouchEvent，避免影响我们自己的选区会话、自绘手柄与放大镜跟随。
+     *
+     * 必须用 ACTION_UP 而不是 ACTION_CANCEL：框架只在 ACTION_UP 分支里调用
+     * dismissMagnifier()，ACTION_CANCEL 不会关闭 OEM 的放大镜浮动窗口。
+     */
+    private fun endPlatformSelectionDrag() {
+        val now = android.os.SystemClock.uptimeMillis()
+        val up = android.view.MotionEvent.obtain(
+            now,
+            now,
+            android.view.MotionEvent.ACTION_UP,
+            magnifierLastTouchX,
+            magnifierLastTouchY,
+            0
+        )
+        up.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+        // The synthetic UP must not be mistaken for a tap by our click listeners
+        // (continuous mode toggles the reader menu on click).
+        val wasClickable = isClickable
+        isClickable = false
+        try {
+            super.onTouchEvent(up)
+        } finally {
+            isClickable = wasClickable
+            up.recycle()
+        }
+    }
+
+    private fun restoreNativeSelectionController() {
+        if (!nativeSelectionSuppressed || internalSelectionMutation) return
+        val source = text as? Spannable ?: return
+        val start = Selection.getSelectionStart(source)
+        val end = Selection.getSelectionEnd(source)
+        internalSelectionMutation = true
+        try {
+            setTextIsSelectable(true)
+            setText(source, android.widget.TextView.BufferType.SPANNABLE)
+            (text as? Spannable)?.let {
+                if (start >= 0 && end >= 0) {
+                    Selection.setSelection(it, start.coerceIn(0, it.length), end.coerceIn(0, it.length))
+                }
+            }
+        } finally {
+            internalSelectionMutation = false
+            nativeSelectionSuppressed = false
+        }
+    }
+
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        super.onLayout(changed, left, top, right, bottom)
+        if (changed) {
+            updateSelectionHandleOffsets()
+            invalidate()
+        }
+    }
+
+    override fun onTextChanged(text: CharSequence?, start: Int, before: Int, count: Int) {
+        super.onTextChanged(text, start, before, count)
+        if (!internalSelectionMutation) {
+            // 🔥 这里不能清掉 nativeSelectionSuppressed。
+            // 外部重新排版（新增/删除高亮后 PageSlotManager 重渲染整页、改字号/主题等）
+            // 会再次 setText，但 setTextIsSelectable(false) 的压制并不会因此解除：
+            // 一旦顺手把标志清成 false，restoreNativeSelectionController() 就再也不会被调用，
+            // TextView 会永久停在 clickable=false、不可选中的状态 —— 表现为长按不再选词、
+            // 点击也不再弹选区菜单，只有父级滑动翻页还生效。
+            // 保持标志，让下一次 ACTION_DOWN 真正恢复系统选区控制器。
+            endMagnifierPointerSession()
+        }
+        updateSelectionHandleOffsets()
+        invalidate()
+    }
+
+    override fun onDetachedFromWindow() {
+        endMagnifierPointerSession()
+        super.onDetachedFromWindow()
+    }
+
+    /**
+     * 选区被程序清掉时（改色、删除高亮、菜单取消）同步结束放大镜会话并刷新。
+     * 只调用 Selection.removeSelection 的话放大镜会一直停在屏幕上。
+     */
+    internal fun endReaderSelectionSession() {
+        draggingSelectionHandle = null
+        handleDragBeyondEdgeNotified = false
+        endMagnifierPointerSession()
+        invalidate()
+    }
+
+    /** 测试用：当前是否还处于选区放大镜会话中。 */
+    internal val hasActiveReaderSelectionSession: Boolean
+        get() = magnifierPointerDown || selectionMagnifier?.isShowing == true
+
+    override fun onVisibilityChanged(changedView: View, visibility: Int) {
+        super.onVisibilityChanged(changedView, visibility)
+        if (visibility != View.VISIBLE) {
+            endMagnifierPointerSession()
+        }
+    }
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        if (visibility != View.VISIBLE) {
+            endMagnifierPointerSession()
+        }
+    }
 
     override fun onDraw(canvas: Canvas) {
+        updateSelectionHandleOffsets()
+        if (readerSelectionOnly) {
+            drawReaderSelection(canvas)
+            drawCustomSelectionHandles(canvas)
+            return
+        }
         drawRoundedHighlights(canvas)
         drawWaveUnderlines(canvas)
+        drawReaderSelection(canvas)
         super.onDraw(canvas)
+        drawCustomSelectionHandles(canvas)
+    }
+
+    /**
+     * ColorOS may anchor the native selection popup at the next line's x=0 when
+     * the cursor is at a wrapped-line boundary. Keep that popup transparent and
+     * draw the actual touch target in this view, using the corrected geometry.
+     */
+    private fun drawCustomSelectionHandles(canvas: Canvas) {
+        val spanned = text as? Spanned ?: return
+        val textLayout = layout ?: return
+        val rawStart = Selection.getSelectionStart(spanned)
+        val rawEnd = Selection.getSelectionEnd(spanned)
+        if (rawStart < 0 || rawEnd < 0 || rawStart == rawEnd) return
+        val geometry = ReaderLineGeometry(
+            textLayout,
+            spanned,
+            readerJustificationMode,
+            readerForceLastLineJustification
+        )
+        val start = minOf(rawStart, rawEnd)
+        val end = maxOf(rawStart, rawEnd)
+        handlePaint.color = selectionHandleColor ?: Color.TRANSPARENT
+        if (handlePaint.color ushr 24 == 0) return
+        // Layout coordinates are content-local. TextView's normal Layout.draw()
+        // path applies this translation before painting; custom handles must do
+        // the same or they drift by the page margins (and by scroll offset).
+        val save = canvas.save()
+        canvas.translate(totalPaddingLeft.toFloat() - scrollX, totalPaddingTop.toFloat() - scrollY)
+        drawCustomHandle(canvas, geometry, textLayout, start, trailing = false)
+        drawCustomHandle(canvas, geometry, textLayout, end, trailing = true)
+        canvas.restoreToCount(save)
+    }
+
+    /** 手柄的锚点：贴着选区高亮的角落，而不是行框底部（行高较大时会离选区很远）。 */
+    private class HandleAnchor(val x: Float, val cornerY: Float, val circleY: Float)
+
+    private fun readerHandleAnchor(
+        geometry: ReaderLineGeometry,
+        textLayout: Layout,
+        offset: Int,
+        trailing: Boolean
+    ): HandleAnchor? {
+        val line = readerHandleLine(textLayout, offset, trailing)
+        // 手柄要和选区高亮用同一份逐字坐标：文字层按挤压标点重排过，
+        // 直接用 Layout 几何会让手柄整体偏右几个像素。
+        val spanned = text as? Spanned
+        val lineStart = textLayout.getLineStart(line)
+        val lineEnd = textLayout.getLineEnd(line)
+        val contentEnd = spanned?.let { readerLineContentEnd(it, lineStart, lineEnd) } ?: lineEnd
+        val offsets = spanned?.let {
+            readerLineOffsetsProvider(textLayout, it)(line, lineStart, contentEnd)
+        }
+        val x = when {
+            offsets == null -> geometry.horizontalPosition(offset, trailing) ?: return null
+            trailing -> {
+                val lastIndex = offset - 1 - lineStart
+                when {
+                    lastIndex < 0 -> offsets.lefts.firstOrNull() ?: return null
+                    lastIndex + 1 < offsets.lefts.size -> offsets.lefts[lastIndex + 1]
+                    else -> offsets.right
+                }
+            }
+            else -> offsets.lefts.getOrNull(offset - lineStart)
+                ?: geometry.horizontalPosition(offset, trailing)
+                ?: return null
+        }
+        val density = resources.displayMetrics.density
+        val fontMetrics = paint.fontMetrics
+        val baseline = textLayout.getLineBaseline(line).toFloat()
+        val lineTop = textLayout.getLineTop(line).toFloat()
+        val lineBottom = textLayout.getLineBottom(line).toFloat()
+        // 与 ReaderHighlightPainter 完全一致的高亮下沿，保证手柄贴在选区角上。
+        val highlightTop = lineTop + 1.5f * density
+        val highlightBottom = (baseline + fontMetrics.descent + 2f * density)
+            .coerceAtMost(lineBottom - 1.5f * density)
+            .coerceAtLeast(highlightTop)
+        val radius = 8f * density
+        return HandleAnchor(
+            x = x,
+            cornerY = highlightBottom,
+            circleY = highlightBottom + radius - 2f * density
+        )
+    }
+
+    private fun drawCustomHandle(
+        canvas: Canvas,
+        geometry: ReaderLineGeometry,
+        textLayout: Layout,
+        offset: Int,
+        trailing: Boolean
+    ) {
+        val anchor = readerHandleAnchor(geometry, textLayout, offset, trailing) ?: return
+        val radius = resources.displayMetrics.density * 8f
+        canvas.drawRect(anchor.x - 1.5f, anchor.cornerY - 1f, anchor.x + 1.5f, anchor.circleY, handlePaint)
+        canvas.drawCircle(anchor.x, anchor.circleY, radius, handlePaint)
+    }
+
+    private fun customHandleHit(eventX: Float, eventY: Float): Boolean {
+        val spanned = text as? Spanned ?: return false
+        val textLayout = layout ?: return false
+        val rawStart = Selection.getSelectionStart(spanned)
+        val rawEnd = Selection.getSelectionEnd(spanned)
+        if (rawStart < 0 || rawEnd < 0 || rawStart == rawEnd) return false
+        val geometry = ReaderLineGeometry(
+            textLayout,
+            spanned,
+            readerJustificationMode,
+            readerForceLastLineJustification
+        )
+        val start = minOf(rawStart, rawEnd)
+        val end = maxOf(rawStart, rawEnd)
+        val forwardSelection = rawStart < rawEnd
+        val density = resources.displayMetrics.density
+        val hitRadius = 26f * density
+        fun near(offset: Int, trailing: Boolean): Boolean {
+            val anchor = readerHandleAnchor(geometry, textLayout, offset, trailing) ?: return false
+            return kotlin.math.abs(eventX - (anchor.x + totalPaddingLeft - scrollX)) <= hitRadius &&
+                kotlin.math.abs(eventY - (anchor.circleY + totalPaddingTop - scrollY)) <= hitRadius
+        }
+        return when {
+            near(start, false) -> {
+                draggingSelectionHandle = forwardSelection
+                draggingSelectionStartHandle = true
+                draggingHandleMagnifierOffset = start
+                draggingHandleMagnifierTrailing = false
+                true
+            }
+            near(end, true) -> {
+                draggingSelectionHandle = !forwardSelection
+                draggingSelectionStartHandle = false
+                draggingHandleMagnifierOffset = end
+                draggingHandleMagnifierTrailing = true
+                true
+            }
+            else -> {
+                draggingHandleMagnifierOffset = null
+                false
+            }
+        }
+    }
+
+    /**
+     * 手柄被拖出页面内容区时通知上层（ReadView）接管手势并翻页。
+     *
+     * 这里只做「上报」，不自己翻页：翻页会轮转槽位视图，而系统选区手柄仍挂在
+     * 本视图上，正是旧方案崩溃的原因。上层会先结束本视图的选区会话再翻页。
+     */
+    private fun notifyHandleDragBeyondEdge(eventY: Float) {
+        val callback = onReaderHandleDragBeyondEdge ?: return
+        val density = resources.displayMetrics.density
+        val threshold = EDGE_DRAG_THRESHOLD_DP * density
+        val contentTop = totalPaddingTop.toFloat()
+        val contentBottom = (height - totalPaddingBottom).toFloat()
+        val beyondTop = eventY < contentTop - threshold
+        val beyondBottom = eventY > contentBottom + threshold
+        if (!beyondTop && !beyondBottom) {
+            handleDragBeyondEdgeNotified = false
+            return
+        }
+        if (handleDragBeyondEdgeNotified) return
+        val direction = when {
+            draggingSelectionStartHandle && beyondTop -> -1
+            !draggingSelectionStartHandle && beyondBottom -> 1
+            else -> return
+        }
+        handleDragBeyondEdgeNotified = true
+        callback(direction, draggingSelectionStartHandle)
+        // 交接后本视图不再参与这段手势：上层已经结束选区会话，下一帧会拦截事件流。
+        // 标记要放在回调之后：回调里会派发一次 CANCEL 让手柄/放大镜正常收尾。
+        handleDragHandedOff = true
+    }
+
+    /**
+     * 手柄圆点的本视图坐标（供 ReadView 自绘跨页选区手柄与命中测试复用同一几何）。
+     *
+     * @param offset 本视图（页内）的字符偏移
+     * @param trailing true 表示该偏移是选区结束端
+     */
+    internal fun readerHandleCirclePosition(offset: Int, trailing: Boolean): android.graphics.PointF? {
+        val spanned = text as? Spanned ?: return null
+        val textLayout = layout ?: return null
+        if (textLayout.lineCount == 0 || spanned.isEmpty()) return null
+        val safeOffset = offset.coerceIn(0, spanned.length)
+        val geometry = ReaderLineGeometry(
+            textLayout,
+            spanned,
+            readerJustificationMode,
+            readerForceLastLineJustification
+        )
+        val anchor = readerHandleAnchor(geometry, textLayout, safeOffset, trailing) ?: return null
+        return android.graphics.PointF(
+            anchor.x + totalPaddingLeft - scrollX,
+            anchor.circleY + totalPaddingTop - scrollY
+        )
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (handleDragHandedOff) {
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                // 新手势：恢复正常处理（长按选词、抓手柄都要能用）
+                handleDragHandedOff = false
+            } else {
+                if (event.actionMasked == MotionEvent.ACTION_UP ||
+                    event.actionMasked == MotionEvent.ACTION_CANCEL
+                ) {
+                    handleDragHandedOff = false
+                }
+                return true
+            }
+        }
+        val drag = draggingSelectionHandle
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                beginMagnifierPointerSession(event.x, event.y)
+                handleDragBeyondEdgeNotified = false
+                if (customHandleHit(event.x, event.y)) {
+                    // Touching a custom handle is an explicit selection gesture, so
+                    // show the system magnifier immediately instead of waiting for
+                    // the long-press timeout.
+                    markMagnifierLongPressReady()
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                    updateMagnifierForCurrentSelection()
+                    return true
+                }
+                if (nativeSelectionSuppressed) {
+                    restoreNativeSelectionController()
+                }
+                return super.onTouchEvent(event)
+            }
+            MotionEvent.ACTION_MOVE -> {
+                updateMagnifierPointerPosition(event.x, event.y)
+                if (drag != null) {
+                    val spanned = text as? Spannable
+                    val textLayout = layout
+                    if (spanned != null && textLayout != null && spanned.isNotEmpty()) {
+                        val localX = event.x - totalPaddingLeft + scrollX
+                        val localY = event.y - totalPaddingTop + scrollY
+                        val line = textLayout.getLineForVertical(localY.toInt().coerceIn(0, textLayout.height - 1))
+                        val mapped = ReaderLineGeometry(
+                            textLayout,
+                            spanned,
+                            readerJustificationMode,
+                            readerForceLastLineJustification
+                        ).offsetForHorizontal(line, localX)
+                        if (mapped != null) {
+                            // Anchor on the offset under the finger, not on the
+                            // stored start/end: crossing the other handle flips
+                            // the selection direction and the stored endpoint then
+                            // points at the OTHER handle.
+                            val otherEndpoint = if (drag) {
+                                Selection.getSelectionEnd(spanned)
+                            } else {
+                                Selection.getSelectionStart(spanned)
+                            }
+                            draggingHandleMagnifierOffset = mapped
+                            draggingHandleMagnifierTrailing = mapped > otherEndpoint
+                            if (drag) Selection.setSelection(spanned, mapped, Selection.getSelectionEnd(spanned))
+                            else Selection.setSelection(spanned, Selection.getSelectionStart(spanned), mapped)
+                        }
+                    }
+                    notifyHandleDragBeyondEdge(event.y)
+                    updateMagnifierForCurrentSelection()
+                    return true
+                }
+                val handled = super.onTouchEvent(event)
+                updateMagnifierForCurrentSelection()
+                return handled
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                val wasDragging = drag != null
+                // End the magnifier session before Editor handles the terminal event:
+                // a long-press release can still touch the selection and would
+                // otherwise flash the magnifier for one frame.
+                endMagnifierPointerSession()
+                handleDragBeyondEdgeNotified = false
+                if (wasDragging) {
+                    draggingSelectionHandle = null
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                    return true
+                }
+                return super.onTouchEvent(event)
+            }
+        }
+        return super.onTouchEvent(event)
+    }
+
+    private fun beginMagnifierPointerSession(x: Float, y: Float) {
+        selectionMagnifier?.dismiss()
+        draggingHandleMagnifierOffset = null
+        magnifierPointerDown = true
+        magnifierLongPressReady = false
+        magnifierDownX = x
+        magnifierDownY = y
+        magnifierLastTouchX = x
+        magnifierLastTouchY = y
+        magnifierHandler.removeCallbacks(magnifierLongPressRunnable)
+        magnifierHandler.postDelayed(magnifierLongPressRunnable, magnifierLongPressTimeout)
+    }
+
+    private fun markMagnifierLongPressReady() {
+        magnifierHandler.removeCallbacks(magnifierLongPressRunnable)
+        magnifierLongPressReady = true
+    }
+
+    private fun updateMagnifierPointerPosition(x: Float, y: Float) {
+        magnifierLastTouchX = x
+        magnifierLastTouchY = y
+        if (!magnifierPointerDown || magnifierLongPressReady) return
+        if (kotlin.math.abs(x - magnifierDownX) > magnifierTouchSlop ||
+            kotlin.math.abs(y - magnifierDownY) > magnifierTouchSlop
+        ) {
+            magnifierHandler.removeCallbacks(magnifierLongPressRunnable)
+        }
+    }
+
+    private fun endMagnifierPointerSession() {
+        // TextView constructors invoke onTextChanged before Kotlin property
+        // initializers run; nothing is set up yet in that window.
+        if (!magnifierStateReady) return
+        magnifierHandler.removeCallbacks(magnifierLongPressRunnable)
+        magnifierPointerDown = false
+        magnifierLongPressReady = false
+        draggingHandleMagnifierOffset = null
+        selectionMagnifier?.dismiss()
+    }
+
+    private fun onMagnifierLongPressReady() {
+        if (!magnifierPointerDown) return
+        magnifierLongPressReady = true
+        updateMagnifierForCurrentSelection()
+    }
+
+    /**
+     * Shows the system magnifier only for real selection gestures: an active custom
+     * handle drag, or a non-empty text selection while the finger is still down after
+     * the platform long-press timeout. Double-tap word selection is intentionally
+     * excluded so the magnifier does not flash on a short second tap.
+     */
+    private fun updateMagnifierForCurrentSelection() {
+        val spanned = text as? Spanned ?: return
+        val rawStart = Selection.getSelectionStart(spanned)
+        val rawEnd = Selection.getSelectionEnd(spanned)
+        val start = minOf(rawStart, rawEnd)
+        val end = maxOf(rawStart, rawEnd)
+        if (start < 0 || end <= start || selectionIsImageOnly(spanned, start, end)) {
+            selectionMagnifier?.dismiss()
+            return
+        }
+        val draggingHandle = draggingSelectionHandle != null
+        if (!draggingHandle && (!magnifierPointerDown || !magnifierLongPressReady)) return
+        val anchor = if (draggingHandle) {
+            val offset = draggingHandleMagnifierOffset
+            if (offset != null) {
+                magnifierAnchorForOffset(offset, draggingHandleMagnifierTrailing)
+            } else {
+                magnifierAnchorForHandle(draggingSelectionStartHandle)
+            }
+        } else {
+            magnifierAnchorForTouch(magnifierLastTouchX, magnifierLastTouchY)
+        }
+        if (anchor == null) {
+            selectionMagnifier?.dismiss()
+            return
+        }
+        selectionMagnifierOrCreate().showAt(anchor.x, anchor.y, anchor.lineHeight)
+    }
+
+    private fun magnifierAnchorForOffset(offset: Int, trailing: Boolean): MagnifierAnchor? {
+        val spanned = text as? Spanned ?: return null
+        val textLayout = layout ?: return null
+        val safeOffset = offset.coerceIn(0, (text?.length ?: 0))
+        val x = ReaderLineGeometry(
+            textLayout,
+            spanned,
+            readerJustificationMode,
+            readerForceLastLineJustification
+        ).horizontalPosition(safeOffset, trailing) ?: return null
+        val line = readerHandleLine(textLayout, safeOffset, trailing)
+        val lineTop = textLayout.getLineTop(line).toFloat()
+        val lineBottom = textLayout.getLineBottom(line).toFloat()
+        val anchorX = x + totalPaddingLeft - scrollX
+        if (!anchorX.isFinite()) return null
+        val anchorY = (lineTop + lineBottom) / 2f + totalPaddingTop - scrollY
+        return MagnifierAnchor(anchorX, anchorY, (lineBottom - lineTop).coerceAtLeast(0f))
+    }
+
+    private fun selectionMagnifierOrCreate(): ReaderSelectionMagnifier =
+        selectionMagnifier ?: ReaderSelectionMagnifier(this).also { selectionMagnifier = it }
+
+    private fun selectionIsImageOnly(spanned: Spanned, start: Int, end: Int): Boolean {
+        val images = spanned.getSpans(start, end, ImageSpan::class.java)
+        if (images.isEmpty()) return false
+        return images.any { image ->
+            spanned.getSpanStart(image) <= start && spanned.getSpanEnd(image) >= end
+        }
+    }
+
+    private data class MagnifierAnchor(val x: Float, val y: Float, val lineHeight: Float)
+
+    private fun magnifierAnchorForTouch(x: Float, y: Float): MagnifierAnchor? {
+        val spanned = text as? Spanned ?: return null
+        val textLayout = layout ?: return null
+        if (textLayout.lineCount == 0) return null
+        val localX = x - totalPaddingLeft + scrollX
+        val localY = y - totalPaddingTop + scrollY
+        if (!localX.isFinite() || !localY.isFinite()) return null
+        val line = when {
+            localY < 0f -> 0
+            localY >= textLayout.height -> textLayout.lineCount - 1
+            else -> textLayout.getLineForVertical(localY.toInt())
+        }
+        val geometry = ReaderLineGeometry(
+            textLayout,
+            spanned,
+            readerJustificationMode,
+            readerForceLastLineJustification
+        )
+        val lineStart = textLayout.getLineStart(line)
+        val rawLineEnd = textLayout.getLineEnd(line)
+        val contentEnd = readerLineContentEnd(spanned, lineStart, rawLineEnd)
+        val range = if (contentEnd > lineStart) {
+            geometry.horizontalRange(line, lineStart, contentEnd)
+        } else {
+            null
+        } ?: ReaderLineGeometry.HorizontalRange(
+            textLayout.getLineLeft(line),
+            textLayout.getLineRight(line)
+        )
+        val left = range.left + totalPaddingLeft - scrollX
+        val right = range.right + totalPaddingLeft - scrollX
+        val minX = minOf(left, right)
+        val maxX = maxOf(left, right)
+        val anchorX = if (maxX - minX < 1f) minX else x.coerceIn(minX, maxX)
+        val lineTop = textLayout.getLineTop(line).toFloat()
+        val lineBottom = textLayout.getLineBottom(line).toFloat()
+        val anchorY = (lineTop + lineBottom) / 2f + totalPaddingTop - scrollY
+        return MagnifierAnchor(anchorX, anchorY, (lineBottom - lineTop).coerceAtLeast(0f))
+    }
+
+    private fun magnifierAnchorForHandle(isStartHandle: Boolean): MagnifierAnchor? {
+        val spanned = text as? Spanned ?: return null
+        val textLayout = layout ?: return null
+        val rawStart = Selection.getSelectionStart(spanned)
+        val rawEnd = Selection.getSelectionEnd(spanned)
+        val start = minOf(rawStart, rawEnd)
+        val end = maxOf(rawStart, rawEnd)
+        if (start < 0 || end <= start) return null
+        val offset = if (isStartHandle) start else end
+        val trailing = !isStartHandle
+        val x = ReaderLineGeometry(
+            textLayout,
+            spanned,
+            readerJustificationMode,
+            readerForceLastLineJustification
+        ).horizontalPosition(offset, trailing) ?: return null
+        val line = readerHandleLine(textLayout, offset, trailing)
+        val lineTop = textLayout.getLineTop(line).toFloat()
+        val lineBottom = textLayout.getLineBottom(line).toFloat()
+        val anchorX = x + totalPaddingLeft - scrollX
+        if (!anchorX.isFinite()) return null
+        val anchorY = (lineTop + lineBottom) / 2f + totalPaddingTop - scrollY
+        return MagnifierAnchor(anchorX, anchorY, (lineBottom - lineTop).coerceAtLeast(0f))
+    }
+
+    /** Line used by the drawn handle for [offset]; kept in sync with [drawCustomHandle]. */
+    private fun readerHandleLine(textLayout: Layout, offset: Int, trailing: Boolean): Int {
+        val length = text?.length ?: 0
+        val safeOffset = offset.coerceIn(0, length)
+        return if (trailing && safeOffset > 0 && safeOffset < length &&
+            textLayout.getLineForOffset(safeOffset) > 0 &&
+            textLayout.getLineStart(textLayout.getLineForOffset(safeOffset)) == safeOffset
+        ) {
+            textLayout.getLineForOffset(safeOffset) - 1
+        } else {
+            textLayout.getLineForOffset(safeOffset.coerceAtMost((length - 1).coerceAtLeast(0)))
+        }
+    }
+
+    /** Test-only hook: replaces the platform magnifier with an observable fake sink. */
+    internal fun setMagnifierSinkForTest(sink: ReaderMagnifierSink?) {
+        selectionMagnifierOrCreate().sinkOverride = sink
+    }
+
+    /**
+     * True after a custom handle accepted ACTION_DOWN and until the stream ends.
+     * ReadView uses this to keep page-swipe classification from stealing the
+     * subsequent MOVE/UP events from this TextView.
+     */
+    internal fun isReaderSelectionHandleDragActive(): Boolean =
+        draggingSelectionHandle != null
+
+    /** Called when the OEM-controller workaround replaces the Editable buffer. */
+    internal var onReaderTextReplaced: ((Spannable) -> Unit)? = null
+
+    private fun updateSelectionHandleOffsets() {
+        val spanned = text as? Spanned
+        val textLayout = layout
+        if (spanned == null || textLayout == null) {
+            leftSelectionHandle?.offsetX = 0f
+            rightSelectionHandle?.offsetX = 0f
+            leftSelectionHandle?.isRtlRun = false
+            rightSelectionHandle?.isRtlRun = false
+            return
+        }
+        val rawStart = Selection.getSelectionStart(spanned)
+        val rawEnd = Selection.getSelectionEnd(spanned)
+        if (rawStart < 0 || rawEnd < 0 || rawStart == rawEnd) {
+            leftSelectionHandle?.offsetX = 0f
+            rightSelectionHandle?.offsetX = 0f
+            leftSelectionHandle?.isRtlRun = false
+            rightSelectionHandle?.isRtlRun = false
+            return
+        }
+        val start = minOf(rawStart, rawEnd)
+        val end = maxOf(rawStart, rawEnd)
+        val geometry = ReaderLineGeometry(
+            textLayout,
+            spanned,
+            readerJustificationMode,
+            readerForceLastLineJustification
+        )
+        val nativeStart = textLayout.getPrimaryHorizontal(start).takeIf { it.isFinite() } ?: 0f
+        val nativeEnd = textLayout.getPrimaryHorizontal(end).takeIf { it.isFinite() } ?: nativeStart
+        val correctedStart = geometry.horizontalPosition(start) ?: nativeStart
+        val correctedEnd = geometry.horizontalPosition(end, trailing = true) ?: nativeEnd
+        leftSelectionHandle?.isRtlRun = runCatching { textLayout.isRtlCharAt(start) }.getOrDefault(false)
+        rightSelectionHandle?.isRtlRun = runCatching { textLayout.isRtlCharAt(end) }.getOrDefault(false)
+        leftSelectionHandle?.offsetX = (correctedStart - nativeStart).takeIf { it.isFinite() } ?: 0f
+        rightSelectionHandle?.offsetX = (correctedEnd - nativeEnd).takeIf { it.isFinite() } ?: 0f
+    }
+
+    private fun drawReaderSelection(canvas: Canvas) {
+        val spanned = text as? Spanned ?: return
+        val textLayout = layout ?: return
+        val rawStart = Selection.getSelectionStart(spanned)
+        val rawEnd = Selection.getSelectionEnd(spanned)
+        val start = minOf(rawStart, rawEnd)
+        val end = maxOf(rawStart, rawEnd)
+        if (start < 0 || end <= start || readerSelectionColor ushr 24 == 0) return
+
+        val geometry = ReaderLineGeometry(
+            layout = textLayout,
+            text = spanned,
+            justificationMode = readerJustificationMode,
+            forceLastLineJustification = readerForceLastLineJustification
+        )
+        selectionPaint.color = readerSelectionColor
+        val saveCount = canvas.save()
+        canvas.translate(totalPaddingLeft.toFloat() - scrollX, totalPaddingTop.toFloat() - scrollY)
+        // 选区与已保存高亮用同一套圆角样式，避免逐字方块带来的缝隙与行间粘连。
+        selectionPainter.drawRange(
+            canvas = canvas,
+            layout = textLayout,
+            text = spanned,
+            geometry = geometry,
+            start = start,
+            end = end,
+            color = readerSelectionColor,
+            lineOffsets = readerLineOffsetsProvider(textLayout, spanned)
+        )
+        canvas.restoreToCount(saveCount)
+    }
+
+    /** Returns the same horizontal coordinate used by reader highlights. */
+    internal fun readerHorizontalPosition(offset: Int, trailing: Boolean = false): Float? {
+        val spanned = text as? Spanned ?: return null
+        val textLayout = layout ?: return null
+        return ReaderLineGeometry(
+            layout = textLayout,
+            text = spanned,
+            justificationMode = readerJustificationMode,
+            forceLastLineJustification = readerForceLastLineJustification
+        ).horizontalPosition(offset, trailing)
+    }
+
+    internal fun readerOffsetForHorizontal(line: Int, x: Float): Int? {
+        val spanned = text as? Spanned ?: return null
+        val textLayout = layout ?: return null
+        return ReaderLineGeometry(
+            layout = textLayout,
+            text = spanned,
+            justificationMode = readerJustificationMode,
+            forceLastLineJustification = readerForceLastLineJustification
+        ).offsetForHorizontal(line, x)
     }
 
     /** Draws each non-blank line segment without changing the underlying text layout. */
@@ -97,15 +1100,15 @@ internal open class RoundedHighlightTextView(context: Context) : TextView(contex
                 val lineStart = maxOf(spanStart, layoutLineStart)
                 val lineEnd = minOf(spanEnd, contentEnd)
                 if (lineStart >= lineEnd || !spanned.substring(lineStart, lineEnd).any { !it.isWhitespace() }) continue
-                val x0 = textLayout.getPrimaryHorizontal(lineStart)
-                val x1 = if (
-                    lineEnd == rawLineEnd && line < textLayout.lineCount - 1 &&
-                    spanned[rawLineEnd - 1] != '\n'
-                ) {
-                    textLayout.getLineRight(line)
-                } else {
-                    textLayout.getPrimaryHorizontal(lineEnd)
-                }
+                val geometry = ReaderLineGeometry(
+                    layout = textLayout,
+                    text = spanned,
+                    justificationMode = readerJustificationMode,
+                    forceLastLineJustification = readerForceLastLineJustification
+                )
+                val range = geometry.horizontalRange(line, lineStart, lineEnd) ?: continue
+                val x0 = range.left
+                val x1 = range.right
                 if (x1 <= x0) continue
                 val baseline = textLayout.getLineBaseline(line).toFloat()
                 val underlineCenter = baseline + paint.fontMetrics.descent.coerceAtLeast(1f) + 1f * density
@@ -152,61 +1155,26 @@ internal open class RoundedHighlightTextView(context: Context) : TextView(contex
         span: Any,
         color: Int
     ) {
-        if (color ushr 24 == 0) return
-        val spanStart = spanned.getSpanStart(span).coerceIn(0, spanned.length)
-        val spanEnd = spanned.getSpanEnd(span).coerceIn(spanStart, spanned.length)
-        if (spanStart >= spanEnd) return
-
-        val density = resources.displayMetrics.density
-        val horizontalPadding = 3f * density
-        val glyphPadding = 2f * density
-        val minimumLineGap = 1.5f * density
-        val cornerRadius = 6f * density
-        val fontMetrics = paint.fontMetrics
-        val firstLine = textLayout.getLineForOffset(spanStart)
-        val lastLine = textLayout.getLineForOffset(spanEnd - 1)
-        highlightPaint.color = color
-
-        for (line in firstLine..lastLine) {
-            val lineStart = textLayout.getLineStart(line)
-            val rawLineEnd = textLayout.getLineEnd(line)
-            val contentEnd = readerLineContentEnd(spanned, lineStart, rawLineEnd)
-            val segmentStart = maxOf(spanStart, lineStart)
-            val segmentEnd = minOf(spanEnd, contentEnd)
-            if (segmentStart >= segmentEnd) continue
-
-            val paragraphIsLtr = textLayout.getParagraphDirection(line) == Layout.DIR_LEFT_TO_RIGHT
-            val segmentStartX = textLayout.getPrimaryHorizontal(segmentStart)
-            val segmentEndX = if (
-                segmentEnd == rawLineEnd && line < textLayout.lineCount - 1 &&
-                spanned[rawLineEnd - 1] != '\n'
-            ) {
-                if (paragraphIsLtr) textLayout.getLineRight(line) else textLayout.getLineLeft(line)
-            } else {
-                textLayout.getPrimaryHorizontal(segmentEnd)
-            }
-            val segmentLeft = minOf(segmentStartX, segmentEndX)
-            val segmentRight = maxOf(segmentStartX, segmentEndX)
-            if (segmentRight <= segmentLeft) continue
-
-            val lineTop = textLayout.getLineTop(line).toFloat() + minimumLineGap
-            val lineBottom = textLayout.getLineBottom(line).toFloat() - minimumLineGap
-            val baseline = textLayout.getLineBaseline(line).toFloat()
-            val glyphTop = baseline + fontMetrics.ascent - glyphPadding
-            val glyphBottom = baseline + fontMetrics.descent + glyphPadding
-            val top = glyphTop.coerceAtLeast(lineTop)
-            val bottom = glyphBottom.coerceAtMost(lineBottom)
-            if (bottom <= top) continue
-
-            highlightBounds.set(
-                (segmentLeft - horizontalPadding).coerceAtLeast(-horizontalPadding),
-                top,
-                (segmentRight + horizontalPadding).coerceAtMost(textLayout.width + horizontalPadding),
-                bottom
+        val spanStart = spanned.getSpanStart(span)
+        val spanEnd = spanned.getSpanEnd(span)
+        readerHighlightPainter.drawRange(
+            canvas = canvas,
+            layout = textLayout,
+            text = spanned,
+            geometry = ReaderLineGeometry(
+                layout = textLayout,
+                text = spanned,
+                justificationMode = readerJustificationMode,
+                forceLastLineJustification = readerForceLastLineJustification
+            ),
+            start = spanStart,
+            end = spanEnd,
+            color = color,
+            lineOffsets = readerLineOffsetsProvider(
+                textLayout,
+                spanned
             )
-            val radius = minOf(cornerRadius, highlightBounds.height() / 2f)
-            canvas.drawRoundRect(highlightBounds, radius, radius, highlightPaint)
-        }
+        )
     }
 
     /** 褰撳墠鍙ュ彞 TTS 楂樹寒锛氭暣涓彞瀛愬潡鍏辩敤涓€涓ぇ鍦嗚鐭╁舰锛堣法琛屾暣浣?*/

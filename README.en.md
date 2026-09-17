@@ -12,7 +12,7 @@
 
 # Lumi — Born for Reading
 
-> A clean, elegant Android local ebook reader. Supports EPUB, PDF, TXT. Privacy-first, local-first.
+> A clean, elegant Android local ebook reader. Supports EPUB, PDF, TXT, MOBI and CBZ comics. Privacy-first, local-first.
 
 [![Version](https://img.shields.io/badge/version-1.7.8-coral)](https://github.com/huangder/Lumi_Books/releases)
 [![License](https://img.shields.io/badge/license-GPLv3-green)](LICENSE)
@@ -29,8 +29,9 @@
 ## ✨ Features
 
 ### 📖 Reading Experience
-- Supports EPUB, PDF, and TXT formats
+- Supports EPUB, PDF, TXT and MOBI ebooks plus CBZ comic archives
 - **EPUB dual rendering modes**: Book Layout (preserves publisher HTML/CSS/fonts) + Reader Layout (unified typography)
+- **CBZ comics**: Reads images straight out of the archive — no extraction, no conversion; chapter folders, ComicInfo.xml metadata, right-to-left paging and two-page spreads
 - Custom Canvas + StaticLayout rendering engine with smooth page-turn animations
 - **Four page-turn effects**: Slide, Scroll, Fade, Curl (realistic page-curl simulation)
 - **Bionic Reading**: Bold word prefixes to improve reading speed and focus

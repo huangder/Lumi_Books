@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.bookshelf
+import com.huangder.lumibooks.ui.icons.AppIcons
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,9 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
@@ -75,14 +73,14 @@ fun CustomCoverSourceSheet(
             )
             Spacer(Modifier.height(AppSpace.lg))
             CoverSourceOptionRow(
-                icon = Icons.Outlined.Image,
+                icon = AppIcons.Image,
                 title = stringResource(R.string.cover_source_pick_image),
                 description = stringResource(R.string.cover_source_pick_image_desc),
                 onClick = onPickImage
             )
             Spacer(Modifier.height(AppSpace.sm + AppSpace.xs))
             CoverSourceOptionRow(
-                icon = Icons.Outlined.Public,
+                icon = AppIcons.Globe,
                 title = stringResource(R.string.cover_source_web_search),
                 description = stringResource(R.string.cover_source_web_search_desc),
                 onClick = onWebSearch

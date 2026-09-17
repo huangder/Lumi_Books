@@ -18,8 +18,8 @@ android {
         applicationId = "com.huangder.lumibooks"
         minSdk = 26
         targetSdk = 35
-        versionCode = 14
-        versionName = "2.0.9.1"
+        versionCode = 15
+        versionName = "2.1.9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -88,7 +88,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
+    implementation("com.adamglin:phosphor-icon:1.0.0")
     implementation("dev.chrisbanes.haze:haze:1.1.1")
     implementation("io.github.kyant0:backdrop:1.0.6")
 
@@ -129,6 +129,10 @@ dependencies {
     implementation("io.coil-kt:coil:2.7.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.coil-kt:coil-svg:2.7.0")
+
+    // SVG rasterisation for reader-layout images (coil-svg already pulls this in at runtime;
+    // declared explicitly so the reader can rasterise SVG illustrations itself).
+    implementation("com.caverock:androidsvg-aar:1.4")
 
     // Image dominant color extraction
     implementation("androidx.palette:palette-ktx:1.0.0")

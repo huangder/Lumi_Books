@@ -410,23 +410,25 @@ val pageTransition = fadeIn() + slideInHorizontally(
 ## 八、图标规范
 
 ### 8.1 图标库
-- 使用Material Icons
-- 统一使用Outlined风格
-- 尺寸：24.dp
+- 使用 Phosphor Icons（Android 依赖：`com.adamglin:phosphor-icon:1.0.0`）。
+- 普通/未选中状态使用 `Regular`；选中、激活和强调状态使用对应的 `Fill` 图标。
+- 统一通过 `ui.icons.AppIcons` 语义层引用，页面不直接依赖第三方图标包。
+- 标准尺寸：24.dp；按钮中的图标按现有组件尺寸规范缩放。
+- 具有方向语义的图标必须通过方向感知 helper 处理 RTL。
 
 ### 8.2 常用图标
 ```kotlin
 object AppIcons {
-    val Home = Icons.Outlined.Home
-    val Statistics = Icons.Outlined.BarChart
-    val Add = Icons.Outlined.Add
-    val Search = Icons.Outlined.Search
-    val Settings = Icons.Outlined.Settings
-    val Bookmark = Icons.Outlined.Bookmark
-    val Note = Icons.Outlined.Note
-    val FontSize = Icons.Outlined.FormatSize
-    val Theme = Icons.Outlined.Palette
-    val Brightness = Icons.Outlined.Brightness6
+    val Home = PhosphorIcons.Regular.House
+    val Statistics = PhosphorIcons.Regular.ChartBar
+    val Add = PhosphorIcons.Regular.Plus
+    val Search = PhosphorIcons.Regular.MagnifyingGlass
+    val Settings = PhosphorIcons.Regular.Gear
+    val Bookmark = PhosphorIcons.Regular.Bookmark
+    val Note = PhosphorIcons.Regular.Note
+    val FontSize = PhosphorIcons.Regular.TextAa
+    val Theme = PhosphorIcons.Regular.Palette
+    val Brightness = PhosphorIcons.Regular.SunDim
 }
 ```
 

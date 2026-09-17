@@ -3,6 +3,7 @@ package com.huangder.lumibooks.ui.reader.engine
 import android.content.Context
 import android.animation.ValueAnimator
 import android.graphics.Paint
+import android.graphics.PointF
 import android.graphics.Typeface
 import androidx.core.animation.doOnEnd
 import android.text.Selection
@@ -23,6 +24,8 @@ import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.ui.reader.BionicReadingFormatter
 import com.huangder.lumibooks.ui.reader.mapGlobalProgress
 import com.huangder.lumibooks.ui.reader.pageIndexForChapterFraction
+import com.huangder.lumibooks.tts.TtsPageChangeOrigin
+import com.huangder.lumibooks.util.ChineseConverter
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -116,7 +119,13 @@ data class SelectionInfo(
     val selTopY: Float,
     val selBottomY: Float,
     val selStartX: Float,
-    val selEndX: Float
+    val selEndX: Float,
+    /** 章节级选区起始偏移；与页面内偏移无关，任何模式下都有效。 */
+    val startPosition: Int = chapterStartOffset + pageStart,
+    /** 章节级选区结束偏移（半开区间）。 */
+    val endPosition: Int = chapterStartOffset + pageEnd,
+    /** true 表示选区由 ReadView 自持（跨页），false 表示来自系统 TextView 选区。 */
+    val owned: Boolean = false
 )
 
 data class ReaderTextAnchor(
@@ -124,32 +133,10 @@ data class ReaderTextAnchor(
     val characterOffset: Int
 )
 
-/**
- * 跨页选择起始信息：用户在第 A 页开始选择，翻页到第 B 页继续扩展选区时，
- * 用此记录第 A 页的选区起止。
- *
- * @param startPageStart 第一页的页面内选区起始偏移
- * @param startPageEnd   第一页的页面内选区结束偏移
- * @param startText      第一页选中的文本
- */
 data class TtsHighlightRange(
     val chapterIndex: Int,
     val start: Int,
     val end: Int
-)
-
-data class CrossPageSelectionState(
-    val startChapterIndex: Int,
-    val startChapterOffset: Int,
-    val startPageStart: Int,
-    val startPageEnd: Int,
-    val startText: String,
-    val startSelTopY: Float,
-    val startSelBottomY: Float,
-    val startSelStartX: Float,
-    val startSelEndX: Float,
-    val startLocatorJson: String? = null,
-    val endLocatorJson: String? = null
 )
 
 class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null) : FrameLayout(context) {
@@ -159,6 +146,12 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         private const val JUMP_SETTLE_TIMEOUT_MS = 5_000L
         private const val CURL_COMMIT_FRACTION = 0.14f
         private const val CURL_FLING_DP_PER_SECOND = 450f
+        /** 手指拖出正文区多远后触发跨页选择翻页。 */
+        private const val CONTENT_SELECTION_EDGE_THRESHOLD_DP = 8f
+        /** 翻一页后需把手指带回正文区这么多 dp 才允许再次触发（防连翻）。 */
+        private const val CONTENT_SELECTION_EDGE_REARM_DP = 24f
+        /** 自持选区手柄的命中半径。 */
+        private const val CONTENT_SELECTION_HANDLE_HIT_RADIUS_DP = 26f
     }
 
     // ── 子组件 ──
@@ -223,6 +216,16 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var rvDeferredCurlLatestTime = 0L
     private var rvDeferredCurlMetaState = 0
     private var pendingPageTurnDirection: PageAnimationController.Direction? = null
+    private var pendingPageChangeOrigin = TtsPageChangeOrigin.LAYOUT
+    /** 听书进行中时启用“双击句子跳句”，单击动作需等待双击超时以区分两种手势。 */
+    private var ttsSentenceJumpEnabled = false
+    private var rvPendingTapAction: Runnable? = null
+    /** 单击动作已在 dispatchTouchEvent 中延后，拦截分类不要重复执行。 */
+    private var rvTapDeferred = false
+    private val rvSentenceJumpGate = SentenceJumpDoubleTapGate(
+        timeoutMs = ViewConfiguration.getDoubleTapTimeout().toLong(),
+        slopPx = ViewConfiguration.get(context).scaledDoubleTapSlop.toFloat()
+    )
 
     /** 设置已保存的笔记/高亮并刷新当前页。 */
     fun setSavedNotes(notes: List<Note>) {
@@ -241,6 +244,13 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var rvSystemBackGestureSuppressed = false
     private var rvTouchDownTime = 0L
     private var rvHasMoved = false
+    /**
+     * 本次触摸已经被判定为滑动翻页。
+     *
+     * 只在滑动路径上置位（不含点按），用于避免"甩动翻页"的收尾 UP 又被当成短按去开菜单。
+     * 点按路径永远读不到 true，因此不会影响边缘点击翻页。
+     */
+    private var rvSwipeTurnClaimed = false
     private var rvIsEdgeTouch = false
     private var rvIsHandlingPageGesture = false
     private var rvBoundaryGestureSuppressed = false
@@ -295,11 +305,27 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var configuredWidth: Int = 0
     private var configuredHeight: Int = 0
 
-    // ── 跨页选择 ──
-    /** 跨页选择状态：用户在第 A 页选择后翻页，在第 B 页继续选择时合并两页选区 */
-    var crossPageSelection: CrossPageSelectionState? = null
-        private set
-    private var pendingRebuildSelection = false
+    // ── 跨页选择（ReadView 自持） ──
+    /**
+     * 系统选区只负责当前页内的选词与拖动；手柄拖出页边界后，选区所有权交回
+     * ReadView，此后以章节级偏移为唯一真相，与页面解析/槽位轮转解耦。
+     */
+    private var contentSelection: ReaderContentSelection? = null
+    /** 越界后等待下一帧接管手势流（先让系统选区安全退场，再翻页）。 */
+    private var contentSelectionHandoffPending = false
+    private var contentSelectionHandoffStartHandle = false
+    /** 手势流已经归 ReadView 所有，后续 MOVE/UP 由跨页选区逻辑处理。 */
+    private var contentSelectionDragActive = false
+    /** 每翻一页后需要手指先回到正文区才允许再次触发，避免连翻。 */
+    private var contentSelectionEdgeArmed = true
+    /** 目标页尚未加载时挂起的翻页请求。 */
+    private var pendingContentSelectionTurn: ReaderSelectionDirection? = null
+    private var contentSelectionNoTargetNotified = false
+    private var contentSelectionColor = 0x40007AFF
+    private var contentSelectionHandleColor = 0xFF448AFF.toInt()
+    private val contentSelectionHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+    }
 
     /** 褰撳墠鍙ュ彞 TTS 楂樹寒鑼冨洿锛堝叏灞€绔犺妭鍐呭亸绉伙級锛屼负绌哄垯涓嶆樉绀?*/
     var ttsHighlightRange: TtsHighlightRange? = null
@@ -454,12 +480,17 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         )) {
             setupSelectionWatcher(pageView)
             pageView.suppressSystemToolbar()
+            pageView.onReaderHandleDragBeyondEdge = { direction, draggingStartHandle ->
+                handleHandleDragBeyondEdge(direction, draggingStartHandle)
+            }
         }
 
         // 翻页后刷新高亮
         slotManager.onPageChangedCallback = { globalPage, chapterIdx, pageInChapter, chapterTotal ->
             curlPageGeneration++
-            callbacks?.onPageChanged(globalPage, chapterIdx, pageInChapter, chapterTotal)
+            val origin = pendingPageChangeOrigin
+            pendingPageChangeOrigin = TtsPageChangeOrigin.LAYOUT
+            callbacks?.onPageChanged(globalPage, chapterIdx, pageInChapter, chapterTotal, origin)
             startSearchHighlightAnimationIfReady(chapterIdx)
             configureCurrentPageView()
             invalidate()
@@ -471,6 +502,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             postOnAnimation {
                 if (!resumeDeferredCurlGestureIfReady()) drainPendingCurlTurns()
                 drainPendingPageTurn()
+                drainPendingContentSelectionTurn()
             }
         }
 
@@ -504,7 +536,22 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val ttsHighlight = ttsHighlightRange
             ?.takeIf { it.chapterIndex == chapterIndex }
             ?.let { Triple(it.start, it.end, PageContentView.TTS_HIGHLIGHT_RGB) }
-        return buildList { addAll(savedHighlights); if (transientHighlight != null) add(transientHighlight); if (ttsHighlight != null) add(ttsHighlight) }
+        // 跨页选择期间由 ReadView 自持的瞬态选区（不落库）；页面加载/重渲染时随高亮一起带上。
+        val ownedSelection = contentSelection
+            ?.takeIf { it.chapterIndex == chapterIndex && !it.isEmpty }
+            ?.let {
+                Triple(
+                    it.start,
+                    it.end,
+                    (PageContentView.READER_SELECTION_FLAG shl 24) or (contentSelectionColor and 0x00FFFFFF)
+                )
+            }
+        return buildList {
+            addAll(savedHighlights)
+            if (transientHighlight != null) add(transientHighlight)
+            if (ttsHighlight != null) add(ttsHighlight)
+            if (ownedSelection != null) add(ownedSelection)
+        }
     }
 
     /** 配置所有 PageContentView 的 TextView 样式（防止翻页错版） */
@@ -527,6 +574,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         // 选择高亮色jian
         // = accent + 25% alpha
         val highlightColor = (accentColor and 0x00FFFFFF) or 0x40000000.toInt()
+        // 跨页自持选区与其手柄沿用同一套配色，避免拖拽中途「换手」时出现视觉跳变。
+        contentSelectionColor = highlightColor
+        contentSelectionHandleColor = accentColor
 
         val resolvedTypeface = resolveReaderTypeface(
             context = context,
@@ -639,6 +689,17 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     fun setCallbacks(cbs: ReadViewCallbacks) {
         callbacks = cbs
+    }
+
+    /**
+     * 听书进行中开启双击句子跳句：单击（菜单/翻页/链接）会延后一个双击超时再执行，
+     * 以便区分双击。关闭时恢复即时响应并丢弃未决的延后动作。
+     */
+    fun setTtsSentenceJumpEnabled(enabled: Boolean) {
+        if (ttsSentenceJumpEnabled == enabled) return
+        ttsSentenceJumpEnabled = enabled
+        rvSentenceJumpGate.reset()
+        if (!enabled) cancelPendingReaderTap()
     }
 
     fun setBookmarkPullEnabled(enabled: Boolean) {
@@ -812,6 +873,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         currentWritingMode = writingMode
         currentTwoPageSpreadEnabled = twoPageSpread
         currentTwoPageSpread = resolvedSpread
+        // 双页对开/竖排不在自持跨页选择的支持范围内：切换过去时直接结束自持选区，
+        // 否则手柄与翻页语义都会对不上。
+        if (!isContentSelectionSupported()) clearReaderSelection()
         pendingStartChapter = effectiveStartChapter
         pendingStartPage = effectiveStartPage
         if (writingModeChanged || spreadModeChanged) resetPageViewPositions()
@@ -952,7 +1016,12 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     }
 
     /** 跳转到指定章节指定页 */
-    fun jumpToChapter(chapterIndex: Int, pageInChapter: Int = 0) {
+    fun jumpToChapter(
+        chapterIndex: Int,
+        pageInChapter: Int = 0,
+        origin: TtsPageChangeOrigin = TtsPageChangeOrigin.USER
+    ) {
+        pendingPageChangeOrigin = origin
         slotManager.pendingStartCharOffset = -1
         slotManager.pendingStartPageFraction = null
         jumpToChapterInternal(chapterIndex, pageInChapter)
@@ -1259,10 +1328,14 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         return layoutEngine.getChapterPageCount(chapterIndex)
     }
 
-    fun turnToPreviousPage(): Boolean {
+    fun turnToPreviousPage(
+        origin: TtsPageChangeOrigin = TtsPageChangeOrigin.USER
+    ): Boolean {
         if (isPageTurnBlockedAtBoundary(PageAnimationController.Direction.PREV)) return false
         if (animationController is CurlPageAnim) {
-            return requestCurlTurn(PageAnimationController.Direction.PREV)
+            return requestCurlTurn(PageAnimationController.Direction.PREV).also { accepted ->
+                if (accepted) pendingPageChangeOrigin = origin
+            }
         }
         if (isJumpSettling) return false
         finishRunningPageTurnForNewInput()
@@ -1276,6 +1349,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             crossChapter = previous.chapterIndex != current.chapterIndex
         )
         ReaderPageTurnPerformance.markVisualStarted()
+        pendingPageChangeOrigin = origin
         startTapAnimation(PageAnimationController.Direction.PREV)
         return true
     }
@@ -1283,10 +1357,14 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private fun effectiveEdgeTapAction(action: ReaderEdgeTapAction): ReaderEdgeTapAction =
         if (currentWritingMode.isVertical) action.reversed() else action
 
-    fun turnToNextPage(): Boolean {
+    fun turnToNextPage(
+        origin: TtsPageChangeOrigin = TtsPageChangeOrigin.USER
+    ): Boolean {
         if (isPageTurnBlockedAtBoundary(PageAnimationController.Direction.NEXT)) return false
         if (animationController is CurlPageAnim) {
-            return requestCurlTurn(PageAnimationController.Direction.NEXT)
+            return requestCurlTurn(PageAnimationController.Direction.NEXT).also { accepted ->
+                if (accepted) pendingPageChangeOrigin = origin
+            }
         }
         if (isJumpSettling) return false
         finishRunningPageTurnForNewInput()
@@ -1294,6 +1372,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         if (!next.isLoaded) {
             if (slotManager.hasPotentialNextPage()) {
                 pendingPageTurnDirection = PageAnimationController.Direction.NEXT
+                pendingPageChangeOrigin = origin
                 return true
             }
             return false
@@ -1305,6 +1384,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             crossChapter = next.chapterIndex != current.chapterIndex
         )
         ReaderPageTurnPerformance.markVisualStarted()
+        pendingPageChangeOrigin = origin
         startTapAnimation(PageAnimationController.Direction.NEXT)
         return true
     }
@@ -1326,12 +1406,40 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
      * - 长按（非卷曲模式 >500ms 或无明显移动）→ 不拦截，TextView 原生触发选词
      */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        // The vertical renderer owns its selection handles. Once a handle accepts DOWN,
+        // ── 自持跨页选区：整段手势（含交接帧）直接在 ReadView 处理 ──
+        // 不依赖 ViewGroup 拦截：拦截会吞掉触发帧、还要等下一帧才生效，
+        // 表现为「翻页后手柄停在第一个字，必须松手再重新抓手柄」。
+        if (contentSelectionDragActive && ev.actionMasked == MotionEvent.ACTION_DOWN) {
+            // 上一段拖拽没收到终帧的极端情况：先收尾，再按新手势重新判断。
+            finishContentSelectionDrag()
+        }
+        if (contentSelectionDragActive) {
+            return handleContentSelectionDragTouch(ev)
+        }
+        if (contentSelectionHandoffPending) {
+            val takeoverFinished = beginContentSelectionTakeover(ev)
+            return takeoverFinished || handleContentSelectionDragTouch(ev)
+        }
+        // 按在自绘手柄上：本帧起由 ReadView 独占，子 View 不会看到这个 DOWN。
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN && contentSelection != null) {
+            val hit = contentSelectionHandleHit(ev.x, ev.y)
+            if (hit != null) {
+                contentSelectionDragActive = true
+                grabContentSelectionHandle(hit)
+                return handleContentSelectionDragTouch(ev)
+            }
+        }
+        // Selection renderers own their handle streams. Once a handle accepts DOWN,
         // keep the complete stream away from page-swipe classification until UP/CANCEL.
-        if (ev.actionMasked != MotionEvent.ACTION_DOWN && isVerticalSelectionHandleDragActive()) {
-            return super.dispatchTouchEvent(ev)
+        // This must be checked before the normal MOVE classifier: a short horizontal
+        // move is otherwise interpreted as a page turn and cancels the TextView drag.
+        if (ev.actionMasked != MotionEvent.ACTION_DOWN &&
+            (isVerticalSelectionHandleDragActive() || isReaderSelectionHandleDragActive())
+        ) {
+            return dispatchTouchToChildren(ev)
         }
         if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+            rvTapDeferred = false
             val density = resources.displayMetrics.density
             rvSystemBackGestureCandidate = isSystemBackGestureStart(
                 width.toFloat(), height.toFloat(), ev.x, ev.y, density
@@ -1344,7 +1452,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 rvSystemBackGestureSuppressed = false
                 rvSystemBackGestureCandidate = false
             }
-            return super.dispatchTouchEvent(ev)
+            return dispatchTouchToChildren(ev)
         }
         if (rvBoundaryGestureSuppressed && ev.actionMasked != MotionEvent.ACTION_DOWN) {
             if (ev.actionMasked == MotionEvent.ACTION_UP ||
@@ -1354,8 +1462,21 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             }
             return true
         }
+        // A few OEMs deliver the selection-handle popup's stream back through
+        // the parent. Once a long-press selection exists, keep that stream with
+        // TextView instead of classifying its horizontal movement as a page turn.
+        // The initial DOWN still goes through the normal classifier so a fresh
+        // tap can clear the old selection and start a new gesture.
+        if (ev.actionMasked != MotionEvent.ACTION_DOWN &&
+            !rvIsHandlingPageGesture &&
+            hasActiveTextSelection() &&
+            ev.eventTime - rvTouchDownTime >= 500L
+        ) {
+            return dispatchTouchToChildren(ev)
+        }
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                pendingPageChangeOrigin = TtsPageChangeOrigin.USER
                 removeCallbacks(rvImageLongPressRunnable)
                 // A committed curl belongs to the page the user can already see. Commit it
                 // before classifying the next pointer stream so rapid swipes start from that
@@ -1379,6 +1500,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 rvTouchDownTime = ev.eventTime
                 rvHasMoved = false
                 rvIsHandlingPageGesture = false
+                rvSwipeTurnClaimed = false
                 rvDeferredCurlGesture = false
                 rvDeferredCurlDirection = PageAnimationController.Direction.NONE
                 rvBoundaryGestureSuppressed = false
@@ -1411,7 +1533,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 }
                 val w = width.toFloat()
                 rvIsEdgeTouch = w > 0 && (ev.x / w < 0.3f || ev.x / w > 0.7f)
-                return super.dispatchTouchEvent(ev)
+                return dispatchTouchToChildren(ev)
             }
 
             MotionEvent.ACTION_MOVE -> {
@@ -1483,7 +1605,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 if (bookmarkFinish.wasActive) {
                     callbacks?.onBookmarkPullFinished(false)
                 }
-                return super.dispatchTouchEvent(ev)
+                return dispatchTouchToChildren(ev)
                 }
                 // Curl is a direct-manipulation gesture: once the finger has
                 // moved far enough, it must keep following the pointer even
@@ -1518,6 +1640,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                     }
 
                     rvIsHandlingPageGesture = true
+                    // 记录"这次触摸是滑动翻页"，只用于阻止收尾 UP 再打开中央菜单。
+                    rvSwipeTurnClaimed = true
                     clearCurrentSelection()
                     if (animationController is CurlPageAnim &&
                         !prepareCurlSwipe(pageDirection)
@@ -1611,79 +1735,177 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                     rvIsHandlingPageGesture = false
                     rvBoundaryGestureSuppressed = false
                 }
+                if (ev.actionMasked == MotionEvent.ACTION_UP &&
+                    !rvHasMoved &&
+                    (ev.eventTime - rvTouchDownTime).coerceAtLeast(0L) < 300L
+                ) {
+                    // 双击判定必须发生在子视图之前：系统选词会吞掉第二次点击的 UP。
+                    if (handleShortTapGesture(ev)) return true
+                }
             }
         }
-        return super.dispatchTouchEvent(ev)
+        return dispatchTouchToChildren(ev)
+    }
+
+    /**
+     * 把手势派发给子 View，并在本次派发里发生「越界交接」时同帧完成接管。
+     *
+     * 关键：交接是在子 View 的 onTouchEvent 里触发的，所有转发给子 View 的出口都必须
+     * 走这里；否则接管要等到下一个 DOWN 才发生，表现为翻页后手柄停在第一个字。
+     */
+    private fun dispatchTouchToChildren(ev: MotionEvent): Boolean {
+        val handled = super.dispatchTouchEvent(ev)
+        if (contentSelectionHandoffPending) {
+            beginContentSelectionTakeover(ev)
+        }
+        return handled
+    }
+
+    /**
+     * 短按手势统一入口。听书进行中把单击动作延后一个双击超时，用于区分双击跳句；
+     * 返回 true 表示这次 UP 已被消费（双击），不能再交给子视图。
+     */
+    private fun handleShortTapGesture(ev: MotionEvent): Boolean {
+        val x = rvTouchStartX
+        val y = rvTouchStartY
+        if (!ttsSentenceJumpEnabled) {
+            rvSentenceJumpGate.reset()
+            return false
+        }
+        return when (rvSentenceJumpGate.classify(ev.eventTime, x, y)) {
+            SentenceJumpDoubleTapGate.TapDecision.DOUBLE -> {
+                cancelPendingReaderTap()
+                handleTtsSentenceDoubleTap(x, y)
+                abortChildTouchStream(ev)
+                true
+            }
+            SentenceJumpDoubleTapGate.TapDecision.SINGLE -> {
+                rvTapDeferred = true
+                scheduleReaderTap { handleShortTap(x, y) }
+                false
+            }
+        }
+    }
+
+    /** 中止子视图的原生触摸序列，避免系统把第二次点击当成选词双击。 */
+    private fun abortChildTouchStream(ev: MotionEvent) {
+        val cancel = MotionEvent.obtain(ev)
+        cancel.action = MotionEvent.ACTION_CANCEL
+        super.dispatchTouchEvent(cancel)
+        cancel.recycle()
     }
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
         if (isVerticalSelectionHandleDragActive()) return false
+        // 自持跨页选区的手势接管在 dispatchTouchEvent 里完成（拦截会吞掉触发帧）。
         when (ev.actionMasked) {
             MotionEvent.ACTION_UP -> {
                 if (!rvHasMoved && (ev.eventTime - rvTouchDownTime).coerceAtLeast(0L) < 300L) {
-                    val hitView = pageViewAt(rvTouchStartX, rvTouchStartY) ?: curPageView
-                    val link = hitView.getLinkAt(
-                        rvTouchStartX - hitView.left,
-                        rvTouchStartY - hitView.top
-                    )
-                    if (link != null) {
-                        Log.d(TAG, "EPUB link tap: $link")
-                        clearCurrentSelection()
-                        callbacks?.onLinkClick(link, rvTouchStartX, rvTouchStartY)
-                    } else {
-                        val image = hitView.getImageAt(
-                            rvTouchStartX - hitView.left,
-                            rvTouchStartY - hitView.top
-                        )
-                        when {
-                            image?.link != null -> {
-                                Log.d(TAG, "EPUB linked image tap: ${image.link}")
-                                clearCurrentSelection()
-                                callbacks?.onLinkClick(image.link, rvTouchStartX, rvTouchStartY)
-                            }
-                            image?.hasAction == true -> {
-                                // Keep action-bearing images out of the preview path.
-                                Log.d(TAG, "EPUB action image tap ignored by preview")
-                            }
-                            image != null -> {
-                                // Covers are commonly a full-page plain image. Their center tap
-                                // must behave like the rest of the reading surface; image preview
-                                // remains a long-press action.
-                                if (rvIsEdgeTouch) {
-                                    Log.d(TAG, "Plain EPUB image edge tap at x=${ev.x} -> page turn")
-                                    if (rvTouchStartX / width < 0.3f) {
-                                        animationController.onTapLeft?.invoke()
-                                    } else {
-                                        animationController.onTapRight?.invoke()
-                                    }
-                                } else {
-                                    Log.d(TAG, "Plain EPUB image center tap -> toggle menu")
-                                    clearCurrentSelection()
-                                    callbacks?.onMenuToggle()
-                                }
-                            }
-                            rvIsEdgeTouch -> {
-                                // Edge short tap: turn the page through the existing animation callback.
-                                Log.d(TAG, "Edge tap at x=${ev.x} -> page turn")
-                                if (rvTouchStartX / width < 0.3f) {
-                                    animationController.onTapLeft?.invoke()
-                                } else {
-                                    animationController.onTapRight?.invoke()
-                                }
-                            }
-                            else -> {
-                                // Center short tap: toggle the reader menu.
-                                Log.d(TAG, "Center tap detected -> toggle menu")
-                                clearCurrentSelection()
-                                callbacks?.onMenuToggle()
-                            }
-                        }
+                    if (rvTapDeferred) {
+                        rvTapDeferred = false
+                        return false
                     }
+                    val tapX = rvTouchStartX
+                    val tapY = rvTouchStartY
+                    handleShortTap(tapX, tapY)
                 }
             }
         }
         return false
     }
+
+    /** 短按（未移动）的既有行为：链接、图片、边缘翻页、中间切换菜单。 */
+    private fun handleShortTap(x: Float, y: Float) {
+        // 跨页选择进行中：单击用来指定选区终点，不切菜单也不翻页。
+        if (applyContentSelectionTapTarget(x, y)) return
+        val hitView = pageViewAt(x, y) ?: curPageView
+        val link = hitView.getLinkAt(x - hitView.left, y - hitView.top)
+        if (link != null) {
+            Log.d(TAG, "EPUB link tap: $link")
+            clearCurrentSelection()
+            callbacks?.onLinkClick(link, x, y)
+            return
+        }
+        val image = hitView.getImageAt(x - hitView.left, y - hitView.top)
+        when {
+            image?.link != null -> {
+                Log.d(TAG, "EPUB linked image tap: ${image.link}")
+                clearCurrentSelection()
+                callbacks?.onLinkClick(image.link, x, y)
+            }
+            image?.hasAction == true -> {
+                // Keep action-bearing images out of the preview path.
+                Log.d(TAG, "EPUB action image tap ignored by preview")
+            }
+            image != null -> {
+                // Covers are commonly a full-page plain image. Their center tap
+                // must behave like the rest of the reading surface; image preview
+                // remains a long-press action.
+                if (rvIsEdgeTouch) {
+                    Log.d(TAG, "Plain EPUB image edge tap at x=$x -> page turn")
+                    if (x / width < 0.3f) {
+                        animationController.onTapLeft?.invoke()
+                    } else {
+                        animationController.onTapRight?.invoke()
+                    }
+                } else {
+                    Log.d(TAG, "Plain EPUB image center tap -> toggle menu")
+                    clearCurrentSelection()
+                    callbacks?.onMenuToggle()
+                }
+            }
+            rvIsEdgeTouch -> {
+                // Edge short tap: turn the page through the existing animation callback.
+                Log.d(TAG, "Edge tap at x=$x -> page turn")
+                if (x / width < 0.3f) {
+                    animationController.onTapLeft?.invoke()
+                } else {
+                    animationController.onTapRight?.invoke()
+                }
+            }
+            else -> {
+                // Center short tap: toggle the reader menu.
+                // 滑动翻页的收尾 UP 会被误判成中央短按，这里直接忽略。
+                if (rvSwipeTurnClaimed) return
+                Log.d(TAG, "Center tap detected -> toggle menu")
+                clearCurrentSelection()
+                callbacks?.onMenuToggle()
+            }
+        }
+    }
+
+    private fun scheduleReaderTap(action: () -> Unit) {
+        cancelPendingReaderTap()
+        val runnable = Runnable {
+            rvPendingTapAction = null
+            action()
+        }
+        rvPendingTapAction = runnable
+        postDelayed(runnable, rvSentenceJumpGate.timeout)
+    }
+
+    private fun cancelPendingReaderTap() {
+        rvPendingTapAction?.let { removeCallbacks(it) }
+        rvPendingTapAction = null
+    }
+
+    /** 双击正文：把点击位置换算成章节字符偏移，交给上层跳转朗读。 */
+    private fun handleTtsSentenceDoubleTap(x: Float, y: Float) {
+        val hitView = pageViewAt(x, y) ?: curPageView
+        val slot = slotManager.getSlotForView(hitView) ?: return
+        val chapterOffset = hitView.characterOffsetAt(x - hitView.left, y - hitView.top) ?: return
+        clearCurrentSelection()
+        performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+        callbacks?.onTtsSentenceDoubleTap(chapterIndexForSpreadView(slot, hitView), chapterOffset)
+    }
+
+    /** 双页对开时右半页可能属于下一章，章节索引必须按实际命中的半边解析。 */
+    private fun chapterIndexForSpreadView(slot: SlotState, view: PageContentView): Int =
+        if (slot.rightContentView === view && slot.rightIsLoaded && slot.rightChapterIndex >= 0) {
+            slot.rightChapterIndex
+        } else {
+            slot.chapterIndex
+        }
 
     private fun handlePendingImageLongPress() {
         val image = rvPendingImageLongPress ?: return
@@ -1727,7 +1949,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
      * 500ms 后（长按已触发），允许 disallow 以支持选择拖拽。
      */
     override fun requestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
-        if (disallowIntercept && isVerticalSelectionHandleDragActive()) {
+        if (disallowIntercept && (isVerticalSelectionHandleDragActive() || hasActiveTextSelection())) {
             super.requestDisallowInterceptTouchEvent(true)
             return
         }
@@ -1749,6 +1971,19 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             curPageRightView.isVerticalSelectionHandleDragActive() ||
             nextPageRightView.isVerticalSelectionHandleDragActive()
 
+    private fun isReaderSelectionHandleDragActive(): Boolean =
+        prevPageView.isReaderSelectionHandleDragActive() ||
+            curPageView.isReaderSelectionHandleDragActive() ||
+            nextPageView.isReaderSelectionHandleDragActive() ||
+            prevPageRightView.isReaderSelectionHandleDragActive() ||
+            curPageRightView.isReaderSelectionHandleDragActive() ||
+            nextPageRightView.isReaderSelectionHandleDragActive()
+
+    private fun hasActiveTextSelection(): Boolean = listOf(
+        prevPageView, curPageView, nextPageView,
+        prevPageRightView, curPageRightView, nextPageRightView
+    ).any { it.getSelectionRange() != null }
+
     /** 返回触摸位置所在的当前页半页视图（双页模式按 x 命中左/右半页）。 */
     private fun pageViewAt(x: Float, y: Float): PageContentView? {
         if (!currentTwoPageSpread) return curPageView
@@ -1760,6 +1995,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (contentSelectionDragActive) return handleContentSelectionDragTouch(event)
         return animationController.onTouchEvent(event)
     }
 
@@ -1791,6 +2027,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             }
             ReaderPageTurnPerformance.markFirstFrame()
         }
+        // 自持跨页选区的手柄画在所有页面内容之上
+        drawContentSelectionHandles(canvas)
     }
 
     // ── 生命周期 ──
@@ -1805,6 +2043,18 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
+        // 退出阅读页时兜底收起所有分页上的选区放大镜；宿主 View 的 detach 回调
+        // 不一定会先于窗口销毁执行，显式清一次避免浮动窗口残留。
+        prevPageView.endSelectionMagnifier()
+        curPageView.endSelectionMagnifier()
+        nextPageView.endSelectionMagnifier()
+        prevPageRightView.endSelectionMagnifier()
+        curPageRightView.endSelectionMagnifier()
+        nextPageRightView.endSelectionMagnifier()
+        contentSelection = null
+        contentSelectionDragActive = false
+        contentSelectionHandoffPending = false
+        pendingContentSelectionTurn = null
         bookmarkPullTracker.reset()
         rvBoundaryGestureSuppressed = false
         rvSystemBackGestureCandidate = false
@@ -2336,6 +2586,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
      * @return null 表示当前无选区
      */
     fun getSelectionInfo(sourceView: PageContentView? = null): SelectionInfo? {
+        // 跨页选区由 ReadView 自持，优先返回它；与系统选区互斥。
+        if (contentSelection != null) return buildOwnedSelectionInfo()
         val pageView = sourceView ?: slotManager.getPrimaryContentView()
         val tv = pageView.textView
         val spannable = tv.text as? android.text.Spannable ?: return null
@@ -2370,34 +2622,12 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         // 双页模式下右半页视图位于父容器右半区，需要加上半页偏移，
         // 选区菜单/手柄坐标才能对齐屏幕。
         val viewOffsetX = pageView.left.toFloat()
-        val startX = tv.left + tv.paddingLeft + layout.getPrimaryHorizontal(selStart) + viewOffsetX
-        val endX = tv.left + tv.paddingLeft + layout.getPrimaryHorizontal(selEnd) + viewOffsetX
-
-        // ── 跨页选择合并 ──
-        // 如果有跨页选择状态，且当前选区所在的章节与跨页选择的章节相同（或相邻），
-        // 并且当前选区在跨页选择的后面，则合并为完整的跨页选区
-        val crossPage = crossPageSelection
-        if (crossPage != null && crossPage.startChapterIndex == chapterIdx) {
-            val crossPageStartAbs = crossPage.startChapterOffset + crossPage.startPageStart
-            val currentEndAbs = chapterStartOffset + selEnd
-            // 确认当前选区在跨页选区之后（跨页选区结束位置 <= 当前选区开始位置）
-            if (crossPageStartAbs < currentEndAbs) {
-                // 使用 pageView 的 originalSpannable 获取章节全文（避免主线程 I/O）
-                val mergedText = crossPage.startText + text
-                Log.d(TAG, "Cross-page selection merged: abs=[" + crossPageStartAbs + "," + currentEndAbs + ") startLen=" + crossPage.startText.length + " textLen=" + text.length + " mergedLen=" + mergedText.length + " text=" + mergedText.take(80))
-                return SelectionInfo(
-                    selectedText = mergedText,
-                    chapterIndex = chapterIdx,
-                    chapterStartOffset = crossPage.startChapterOffset,
-                    pageStart = crossPage.startPageStart,
-                    pageEnd = currentEndAbs - crossPage.startChapterOffset,
-                    selTopY = crossPage.startSelTopY.coerceAtMost(topY),
-                    selBottomY = crossPage.startSelBottomY.coerceAtMost(bottomY),
-                    selStartX = crossPage.startSelStartX,
-                    selEndX = endX
-                )
-            }
-        }
+        val startHorizontal = (tv as? RoundedHighlightTextView)?.readerHorizontalPosition(selStart)
+            ?: layout.getPrimaryHorizontal(selStart)
+        val endHorizontal = (tv as? RoundedHighlightTextView)?.readerHorizontalPosition(selEnd, trailing = true)
+            ?: layout.getPrimaryHorizontal(selEnd)
+        val startX = tv.left + tv.paddingLeft + startHorizontal + viewOffsetX
+        val endX = tv.left + tv.paddingLeft + endHorizontal + viewOffsetX
 
         return SelectionInfo(
             selectedText = text,
@@ -2412,10 +2642,499 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         )
     }
 
-    /** 清除当前页的选区 */
+    /** 清除当前页的选区与自持跨页选区 */
     private fun clearCurrentSelection() {
         curPageView.clearSelection()
         curPageRightView.clearSelection()
+        clearReaderSelection()
+    }
+
+    // ── 跨页自持选区 ──
+
+    /** 是否存在由 ReadView 自持的跨页选区（此时系统选区已退场）。 */
+    fun hasActiveReaderSelection(): Boolean = contentSelection?.isEmpty == false
+
+    /** 清除自持跨页选区（含瞬态高亮），并通知上层收起选区菜单。 */
+    fun clearReaderSelection() {
+        if (contentSelection == null && !contentSelectionHandoffPending && !contentSelectionDragActive) {
+            pendingContentSelectionTurn = null
+            return
+        }
+        contentSelection = null
+        contentSelectionDragActive = false
+        contentSelectionHandoffPending = false
+        contentSelectionEdgeArmed = true
+        contentSelectionNoTargetNotified = false
+        pendingContentSelectionTurn = null
+        applyReaderSelectionToPages()
+        callbacks?.onReaderSelectionCleared()
+        invalidate()
+    }
+
+    /**
+     * 回退入口：不改用手柄越界触发时，由选择菜单的「继续选到下一页/上一页」调用。
+     * 与边缘触发共用同一套自持选区内核。
+     */
+    fun beginReaderSelectionExtension(direction: ReaderSelectionDirection): Boolean {
+        if (contentSelection != null || contentSelectionHandoffPending || isJumpSettling) return false
+        if (!isContentSelectionSupported()) return false
+        val view = contentSelectionViews().firstOrNull { it.getSelectionRange() != null } ?: return false
+        val slot = slotManager.getSlotForView(view) ?: return false
+        val chapterIndex = chapterIndexForSpreadView(slot, view)
+        val range = view.getSelectionRange() ?: return false
+        val chapterText = slotManager.cachedChapterText(chapterIndex) ?: return false
+        val selectionStart = view.chapterStartOffset + range.first
+        val selectionEnd = view.chapterStartOffset + range.second
+        val targetSlot = contentSelectionTargetSlot(direction)
+        if (!ReaderContentSelectionRules.canExtendWithinChapter(targetSlot.chapterIndex, chapterIndex) ||
+            !targetSlot.isLoaded
+        ) {
+            notifyContentSelectionBoundaryReached()
+            return false
+        }
+
+        endNativeSelectionOnAllPages()
+        contentSelection = ReaderContentSelection(
+            chapterIndex = chapterIndex,
+            chapterLength = chapterText.length,
+            anchor = if (direction == ReaderSelectionDirection.NEXT) selectionStart else selectionEnd,
+            focus = if (direction == ReaderSelectionDirection.NEXT) selectionEnd else selectionStart
+        )
+        if (!performContentSelectionTurn(direction)) {
+            contentSelection = null
+            applyReaderSelectionToPages()
+            return false
+        }
+        contentSelectionDragActive = false
+        applyReaderSelectionToPages()
+        callbacks?.onReaderSelectionCrossPageExtended()
+        notifyReaderSelectionChanged()
+        invalidate()
+        return true
+    }
+
+    private fun isContentSelectionSupported(): Boolean =
+        !currentTwoPageSpread && !currentWritingMode.isVertical
+
+    private fun contentSelectionViews(): List<PageContentView> = listOf(
+        prevPageView, curPageView, nextPageView,
+        prevPageRightView, curPageRightView, nextPageRightView
+    )
+
+    private fun endNativeSelectionOnAllPages() {
+        // 只处理真正持有选区的页面，避免向没有手势的 TextView 派发多余的 CANCEL。
+        contentSelectionViews().forEach { view ->
+            if (view.getSelectionRange() != null) view.endNativeSelection()
+        }
+    }
+
+    private fun contentSelectionTargetSlot(direction: ReaderSelectionDirection): SlotState =
+        if (direction == ReaderSelectionDirection.NEXT) {
+            slotManager.getNextSlot()
+        } else {
+            slotManager.getPrevSlot()
+        }
+
+    /**
+     * 系统选区手柄被拖出页边界：让系统选区安全退场，把选区所有权交回 ReadView，
+     * 再无动画翻页并在新页延续选区。
+     *
+     * 顺序至关重要：旧方案在系统手柄仍挂在旧页 TextView 上时翻页，槽位轮转后
+     * 手柄会用失效 Layout 计算偏移，写出越界选区并崩溃。
+     */
+    private fun handleHandleDragBeyondEdge(direction: Int, draggingStartHandle: Boolean) {
+        if (contentSelection != null || contentSelectionHandoffPending) return
+        if (isJumpSettling || !isContentSelectionSupported()) return
+        val target =
+            if (direction > 0) ReaderSelectionDirection.NEXT else ReaderSelectionDirection.PREV
+        val view = contentSelectionViews().firstOrNull { it.getSelectionRange() != null } ?: return
+        val slot = slotManager.getSlotForView(view) ?: return
+        val chapterIndex = chapterIndexForSpreadView(slot, view)
+        val range = view.getSelectionRange() ?: return
+        val chapterText = slotManager.cachedChapterText(chapterIndex) ?: return
+        val targetSlot = contentSelectionTargetSlot(target)
+        if (!ReaderContentSelectionRules.canExtendWithinChapter(targetSlot.chapterIndex, chapterIndex) ||
+            !targetSlot.isLoaded
+        ) {
+            // 章边界（限单章）或目标页未就绪：不动选区，让系统选区停在原处。
+            notifyContentSelectionBoundaryReached()
+            return
+        }
+
+        val selectionStart = view.chapterStartOffset + range.first
+        val selectionEnd = view.chapterStartOffset + range.second
+        // anchor 固定不动，focus 是被手指拖动的另一端
+        contentSelection = ReaderContentSelection(
+            chapterIndex = chapterIndex,
+            chapterLength = chapterText.length,
+            anchor = if (draggingStartHandle) selectionEnd else selectionStart,
+            focus = if (draggingStartHandle) selectionStart else selectionEnd
+        )
+        contentSelectionHandoffStartHandle = draggingStartHandle
+        contentSelectionHandoffPending = true
+        contentSelectionDragActive = true
+        contentSelectionNoTargetNotified = false
+
+        // 1) 先把系统选区/手柄彻底收掉，避免它在轮转后的页面上继续写选区
+        endNativeSelectionOnAllPages()
+        // 2) 无动画翻页，并把焦点吸附到新页对应端（新页首个字符）
+        if (!performContentSelectionTurn(target)) {
+            // 极端情况（翻页前目标页被回收）：整体退回，不进入自持选区
+            contentSelection = null
+            contentSelectionHandoffPending = false
+            contentSelectionDragActive = false
+            applyReaderSelectionToPages()
+            return
+        }
+        // 3) 立即渲染瞬态选区：上一页保留属于自己的那一段，新页接上
+        applyReaderSelectionToPages()
+        // 4) 下一帧把触摸流交回 ReadView：清掉 disallow，让 onInterceptTouchEvent 生效
+        super.requestDisallowInterceptTouchEvent(false)
+        contentSelectionEdgeArmed = false
+        callbacks?.onReaderSelectionCrossPageExtended()
+        invalidate()
+    }
+
+    private fun notifyContentSelectionBoundaryReached() {
+        if (contentSelectionNoTargetNotified) return
+        contentSelectionNoTargetNotified = true
+        performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+    }
+
+    /**
+     * 无动画翻页到相邻页，并把选区焦点吸附到目标页对应端。
+     * 限单章：目标页不在同一章时返回 false，选区停在章边界。
+     */
+    private fun performContentSelectionTurn(direction: ReaderSelectionDirection): Boolean {
+        val selection = contentSelection ?: return false
+        val target = contentSelectionTargetSlot(direction)
+        if (!ReaderContentSelectionRules.canExtendWithinChapter(target.chapterIndex, selection.chapterIndex)) {
+            return false
+        }
+        if (!target.isLoaded) {
+            pendingContentSelectionTurn = direction
+            return false
+        }
+        pendingPageChangeOrigin = TtsPageChangeOrigin.USER
+        when (direction) {
+            ReaderSelectionDirection.NEXT -> slotManager.shiftForward()
+            ReaderSelectionDirection.PREV -> slotManager.shiftBackward()
+        }
+        val pageView = slotManager.getPrimaryContentView()
+        val pageStart = pageView.chapterStartOffset
+        val pageEnd = pageStart + (pageView.textView.text?.length ?: 0)
+        val focus = ReaderContentSelectionRules.focusOffsetForDirection(
+            direction = direction,
+            targetPageStart = pageStart,
+            targetPageEnd = pageEnd
+        )
+        contentSelection = selection.moveFocus(focus)
+        return true
+    }
+
+    /** 目标页在翻页前未就绪：等它就绪后补翻一次（不做乐观翻页）。 */
+    private fun drainPendingContentSelectionTurn() {
+        val direction = pendingContentSelectionTurn ?: return
+        val selection = contentSelection ?: run {
+            pendingContentSelectionTurn = null
+            return
+        }
+        val target = contentSelectionTargetSlot(direction)
+        if (!ReaderContentSelectionRules.canExtendWithinChapter(target.chapterIndex, selection.chapterIndex)) {
+            pendingContentSelectionTurn = null
+            return
+        }
+        if (!target.isLoaded) return
+        pendingContentSelectionTurn = null
+        if (performContentSelectionTurn(direction)) {
+            applyReaderSelectionToPages()
+            if (!contentSelectionDragActive) notifyReaderSelectionChanged()
+            invalidate()
+        }
+    }
+
+    /** 手指移动时更新选区焦点（章节级偏移）。 */
+    private fun updateContentSelectionFocus(x: Float, y: Float) {
+        val selection = contentSelection ?: return
+        val pageView = slotManager.getPrimaryContentView()
+        // 只在手指落回正文里时跟随；手指停在页底留白/页外时不自动延伸到页尾，
+        // 终点交给用户单击指定（见 applyContentSelectionTapTarget）。
+        val offset = pageView.characterOffsetAt(x - pageView.left, y - pageView.top) ?: return
+        if (offset == selection.focus) return
+        contentSelection = selection.moveFocus(offset)
+    }
+
+    /**
+     * 自持跨页选区期间单击指定选区终点。
+     *
+     * 这是翻页后的主要交互：翻到新页后不必去抓手柄，直接点目标结尾即可。
+     * 点在本页留白/页底时钳制到本页末尾。
+     *
+     * @return true 表示这一下点击已被选区消费（不再切菜单、不再翻页）
+     */
+    private fun applyContentSelectionTapTarget(x: Float, y: Float): Boolean {
+        val selection = contentSelection ?: return false
+        val pageView = slotManager.getPrimaryContentView()
+        val offset = pageView.clampedCharacterOffsetAt(x - pageView.left, y - pageView.top)
+            ?: return false
+        contentSelection = selection.moveFocus(offset)
+        contentSelectionEdgeArmed = false
+        applyReaderSelectionToPages()
+        notifyReaderSelectionChanged()
+        invalidate()
+        return true
+    }
+
+    /**
+     * 手指越出正文区时翻页继续选择。
+     * 每翻一页后需要手指先回到正文区（带滞后余量）才允许再次触发，避免连翻。
+     */
+    private fun maybeTurnContentSelectionAtEdge(y: Float) {
+        val selection = contentSelection ?: return
+        if (isJumpSettling) return
+        val pageView = slotManager.getPrimaryContentView()
+        val tv = pageView.textView
+        val density = resources.displayMetrics.density
+        val threshold = CONTENT_SELECTION_EDGE_THRESHOLD_DP * density
+        val contentTop = pageView.top + tv.top + tv.totalPaddingTop.toFloat()
+        val contentBottom =
+            pageView.top + tv.top + tv.height - tv.totalPaddingBottom.toFloat()
+        val beyondTop = y < contentTop - threshold
+        val beyondBottom = y > contentBottom + threshold
+        val rearmMargin = CONTENT_SELECTION_EDGE_REARM_DP * density
+        if (!beyondTop && !beyondBottom) {
+            // 手指回到正文里：允许再次拖到页边翻下一页。
+            if (y > contentTop + rearmMargin && y < contentBottom - rearmMargin) {
+                contentSelectionEdgeArmed = true
+            }
+            return
+        }
+        // 翻过一页后必须先回正文再拖出去，避免手指停在页边时连翻；
+        // 新页的终点也可以直接单击指定（见 applyContentSelectionTapTarget）。
+        if (!contentSelectionEdgeArmed) return
+        val direction = ReaderContentSelectionRules.directionForEdge(beyondTop, beyondBottom) ?: return
+        val target = contentSelectionTargetSlot(direction)
+        if (!ReaderContentSelectionRules.canExtendWithinChapter(target.chapterIndex, selection.chapterIndex) ||
+            !target.isLoaded
+        ) {
+            notifyContentSelectionBoundaryReached()
+            return
+        }
+        if (performContentSelectionTurn(direction)) {
+            contentSelectionEdgeArmed = false
+        }
+    }
+
+    /** 自持选区期间 ReadView 独占手势流。 */
+    private fun handleContentSelectionDragTouch(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                contentSelectionEdgeArmed = true
+                contentSelectionNoTargetNotified = false
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                updateContentSelectionFocus(event.x, event.y)
+                maybeTurnContentSelectionAtEdge(event.y)
+                applyReaderSelectionToPages()
+                postInvalidateOnAnimation()
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                finishContentSelectionDrag()
+                return true
+            }
+        }
+        return true
+    }
+
+    /** 抓手柄：被抓住的那一端成为"焦点端"（随手指移动），另一端作锚点。 */
+    private fun grabContentSelectionHandle(isStartHandle: Boolean) {
+        contentSelection = contentSelection?.let { selection ->
+            if (isStartHandle) {
+                selection.copy(anchor = selection.end, focus = selection.start)
+            } else {
+                selection.copy(anchor = selection.start, focus = selection.end)
+            }
+        }
+        contentSelectionEdgeArmed = true
+        // 拖拽期间选区矩形每帧都在变，先让上层把菜单收起来，松手后再按新坐标弹出。
+        callbacks?.onReaderSelectionDragStarted()
+    }
+
+    /**
+     * 越界交接当帧完成接管：把手指位置立刻映射到新页，手柄就此跟手。
+     *
+     * @return true 表示这一帧是抬手/取消，拖拽已经在内部收尾
+     */
+    private fun beginContentSelectionTakeover(ev: MotionEvent): Boolean {
+        contentSelectionHandoffPending = false
+        contentSelectionDragActive = true
+        if (ev.actionMasked == MotionEvent.ACTION_UP ||
+            ev.actionMasked == MotionEvent.ACTION_CANCEL
+        ) {
+            finishContentSelectionDrag()
+            return true
+        }
+        updateContentSelectionFocus(ev.x, ev.y)
+        applyReaderSelectionToPages()
+        postInvalidateOnAnimation()
+        return false
+    }
+
+    /** 拖拽收尾：通知上层刷新选区菜单（此时选区仍保留，等用户点按或提交标注）。 */
+    private fun finishContentSelectionDrag() {
+        contentSelectionDragActive = false
+        contentSelectionHandoffPending = false
+        contentSelectionEdgeArmed = true
+        contentSelectionNoTargetNotified = false
+        // 把两端拖到一起（零长度选区）时视为取消，避免菜单停在一个已失效的范围上。
+        if (contentSelection?.isEmpty == true) {
+            clearReaderSelection()
+            return
+        }
+        applyReaderSelectionToPages()
+        notifyReaderSelectionChanged()
+        invalidate()
+    }
+
+    /** 把当前自持选区（若与某页相交）原位写入各页的瞬态高亮 span。 */
+    private fun applyReaderSelectionToPages() {
+        val selection = contentSelection
+        for (view in contentSelectionViews()) {
+            val slot = slotManager.getSlotForView(view) ?: continue
+            val chapterIndex = chapterIndexForSpreadView(slot, view)
+            val range = contentSelectionRangeOnView(view, chapterIndex, selection)
+            view.updateReaderSelection(range?.first, range?.second, contentSelectionColor)
+        }
+    }
+
+    /** 返回自持选区在本页上的**章节级**偏移区间；无交集时返回 null。 */
+    private fun contentSelectionRangeOnView(
+        view: PageContentView,
+        chapterIndex: Int,
+        selection: ReaderContentSelection?
+    ): Pair<Int, Int>? {
+        if (selection == null || selection.isEmpty || chapterIndex != selection.chapterIndex) return null
+        val length = view.textView.text?.length ?: 0
+        if (length <= 0) return null
+        val pageStart = view.chapterStartOffset
+        val pageEnd = pageStart + length
+        val start = maxOf(selection.start, pageStart)
+        val end = minOf(selection.end, pageEnd)
+        return if (end > start) start to end else null
+    }
+
+    private fun notifyReaderSelectionChanged() {
+        val info = buildOwnedSelectionInfo() ?: return
+        callbacks?.onReaderSelectionChanged(info)
+    }
+
+    /** 自持选区的完整快照（章节级范围 + 当前可见页的选区矩形）。 */
+    private fun buildOwnedSelectionInfo(): SelectionInfo? {
+        val selection = contentSelection?.takeIf { !it.isEmpty } ?: return null
+        val chapterText = slotManager.cachedChapterText(selection.chapterIndex) ?: return null
+        val rawText = selection.selectedText(chapterText)
+        val selectedText = if (currentChineseMode == "original") {
+            rawText
+        } else {
+            ChineseConverter.convert(rawText, currentChineseMode)
+        }
+        val rect = contentSelectionRect(selection)
+        return SelectionInfo(
+            selectedText = selectedText,
+            chapterIndex = selection.chapterIndex,
+            // 自持选区的 pageStart/pageEnd 直接是章节偏移；调用方应使用 startPosition/endPosition。
+            chapterStartOffset = 0,
+            pageStart = selection.start,
+            pageEnd = selection.end,
+            selTopY = rect.first,
+            selBottomY = rect.second,
+            selStartX = rect.third,
+            selEndX = rect.fourth,
+            startPosition = selection.start,
+            endPosition = selection.end,
+            owned = true
+        )
+    }
+
+    /** 当前可见页上的选区矩形（px），用于选区菜单定位；选区不在当前页时退回页面中部。 */
+    private fun contentSelectionRect(selection: ReaderContentSelection): Quadruple<Float, Float, Float, Float> {
+        val pageView = slotManager.getPrimaryContentView()
+        val tv = pageView.textView
+        val length = tv.text?.length ?: 0
+        val layout = tv.layout
+        val localStart = (selection.start - pageView.chapterStartOffset).coerceIn(0, length)
+        val localEnd = (selection.end - pageView.chapterStartOffset).coerceIn(0, length)
+        if (layout == null || length <= 0 || localEnd <= localStart) {
+            val centerY = pageView.top + height * 0.3f
+            return Quadruple(centerY, centerY + height * 0.1f, width * 0.2f, width * 0.8f)
+        }
+        val pageOffsetY = pageView.getPageVerticalOffset()
+        val topY = (pageView.top + tv.top + tv.totalPaddingTop + layout.getLineTop(
+            layout.getLineForOffset(localStart)
+        )).toFloat() + pageOffsetY
+        val bottomY = (pageView.top + tv.top + tv.totalPaddingTop + layout.getLineBottom(
+            layout.getLineForOffset((localEnd - 1).coerceAtLeast(0))
+        )).toFloat() + pageOffsetY
+        val viewOffsetX = pageView.left.toFloat()
+        val startHorizontal = (tv as? RoundedHighlightTextView)?.readerHorizontalPosition(localStart)
+            ?: layout.getPrimaryHorizontal(localStart)
+        val endHorizontal = (tv as? RoundedHighlightTextView)
+            ?.readerHorizontalPosition(localEnd.coerceAtMost(length), trailing = true)
+            ?: layout.getPrimaryHorizontal(localEnd.coerceAtMost(length - 1))
+        val startX = tv.left + tv.totalPaddingLeft + startHorizontal + viewOffsetX
+        val endX = tv.left + tv.totalPaddingLeft + endHorizontal + viewOffsetX
+        return Quadruple(topY, bottomY, minOf(startX, endX), maxOf(startX, endX))
+    }
+
+    /**
+     * 自持选区手柄的屏幕坐标：只绘制/命中落在当前可见页上的端点。
+     * start 端用 trailing=false，end 端用 trailing=true，与系统手柄几何一致。
+     */
+    private fun contentSelectionHandlePositions(
+        selection: ReaderContentSelection
+    ): List<Pair<Boolean, PointF>> {
+        val result = mutableListOf<Pair<Boolean, PointF>>()
+        val pageView = slotManager.getPrimaryContentView()
+        if (pageView.textView.text.isNullOrEmpty()) return result
+        fun add(endpoint: Int, trailing: Boolean, isStart: Boolean) {
+            val point = pageView.readerSelectionHandlePosition(endpoint, trailing) ?: return
+            result += isStart to PointF(pageView.left + point.x, pageView.top + point.y)
+        }
+        add(selection.start, false, true)
+        add(selection.end, true, false)
+        return result
+    }
+
+    /** @return true=起始手柄，false=结束手柄，null=没有命中手柄 */
+    private fun contentSelectionHandleHit(x: Float, y: Float): Boolean? {
+        val selection = contentSelection ?: return null
+        val radius = CONTENT_SELECTION_HANDLE_HIT_RADIUS_DP * resources.displayMetrics.density
+        contentSelectionHandlePositions(selection).forEach { (isStart, point) ->
+            if (abs(x - point.x) <= radius && abs(y - point.y) <= radius) return isStart
+        }
+        return null
+    }
+
+    private fun drawContentSelectionHandles(canvas: android.graphics.Canvas) {
+        val selection = contentSelection ?: return
+        if (contentSelectionHandleColor ushr 24 == 0) return
+        val positions = contentSelectionHandlePositions(selection)
+        if (positions.isEmpty()) return
+        val density = resources.displayMetrics.density
+        val radius = 8f * density
+        contentSelectionHandlePaint.color = contentSelectionHandleColor
+        positions.forEach { (_, point) ->
+            canvas.drawRect(
+                point.x - 1.5f,
+                point.y - radius + 2f * density,
+                point.x + 1.5f,
+                point.y,
+                contentSelectionHandlePaint
+            )
+            canvas.drawCircle(point.x, point.y, radius, contentSelectionHandlePaint)
+        }
     }
 
     /**
@@ -2423,12 +3142,20 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
      * 因为 setPageContent 创建新的 SpannableStringBuilder，旧 watcher 会丢失。
      */
     private fun setupSelectionWatcher(pageView: PageContentView) {
+        var installedWatcher: android.text.SpanWatcher? = null
         pageView.onTextSet = { sp ->
-            sp.setSpan(object : android.text.SpanWatcher {
+            installedWatcher?.let { old ->
+                sp.getSpans(0, sp.length, android.text.SpanWatcher::class.java)
+                    .filter { it === old }
+                    .forEach(sp::removeSpan)
+            }
+            val watcher = object : android.text.SpanWatcher {
                 private fun checkSelection(s: android.text.Spannable) {
                     val start = android.text.Selection.getSelectionStart(s)
                     val end = android.text.Selection.getSelectionEnd(s)
                     if (start >= 0 && end > start) {
+                        // 新的系统选区意味着用户重新开始选词：自持跨页选区让位。
+                        if (contentSelection != null) clearReaderSelection()
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
                             callbacks?.onSelectionStarted(pageView)
                         }
@@ -2445,7 +3172,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                     }
                 }
                 override fun onSpanRemoved(s: android.text.Spannable, what: Any, start: Int, end: Int) {}
-            }, 0, sp.length, android.text.Spannable.SPAN_INCLUSIVE_INCLUSIVE)
+            }
+            installedWatcher = watcher
+            sp.setSpan(watcher, 0, sp.length, android.text.Spannable.SPAN_INCLUSIVE_INCLUSIVE)
         }
     }
 

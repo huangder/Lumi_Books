@@ -32,6 +32,26 @@ class ReaderSavedProgressTest {
     }
 
     @Test
+    fun `book layout chapter turn lands previous chapter at its end`() {
+        assertEquals(
+            EpubChapterTurnTarget(chapterIndex = 2, chapterFraction = 1f),
+            epubChapterTurnTarget(currentChapterIndex = 3, chapterCount = 5, direction = -1)
+        )
+        assertEquals(
+            EpubChapterTurnTarget(chapterIndex = 4, chapterFraction = 0f),
+            epubChapterTurnTarget(currentChapterIndex = 3, chapterCount = 5, direction = 1)
+        )
+        assertEquals(
+            null,
+            epubChapterTurnTarget(currentChapterIndex = 0, chapterCount = 5, direction = -1)
+        )
+        assertEquals(
+            null,
+            epubChapterTurnTarget(currentChapterIndex = 4, chapterCount = 5, direction = 1)
+        )
+    }
+
+    @Test
     fun `invalid counts are safe`() {
         assertEquals(0f, paged(chapter = 0, chapters = 0, page = 0, pages = 1), 0f)
         assertEquals(0f, paged(chapter = 0, chapters = 1, page = 0, pages = 0), 0f)

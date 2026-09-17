@@ -6,11 +6,14 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.text.Spannable
 import android.text.SpannableString
+import android.text.Selection
+import android.text.Layout
 import android.util.TypedValue
 import android.view.View
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlin.math.roundToInt
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -18,6 +21,21 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RoundedHighlightRenderingInstrumentedTest {
+    @Test
+    fun ttsHighlightUsesTheUnifiedTenPercentContrastBoost() {
+        val lightBackground = Color.WHITE
+        val darkBackground = 0xFF111111.toInt()
+        val oldLight = TtsSentenceHighlightSpan.computeHighlightColor(lightBackground, 0.06f)
+        val newLight = TtsSentenceHighlightSpan.computeHighlightColor(lightBackground)
+        val oldDark = TtsSentenceHighlightSpan.computeHighlightColor(darkBackground, 0.06f)
+        val newDark = TtsSentenceHighlightSpan.computeHighlightColor(darkBackground)
+
+        assertEquals(Color.alpha(oldLight), Color.alpha(newLight))
+        assertEquals(Color.alpha(oldDark), Color.alpha(newDark))
+        assertTrue("light TTS color must be visibly darker", Color.red(newLight) < Color.red(oldLight))
+        assertTrue("dark TTS color must be visibly lighter", Color.red(newDark) > Color.red(oldDark))
+    }
+
     @Test
     fun visiblePagedUnderlineUsesWrappedLineEndAndGlyphDescent() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -242,6 +260,176 @@ class RoundedHighlightRenderingInstrumentedTest {
     }
 
     @Test
+    fun savedHighlightHasNoGapBetweenAdjacentGlyphs() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+
+        instrumentation.runOnMainSync {
+            val context = instrumentation.targetContext
+            val density = context.resources.displayMetrics.density
+            val text = "大江东去，浪淘尽，千古风流人物。故垒西边，人道是，三国周郎赤壁。"
+            val highlightStart = text.indexOf('江')
+            val highlightEnd = text.indexOf('故')
+            val highlightColor = 0xFFFF5F64.toInt()
+            val view = PageContentView(context).apply {
+                setReaderBackground(Color.WHITE, null)
+                configure(
+                    fontSizePx = 20f * density,
+                    textColor = Color.BLACK,
+                    lineHeightMult = 1.6f,
+                    marginLeftPx = 20f * density,
+                    marginTopPx = 20f * density,
+                    marginRightPx = 20f * density,
+                    marginBottomPx = 20f * density
+                )
+                setPageContent(
+                    fullText = text,
+                    startChar = 0,
+                    endChar = text.length,
+                    highlights = listOf(Triple(highlightStart, highlightEnd, highlightColor))
+                )
+            }
+            val width = (420f * density).roundToInt()
+            val height = (240f * density).roundToInt()
+            view.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+            )
+            view.layout(0, 0, width, height)
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap))
+
+            val layout = requireNotNull(view.textView.layout)
+            val line = layout.getLineForOffset(highlightStart)
+            val sampleY = view.textView.totalPaddingTop +
+                (layout.getLineTop(line) + 4f * density).roundToInt()
+            val highlighted = (0 until width).filter { x ->
+                isHighlightPixel(bitmap.getPixel(x, sampleY), highlightColor)
+            }
+            assertTrue("expected a highlighted run on this line", highlighted.size > 20)
+
+            val first = highlighted.first()
+            val last = highlighted.last()
+            // 逐字绘制时字与字之间会留下数像素空档；按行合并后不应再有这种断缝。
+            val largestGap = highlighted
+                .filter { it in first..last }
+                .zipWithNext { a, b -> b - a }
+                .maxOrNull() ?: 0
+            assertTrue(
+                "highlight must not break between adjacent glyphs, largestGap=$largestGap",
+                largestGap <= 3
+            )
+        }
+    }
+
+    @Test
+    fun selectionRendersRoundedLinesWithGaps() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+
+        instrumentation.runOnMainSync {
+            val context = instrumentation.targetContext
+            val density = context.resources.displayMetrics.density
+            val text = "大江东去，浪淘尽，千古风流人物。故垒西边，人道是，三国周郎赤壁。"
+            val view = PageContentView(context).apply {
+                setReaderBackground(Color.WHITE, null)
+                configure(
+                    fontSizePx = 20f * density,
+                    textColor = Color.BLACK,
+                    lineHeightMult = 1.6f,
+                    marginLeftPx = 20f * density,
+                    marginTopPx = 20f * density,
+                    marginRightPx = 20f * density,
+                    marginBottomPx = 20f * density
+                )
+                setPageContent(fullText = text, startChar = 0, endChar = text.length)
+            }
+            val width = (420f * density).roundToInt()
+            val height = (240f * density).roundToInt()
+            view.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+            )
+            view.layout(0, 0, width, height)
+
+            val spannable = requireNotNull(view.textView.text as? Spannable)
+            val selectionColor = 0x66FF5F64
+            (view.textView as? RoundedHighlightTextView)?.readerSelectionColor = selectionColor
+            val start = text.indexOf('江')
+            val end = text.length - 1
+            Selection.setSelection(spannable, start, end)
+            val layout = requireNotNull(view.textView.layout)
+            val firstLine = layout.getLineForOffset(start)
+            val lastLine = layout.getLineForOffset(end - 1)
+            assertTrue("fixture must span more than one line", lastLine > firstLine)
+
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap))
+
+            val lineBoundaryY = view.textView.totalPaddingTop + layout.getLineBottom(firstLine)
+            val highlightedOnBoundary = (0 until width).count { x ->
+                isHighlightPixel(bitmap.getPixel(x, lineBoundaryY), selectionColor)
+            }
+            assertEquals("selection rows must stay separated", 0, highlightedOnBoundary)
+
+            val segmentLeft = layout.getPrimaryHorizontal(start)
+            val outerLeft = (
+                view.textView.totalPaddingLeft + segmentLeft - 3f * density
+                ).roundToInt().coerceIn(0, width - 1)
+            val top = (
+                view.textView.totalPaddingTop + layout.getLineTop(firstLine) + 1.5f * density
+                ).roundToInt().coerceIn(0, height - 1)
+            assertFalse(
+                "selection corner must be rounded",
+                isHighlightPixel(bitmap.getPixel(outerLeft, top), selectionColor)
+            )
+        }
+    }
+
+    @Test
+    fun clearingSelectionEndsMagnifierSession() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+
+        instrumentation.runOnMainSync {
+            val context = instrumentation.targetContext
+            val density = context.resources.displayMetrics.density
+            val text = "大江东去，浪淘尽，千古风流人物。"
+            val view = PageContentView(context).apply {
+                setReaderBackground(Color.WHITE, null)
+                configure(
+                    fontSizePx = 20f * density,
+                    textColor = Color.BLACK,
+                    lineHeightMult = 1.6f,
+                    marginLeftPx = 20f * density,
+                    marginTopPx = 20f * density,
+                    marginRightPx = 20f * density,
+                    marginBottomPx = 20f * density
+                )
+                setPageContent(fullText = text, startChar = 0, endChar = text.length)
+            }
+            val width = (420f * density).roundToInt()
+            val height = (240f * density).roundToInt()
+            view.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+            )
+            view.layout(0, 0, width, height)
+
+            val spannable = requireNotNull(view.textView.text as? Spannable)
+            Selection.setSelection(spannable, 1, 6)
+            view.clearSelection()
+
+            assertEquals(
+                Selection.getSelectionStart(spannable),
+                Selection.getSelectionEnd(spannable)
+            )
+            val selectionView = view.textView as? RoundedHighlightTextView
+            assertFalse(
+                "clearing the selection must end the magnifier session",
+                selectionView?.hasActiveReaderSelectionSession == true
+            )
+        }
+    }
+
+    @Test
     fun roundedHighlightIsCenteredOnFontMetricsInSpaciousLine() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
@@ -288,6 +476,282 @@ class RoundedHighlightRenderingInstrumentedTest {
             assertTrue(
                 "highlight center must follow the glyph center instead of the line box",
                 kotlin.math.abs(actualCenter - expectedCenter) <= 1.5f * density
+            )
+        }
+    }
+
+    @Test
+    fun singleCharacterHighlightUsesTheCharacterAdvanceWithoutHorizontalDrift() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val context = instrumentation.targetContext
+            val density = context.resources.displayMetrics.density
+            val color = Color.RED
+            val value = SpannableString("甲小贵族").apply {
+                setSpan(ReaderHighlightSpan(color), 1, 2, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            val padding = (24f * density).roundToInt()
+            val view = RoundedHighlightTextView(context).apply {
+                includeFontPadding = false
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
+                setPadding(padding, 0, padding, 0)
+                text = value
+            }
+            val width = (360f * density).roundToInt()
+            val height = (90f * density).roundToInt()
+            view.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+            )
+            view.layout(0, 0, width, height)
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap))
+
+            val layout = requireNotNull(view.layout)
+            val expectedCenter = view.totalPaddingLeft +
+                (layout.getPrimaryHorizontal(1) + layout.getPrimaryHorizontal(2)) / 2f
+            val redPixels = (0 until height).flatMap { y ->
+                (0 until width).mapNotNull { x ->
+                    if (Color.red(bitmap.getPixel(x, y)) > 220 &&
+                        Color.green(bitmap.getPixel(x, y)) < 80 &&
+                        Color.blue(bitmap.getPixel(x, y)) < 80
+                    ) x else null
+                }
+            }
+            assertTrue("single-character highlight must render visible pixels", redPixels.isNotEmpty())
+            val actualCenter = (redPixels.minOrNull()!! + redPixels.maxOrNull()!!) / 2f
+            assertTrue(
+                "highlight center must align with the selected character advance: actual=$actualCenter expected=$expectedCenter",
+                kotlin.math.abs(actualCenter - expectedCenter) <= 2f * density
+            )
+        }
+    }
+
+    @Test
+    fun selectionBackgroundUsesJustifiedCharacterCoordinates() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val context = instrumentation.targetContext
+            val density = context.resources.displayMetrics.density
+            val selectionColor = Color.BLUE
+            val value = SpannableString("甲乙丙丁戊己庚辛壬癸甲乙丙丁戊己庚辛壬癸")
+            val padding = (24f * density).roundToInt()
+            val view = RoundedHighlightTextView(context).apply {
+                includeFontPadding = false
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
+                setPadding(padding, 0, padding, 0)
+                readerJustificationMode = Layout.JUSTIFICATION_MODE_INTER_CHARACTER
+                readerSelectionColor = selectionColor
+                highlightColor = Color.TRANSPARENT
+                text = value
+            }
+            val width = (360f * density).roundToInt()
+            val height = (180f * density).roundToInt()
+            view.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+            )
+            view.layout(0, 0, width, height)
+            val editable = view.text as Spannable
+            Selection.setSelection(editable, 3, 4)
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap))
+
+            val layout = requireNotNull(view.layout)
+            val line = layout.getLineForOffset(3)
+            val geometry = ReaderLineGeometry(
+                layout = layout,
+                text = editable,
+                justificationMode = Layout.JUSTIFICATION_MODE_INTER_CHARACTER
+            )
+            val expected = requireNotNull(geometry.horizontalRange(line, 3, 4))
+            val y = view.totalPaddingTop +
+                (layout.getLineTop(line) + layout.getLineBottom(line)) / 2
+            val selectedPixels = (0 until width).filter { x ->
+                val pixel = bitmap.getPixel(x, y)
+                Color.blue(pixel) > 180 && Color.red(pixel) < 100
+            }
+            assertTrue("custom selection background must be visible", selectedPixels.isNotEmpty())
+            val actualLeft = selectedPixels.minOrNull()!!.toFloat()
+            val actualRight = selectedPixels.maxOrNull()!!.toFloat()
+            assertTrue("selection left must follow justified position", actualLeft >= expected.left - 4f * density)
+            assertTrue("selection right must follow justified position", actualRight <= expected.right + 4f * density)
+        }
+    }
+
+    @Test
+    fun readerLineGeometryExpandsOnlyEligibleInterCharacterLines() {
+        if (android.os.Build.VERSION.SDK_INT < 35) return
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val context = instrumentation.targetContext
+            val density = context.resources.displayMetrics.density
+            val value = SpannableString("甲乙丙丁戊己庚辛壬癸甲乙丙丁戊己庚辛壬癸")
+            val view = RoundedHighlightTextView(context).apply {
+                includeFontPadding = false
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+                setPadding((20f * density).roundToInt(), 0, (20f * density).roundToInt(), 0)
+                readerJustificationMode = Layout.JUSTIFICATION_MODE_INTER_CHARACTER
+                text = value
+            }
+            val width = (280f * density).roundToInt()
+            val height = (240f * density).roundToInt()
+            view.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+            )
+            view.layout(0, 0, width, height)
+            val layout = requireNotNull(view.layout)
+            assertTrue("fixture must wrap", layout.lineCount >= 2)
+            val geometry = ReaderLineGeometry(
+                layout,
+                value,
+                Layout.JUSTIFICATION_MODE_INTER_CHARACTER
+            )
+            val firstLineStart = layout.getLineStart(0)
+            val firstLineEnd = readerLineContentEnd(value, firstLineStart, layout.getLineEnd(0))
+            val firstRange = requireNotNull(geometry.horizontalRange(0, firstLineStart, firstLineEnd))
+            val targetRight = layout.getParagraphRight(0).toFloat()
+            assertTrue(
+                "the justified first line must reach the paragraph edge: " +
+                    "right=${firstRange.right} target=$targetRight",
+                firstRange.right >= targetRight - 4f * density
+            )
+            var previous = firstRange.left
+            for (offset in firstLineStart..firstLineEnd) {
+                val position = requireNotNull(geometry.horizontalPosition(offset))
+                assertTrue("positions must be monotonic at offset=$offset", position + 0.5f >= previous)
+                previous = position
+            }
+
+            val lastLine = layout.lineCount - 1
+            val lastStart = layout.getLineStart(lastLine)
+            val lastEnd = readerLineContentEnd(value, lastStart, layout.getLineEnd(lastLine))
+            if (lastEnd > lastStart) {
+                assertEquals(
+                    layout.getPrimaryHorizontal(lastEnd - 1),
+                    requireNotNull(geometry.horizontalPosition(lastEnd - 1)),
+                    1f
+                )
+            }
+        }
+    }
+
+    /**
+     * A page whose text ends mid-paragraph forces its own final line, but the
+     * short paragraph-final lines earlier on that page must keep their natural
+     * width instead of being stretched into unreadable letter spacing.
+     */
+    @Test
+    fun forcedPageEndJustificationLeavesParagraphFinalLinesAtNaturalWidth() {
+        if (android.os.Build.VERSION.SDK_INT < 35) return
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val context = instrumentation.targetContext
+            val density = context.resources.displayMetrics.density
+            val value = SpannableString(
+                "短句。\n" + "甲乙丙丁戊己庚辛壬癸".repeat(6)
+            )
+            val view = RoundedHighlightTextView(context).apply {
+                includeFontPadding = false
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+                setPadding((20f * density).roundToInt(), 0, (20f * density).roundToInt(), 0)
+                readerJustificationMode = Layout.JUSTIFICATION_MODE_INTER_CHARACTER
+                text = value
+            }
+            val width = (280f * density).roundToInt()
+            val height = (240f * density).roundToInt()
+            view.measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+            )
+            view.layout(0, 0, width, height)
+            val layout = requireNotNull(view.layout)
+            assertTrue("fixture must produce a wrapped paragraph", layout.lineCount >= 3)
+
+            // The page ends mid-paragraph, so the page's final line is forced.
+            val geometry = ReaderLineGeometry(
+                layout = layout,
+                text = value,
+                justificationMode = Layout.JUSTIFICATION_MODE_INTER_CHARACTER,
+                forceLastLineJustification = true
+            )
+
+            val paragraphFinalLine = 0
+            val paragraphFinalStart = layout.getLineStart(paragraphFinalLine)
+            val paragraphFinalEnd = readerLineContentEnd(
+                value,
+                paragraphFinalStart,
+                layout.getLineEnd(paragraphFinalLine)
+            )
+            assertTrue(
+                "fixture's first line must be a paragraph-final line",
+                readerLineEndsParagraph(value, paragraphFinalStart, layout.getLineEnd(paragraphFinalLine))
+            )
+            val paragraphFinalRange = requireNotNull(
+                geometry.horizontalRange(paragraphFinalLine, paragraphFinalStart, paragraphFinalEnd)
+            )
+            val paragraphFinalTarget = layout.getParagraphRight(paragraphFinalLine).toFloat()
+            assertTrue(
+                "paragraph-final line must stay at its natural width: " +
+                    "right=${paragraphFinalRange.right} target=$paragraphFinalTarget",
+                paragraphFinalRange.right <= paragraphFinalTarget - 20f * density
+            )
+
+            val lastLine = layout.lineCount - 1
+            val lastStart = layout.getLineStart(lastLine)
+            val lastEnd = readerLineContentEnd(value, lastStart, layout.getLineEnd(lastLine))
+            val lastRange = requireNotNull(geometry.horizontalRange(lastLine, lastStart, lastEnd))
+            assertTrue(
+                "page-final continuation line must still be justified: " +
+                    "right=${lastRange.right} target=${layout.getParagraphRight(lastLine)}",
+                lastRange.right >= layout.getParagraphRight(lastLine) - 4f * density
+            )
+        }
+    }
+
+    @Test
+    fun readerLineGeometryExpandsInterWordSpacesButNotPlainLeftAlignment() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val context = instrumentation.targetContext
+            val density = context.resources.displayMetrics.density
+            val value = SpannableString("one two three four five six seven eight nine")
+            fun build(mode: Int): Pair<RoundedHighlightTextView, ReaderLineGeometry> {
+                val view = RoundedHighlightTextView(context).apply {
+                    includeFontPadding = false
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+                    setPadding((16f * density).roundToInt(), 0, (16f * density).roundToInt(), 0)
+                    readerJustificationMode = mode
+                    text = value
+                }
+                val width = (250f * density).roundToInt()
+                val height = (220f * density).roundToInt()
+                view.measure(
+                    View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+                )
+                view.layout(0, 0, width, height)
+                return view to ReaderLineGeometry(requireNotNull(view.layout), value, mode)
+            }
+
+            val (wordView, wordGeometry) = build(Layout.JUSTIFICATION_MODE_INTER_WORD)
+            val wordLayout = requireNotNull(wordView.layout)
+            assertTrue("fixture must wrap", wordLayout.lineCount >= 2)
+            val wordEnd = readerLineContentEnd(value, wordLayout.getLineStart(0), wordLayout.getLineEnd(0))
+            val wordRange = requireNotNull(wordGeometry.horizontalRange(0, wordLayout.getLineStart(0), wordEnd))
+            assertTrue(
+                "inter-word line must use the available width",
+                wordRange.right >= wordLayout.getParagraphRight(0) - 4f * density
+            )
+
+            val (plainView, plainGeometry) = build(Layout.JUSTIFICATION_MODE_NONE)
+            val plainLayout = requireNotNull(plainView.layout)
+            val plainOffset = minOf(2, value.length)
+            assertEquals(
+                plainLayout.getPrimaryHorizontal(plainOffset),
+                requireNotNull(plainGeometry.horizontalPosition(plainOffset)),
+                0.01f
             )
         }
     }

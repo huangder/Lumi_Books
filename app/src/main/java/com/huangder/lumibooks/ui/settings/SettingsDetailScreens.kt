@@ -1,5 +1,8 @@
 package com.huangder.lumibooks.ui.settings
 
+import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
+import com.huangder.lumibooks.ui.icons.AppIcons
+
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
@@ -43,7 +46,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -51,47 +53,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Brightness6
-import androidx.compose.material.icons.outlined.Animation
-import androidx.compose.material.icons.outlined.Apps
-import androidx.compose.material.icons.outlined.BorderStyle
-import androidx.compose.material.icons.outlined.Code
-import androidx.compose.material.icons.outlined.DeleteForever
-import androidx.compose.material.icons.outlined.DeleteSweep
-import androidx.compose.material.icons.outlined.Download
-import androidx.compose.material.icons.outlined.ExpandMore
-import androidx.compose.material.icons.outlined.FontDownload
-import androidx.compose.material.icons.outlined.FormatSize
-import androidx.compose.material.icons.outlined.FormatBold
-import androidx.compose.material.icons.outlined.RecordVoiceOver
-import androidx.compose.material.icons.outlined.Subtitles
-import androidx.compose.material.icons.outlined.TextFields
-import androidx.compose.material.icons.outlined.Forum
-import androidx.compose.material.icons.outlined.Groups
-import androidx.compose.material.icons.outlined.HdrOn
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Landscape
-import androidx.compose.material.icons.outlined.LineWeight
-import androidx.compose.material.icons.outlined.NightsStay
-import androidx.compose.material.icons.outlined.VolumeUp
-import androidx.compose.material.icons.outlined.Opacity
-import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material.icons.outlined.PhoneAndroid
-import androidx.compose.material.icons.outlined.Speed
-import androidx.compose.material.icons.outlined.Source
-import androidx.compose.material.icons.outlined.SwapHoriz
-import androidx.compose.material.icons.outlined.SwipeRightAlt
-import androidx.compose.material.icons.outlined.Timer
-import androidx.compose.material.icons.outlined.Title
-import androidx.compose.material.icons.outlined.Upload
-import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.outlined.Translate
-import androidx.compose.material.icons.outlined.SystemUpdateAlt
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.CircularProgressIndicator
@@ -112,6 +73,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
@@ -136,7 +98,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -166,7 +127,6 @@ import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.huangder.lumibooks.tts.ExternalTtsConfig
 import com.huangder.lumibooks.tts.FloatingSubtitleSettings
 import com.huangder.lumibooks.tts.TtsProviderSelection
-import com.huangder.lumibooks.ui.theme.fangSongFamily
 import com.huangder.lumibooks.ui.components.LiquidGlassSwitch
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
@@ -174,7 +134,6 @@ import com.huangder.lumibooks.ui.components.LiquidGlassDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.LiquidGlassButton
 import com.huangder.lumibooks.ui.components.G2ContinuousCornerShape
-import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 import com.huangder.lumibooks.ui.components.AppUpdateDialog
 import com.huangder.lumibooks.ui.components.PolicyUpdateDialog
@@ -193,7 +152,6 @@ import com.huangder.lumibooks.domain.model.normalizeAppAccentHex
 import com.huangder.lumibooks.domain.model.parseAppAccentArgb
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.cardOutline
-import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.ui.animation.AppEasing
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -224,17 +182,6 @@ fun DetailPage(
     content: @Composable () -> Unit
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
-    val scrollState = rememberScrollState()
-    var largeTitleHeight by remember { mutableFloatStateOf(0f) }
-    val collapsedTitleAlpha = if (largeTitleHeight > 0f) {
-        detailTitleCollapseFraction(
-            titleTop = -scrollState.value.toFloat(),
-            titleHeight = largeTitleHeight,
-            viewportTop = 0f
-        )
-    } else {
-        0f
-    }
     val pageBackdrop = rememberLayerBackdrop()
     val pageControlsBackdrop = rememberLayerBackdrop()
     val activeBackdrop = pageBackdrop.takeIf { isLiquidGlass }
@@ -266,69 +213,12 @@ fun DetailPage(
                 // Page overlays sample the completed pageBackdrop. Inline controls use the
                 // background-only source so they never capture surfaces drawing that same source.
                 ProvideLiquidGlassBackdrop(activeControlsBackdrop) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .statusBarsPadding(),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                    CollapsingSettingsScaffold(
+                        title = title,
+                        onBack = onBack,
+                        modifier = Modifier.fillMaxSize()
                     ) {
-                        // 顶栏
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = AppSpace.sm, vertical = AppSpace.sm),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            LiquidGlassIconButton(
-                                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                                contentDescription = stringResource(R.string.back),
-                                onClick = onBack,
-                                settingsBackButton = true
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .padding(horizontal = AppSpace.sm),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = title,
-                                    fontSize = AppType.Section,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = resolveAppFontFamily(fangSongFamily()),
-                                    color = AppColors.TextPrimary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.graphicsLayer {
-                                        alpha = collapsedTitleAlpha
-                                    }
-                                )
-                            }
-                            Spacer(Modifier.size(48.dp))
-                        }
-                        Column(
-                            modifier = Modifier
-                                .widthIn(max = 840.dp)
-                                .fillMaxWidth()
-                                .weight(1f)
-                                .imePadding()
-                                .verticalScroll(scrollState)
-                        ) {
-                            Text(
-                                text = title,
-                                modifier = Modifier
-                                    .padding(horizontal = AppSpace.lg, vertical = AppSpace.sm)
-                                    .onSizeChanged { size ->
-                                        largeTitleHeight = size.height.toFloat()
-                                    },
-                                fontSize = AppType.Display,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = resolveAppFontFamily(fangSongFamily()),
-                                color = AppColors.TextPrimary
-                            )
-                            content()
-                            Spacer(Modifier.height(120.dp))
-                        }
+                        content()
                     }
                 }
             }
@@ -358,7 +248,7 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
             }.padding(AppSpace.md),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Outlined.Palette, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
+            Icon(AppIcons.Palette, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(AppSpace.md))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -372,7 +262,7 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
                     color = AppColors.TextSecondary
                 )
             }
-            Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+            Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
         }
         SettingsDivider()
         Row(
@@ -388,7 +278,7 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                Icons.Outlined.Animation,
+                AppIcons.FilmStrip,
                 null,
                 tint = if (uiState.eInkModeEnabled) AppColors.TextSecondary.copy(alpha = 0.4f) else AppColors.TextSecondary,
                 modifier = Modifier.size(22.dp)
@@ -410,7 +300,7 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
                     color = AppColors.TextSecondary
                 )
             }
-            Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+            Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
         }
     }
 
@@ -424,7 +314,7 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                Icons.Outlined.FormatBold,
+                AppIcons.TextB,
                 contentDescription = null,
                 tint = AppColors.TextSecondary,
                 modifier = Modifier.size(22.dp)
@@ -464,7 +354,7 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                Icons.Outlined.Palette,
+                AppIcons.Palette,
                 contentDescription = null,
                 tint = AppColors.TextSecondary,
                 modifier = Modifier.size(22.dp)
@@ -483,7 +373,7 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
                     color = AppColors.TextSecondary
                 )
             }
-            Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+            Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
         }
     }
 
@@ -504,7 +394,7 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                Icons.Outlined.Subtitles,
+                AppIcons.Subtitles,
                 contentDescription = null,
                 tint = AppColors.TextSecondary,
                 modifier = Modifier.size(22.dp)
@@ -522,7 +412,7 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
                     color = AppColors.TextSecondary
                 )
             }
-            Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+            Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
         }
     }
 
@@ -550,7 +440,7 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                Icons.Outlined.RecordVoiceOver,
+                AppIcons.MicrophoneStage,
                 contentDescription = null,
                 tint = AppColors.TextSecondary,
                 modifier = Modifier.size(22.dp)
@@ -571,7 +461,7 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
                 )
             }
             Icon(
-                Icons.Outlined.ChevronRight,
+                AppIcons.CaretRight,
                 contentDescription = null,
                 tint = AppColors.TextSecondary,
                 modifier = Modifier.size(20.dp)
@@ -670,7 +560,7 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                Icons.Outlined.TextFields,
+                AppIcons.TextAa,
                 contentDescription = null,
                 tint = AppColors.TextSecondary,
                 modifier = Modifier.size(22.dp)
@@ -702,17 +592,17 @@ private fun ReadingSettingsBasicDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
 
     DetailCard {
-        SettingsSliderItem(Icons.Outlined.FormatSize, stringResource(R.string.label_font_size), uiState.fontSize, 12f..28f, "${uiState.fontSize.toInt()} sp", step = 1f) { viewModel.saveFontSize(it) }
+        SettingsSliderItem(AppIcons.TextAa, stringResource(R.string.label_font_size), uiState.fontSize, 12f..28f, "${uiState.fontSize.toInt()} sp", step = 1f) { viewModel.saveFontSize(it) }
         SettingsDivider()
-        SettingsSliderItem(Icons.Outlined.LineWeight, stringResource(R.string.label_line_height), uiState.lineHeight, 1.0f..2.5f, String.format("%.1f", uiState.lineHeight)) { viewModel.saveLineHeight(it) }
+        SettingsSliderItem(AppIcons.LineSegments, stringResource(R.string.label_line_height), uiState.lineHeight, 1.0f..2.5f, String.format("%.1f", uiState.lineHeight)) { viewModel.saveLineHeight(it) }
         SettingsDivider()
-        SettingsSliderItem(Icons.Outlined.Title, stringResource(R.string.label_letter_spacing), uiState.letterSpacing, 0f..0.1f, String.format("%.2f em", uiState.letterSpacing), step = 0.01f) { viewModel.saveLetterSpacing(it) }
+        SettingsSliderItem(AppIcons.TextT, stringResource(R.string.label_letter_spacing), uiState.letterSpacing, 0f..0.1f, String.format("%.2f em", uiState.letterSpacing), step = 0.01f) { viewModel.saveLetterSpacing(it) }
         SettingsDivider()
         FontTypeRow(uiState.fontType) { viewModel.saveFontType(it) }
         SettingsDivider()
-        SettingsSliderItem(Icons.Outlined.Landscape, stringResource(R.string.label_margin_horiz), uiState.marginHoriz, 0f..80f, "${uiState.marginHoriz.toInt()} dp", step = 1f) { viewModel.saveMarginHoriz(it) }
+        SettingsSliderItem(AppIcons.FrameCorners, stringResource(R.string.label_margin_horiz), uiState.marginHoriz, 0f..80f, "${uiState.marginHoriz.toInt()} dp", step = 1f) { viewModel.saveMarginHoriz(it) }
         SettingsDivider()
-        SettingsSliderItem(Icons.Outlined.Landscape, stringResource(R.string.label_margin_vert), uiState.marginVert, 0f..120f, "${uiState.marginVert.toInt()} dp", step = 1f) { viewModel.saveMarginVert(it) }
+        SettingsSliderItem(AppIcons.FrameCorners, stringResource(R.string.label_margin_vert), uiState.marginVert, 0f..120f, "${uiState.marginVert.toInt()} dp", step = 1f) { viewModel.saveMarginVert(it) }
     }
 }
 
@@ -720,6 +610,8 @@ private fun ReadingSettingsBasicDetail(viewModel: SettingsViewModel) {
 fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val settings = uiState.floatingSubtitleSettings
+    // 生命周期观察者只以 lifecycleOwner 为 key，必须用最新值，否则预览会一直用首次组合时的默认位置。
+    val currentSettings by rememberUpdatedState(settings)
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val configuration = LocalConfiguration.current
@@ -753,7 +645,7 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
                     hasOverlayPermission = Settings.canDrawOverlays(context)
                     viewModel.refreshFloatingSubtitlePermission()
                     viewModel.setFloatingSubtitlePreviewActive(hasOverlayPermission)
-                    if (hasOverlayPermission) viewModel.previewFloatingSubtitleSettings(settings)
+                    if (hasOverlayPermission) viewModel.previewFloatingSubtitleSettings(currentSettings)
                 }
                 Lifecycle.Event.ON_PAUSE -> viewModel.setFloatingSubtitlePreviewActive(false)
                 else -> Unit
@@ -762,7 +654,7 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
         lifecycleOwner.lifecycle.addObserver(observer)
         if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
             viewModel.setFloatingSubtitlePreviewActive(hasOverlayPermission)
-            if (hasOverlayPermission) viewModel.previewFloatingSubtitleSettings(settings)
+            if (hasOverlayPermission) viewModel.previewFloatingSubtitleSettings(currentSettings)
         }
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
@@ -770,12 +662,17 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
         }
     }
 
+    // 进入页面时 DataStore 的读取晚于首次组合，参数到达后要重新应用一次预览位置。
+    LaunchedEffect(settings, hasOverlayPermission) {
+        if (hasOverlayPermission) viewModel.previewFloatingSubtitleSettings(settings)
+    }
+
     DetailCard {
         Row(
             modifier = Modifier.fillMaxWidth().padding(AppSpace.md),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Outlined.Subtitles, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
+            Icon(AppIcons.Subtitles, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(AppSpace.md))
             Column(Modifier.weight(1f)) {
                 Text(stringResource(R.string.floating_subtitle_enabled), fontSize = AppType.Body, color = AppColors.TextPrimary)
@@ -798,13 +695,13 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
                 modifier = Modifier.fillMaxWidth().clickable { openOverlayPermissionSettings() }.padding(AppSpace.md),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Outlined.Info, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
+                Icon(AppIcons.Info, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
                 Spacer(Modifier.width(AppSpace.md))
                 Column(Modifier.weight(1f)) {
                     Text(stringResource(R.string.floating_subtitle_permission_missing), fontSize = AppType.Body, color = AppColors.TextPrimary)
                     Text(stringResource(R.string.floating_subtitle_permission_missing_desc), fontSize = AppType.Caption, color = AppColors.TextSecondary)
                 }
-                Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+                Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
             }
         }
     }
@@ -812,7 +709,7 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
     FloatingSubtitleSectionTitle(stringResource(R.string.floating_subtitle_position_section))
     DetailCard(horizontalPadding = 12.dp) {
         SettingsSliderItem(
-            Icons.Outlined.SwapHoriz,
+            AppIcons.ArrowsLeftRight,
             stringResource(R.string.floating_subtitle_x_position),
             settings.xFraction * 100f,
             0f..100f,
@@ -832,7 +729,7 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
         ) { viewModel.saveFloatingSubtitleSettings(settings.copy(xFraction = it / 100f)) }
         SettingsDivider()
         SettingsSliderItem(
-            Icons.Outlined.ExpandMore,
+            AppIcons.CaretDown,
             stringResource(R.string.floating_subtitle_y_position),
             settings.yFraction * 100f,
             0f..100f,
@@ -858,7 +755,7 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
             modifier = Modifier.fillMaxWidth().clickable { showColorDialog = true }.padding(AppSpace.md),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Outlined.Palette, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
+            Icon(AppIcons.Palette, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(AppSpace.md))
             Text(stringResource(R.string.floating_subtitle_background_color), fontSize = AppType.Body, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
             Box(
@@ -868,11 +765,11 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
                     .border(1.dp, AppColors.Divider, RoundedCornerShape(6.dp))
             )
             Spacer(Modifier.width(AppSpace.sm))
-            Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+            Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
         }
         SettingsDivider()
         SettingsSliderItem(
-            Icons.Outlined.Opacity,
+            AppIcons.Drop,
             stringResource(R.string.floating_subtitle_background_opacity),
             settings.backgroundOpacity * 100f,
             0f..100f,
@@ -892,7 +789,7 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
         ) { viewModel.saveFloatingSubtitleSettings(settings.copy(backgroundOpacity = it / 100f)) }
         SettingsDivider()
         SettingsSliderItem(
-            Icons.Outlined.Landscape,
+            AppIcons.FrameCorners,
             stringResource(R.string.floating_subtitle_corner_radius),
             settings.cornerRadiusDp,
             FloatingSubtitleSettings.MIN_CORNER_RADIUS_DP..FloatingSubtitleSettings.MAX_CORNER_RADIUS_DP,
@@ -921,7 +818,7 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
     FloatingSubtitleSectionTitle(stringResource(R.string.floating_subtitle_size_section))
     DetailCard(horizontalPadding = 12.dp) {
         SettingsSliderItem(
-            Icons.Outlined.FormatSize,
+            AppIcons.TextAa,
             stringResource(R.string.floating_subtitle_width),
             visibleWidthDp,
             FloatingSubtitleSettings.MIN_WIDTH_DP..maxWidthDp,
@@ -941,7 +838,7 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
         ) { viewModel.saveFloatingSubtitleSettings(settings.copy(widthDp = it)) }
         SettingsDivider()
         SettingsSliderItem(
-            Icons.Outlined.LineWeight,
+            AppIcons.LineSegments,
             stringResource(R.string.floating_subtitle_height),
             settings.heightDp,
             FloatingSubtitleSettings.MIN_HEIGHT_DP..FloatingSubtitleSettings.MAX_HEIGHT_DP,
@@ -1046,13 +943,13 @@ private fun TxtTocRulesManagerCard(viewModel: SettingsViewModel) {
             modifier = Modifier.fillMaxWidth().clickable { dialogVisible = true }.padding(AppSpace.md),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Outlined.Source, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
+            Icon(AppIcons.Code, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(AppSpace.md))
             Column(Modifier.weight(1f)) {
                 Text("TXT目录规则", fontSize = AppType.Body, color = AppColors.TextPrimary)
                 Text("${rules.size} 条自定义规则，可导入或导出", fontSize = AppType.Caption, color = AppColors.TextSecondary)
             }
-            Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+            Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
         }
     }
 
@@ -1071,7 +968,7 @@ private fun TxtTocRulesManagerCard(viewModel: SettingsViewModel) {
                             }
                             IconButton(onClick = {
                                 viewModel.saveTxtTocCustomRules(rules.filterNot { it.id == rule.id })
-                            }) { Icon(Icons.Outlined.DeleteForever, "删除", tint = AppColors.TextSecondary) }
+                            }) { Icon(AppIcons.TrashSimple, "删除", tint = AppColors.TextSecondary) }
                         }
                     }
                 }
@@ -1233,15 +1130,14 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
 
     DetailCard {
         DropdownSettingRow(
-            icon = Icons.Outlined.Home,
+            icon = AppIcons.House.regular,
             label = stringResource(R.string.label_startup_screen),
             options = startupScreenOptions,
             selected = DataStoreManager.normalizeStartupScreen(uiState.startupScreen),
             onSelect = viewModel::saveStartupScreen
         )
         SettingsDivider()
-        DropdownSettingRow(
-            icon = Icons.Outlined.Palette,
+        AppThemeGridSettingRow(
             label = stringResource(R.string.label_app_theme),
             options = appThemeOptions,
             selected = if (
@@ -1258,7 +1154,7 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             SettingsDivider()
         }
         DropdownSettingRow(
-            icon = Icons.Outlined.FontDownload,
+            icon = AppIcons.TextAa,
             label = stringResource(R.string.label_global_font),
             options = globalFontOptions,
             selected = uiState.globalFontMode,
@@ -1273,7 +1169,7 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                Icons.Outlined.BorderStyle,
+                AppIcons.Ruler,
                 contentDescription = null,
                 tint = AppColors.TextSecondary,
                 modifier = Modifier.size(22.dp)
@@ -1307,7 +1203,7 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                Icons.Outlined.Apps,
+                AppIcons.SquaresFour,
                 contentDescription = null,
                 tint = AppColors.TextSecondary,
                 modifier = Modifier.size(22.dp)
@@ -1330,7 +1226,7 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             )
             Spacer(Modifier.width(AppSpace.xs))
             Icon(
-                Icons.Outlined.ChevronRight,
+                AppIcons.CaretRight,
                 contentDescription = null,
                 tint = AppColors.TextSecondary,
                 modifier = Modifier.size(20.dp)
@@ -1348,7 +1244,7 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                Icons.Outlined.Speed,
+                AppIcons.Speedometer,
                 contentDescription = null,
                 tint = AppColors.TextSecondary,
                 modifier = Modifier.size(22.dp)
@@ -1385,7 +1281,7 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                Icons.Outlined.Landscape,
+                AppIcons.FrameCorners,
                 contentDescription = null,
                 tint = AppColors.TextSecondary,
                 modifier = Modifier.size(22.dp)
@@ -1427,7 +1323,7 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             DetailCard {
                 Column(Modifier.padding(vertical = 5.dp)) {
                     SettingsSliderItem(
-                        icon = Icons.Outlined.Opacity,
+                        icon = AppIcons.Drop,
                         label = stringResource(R.string.liquid_glass_transparency),
                         value = uiState.liquidGlassTransparency,
                         range = 0f..1f,
@@ -1445,7 +1341,7 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                Icons.Outlined.HdrOn,
+                                AppIcons.SunDim,
                                 contentDescription = null,
                                 tint = AppColors.TextSecondary,
                                 modifier = Modifier.size(22.dp)
@@ -1472,7 +1368,7 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
 
     DetailCard {
         DropdownSettingRow(
-            icon = Icons.Outlined.Brightness6,
+            icon = AppIcons.SunDim,
             label = stringResource(R.string.label_dark_mode),
             options = darkModeOptions,
             selected = if (uiState.eInkModeEnabled) "light" else uiState.darkMode,
@@ -1490,7 +1386,7 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                Icons.Outlined.SwipeRightAlt,
+                AppIcons.HandSwipeRight,
                 contentDescription = null,
                 tint = AppColors.TextSecondary,
                 modifier = Modifier.size(22.dp)
@@ -1513,7 +1409,7 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
 
     DetailCard {
         DropdownSettingRow(
-            icon = Icons.Outlined.Animation,
+            icon = AppIcons.FilmStrip,
             label = stringResource(R.string.motion_preference_label),
             options = listOf(
                 "standard" to stringResource(R.string.motion_preference_standard),
@@ -1535,7 +1431,7 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                Icons.Outlined.PhoneAndroid,
+                AppIcons.DeviceMobile,
                 contentDescription = null,
                 tint = AppColors.TextSecondary,
                 modifier = Modifier.size(22.dp)
@@ -1558,7 +1454,7 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
 
     DetailCard {
         DropdownSettingRow(
-            icon = Icons.Outlined.Palette,
+            icon = AppIcons.Palette,
             label = stringResource(R.string.label_reader_theme),
             options = themeOptions,
             selected = if (uiState.eInkModeEnabled) "day" else uiState.readerTheme,
@@ -1623,7 +1519,7 @@ private fun ThemeColorSettingRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            Icons.Outlined.Palette,
+            AppIcons.Palette,
             contentDescription = null,
             tint = AppColors.TextSecondary,
             modifier = Modifier.size(22.dp)
@@ -1646,7 +1542,7 @@ private fun ThemeColorSettingRow(
         Text(normalized, fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
         Spacer(Modifier.width(AppSpace.xs))
         Icon(
-            Icons.Outlined.ChevronRight,
+            AppIcons.CaretRight,
             contentDescription = null,
             tint = AppColors.TextSecondary,
             modifier = Modifier.size(20.dp)
@@ -1842,7 +1738,7 @@ fun ReadingGoalDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
 
     DetailCard {
-        SettingsSliderItem(Icons.Outlined.Timer, stringResource(R.string.label_daily_goal), uiState.dailyGoal.toFloat(), 10f..120f, stringResource(R.string.goal_minutes, uiState.dailyGoal), steps = 21) { viewModel.saveDailyGoal(it.toInt()) }
+        SettingsSliderItem(AppIcons.Timer, stringResource(R.string.label_daily_goal), uiState.dailyGoal.toFloat(), 10f..120f, stringResource(R.string.goal_minutes, uiState.dailyGoal), steps = 21) { viewModel.saveDailyGoal(it.toInt()) }
     }
 }
 
@@ -1870,6 +1766,7 @@ private val EInkSegmentGrays = listOf(
 private val FormatColors = mapOf(
     "EPUB" to Color(0xFF4CAF50),
     "PDF" to Color(0xFFE85D5D),
+    "CBZ" to Color(0xFFC98A3C),
     "TXT" to Color(0xFF9B9B9B)
 )
 
@@ -1935,7 +1832,7 @@ fun StorageDetail(viewModel: SettingsViewModel, onOpenBooks: () -> Unit) {
         StorageGroupTitle(stringResource(R.string.storage_group_cleanup))
         StorageCard {
             StorageActionRow(
-                icon = Icons.Outlined.DeleteSweep,
+                icon = AppIcons.Trash,
                 label = stringResource(
                     R.string.storage_cleanup_amount,
                     viewModel.formatFileSize(info.cacheSizeBytes)
@@ -1952,7 +1849,7 @@ fun StorageDetail(viewModel: SettingsViewModel, onOpenBooks: () -> Unit) {
                     modifier = Modifier.fillMaxWidth().padding(AppSpace.md),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Outlined.VolumeUp, null, tint = AppColors.Accent, modifier = Modifier.size(22.dp))
+                    Icon(AppIcons.SpeakerHigh, null, tint = AppColors.Accent, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.width(AppSpace.md))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
@@ -1976,7 +1873,7 @@ fun StorageDetail(viewModel: SettingsViewModel, onOpenBooks: () -> Unit) {
                 )
                 SettingsDivider()
                 SettingsSliderItem(
-                    icon = Icons.Outlined.Timer,
+                    icon = AppIcons.Timer,
                     label = stringResource(R.string.external_tts_cache_limit),
                     value = info.externalTtsCacheLimitMb.toFloat(),
                     range = ExternalTtsConfig.MIN_AUDIO_CACHE_LIMIT_MB.toFloat()..ExternalTtsConfig.MAX_AUDIO_CACHE_LIMIT_MB.toFloat(),
@@ -1993,7 +1890,7 @@ fun StorageDetail(viewModel: SettingsViewModel, onOpenBooks: () -> Unit) {
                 )
                 SettingsDivider()
                 StorageActionRow(
-                    icon = Icons.Outlined.DeleteSweep,
+                    icon = AppIcons.Trash,
                     label = stringResource(R.string.clear_external_tts_cache),
                     destructive = true,
                     onClick = { showClearExternalTtsCacheDialog = true }
@@ -2005,7 +1902,7 @@ fun StorageDetail(viewModel: SettingsViewModel, onOpenBooks: () -> Unit) {
         StorageGroupTitle(stringResource(R.string.clear_all_data))
         StorageCard {
             StorageActionRow(
-                icon = Icons.Outlined.DeleteForever,
+                icon = AppIcons.TrashSimple,
                 label = stringResource(R.string.clear_all_data),
                 destructive = true,
                 onClick = { showClearDialog = true }
@@ -2573,7 +2470,7 @@ private fun StorageCategoryRow(
                 strokeWidth = 1.5.dp
             )
             onClick != null -> Icon(
-                Icons.Outlined.ChevronRight,
+                AppIcons.CaretRight,
                 contentDescription = null,
                 tint = AppColors.TextSecondary.copy(alpha = 0.6f),
                 modifier = Modifier.size(20.dp)
@@ -2743,7 +2640,7 @@ fun BackupRestoreDetail(viewModel: SettingsViewModel) {
 
     DetailCard {
         // 备份
-        ActionRow(Icons.Outlined.Upload, stringResource(R.string.backup_data_action)) {
+        ActionRow(AppIcons.UploadSimple, stringResource(R.string.backup_data_action)) {
             val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())
             runCatching {
                 backupLauncher.launch("lumi_backup_$timestamp.zip")
@@ -2753,7 +2650,7 @@ fun BackupRestoreDetail(viewModel: SettingsViewModel) {
         }
         SettingsDivider()
         // 恢复
-        ActionRow(Icons.Outlined.Download, stringResource(R.string.restore_data_action)) {
+        ActionRow(AppIcons.DownloadSimple, stringResource(R.string.restore_data_action)) {
             showRestoreConfirmation = true
         }
     }
@@ -2981,7 +2878,7 @@ fun AboutDetail(viewModel: SettingsViewModel) {
     Spacer(Modifier.height(AppSpace.md))
 
     DetailCard {
-        ActionRow(Icons.Outlined.SystemUpdateAlt, stringResource(R.string.title_changelog)) {
+        ActionRow(AppIcons.ArrowCircleDown, stringResource(R.string.title_changelog)) {
             context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "changelog"))
         }
     }
@@ -2989,7 +2886,7 @@ fun AboutDetail(viewModel: SettingsViewModel) {
     Spacer(Modifier.height(AppSpace.md))
 
     DetailCard {
-        ActionRow(Icons.Outlined.Groups, stringResource(R.string.official_qq_group)) {
+        ActionRow(AppIcons.UsersThree, stringResource(R.string.official_qq_group)) {
             val opened = runCatching {
                 context.startActivity(
                     Intent(Intent.ACTION_VIEW, Uri.parse("https://qm.qq.com/q/pq77woweNG"))
@@ -3000,7 +2897,7 @@ fun AboutDetail(viewModel: SettingsViewModel) {
             }
         }
         SettingsDivider()
-        ActionRow(Icons.Outlined.Forum, stringResource(R.string.github_discussions)) {
+        ActionRow(AppIcons.ChatCircle, stringResource(R.string.github_discussions)) {
             val opened = runCatching {
                 context.startActivity(
                     Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/huangder/Lumi_Books/discussions"))
@@ -3024,7 +2921,7 @@ fun AboutDetail(viewModel: SettingsViewModel) {
     Spacer(Modifier.height(AppSpace.md))
 
     DetailCard {
-        ActionRow(Icons.Outlined.Source, stringResource(R.string.github_repository)) {
+        ActionRow(AppIcons.Code, stringResource(R.string.github_repository)) {
             val opened = runCatching {
                 context.startActivity(
                     Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/huangder/Lumi_Books"))
@@ -3040,15 +2937,15 @@ fun AboutDetail(viewModel: SettingsViewModel) {
 
     // ── 法律条款 Card ──
     DetailCard {
-        ActionRow(Icons.Outlined.NightsStay, stringResource(R.string.privacy_policy)) {
+        ActionRow(AppIcons.MoonStars, stringResource(R.string.privacy_policy)) {
             openDoc(context.getString(R.string.privacy_policy), "privacy.html")
         }
         SettingsDivider()
-        ActionRow(Icons.Outlined.Info, stringResource(R.string.terms_of_service)) {
+        ActionRow(AppIcons.Info, stringResource(R.string.terms_of_service)) {
             openDoc(context.getString(R.string.terms_of_service), "terms.html")
         }
         SettingsDivider()
-        ActionRow(Icons.Outlined.Code, stringResource(R.string.open_source_licenses)) {
+        ActionRow(AppIcons.Code, stringResource(R.string.open_source_licenses)) {
             openDoc(context.getString(R.string.open_source_licenses), "licenses.html")
         }
     }
@@ -3239,7 +3136,7 @@ fun HighlightColorDetail(viewModel: SettingsViewModel) {
                     contentColor = AppColors.OnAccent
                 ) {
                     Icon(
-                        Icons.Outlined.Add,
+                        AppIcons.Plus,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp),
                         tint = Color.White
@@ -3367,7 +3264,7 @@ private fun HighlightPaletteRow(
             ) {
                 IconButton(onClick = onDelete, modifier = Modifier.fillMaxSize()) {
                     Icon(
-                        Icons.Outlined.DeleteForever,
+                        AppIcons.TrashSimple,
                         contentDescription = stringResource(R.string.highlight_palette_delete),
                         tint = AppColors.OnAccent,
                         modifier = Modifier.size(19.dp)
@@ -3478,7 +3375,7 @@ private fun HighlightPaletteSlot(
     ) {
         if (color == null) {
             Icon(
-                Icons.Outlined.Add,
+                AppIcons.Plus,
                 contentDescription = stringResource(R.string.highlight_palette_set_color),
                 tint = AppColors.TextSecondary.copy(alpha = 0.66f),
                 modifier = Modifier.size(16.dp)
@@ -3704,7 +3601,7 @@ private fun FontTypeRow(selected: String, onSelect: (String) -> Unit) {
         "monospace" to stringResource(R.string.font_monospace)
     )
     Row(Modifier.fillMaxWidth().padding(horizontal = AppSpace.md, vertical = AppSpace.md), verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Outlined.FontDownload, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
+        Icon(AppIcons.TextAa, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(AppSpace.md))
         Text(stringResource(R.string.font_label), fontSize = AppType.Body, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
         Row(horizontalArrangement = Arrangement.spacedBy(AppSpace.xs)) {
@@ -3715,6 +3612,59 @@ private fun FontTypeRow(selected: String, onSelect: (String) -> Unit) {
                         .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onSelect(key) }
                         .padding(horizontal = AppSpace.sm, vertical = AppSpace.xs)
                 ) { Text(label, fontSize = AppType.Caption, color = if (sel) Color.White else AppColors.TextSecondary, fontWeight = if (sel) FontWeight.Medium else FontWeight.Normal) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppThemeGridSettingRow(
+    label: String,
+    options: List<Pair<String, String>>,
+    selected: String,
+    onSelect: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(AppSpace.md),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(AppIcons.Palette, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(AppSpace.md))
+        Text(label, fontSize = AppType.Body, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
+        Column(
+            modifier = Modifier.width(176.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            options.chunked(2).forEach { rowOptions ->
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+                    rowOptions.forEach { (key, display) ->
+                        val isSelected = key == selected
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 36.dp)
+                                .clip(RoundedCornerShape(AppRadius.sm))
+                                .background(if (isSelected) AppColors.Accent else AppColors.WindowBg)
+                                .border(1.dp, if (isSelected) AppColors.Accent else AppColors.Divider, RoundedCornerShape(AppRadius.sm))
+                                .clickable { onSelect(key) }
+                                .padding(horizontal = 6.dp, vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = display,
+                                fontSize = AppType.Caption,
+                                color = if (isSelected) Color.White else AppColors.TextSecondary,
+                                fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                    if (rowOptions.size == 1) Spacer(Modifier.weight(1f))
+                }
             }
         }
     }
@@ -3753,16 +3703,18 @@ private fun DropdownSettingRow(
                 modifier = Modifier
                     .width(138.dp)
                     .height(42.dp)
+                    .liquidGlassMenuAnchor(cornerRadius = 14.dp)
                     .clip(RoundedCornerShape(14.dp))
                     .background(AppColors.WindowBg)
                     .border(1.dp, AppColors.Divider, RoundedCornerShape(14.dp))
                     .onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
                     .clickable {
-                        if (isLiquidGlass && liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
-                            liquidMenuHost.show(
+                        if (liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
+                            liquidMenuHost.toggle(
                                 LiquidGlassMenuSpec(
                                     anchorBounds = menuAnchorBounds,
                                     width = 138.dp,
+                                    anchorCornerRadius = 14.dp,
                                     items = options.map { (key, display) ->
                                         LiquidGlassMenuItem(
                                             label = display,
@@ -3788,7 +3740,7 @@ private fun DropdownSettingRow(
                     modifier = Modifier.weight(1f)
                 )
                 Icon(
-                    Icons.Outlined.ExpandMore,
+                    AppIcons.CaretDown,
                     contentDescription = null,
                     tint = AppColors.TextSecondary,
                     modifier = Modifier.size(18.dp)
@@ -3837,7 +3789,7 @@ private fun ActionRow(icon: ImageVector, label: String, labelColor: Color = AppC
         Icon(icon, null, tint = if (labelColor == Color.Red) Color.Red else AppColors.TextSecondary, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(AppSpace.md))
         Text(label, fontSize = AppType.Body, color = labelColor, modifier = Modifier.weight(1f))
-        Icon(Icons.Outlined.ChevronRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+        Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
     }
 }
 
@@ -3878,7 +3830,7 @@ fun LanguageDetailScreen(viewModel: SettingsViewModel) {
                 )
                 if (isSelected) {
                     Icon(
-                        Icons.Outlined.Check,
+                        AppIcons.Check,
                         contentDescription = null,
                         tint = AppColors.Accent,
                         modifier = Modifier.size(20.dp)
