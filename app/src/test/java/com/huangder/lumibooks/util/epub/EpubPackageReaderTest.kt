@@ -41,7 +41,9 @@ class EpubPackageReaderTest {
         val pkg = EpubPackageReader.read(file.absolutePath)
 
         assertEquals("Fixture EPUB 2", pkg.title)
-        assertEquals("\u672A\u77E5\u4F5C\u8005", pkg.author)
+        // 包里没有 dc:creator 时这里保留空值：占位作者由解析层（EpubParser）补，
+        // 见 EpubParserAuthorTest；package reader 只还原文件里真实存在的内容。
+        assertEquals("", pkg.author)
         assertEquals(EpubPageProgressionDirection.DEFAULT, pkg.pageProgressionDirection)
         assertEquals(1, pkg.navigation.size)
         assertEquals("Chapter One", pkg.navigation.single().title)
