@@ -226,6 +226,7 @@ Lumi의 오리지널 코드는 [GNU GPLv3](LICENSE)에 따라 오픈소스로 �
 | [CommonMark](https://github.com/commonmark/commonmark-java) | BSD 2-Clause | Markdown 파싱 |
 | [Jsoup](https://jsoup.org/) | MIT | HTML 파싱 |
 | [legado-E SimulationPageDelegate](https://github.com/Luoyacheng/legado-E) | GPLv3 | 컬 페이지 넘김 기하 및 렌더링 개작 |
+| [legado-E TXT 목차 규칙 데이터](https://github.com/Luoyacheng/legado-E) | GPLv3 | 호환 모드용 txtTocRule 기본 규칙(정규식만 사용, 스크립트 미실행) |
 | [Coil](https://coil-kt.github.io/coil/) | Apache 2.0 | 이미지 로딩 |
 | [OkHttp](https://square.github.io/okhttp/) | Apache 2.0 | HTTP 클라이언트 |
 

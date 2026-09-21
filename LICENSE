@@ -708,6 +708,20 @@ EPUB page-turn hosts. The GPLv3 text is distributed at:
 
     app/src/main/assets/licenses/gpl-3.0.txt
 
+Lumi also imports and runs legado-E's TXT table-of-contents rules as an opt-in
+compatibility feature. The default compatible rule set shipped in the APK is
+copied verbatim from that project:
+
+    Project: legado-E
+    Source: https://github.com/Luoyacheng/legado-E
+    File: app/src/main/assets/defaultData/txtTocRule.json
+    Copyright: Copyright Luoyacheng and contributors
+    License: GNU General Public License v3.0
+
+Lumi reads only the regular expression of such a rule. The compatibility
+matcher is Lumi's own implementation and never executes the optional script
+replacement carried by those rule files.
+
 Lumi bundles the GenRyuMin2 font collection, derived from Adobe's Source font
 software:
 

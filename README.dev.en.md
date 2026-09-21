@@ -226,6 +226,7 @@ Third-party dependencies and adaptations follow their respective licenses:
 | [CommonMark](https://github.com/commonmark/commonmark-java) | BSD 2-Clause | Markdown parsing |
 | [Jsoup](https://jsoup.org/) | MIT | HTML parsing |
 | [legado-E SimulationPageDelegate](https://github.com/Luoyacheng/legado-E) | GPLv3 | Curl geometry and rendering adaptation |
+| [legado-E TXT TOC rule data](https://github.com/Luoyacheng/legado-E) | GPLv3 | Default txtTocRule set bundled for the compatibility mode (regex only, scripts never run) |
 | [Coil](https://coil-kt.github.io/coil/) | Apache 2.0 | Image loading |
 | [OkHttp](https://square.github.io/okhttp/) | Apache 2.0 | HTTP client |
 
