@@ -1,12 +1,13 @@
 package com.huangder.lumibooks.util.parser
 
 import android.content.Context
+import android.net.Uri
 import com.huangder.lumibooks.util.BookFileAccess
 import com.huangder.lumibooks.util.SeekableBookSource
 import com.huangder.lumibooks.util.cache.BookFingerprint
+import com.huangder.lumibooks.util.cache.MirrorLifetime
 import com.huangder.lumibooks.util.cache.ReaderCacheStore
 import com.huangder.lumibooks.util.zip.ZipCompatRepair
-import com.huangder.lumibooks.util.cache.MirrorBudget
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -20,14 +21,25 @@ import java.util.zip.ZipFile
  */
 internal class OpenedCbzArchive(
     private val lease: SeekableBookSource?,
+    val readablePath: String,
     val zipFile: ZipFile,
     val index: CbzIndex,
     val comicInfo: CbzComicInfo?
 ) : Closeable {
+    constructor(
+        lease: SeekableBookSource?,
+        zipFile: ZipFile,
+        index: CbzIndex,
+        comicInfo: CbzComicInfo?
+    ) : this(lease, zipFile.name, zipFile, index, comicInfo)
+
     fun openEntry(entryName: String): InputStream? {
         val entry = zipFile.getEntry(entryName) ?: return null
         return runCatching { zipFile.getInputStream(entry) }.getOrNull()
     }
+
+    /** URI contract used by the vendored SSIV ZIP decoders (ImageSource.zipEntry). */
+    fun entryUri(entryName: String): Uri = Uri.fromParts("file+zip", readablePath, entryName)
 
     override fun close() {
         runCatching { zipFile.close() }
@@ -46,7 +58,8 @@ internal object CbzArchiveOpener {
         val lease = BookFileAccess.openSeekable(
             context = context,
             location = location,
-            budget = MirrorBudget.COMIC
+            writable = false,
+            mirrorLifetime = MirrorLifetime.SESSION
         )
         var zipFile: ZipFile? = null
         return try {
@@ -84,6 +97,7 @@ internal object CbzArchiveOpener {
             }
             OpenedCbzArchive(
                 lease = lease,
+                readablePath = readablePath,
                 zipFile = opened,
                 index = index,
                 comicInfo = comicInfo

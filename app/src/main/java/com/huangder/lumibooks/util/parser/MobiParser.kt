@@ -51,6 +51,7 @@ class MobiParser(private val context: Context? = null) : BookParser, BookRenderS
     override var paragraphSpacingDp: Float = 0f
     override var firstLineIndentChars: Float = 0f
     override var contentWidth: Int = 0
+    override var contentHeight: Int = 0
     override var useEpubCss: Boolean = false
     override var preserveEpubBackground: Boolean = true
 

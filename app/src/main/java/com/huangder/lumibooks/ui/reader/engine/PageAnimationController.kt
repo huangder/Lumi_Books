@@ -7,6 +7,16 @@ import android.view.MotionEvent
 import android.view.animation.Interpolator
 import android.widget.Scroller
 
+internal fun isPageAnimationShortTap(
+    actionMasked: Int,
+    hasMoved: Boolean,
+    elapsedMillis: Long,
+    verticalDistancePx: Float = 0f
+): Boolean = actionMasked == MotionEvent.ACTION_UP &&
+    !hasMoved &&
+    elapsedMillis < 300L &&
+    verticalDistancePx < 50f
+
 /**
  * 翻页动画基类。
  *
@@ -49,6 +59,13 @@ abstract class PageAnimationController(
 
     /** 是否直接绘制到 Canvas 上（绕过 View 层级）。默认为 false。 */
     open val drawsDirectlyOnCanvas: Boolean = false
+    val isCompletingTurn: Boolean get() = isFlipAnim
+
+    /** The host already distinguished this stream from a tap/long press. */
+    fun confirmPageGesture() {
+        hasMoved = true
+        isLongPressed = false
+    }
     protected var direction: Direction = Direction.NONE
 
     /** 公开读取当前动画方向 */
@@ -201,7 +218,7 @@ abstract class PageAnimationController(
                 val vy = Math.abs(event.y - startY)
                 val dt = (event.eventTime - downTime).coerceAtLeast(0L)
 
-                if (!hasMoved && dt < 300L && vy < 50f) {
+                if (isPageAnimationShortTap(event.actionMasked, hasMoved, dt, vy)) {
                     // 点击，非滑动
                     val viewWidth = readView.width.toFloat()
                     val relX = event.x / viewWidth
@@ -212,6 +229,19 @@ abstract class PageAnimationController(
                     }
                     direction = Direction.NONE
                     readView.invalidate()
+                    return true
+                }
+
+                // ReadView 会在确认滑动翻页时给旧的子触摸流发送 CANCEL，再把同一手势
+                // 交给动画控制器。CANCEL 绝不能继续按短按处理，否则从屏幕中央起滑会
+                // 一边翻页、一边触发 onTapCenter 打开菜单。
+                if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                    if (hasMoved && direction != Direction.NONE) {
+                        startBounceBack()
+                    } else {
+                        direction = Direction.NONE
+                        readView.invalidate()
+                    }
                     return true
                 }
 
@@ -341,13 +371,14 @@ abstract class PageAnimationController(
     }
 
     protected open fun startBounceBack() {
-        // 🔥 回弹不是翻页，清除方向防止 onAnimationComplete 错误 shift
-        direction = Direction.NONE
+        // Keep sheet identity while returning to the origin. isFlipAnim alone
+        // controls commit; clearing direction here swaps the sheets mid-frame.
         isFlipAnim = false
         val fromX = touchX.toInt()
         val toX = startX.toInt()
         val dx = toX - fromX
         if (dx == 0) {
+            direction = Direction.NONE
             readView.invalidate()
             return
         }

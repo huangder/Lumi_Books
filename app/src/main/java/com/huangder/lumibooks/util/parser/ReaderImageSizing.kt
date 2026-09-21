@@ -37,9 +37,20 @@ internal object ReaderImageSizing {
     fun inlineMarkerSizePx(density: Float): Int =
         (INLINE_MARKER_REFERENCE_SP * INLINE_MARKER_EM * density).roundToInt().coerceAtLeast(1)
 
-    fun bounds(originalWidth: Int, originalHeight: Int, contentWidth: Int): ReaderImageBounds? {
+    fun bounds(
+        originalWidth: Int,
+        originalHeight: Int,
+        contentWidth: Int,
+        allowUpscale: Boolean = false
+    ): ReaderImageBounds? {
         if (originalWidth <= 0 || originalHeight <= 0 || contentWidth <= 0) return null
-        val width = minOf(originalWidth, contentWidth).coerceAtLeast(1)
+        // 整页漫画/插画（整页只有这一张图）要铺满正文列宽，哪怕是放大；
+        // 普通插图维持"不放大"策略，避免小图被拉糊。
+        val width = if (allowUpscale) {
+            contentWidth
+        } else {
+            minOf(originalWidth, contentWidth)
+        }.coerceAtLeast(1)
         val scale = width.toDouble() / originalWidth.toDouble()
         val height = (originalHeight.toDouble() * scale)
             .roundToInt()
@@ -77,8 +88,41 @@ internal object ReaderImageSizing {
     }
 
     /** Keep enough decoded width for the final display bounds without upscaling low-res input. */
-    fun decodeSampleSize(originalWidth: Int, originalHeight: Int, contentWidth: Int): Int {
-        val target = bounds(originalWidth, originalHeight, contentWidth) ?: return 1
+    /**
+     * 整页图（漫画/整页插画）：在"正文列宽 × 正文列高"的盒子里等比铺满，且不裁切。
+     *
+     * 只按宽度放大时，竖长漫画页会比一页还高，翻页时图片被拆到两页上（看起来"一会儿在上、
+     * 一会儿在下"）；按高度一起约束，整页永远完整落在一屏里。
+     */
+    fun fitBounds(
+        originalWidth: Int,
+        originalHeight: Int,
+        maxWidth: Int,
+        maxHeight: Int
+    ): ReaderImageBounds? {
+        if (originalWidth <= 0 || originalHeight <= 0 || maxWidth <= 0) return null
+        val widthScale = maxWidth.toDouble() / originalWidth.toDouble()
+        val heightScale = if (maxHeight > 0) {
+            maxHeight.toDouble() / originalHeight.toDouble()
+        } else {
+            Double.MAX_VALUE
+        }
+        val scale = minOf(widthScale, heightScale)
+        val width = (originalWidth * scale).roundToInt().coerceAtLeast(1)
+        val height = (originalHeight * scale).roundToInt().coerceAtLeast(1)
+        return ReaderImageBounds(
+            width = minOf(width, maxWidth).coerceAtLeast(1),
+            height = if (maxHeight > 0) minOf(height, maxHeight).coerceAtLeast(1) else height
+        )
+    }
+
+    fun decodeSampleSize(
+        originalWidth: Int,
+        originalHeight: Int,
+        contentWidth: Int,
+        allowUpscale: Boolean = false
+    ): Int {
+        val target = bounds(originalWidth, originalHeight, contentWidth, allowUpscale) ?: return 1
         return (originalWidth / target.width).coerceAtLeast(1)
     }
 }

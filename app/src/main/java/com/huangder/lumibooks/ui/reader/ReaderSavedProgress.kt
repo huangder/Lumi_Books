@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.reader
 
+import kotlin.math.roundToInt
+
 /** Calculates persisted whole-book progress from the reader's zero-based position. */
 internal fun calculateSavedReadingProgress(
     currentChapterIndex: Int,
@@ -18,6 +20,23 @@ internal fun calculateSavedReadingProgress(
     }.coerceIn(0f, 1f)
 
     return ((chapterIndex + chapterProgress) / chapterCount).coerceIn(0f, 1f)
+}
+
+internal fun rasterReadingProgress(pageIndex: Int, pageCount: Int): Float {
+    if (pageCount <= 0) return 0f
+    val safePageIndex = pageIndex.coerceIn(0, pageCount - 1)
+    return if (safePageIndex == pageCount - 1) {
+        1f
+    } else {
+        safePageIndex.toFloat() / pageCount.toFloat()
+    }
+}
+
+internal fun restoredRasterPageIndex(readingProgress: Float, pageCount: Int): Int {
+    if (pageCount <= 0 || !readingProgress.isFinite()) return 0
+    return (readingProgress.coerceIn(0f, 1f) * pageCount)
+        .roundToInt()
+        .coerceIn(0, pageCount - 1)
 }
 
 /**

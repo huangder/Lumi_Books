@@ -35,6 +35,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroidSize
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -139,6 +140,7 @@ import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
+import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.R
@@ -147,6 +149,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.huangder.lumibooks.MainActivity
 import com.huangder.lumibooks.ReaderPageDirection
 import com.huangder.lumibooks.domain.model.Bookmark
@@ -154,6 +160,7 @@ import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.domain.model.CbzReadingDirection
 import com.huangder.lumibooks.ui.layout.currentAdaptiveWindowInfo
 import com.huangder.lumibooks.domain.model.PdfPageMode
+import com.huangder.lumibooks.domain.model.PageRenderMode
 import com.huangder.lumibooks.pdfconversion.PdfConversionContract
 import com.huangder.lumibooks.pdfconversion.PdfConversionEngine
 import com.huangder.lumibooks.pdfconversion.PdfConversionState
@@ -168,6 +175,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.ui.text.font.FontFamily
 import java.io.File
@@ -176,7 +184,7 @@ import java.util.LinkedHashMap
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 
-private enum class PdfMultiTouchMode {
+internal enum class PdfMultiTouchMode {
     UNDECIDED,
     PAN,
     ZOOM
@@ -184,22 +192,29 @@ private enum class PdfMultiTouchMode {
 
 private const val PDF_ZOOM_EPSILON = 1.01f
 private const val PDF_PAGE_TURN_THRESHOLD_PX = 48f
+private const val PDF_ANNOTATION_ZOOM_SLOP_MULTIPLIER = 1.5f
+private const val PDF_ANNOTATION_ZOOM_DOMINANCE = 1.35f
+private const val PDF_VELOCITY_IDLE_TIMEOUT_MS = 120L
+private const val PDF_MAX_FLING_VELOCITY = 12_000f
 
-/** Pages render at 2× the screen width so pinch-zoom and dense comic panels stay sharp. */
-private const val PAGE_RENDER_SCALE = 2f
 private const val PAGE_RENDER_MIN_WIDTH_PX = 720
 private const val THUMBNAIL_RENDER_WIDTH_PX = 240
 private const val CATALOG_PREVIEW_WIDTH_PX = 640
+/** 快速翻页时先显示的阅读页预览；清晰图到达后立即覆盖且不会反向降级。 */
+private const val PREVIEW_RENDER_WIDTH_PX = 240
 
 /** 漫画双页对开时封面单独成屏，与实体单行本的排布一致。 */
 private const val COVER_ALONE_FIRST_PAGE = true
 
 /** 单页渲染失败（被取消 / 内存不足）后的重试次数与退避间隔。 */
 private const val PAGE_RENDER_MAX_ATTEMPTS = 3
+/** 高分辨率档的单页位图很大，失败重试只会反复分配，这里只给一次重试。 */
+private const val PAGE_RENDER_HIGH_RES_MAX_ATTEMPTS = 2
 private const val PAGE_RENDER_RETRY_DELAY_MS = 300L
+private const val CBZ_BITMAP_FALLBACK_DELAY_MS = 260L
+private const val PDF_ZOOM_RENDER_DEBOUNCE_MS = 140L
 
 /** 低清预览宽度：足够铺满页面区域，解码成本极低。 */
-private const val PREVIEW_RENDER_WIDTH_PX = 240
 
 internal data class PdfPanResult(
     val offset: Float,
@@ -234,6 +249,92 @@ internal fun consumePdfPanDelta(
     return PdfPanResult(nextOffset, nextEdgeDrag)
 }
 
+/** Resolves a two-finger gesture without treating small finger-spacing jitter as a pinch. */
+internal fun resolvePdfTransformMode(
+    panMotion: Float,
+    zoomMotion: Float,
+    touchSlop: Float,
+    preferPan: Boolean
+): PdfMultiTouchMode {
+    val boundedSlop = touchSlop.coerceAtLeast(0f)
+    if (preferPan) {
+        return when {
+            panMotion >= boundedSlop &&
+                panMotion >= zoomMotion / PDF_ANNOTATION_ZOOM_DOMINANCE -> PdfMultiTouchMode.PAN
+            zoomMotion >= boundedSlop * PDF_ANNOTATION_ZOOM_SLOP_MULTIPLIER &&
+                zoomMotion > panMotion * PDF_ANNOTATION_ZOOM_DOMINANCE -> PdfMultiTouchMode.ZOOM
+            else -> PdfMultiTouchMode.UNDECIDED
+        }
+    }
+    return when {
+        maxOf(panMotion, zoomMotion) < boundedSlop -> PdfMultiTouchMode.UNDECIDED
+        zoomMotion > panMotion -> PdfMultiTouchMode.ZOOM
+        else -> PdfMultiTouchMode.PAN
+    }
+}
+
+/** A pinch may end with a pan while both fingers remain down, so release cannot rely on PAN alone. */
+internal fun shouldStartPdfPanDecay(
+    scale: Float,
+    mode: PdfMultiTouchMode,
+    navigationGesture: Boolean
+): Boolean = navigationGesture && (
+    mode == PdfMultiTouchMode.PAN ||
+        (scale > PDF_ZOOM_EPSILON && mode == PdfMultiTouchMode.ZOOM)
+    )
+
+/** Tracks centroid deltas directly, surviving pointer-count changes that can reset platform velocity. */
+internal class PdfPanVelocityEstimator(
+    private val idleTimeoutMillis: Long = PDF_VELOCITY_IDLE_TIMEOUT_MS
+) {
+    private var lastEventTimeMillis = 0L
+    private var lastMotionTimeMillis = Long.MIN_VALUE
+    private var velocity = Offset.Zero
+
+    fun reset(uptimeMillis: Long) {
+        lastEventTimeMillis = uptimeMillis
+        lastMotionTimeMillis = Long.MIN_VALUE
+        velocity = Offset.Zero
+    }
+
+    fun addPan(uptimeMillis: Long, pan: Offset) {
+        val elapsedMillis = (uptimeMillis - lastEventTimeMillis).coerceAtLeast(1L)
+        lastEventTimeMillis = uptimeMillis
+        if (pan.getDistance() < 0.01f) return
+
+        val instantaneous = pan * (1_000f / elapsedMillis)
+        velocity = if (lastMotionTimeMillis == Long.MIN_VALUE) {
+            instantaneous
+        } else {
+            velocity * 0.35f + instantaneous * 0.65f
+        }
+        lastMotionTimeMillis = uptimeMillis
+    }
+
+    fun velocityAt(uptimeMillis: Long): Offset {
+        if (lastMotionTimeMillis == Long.MIN_VALUE) return Offset.Zero
+        val idleMillis = (uptimeMillis - lastMotionTimeMillis).coerceAtLeast(0L)
+        if (idleMillis >= idleTimeoutMillis) return Offset.Zero
+        val idleFactor = 1f - idleMillis.toFloat() / idleTimeoutMillis
+        return velocity * idleFactor
+    }
+}
+
+internal fun resolvePdfReleaseVelocity(tracked: Offset, estimated: Offset): Offset {
+    fun axisVelocity(trackedAxis: Float, estimatedAxis: Float): Float {
+        val selected = if (kotlin.math.abs(trackedAxis) >= PDF_MIN_FLING_VELOCITY) {
+            trackedAxis
+        } else {
+            estimatedAxis
+        }
+        return selected.coerceIn(-PDF_MAX_FLING_VELOCITY, PDF_MAX_FLING_VELOCITY)
+    }
+    return Offset(
+        axisVelocity(tracked.x, estimated.x),
+        axisVelocity(tracked.y, estimated.y)
+    )
+}
+
 internal fun pdfPageForEdgeDrag(
     currentPage: Int,
     pageCount: Int,
@@ -263,12 +364,16 @@ private suspend fun animatePdfPanDecay(
 
     val animation = Animatable(initialOffset)
     var currentOffset = initialOffset
+    var previousAnimationValue = initialOffset
     var edgeDrag = initialEdgeDrag
     animation.animateDecay(
         initialVelocity = initialVelocity,
         animationSpec = exponentialDecay()
     ) {
-        val delta = value - currentOffset
+        // Animatable.value is the absolute decay position. Compare consecutive animation
+        // frames rather than the clamped content offset, otherwise edge residuals compound.
+        val delta = value - previousAnimationValue
+        previousAnimationValue = value
         val result = consumePdfPanDelta(
             offset = currentOffset,
             maxOffset = maxOffset,
@@ -279,9 +384,7 @@ private suspend fun animatePdfPanDecay(
         currentOffset = result.offset
         edgeDrag = result.edgeDrag
         onOffsetChange(currentOffset)
-        if (kotlin.math.abs(edgeDrag) < PDF_PAGE_TURN_THRESHOLD_PX) {
-            onUnconsumedDelta(delta - consumed)
-        }
+        onUnconsumedDelta(delta - consumed)
     }
     return edgeDrag
 }
@@ -323,10 +426,6 @@ fun RasterReaderScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val activity = context as? MainActivity
-    ReaderSystemBarStyle(
-        backgroundColor = com.huangder.lumibooks.ui.theme.ReaderColors.Light.background,
-        useDarkIcons = true
-    )
 
     val book = uiState.book
     val filePath = book?.filePath
@@ -361,6 +460,11 @@ fun RasterReaderScreen(
     var observedActiveConversion by remember { mutableStateOf(false) }
     var pendingModePage by remember { mutableStateOf<Int?>(null) }
     val eInkMode = LocalEInkMode.current || uiState.eInkModeEnabled
+    val rasterBackgroundColor = if (eInkMode) Color.White else AppColors.WindowBg
+    ReaderSystemBarStyle(
+        backgroundColor = rasterBackgroundColor,
+        useDarkIcons = eInkMode || !LocalIsDarkTheme.current
+    )
     val motionEnabled = LocalMotionEnabled.current
     val effectivePdfPageMode = if (eInkMode) "horizontal" else uiState.pdfPageMode
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkMode
@@ -434,8 +538,11 @@ fun RasterReaderScreen(
     }
 
     if (filePath == null || pageCount <= 0) {
-        Box(Modifier.fillMaxSize().background(com.huangder.lumibooks.ui.theme.ReaderColors.Light.background), Alignment.Center) {
-            CircularProgressIndicator()
+        Box(
+            Modifier.fillMaxSize().background(rasterBackgroundColor),
+            Alignment.Center
+        ) {
+            CircularProgressIndicator(color = AppColors.TextSecondary)
         }
         return
     }
@@ -443,9 +550,14 @@ fun RasterReaderScreen(
     // One page source stays alive for the whole reader session: PDF keeps a PdfRenderer open and
     // CBZ keeps the ZIP index open, so rapid scrolling never pays for per-page setup.
     val bookFormat = book?.format
-    var pageSource by remember(filePath) { mutableStateOf<BitmapPageSource?>(null) }
-    var pageSourceFailed by remember(filePath) { mutableStateOf(false) }
-    LaunchedEffect(filePath, bookFormat) {
+    val contentRevision = uiState.contentRevision
+    var pageSource by remember(filePath, bookFormat, contentRevision) {
+        mutableStateOf<BitmapPageSource?>(null)
+    }
+    var pageSourceFailed by remember(filePath, bookFormat, contentRevision) {
+        mutableStateOf(false)
+    }
+    LaunchedEffect(filePath, bookFormat, contentRevision) {
         pageSourceFailed = false
         pageSource = null
         val source = bookFormat?.let { format ->
@@ -453,7 +565,7 @@ fun RasterReaderScreen(
         }
         if (source == null) pageSourceFailed = true else pageSource = source
     }
-    DisposableEffect(filePath) {
+    DisposableEffect(filePath, bookFormat, contentRevision) {
         onDispose {
             pageSource?.close()
             pageSource = null
@@ -490,11 +602,11 @@ fun RasterReaderScreen(
     }
 
     val startPage = remember(bookId, pageCount) {
-        ((book?.readingProgress ?: 0f) * pageCount)
-            .toInt()
-            .coerceIn(0, (pageCount - 1).coerceAtLeast(0))
+        restoredRasterPageIndex(book.readingProgress, pageCount)
     }
     val pageMode = PdfPageMode.fromKey(effectivePdfPageMode)
+    // 解码清晰度档位（正常 / 高清 / 原图）：跟随全局设置，在顶部栏直接切换。
+    val renderMode = PageRenderMode.fromKey(uiState.pageRenderMode)
     val isHorizontal = pageMode == PdfPageMode.HORIZONTAL_PAGING
     val isVerticalPaging = pageMode == PdfPageMode.VERTICAL_PAGING
 
@@ -559,6 +671,35 @@ fun RasterReaderScreen(
         PdfPageMode.VERTICAL_PAGING -> verticalPagerState.currentPage
         PdfPageMode.VERTICAL_SCROLL -> verticalPage
     }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val latestCurrentPage by rememberUpdatedState(currentPage)
+    val latestPageSource by rememberUpdatedState(pageSource)
+    DisposableEffect(lifecycleOwner, bookId, pageCount) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> {
+                    latestPageSource?.saveResumeSnapshot()
+                    if (pageCount > 0) {
+                        viewModel.saveProgressDirect(
+                            bookId,
+                            rasterReadingProgress(latestCurrentPage, pageCount)
+                        )
+                    }
+                    viewModel.onAppBackgrounded()
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    latestPageSource?.resumeLoading()
+                    viewModel.onAppForegrounded()
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            viewModel.onAppForegrounded()
+        }
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     // 先把整本的页面宽高比量好（从当前页向两端扩散），列表项首次组合就能拿到正确高度。
     LaunchedEffect(pageSource, pageCount, startPage) {
@@ -569,7 +710,7 @@ fun RasterReaderScreen(
             .sortedBy { page -> kotlin.math.abs(page - anchor) }
             .forEach { page ->
                 if (pageAspectRatios[page] == null) {
-                    source.pageAspectRatio(page)?.let { ratio -> pageAspectRatios[page] = ratio }
+                    source.pageAspectRatio(page, background = true)?.let { ratio -> pageAspectRatios[page] = ratio }
                 }
                 // 让出主线程，避免整本测量挡住可见页的解码。
                 if (page % 4 == 0) yield()
@@ -577,7 +718,11 @@ fun RasterReaderScreen(
     }
 
     suspend fun scrollToPdfPage(targetPage: Int, animate: Boolean = !eInkMode) {
+        // 页面还没准备好时（pageCount 为 0）不能做 coerceIn，否则会抛出空区间异常。
+        if (pageCount <= 0) return
         val page = targetPage.coerceIn(0, pageCount - 1)
+        // Announce a distant target before the pager/list has measured it.
+        pageSource?.updateViewport(RasterViewport(visiblePages = setOf(page), anchor = page, scrolling = true))
         when (pageMode) {
             PdfPageMode.HORIZONTAL_PAGING -> {
                 val displayIndex = readingIndexForPage(page)
@@ -646,13 +791,19 @@ fun RasterReaderScreen(
         }
     }
 
+    // 目录胶囊拖动定位：拖动中实时跳页，松手时按落点收尾。
+    var isCatalogScrubbing by remember(bookId) { mutableStateOf(false) }
+    val catalogSeekJob = remember(bookId) { mutableStateOf<Job?>(null) }
+
     // 进度保存（节流：每翻 3 页才保存一次）
     var lastSavedPage by remember { mutableStateOf(-1) }
     LaunchedEffect(currentPage) {
-        if (pageCount > 0 && kotlin.math.abs(currentPage - lastSavedPage) >= 3) {
-            lastSavedPage = currentPage
-            viewModel.saveProgressDirect(bookId, currentPage.toFloat() / pageCount)
-        }
+        if (pageCount <= 0) return@LaunchedEffect
+        if (kotlin.math.abs(currentPage - lastSavedPage) < 3) return@LaunchedEffect
+        lastSavedPage = currentPage
+        // 拖动定位时一帧能跨过几十页，这里只记账不写库，松手后统一保存落点。
+        if (isCatalogScrubbing) return@LaunchedEffect
+        viewModel.saveProgressDirect(bookId, rasterReadingProgress(currentPage, pageCount))
     }
 
     // 缩放状态
@@ -661,6 +812,40 @@ fun RasterReaderScreen(
     var offsetY by remember { mutableStateOf(0f) }
     // 惯性平移的收尾动画：新手势开始时取消，避免它继续用旧缩放级别写回位移。
     val zoomPanDecayJob = remember { mutableStateOf<Job?>(null) }
+    val rasterDisplayWidth = (LocalConfiguration.current.screenWidthDp * LocalDensity.current.density *
+        if (spreadEnabled) 0.5f else 1f).toInt().coerceAtLeast(PAGE_RENDER_MIN_WIDTH_PX)
+    LaunchedEffect(pageSource, pageMode, spreadEnabled, rasterDisplayWidth) {
+        val source = pageSource ?: return@LaunchedEffect
+        androidx.compose.runtime.snapshotFlow {
+            val visible = when (pageMode) {
+                PdfPageMode.VERTICAL_SCROLL -> listState.layoutInfo.visibleItemsInfo.map { it.index }
+                PdfPageMode.HORIZONTAL_PAGING -> pagerState.layoutInfo.visiblePagesInfo.flatMap {
+                    if (spreadEnabled) {
+                        val pair = CbzSpreadPlanner.spreadFor(it.index, pageCount, COVER_ALONE_FIRST_PAGE)
+                        listOfNotNull(pair?.firstPage, pair?.secondPage)
+                    } else listOf(it.index)
+                }
+                PdfPageMode.VERTICAL_PAGING -> verticalPagerState.layoutInfo.visiblePagesInfo.map { it.index }
+            }
+            val scrolling = isCatalogScrubbing || when (pageMode) {
+                PdfPageMode.VERTICAL_SCROLL -> listState.isScrollInProgress
+                PdfPageMode.HORIZONTAL_PAGING -> pagerState.isScrollInProgress
+                PdfPageMode.VERTICAL_PAGING -> verticalPagerState.isScrollInProgress
+            }
+            val positions = when (pageMode) {
+                PdfPageMode.VERTICAL_SCROLL -> listOf(listState.firstVisibleItemIndex.toFloat(), listState.firstVisibleItemScrollOffset.toFloat())
+                PdfPageMode.HORIZONTAL_PAGING -> listOf(pagerState.currentPage.toFloat(), pagerState.currentPageOffsetFraction)
+                PdfPageMode.VERTICAL_PAGING -> listOf(verticalPagerState.currentPage.toFloat(), verticalPagerState.currentPageOffsetFraction)
+            }
+            val anchor = when (pageMode) {
+                PdfPageMode.VERTICAL_SCROLL -> verticalPage
+                PdfPageMode.HORIZONTAL_PAGING -> pageForReadingIndex(pagerState.currentPage)
+                PdfPageMode.VERTICAL_PAGING -> verticalPagerState.currentPage
+            }
+            RasterViewport(visible.toSet().ifEmpty { setOf(anchor) }, anchor, rasterDisplayWidth,
+                spreadEnabled, scrolling, positions + listOf(scale, offsetX, offsetY))
+        }.collect(source::updateViewport)
+    }
     // 缩放回到 1 时位移必须归零。否则残留的平移会把内容推离屏幕边缘，
     // 在顶部/底部露出一条背景色"白块"，而且只能靠再次缩放才被重新夹取。
     LaunchedEffect(scale) {
@@ -736,10 +921,7 @@ fun RasterReaderScreen(
     Box(
         Modifier
             .fillMaxSize()
-            .background(
-                if (isHorizontal || isVerticalPaging) AppColors.WindowBg
-                else com.huangder.lumibooks.ui.theme.ReaderColors.Light.background
-            )
+            .background(rasterBackgroundColor)
     ) {
         // PDF 页面（上下连续滚动 / 上下分页 / 相册式左右分页）
         Box(
@@ -753,12 +935,10 @@ fun RasterReaderScreen(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() }
                 ) {
-                    if (scale <= PDF_ZOOM_EPSILON) {
-                        if (annotationMode && inkColorExpanded) {
-                            inkColorExpanded = false
-                        } else {
-                            showMenu = !showMenu
-                        }
+                    if (annotationMode && inkColorExpanded) {
+                        inkColorExpanded = false
+                    } else {
+                        showMenu = !showMenu
                     }
                 }
         ) {
@@ -800,6 +980,7 @@ fun RasterReaderScreen(
                                 isRightToLeft = isRightToLeft,
                                 pageSource = pageSource,
                                 aspectRatios = pageAspectRatios,
+                                renderMode = renderMode,
                                 annotationMode = annotationMode,
                                 activeInkTool = selectedInkTool,
                                 activeInkColor = ReaderHighlightPalette
@@ -818,6 +999,7 @@ fun RasterReaderScreen(
                                 scope = scope,
                                 pageSource = pageSource,
                                 aspectRatios = pageAspectRatios,
+                                renderMode = renderMode,
                                 scale = scale,
                                 offsetX = offsetX,
                                 offsetY = offsetY,
@@ -849,6 +1031,7 @@ fun RasterReaderScreen(
                             scope = scope,
                             pageSource = pageSource,
                             aspectRatios = pageAspectRatios,
+                            renderMode = renderMode,
                             scale = scale,
                             offsetX = offsetX,
                             offsetY = offsetY,
@@ -870,11 +1053,17 @@ fun RasterReaderScreen(
                         .fillMaxSize()
                         .pointerInput(pageMode, annotationMode) {
                             awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                // Let the previous fling run while idle; only a real new touch stops it.
                                 zoomPanDecayJob.value?.cancel()
                                 zoomPanDecayJob.value = null
-                                val down = awaitFirstDown(requireUnconsumed = false)
                                 val velocityTracker = VelocityTracker()
-                                velocityTracker.addPosition(down.uptimeMillis, down.position)
+                                val velocityEstimator = PdfPanVelocityEstimator()
+                                var trackedPanPosition = Offset.Zero
+                                velocityTracker.addPosition(down.uptimeMillis, trackedPanPosition)
+                                velocityEstimator.reset(down.uptimeMillis)
+                                var releaseUptimeMillis = down.uptimeMillis
+                                var transformGesture = false
                                 var gestureMode = PdfMultiTouchMode.UNDECIDED
                                 var pendingPan = Offset.Zero
                                 var pendingZoom = 1f
@@ -883,23 +1072,34 @@ fun RasterReaderScreen(
                                 var gestureOffsetY = offsetY
                                 while (true) {
                                     val event = awaitPointerEvent(pass = PointerEventPass.Initial)
+                                    val eventUptimeMillis = event.changes.maxOfOrNull { it.uptimeMillis }
+                                        ?: releaseUptimeMillis
+                                    releaseUptimeMillis = eventUptimeMillis
                                     val pressed = event.changes.count { it.pressed }
+                                    if (pressed >= 2) transformGesture = true
                                     if (pressed == 0) {
                                         break
-                                    } else if (pressed >= 2 || gestureScale > PDF_ZOOM_EPSILON) {
-                                        event.changes.firstOrNull { it.pressed }?.let { change ->
-                                            velocityTracker.addPosition(change.uptimeMillis, change.position)
-                                        }
+                                    } else if (transformGesture ||
+                                        (!annotationMode && gestureScale > PDF_ZOOM_EPSILON)
+                                    ) {
                                         val pan = event.calculatePan()
                                         val zoom = event.calculateZoom()
+                                        velocityEstimator.addPan(eventUptimeMillis, pan)
+                                        trackedPanPosition += pan
+                                        event.changes.maxOfOrNull { it.uptimeMillis }?.let { uptimeMillis ->
+                                            velocityTracker.addPosition(uptimeMillis, trackedPanPosition)
+                                        }
                                         pendingPan += pan
                                         pendingZoom *= zoom
                                         if (gestureMode == PdfMultiTouchMode.UNDECIDED) {
-                                            gestureMode = when {
-                                                kotlin.math.abs(pendingZoom - 1f) >= 0.035f -> PdfMultiTouchMode.ZOOM
-                                                pendingPan.getDistance() >= viewConfiguration.touchSlop -> PdfMultiTouchMode.PAN
-                                                else -> PdfMultiTouchMode.UNDECIDED
-                                            }
+                                            val zoomMotion = kotlin.math.abs(1f - pendingZoom) *
+                                                event.calculateCentroidSize(useCurrent = false)
+                                            gestureMode = resolvePdfTransformMode(
+                                                panMotion = pendingPan.getDistance(),
+                                                zoomMotion = zoomMotion,
+                                                touchSlop = viewConfiguration.touchSlop,
+                                                preferPan = annotationMode && transformGesture
+                                            )
                                         }
                                         if (gestureMode == PdfMultiTouchMode.ZOOM) {
                                             val newScale = (gestureScale * pendingZoom).coerceIn(1f, 5f)
@@ -921,16 +1121,24 @@ fun RasterReaderScreen(
                                             pendingZoom = 1f
                                         } else if (gestureMode == PdfMultiTouchMode.PAN) {
                                             if (gestureScale > PDF_ZOOM_EPSILON) {
-                                                val beforeOffset = gestureOffsetY
+                                                val maxOffsetX = (gestureScale - 1f) * size.width / 2f
                                                 val maxOffsetY = (gestureScale - 1f) * size.height / 2f
-                                                val result = consumePdfPanDelta(
-                                                    offset = beforeOffset,
+                                                val xResult = consumePdfPanDelta(
+                                                    offset = gestureOffsetX,
+                                                    maxOffset = maxOffsetX,
+                                                    delta = pendingPan.x
+                                                )
+                                                val beforeOffsetY = gestureOffsetY
+                                                val yResult = consumePdfPanDelta(
+                                                    offset = beforeOffsetY,
                                                     maxOffset = maxOffsetY,
                                                     delta = pendingPan.y
                                                 )
-                                                gestureOffsetY = result.offset
+                                                gestureOffsetX = xResult.offset
+                                                gestureOffsetY = yResult.offset
+                                                offsetX = gestureOffsetX
                                                 offsetY = gestureOffsetY
-                                                val consumed = gestureOffsetY - beforeOffset
+                                                val consumed = gestureOffsetY - beforeOffsetY
                                                 val residual = pendingPan.y - consumed
                                                 if (residual != 0f) {
                                                     listState.dispatchRawDelta(-residual)
@@ -946,24 +1154,46 @@ fun RasterReaderScreen(
                                         }
                                     }
                                 }
-                                if (gestureScale > PDF_ZOOM_EPSILON && gestureMode == PdfMultiTouchMode.PAN) {
-                                    val velocity = velocityTracker.calculateVelocity().y
+                                val navigationGesture = !annotationMode || transformGesture
+                                if (shouldStartPdfPanDecay(gestureScale, gestureMode, navigationGesture)) {
+                                    val trackedVelocity = velocityTracker.calculateVelocity()
+                                    val estimatedVelocity = velocityEstimator.velocityAt(releaseUptimeMillis)
+                                    val velocity = resolvePdfReleaseVelocity(
+                                        tracked = Offset(trackedVelocity.x, trackedVelocity.y),
+                                        estimated = estimatedVelocity
+                                    )
                                     zoomPanDecayJob.value = scope.launch {
-                                        animatePdfPanDecay(
-                                            initialOffset = gestureOffsetY,
-                                            initialVelocity = velocity,
-                                            maxOffset = (gestureScale - 1f) * size.height / 2f,
-                                            onOffsetChange = { value ->
-                                                // 每次写回都按"当前"缩放级别夹取：
-                                                // 若用户在这段动画里缩回原始大小，位移立即归零。
-                                                val liveMax = ((scale - 1f) * size.height / 2f)
-                                                    .coerceAtLeast(0f)
-                                                offsetY = value.coerceIn(-liveMax, liveMax)
-                                            },
-                                            onUnconsumedDelta = { residual ->
-                                                if (residual != 0f) listState.dispatchRawDelta(-residual)
+                                        coroutineScope {
+                                            if (gestureScale > PDF_ZOOM_EPSILON) {
+                                                launch {
+                                                    animatePdfPanDecay(
+                                                        initialOffset = gestureOffsetX,
+                                                        initialVelocity = velocity.x,
+                                                        maxOffset = (gestureScale - 1f) * size.width / 2f,
+                                                        onOffsetChange = { value ->
+                                                            val liveMax = ((scale - 1f) * size.width / 2f)
+                                                                .coerceAtLeast(0f)
+                                                            offsetX = value.coerceIn(-liveMax, liveMax)
+                                                        }
+                                                    )
+                                                }
                                             }
-                                        )
+                                            animatePdfPanDecay(
+                                                initialOffset = gestureOffsetY,
+                                                initialVelocity = velocity.y,
+                                                maxOffset = (gestureScale - 1f) * size.height / 2f,
+                                                onOffsetChange = { value ->
+                                                    // 每次写回都按"当前"缩放级别夹取：
+                                                    // 若用户在这段动画里缩回原始大小，位移立即归零。
+                                                    val liveMax = ((scale - 1f) * size.height / 2f)
+                                                        .coerceAtLeast(0f)
+                                                    offsetY = value.coerceIn(-liveMax, liveMax)
+                                                },
+                                                onUnconsumedDelta = { residual ->
+                                                    if (residual != 0f) listState.dispatchRawDelta(-residual)
+                                                }
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -986,6 +1216,9 @@ fun RasterReaderScreen(
                                 aspectRatios = pageAspectRatios,
                                 pageIndex = it,
                                 fitToViewport = false,
+                                zoomScale = scale,
+                                renderMode = renderMode,
+                                requestSelectedQuality = it == currentPage,
                                 annotationEnabled = true,
                                 annotationInteractive = false,
                                 activeInkTool = selectedInkTool,
@@ -1035,6 +1268,7 @@ fun RasterReaderScreen(
                 pageCount = pageCount,
                 isBookmarked = isCurrentPageBookmarked,
                 pageMode = pageMode,
+                renderMode = renderMode,
                 eInkModeEnabled = eInkMode,
                 glassContentScrimColor = pdfGlassContentScrim,
                 showTtsAction = !isComic,
@@ -1050,6 +1284,7 @@ fun RasterReaderScreen(
                         viewModel.togglePdfPageMode()
                     }
                 },
+                onRenderModeToggle = viewModel::togglePageRenderMode,
                 onTtsToggle = {
                     if (ttsState.activeBookId == bookId &&
                         ttsState.playbackState != TtsPlaybackState.IDLE
@@ -1159,11 +1394,27 @@ fun RasterReaderScreen(
                          showMenu = false
                          showPdfToc = true
                      },
+                     onCatalogProgressDragStart = {
+                         isCatalogScrubbing = true
+                     },
+                     onCatalogProgressPageChange = { page ->
+                         // 拖动过程中就跳到目标页：上一帧还没落地的跳转直接取消，不排队，
+                         // 这样松手前页面已经加载好，不会再有"从远处滚动过去"的延迟。
+                         catalogSeekJob.value?.cancel()
+                         catalogSeekJob.value = scope.launch { scrollToPdfPage(page, animate = false) }
+                     },
                      onCatalogProgressDragEnd = { finalProgress ->
                          val targetPage = pdfPageIndexForProgress(finalProgress, pageCount)
+                         isCatalogScrubbing = false
                          lastSavedPage = targetPage
-                         viewModel.saveProgressDirect(bookId, targetPage.toFloat() / pageCount)
-                         scope.launch { scrollToPdfPage(targetPage) }
+                         viewModel.saveProgressDirect(
+                             bookId,
+                             rasterReadingProgress(targetPage, pageCount)
+                         )
+                         catalogSeekJob.value?.cancel()
+                         catalogSeekJob.value = scope.launch {
+                             scrollToPdfPage(targetPage, animate = false)
+                         }
                      },
                      onAnnotationClick = {
                         annotationMode = !annotationMode
@@ -1378,6 +1629,7 @@ private fun PdfPagerPage(
     scope: kotlinx.coroutines.CoroutineScope,
     pageSource: BitmapPageSource?,
     aspectRatios: androidx.compose.runtime.snapshots.SnapshotStateMap<Int, Float>,
+    renderMode: PageRenderMode,
     scale: Float,
     offsetX: Float,
     offsetY: Float,
@@ -1399,11 +1651,16 @@ private fun PdfPagerPage(
             .fillMaxSize()
             .pointerInput(pageIndex, axis) {
                 awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    // Let the previous fling run while idle; only a real new touch stops it.
                     panDecayJob.value?.cancel()
                     panDecayJob.value = null
-                    val down = awaitFirstDown(requireUnconsumed = false)
                     val velocityTracker = VelocityTracker()
-                    velocityTracker.addPosition(down.uptimeMillis, down.position)
+                    val velocityEstimator = PdfPanVelocityEstimator()
+                    var trackedPanPosition = Offset.Zero
+                    velocityTracker.addPosition(down.uptimeMillis, trackedPanPosition)
+                    velocityEstimator.reset(down.uptimeMillis)
+                    var releaseUptimeMillis = down.uptimeMillis
                     var pointersPressed: Boolean
                     var transformGesture = false
                     var gestureMode = PdfMultiTouchMode.UNDECIDED
@@ -1416,41 +1673,53 @@ private fun PdfPagerPage(
                     var gestureOffsetY = latestOffsetY.value
                     do {
                         val event = awaitPointerEvent(pass = PointerEventPass.Initial)
+                        val eventUptimeMillis = event.changes.maxOfOrNull { it.uptimeMillis }
+                            ?: releaseUptimeMillis
+                        releaseUptimeMillis = eventUptimeMillis
                         val pressedCount = event.changes.count { it.pressed }
                         if (pressedCount >= 2) transformGesture = true
-                        if (transformGesture || gestureScale > PDF_ZOOM_EPSILON) {
-                            event.changes.firstOrNull { it.pressed }?.let { change ->
-                                velocityTracker.addPosition(change.uptimeMillis, change.position)
-                            }
+                        if (transformGesture || (!annotationMode && gestureScale > PDF_ZOOM_EPSILON)) {
                             val pan = event.calculatePan()
                             val zoom = event.calculateZoom()
+                            velocityEstimator.addPan(eventUptimeMillis, pan)
+                            trackedPanPosition += pan
+                            event.changes.maxOfOrNull { it.uptimeMillis }?.let { uptimeMillis ->
+                                velocityTracker.addPosition(uptimeMillis, trackedPanPosition)
+                            }
                             pendingPan += pan
                             pendingZoom *= zoom
                             if (gestureMode == PdfMultiTouchMode.UNDECIDED) {
-                                gestureMode = when {
-                                    kotlin.math.abs(pendingZoom - 1f) >= 0.035f -> PdfMultiTouchMode.ZOOM
-                                    pendingPan.getDistance() >= viewConfiguration.touchSlop -> PdfMultiTouchMode.PAN
-                                    else -> PdfMultiTouchMode.UNDECIDED
-                                }
+                                val zoomMotion = kotlin.math.abs(1f - pendingZoom) *
+                                    event.calculateCentroidSize(useCurrent = false)
+                                gestureMode = resolvePdfTransformMode(
+                                    panMotion = pendingPan.getDistance(),
+                                    zoomMotion = zoomMotion,
+                                    touchSlop = viewConfiguration.touchSlop,
+                                    preferPan = annotationMode && transformGesture
+                                )
                             }
                             if (gestureMode == PdfMultiTouchMode.PAN) {
                                 val delta = if (axis == PdfPagerAxis.HORIZONTAL) pendingPan.x else pendingPan.y
                                 if (gestureScale > PDF_ZOOM_EPSILON) {
-                                    val beforeOffset = if (axis == PdfPagerAxis.HORIZONTAL) gestureOffsetX else gestureOffsetY
-                                    val maxOffset = (gestureScale - 1f) *
-                                        (if (axis == PdfPagerAxis.HORIZONTAL) size.width else size.height) / 2f
-                                    val result = consumePdfPanDelta(
-                                        offset = beforeOffset,
-                                        maxOffset = maxOffset,
-                                        delta = delta,
-                                        edgeDrag = edgeDrag
+                                    val xResult = consumePdfPanDelta(
+                                        offset = gestureOffsetX,
+                                        maxOffset = (gestureScale - 1f) * size.width / 2f,
+                                        delta = pendingPan.x,
+                                        edgeDrag = if (axis == PdfPagerAxis.HORIZONTAL) edgeDrag else 0f
                                     )
-                                    edgeDrag = result.edgeDrag
-                                    if (axis == PdfPagerAxis.HORIZONTAL) {
-                                        gestureOffsetX = result.offset
+                                    val yResult = consumePdfPanDelta(
+                                        offset = gestureOffsetY,
+                                        maxOffset = (gestureScale - 1f) * size.height / 2f,
+                                        delta = pendingPan.y,
+                                        edgeDrag = if (axis == PdfPagerAxis.VERTICAL) edgeDrag else 0f
+                                    )
+                                    edgeDrag = if (axis == PdfPagerAxis.HORIZONTAL) {
+                                        xResult.edgeDrag
                                     } else {
-                                        gestureOffsetY = result.offset
+                                        yResult.edgeDrag
                                     }
+                                    gestureOffsetX = xResult.offset
+                                    gestureOffsetY = yResult.offset
                                     onOffsetChange(gestureOffsetX, gestureOffsetY)
                                 } else {
                                     documentPan += delta
@@ -1478,49 +1747,90 @@ private fun PdfPagerPage(
                     } while (pointersPressed)
                     panDecayJob.value = scope.launch {
                         var finalEdgeDrag = edgeDrag
-                        if (!annotationMode && gestureScale > PDF_ZOOM_EPSILON && gestureMode == PdfMultiTouchMode.PAN) {
-                            val velocity = if (axis == PdfPagerAxis.HORIZONTAL) {
-                                velocityTracker.calculateVelocity().x
-                            } else {
-                                velocityTracker.calculateVelocity().y
-                            }
+                        val navigationGesture = !annotationMode || transformGesture
+                        if (shouldStartPdfPanDecay(gestureScale, gestureMode, navigationGesture)) {
+                            val trackedVelocity = velocityTracker.calculateVelocity()
+                            val estimatedVelocity = velocityEstimator.velocityAt(releaseUptimeMillis)
+                            val velocity = resolvePdfReleaseVelocity(
+                                tracked = Offset(trackedVelocity.x, trackedVelocity.y),
+                                estimated = estimatedVelocity
+                            )
                             val initialOffset = if (axis == PdfPagerAxis.HORIZONTAL) gestureOffsetX else gestureOffsetY
                             val maxOffset = (gestureScale - 1f) *
                                 (if (axis == PdfPagerAxis.HORIZONTAL) size.width else size.height) / 2f
-                            finalEdgeDrag = animatePdfPanDecay(
-                                initialOffset = initialOffset,
-                                initialVelocity = velocity,
-                                maxOffset = maxOffset,
-                                initialEdgeDrag = edgeDrag,
-                                onOffsetChange = { offset ->
-                                    // 按"当前"缩放级别夹取，缩回原始大小后不会再被旧的位移量推回去。
-                                    val liveMax = ((latestScale.value - 1f) *
-                                        (if (axis == PdfPagerAxis.HORIZONTAL) size.width else size.height) / 2f)
-                                        .coerceAtLeast(0f)
-                                    val clamped = offset.coerceIn(-liveMax, liveMax)
-                                    if (axis == PdfPagerAxis.HORIZONTAL) {
-                                        gestureOffsetX = clamped
-                                    } else {
-                                        gestureOffsetY = clamped
+                            coroutineScope {
+                                if (gestureScale > PDF_ZOOM_EPSILON) {
+                                    launch {
+                                        val crossInitial = if (axis == PdfPagerAxis.HORIZONTAL) {
+                                            gestureOffsetY
+                                        } else {
+                                            gestureOffsetX
+                                        }
+                                        val crossVelocity = if (axis == PdfPagerAxis.HORIZONTAL) {
+                                            velocity.y
+                                        } else {
+                                            velocity.x
+                                        }
+                                        val crossMax = (gestureScale - 1f) *
+                                            (if (axis == PdfPagerAxis.HORIZONTAL) size.height else size.width) / 2f
+                                        animatePdfPanDecay(
+                                            initialOffset = crossInitial,
+                                            initialVelocity = crossVelocity,
+                                            maxOffset = crossMax,
+                                            onOffsetChange = { offset ->
+                                                val liveMax = ((latestScale.value - 1f) *
+                                                    (if (axis == PdfPagerAxis.HORIZONTAL) size.height else size.width) / 2f)
+                                                    .coerceAtLeast(0f)
+                                                val clamped = offset.coerceIn(-liveMax, liveMax)
+                                                if (axis == PdfPagerAxis.HORIZONTAL) {
+                                                    gestureOffsetY = clamped
+                                                } else {
+                                                    gestureOffsetX = clamped
+                                                }
+                                                onOffsetChange(gestureOffsetX, gestureOffsetY)
+                                            }
+                                        )
                                     }
-                                    onOffsetChange(gestureOffsetX, gestureOffsetY)
                                 }
-                            )
+                                finalEdgeDrag = animatePdfPanDecay(
+                                    initialOffset = initialOffset,
+                                    initialVelocity = if (axis == PdfPagerAxis.HORIZONTAL) velocity.x else velocity.y,
+                                    maxOffset = maxOffset,
+                                    initialEdgeDrag = edgeDrag,
+                                    onOffsetChange = { offset ->
+                                        // 按"当前"缩放级别夹取，缩回原始大小后不会再被旧的位移量推回去。
+                                        val liveMax = ((latestScale.value - 1f) *
+                                            (if (axis == PdfPagerAxis.HORIZONTAL) size.width else size.height) / 2f)
+                                            .coerceAtLeast(0f)
+                                        val clamped = offset.coerceIn(-liveMax, liveMax)
+                                        if (axis == PdfPagerAxis.HORIZONTAL) {
+                                            gestureOffsetX = clamped
+                                        } else {
+                                            gestureOffsetY = clamped
+                                        }
+                                        onOffsetChange(gestureOffsetX, gestureOffsetY)
+                                    }
+                                )
+                            }
                         }
-                        val targetPage = if (!annotationMode &&
+                        val targetPage = if (navigationGesture &&
                             gestureScale > PDF_ZOOM_EPSILON && gestureMode == PdfMultiTouchMode.PAN
                         ) {
                             pdfPageForEdgeDrag(pageIndex, pageCount, finalEdgeDrag)
-                        } else if (!annotationMode && transformGesture && gestureMode == PdfMultiTouchMode.PAN) {
+                        } else if (navigationGesture && transformGesture && gestureMode == PdfMultiTouchMode.PAN) {
                             when {
-                                documentPan < -PDF_PAGE_TURN_THRESHOLD_PX -> pageIndex + 1
-                                documentPan > PDF_PAGE_TURN_THRESHOLD_PX -> pageIndex - 1
+                                documentPan + finalEdgeDrag < -PDF_PAGE_TURN_THRESHOLD_PX -> pageIndex + 1
+                                documentPan + finalEdgeDrag > PDF_PAGE_TURN_THRESHOLD_PX -> pageIndex - 1
                                 else -> pageIndex
                             }.coerceIn(0, pageCount - 1)
                         } else {
                             pageIndex
                         }
-                        if (targetPage != pageIndex) {
+                        val shouldSettlePager = navigationGesture &&
+                            transformGesture &&
+                            gestureScale <= PDF_ZOOM_EPSILON &&
+                            gestureMode == PdfMultiTouchMode.PAN
+                        if (targetPage != pageIndex || shouldSettlePager) {
                             pagerState.animateScrollToPage(targetPage)
                         }
                     }
@@ -1539,6 +1849,10 @@ private fun PdfPagerPage(
             aspectRatios = aspectRatios,
             pageIndex = pageIndex,
             fitToViewport = true,
+            // Pager 会预组合相邻页；只给当前页补缩放分辨率，避免同时分配三张大图。
+            zoomScale = if (pageIndex == pagerState.currentPage) scale else 1f,
+            renderMode = renderMode,
+            requestSelectedQuality = pageIndex == pagerState.currentPage,
             annotationEnabled = true,
             annotationInteractive = annotationMode,
             activeInkTool = activeInkTool,
@@ -1561,6 +1875,7 @@ private fun PdfSpreadPage(
     isRightToLeft: Boolean,
     pageSource: BitmapPageSource?,
     aspectRatios: androidx.compose.runtime.snapshots.SnapshotStateMap<Int, Float>,
+    renderMode: PageRenderMode,
     annotationMode: Boolean,
     activeInkTool: PdfInkTool,
     activeInkColor: String,
@@ -1575,6 +1890,7 @@ private fun PdfSpreadPage(
             pageIndex = leftPage,
             pageSource = pageSource,
             aspectRatios = aspectRatios,
+            renderMode = renderMode,
             annotationMode = annotationMode,
             activeInkTool = activeInkTool,
             activeInkColor = activeInkColor,
@@ -1587,6 +1903,7 @@ private fun PdfSpreadPage(
             pageIndex = rightPage,
             pageSource = pageSource,
             aspectRatios = aspectRatios,
+            renderMode = renderMode,
             annotationMode = annotationMode,
             activeInkTool = activeInkTool,
             activeInkColor = activeInkColor,
@@ -1603,6 +1920,7 @@ private fun PdfSpreadSlot(
     pageIndex: Int?,
     pageSource: BitmapPageSource?,
     aspectRatios: androidx.compose.runtime.snapshots.SnapshotStateMap<Int, Float>,
+    renderMode: PageRenderMode,
     annotationMode: Boolean,
     activeInkTool: PdfInkTool,
     activeInkColor: String,
@@ -1618,7 +1936,8 @@ private fun PdfSpreadSlot(
             aspectRatios = aspectRatios,
             pageIndex = pageIndex,
             fitToViewport = true,
-            widthMultiplier = 1f,
+            displayWidthFactor = 0.5f,
+            renderMode = renderMode,
             annotationEnabled = true,
             annotationInteractive = annotationMode,
             activeInkTool = activeInkTool,
@@ -1638,6 +1957,7 @@ private fun PdfTopBar(
     pageCount: Int,
     isBookmarked: Boolean = false,
     pageMode: PdfPageMode,
+    renderMode: PageRenderMode = PageRenderMode.NORMAL,
     eInkModeEnabled: Boolean = false,
     glassContentScrimColor: Color,
     /** 漫画没有文字层，朗读入口不适用。 */
@@ -1645,6 +1965,7 @@ private fun PdfTopBar(
     isTtsActive: Boolean,
     onBack: () -> Unit,
     onPageModeToggle: () -> Unit,
+    onRenderModeToggle: () -> Unit = {},
     onTtsToggle: () -> Unit,
     onBookmarkToggle: () -> Unit = {}
 ) {
@@ -1692,13 +2013,13 @@ private fun PdfTopBar(
                     Icon(AppIcons.ArrowLeft, stringResource(R.string.pdf_back), tint = AppColors.TextPrimary, modifier = Modifier.size(18.dp))
                 }
                 Spacer(Modifier.width(10.dp))
-                // 页码徽章：半透明黑底 + 圆角矩形
+                // 页码徽章：与返回键等高的胶囊，左侧控件保持同一视觉高度
                 LiquidGlassSurface(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(18.dp),
                     fallbackColor = Color.Black.copy(alpha = 0.35f),
                     contentScrimColor = glassContentScrimColor,
                     modifier = Modifier
-                        .height(28.dp)
+                        .height(36.dp)
                 ) {
                     Text(
                         text = "${currentPage + 1} / $pageCount",
@@ -1707,6 +2028,56 @@ private fun PdfTopBar(
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(horizontal = 12.dp)
                     )
+                }
+                // 渲染清晰度档位：正常 → 高清 → 原图 → 正常。
+                if (!eInkMode) {
+                    Spacer(Modifier.width(6.dp))
+                    val renderModeLabel = stringResource(
+                        when (renderMode) {
+                            PageRenderMode.NORMAL -> R.string.page_render_mode_normal
+                            PageRenderMode.HIGH -> R.string.page_render_mode_high
+                            PageRenderMode.NATIVE -> R.string.page_render_mode_native
+                        }
+                    )
+                    LiquidGlassSurface(
+                        shape = RoundedCornerShape(18.dp),
+                        fallbackColor = if (renderMode == PageRenderMode.NORMAL) {
+                            AppColors.BgGray.copy(alpha = 0.8f)
+                        } else {
+                            AppColors.Accent.copy(alpha = 0.18f)
+                        },
+                        contentScrimColor = glassContentScrimColor,
+                        modifier = Modifier.height(36.dp),
+                        onClick = onRenderModeToggle
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .padding(horizontal = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = AppIcons.Image,
+                                contentDescription = stringResource(
+                                    R.string.page_render_mode_desc,
+                                    renderModeLabel
+                                ),
+                                tint = if (renderMode == PageRenderMode.NORMAL) {
+                                    AppColors.TextSecondary
+                                } else {
+                                    AppColors.Accent
+                                },
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = renderModeLabel,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = if (isLiquidGlass) AppColors.TextPrimary else AppColors.TextSecondary
+                            )
+                        }
+                    }
                 }
             }
 
@@ -1815,6 +2186,8 @@ private fun PdfBottomMenu(
     onDirectionToggle: () -> Unit = {},
     onTwoPageSpreadToggle: () -> Unit = {},
     onCatalogClick: () -> Unit,
+    onCatalogProgressDragStart: (() -> Unit)? = null,
+    onCatalogProgressPageChange: ((Int) -> Unit)? = null,
     onCatalogProgressDragEnd: ((Float) -> Unit)? = null,
     onAnnotationClick: () -> Unit,
     onBookmarksClick: () -> Unit,
@@ -1867,6 +2240,8 @@ private fun PdfBottomMenu(
             pageCount = pdfPageCount,
             glassContentScrimColor = glassContentScrimColor,
             onClick = onCatalogClick,
+            onProgressDragStart = onCatalogProgressDragStart,
+            onProgressPageChange = onCatalogProgressPageChange,
             onProgressDragEnd = onCatalogProgressDragEnd
         )
         Row(
@@ -2441,6 +2816,8 @@ private fun PdfCatalogCapsule(
     pageCount: Int,
     glassContentScrimColor: Color,
     onClick: () -> Unit,
+    onProgressDragStart: (() -> Unit)? = null,
+    onProgressPageChange: ((Int) -> Unit)? = null,
     onProgressDragEnd: ((Float) -> Unit)? = null
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current
@@ -2449,9 +2826,13 @@ private fun PdfCatalogCapsule(
     var isDragging by remember { mutableStateOf(false) }
     var previewBitmap by remember(pageSource) { mutableStateOf<Bitmap?>(null) }
     val dragSession = remember { CatalogProgressDragSession() }
+    val scrubTracker = remember { CatalogProgressScrubTracker() }
     val latestOnClick = rememberUpdatedState(onClick)
+    val latestOnDragStart = rememberUpdatedState(onProgressDragStart)
+    val latestOnPageChange = rememberUpdatedState(onProgressPageChange)
     val latestOnDragEnd = rememberUpdatedState(onProgressDragEnd)
     val latestExternalProgress = rememberUpdatedState(progress)
+    val latestPageCount = rememberUpdatedState(pageCount)
 
     LaunchedEffect(progress) {
         if (!isDragging) dragProgress = progress
@@ -2469,8 +2850,11 @@ private fun PdfCatalogCapsule(
     val previewHeight = previewWidth / previewAspectRatio.coerceAtLeast(0.1f)
 
     // Render a reasonably dense bitmap once, then let Compose scale it into the large card.
-    LaunchedEffect(pageSource, previewPage) {
-        if (pageCount <= 0) return@LaunchedEffect
+    LaunchedEffect(pageSource, previewPage, isDragging) {
+        if (pageCount <= 0 || !isDragging) {
+            previewBitmap = null
+            return@LaunchedEffect
+        }
         previewBitmap = pageSource?.renderThumbnail(previewPage, CATALOG_PREVIEW_WIDTH_PX)
     }
 
@@ -2600,6 +2984,16 @@ private fun PdfCatalogCapsule(
                         var cumulativeDrag = 0f
                         var dragging = false
                         var committed = false
+                        // 拖动中"拖到哪就跳到哪"：一次拖动会跨过很多页，
+                        // 只把目标页真正变化的那些帧转成跳转请求。
+                        fun applyDrag(deltaPx: Float) {
+                            val dragDp = with(density) { deltaPx.toDp().value }
+                            val nextProgress = dragSession.dragBy(dragDp * 0.25f)
+                            dragProgress = nextProgress
+                            scrubTracker
+                                .nextSeek(nextProgress, latestPageCount.value)
+                                ?.let { page -> latestOnPageChange.value?.invoke(page) }
+                        }
                         try {
                             while (true) {
                                 val event = awaitPointerEvent(pass = PointerEventPass.Initial)
@@ -2611,14 +3005,14 @@ private fun PdfCatalogCapsule(
                                         dragging = true
                                         isDragging = true
                                         dragSession.begin(latestExternalProgress.value)
-                                        val dragDp = with(density) { cumulativeDrag.toDp().value }
-                                        dragProgress = dragSession.dragBy(dragDp * 0.25f)
+                                        scrubTracker.reset()
+                                        latestOnDragStart.value?.invoke()
+                                        applyDrag(cumulativeDrag)
                                         change.consume()
                                     }
                                 } else {
                                     change.consume()
-                                    val dragDp = with(density) { dx.toDp().value }
-                                    dragProgress = dragSession.dragBy(dragDp * 0.25f)
+                                    applyDrag(dx)
                                 }
 
                                 if (change.changedToUpIgnoreConsumed()) {
@@ -2634,7 +3028,9 @@ private fun PdfCatalogCapsule(
                             }
                         } finally {
                             if (dragging && !committed) {
-                                dragSession.cancel()
+                                // 手势被系统抢占打断时，阅读位置在拖动中已经跟着走了，
+                                // 这里仍然按当前进度收尾，避免停留在"跳到一半"的状态。
+                                dragSession.finish { latestOnDragEnd.value?.invoke(it) }
                             }
                             isDragging = false
                         }
@@ -2813,8 +3209,14 @@ private fun PdfPageItem(
     aspectRatios: androidx.compose.runtime.snapshots.SnapshotStateMap<Int, Float>,
     pageIndex: Int,
     fitToViewport: Boolean,
-    /** 渲染宽度相对屏幕宽度的倍率；双页对开的半屏页传 1f。 */
-    widthMultiplier: Float = PAGE_RENDER_SCALE,
+    /** 这一页在屏幕上的显示宽度占屏幕宽度的比例；双页对开的半屏页传 0.5f。 */
+    displayWidthFactor: Float = 1f,
+    /** 当前手势缩放倍率；达到新的半倍档时后台补一张更高分辨率页。 */
+    zoomScale: Float = 1f,
+    /** 解码清晰度档位：正常只解到够显示用，高清 / 原图按原图解码。 */
+    renderMode: PageRenderMode = PageRenderMode.NORMAL,
+    /** Only the reading anchor may consume the single high-resolution render slot. */
+    requestSelectedQuality: Boolean = true,
     annotationEnabled: Boolean,
     annotationInteractive: Boolean,
     activeInkTool: PdfInkTool,
@@ -2826,15 +3228,31 @@ private fun PdfPageItem(
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current.density
     val screenWidthPx = configuration.screenWidthDp * density
-    val targetWidthPx = (
-        if (fitToViewport) screenWidthPx * widthMultiplier else screenWidthPx
-        ).toInt().coerceAtLeast(PAGE_RENDER_MIN_WIDTH_PX)
-    var bitmap by remember(pageSource, pageIndex) { mutableStateOf<Bitmap?>(null) }
-    // 低清预览：先铺满页面区域，避免快速滚动/缩放时出现空白块。
-    var preview by remember(pageSource, pageIndex) { mutableStateOf<Bitmap?>(null) }
+    val baseDisplayWidthPx = (screenWidthPx * displayWidthFactor)
+        .toInt()
+        .coerceAtLeast(PAGE_RENDER_MIN_WIDTH_PX)
+    // 缩放时按半倍档补高分辨率图，不在手势每一帧重新分配 Bitmap。
+    val zoomRenderBucket = pdfZoomRenderBucket(zoomScale)
+    val renderTargetWidthPx = (baseDisplayWidthPx * zoomRenderBucket).toInt()
+    val effectiveRenderMode = if (requestSelectedQuality) renderMode else PageRenderMode.NORMAL
+    var bitmap by remember(pageSource, pageIndex) { mutableStateOf(pageSource?.cachedReadablePage(pageIndex)) }
+    var bitmapTargetWidthPx by remember(pageSource, pageIndex) { mutableStateOf(0) }
+    var bitmapRenderMode by remember(pageSource, pageIndex) { mutableStateOf(PageRenderMode.NORMAL) }
+    // 快速翻页的低清首帧。它只用于阅读区过渡，不参与最终画质和续读缓存。
+    var previewBitmap by remember(pageSource, pageIndex) { mutableStateOf<Bitmap?>(null) }
+    // 高分辨率档先铺一张“正常”档的解码结果：1× 显示下就是清晰的，
+    // 不用让用户对着 240px 预览等原图解码。
+    var baseBitmap by remember(pageSource, pageIndex) {
+        mutableStateOf(pageSource?.cachedReadablePage(pageIndex))
+    }
+    var tileSource by remember(pageSource, pageIndex) { mutableStateOf<RasterTileSource?>(null) }
+    var tileSourceResolved by remember(pageSource, pageIndex) { mutableStateOf(false) }
+    var tileLoaded by remember(pageSource, pageIndex) { mutableStateOf(false) }
+    var tileFailed by remember(pageSource, pageIndex) { mutableStateOf(false) }
+    val visible = pageSource?.visiblePages?.collectAsState()?.value?.contains(pageIndex) == true
     // 载入中按页面真实宽高比占位：占位尺寸与最终图片完全一致，
     // 快速滚动时列表不会因为页面变高/变矮而反复回弹。
-    val pageAspectRatio = aspectRatios[pageIndex]
+    val pageAspectRatio = aspectRatios[pageIndex] ?: pageSource?.cachedAspectRatio(pageIndex)
     // The page source owns decoded bitmaps (they are cached, never recycled by callers).
     LaunchedEffect(pageSource, pageIndex) {
         if (aspectRatios[pageIndex] == null) {
@@ -2842,19 +3260,70 @@ private fun PdfPageItem(
         }
     }
     LaunchedEffect(pageSource, pageIndex) {
-        if (preview == null) {
-            preview = pageSource?.renderPreview(pageIndex, PREVIEW_RENDER_WIDTH_PX)
+        tileSourceResolved = false
+        tileLoaded = false
+        tileFailed = false
+        tileSource = pageSource?.tiledPage(pageIndex)
+        baseBitmap = pageSource?.cachedReadablePage(pageIndex)
+        tileSourceResolved = true
+    }
+    // 预览和清晰图并行请求：快速移动时先给出旧版的低清首帧，停留后由
+    // PDF NORMAL、CBZ 分块图或普通位图覆盖。迟到的预览不会覆盖已到达的清晰图。
+    LaunchedEffect(pageSource, pageIndex) {
+        val source = pageSource ?: return@LaunchedEffect
+        val preview = source.renderPreview(pageIndex, PREVIEW_RENDER_WIDTH_PX) ?: return@LaunchedEffect
+        if (bitmap == null && baseBitmap == null && !tileLoaded) {
+            previewBitmap = preview
         }
     }
-    LaunchedEffect(pageSource, pageIndex, targetWidthPx) {
+    val activeTileSource = tileSource?.takeUnless { tileFailed }
+    // Every composed page must obtain a readable NORMAL bitmap even if visibility reporting lags
+    // behind a fast fling or a tiled source fails. Visible PDF pages can then refine to the selected
+    // quality; CBZ tiles provide their own high-detail refinement above this bitmap.
+    val bitmapRequestMode = if (visible && activeTileSource == null) effectiveRenderMode else PageRenderMode.NORMAL
+    val bitmapRequestWidthPx = if (visible && activeTileSource == null) renderTargetWidthPx else baseDisplayWidthPx
+    LaunchedEffect(
+        pageSource,
+        pageIndex,
+        bitmapRequestWidthPx,
+        bitmapRequestMode,
+        tileSourceResolved,
+        activeTileSource,
+        tileLoaded,
+        visible
+    ) {
         val source = pageSource ?: return@LaunchedEffect
+        if (!tileSourceResolved) return@LaunchedEffect
+        if (activeTileSource != null) {
+            val readableFallback = bitmap ?: baseBitmap
+            if (readableFallback != null || tileLoaded || !visible) return@LaunchedEffect
+            // SSIV usually produces the first clear CBZ frame faster than a full-page decode.
+            // Keep a short timeout so a slow codec can never strand the page blank.
+            delay(CBZ_BITMAP_FALLBACK_DELAY_MS)
+        }
+        // 已有更宽的图时直接复用；缩小回去不需要再渲染一张小图。
+        if (bitmap != null && bitmapTargetWidthPx >= bitmapRequestWidthPx &&
+            bitmapRenderMode.ordinal >= bitmapRequestMode.ordinal
+        ) {
+            return@LaunchedEffect
+        }
         // 解码可能因为快速滑动/缩放被取消，或在内存紧张时失败；只要这一页还显示在屏幕上
         // 就重试几次，否则会留下一块永远不消失的空白。
+        // 高分辨率档的单页位图很大，失败重试只会反复分配，所以重试上限压到 2 次。
+        val maxAttempts = if (bitmapRequestMode == PageRenderMode.NORMAL) {
+            PAGE_RENDER_MAX_ATTEMPTS
+        } else {
+            PAGE_RENDER_HIGH_RES_MAX_ATTEMPTS
+        }
         var attempt = 0
-        while (bitmap == null && attempt < PAGE_RENDER_MAX_ATTEMPTS) {
-            val rendered = source.renderPage(pageIndex, targetWidthPx)
+        while (attempt < maxAttempts) {
+            val rendered = source.renderPage(pageIndex, bitmapRequestWidthPx, bitmapRequestMode)
             if (rendered != null) {
                 bitmap = rendered
+                bitmapTargetWidthPx = bitmapRequestWidthPx
+                if (bitmapRequestMode.ordinal > bitmapRenderMode.ordinal) {
+                    bitmapRenderMode = bitmapRequestMode
+                }
                 return@LaunchedEffect
             }
             attempt++
@@ -2862,20 +3331,42 @@ private fun PdfPageItem(
         }
         android.util.Log.w(
             "RasterReader",
-            "Page $pageIndex rendered no bitmap after $attempt attempt(s)"
+            "Page $pageIndex rendered no bitmap after $attempt attempt(s) in $bitmapRequestMode"
         )
     }
 
+    val stableRatio = pageAspectRatio ?: activeTileSource?.dimensions?.ratio
+        ?: (bitmap ?: baseBitmap)?.let { it.width.toFloat() / it.height }
+    val loadingBackground = if (LocalEInkMode.current) Color.White else AppColors.WindowBg
     Box(
-        modifier = if (fitToViewport) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
+        modifier = (if (fitToViewport) Modifier.fillMaxSize() else Modifier.fillMaxWidth().then(
+            if (stableRatio != null) Modifier.aspectRatio(stableRatio) else Modifier.height(600.dp)
+        )).background(loadingBackground),
         contentAlignment = Alignment.Center
     ) {
-        val renderedPage = bitmap ?: preview
-        if (renderedPage != null) {
+        val tiled = activeTileSource
+        val renderedPage = bitmap ?: baseBitmap ?: previewBitmap
+        if (tiled != null) {
+            CbzTiledPage(
+                source = tiled,
+                zoomScale = zoomScale,
+                foreground = visible,
+                fallback = renderedPage,
+                modifier = Modifier.fillMaxSize(),
+                onImageLoaded = {
+                    tileLoaded = true
+                    pageSource?.pageDrawn(pageIndex, true)
+                },
+                onError = { tileFailed = true }
+            )
+        } else if (renderedPage != null) {
             Image(
                 bitmap = renderedPage.asImageBitmap(),
                 contentDescription = stringResource(R.string.pdf_page_desc, pageIndex + 1),
-                modifier = if (fitToViewport) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxSize().drawWithContent {
+                    drawContent()
+                    pageSource?.pageDrawn(pageIndex, bitmap != null && bitmapTargetWidthPx >= renderTargetWidthPx)
+                },
                 contentScale = if (fitToViewport) ContentScale.Fit else ContentScale.FillWidth
             )
         } else {
@@ -2943,6 +3434,7 @@ private fun BoxScope.PdfPageInkCanvas(
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val points = ArrayList<PdfInkPoint>(32)
                     val pointsErased = mutableSetOf<Long>()
+                    val pendingErasedStrokes = linkedMapOf<Long, PdfInkStroke>()
                     var cancelled = false
                     points += normalize(down.position)
                     livePoints = points.toList()
@@ -2970,9 +3462,10 @@ private fun BoxScope.PdfPageInkCanvas(
                                     key !in pointsErased && strokeHitsPoint(stroke, point)
                                 }
                                 erased.forEach { stroke ->
-                                    pointsErased += stroke.id.takeIf { it > 0L }
+                                    val key = stroke.id.takeIf { it > 0L }
                                         ?: PdfInkStrokeLocatorV1.encode(stroke.copy(id = 0L)).hashCode().toLong()
-                                    onStrokeErased(stroke)
+                                    pointsErased += key
+                                    pendingErasedStrokes[key] = stroke
                                 }
                             }
                         }
@@ -2980,16 +3473,20 @@ private fun BoxScope.PdfPageInkCanvas(
 
                     val completed = points.toList()
                     livePoints = emptyList()
-                    if (!cancelled && activeTool != PdfInkTool.ERASER && completed.size >= 2) {
-                        onStrokeCommitted(
-                            PdfInkStroke(
-                                page = pageIndex,
-                                points = simplifyInkPoints(completed),
-                                tool = activeTool,
-                                color = activeColor,
-                                width = if (activeTool == PdfInkTool.HIGHLIGHTER) 0.018f else 0.006f
+                    if (!cancelled) {
+                        if (activeTool == PdfInkTool.ERASER) {
+                            pendingErasedStrokes.values.forEach(onStrokeErased)
+                        } else if (completed.size >= 2) {
+                            onStrokeCommitted(
+                                PdfInkStroke(
+                                    page = pageIndex,
+                                    points = simplifyInkPoints(completed),
+                                    tool = activeTool,
+                                    color = activeColor,
+                                    width = if (activeTool == PdfInkTool.HIGHLIGHTER) 0.018f else 0.006f
+                                )
                             )
-                        )
+                        }
                     }
                 }
             }
@@ -3059,6 +3556,7 @@ private fun BoxScope.PdfDocumentInkCanvas(
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val segments = linkedMapOf<Int, MutableList<PdfInkPoint>>()
                     val erasedKeys = mutableSetOf<Long>()
+                    val pendingErasedStrokes = linkedMapOf<Long, PdfInkStroke>()
                     var cancelled = false
                     var previousLocated: Pair<Int, PdfInkPoint>? = null
 
@@ -3112,7 +3610,7 @@ private fun BoxScope.PdfDocumentInkCanvas(
                                     val key = stroke.id.takeIf { it > 0L }
                                         ?: PdfInkStrokeLocatorV1.encode(stroke.copy(id = 0L)).hashCode().toLong()
                                     erasedKeys += key
-                                    onStrokeErased(stroke)
+                                    pendingErasedStrokes[key] = stroke
                                 }
                         }
                     }
@@ -3143,18 +3641,22 @@ private fun BoxScope.PdfDocumentInkCanvas(
                     }
 
                     liveSegments = emptyMap()
-                    if (!cancelled && activeTool != PdfInkTool.ERASER) {
-                        segments.forEach { (page, points) ->
-                            if (points.size >= 2) {
-                                onStrokeCommitted(
-                                    PdfInkStroke(
-                                        page = page,
-                                        points = simplifyInkPoints(points),
-                                        tool = activeTool,
-                                        color = activeColor,
-                                        width = if (activeTool == PdfInkTool.HIGHLIGHTER) 0.018f else 0.006f
+                    if (!cancelled) {
+                        if (activeTool == PdfInkTool.ERASER) {
+                            pendingErasedStrokes.values.forEach(onStrokeErased)
+                        } else {
+                            segments.forEach { (page, points) ->
+                                if (points.size >= 2) {
+                                    onStrokeCommitted(
+                                        PdfInkStroke(
+                                            page = page,
+                                            points = simplifyInkPoints(points),
+                                            tool = activeTool,
+                                            color = activeColor,
+                                            width = if (activeTool == PdfInkTool.HIGHLIGHTER) 0.018f else 0.006f
+                                        )
                                     )
-                                )
+                                }
                             }
                         }
                     }

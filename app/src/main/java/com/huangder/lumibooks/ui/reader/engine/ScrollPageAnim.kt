@@ -178,12 +178,11 @@ class ScrollPageAnim(
 
     // 覆写回弹：垂直方向
     private fun startBounceBackVertical() {
-        direction = Direction.NONE
         isFlipAnim = false
         val fromY = touchY.toInt()
         val toY = startY.toInt()
         val dy = toY - fromY
-        if (dy == 0) { readView.invalidate(); return }
+        if (dy == 0) { direction = Direction.NONE; readView.invalidate(); return }
         isRunning = true
         scroller.startScroll(0, fromY, 0, dy, BOUNCE_DURATION)
         readView.postInvalidateOnAnimation()

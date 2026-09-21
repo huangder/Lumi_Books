@@ -90,4 +90,18 @@ class EpubNavigationTest {
         assertTrue(EpubNavigationDestination.Fragment("part-2").matchesPage(7, 12))
         assertTrue(EpubNavigationDestination.Locator("{}").matchesPage(3, 8))
     }
+
+    @Test
+    fun staleDocumentCannotCommitAsTheRequestedChapter() {
+        val expected = "https://lumi.local/html/page-150135.html"
+
+        assertTrue(epubDocumentMessageMatches("$expected#panel", expected))
+        assertFalse(
+            epubDocumentMessageMatches(
+                "https://lumi.local/html/page-189712.html",
+                expected
+            )
+        )
+        assertFalse(epubDocumentMessageMatches(null, expected))
+    }
 }

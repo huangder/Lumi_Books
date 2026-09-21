@@ -27,7 +27,6 @@ class SlidePageAnim(
 
     companion object {
         private const val SHADOW_WIDTH_PX = 250
-        private const val PARALLAX_RATIO = 0.3f
     }
 
     private val density: Float get() = readView.resources.displayMetrics.density
@@ -54,94 +53,41 @@ class SlidePageAnim(
         val vw = readView.width.toFloat()
         if (vw <= 0) return
 
-        // A single gesture can only expose one neighbouring spread. Clamp the
-        // live offset so a large finger jump cannot visually skip pages.
-        val ox = snapTranslation((touchX - startX).coerceIn(-vw, vw))
-
-        when {
-            direction == Direction.NEXT -> {
-                val turnSign = horizontalTurnSign(direction)
-                if (readView.animatePageViewsDirectly) {
-                    readView.curPageView.visibility = View.VISIBLE
-                    readView.nextPageView.visibility = View.VISIBLE
-                    readView.prevPageView.visibility = View.INVISIBLE
-                }
-                // cur 在上层全速左滑，next 在下层 30% 视差滑入
-                readView.nextPageView.translationX = snapTranslation((-turnSign * vw + ox) * PARALLAX_RATIO)
-                readView.curPageView.translationX = ox
-                readView.prevPageView.translationX = idleTranslationX(Direction.PREV, vw)
-                // 🔥 确保页面可见（setPageTransition 可能把 alpha 设为 0）
-                readView.curPageView.alpha = 1f
-                readView.nextPageView.alpha = 1f
-                readView.prevPageView.alpha = 0f
-                // z-order: cur 在上层
-                readView.curPageView.translationZ = 2f
-                readView.nextPageView.translationZ = 1f
-                readView.prevPageView.translationZ = 0f
+        val frame = horizontalPageFrame(direction, touchX - startX, vw, readView.isPageProgressReversed)
+        fun apply(role: PageTurnRole, view: View, x: Float) {
+            val visible = role == PageTurnRole.CURRENT ||
+                (direction != Direction.NONE && (role == frame.layers.upper || role == frame.layers.lower))
+            if (readView.animatePageViewsDirectly) {
+                view.visibility = if (visible) View.VISIBLE else View.INVISIBLE
             }
-            direction == Direction.PREV -> {
-                val turnSign = horizontalTurnSign(direction)
-                if (readView.animatePageViewsDirectly) {
-                    readView.curPageView.visibility = View.VISIBLE
-                    readView.prevPageView.visibility = View.VISIBLE
-                    readView.nextPageView.visibility = View.INVISIBLE
-                }
-                // prev 在上层全速滑入，cur 在下层 30% 视差右移
-                readView.curPageView.translationX = snapTranslation(ox * PARALLAX_RATIO)
-                readView.prevPageView.translationX = snapTranslation(-turnSign * vw + ox)
-                readView.nextPageView.translationX = idleTranslationX(Direction.NEXT, vw)
-                // 🔥 确保页面可见
-                readView.curPageView.alpha = 1f
-                readView.prevPageView.alpha = 1f
-                readView.nextPageView.alpha = 0f
-                // z-order: prev 在上层
-                readView.prevPageView.translationZ = 2f
-                readView.curPageView.translationZ = 1f
-                readView.nextPageView.translationZ = 0f
-            }
-            else -> {
-                if (readView.animatePageViewsDirectly) {
-                    readView.curPageView.visibility = View.VISIBLE
-                    readView.prevPageView.visibility = View.INVISIBLE
-                    readView.nextPageView.visibility = View.INVISIBLE
-                }
-                readView.curPageView.translationX = 0f
-                readView.prevPageView.translationX = idleTranslationX(Direction.PREV, vw)
-                readView.nextPageView.translationX = idleTranslationX(Direction.NEXT, vw)
-                // 🔥 空闲状态：只显示当前页
-                readView.curPageView.alpha = 1f
-                readView.prevPageView.alpha = 0f
-                readView.nextPageView.alpha = 0f
-                // z-order: cur 在上层
-                readView.curPageView.translationZ = 2f
-                readView.prevPageView.translationZ = 0f
-                readView.nextPageView.translationZ = 0f
+            view.translationX = snapTranslation(x)
+            view.alpha = if (visible) 1f else 0f
+            view.translationZ = when {
+                !visible -> 0f
+                role == frame.layers.upper -> 2f
+                else -> 1f
             }
         }
+        apply(PageTurnRole.PREVIOUS, readView.prevPageView, frame.previousX)
+        apply(PageTurnRole.CURRENT, readView.curPageView, frame.currentX)
+        apply(PageTurnRole.NEXT, readView.nextPageView, frame.nextX)
     }
 
     private fun drawSnapshotPages(canvas: Canvas) {
         val width = readView.width.toFloat()
         if (width <= 0f) return
-        val offset = snapTranslation((touchX - startX).coerceIn(-width, width))
+        val frame = horizontalPageFrame(direction, touchX - startX, width, readView.isPageProgressReversed)
         canvas.drawColor(readView.bgColor)
-        when (direction) {
-            Direction.NEXT -> {
-                val turnSign = horizontalTurnSign(direction)
-                drawPageBitmap(
-                    canvas,
-                    readView.nextPageView,
-                    snapTranslation((-turnSign * width + offset) * PARALLAX_RATIO)
-                )
-                drawPageBitmap(canvas, readView.curPageView, offset)
+        fun draw(role: PageTurnRole) {
+            val (view, x) = when (role) {
+                PageTurnRole.PREVIOUS -> readView.prevPageView to frame.previousX
+                PageTurnRole.CURRENT -> readView.curPageView to frame.currentX
+                PageTurnRole.NEXT -> readView.nextPageView to frame.nextX
             }
-            Direction.PREV -> {
-                val turnSign = horizontalTurnSign(direction)
-                drawPageBitmap(canvas, readView.curPageView, snapTranslation(offset * PARALLAX_RATIO))
-                drawPageBitmap(canvas, readView.prevPageView, snapTranslation(-turnSign * width + offset))
-            }
-            Direction.NONE -> drawPageBitmap(canvas, readView.curPageView, 0f)
+            drawPageBitmap(canvas, view, snapTranslation(x))
         }
+        if (direction != Direction.NONE) draw(frame.layers.lower)
+        draw(frame.layers.upper)
     }
 
     private fun drawPageBitmap(canvas: Canvas, view: android.view.View, left: Float) {

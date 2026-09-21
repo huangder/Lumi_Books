@@ -49,7 +49,7 @@ import com.huangder.lumibooks.util.cache.WeightedLruCache
  * getChapterHtml() / getChapterContent() 按需读取并处理单个章节。
  */
 class EpubParser(private val context: Context? = null) : BookParser, BookRenderSource, BookSearchSource {
-    /** Marker copied through pagination so the first image-only spine item can use cover rendering. */
+    /** Marker copied through pagination so any image-only spine item uses full-page FIT_CENTER rendering. */
     class CoverPageSpan
 
     companion object {
@@ -623,6 +623,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
 
     /** 阅读区域内容宽度（像素），用于图片缩放。0 表示未设置，回退到 DisplayMetrics 计算 */
     override var contentWidth: Int = 0
+    override var contentHeight: Int = 0
     /** 是否加载 EPUB 自带 CSS 样式 */
     override var useEpubCss: Boolean = false
     /**
@@ -1899,6 +1900,24 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         }
     }
 
+    /**
+     * 整页只有一张图（漫画页、整页插画）：正文没有任何可见文字，且只有一张图片。
+     *
+     * 这类页面应当铺满正文列宽——出版社给的漫画页往往只有 860px 宽，
+     * 按"不放大"策略在手机上只显示半屏宽，看起来就像一张小照片。
+     */
+    private fun isSingleImagePage(html: String): Boolean {
+        val imageCount = Regex("<img\\b", RegexOption.IGNORE_CASE).findAll(html).count()
+        if (imageCount != 1) return false
+        val text = html
+            .replace(Regex("<script[^>]*>.*?</script>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), " ")
+            .replace(Regex("<style[^>]*>.*?</style>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)), " ")
+            .replace(Regex("&[a-zA-Z#0-9]+;"), " ")
+            .replace(Regex("<[^>]+>"), " ")
+            .replace("\uFFFC", " ")
+        return text.isBlank()
+    }
+
     private fun chapterCssIndex(
         chapterPath: String,
         html: String,
@@ -2406,30 +2425,49 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         val inlineMarkerSources = inlineImages
             .mapNotNull { image -> tagAttribute(image, "src")?.trim()?.lowercase() }
             .toSet()
+        // 整页只有一张图（漫画/插画页）：允许放大到正文列宽，否则 860px 的漫画页在
+        // 手机上只有半屏宽，看起来"好小一个照片"。
+        val singleImagePage = isSingleImagePage(withImageBreaks)
         val imageGetter = EpubImageGetter(
             zipFile = zipFile,
             pageContentWidth = contentWidth,
             inlineMarkerSources = inlineMarkerSources,
             sizeHints = prepared.sizeHints,
-            inlineSvgSources = prepared.inlineSvgSources
+            inlineSvgSources = prepared.inlineSvgSources,
+            allowUpscale = singleImagePage,
+            pageContentHeight = contentHeight
         )
         val parsed = parseNativeHtmlInChunks(withImageBreaks, imageGetter)
-        if (chapterIndex != 0) return parsed
-
-        val cover = android.text.SpannableStringBuilder(parsed)
-        val images = cover.getSpans(0, cover.length, android.text.style.ImageSpan::class.java)
-        val hasVisibleText = cover.any { character ->
+        val pageContent = if (singleImagePage) {
+            // Html.fromHtml 会把图片外围的 center/div 和源码换行变成空白文本。整页图前多出
+            // 一行就可能把图片挤到下一页，表现为图片忽上忽下甚至多出空白页。
+            android.text.SpannableStringBuilder(parsed).apply {
+                val image = getSpans(0, length, android.text.style.ImageSpan::class.java)
+                    .singleOrNull()
+                if (image != null) {
+                    val imageStart = getSpanStart(image)
+                    val imageEnd = getSpanEnd(image)
+                    if (imageEnd in 0 until length) delete(imageEnd, length)
+                    if (imageStart > 0) delete(0, imageStart)
+                }
+            }
+        } else {
+            parsed
+        }
+        val fullPage = android.text.SpannableStringBuilder(pageContent)
+        val images = fullPage.getSpans(0, fullPage.length, android.text.style.ImageSpan::class.java)
+        val hasVisibleText = fullPage.any { character ->
             !character.isWhitespace() && character != '\uFFFC'
         }
-        if (images.size == 1 && !hasVisibleText && cover.isNotEmpty()) {
-            cover.setSpan(
+        if (images.size == 1 && !hasVisibleText && fullPage.isNotEmpty()) {
+            fullPage.setSpan(
                 CoverPageSpan(),
                 0,
-                cover.length,
+                fullPage.length,
                 android.text.Spannable.SPAN_INCLUSIVE_INCLUSIVE
             )
         }
-        return cover
+        return fullPage
     }
 
     /**
@@ -2625,7 +2663,6 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         private val cacheKey: String,
         private val originalWidth: Int,
         private val originalHeight: Int,
-        private val pageWidth: Int,
         private val drawWidth: Int,
         private val drawHeight: Int,
         override val isInlineFootnoteMarker: Boolean = false,
@@ -2667,10 +2704,12 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             return try {
                 synchronized(zipLock) {
                     val opts = BitmapFactory.Options().apply {
+                        // 按"最终画出来的宽度"降采样：整页图会被放大到正文列宽，
+                        // 但源图往往更大（漫画单页常见 1600px+），不解码全尺寸才不卡。
                         inSampleSize = ReaderImageSizing.decodeSampleSize(
                             originalWidth,
                             originalHeight,
-                            pageWidth
+                            drawWidth
                         )
                         inPreferredConfig = Bitmap.Config.ARGB_8888
                     }
@@ -2750,7 +2789,11 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         /** 发布方给的图片尺寸（`width="12%"` 这类），key = src 原样 */
         private val sizeHints: Map<String, ReaderImageSizeHint> = emptyMap(),
         /** 章节里的内联矢量图，key = 虚拟 src（`lumi-inline-svg-N`） */
-        private val inlineSvgSources: Map<String, ByteArray> = emptyMap()
+        private val inlineSvgSources: Map<String, ByteArray> = emptyMap(),
+        /** 整页只有这一张图（漫画/插画页）：允许放大到正文列宽。 */
+        private val allowUpscale: Boolean = false,
+        /** 正文列高（像素）：整页图按"宽高都放得下"适配。0 = 不限制 */
+        private val pageContentHeight: Int = 0
     ) : Html.ImageGetter {
         override fun getDrawable(source: String): Drawable? {
             return try {
@@ -2809,7 +2852,23 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                     // 装饰小图不再被拉满正文列宽。
                     sizeHints[source]?.resolveWidthPx(pageW, density) ?: pageW
                 }
-                val imageBounds = ReaderImageSizing.bounds(originalWidth, originalHeight, targetWidth)
+                // 整页图（漫画页）按"正文列宽 × 列高"等比铺满，避免超出一页被拆开；
+                // 普通插图仍按宽度封顶、不放大。
+                val imageBounds = if (allowUpscale) {
+                    ReaderImageSizing.fitBounds(
+                        originalWidth = originalWidth,
+                        originalHeight = originalHeight,
+                        maxWidth = targetWidth,
+                        maxHeight = pageContentHeight
+                    )
+                } else {
+                    ReaderImageSizing.bounds(
+                        originalWidth,
+                        originalHeight,
+                        targetWidth,
+                        allowUpscale = false
+                    )
+                }
                     ?: return createErrorPlaceholder("Invalid image dimensions: ${entry.name.take(60)}")
 
                 LazyEpubImageDrawable(
@@ -2818,7 +2877,6 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                     cacheKey = entry.name,
                     originalWidth = originalWidth,
                     originalHeight = originalHeight,
-                    pageWidth = pageW,
                     drawWidth = imageBounds.width,
                     drawHeight = imageBounds.height,
                     isInlineFootnoteMarker = isInlineMarker,
@@ -2843,7 +2901,16 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             val density = (context?.resources?.displayMetrics
                 ?: android.content.res.Resources.getSystem().displayMetrics).density
             val targetWidth = sizeHints[source]?.resolveWidthPx(pageW, density) ?: pageW
-            val bounds = ReaderImageSizing.bounds(intrinsic.width, intrinsic.height, targetWidth)
+            val bounds = if (allowUpscale) {
+                ReaderImageSizing.fitBounds(
+                    originalWidth = intrinsic.width,
+                    originalHeight = intrinsic.height,
+                    maxWidth = targetWidth,
+                    maxHeight = pageContentHeight
+                )
+            } else {
+                ReaderImageSizing.bounds(intrinsic.width, intrinsic.height, targetWidth)
+            }
                 ?: return null
             return LazyEpubImageDrawable(
                 zipFile = zipFile,
@@ -2851,7 +2918,6 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 cacheKey = "vector:$source:${bounds.width}x${bounds.height}",
                 originalWidth = intrinsic.width,
                 originalHeight = intrinsic.height,
-                pageWidth = pageW,
                 drawWidth = bounds.width,
                 drawHeight = bounds.height,
                 vectorSource = markup

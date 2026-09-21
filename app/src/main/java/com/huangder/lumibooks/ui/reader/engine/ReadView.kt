@@ -215,13 +215,11 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var rvDeferredCurlLatestY = 0f
     private var rvDeferredCurlLatestTime = 0L
     private var rvDeferredCurlMetaState = 0
-    private var pendingPageTurnDirection: PageAnimationController.Direction? = null
+    private val pendingPageTurns = ReaderPageTurnQueue()
     private var pendingPageChangeOrigin = TtsPageChangeOrigin.LAYOUT
     /** 听书进行中时启用“双击句子跳句”，单击动作需等待双击超时以区分两种手势。 */
     private var ttsSentenceJumpEnabled = false
     private var rvPendingTapAction: Runnable? = null
-    /** 单击动作已在 dispatchTouchEvent 中延后，拦截分类不要重复执行。 */
-    private var rvTapDeferred = false
     private val rvSentenceJumpGate = SentenceJumpDoubleTapGate(
         timeoutMs = ViewConfiguration.getDoubleTapTimeout().toLong(),
         slopPx = ViewConfiguration.get(context).scaledDoubleTapSlop.toFloat()
@@ -403,7 +401,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                         if (animationController !is CurlPageAnim &&
                             slotManager.hasPotentialNextPage()
                         ) {
-                            pendingPageTurnDirection = PageAnimationController.Direction.NEXT
+                            pendingPageTurns.offer(PageAnimationController.Direction.NEXT)
                         }
                         false
                     }
@@ -445,13 +443,18 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 post {
                     if (!resumeDeferredCurlGestureIfReady()) drainPendingCurlTurns()
                 }
+            } else {
+                post(::drainPendingPageTurn)
             }
         }
 
         animationController.onTapLeft = {
             performEdgeTap(effectiveEdgeTapAction(currentEdgeTapMode.leftAction))
         }
-        animationController.onTapCenter = {
+        animationController.onTapCenter = centerTap@{
+            // 滑动接管时旧触摸流会收到 CANCEL。即使某个动画控制器错误地把它
+            // 当成点击，也不能让已认领的翻页手势再次打开中央菜单。
+            if (rvSwipeTurnClaimed || rvIsHandlingPageGesture) return@centerTap
             clearCurrentSelection()
             callbacks?.onMenuToggle()
         }
@@ -1371,7 +1374,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val next = slotManager.getNextSlot()
         if (!next.isLoaded) {
             if (slotManager.hasPotentialNextPage()) {
-                pendingPageTurnDirection = PageAnimationController.Direction.NEXT
+                pendingPageTurns.offer(PageAnimationController.Direction.NEXT)
                 pendingPageChangeOrigin = origin
                 return true
             }
@@ -1439,7 +1442,6 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             return dispatchTouchToChildren(ev)
         }
         if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
-            rvTapDeferred = false
             val density = resources.displayMetrics.density
             rvSystemBackGestureCandidate = isSystemBackGestureStart(
                 width.toFloat(), height.toFloat(), ev.x, ev.y, density
@@ -1490,9 +1492,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 if (animationController is CurlPageAnim && animationController.isDragging) {
                     animationController.abortAnim()
                 }
-                // A new touch is the latest user intent; replace any delayed
-                // turn that was waiting on an earlier gesture.
-                pendingPageTurnDirection = null
+                // Keep already accepted turns. A quick sequence must advance once per
+                // gesture even when the following chapter/page is still being laid out.
                 rvTouchStartX = ev.x
                 rvTouchStartY = ev.y
                 // MotionEvent timestamps use uptime; keep gesture classification
@@ -1615,6 +1616,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 val withinPageGestureWindow =
                     animationController is CurlPageAnim || dt < 500L
                 if (withinPageGestureWindow && pageSwipeIntent) {
+                    cancelPendingReaderTap()
+                    rvSentenceJumpGate.reset()
                     bookmarkPullTracker.reset()
                     Log.d(TAG, "Handle page swipe at dx=$dx dy=$dy dt=$dt")
                     removeCallbacks(rvImageLongPressRunnable)
@@ -1669,6 +1672,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                     )
                     animationController.onTouchEvent(downEvent)
                     downEvent.recycle()
+                    animationController.confirmPageGesture()
                     animationController.onTouchEvent(ev)
                     return true
                 }
@@ -1763,26 +1767,27 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     /**
      * 短按手势统一入口。听书进行中把单击动作延后一个双击超时，用于区分双击跳句；
-     * 返回 true 表示这次 UP 已被消费（双击），不能再交给子视图。
+     * 所有短按在这里消费，不能依赖子视图是否接受 DOWN 或允许父层拦截。
      */
     private fun handleShortTapGesture(ev: MotionEvent): Boolean {
         val x = rvTouchStartX
         val y = rvTouchStartY
+        val action = captureShortTapAction(x, y)
+        abortChildTouchStream(ev)
         if (!ttsSentenceJumpEnabled) {
             rvSentenceJumpGate.reset()
-            return false
+            action()
+            return true
         }
         return when (rvSentenceJumpGate.classify(ev.eventTime, x, y)) {
             SentenceJumpDoubleTapGate.TapDecision.DOUBLE -> {
                 cancelPendingReaderTap()
                 handleTtsSentenceDoubleTap(x, y)
-                abortChildTouchStream(ev)
                 true
             }
             SentenceJumpDoubleTapGate.TapDecision.SINGLE -> {
-                rvTapDeferred = true
-                scheduleReaderTap { handleShortTap(x, y) }
-                false
+                scheduleReaderTap(action)
+                true
             }
         }
     }
@@ -1795,81 +1800,38 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         cancel.recycle()
     }
 
-    override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
-        if (isVerticalSelectionHandleDragActive()) return false
-        // 自持跨页选区的手势接管在 dispatchTouchEvent 里完成（拦截会吞掉触发帧）。
-        when (ev.actionMasked) {
-            MotionEvent.ACTION_UP -> {
-                if (!rvHasMoved && (ev.eventTime - rvTouchDownTime).coerceAtLeast(0L) < 300L) {
-                    if (rvTapDeferred) {
-                        rvTapDeferred = false
-                        return false
-                    }
-                    val tapX = rvTouchStartX
-                    val tapY = rvTouchStartY
-                    handleShortTap(tapX, tapY)
-                }
-            }
-        }
-        return false
-    }
+    override fun onInterceptTouchEvent(ev: MotionEvent): Boolean = false
 
     /** 短按（未移动）的既有行为：链接、图片、边缘翻页、中间切换菜单。 */
-    private fun handleShortTap(x: Float, y: Float) {
-        // 跨页选择进行中：单击用来指定选区终点，不切菜单也不翻页。
-        if (applyContentSelectionTapTarget(x, y)) return
+    private fun captureShortTapAction(x: Float, y: Float): () -> Unit {
+        val location = getCurrentLocation()
+        val edgeTouch = rvIsEdgeTouch
         val hitView = pageViewAt(x, y) ?: curPageView
         val link = hitView.getLinkAt(x - hitView.left, y - hitView.top)
-        if (link != null) {
-            Log.d(TAG, "EPUB link tap: $link")
-            clearCurrentSelection()
-            callbacks?.onLinkClick(link, x, y)
-            return
-        }
         val image = hitView.getImageAt(x - hitView.left, y - hitView.top)
-        when {
-            image?.link != null -> {
-                Log.d(TAG, "EPUB linked image tap: ${image.link}")
+        return tap@{
+            // Deferred TTS single taps belong to the page and hit geometry at UP.
+            if (getCurrentLocation() != location) return@tap
+            if (applyContentSelectionTapTarget(x, y)) return@tap
+            val href = link ?: image?.link
+            if (href != null) {
                 clearCurrentSelection()
-                callbacks?.onLinkClick(image.link, x, y)
+                callbacks?.onLinkClick(href, x, y)
+                return@tap
             }
-            image?.hasAction == true -> {
-                // Keep action-bearing images out of the preview path.
-                Log.d(TAG, "EPUB action image tap ignored by preview")
-            }
-            image != null -> {
-                // Covers are commonly a full-page plain image. Their center tap
-                // must behave like the rest of the reading surface; image preview
-                // remains a long-press action.
-                if (rvIsEdgeTouch) {
-                    Log.d(TAG, "Plain EPUB image edge tap at x=$x -> page turn")
-                    if (x / width < 0.3f) {
-                        animationController.onTapLeft?.invoke()
-                    } else {
-                        animationController.onTapRight?.invoke()
-                    }
-                } else {
-                    Log.d(TAG, "Plain EPUB image center tap -> toggle menu")
-                    clearCurrentSelection()
-                    callbacks?.onMenuToggle()
-                }
-            }
-            rvIsEdgeTouch -> {
-                // Edge short tap: turn the page through the existing animation callback.
-                Log.d(TAG, "Edge tap at x=$x -> page turn")
-                if (x / width < 0.3f) {
-                    animationController.onTapLeft?.invoke()
-                } else {
-                    animationController.onTapRight?.invoke()
-                }
-            }
-            else -> {
-                // Center short tap: toggle the reader menu.
-                // 滑动翻页的收尾 UP 会被误判成中央短按，这里直接忽略。
-                if (rvSwipeTurnClaimed) return
-                Log.d(TAG, "Center tap detected -> toggle menu")
+            Log.d(TAG, "tap layout=reader transition=$currentPageTransition center=${!edgeTouch} " +
+                "image=${image != null} x=$x y=$y width=$width height=$height page=$location")
+            if (!edgeTouch) {
                 clearCurrentSelection()
                 callbacks?.onMenuToggle()
+                return@tap
+            }
+            if (image?.hasAction == true) return@tap
+            clearCurrentSelection()
+            if (x / width < 0.3f) {
+                animationController.onTapLeft?.invoke()
+            } else {
+                animationController.onTapRight?.invoke()
             }
         }
     }
@@ -1910,6 +1872,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private fun handlePendingImageLongPress() {
         val image = rvPendingImageLongPress ?: return
         if (rvHasMoved || rvIsHandlingPageGesture) return
+        cancelPendingReaderTap()
+        rvSentenceJumpGate.reset()
         rvPendingImageLongPress = null
         rvImageLongPressHandled = true
 
@@ -1996,7 +1960,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (contentSelectionDragActive) return handleContentSelectionDragTouch(event)
-        return animationController.onTouchEvent(event)
+        // Keep a stream even when a full-page image has no clickable children.
+        // Only dispatchTouchEvent may hand a confirmed swipe to the controller.
+        return true
     }
 
     override fun computeScroll() {
@@ -2391,7 +2357,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     /** Replays a non-curl turn that was accepted while NEXT was still loading. */
     private fun drainPendingPageTurn() {
         if (animationController is CurlPageAnim) return
-        val direction = pendingPageTurnDirection ?: return
+        val direction = pendingPageTurns.peek()
+        if (direction == PageAnimationController.Direction.NONE) return
         if (isJumpSettling) return
         if (animationController.isRunning || animationController.isDragging) {
             // A slot can finish while a rejected gesture is still bouncing
@@ -2411,10 +2378,10 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             ) {
                 return
             }
-            pendingPageTurnDirection = null
+            pendingPageTurns.clear()
             return
         }
-        pendingPageTurnDirection = null
+        pendingPageTurns.poll()
         if (isPageTurnBlockedAtBoundary(direction)) return
         clearCurrentSelection()
         val target = if (direction == PageAnimationController.Direction.NEXT) {
@@ -2466,7 +2433,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     private fun clearCurlTurnIntent() {
         curlTurnSequencer.clear()
-        pendingPageTurnDirection = null
+        pendingPageTurns.clear()
         rvDeferredCurlGesture = false
         rvIsHandlingPageGesture = false
         rvBoundaryGestureSuppressed = false

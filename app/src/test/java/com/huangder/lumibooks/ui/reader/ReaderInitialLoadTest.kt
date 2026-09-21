@@ -43,4 +43,30 @@ class ReaderInitialLoadTest {
             )
         )
     }
+
+    @Test
+    fun `stale offset past image chapter clamps to its last page`() {
+        assertTrue(
+            pageReachesPendingCharacterOffset(
+                targetOffset = 3,
+                pageStartOffset = 0,
+                pageEndOffset = 1,
+                pageIndex = 0,
+                pageCount = 1
+            )
+        )
+    }
+
+    @Test
+    fun `offset at a non-final page boundary waits for the next page`() {
+        assertFalse(
+            pageReachesPendingCharacterOffset(
+                targetOffset = 10,
+                pageStartOffset = 0,
+                pageEndOffset = 10,
+                pageIndex = 0,
+                pageCount = 2
+            )
+        )
+    }
 }

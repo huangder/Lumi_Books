@@ -117,6 +117,7 @@ import com.huangder.lumibooks.ui.theme.fangSongFamily
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
@@ -149,6 +150,7 @@ import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 import com.huangder.lumibooks.ui.components.LiquidGlassSwitch
+import com.huangder.lumibooks.ui.components.LiquidGlassSegmentedControl
 import com.huangder.lumibooks.ui.components.LiquidGlassColumnSheetContainer
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuHost
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
@@ -1809,6 +1811,26 @@ private fun ReaderMarginTargetTag(
     }
 
     val selectedIndex = options.indexOfFirst { (target, _) -> target == selected }.coerceAtLeast(0)
+    if (LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current) {
+        LiquidGlassSegmentedControl(
+            itemCount = options.size,
+            selectedIndex = selectedIndex,
+            onSelected = { onSelect(options[it].first) },
+            segmentWidths = segmentWidths,
+            trackHeight = 36.dp,
+            trackPadding = SegmentTrackPadding
+        ) { index, isSelected ->
+            Text(
+                text = options[index].second,
+                fontSize = 13.sp,
+                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (isSelected) AppColors.TextPrimary.copy(alpha = 0.86f) else LightTextSecondary,
+                maxLines = 1
+            )
+        }
+        return
+    }
+
     val indicatorTargetOffset = segmentWidths.take(selectedIndex).fold(0.dp) { sum, width ->
         sum + width
     }
@@ -1904,6 +1926,51 @@ private fun ReaderModeModule(
             color = LightTextSecondary
         )
         Spacer(Modifier.height(8.dp))
+        if (LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current) {
+            val selectedIndex = items.indexOfFirst { it.key == selectedKey }.coerceAtLeast(0)
+            LiquidGlassSegmentedControl(
+                itemCount = items.size,
+                selectedIndex = selectedIndex,
+                onSelected = { onSelect(items[it].key) },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = enabled,
+                spacing = 4.dp,
+                trackHeight = 48.dp,
+                trackPadding = 4.dp
+            ) { index, isSelected ->
+                val item = items[index]
+                val contentColor = when {
+                    !enabled -> LightTextSecondary.copy(alpha = 0.35f)
+                    isSelected -> AppColors.TextPrimary.copy(alpha = 0.86f)
+                    else -> LightTextSecondary
+                }
+                Row(
+                    modifier = Modifier.semantics {
+                        contentDescription = item.label
+                    },
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = item.icon.resolve(isSelected),
+                        contentDescription = null,
+                        tint = contentColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(3.dp))
+                    Text(
+                        text = item.shortLabel,
+                        color = contentColor,
+                        fontSize = 11.sp,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
+            return@Column
+        }
+
         val shape = RoundedCornerShape(12.dp)
         val containerModifier = if (glass) {
             val isDark = LocalIsDarkTheme.current

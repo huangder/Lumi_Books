@@ -101,11 +101,13 @@ class EpubPageTurnHostTest {
     }
 
     @Test
-    fun onlyCurlPreloadsImmutableBitmaps() {
+    fun curlAndReaderBackgroundImagesPreloadImmutableBitmaps() {
         assertTrue(requiresEpubPreloadBitmap("curl"))
         assertFalse(requiresEpubPreloadBitmap("slide"))
         assertFalse(requiresEpubPreloadBitmap("scroll"))
         assertFalse(requiresEpubPreloadBitmap("none"))
+        assertTrue(requiresEpubPreloadBitmap("slide", backgroundSnapshot = true))
+        assertTrue(requiresEpubPreloadBitmap("scroll", backgroundSnapshot = true))
     }
 
     @Test
@@ -128,17 +130,92 @@ class EpubPageTurnHostTest {
         assertTrue(
             usesNativeEpubPageTurn(false, "scroll", EpubRenditionLayout.REFLOWABLE)
         )
-        assertTrue(
-            usesNativeEpubPageTurn(false, "scroll", EpubRenditionLayout.PRE_PAGINATED)
-        )
         assertFalse(
             usesNativeEpubPageTurn(true, "scroll", EpubRenditionLayout.REFLOWABLE)
+        )
+        assertTrue(
+            usesNativeEpubPageTurn(false, "scroll", EpubRenditionLayout.PRE_PAGINATED)
         )
         assertFalse(
             usesNativeEpubPageTurn(false, "slide", EpubRenditionLayout.PRE_PAGINATED)
         )
         assertTrue(
+            usesNativeEpubPageTurn(
+                continuousScroll = false,
+                transition = "slide",
+                renditionLayout = EpubRenditionLayout.PRE_PAGINATED,
+                mediaOnlyPage = true
+            )
+        )
+        assertTrue(
             usesNativeEpubPageTurn(false, "curl", EpubRenditionLayout.PRE_PAGINATED)
+        )
+    }
+
+    @Test
+    fun rtlMediaPageUsesLogicalDirectionWithoutHostTouchMirroring() {
+        assertEquals(
+            PageAnimationController.Direction.NEXT,
+            epubPageDirectionForHorizontalDelta(deltaX = 40f, reverseAxis = true)
+        )
+        assertEquals(
+            PageAnimationController.Direction.PREV,
+            epubPageDirectionForHorizontalDelta(deltaX = -40f, reverseAxis = true)
+        )
+    }
+
+    @Test
+    fun documentNotificationsCannotResetAnAnimatedSheet() {
+        assertTrue(deferEpubPageNotification(animationActive = true, waitingForTarget = false))
+        assertFalse(deferEpubPageNotification(animationActive = true, waitingForTarget = true))
+        assertFalse(deferEpubPageNotification(animationActive = false, waitingForTarget = false))
+    }
+
+    @Test
+    fun ltrMediaPageDirectionRemainsUnchanged() {
+        assertEquals(
+            PageAnimationController.Direction.NEXT,
+            epubPageDirectionForHorizontalDelta(deltaX = -40f, reverseAxis = false)
+        )
+        assertEquals(
+            PageAnimationController.Direction.PREV,
+            epubPageDirectionForHorizontalDelta(deltaX = 40f, reverseAxis = false)
+        )
+    }
+
+    @Test
+    fun onlyFixedMediaPagesUseTheScopedNativeConfiguration() {
+        assertTrue(
+            usesMediaOnlyNativeEpubPaging(
+                continuousScroll = false,
+                transition = "slide",
+                renditionLayout = EpubRenditionLayout.PRE_PAGINATED,
+                mediaOnlyPage = true
+            )
+        )
+        assertFalse(
+            usesMediaOnlyNativeEpubPaging(
+                continuousScroll = false,
+                transition = "slide",
+                renditionLayout = EpubRenditionLayout.REFLOWABLE,
+                mediaOnlyPage = true
+            )
+        )
+        assertFalse(
+            usesMediaOnlyNativeEpubPaging(
+                continuousScroll = true,
+                transition = "slide",
+                renditionLayout = EpubRenditionLayout.PRE_PAGINATED,
+                mediaOnlyPage = true
+            )
+        )
+        assertEquals(
+            "none",
+            effectiveEpubDocumentTransition("slide", mediaOnlyNativePaging = true)
+        )
+        assertEquals(
+            "slide",
+            effectiveEpubDocumentTransition("slide", mediaOnlyNativePaging = false)
         )
     }
 
@@ -245,6 +322,37 @@ class EpubPageTurnHostTest {
                 elapsedMs = 120L,
                 deltaX = -80f,
                 deltaY = 3f
+            )
+        )
+    }
+
+    @Test
+    fun fullPageMediaCenterTapIsCapturedBeforeWebViewConsumesIt() {
+        assertTrue(
+            shouldCaptureNativeMediaCenterTap(
+                mediaOnlyNativePaging = true,
+                direction = PageAnimationController.Direction.NONE,
+                elapsedMs = 120L,
+                deltaX = 1f,
+                deltaY = 2f
+            )
+        )
+        assertFalse(
+            shouldCaptureNativeMediaCenterTap(
+                mediaOnlyNativePaging = false,
+                direction = PageAnimationController.Direction.NONE,
+                elapsedMs = 120L,
+                deltaX = 1f,
+                deltaY = 2f
+            )
+        )
+        assertFalse(
+            shouldCaptureNativeMediaCenterTap(
+                mediaOnlyNativePaging = true,
+                direction = PageAnimationController.Direction.NEXT,
+                elapsedMs = 120L,
+                deltaX = 1f,
+                deltaY = 2f
             )
         )
     }

@@ -112,13 +112,18 @@ class FadePageAnim(
                 val dx = event.x - startX
                 val dt = (event.eventTime - downTime).coerceAtLeast(0L)
 
-                if (!hasMoved && dt < 300L) {
+                if (isPageAnimationShortTap(event.actionMasked, hasMoved, dt)) {
                     val relX = event.x / readView.width.toFloat()
                     when {
                         relX < 0.3f -> onTapLeft?.invoke()
                         relX > 0.7f -> onTapRight?.invoke()
                         else        -> onTapCenter?.invoke()
                     }
+                    return true
+                }
+                if (event.actionMasked == android.view.MotionEvent.ACTION_CANCEL) {
+                    direction = Direction.NONE
+                    readView.invalidate()
                     return true
                 }
                 if (hasMoved) {

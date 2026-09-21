@@ -1396,20 +1396,15 @@ class CurlPageAnim(
         if (onCanFlip?.invoke(dir) != true) return false
         releaseBorrowedFrames()
 
-        val turningView: View
-        val underView: View
-        when (dir) {
-            Direction.NEXT -> {
-                turningView = readView.curPageView
-                underView = readView.nextPageView
-            }
-            Direction.PREV -> {
-                // PREV：上一页从左侧卷入并覆盖留在底层的当前页。
-                turningView = readView.prevPageView
-                underView = readView.curPageView
-            }
-            Direction.NONE -> return false
+        if (dir == Direction.NONE) return false
+        fun page(role: PageTurnRole): View = when (role) {
+            PageTurnRole.PREVIOUS -> readView.prevPageView
+            PageTurnRole.CURRENT -> readView.curPageView
+            PageTurnRole.NEXT -> readView.nextPageView
         }
+        val layers = pageTurnLayers(dir)
+        val turningView = page(layers.upper)
+        val underView = page(layers.lower)
 
         turningPageView = turningView
         underPageView = underView

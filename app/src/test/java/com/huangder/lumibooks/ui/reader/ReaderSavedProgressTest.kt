@@ -32,6 +32,26 @@ class ReaderSavedProgressTest {
     }
 
     @Test
+    fun `raster progress restores every PDF and CBZ page`() {
+        val pageCount = 137
+
+        repeat(pageCount) { pageIndex ->
+            assertEquals(
+                pageIndex,
+                restoredRasterPageIndex(
+                    rasterReadingProgress(pageIndex, pageCount),
+                    pageCount
+                )
+            )
+        }
+    }
+
+    @Test
+    fun `last raster page is complete`() {
+        assertEquals(1f, rasterReadingProgress(pageIndex = 136, pageCount = 137), 0f)
+    }
+
+    @Test
     fun `book layout chapter turn lands previous chapter at its end`() {
         assertEquals(
             EpubChapterTurnTarget(chapterIndex = 2, chapterFraction = 1f),

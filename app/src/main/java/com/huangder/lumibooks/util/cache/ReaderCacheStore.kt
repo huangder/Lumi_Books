@@ -5,11 +5,15 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import org.json.JSONObject
+import java.io.Closeable
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.UUID
 
 data class BookFingerprint(
     val identity: String,
@@ -74,67 +78,104 @@ data class BookFingerprint(
     }
 }
 
-/**
- * Mirror pools. Comics are an order of magnitude larger than reflowable books, so they keep their
- * own budget instead of evicting — or being evicted by — EPUB/TXT/MOBI/PDF mirrors.
- */
-enum class MirrorBudget(
-    internal val prefix: String,
-    internal val maxSingleBytes: Long,
-    internal val maxTotalBytes: Long,
-    internal val maxBooks: Int
-) {
-    STANDARD(
-        prefix = "mirror_",
-        maxSingleBytes = 64L * 1024L * 1024L,
-        maxTotalBytes = ReaderCacheStore.MAX_BYTES,
-        maxBooks = ReaderCacheStore.MAX_BOOKS
-    ),
-    COMIC(
-        prefix = "comic_",
-        maxSingleBytes = 1024L * 1024L * 1024L,
-        maxTotalBytes = 2L * 1024L * 1024L * 1024L,
-        maxBooks = 2
-    )
+internal enum class MirrorLifetime {
+    PERSISTENT,
+    SESSION
+}
+
+internal class ReaderMirrorLease internal constructor(
+    val file: File,
+    private val release: () -> Unit = {}
+) : Closeable {
+    private val closed = AtomicBoolean(false)
+
+    override fun close() {
+        if (closed.compareAndSet(false, true)) release()
+    }
 }
 
 /** Versioned, clearable reader cache: at most three mirrored books and 96 MiB per standard pool. */
 class ReaderCacheStore private constructor(private val context: Context) {
-    private val root = File(context.cacheDir, "reader_cache").apply { mkdirs() }
-    private val processPrefix = "process_${android.os.Process.myPid()}_"
+    private data class SessionMirror(
+        val fingerprint: BookFingerprint,
+        val file: File,
+        val metadata: File,
+        var leases: Int,
+        var deleteWhenReleased: Boolean = false
+    )
+
+    private val root = File(context.cacheDir, "reader_cache")
+    private val processToken = "${android.os.Process.myPid()}_${UUID.randomUUID()}"
+    private val processPrefix = "process_${processToken}_"
+    private val processSentinel = File(root, ".process_$processToken")
+    private val sessionMirrors = HashMap<String, SessionMirror>()
+    private var rootInitialized = false
+    private var cacheGeneration = 0L
 
     init {
-        root.listFiles()?.filter { it.name.startsWith("process_") && !it.name.startsWith(processPrefix) }
-            ?.forEach(File::delete)
+        val directory = ensureRoot()
+        cleanupStaleMirrors(directory)
+    }
+
+    /**
+     * Android may clear cache directories without killing the app process. Every disk operation
+     * must therefore recreate the directory instead of trusting the File captured by this singleton.
+     */
+    private fun ensureRoot(): File {
+        val cacheStillPresent = root.isDirectory && processSentinel.isFile
+        if (!root.isDirectory && !root.mkdirs() && !root.isDirectory) {
+            throw IOException("Unable to create reader cache directory: ${root.absolutePath}")
+        }
+        if (!processSentinel.isFile) {
+            if (rootInitialized && !cacheStillPresent) cacheGeneration++
+            if (!processSentinel.createNewFile() && !processSentinel.isFile) {
+                throw IOException("Unable to create reader cache sentinel: ${processSentinel.absolutePath}")
+            }
+        }
+        rootInitialized = true
+        return root
+    }
+
+    /** Returns a process-local generation that advances whenever the cache is cleared. */
+    @Synchronized
+    fun currentGeneration(): Long {
+        ensureRoot()
+        return cacheGeneration
     }
 
     @Synchronized
-    fun mirrorContentUri(
+    internal fun acquireContentUriMirror(
         location: String,
-        budget: MirrorBudget = MirrorBudget.STANDARD
-    ): File? {
+        lifetime: MirrorLifetime
+    ): ReaderMirrorLease? = when (lifetime) {
+        MirrorLifetime.PERSISTENT -> mirrorContentUri(location)?.let(::ReaderMirrorLease)
+        MirrorLifetime.SESSION -> acquireSessionMirror(location)
+    }
+
+    private fun mirrorContentUri(location: String): File? = runCatching {
+        val directory = ensureRoot()
         val fingerprint = BookFingerprint.resolve(context, location)
-        if (fingerprint.size > budget.maxSingleBytes) return null
-        val prefix = if (fingerprint.reliable) budget.prefix else processPrefix
-        val target = File(root, "$prefix${fingerprint.key}.book")
-        val metadata = File(root, "$prefix${fingerprint.key}.json")
+        if (fingerprint.size > MAX_SINGLE_BYTES) return@runCatching null
+        val prefix = if (fingerprint.reliable) MIRROR_PREFIX else processPrefix
+        val target = File(directory, "$prefix${fingerprint.key}.book")
+        val metadata = File(directory, "$prefix${fingerprint.key}.json")
         if (target.isFile && metadataMatches(metadata, fingerprint, target.length())) {
             writeMetadata(metadata, fingerprint, target.length(), System.currentTimeMillis())
-            trim(excludeKey = fingerprint.key, budget = budget)
-            return target
+            trim(excludeKey = fingerprint.key)
+            return@runCatching target.takeIf(File::isFile)
         }
 
         target.delete()
         metadata.delete()
         val temporary = File(root, target.name + ".tmp")
-        return try {
+        try {
             val uri = Uri.parse(location)
             context.contentResolver.openInputStream(uri)?.use { input ->
                 temporary.outputStream().buffered().use(input::copyTo)
-            } ?: return null
+            } ?: return@runCatching null
             moveAtomically(temporary, target)
             writeMetadata(metadata, fingerprint, target.length(), System.currentTimeMillis())
-            trim(excludeKey = fingerprint.key, budget = budget)
+            trim(excludeKey = fingerprint.key)
             target
         } catch (_: Throwable) {
             temporary.delete()
@@ -142,29 +183,119 @@ class ReaderCacheStore private constructor(private val context: Context) {
             metadata.delete()
             null
         }
+    }.getOrNull()
+
+    private fun acquireSessionMirror(location: String): ReaderMirrorLease {
+        val directory = ensureRoot()
+        val fingerprint = BookFingerprint.resolve(context, location)
+        sessionMirrors[fingerprint.key]?.let { active ->
+            if (active.file.isFile && metadataMatches(active.metadata, fingerprint, active.file.length())) {
+                active.leases++
+                return leaseFor(fingerprint.key, active)
+            }
+            active.file.delete()
+            active.metadata.delete()
+            sessionMirrors.remove(fingerprint.key)
+        }
+
+        val prefix = "${processPrefix}comic_"
+        val target = File(directory, "$prefix${fingerprint.key}.book")
+        val metadata = File(directory, "$prefix${fingerprint.key}.json")
+        val temporary = File(directory, target.name + ".tmp")
+        if (target.isFile && metadataMatches(metadata, fingerprint, target.length())) {
+            val active = SessionMirror(fingerprint, target, metadata, leases = 1)
+            sessionMirrors[fingerprint.key] = active
+            return leaseFor(fingerprint.key, active)
+        }
+
+        target.delete()
+        metadata.delete()
+        temporary.delete()
+        ensureSessionMirrorSpace(directory, fingerprint.size)
+        try {
+            val uri = Uri.parse(location)
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                temporary.outputStream().buffered().use(input::copyTo)
+            } ?: throw IOException("Unable to open CBZ document: $uri")
+            if (fingerprint.size > 0L && temporary.length() != fingerprint.size) {
+                throw IOException(
+                    "Incomplete CBZ mirror: expected ${fingerprint.size} bytes, copied ${temporary.length()}"
+                )
+            }
+            moveAtomically(temporary, target)
+            writeMetadata(metadata, fingerprint, target.length(), System.currentTimeMillis())
+            val active = SessionMirror(fingerprint, target, metadata, leases = 1)
+            sessionMirrors[fingerprint.key] = active
+            return leaseFor(fingerprint.key, active)
+        } catch (error: Throwable) {
+            temporary.delete()
+            target.delete()
+            metadata.delete()
+            throw IOException("Unable to prepare temporary CBZ mirror", error)
+        }
+    }
+
+    private fun leaseFor(key: String, mirror: SessionMirror): ReaderMirrorLease =
+        ReaderMirrorLease(mirror.file) { releaseSessionMirror(key) }
+
+    @Synchronized
+    private fun releaseSessionMirror(key: String) {
+        val mirror = sessionMirrors[key] ?: return
+        mirror.leases = (mirror.leases - 1).coerceAtLeast(0)
+        if (mirror.leases == 0) {
+            mirror.file.delete()
+            mirror.metadata.delete()
+            File(mirror.file.parentFile, mirror.file.name + ".tmp").delete()
+            sessionMirrors.remove(key)
+        }
+    }
+
+    private fun ensureSessionMirrorSpace(directory: File, sourceBytes: Long) {
+        if (sourceBytes <= 0L) return
+        val usable = directory.usableSpace
+        if (usable > 0L && usable - sourceBytes < MIN_FREE_AFTER_SESSION_MIRROR_BYTES) {
+            throw IOException("Not enough free space for temporary CBZ mirror")
+        }
     }
 
     @Synchronized
     fun invalidate(location: String) {
+        val directory = runCatching { ensureRoot() }.getOrNull() ?: return
         val identity = BookFingerprint.resolve(context, location).identity
-        root.listFiles { file -> file.extension == "json" }?.forEach { metadata ->
+        sessionMirrors.values.filter { it.fingerprint.identity == identity }
+            .forEach { it.deleteWhenReleased = true }
+        val activeFiles = activeSessionFiles()
+        // In-flight raster writers must not resurrect invalidated page images.
+        cacheGeneration++
+        directory.listFiles { file -> file.isDirectory && file.name.startsWith("raster_") }
+            ?.forEach { raster ->
+                val matches = runCatching {
+                    JSONObject(File(raster, "manifest.json").readText()).optString("identity") == identity
+                }.getOrDefault(false)
+                if (matches) raster.deleteRecursively()
+            }
+        directory.listFiles { file -> file.extension == "json" }?.forEach { metadata ->
             val matches = runCatching {
                 JSONObject(metadata.readText()).optString("identity") == identity
             }.getOrDefault(false)
             if (matches) {
-                File(root, metadata.nameWithoutExtension + ".book").delete()
-                metadata.delete()
+                val book = File(root, metadata.nameWithoutExtension + ".book")
+                if (metadata !in activeFiles && book !in activeFiles) {
+                    book.delete()
+                    metadata.delete()
+                }
             }
         }
     }
 
+    @Synchronized
     fun metadataFile(namespace: String, fingerprint: BookFingerprint): File =
-        File(root, "${namespace}_${fingerprint.key}.json")
+        File(ensureRoot(), "${namespace}_${fingerprint.key}.json")
 
     @Synchronized
     fun readMetadata(namespace: String, fingerprint: BookFingerprint): JSONObject? {
         if (!fingerprint.reliable) return null
-        val file = metadataFile(namespace, fingerprint)
+        val file = runCatching { metadataFile(namespace, fingerprint) }.getOrNull() ?: return null
         if (!file.isFile) return null
         return runCatching {
             val envelope = JSONObject(file.readText())
@@ -187,21 +318,38 @@ class ReaderCacheStore private constructor(private val context: Context) {
     @Synchronized
     fun writeMetadata(namespace: String, fingerprint: BookFingerprint, payload: JSONObject) {
         if (!fingerprint.reliable) return
-        val file = metadataFile(namespace, fingerprint)
-        val envelope = JSONObject()
-            .put("cacheVersion", VERSION)
-            .put("identity", fingerprint.identity)
-            .put("sourceSize", fingerprint.size)
-            .put("lastModified", fingerprint.lastModified)
-            .put("payload", payload)
-        val temporary = File(root, file.name + ".tmp")
-        temporary.writeText(envelope.toString())
-        moveAtomically(temporary, file)
+        runCatching {
+            val directory = ensureRoot()
+            val file = File(directory, "${namespace}_${fingerprint.key}.json")
+            val envelope = JSONObject()
+                .put("cacheVersion", VERSION)
+                .put("identity", fingerprint.identity)
+                .put("sourceSize", fingerprint.size)
+                .put("lastModified", fingerprint.lastModified)
+                .put("payload", payload)
+            val temporary = File(directory, file.name + ".tmp")
+            temporary.writeText(envelope.toString())
+            moveAtomically(temporary, file)
+        }
     }
 
     @Synchronized
     fun clear() {
-        root.listFiles()?.forEach(File::delete)
+        val directory = ensureRoot()
+        sessionMirrors.values.forEach { it.deleteWhenReleased = true }
+        val activeFiles = activeSessionFiles()
+        directory.listFiles()?.forEach { file ->
+            if (file != processSentinel && file !in activeFiles) file.deleteRecursively()
+        }
+        cacheGeneration++
+    }
+
+    private fun activeSessionFiles(): Set<File> = buildSet {
+        sessionMirrors.values.forEach { mirror ->
+            add(mirror.file)
+            add(mirror.metadata)
+            add(File(mirror.file.parentFile, mirror.file.name + ".tmp"))
+        }
     }
 
     private fun metadataMatches(metadata: File, fingerprint: BookFingerprint, actualSize: Long): Boolean {
@@ -234,13 +382,13 @@ class ReaderCacheStore private constructor(private val context: Context) {
         moveAtomically(temporary, file)
     }
 
-    private fun trim(excludeKey: String?, budget: MirrorBudget = MirrorBudget.STANDARD) {
+    private fun trim(excludeKey: String?) {
+        val directory = ensureRoot()
         data class Entry(val metadata: File, val book: File, val accessedAt: Long)
-        val maxTotalBytes = effectiveMaxTotalBytes(budget)
-        val entries = root.listFiles { file ->
+        val entries = directory.listFiles { file ->
             file.extension == "json" && (
-                file.name.startsWith(budget.prefix) ||
-                    (budget == MirrorBudget.STANDARD && file.name.startsWith("process_"))
+                file.name.startsWith(MIRROR_PREFIX) ||
+                    (file.name.startsWith("process_") && !file.name.contains("_comic_"))
                 )
         }.orEmpty().mapNotNull { metadata ->
             val json = runCatching { JSONObject(metadata.readText()) }.getOrNull() ?: return@mapNotNull null
@@ -255,7 +403,7 @@ class ReaderCacheStore private constructor(private val context: Context) {
         var total = entries.sumOf { it.book.length() }
         var kept = entries.size
         entries.asReversed().forEach { entry ->
-            if (kept <= budget.maxBooks && total <= maxTotalBytes) return@forEach
+            if (kept <= MAX_BOOKS && total <= MAX_BYTES) return@forEach
             if (excludeKey != null && entry.book.name.contains(excludeKey)) return@forEach
             total -= entry.book.length()
             kept--
@@ -264,17 +412,25 @@ class ReaderCacheStore private constructor(private val context: Context) {
         }
     }
 
-    /** Comic mirrors additionally yield to the device: never claim more than a quarter of cache. */
-    private fun effectiveMaxTotalBytes(budget: MirrorBudget): Long = when (budget) {
-        MirrorBudget.STANDARD -> budget.maxTotalBytes
-        MirrorBudget.COMIC -> {
-            val usable = runCatching { context.cacheDir.usableSpace }.getOrDefault(0L)
-            minOf(budget.maxTotalBytes, (usable / 4).coerceAtLeast(MIN_COMIC_MIRROR_BYTES))
-        }
+    @Synchronized
+    internal fun enforceLimitsForTesting() {
+        trim(excludeKey = null)
     }
 
-    internal fun enforceLimitsForTesting() {
-        MirrorBudget.entries.forEach { budget -> trim(excludeKey = null, budget = budget) }
+    @Synchronized
+    internal fun cleanupStaleMirrorsForTesting() {
+        cleanupStaleMirrors(ensureRoot())
+    }
+
+    private fun cleanupStaleMirrors(directory: File) {
+        directory.listFiles()?.forEach { file ->
+            val staleProcessFile = file.name.startsWith("process_") &&
+                !file.name.startsWith(processPrefix)
+            val staleSentinel = file.name.startsWith(".process_") && file != processSentinel
+            val legacyComicMirror = file.name.startsWith("comic_") &&
+                (file.extension == "book" || file.extension == "json" || file.extension == "tmp")
+            if (staleProcessFile || staleSentinel || legacyComicMirror) file.deleteRecursively()
+        }
     }
 
     private fun moveAtomically(source: File, target: File) {
@@ -294,7 +450,9 @@ class ReaderCacheStore private constructor(private val context: Context) {
     companion object {
         const val MAX_BYTES: Long = 96L * 1024L * 1024L
         const val MAX_BOOKS: Int = 3
-        private const val MIN_COMIC_MIRROR_BYTES: Long = 128L * 1024L * 1024L
+        private const val MAX_SINGLE_BYTES: Long = 64L * 1024L * 1024L
+        private const val MIN_FREE_AFTER_SESSION_MIRROR_BYTES: Long = 64L * 1024L * 1024L
+        private const val MIRROR_PREFIX = "mirror_"
         private const val VERSION = 1
         private val instances = ConcurrentHashMap<String, ReaderCacheStore>()
 

@@ -185,6 +185,62 @@ class EpubDocumentTransformerTest {
     }
 
     @Test
+    fun scrolledFlowAlsoMovesBookBackgroundIntoViewportLayer() {
+        val source = """
+            <html><body class="zhizuobA1"><p>Chapter</p></body></html>
+        """.trimIndent()
+
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("chapter.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE
+        ).toString(Charsets.UTF_8)
+
+        // 上下滚动时底图不能铺在整篇文档上（cover 会被放大到整本书高度、滚动错位），
+        // 必须和分页模式一样搬进随视口大小的固定层：两处调用 = 分页 + 滚动。
+        assertTrue(output.contains("function applyPublisherBackgroundLayer()"))
+        assertEquals(
+            2,
+            Regex("applyPublisherBackgroundLayer\\(\\);").findAll(output).count()
+        )
+        // 分页完成后同步一次阅读器自己的背景层，保证滚动模式下几何与视口一致。
+        assertTrue(output.contains("applyReaderPageBackgroundLayer(state.readerBackgroundActive);"))
+    }
+
+    @Test
+    fun fixedLayoutKeepsPublisherDesignBox() {
+        val source = """
+            <html><head><meta name="viewport" content="width=860,height=1146"/></head>
+            <body><img src="../Images/page.jpg"/></body></html>
+        """.trimIndent()
+
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("page.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.PRE_PAGINATED
+        ).toString(Charsets.UTF_8)
+
+        // 固定版式的设计盒由脚本按出版方 viewport 设置，不能被样式表里的 100% 覆盖，
+        // 否则整页会被再缩放一次，图片被裁、页面偏移。
+        // 保留 flow，供后续根据页面实际结构选择手势。
+        assertFalse(output.contains("if (state.fixed) state.flow = 'paginated';"))
+        val bodyRule = Regex(
+            """(?m)^body\[data-lumi-layout="pre_paginated"\] \{([^}]*)\}"""
+        ).find(output)
+        assertNotNull(bodyRule)
+        val declarations = bodyRule!!.groupValues[1]
+        // 注意别被 max-width 误伤：这里只禁止整页设计盒被 width/height: 100% 覆盖。
+        assertFalse(Regex("(?m)^\\s*width:\\s*100%").containsMatchIn(declarations))
+        assertFalse(Regex("(?m)^\\s*height:\\s*100%").containsMatchIn(declarations))
+        assertTrue(declarations.contains("max-width: none !important"))
+        assertTrue(declarations.contains("max-height: none !important"))
+        assertTrue(declarations.contains("overflow: hidden !important"))
+        assertTrue(output.contains("classList.toggle('lumi-fixed-layout', state.fixed)"))
+        assertTrue(output.contains("body.style.setProperty('position', 'fixed', 'important')"))
+        assertTrue(output.contains("body.style.setProperty('left', fixedLeft + 'px', 'important')"))
+        assertTrue(output.contains("body.style.setProperty('top', fixedTop + 'px', 'important')"))
+        assertTrue(output.contains("document.documentElement.style.setProperty('overflow', 'hidden', 'important')"))
+    }
+
+    @Test
     fun expandsVectorOnlyFirstDocumentAsCover() {
         val source = """
             <html><body><svg viewBox="0 0 1200 1800"><text x="100" y="200">Book title</text></svg></body></html>
@@ -240,6 +296,7 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("syncToPage: syncToPage"))
         assertTrue(output.contains("goToProgression: goToProgression"))
         assertTrue(output.contains("currentPosition: function () { return currentPagePayload(); }"))
+        assertTrue(output.contains("documentHref: window.location.href"))
         assertTrue(output.contains("Math.floor(normalized * state.total)"))
         assertTrue(output.contains("notificationSerial !== pageNotifySerial"))
         assertFalse(output.contains("ResizeObserver(document.body"))
@@ -321,7 +378,7 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("state.viewportHeight - fixedInset.top - fixedInset.bottom"))
         // 裁切填满时居中偏移为负，必须原样保留；不裁切时才把负偏移钳成 0。
         assertTrue(output.contains("var cropping = state.imagePageCrop && isMediaOnlyPage()"))
-        assertTrue(output.contains("(fixedInset.left + (cropping ? offsetX : Math.max(0, offsetX)))"))
+        assertTrue(output.contains("var fixedLeft = fixedInset.left + (cropping ? offsetX : Math.max(0, offsetX))"))
         assertFalse(output.contains("Math.max(0, (state.viewportWidth - designWidth * scale) / 2)"))
         assertTrue(output.contains("html.lumi-scrolled"))
         assertTrue(output.contains("overflow-y: auto !important"))
@@ -355,7 +412,8 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("Math.floor(restoreProgression * state.total + 0.000001)"))
         assertTrue(output.contains("body.style.transform = 'translate3d('"))
         assertTrue(output.contains("contain: strict"))
-        assertTrue(output.contains("pageStageCurrent.style.clipPath = clip"))
+        assertTrue(output.contains("upper.style.clipPath = clip"))
+        assertTrue(output.contains("var forward = pageStageTo > pageStageFrom"))
         assertTrue(output.contains("pageStageTarget.style.clipPath = 'inset(0)'"))
         assertTrue(output.contains("if (pageStageActive) {"))
         assertTrue(output.contains("settleActivePageStageForInput(true);"))
@@ -418,6 +476,11 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("showFootnotePopover"))
         assertTrue(output.contains("fetch(resourceUrl"))
         assertTrue(output.contains("post('link', { href: anchor.href })"))
+        // 逻辑章节会通过 <base> 解析图片/CSS；原始 `href="#note"` 仍须视为当前 DOM，
+        // 否则绝对 URL 会落到物理章节，被误判成跨文档链接，注释正文就留在正文流里。
+        assertTrue(output.contains("rawHref.charAt(0) === '#'"))
+        assertTrue(output.contains("var sameDocument = isSameDocumentLink(anchor, url)"))
+        assertTrue(output.contains("loadFootnoteTarget(url, fragment, !!sameDocumentUrl)"))
         // 原排版：注释正文由气泡呈现，正文流里不再重复显示；标记不画下划线。
         assertTrue(output.contains("resolveFootnoteBodies()"))
         assertTrue(output.contains("pairSameDocumentFootnoteBodies"))
@@ -446,6 +509,17 @@ class EpubDocumentTransformerTest {
         assertEquals(1, document.select("meta[name=viewport]").size)
         assertEquals("width=1200,height=1600", document.selectFirst("meta[name=viewport]")!!.attr("content"))
         assertFalse(output.contains("img, svg, video, canvas"))
+        // 设计画布必须保留 1200x1600，再由脚本等比缩放；先 max-width:100% 会二次缩小。
+        assertTrue(output.contains("max-width: none !important"))
+        assertFalse(output.contains("body[data-lumi-layout=\"pre_paginated\"] {\n  width: 100%"))
+        // 只有实际识别为单媒体页的固定版式章节才跨 spine 翻页；不能把所有固定版式书
+        // 都假定为“一章一页”。
+        assertTrue(output.contains("if (state.fixed && isMediaOnlyPage()) return;"))
+        assertTrue(output.contains("state.flow === 'scrolled' && state.fixed && isMediaOnlyPage()"))
+        assertTrue(output.contains("state.fixed && !isMediaOnlyPage()"))
+        assertTrue(output.contains("direction: dy < 0 ? 1 : -1, animated: true"))
+        // 媒体解码异常不能让 body 永远保持 visibility:hidden。
+        assertTrue(output.contains("Promise.race([settled, timeout])"))
     }
 
     @Test

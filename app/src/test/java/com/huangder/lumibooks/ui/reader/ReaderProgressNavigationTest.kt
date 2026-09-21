@@ -68,4 +68,37 @@ class ReaderProgressNavigationTest {
         assertEquals(72f, session.begin(72f))
         assertEquals(73f, session.dragBy(1f))
     }
+
+    @Test
+    fun `scrub tracker only asks for a seek when the target page changes`() {
+        val tracker = CatalogProgressScrubTracker()
+
+        // 同一页内的高频回调不应该反复请求跳转。
+        assertEquals(1, tracker.nextSeek(1f, 100))
+        assertNull(tracker.nextSeek(1.4f, 100))
+        assertNull(tracker.nextSeek(1.9f, 100))
+
+        assertEquals(25, tracker.nextSeek(25f, 100))
+        assertEquals(99, tracker.nextSeek(100f, 100))
+        assertNull(tracker.nextSeek(100f, 100))
+    }
+
+    @Test
+    fun `scrub tracker re-seeks the same page after a new drag starts`() {
+        val tracker = CatalogProgressScrubTracker()
+
+        assertEquals(5, tracker.nextSeek(50f, 10))
+        assertNull(tracker.nextSeek(50f, 10))
+
+        // 重新开始拖动时会先 reset，即使落点等于上次的页面也要重新对齐一次。
+        tracker.reset()
+        assertEquals(5, tracker.nextSeek(50f, 10))
+    }
+
+    @Test
+    fun `scrub tracker ignores books without pages`() {
+        val tracker = CatalogProgressScrubTracker()
+
+        assertNull(tracker.nextSeek(50f, 0))
+    }
 }

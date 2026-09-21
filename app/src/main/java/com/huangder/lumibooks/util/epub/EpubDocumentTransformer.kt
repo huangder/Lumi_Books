@@ -78,19 +78,8 @@ object EpubDocumentTransformer {
      */
     private fun markMediaOnlyPage(document: Document, allowCoverStyling: Boolean) {
         val body = document.body()
-        val textProbe = body.clone().apply {
-            // Text inside an SVG is part of the cover artwork, not flowing chapter copy.
-            select("script, style, noscript, svg").remove()
-        }
-        if (textProbe.text().isNotBlank()) return
-
-        val media = body.select("img, svg, video, canvas").filter { element ->
-            element.parents().none { parent ->
-                parent.tagName().equals("svg", ignoreCase = true) ||
-                    parent.tagName().equals("video", ignoreCase = true)
-            }
-        }
-        if (media.size != 1) return
+        if (!isMediaOnlyDocument(document)) return
+        val media = topLevelMedia(body)
 
         body.attr(MEDIA_ONLY_ATTR, "true")
         if (!allowCoverStyling) return
@@ -102,6 +91,29 @@ object EpubDocumentTransformer {
             ancestor = ancestor.parent()
         }
     }
+
+    /** Uses the same structural rule as [markMediaOnlyPage] without transforming the document. */
+    internal fun isMediaOnlyPage(resource: EpubResource): Boolean =
+        isMediaOnlyDocument(parseAndSanitize(resource))
+
+    private fun isMediaOnlyDocument(document: Document): Boolean {
+        val body = document.body()
+        val textProbe = body.clone().apply {
+            // Text inside an SVG is part of the cover artwork, not flowing chapter copy.
+            select("script, style, noscript, svg").remove()
+        }
+        if (textProbe.text().isNotBlank()) return false
+
+        return topLevelMedia(body).size == 1
+    }
+
+    private fun topLevelMedia(body: org.jsoup.nodes.Element) =
+        body.select("img, svg, video, canvas").filter { element ->
+            element.parents().none { parent ->
+                parent.tagName().equals("svg", ignoreCase = true) ||
+                    parent.tagName().equals("video", ignoreCase = true)
+            }
+        }
 
     /**
      * 标记出版社显式声明铺满宽度的块级图片。
@@ -230,6 +242,17 @@ body * {
 html.lumi-paginated {
   touch-action: none;
 }
+html.lumi-fixed-layout {
+  width: 100% !important;
+  height: 100% !important;
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  touch-action: none;
+}
+html.lumi-fixed-layout body[data-lumi-layout="pre_paginated"] {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+}
 html.lumi-scrolled {
   height: auto !important;
   min-height: 100% !important;
@@ -253,8 +276,10 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] {
   max-height: var(--lumi-page-height, 100vh) !important;
 }
 body[data-lumi-layout="pre_paginated"] {
-  width: 100% !important;
-  height: 100% !important;
+  /* 固定版式的设计盒（脚本按出版方 viewport 设置 width/height）不能被这里覆盖：
+     否则整页会按"视口大小"再乘一次缩放，图片被裁、页面偏移。 */
+  max-width: none !important;
+  max-height: none !important;
   overflow: hidden !important;
   visibility: hidden;
   transform-origin: top left;
@@ -623,6 +648,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     page: 0, total: 1, progression: 'ltr', fixed: false, flow: 'paginated', ready: false,
     writingMode: 'horizontal-tb', reverseAxis: false, pageStep: 1, pageOffsets: [0],
     viewportWidth: 0, viewportHeight: 0, paginating: false, configured: false, mediaSettled: false,
+    nativeViewport: null, fixedDesignSize: null, configurationGeneration: 0,
+    layoutRevision: 0, stableLayoutRevision: -1,
     pendingProgression: undefined, publisherBox: null, publisherBackground: null, scrollGuard: false, initialFragmentApplied: false,
     transition: 'slide', transitionDurationMs: 260, nativePaging: false, animationTimer: 0, suppressClickUntil: 0, preservePublisherBackground: true,
     imagePageCrop: false, publisherPaintOnly: false,
@@ -675,7 +702,11 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
   function post(type, payload) {
     try {
       if (window.lumiNative && window.lumiNative.postMessage) {
-        window.lumiNative.postMessage(JSON.stringify({ type: type, payload: payload || {} }));
+        window.lumiNative.postMessage(JSON.stringify({
+          type: type,
+          documentHref: window.location.href,
+          payload: payload || {}
+        }));
       }
     } catch (_) {}
   }
@@ -782,6 +813,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       pageCount: state.total,
       reverseAxis: state.reverseAxis,
       pageSerial: pageNotifySerial,
+      configurationGeneration: state.configurationGeneration,
+      layoutRevision: state.layoutRevision,
       locator: currentLocator()
     };
   }
@@ -943,11 +976,13 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
   }
 
   function viewportWidth() {
+    if (state.fixed && state.nativeViewport) return Math.round(state.nativeViewport.width);
     var visual = window.visualViewport && window.visualViewport.width;
     return Math.max(1, Math.round(visual || window.outerWidth || window.innerWidth || document.documentElement.clientWidth));
   }
 
   function viewportHeight() {
+    if (state.fixed && state.nativeViewport) return Math.round(state.nativeViewport.height);
     var visual = window.visualViewport && window.visualViewport.height;
     return Math.max(1, Math.round(visual || window.outerHeight || window.innerHeight || document.documentElement.clientHeight));
   }
@@ -1135,43 +1170,53 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     var width = Math.max(1, state.viewportWidth);
     var completeX = -pageStageSide * width;
     var currentX = typeof dragDx === 'number' ? dragDx : completeX * progress;
-    // Keep the incoming page visually behind the current sheet instead of
-    // making both pages look like a flat two-page translation.
+    var forward = pageStageTo > pageStageFrom;
+    var upper = forward ? pageStageCurrent : pageStageTarget;
+    var lower = forward ? pageStageTarget : pageStageCurrent;
+    upper.style.zIndex = '3';
+    lower.style.zIndex = '2';
+    // RTL changes the physical side only; the turning sheet still follows book order.
     var targetParallaxRatio = state.transition === 'curl' ? 0.06 : 0.08;
-    var targetParallax = pageStageSide * width * targetParallaxRatio * (1 - progress);
+    var targetParallax = forward
+      ? pageStageSide * width * targetParallaxRatio * (1 - progress)
+      : currentX * targetParallaxRatio;
+    var upperX = forward ? currentX : pageStageSide * width + currentX;
     if (!keepTransition) {
       pageStageCurrent.style.transition = 'none';
       pageStageTarget.style.transition = 'none';
       pageStageShadow.style.transition = 'none';
     }
-    pageStageTarget.style.transform = 'translate3d(' + targetParallax + 'px,0,0)';
-    pageStageTarget.style.opacity = '1';
-    pageStageTarget.style.filter = 'brightness(' + (0.90 + progress * 0.10) + ')';
+    lower.style.transform = 'translate3d(' + targetParallax + 'px,0,0)';
+    lower.style.opacity = '1';
+    lower.style.filter = 'brightness(' + (forward ? 0.90 + progress * 0.10 : 1 - progress * 0.10) + ')';
+    upper.style.opacity = '1';
     pageStageTarget.style.clipPath = 'inset(0)';
     pageStageCurrent.style.clipPath = 'inset(0)';
     pageStageShadow.dataset.side = pageStageSide > 0 ? 'right' : 'left';
     if (state.transition === 'curl') {
-      var edge = pageStageSide > 0 ? 100 - progress * 100 : progress * 100;
+      var sheetSide = forward ? pageStageSide : -pageStageSide;
+      var sheetProgress = forward ? progress : 1 - progress;
+      var edge = sheetSide > 0 ? 100 - sheetProgress * 100 : sheetProgress * 100;
       var wave = Math.sin(progress * Math.PI) * 2.4;
       var clip;
-      if (pageStageSide > 0) {
+      if (sheetSide > 0) {
         clip = 'polygon(0 0,' + edge + '% 0,' + (edge + wave) + '% 18%,' + (edge - wave * 0.55) + '% 50%,' + (edge + wave) + '% 82%,' + edge + '% 100%,0 100%)';
       } else {
         clip = 'polygon(' + edge + '% 0,100% 0,100% 100%,' + edge + '% 100%,' + (edge - wave) + '% 82%,' + (edge + wave * 0.55) + '% 50%,' + (edge - wave) + '% 18%)';
       }
-      pageStageCurrent.style.transformOrigin = pageStageSide > 0 ? '0% 50%' : '100% 50%';
-      pageStageCurrent.style.transform = 'translate3d(' + (completeX * progress * 0.035) + 'px,0,0)';
-      pageStageCurrent.style.clipPath = clip;
-      pageStageCurrent.style.filter = 'brightness(' + (1 - progress * 0.08) + ')';
+      upper.style.transformOrigin = sheetSide > 0 ? '0% 50%' : '100% 50%';
+      upper.style.transform = 'translate3d(' + (-sheetSide * width * sheetProgress * 0.035) + 'px,0,0)';
+      upper.style.clipPath = clip;
+      upper.style.filter = 'brightness(' + (1 - sheetProgress * 0.08) + ')';
       pageStageShadow.style.width = '16%';
       pageStageShadow.style.opacity = String(Math.sin(progress * Math.PI) * 0.82);
-      pageStageShadow.style.transform = 'translate3d(' + (completeX * progress) + 'px,0,0)';
+      pageStageShadow.style.transform = 'translate3d(' + upperX + 'px,0,0)';
     } else {
-      pageStageCurrent.style.transformOrigin = '50% 50%';
-      pageStageCurrent.style.transform = 'translate3d(' + currentX + 'px,0,0)';
-      pageStageCurrent.style.filter = 'none';
+      upper.style.transformOrigin = '50% 50%';
+      upper.style.transform = 'translate3d(' + upperX + 'px,0,0)';
+      upper.style.filter = 'none';
       pageStageShadow.style.opacity = String(Math.min(0.68, progress * 0.82));
-      pageStageShadow.style.transform = 'translate3d(' + currentX + 'px,0,0)';
+      pageStageShadow.style.transform = 'translate3d(' + upperX + 'px,0,0)';
     }
   }
 
@@ -1186,7 +1231,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     }
     var easing = state.transition === 'curl' ? 'cubic-bezier(.18,.78,.16,1)' : 'cubic-bezier(.2,.72,.2,1)';
     pageStageCurrent.style.transition = 'transform ' + duration + 'ms ' + easing + ', clip-path ' + duration + 'ms ' + easing + ', filter ' + duration + 'ms ease';
-    pageStageTarget.style.transition = 'transform ' + duration + 'ms ' + easing + ', filter ' + duration + 'ms ease';
+    pageStageTarget.style.transition = 'transform ' + duration + 'ms ' + easing + ', clip-path ' + duration + 'ms ' + easing + ', filter ' + duration + 'ms ease';
     pageStageShadow.style.transition = 'transform ' + duration + 'ms ' + easing + ', opacity ' + duration + 'ms ease';
     void pageStage.offsetWidth;
     var destination = commit ? 1 : 0;
@@ -1325,14 +1370,17 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
 
   function fulfillPreparedPageRequest() {
     var request = state.pendingPreparedPage;
-    if (!request || !state.ready || state.paginating) return false;
-    state.pendingPreparedPage = null;
+    if (!request || !state.ready || state.paginating || state.stableLayoutRevision !== state.layoutRevision) return false;
     var serial = state.prepareSerial;
     moveToPage(request.page, false);
     requestAnimationFrame(function () {
       requestAnimationFrame(function () {
-        if (serial !== state.prepareSerial) return;
+        if (serial !== state.prepareSerial || state.pendingPreparedPage !== request ||
+            state.stableLayoutRevision !== state.layoutRevision) return;
+        state.pendingPreparedPage = null;
         post('pagePrepared', {
+          configurationGeneration: state.configurationGeneration,
+          layoutRevision: state.layoutRevision,
           requestToken: request.token,
           pageIndex: state.page,
           pageCount: state.total,
@@ -1376,7 +1424,11 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       });
     });
     var fontJob = document.fonts && document.fonts.ready ? document.fonts.ready.catch(function () {}) : Promise.resolve();
-    return Promise.all([fontJob, Promise.all(imageJobs)]);
+    var settled = Promise.all([fontJob, Promise.all(imageJobs)]);
+    // 个别 WebView/损坏媒体会让 decode() 或 fonts.ready 永不结束。分页不能因此永久
+    // 卡在不可见状态；超时后先显示页面，媒体完成加载时浏览器仍会正常补画。
+    var timeout = new Promise(function (resolve) { setTimeout(resolve, 1800); });
+    return Promise.race([settled, timeout]);
   }
 
   function pixels(value) {
@@ -1549,7 +1601,14 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     restoreInlineProperty(body.style, 'z-index', saved.bodyInline.zIndex, saved.bodyPriority.zIndex);
   }
 
-  function applyPaginatedPublisherBackground() {
+  /**
+   * 把书籍自带的图片/渐变背景搬进一个随视口大小、位置固定的图层。
+   *
+   * 分页与上下滚动都要用：分页时页面是横向排开的，直接画在 body 上只能盖住第一页；
+   * 上下滚动时文档有几十屏高，`background-size: cover` 会把底图放大到整篇文档，
+   * 于是看起来"底图错位/被拉伸"。
+   */
+  function applyPublisherBackgroundLayer() {
     var saved = state.publisherBackground;
     restorePublisherBackground();
     if (!state.preservePublisherBackground) return;
@@ -1677,6 +1736,12 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
 
   function paginate(restoreProgression) {
     if (state.paginating) return;
+    state.fixed = document.body.getAttribute('data-lumi-layout') === 'pre_paginated';
+    if (state.fixed && state.nativeViewport &&
+        (state.nativeViewport.width < 2 || state.nativeViewport.height < 2)) return;
+    clearTimeout(resizeTimer);
+    state.layoutRevision += 1;
+    state.stableLayoutRevision = -1;
     state.paginating = true;
     var body = document.body;
     markFootnoteMarkers();
@@ -1697,8 +1762,11 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     }
     updateReadingAxis();
     state.fixed = body.getAttribute('data-lumi-layout') === 'pre_paginated';
+    // 固定版式保留出版方设计坐标，由 fixed 分支统一缩放。flow 仍保留用户选择；
+    // 只有文档实际被识别为单媒体页时，触摸层才会把跨页手势解释为切换 spine 项。
     document.documentElement.classList.toggle('lumi-paginated', !state.fixed && state.flow === 'paginated');
     document.documentElement.classList.toggle('lumi-scrolled', !state.fixed && state.flow === 'scrolled');
+    document.documentElement.classList.toggle('lumi-fixed-layout', state.fixed);
     if (state.fixed) {
       var viewport = document.querySelector('meta[name="viewport"]');
       var content = viewport ? viewport.getAttribute('content') || '' : '';
@@ -1708,6 +1776,11 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       var viewBox = svg ? (svg.getAttribute('viewBox') || '').trim().split(/\s+/).map(Number) : [];
       var designWidth = widthMatch ? parseFloat(widthMatch[1]) : (viewBox.length === 4 ? viewBox[2] : body.scrollWidth);
       var designHeight = heightMatch ? parseFloat(heightMatch[1]) : (viewBox.length === 4 ? viewBox[3] : body.scrollHeight);
+      if (!state.fixedDesignSize) {
+        state.fixedDesignSize = { width: Math.max(1, designWidth), height: Math.max(1, designHeight) };
+      }
+      designWidth = state.fixedDesignSize.width;
+      designHeight = state.fixedDesignSize.height;
       // 固定排版书籍也要尊重阅读器的页边距设置：先把整页缩放塞进“视口减去 insets”的盒子，
       // 再按 insets 偏移。整页图页（封面/插图页）的 insets 为 0，仍然满屏。
       var fixedInset = readerBox();
@@ -1718,14 +1791,28 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       var widthRatio = availableWidth / Math.max(1, designWidth);
       var heightRatio = availableHeight / Math.max(1, designHeight);
       var scale = cropping ? Math.max(widthRatio, heightRatio) : Math.min(widthRatio, heightRatio);
-      body.style.width = designWidth + 'px';
-      body.style.height = designHeight + 'px';
-      body.style.transform = 'scale(' + scale + ')';
       var offsetX = (availableWidth - designWidth * scale) / 2;
       var offsetY = (availableHeight - designHeight * scale) / 2;
       // 裁切时居中偏移为负（页面比视口大），必须原样保留，否则被钳成 0 后只裁右下角。
-      body.style.marginLeft = (fixedInset.left + (cropping ? offsetX : Math.max(0, offsetX))) + 'px';
-      body.style.marginTop = (fixedInset.top + (cropping ? offsetY : Math.max(0, offsetY))) + 'px';
+      var fixedLeft = fixedInset.left + (cropping ? offsetX : Math.max(0, offsetX));
+      var fixedTop = fixedInset.top + (cropping ? offsetY : Math.max(0, offsetY));
+      // transform 只改变视觉尺寸，不改变布局盒。使用 margin 会把未缩放的 860x1146
+      // 设计盒继续计入根页面滚动范围。固定定位并锁住根节点，避免内部滚动。
+      document.documentElement.style.setProperty('overflow', 'hidden', 'important');
+      document.documentElement.style.setProperty('overscroll-behavior', 'none', 'important');
+      body.style.setProperty('box-sizing', 'border-box', 'important');
+      body.style.setProperty('position', 'fixed', 'important');
+      body.style.setProperty('left', fixedLeft + 'px', 'important');
+      body.style.setProperty('top', fixedTop + 'px', 'important');
+      body.style.setProperty('margin', '0px', 'important');
+      body.style.setProperty('width', designWidth + 'px', 'important');
+      body.style.setProperty('height', designHeight + 'px', 'important');
+      body.style.setProperty('max-width', 'none', 'important');
+      body.style.setProperty('max-height', 'none', 'important');
+      body.style.setProperty('overflow', 'hidden', 'important');
+      body.style.setProperty('transform-origin', 'top left', 'important');
+      body.style.setProperty('transform', 'scale(' + scale + ')', 'important');
+      window.scrollTo(0, 0);
       state.pageOffsets = [0];
       state.total = 1;
       state.page = 0;
@@ -1733,6 +1820,9 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       document.documentElement.style.removeProperty('overflow');
       document.documentElement.style.removeProperty('overflow-x');
       document.documentElement.style.removeProperty('overflow-y');
+      // 上下滚动时原书底图不能直接铺在整篇文档上：带 cover 的底图会被放大到"整本书高度"，
+      // 滚动起来就错位/变形。和分页模式一样搬进随视口大小的固定层，每屏都能看到完整底图。
+      applyPublisherBackgroundLayer();
       applyScrolledBox(body);
       body.style.height = 'auto';
       body.style.maxHeight = 'none';
@@ -1746,7 +1836,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
         ? Math.floor(restoreProgression * state.total + 0.000001) : state.page, false);
     } else {
       document.documentElement.style.overflow = 'hidden';
-      applyPaginatedPublisherBackground();
+      applyPublisherBackgroundLayer();
       applyPaginationBox(body);
       var extent = Math.max(document.documentElement.scrollWidth, body.scrollWidth, state.viewportWidth);
       var physicalTotal = Math.max(1, Math.ceil((extent - 1) / state.pageStep));
@@ -1759,6 +1849,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     }
     // 早于分页到达的恢复锚点在这里生效：ready 载荷带回的才是最终页。
     applyPendingLocator();
+    // 视口尺寸在分页时才最终确定，这里同步一次阅读器背景层（用户自设的背景图/底色）。
+    applyReaderPageBackgroundLayer(state.readerBackgroundActive);
     body.style.visibility = 'visible';
     // 分页完成后整页容器的尺寸才确定，这时再压制覆盖整页的纯色"纸张"背景。
     neutralizeSolidPagePaint();
@@ -1767,10 +1859,43 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     rebuildHighlightLayer();
     fulfillPreparedPageRequest();
     post('ready', currentPagePayload());
+    publishStableLayout();
     if (location.hash && !state.initialFragmentApplied) {
       state.initialFragmentApplied = true;
       requestAnimationFrame(function () { window.LumiReader.goToFragment(location.hash); });
     }
+  }
+
+  // Layout and drawing have separate lifetimes. Publish only a revision whose
+  // geometry stayed unchanged across two frames, never an arbitrary delay.
+  function publishStableLayout() {
+    var revision = state.layoutRevision;
+    var generation = state.configurationGeneration;
+    function geometry() {
+      var values = [viewportWidth(), viewportHeight()];
+      [document.body].concat(Array.prototype.slice.call(document.querySelectorAll('img,svg,video')))
+        .forEach(function (element) {
+          var rect = element.getBoundingClientRect();
+          values.push(rect.left, rect.top, rect.width, rect.height);
+        });
+      return values;
+    }
+    var previous = geometry();
+    var unchanged = 0;
+    function check() {
+      if (revision !== state.layoutRevision || generation !== state.configurationGeneration || state.paginating) return;
+      var current = geometry();
+      var same = previous.length === current.length && current.every(function (value, index) {
+        return Math.abs(value - previous[index]) <= 1;
+      });
+      unchanged = same ? unchanged + 1 : 0;
+      previous = current;
+      if (unchanged < 2 || !state.mediaSettled) { requestAnimationFrame(check); return; }
+      state.stableLayoutRevision = revision;
+      post('layoutStable', currentPagePayload());
+      fulfillPreparedPageRequest();
+    }
+    requestAnimationFrame(check);
   }
 
 """
@@ -2145,6 +2270,11 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
   function configure(config) {
     closeFootnotePopover(true);
     config = config || {};
+    if (state.configured && config.configurationGeneration &&
+        config.configurationGeneration === state.configurationGeneration) return;
+    state.configurationGeneration = Number(config.configurationGeneration) || state.configurationGeneration + 1;
+    state.fixed = document.body.getAttribute('data-lumi-layout') === 'pre_paginated';
+    state.nativeViewport = config.viewport || null;
     var liveLocator = state.ready ? currentLocator() : null;
     var liveProgression = state.ready && state.total > 1 ? state.page / (state.total - 1) : undefined;
     state.progression = config.progression === 'rtl' ? 'rtl' : 'ltr';
@@ -2516,7 +2646,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       body.style.transition = animate
         ? 'transform 190ms cubic-bezier(.2,.72,.2,1), opacity 160ms ease-out'
         : 'none';
-      body.style.transform = '';
+      if (!state.fixed) body.style.transform = '';
       body.style.opacity = '1';
       if (animate) {
         scrollChapterAnimationTimer = setTimeout(function () {
@@ -2827,6 +2957,17 @@ private const val READER_SCRIPT_PART_3 = """
     try { return decodeURIComponent(fragment); } catch (_) { return fragment; }
   }
 
+  function isSameDocumentLink(anchor, url) {
+    var rawHref = String(anchor && anchor.getAttribute && anchor.getAttribute('href') || '').trim();
+    // Logical chapters carry a <base> pointing at their physical EPUB document so that
+    // images and styles still resolve correctly. A fragment-only href therefore has a
+    // different absolute pathname from location.pathname, even though its target lives
+    // in this DOM. Preserve the source href distinction before comparing absolute URLs.
+    if (rawHref.charAt(0) === '#') return true;
+    return !!url && url.origin === location.origin && url.pathname === location.pathname &&
+      url.search === location.search;
+  }
+
   function footnoteTarget(documentValue, fragment) {
     if (!documentValue || !fragment) return null;
     var target = documentValue.getElementById(fragment);
@@ -2847,7 +2988,7 @@ private const val READER_SCRIPT_PART_3 = """
     if (hasFootnoteMarkerLabel(anchor)) return true;
     if (hasFootnoteHint(anchor.className) || hasFootnoteHint(anchor.id) ||
         hasFootnoteHint(anchor.getAttribute('title')) || hasFootnoteHint(fragment)) return true;
-    var sameDocument = url.origin === location.origin && url.pathname === location.pathname && url.search === location.search;
+    var sameDocument = isSameDocumentLink(anchor, url);
     var target = sameDocument ? footnoteTarget(document, fragment) : null;
     if (target && (hasFootnoteSemantics(target, false) ||
         hasFootnoteSemantics(target.closest && target.closest('aside,li,section,div'), false))) return true;
@@ -2877,8 +3018,7 @@ private const val READER_SCRIPT_PART_3 = """
   function sameDocumentFootnoteUrl(anchor) {
     var url;
     try { url = new URL(anchor.href, document.baseURI); } catch (_) { return null; }
-    if (url.origin !== location.origin || url.pathname !== location.pathname ||
-        url.search !== location.search) return null;
+    if (!isSameDocumentLink(anchor, url)) return null;
     return url;
   }
 
@@ -3063,8 +3203,9 @@ private const val READER_SCRIPT_PART_3 = """
     return holder;
   }
 
-  function loadFootnoteTarget(url, fragment) {
-    var sameDocument = url.origin === location.origin && url.pathname === location.pathname && url.search === location.search;
+  function loadFootnoteTarget(url, fragment, sameDocument) {
+    sameDocument = sameDocument ||
+      (url.origin === location.origin && url.pathname === location.pathname && url.search === location.search);
     if (sameDocument) return Promise.resolve(footnoteTarget(document, fragment));
     if (url.origin !== location.origin) return Promise.resolve(null);
     var resourceUrl = url.href.replace(/#.*$/, '');
@@ -3120,7 +3261,8 @@ private const val READER_SCRIPT_PART_3 = """
     if (!fragment) return Promise.resolve(false);
     var popover = createFootnotePopover(anchor);
     var requestSerial = footnoteRequestSerial;
-    return loadFootnoteTarget(url, fragment).then(function (target) {
+    var sameDocumentUrl = sameDocumentFootnoteUrl(anchor);
+    return loadFootnoteTarget(url, fragment, !!sameDocumentUrl).then(function (target) {
       var body = footnoteContentElement(target);
       if (!body || requestSerial !== footnoteRequestSerial || !popover.isConnected) {
         if (popover.isConnected) closeFootnotePopover();
@@ -3208,7 +3350,23 @@ private const val READER_SCRIPT_PART_3 = """
       }
       return;
     }
-    if (state.nativePaging || state.flow !== 'paginated' || state.fixed) return;
+    if (state.flow === 'scrolled' && state.fixed && isMediaOnlyPage()) {
+      if (Math.abs(dy) >= 6 && Math.abs(dy) > Math.abs(dx)) {
+        touchPaging = true;
+        event.preventDefault();
+      }
+      return;
+    }
+    if (state.flow === 'paginated' && state.fixed && isMediaOnlyPage() &&
+        Math.abs(dy) >= 6 && Math.abs(dy) > Math.abs(dx)) {
+      // 固定版式不允许 WebView 自己纵向拖动画布。垂直移动只取消本次点击，
+      // 横向移动仍继续走下面的 spine 翻页识别。
+      touchPaging = true;
+      event.preventDefault();
+      return;
+    }
+    if (state.nativePaging || state.flow !== 'paginated' ||
+        (state.fixed && !isMediaOnlyPage())) return;
     if (!touchPaging && (Math.abs(dx) < 6 || Math.abs(dx) <= Math.abs(dy))) return;
     touchPaging = true;
     event.preventDefault();
@@ -3217,6 +3375,9 @@ private const val READER_SCRIPT_PART_3 = """
     touchVelocityX = (touch.clientX - touchLastX) / elapsed;
     touchLastX = touch.clientX;
     touchLastTime = now;
+    // 单媒体固定页只识别跨 spine 手势，不改 body.transform；transform 保存着设计画布
+    // 的 scale，拖动时覆盖它会让图片在切章前后突然缩放或错位。
+    if (state.fixed && isMediaOnlyPage()) return;
     if (state.transition === 'fade' || state.transition === 'none') return;
     var advances = state.reverseAxis ? dx > 0 : dx < 0;
     var targetPage = state.page + (advances ? 1 : -1);
@@ -3275,8 +3436,21 @@ private const val READER_SCRIPT_PART_3 = """
       }
       return;
     }
+    if (state.flow === 'scrolled' && state.fixed && isMediaOnlyPage()) {
+      var fixedVerticalTurn = touchPaging && Math.abs(dy) >= Math.min(72, state.viewportHeight * 0.12) &&
+        Math.abs(dy) > Math.abs(dx) * 1.15;
+      if (fixedVerticalTurn) {
+        event.preventDefault();
+        post('chapterTurn', { direction: dy < 0 ? 1 : -1, animated: true });
+        state.suppressClickUntil = Date.now() + 450;
+        touchPaging = false;
+        return;
+      }
+      touchPaging = false;
+    }
 
-    var horizontal = state.flow === 'paginated' && !state.fixed && Math.abs(dx) >= Math.abs(dy) * 1.15;
+    var horizontal = state.flow === 'paginated' && (!state.fixed || isMediaOnlyPage()) &&
+      Math.abs(dx) >= Math.abs(dy) * 1.15;
     var shouldTurn = !state.nativePaging && horizontal && (Math.abs(dx) >= Math.min(72, state.viewportWidth * 0.16) ||
       (Math.abs(dx) >= 18 && Math.abs(velocityX) >= 0.42));
     var imageTap = !footnoteAnchor && !touchPaging && !shouldTurn && !!tappedImage &&
@@ -3306,14 +3480,14 @@ private const val READER_SCRIPT_PART_3 = """
       var target = state.page + (advances ? 1 : -1);
       if (target >= 0 && target < state.total) moveToPage(target, true);
       else {
-        if (wasPaging && state.transition !== 'fade' && state.transition !== 'none') snapBackPage();
+        if (!state.fixed && wasPaging && state.transition !== 'fade' && state.transition !== 'none') snapBackPage();
         else pageStageDurationOverride = 0;
         post('chapterTurn', { direction: advances ? 1 : -1 });
       }
       state.suppressClickUntil = Date.now() + 450;
       return;
     }
-    if (wasPaging && state.transition !== 'fade' && state.transition !== 'none') snapBackPage();
+    if (!state.fixed && wasPaging && state.transition !== 'fade' && state.transition !== 'none') snapBackPage();
     if (imageTap && !centerImageTap) {
       pageStageDurationOverride = 0;
       state.suppressClickUntil = Date.now() + 450;
@@ -3342,7 +3516,7 @@ private const val READER_SCRIPT_PART_3 = """
     cancelImageLongPress();
     imageLongPressTriggered = false;
     if (scrollChapterDragDirection) resetScrolledChapterDrag(true);
-    else if (touchPaging && state.flow === 'paginated' && state.transition !== 'fade' && state.transition !== 'none') snapBackPage();
+    else if (touchPaging && state.flow === 'paginated' && !state.fixed && state.transition !== 'fade' && state.transition !== 'none') snapBackPage();
     else pageStageDurationOverride = 0;
     touchPaging = false;
   }, { passive: true });
@@ -3472,6 +3646,9 @@ private const val READER_SCRIPT_PART_3 = """
   function scheduleRepagination() {
     if (!state.ready || state.paginating || pageStageActive || touchPaging) return;
     clearTimeout(resizeTimer);
+    state.layoutRevision += 1;
+    state.stableLayoutRevision = -1;
+    post('layoutPending', currentPagePayload());
     resizeTimer = setTimeout(function () {
       if (!state.paginating) paginate(state.total > 1 ? state.page / (state.total - 1) : 0);
     }, 120);
@@ -3511,7 +3688,8 @@ private const val READER_SCRIPT_PART_3 = """
   document.addEventListener('load', function (event) {
     var target = event.target;
     if (target && target.closest && target.closest('#lumi-page-stage')) return;
-    if (target && /^(IMG|VIDEO|SVG)$/i.test(target.tagName || '')) scheduleRepagination();
+    // Late media paint does not resize a fixed publisher design box.
+    if (target && /^(IMG|VIDEO|SVG)$/i.test(target.tagName || '') && !state.fixed) scheduleRepagination();
   }, true);
 
   document.addEventListener('visibilitychange', function () {

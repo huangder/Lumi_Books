@@ -39,7 +39,7 @@ internal fun ReaderTitleCapsule(
                 contentScrimColor = glassContentScrimColor,
                 forceFallback = forceFallback,
                 modifier = Modifier
-                    .height(32.dp)
+                    .height(36.dp)
                     .widthIn(max = 280.dp),
                 contentAlignment = Alignment.Center
             ) {

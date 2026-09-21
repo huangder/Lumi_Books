@@ -5,8 +5,9 @@ import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import android.util.Log
+import com.huangder.lumibooks.util.cache.MirrorLifetime
+import com.huangder.lumibooks.util.cache.ReaderMirrorLease
 import com.huangder.lumibooks.util.cache.ReaderCacheStore
-import com.huangder.lumibooks.util.cache.MirrorBudget
 import com.huangder.lumibooks.util.diagnostics.DiagnosticLevel
 import com.huangder.lumibooks.util.diagnostics.DiagnosticLoggerRegistry
 import java.io.Closeable
@@ -33,14 +34,25 @@ object BookFileAccess {
     fun openSeekable(
         context: Context,
         location: String,
-        writable: Boolean = false,
-        budget: MirrorBudget = MirrorBudget.STANDARD
+        writable: Boolean = false
+    ): SeekableBookSource = openSeekable(
+        context = context,
+        location = location,
+        writable = writable,
+        mirrorLifetime = MirrorLifetime.PERSISTENT
+    )
+
+    internal fun openSeekable(
+        context: Context,
+        location: String,
+        writable: Boolean,
+        mirrorLifetime: MirrorLifetime
     ): SeekableBookSource {
         if (!isContentUri(location)) return SeekableBookSource(location)
 
         if (!writable) {
-            ReaderCacheStore.get(context).mirrorContentUri(location, budget)?.let { mirror ->
-                return SeekableBookSource(path = mirror.absolutePath)
+            ReaderCacheStore.get(context).acquireContentUriMirror(location, mirrorLifetime)?.let { mirror ->
+                return SeekableBookSource(path = mirror.file.absolutePath, mirrorLease = mirror)
             }
         }
 
@@ -138,6 +150,7 @@ object BookFileAccess {
 class SeekableBookSource internal constructor(
     val path: String,
     private val temporaryFile: File? = null,
+    private val mirrorLease: ReaderMirrorLease? = null,
     private val writeBackContext: Context? = null,
     private val writeBackUri: Uri? = null,
     private val sourceLocation: String? = null
@@ -158,6 +171,7 @@ class SeekableBookSource internal constructor(
 
     override fun close() {
         temporaryFile?.delete()
+        mirrorLease?.close()
     }
 }
 

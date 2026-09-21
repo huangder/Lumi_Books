@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.reader
 
+import androidx.compose.ui.geometry.Offset
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -45,5 +46,96 @@ class PdfZoomGestureTest {
 
         assertEquals(0f, result.offset, 0.001f)
         assertEquals(-10f, result.edgeDrag, 0.001f)
+    }
+
+    @Test
+    fun `annotation transform prefers a clear two finger pan over pinch jitter`() {
+        val mode = resolvePdfTransformMode(
+            panMotion = 12f,
+            zoomMotion = 10f,
+            touchSlop = 8f,
+            preferPan = true
+        )
+
+        assertEquals(PdfMultiTouchMode.PAN, mode)
+    }
+
+    @Test
+    fun `annotation transform still accepts a deliberate pinch`() {
+        val mode = resolvePdfTransformMode(
+            panMotion = 3f,
+            zoomMotion = 18f,
+            touchSlop = 8f,
+            preferPan = true
+        )
+
+        assertEquals(PdfMultiTouchMode.ZOOM, mode)
+    }
+
+    @Test
+    fun `small two finger movement remains undecided`() {
+        val mode = resolvePdfTransformMode(
+            panMotion = 4f,
+            zoomMotion = 5f,
+            touchSlop = 8f,
+            preferPan = true
+        )
+
+        assertEquals(PdfMultiTouchMode.UNDECIDED, mode)
+    }
+
+    @Test
+    fun `zoom gesture can decay when it ends with a pan`() {
+        assertEquals(
+            true,
+            shouldStartPdfPanDecay(
+                scale = 2f,
+                mode = PdfMultiTouchMode.ZOOM,
+                navigationGesture = true
+            )
+        )
+    }
+
+    @Test
+    fun `zoom gesture at resting scale does not start custom decay`() {
+        assertEquals(
+            false,
+            shouldStartPdfPanDecay(
+                scale = 1f,
+                mode = PdfMultiTouchMode.ZOOM,
+                navigationGesture = true
+            )
+        )
+    }
+
+    @Test
+    fun `pan velocity estimator preserves a recent release velocity`() {
+        val estimator = PdfPanVelocityEstimator()
+        estimator.reset(0L)
+        estimator.addPan(16L, Offset(0f, 16f))
+        estimator.addPan(32L, Offset(0f, 16f))
+
+        assertEquals(0f, estimator.velocityAt(40L).x, 0.001f)
+        assertEquals(933.333f, estimator.velocityAt(40L).y, 0.01f)
+    }
+
+    @Test
+    fun `pan velocity estimator discards a paused release`() {
+        val estimator = PdfPanVelocityEstimator()
+        estimator.reset(0L)
+        estimator.addPan(16L, Offset(20f, 0f))
+
+        assertEquals(Offset.Zero, estimator.velocityAt(200L))
+    }
+
+    @Test
+    fun `estimated velocity replaces a missing tracked axis`() {
+        val velocity = resolvePdfReleaseVelocity(
+            tracked = Offset.Zero,
+            estimated = Offset(640f, -920f)
+        )
+
+        assertEquals(640f, velocity.x, 0.001f)
+        assertEquals(-920f, velocity.y, 0.001f)
     }
 }

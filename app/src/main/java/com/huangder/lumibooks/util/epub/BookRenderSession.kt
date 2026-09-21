@@ -43,6 +43,9 @@ interface BookRenderSession : AutoCloseable {
 
     fun renditionLayout(chapterIndex: Int): EpubRenditionLayout
 
+    /** True only when the chapter body contains one media element and no visible text. */
+    fun isMediaOnlyPage(chapterIndex: Int): Boolean = false
+
     fun pageProgressionDirection(chapterIndex: Int): EpubPageProgressionDirection
 
     /** 章节纯文本（去除样式/脚本），用于原排版模式全文搜索。 */

@@ -37,6 +37,7 @@ class EpubRenderSession private constructor(
     private val readerBackgroundFiles = mutableMapOf<String, File>()
     private val readerBackgroundKeysByPath = mutableMapOf<String, String>()
     private val cssIndexByChapterPath = mutableMapOf<String, EpubCssIndex>()
+    private val mediaOnlyByChapter = mutableMapOf<Int, Boolean>()
     private val missingResourceLog = mutableSetOf<String>()
 
     override val assetLoader: WebViewAssetLoader = WebViewAssetLoader.Builder()
@@ -150,6 +151,12 @@ class EpubRenderSession private constructor(
         logicalChapters.getOrNull(chapterIndex)?.spineIndex
             ?.let { epubPackage.spine.getOrNull(it)?.renditionLayout }
             ?: EpubRenditionLayout.REFLOWABLE
+
+    @Synchronized
+    override fun isMediaOnlyPage(chapterIndex: Int): Boolean =
+        mediaOnlyByChapter.getOrPut(chapterIndex) {
+            readLogicalSource(chapterIndex)?.let(EpubDocumentTransformer::isMediaOnlyPage) == true
+        }
 
     override fun pageProgressionDirection(chapterIndex: Int): EpubPageProgressionDirection =
         epubPackage.pageProgressionDirection

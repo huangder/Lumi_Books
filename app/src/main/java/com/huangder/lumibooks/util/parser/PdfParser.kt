@@ -13,6 +13,7 @@ class PdfParser(private val context: Context) : BookParser {
     override var paragraphSpacingDp: Float = 0f
     override var firstLineIndentChars: Float = 0f
     override var contentWidth: Int = 0
+    override var contentHeight: Int = 0
     override var useEpubCss: Boolean = false  // PdfParser 不支持 EPUB CSS，保留接口兼容
     override var preserveEpubBackground: Boolean = true  // PdfParser 无原书装饰，保留接口兼容
     private var pdfRenderer: PdfRenderer? = null

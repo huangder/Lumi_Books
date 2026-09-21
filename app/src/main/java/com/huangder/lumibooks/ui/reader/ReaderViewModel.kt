@@ -56,8 +56,10 @@ import com.huangder.lumibooks.mineru.MineruTokenStore
 import com.huangder.lumibooks.pdfconversion.PdfConversionState
 import com.huangder.lumibooks.util.DownloadedFonts
 import com.huangder.lumibooks.util.BookFileAccess
+import com.huangder.lumibooks.util.FileUtils
 import com.huangder.lumibooks.util.ReaderBackgroundImageProcessor
 import com.huangder.lumibooks.util.TimeUtils
+import com.huangder.lumibooks.util.cache.ReaderCacheStore
 import com.huangder.lumibooks.util.performance.ReaderOpenPerformance
 import com.huangder.lumibooks.util.performance.ReaderOpenStage
 import com.huangder.lumibooks.util.parser.BookParser
@@ -291,6 +293,7 @@ data class ReaderUiState(
     val txtTocRuleId: String = "auto",
     val txtTocRuleName: String? = null,
     val txtTocCustomRules: List<TxtTocRule> = emptyList(),
+    val txtTocThirdPartyRules: List<TxtTocRule> = emptyList(),
     val txtTocDiagnostics: List<TxtTocRuleDiagnostics> = emptyList(),
     val isTxtTocChanging: Boolean = false,
     val txtActiveCharsetName: String = "UTF-8",
@@ -324,6 +327,8 @@ data class ReaderUiState(
     val bodyFontWeight: Int = 400,
     val eInkModeEnabled: Boolean = false,
     val twoPageSpreadEnabled: Boolean = true,
+    /** PDF / CBZ 栅格页面解码清晰度："normal" | "high" | "native" */
+    val pageRenderMode: String = "normal",
     /** 双页对开模式当前跨页的右半页（无右页时为 null） */
     val rightPageIndex: Int? = null,
     /** 右半页所属章节；跨章对开时与 currentChapterIndex 不同。 */
@@ -402,6 +407,24 @@ internal fun shouldReleasePagedReaderOnFirstPage(
 }
 
 /**
+ * Saved character offsets can outlive a layout/content transformation. When the offset falls
+ * outside the current chapter, clamp it to the nearest edge page instead of waiting forever for
+ * an exact page match that can no longer exist.
+ */
+internal fun pageReachesPendingCharacterOffset(
+    targetOffset: Int,
+    pageStartOffset: Int,
+    pageEndOffset: Int,
+    pageIndex: Int,
+    pageCount: Int
+): Boolean {
+    if (pageCount <= 0 || pageIndex !in 0 until pageCount) return false
+    if (targetOffset >= pageStartOffset && targetOffset < pageEndOffset) return true
+    if (pageIndex == 0 && targetOffset <= pageStartOffset) return true
+    return pageIndex == pageCount - 1 && targetOffset >= pageEndOffset
+}
+
+/**
  * Large TXT files can use byte-sized virtual chapters only when there is no saved semantic
  * position to restore. Virtual chapter indexes are not stable enough to persist as a locator.
  */
@@ -451,6 +474,18 @@ internal fun continuousStartCharacterOffset(chapterFraction: Float, chapterLengt
         .toInt()
         .coerceIn(0, chapterLength - 1)
 }
+
+internal fun shouldRecoverReaderAfterCacheClear(
+    observedGeneration: Long,
+    currentGeneration: Long,
+    hasLoadedBook: Boolean,
+    recoveryRunning: Boolean
+): Boolean = hasLoadedBook && !recoveryRunning && currentGeneration != observedGeneration
+
+internal data class ReaderCacheRecoveryPosition(
+    val readingProgress: Float,
+    val locatorJson: String?
+)
 
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
@@ -564,6 +599,10 @@ class ReaderViewModel @Inject constructor(
     private var largeTxtFastRanges: List<Pair<Long, Long>?> = emptyList()
     private val firstChapterDecodeTraced = AtomicBoolean(false)
     private var renderSession: BookRenderSession? = null
+    private val readerCacheStore = ReaderCacheStore.get(context)
+    private var observedCacheGeneration = readerCacheStore.currentGeneration()
+    private var cacheRecoveryJob: Job? = null
+    private val bookLoadMutex = Mutex()
     private var sessionStartTime: Long = System.currentTimeMillis()
     private var pausedTime: Long = 0L  // 进入后台的时间戳
     private var isPaused: Boolean = false
@@ -588,6 +627,54 @@ class ReaderViewModel @Inject constructor(
             isPaused = false
             pausedTime = 0L
             android.util.Log.e("READING", "App foregrounded, timer reset")
+        }
+        recoverReaderAfterCacheClearIfNeeded()
+    }
+
+    private fun recoverReaderAfterCacheClearIfNeeded() {
+        val generation = runCatching { readerCacheStore.currentGeneration() }.getOrNull() ?: return
+        if (!shouldRecoverReaderAfterCacheClear(
+                observedGeneration = observedCacheGeneration,
+                currentGeneration = generation,
+                hasLoadedBook = parser != null && _uiState.value.book != null,
+                recoveryRunning = cacheRecoveryJob?.isActive == true
+            )
+        ) return
+
+        cacheRecoveryJob = viewModelScope.launch {
+            val stateBeforeRecovery = _uiState.value
+            val storedBook = stateBeforeRecovery.book ?: return@launch
+            observedCacheGeneration = generation
+            try {
+                continuousProgressJob?.cancel()
+                val recoveryPosition = progressWriteMutex.withLock {
+                    progressWriteVersion++
+                    captureRecoveryPosition(stateBeforeRecovery)?.also { position ->
+                        persistRecoveryPosition(storedBook, position)
+                    }
+                }
+                val latestBook = bookRepository.getBookById(bookId) ?: storedBook
+                val recoveryBook = latestBook.copy(
+                    readingProgress = recoveryPosition?.readingProgress ?: latestBook.readingProgress,
+                    locatorJson = recoveryPosition?.locatorJson ?: latestBook.locatorJson
+                )
+                val preferences = dataStoreManager.readerPreferences(bookId).first()
+                loadBook(preferences, recoveryBook, isCacheRecovery = true)
+                if (_uiState.value.error == null) {
+                    pageLayoutEngine.invalidateAll()
+                    preloadCache.clear()
+                    _uiState.value = _uiState.value.copy(
+                        contentRevision = _uiState.value.contentRevision + 1
+                    )
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = error.message
+                )
+            }
         }
     }
 
@@ -860,6 +947,7 @@ class ReaderViewModel @Inject constructor(
             bodyFontWeight = preferences.bodyFontWeight,
             eInkModeEnabled = preferences.eInkModeEnabled,
             twoPageSpreadEnabled = preferences.twoPageSpreadEnabled,
+            pageRenderMode = preferences.pageRenderMode,
             screenSleepTimeoutSeconds = preferences.screenSleepTimeoutSeconds,
             readerEdgeTapMode = preferences.readerEdgeTapMode,
             readerTopLeftContent = preferences.readerTopLeftContent,
@@ -1164,6 +1252,11 @@ class ReaderViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            dataStoreManager.pageRenderMode.collectLatest { mode ->
+                _uiState.value = _uiState.value.copy(pageRenderMode = mode)
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.screenSleepTimeoutSeconds.collectLatest { seconds ->
                 _uiState.value = _uiState.value.copy(screenSleepTimeoutSeconds = seconds)
             }
@@ -1289,6 +1382,35 @@ class ReaderViewModel @Inject constructor(
         val normalizedWidth = widthPx.coerceAtLeast(1)
         if (activeParser.contentWidth == normalizedWidth) return
         activeParser.contentWidth = normalizedWidth
+        activeParser.clearHtmlCache()
+        preloadCache.clear()
+    }
+
+    /**
+     * 阅读区域内容高度：整页图（漫画页）按"宽高都放得下"等比适配，
+     * 只按宽度放大会让竖长漫画页超出一页、翻页时图被拆到两页上。
+     */
+    fun updateReaderContentHeight(heightPx: Int) {
+        val activeParser = parser ?: return
+        val normalizedHeight = heightPx.coerceAtLeast(0)
+        if (activeParser.contentHeight == normalizedHeight) return
+        activeParser.contentHeight = normalizedHeight
+        activeParser.clearHtmlCache()
+        preloadCache.clear()
+    }
+
+    /** 排版引擎量出来的正文盒子（宽 × 高），整页图按它等比适配。 */
+    fun updateReaderContentSize(widthPx: Int, heightPx: Int) {
+        val activeParser = parser ?: return
+        val normalizedWidth = widthPx.coerceAtLeast(1)
+        val normalizedHeight = heightPx.coerceAtLeast(0)
+        // 视图测量期间的来回抖动不要每次都清缓存重排（那会把打开书籍拖慢）；
+        // 只有尺寸真的变了（超过 8px / 16px）才重建。
+        val widthChanged = kotlin.math.abs(activeParser.contentWidth - normalizedWidth) >= 8
+        val heightChanged = kotlin.math.abs(activeParser.contentHeight - normalizedHeight) >= 16
+        if (!widthChanged && !heightChanged) return
+        activeParser.contentWidth = normalizedWidth
+        activeParser.contentHeight = normalizedHeight
         activeParser.clearHtmlCache()
         preloadCache.clear()
     }
@@ -2216,6 +2338,16 @@ class ReaderViewModel @Inject constructor(
             rightPageIndex = null,
             rightChapterIndex = null
         )
+        ReaderOpenPerformance.updateState(
+            bookId = bookId,
+            phase = "epub_page_ready",
+            isLoading = false,
+            pageReady = true,
+            chapterIndex = _uiState.value.currentChapterIndex,
+            pageIndex = pageIndex,
+            totalPages = pageCount,
+            event = "renderer_page_ready"
+        )
         notifyTtsPageVisible(_uiState.value.currentChapterIndex, pageIndex)
         saveProgress()
     }
@@ -2247,6 +2379,16 @@ class ReaderViewModel @Inject constructor(
             pendingReaderPosition = null,
             rightPageIndex = null,
             rightChapterIndex = null
+        )
+        ReaderOpenPerformance.updateState(
+            bookId = bookId,
+            phase = "epub_page_committed",
+            isLoading = false,
+            pageReady = true,
+            chapterIndex = chapterIndex,
+            pageIndex = pageIndex,
+            totalPages = pageCount,
+            event = "renderer_page_ready"
         )
         notifyTtsPageVisible(chapterIndex, pageIndex)
         if (chapterChanged) preloadAdjacentChapters()
@@ -2383,6 +2525,16 @@ class ReaderViewModel @Inject constructor(
         if (_uiState.value.twoPageSpreadEnabled == enabled) return
         _uiState.value = _uiState.value.copy(twoPageSpreadEnabled = enabled)
         viewModelScope.launch { dataStoreManager.saveTwoPageSpreadEnabled(enabled) }
+    }
+
+    /** 栅格页面解码清晰度：正常 → 高清 → 原图 → 正常，全局生效并记住。 */
+    fun togglePageRenderMode() {
+        val next = com.huangder.lumibooks.domain.model.PageRenderMode
+            .fromKey(_uiState.value.pageRenderMode)
+            .next()
+            .key
+        _uiState.value = _uiState.value.copy(pageRenderMode = next)
+        viewModelScope.launch { dataStoreManager.savePageRenderMode(next) }
     }
 
     /** Applies a built-in or user TXT TOC rule and keeps the reader near its old byte anchor. */
@@ -2832,13 +2984,87 @@ class ReaderViewModel @Inject constructor(
         webdavAutoSyncScheduler.onReaderExited()
     }
 
-    private suspend fun loadBook(preferences: ReaderPreferencesSnapshot, book: Book?) {
+    private fun closeActiveBookSession() {
+        stopTts()
+        largeTxtIndexJob?.cancel()
+        largeTxtIndexJob = null
+        runCatching { renderSession?.close() }
+        renderSession = null
+        runCatching { parser?.close() }
+        parser = null
+        largeTxtFastRanges = emptyList()
+        firstChapterDecodeTraced.set(false)
+        preloadCache.clear()
+        pageLayoutEngine.invalidateAll()
+    }
+
+    private suspend fun loadBook(
+        preferences: ReaderPreferencesSnapshot,
+        book: Book?,
+        isCacheRecovery: Boolean = false
+    ) = bookLoadMutex.withLock {
+            val generationAtLoadStart = runCatching {
+                readerCacheStore.currentGeneration()
+            }.getOrDefault(observedCacheGeneration)
+            if (isCacheRecovery) closeActiveBookSession()
             _uiState.value = _uiState.value.copy(isLoading = true)
+            ReaderOpenPerformance.updateState(
+                bookId = bookId,
+                phase = "view_model_loading",
+                isLoading = true,
+                pageReady = false,
+                details = mapOf(
+                    "cacheGeneration" to generationAtLoadStart,
+                    "cacheRecovery" to isCacheRecovery
+                ),
+                event = "book_load_entered"
+            )
             largeTxtIndexJob?.cancel()
             largeTxtIndexJob = null
             try {
                 if (book != null) {
-                    val activeParser = BookParserFactory.createParser(book.format, context)
+                    val fileSizeBytes = runCatching {
+                        BookFileAccess.size(context, book.filePath)
+                    }.getOrNull()
+                    val sourceType = when {
+                        BookFileAccess.isContentUri(book.filePath) -> "content_uri"
+                        FileUtils.isAppManagedBookLocation(context, book.filePath) -> "app_managed"
+                        else -> "file_path"
+                    }
+                    ReaderOpenPerformance.updateState(
+                        bookId = bookId,
+                        phase = "book_record_ready",
+                        bookFormat = book.format.name,
+                        details = buildMap {
+                            put("sourceType", sourceType)
+                            put("hasSavedLocator", book.locatorJson != null)
+                            put("hasReadingProgress", book.readingProgress > 0f)
+                            fileSizeBytes?.let { put("fileSizeBytes", it) }
+                        },
+                        event = "book_record_ready"
+                    )
+                    // 复制进应用目录的书本副本可能被系统清理（部分 ROM 的"清除缓存/清理垃圾"
+                    // 会连 /Android/data/<包名>/files 一起删掉）。这种情况必须直接告诉用户
+                    // 文件已经不在本机，而不是让解析器抛一串路径异常。
+                    appManagedBookSourceMissingMessage(book)?.let { message ->
+                        markBookSourceMissing(book)
+                        _uiState.value = _uiState.value.copy(isLoading = false, error = message)
+                        ReaderOpenPerformance.recordDiagnosticEvent(
+                            bookId = bookId,
+                            event = "book_source_missing",
+                            level = DiagnosticLevel.ERROR,
+                            attributes = mapOf("sourceType" to sourceType),
+                            result = "missing"
+                        )
+                        ReaderOpenPerformance.cancel(bookId, "book_source_missing")
+                        return
+                    }
+                    val activeParser = ReaderOpenPerformance.traceStage(
+                        bookId,
+                        ReaderOpenStage.PARSER_CREATE
+                    ) {
+                        BookParserFactory.createParser(book.format, context)
+                    }
                     parser = activeParser
                     largeTxtFastRanges = emptyList()
 
@@ -2866,6 +3092,9 @@ class ReaderViewModel @Inject constructor(
                     }
                     val txtTocRule = if (isTxt) dataStoreManager.resolveTxtTocRule(book.id) else null
                     val txtTocCustomRules = if (isTxt) dataStoreManager.txtTocCustomRules().first() else emptyList()
+                    val txtTocThirdPartyRules =
+                        if (isTxt) dataStoreManager.txtTocThirdPartyRules().first() else emptyList()
+                    val txtTocSalt = if (isTxt) dataStoreManager.txtTocThirdPartyRulesSalt() else ""
                     val txtTocRuleId = if (
                         isTxt && preferences.txtTocRuleId != "auto" && txtTocRule == null
                     ) "auto" else preferences.txtTocRuleId
@@ -2894,6 +3123,21 @@ class ReaderViewModel @Inject constructor(
                     val serializedReaderPosition = book.locatorJson
                         ?.let(ReaderPositionLocator::fromJson)
                         ?.takeIf { renderMode == EpubRenderMode.READER_LAYOUT }
+                    ReaderOpenPerformance.updateState(
+                        bookId = bookId,
+                        phase = "parser_configured",
+                        details = mapOf(
+                            "renderMode" to renderMode.name,
+                            "writingMode" to readerWritingMode.name,
+                            "continuous" to readerWritingMode.usesContinuousScroll(
+                                pageTransition,
+                                eInkModeEnabled
+                            ),
+                            "hasReaderRestore" to (serializedReaderPosition != null),
+                            "pageTransition" to pageTransition
+                        ),
+                        event = "parser_created"
+                    )
 
                     // 应用段间距和首行缩进到 parser
                     activeParser.paragraphSpacingDp = paragraphSpacing
@@ -2902,6 +3146,8 @@ class ReaderViewModel @Inject constructor(
                     activeParser.preserveEpubBackground = preferences.preserveEpubBackground
                     (activeParser as? TxtParser)?.selectedEncoding = txtEncoding
                     (activeParser as? TxtParser)?.selectedTocRule = txtTocRule
+                    (activeParser as? TxtParser)?.thirdPartyTocRules = txtTocThirdPartyRules
+                    (activeParser as? TxtParser)?.autoRuleSalt = txtTocSalt
 
                     var fastTxtOpen: TxtOpenResult? = null
                     val content = ReaderOpenPerformance.traceStageSuspend(
@@ -2961,6 +3207,16 @@ class ReaderViewModel @Inject constructor(
                     val tocEntries = content.tocEntries.ifEmpty {
                         content.chapters.map { com.huangder.lumibooks.util.parser.TocEntry(it.title, 1, it.index) }
                     }
+                    ReaderOpenPerformance.updateState(
+                        bookId = bookId,
+                        phase = "metadata_parsed",
+                        details = mapOf(
+                            "chapterCount" to chapterCount,
+                            "tocEntryCount" to tocEntries.size,
+                            "fastTxtState" to (fastTxtOpen?.state?.name ?: "none")
+                        ),
+                        event = "metadata_ready"
+                    )
                     // CBZ 的目录是"话"分组，位图页阅读器用它给缩略图目录加分组标题。
                     val comicChapterEntries =
                         if (book.format.name == "CBZ") content.tocEntries else emptyList()
@@ -3032,6 +3288,7 @@ class ReaderViewModel @Inject constructor(
                         txtTocRuleId = txtTocRuleId,
                         txtTocRuleName = txtTocRule?.name,
                         txtTocCustomRules = txtTocCustomRules,
+                        txtTocThirdPartyRules = txtTocThirdPartyRules,
                         txtTocDiagnostics = (activeParser as? TxtParser)?.lastTocDiagnostics.orEmpty(),
                         txtActiveCharsetName = (activeParser as? TxtParser)?.activeCharsetName ?: "UTF-8",
                         txtIndexState = fastTxtOpen?.state ?: TxtIndexState.COMPLETE,
@@ -3051,7 +3308,21 @@ class ReaderViewModel @Inject constructor(
                         cbzReadingDirection = cbzReadingDirection.key,
                         eInkModeEnabled = eInkModeEnabled,
                         twoPageSpreadEnabled = twoPageSpreadEnabled,
+                        pageRenderMode = preferences.pageRenderMode,
                         error = null
+                    )
+                    ReaderOpenPerformance.updateState(
+                        bookId = bookId,
+                        phase = "awaiting_first_page",
+                        isLoading = _uiState.value.isLoading,
+                        pageReady = _uiState.value.pageReady,
+                        chapterIndex = startChapter,
+                        details = mapOf(
+                            "restoreSource" to if (storedReaderPosition != null) "locator" else "progress",
+                            "rasterFormat" to isRasterPageFormat,
+                            "renderMode" to renderMode.name
+                        ),
+                        event = "reader_state_initialized"
                     )
 
                     // 书还没加载时 applyReaderPreferences 判断不出排版模式归属
@@ -3066,24 +3337,85 @@ class ReaderViewModel @Inject constructor(
                     if (isRasterPageFormat) {
                         // PDF/CBZ 使用独立的位图页阅读器，不生成 Base64 HTML。
                         _uiState.value = _uiState.value.copy(isLoading = false, pageReady = true)
+                        ReaderOpenPerformance.updateState(
+                            bookId = bookId,
+                            phase = "raster_ready",
+                            isLoading = false,
+                            pageReady = true,
+                            chapterIndex = startChapter,
+                            event = "renderer_page_ready"
+                        )
                     }
                     loadBookmarks()
                     loadNotes()
                     if (fastTxtOpen?.state == TxtIndexState.FAST_PARTIAL && activeParser is TxtParser) {
                         startLargeTxtIndexBuild(book, activeParser)
                     }
+                    observedCacheGeneration = generationAtLoadStart
+                    if (isCacheRecovery) {
+                        DiagnosticLoggerRegistry.logger?.log(
+                            category = "reader",
+                            event = "cache_session_recovered",
+                            level = DiagnosticLevel.INFO,
+                            attributes = mapOf("format" to book.format.name)
+                        )
+                    }
                 } else {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         error = context.getString(R.string.book_not_found)
                     )
+                    ReaderOpenPerformance.recordDiagnosticEvent(
+                        bookId = bookId,
+                        event = "book_not_found",
+                        level = DiagnosticLevel.ERROR,
+                        result = "missing_record"
+                    )
+                    ReaderOpenPerformance.cancel(bookId, "book_not_found")
                 }
             } catch (e: Exception) {
+                val missingSourceMessage = if (
+                    book != null && (e is FileNotFoundException || e is SecurityException)
+                ) {
+                    appManagedBookSourceMissingMessage(book)
+                } else {
+                    null
+                }
+                if (missingSourceMessage != null && book != null) {
+                    markBookSourceMissing(book)
+                }
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    error = e.message
+                    error = missingSourceMessage ?: e.message
                 )
+                ReaderOpenPerformance.recordDiagnosticEvent(
+                    bookId = bookId,
+                    event = "book_load_failed",
+                    level = DiagnosticLevel.ERROR,
+                    attributes = mapOf("missingSource" to (missingSourceMessage != null)),
+                    throwable = e,
+                    result = "failed"
+                )
+                ReaderOpenPerformance.cancel(bookId, "load_failed")
             }
+    }
+
+    /**
+     * 应用目录里的书籍副本（导入时复制进 books 目录的本地文件）如果已经不在磁盘上，就认为它被
+     * 系统清理或用户误删了。[BookFileAccess] 的 content:// 书籍和用户自己选的其他路径不在这里判断。
+     */
+    private fun appManagedBookSourceMissingMessage(book: Book): String? {
+        val location = book.filePath
+        if (location.isBlank() || BookFileAccess.isContentUri(location)) return null
+        if (!FileUtils.isAppManagedBookLocation(context, location)) return null
+        if (File(location).isFile) return null
+        return context.getString(R.string.book_file_missing_local)
+    }
+
+    /** 标记书籍"文件不可用"，书架上会显示缺失提示，避免每次点开都重复失败一次。 */
+    private suspend fun markBookSourceMissing(book: Book) {
+        if (book.isMissing) return
+        runCatching { bookRepository.updateBook(book.copy(isMissing = true)) }
     }
 
     /** Builds a semantic TOC after a large TXT has already become readable. */
@@ -3370,6 +3702,15 @@ class ReaderViewModel @Inject constructor(
             totalPages = total,
             pageReady = true
         )
+        ReaderOpenPerformance.updateState(
+            bookId = bookId,
+            phase = "legacy_page_ready",
+            pageReady = true,
+            chapterIndex = _uiState.value.currentChapterIndex,
+            pageIndex = page,
+            totalPages = total,
+            event = "renderer_page_ready"
+        )
         saveProgress()
         android.util.Log.e("PG", "onPageChanged page=$page total=$total")
         DiagnosticLoggerRegistry.logger?.log(
@@ -3414,7 +3755,13 @@ class ReaderViewModel @Inject constructor(
                         ReaderPageFractionSemantics.START
                     )
                 } else {
-                    page != null && offset >= page.startCharOffset && offset < page.endCharOffset
+                    page != null && pageReachesPendingCharacterOffset(
+                        targetOffset = offset,
+                        pageStartOffset = page.startCharOffset,
+                        pageEndOffset = page.endCharOffset,
+                        pageIndex = pageInChapter,
+                        pageCount = chapterTotalPages
+                    )
                 }
             }
         } == true
@@ -3443,6 +3790,22 @@ class ReaderViewModel @Inject constructor(
                 currentState.pendingPageFractionSemantics
             },
             pendingReaderPosition = if (reachedPendingPosition) null else currentState.pendingReaderPosition
+        )
+        ReaderOpenPerformance.updateState(
+            bookId = bookId,
+            phase = if (hasRenderablePage) "canvas_page_ready" else "canvas_layout_pending",
+            isLoading = _uiState.value.isLoading,
+            pageReady = _uiState.value.pageReady,
+            chapterIndex = chapterIndex,
+            pageIndex = pageInChapter,
+            totalPages = chapterTotalPages,
+            details = mapOf(
+                "globalPage" to globalPage,
+                "pendingRestore" to (pendingPosition != null),
+                "reachedPendingRestore" to reachedPendingPosition,
+                "canReleaseLoading" to canReleaseInitialLoading
+            ),
+            event = if (hasRenderablePage) "renderer_page_ready" else "renderer_page_pending"
         )
         if (!hasRenderablePage) return
         notifyTtsPageVisible(chapterIndex, pageInChapter, origin)
@@ -3718,6 +4081,16 @@ class ReaderViewModel @Inject constructor(
         if (_uiState.value.isLoading) {
             _uiState.value = _uiState.value.copy(isLoading = false)
         }
+        ReaderOpenPerformance.updateState(
+            bookId = bookId,
+            phase = "pagination_done",
+            isLoading = _uiState.value.isLoading,
+            pageReady = _uiState.value.pageReady,
+            chapterIndex = _uiState.value.currentChapterIndex,
+            pageIndex = _uiState.value.currentPageIndex,
+            totalPages = _uiState.value.totalPages,
+            event = "pagination_done"
+        )
     }
 
     fun clearPendingPageFraction() {
@@ -3732,6 +4105,14 @@ class ReaderViewModel @Inject constructor(
     /** 直接保存进度（PDF 竖向滚动用） */
     fun saveProgressDirect(bookId: String, progress: Float) {
         val p = progress.coerceIn(0f, 1f)
+        _uiState.value = _uiState.value.let { state ->
+            val currentBook = state.book
+            if (currentBook?.id == bookId) {
+                state.copy(book = currentBook.copy(readingProgress = p))
+            } else {
+                state
+            }
+        }
         viewModelScope.launch {
             bookRepository.updateReadingProgress(bookId, p)
             bookRepository.updateLastReadTime(bookId, System.currentTimeMillis())
@@ -3842,8 +4223,16 @@ class ReaderViewModel @Inject constructor(
      *  自己逐字绘制正文的通道使用。需要框架（原生 TextView）直接绘制正文的上下滚动模式，
      *  必须改用 [getFrameworkDrawnChapterText]：两套 span 不能混用，否则行末标点会被裁切。
      */
-    fun getChapterText(index: Int, contentWidthPx: Int? = null): CharSequence? =
-        buildChapterText(index, contentWidthPx, frameworkDrawsText = false)
+    fun getChapterText(
+        index: Int,
+        contentWidthPx: Int? = null,
+        contentHeightPx: Int? = null
+    ): CharSequence? = buildChapterText(
+        index,
+        contentWidthPx,
+        contentHeightPx,
+        frameworkDrawsText = false
+    )
 
     /**
      * 供框架直接绘制正文的通道使用（上下滚动模式的原生 TextView）。
@@ -3853,14 +4242,21 @@ class ReaderViewModel @Inject constructor(
      * 框架会按整字宽落笔，行内标点之后的内容整体右移，行尾会越过正文列右边缘被裁掉半截。
      */
     fun getFrameworkDrawnChapterText(index: Int, contentWidthPx: Int? = null): CharSequence? =
-        buildChapterText(index, contentWidthPx, frameworkDrawsText = true)
+        buildChapterText(index, contentWidthPx, contentHeightPx = 0, frameworkDrawsText = true)
 
     private fun buildChapterText(
         index: Int,
         contentWidthPx: Int?,
+        contentHeightPx: Int?,
         frameworkDrawsText: Boolean
     ): CharSequence? {
-        if (contentWidthPx != null) updateReaderContentWidth(contentWidthPx)
+        if (contentWidthPx != null) {
+            if (contentHeightPx != null) {
+                updateReaderContentSize(contentWidthPx, contentHeightPx)
+            } else {
+                updateReaderContentWidth(contentWidthPx)
+            }
+        }
         val raw = if (firstChapterDecodeTraced.compareAndSet(false, true)) {
             ReaderOpenPerformance.traceStage(bookId, ReaderOpenStage.FIRST_CHAPTER_DECODE) {
                 try { parser?.getChapterContent(index) } catch (_: Exception) { null }
@@ -4477,8 +4873,23 @@ class ReaderViewModel @Inject constructor(
 
     private suspend fun saveProgressFor(state: ReaderUiState) {
         val book = state.book ?: return
-        if (state.chapterCount == 0) return
-        if (hasPendingReaderRestore(state.pendingReaderPosition, state.pendingPageFraction)) return
+        val position = captureRecoveryPosition(state) ?: return
+        persistRecoveryPosition(book, position)
+    }
+
+    private suspend fun captureRecoveryPosition(
+        state: ReaderUiState
+    ): ReaderCacheRecoveryPosition? {
+        val book = state.book ?: return null
+        if (state.chapterCount == 0) return null
+        if (book.format.isRasterPageFormat ||
+            hasPendingReaderRestore(state.pendingReaderPosition, state.pendingPageFraction)
+        ) {
+            return ReaderCacheRecoveryPosition(
+                readingProgress = book.readingProgress,
+                locatorJson = book.locatorJson
+            )
+        }
 
         val isContinuousScroll = state.useNewEngine &&
             state.readerWritingMode.usesContinuousScroll(
@@ -4539,11 +4950,17 @@ class ReaderViewModel @Inject constructor(
         } else {
             state.epubLocatorJson.takeIf { state.renderMode == EpubRenderMode.BOOK_LAYOUT }
         }
-        bookRepository.updateReadingProgress(
-            book.id,
-            progress,
-            readerPosition
+        return ReaderCacheRecoveryPosition(
+            readingProgress = progress,
+            locatorJson = readerPosition
         )
+    }
+
+    private suspend fun persistRecoveryPosition(
+        book: Book,
+        position: ReaderCacheRecoveryPosition
+    ) {
+        bookRepository.updateReadingProgress(book.id, position.readingProgress, position.locatorJson)
         bookRepository.updateLastReadTime(book.id, System.currentTimeMillis())
         // Trigger debounced WebDAV sync for reading progress
         webdavSyncManager.scheduleReadingProgressSync(book.id)
@@ -4691,6 +5108,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        cacheRecoveryJob?.cancel()
         largeTxtIndexJob?.cancel()
         parser?.close()
         runCatching { renderSession?.close() }

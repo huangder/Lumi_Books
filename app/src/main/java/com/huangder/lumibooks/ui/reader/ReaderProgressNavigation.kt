@@ -82,3 +82,27 @@ internal class CatalogProgressDragSession {
         isActive = false
     }
 }
+
+/**
+ * 目录胶囊拖动时的实时定位去重。
+ *
+ * 一次拖动会产生大量进度回调，同一页可能在很多帧里被反复命中；只有目标页号真正变化时
+ * 才值得发起一次跳转，否则跳转请求会堆积成卡顿。
+ */
+internal class CatalogProgressScrubTracker {
+    private var lastRequestedPage: Int = -1
+
+    /** 每次开始拖动重新定位，保证"落点与当前页相同"时也会跟随手指重新对齐。 */
+    fun reset() {
+        lastRequestedPage = -1
+    }
+
+    /** 返回本次需要跳转到的页号；目标页未变化时返回 null（不需要新的跳转）。 */
+    fun nextSeek(progressPercent: Float, pageCount: Int): Int? {
+        if (pageCount <= 0) return null
+        val page = pdfPageIndexForProgress(progressPercent, pageCount)
+        if (page == lastRequestedPage) return null
+        lastRequestedPage = page
+        return page
+    }
+}

@@ -2,6 +2,15 @@ package com.huangder.lumibooks.ui.reader
 
 internal const val EPUB_NAVIGATION_TIMEOUT_MS = 10_000L
 
+internal fun epubDocumentMessageMatches(
+    messageDocumentUrl: String?,
+    expectedDocumentUrl: String
+): Boolean {
+    val actual = messageDocumentUrl?.trim()?.substringBefore('#').orEmpty()
+    val expected = expectedDocumentUrl.trim().substringBefore('#')
+    return actual.isNotEmpty() && actual == expected
+}
+
 internal enum class EpubNavigationOrigin {
     TOC,
     BOOKMARK,
