@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
+import com.huangder.lumibooks.ui.components.FinishedReadingIndicator
 import com.huangder.lumibooks.ui.components.LiquidGlassButton
 import com.huangder.lumibooks.ui.components.LiquidGlassColumnSheetContainer
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
@@ -400,11 +401,15 @@ private fun TodayReadingContent(
                     color = textPrimary
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "${(currentBook.readingProgress * 100).toInt()}%",
-                    fontSize = 13.sp,
-                    color = textSecondary
-                )
+                if (currentBook.isReadingFinished) {
+                    FinishedReadingIndicator()
+                } else {
+                    Text(
+                        text = "${(currentBook.readingProgress * 100).toInt()}%",
+                        fontSize = 13.sp,
+                        color = textSecondary
+                    )
+                }
             }
         }
         Spacer(modifier = Modifier.height(16.dp))

@@ -77,29 +77,18 @@ private fun tonalGlassHighlight(baseColor: Color): Color {
     return lerp(opaqueBase, Color.White, lightenFraction)
 }
 
-private fun liquidGlassOutlineBrush(
-    isDark: Boolean,
-    highlightColor: Color,
-    pressProgress: Float = 0f
-): Brush {
-    val tonalHighlight = tonalGlassHighlight(highlightColor)
-    val progress = pressProgress.coerceIn(0f, 1f)
-    return Brush.verticalGradient(
-        colors = if (isDark) {
-            listOf(
-                tonalHighlight.copy(alpha = 0.62f + progress * 0.14f),
-                tonalHighlight.copy(alpha = 0.24f + progress * 0.08f),
-                tonalHighlight.copy(alpha = 0.08f)
-            )
-        } else {
-            listOf(
-                tonalHighlight.copy(alpha = (0.96f + progress * 0.04f).coerceAtMost(1f)),
-                tonalHighlight.copy(alpha = 0.52f + progress * 0.10f),
-                tonalHighlight.copy(alpha = 0.16f + progress * 0.08f)
-            )
-        }
+internal val LiquidGlassOutlineWidth = 0.5.dp
+private const val LiquidGlassOutlineAlpha = 0.62f
+
+internal fun liquidGlassHighlight(): Highlight =
+    Highlight.Default.copy(alpha = LiquidGlassOutlineAlpha)
+
+internal fun liquidGlassFallbackOutlineBrush(): Brush = Brush.linearGradient(
+    colors = listOf(
+        Color.White.copy(alpha = 0.30f),
+        Color.White.copy(alpha = 0.08f)
     )
-}
+)
 
 /**
  * Creates a highlight in scRGB so only the pressed spot can use luminance above
@@ -142,9 +131,6 @@ internal fun Modifier.liquidGlassBackdrop(
     buttonInteractionState: LiquidGlassButtonInteractionState? = null,
     buttonInteraction: Boolean = false,
     motionEnabled: Boolean = true,
-    outlineWidth: Dp = 0.8.dp,
-    highlightAlpha: Float = 0.18f,
-    highlightColor: Color = Color.White,
     /** Extra blur on top of the transparency-derived amount, for animated glass. */
     blurBoostPx: Float = 0f,
     shadowRadius: Dp = 24.dp,
@@ -152,12 +138,12 @@ internal fun Modifier.liquidGlassBackdrop(
     pressedShadowAlpha: Float = 0.08f
 ): Modifier {
     val lensSupported = supportsLiquidGlassLens(lensShape)
+    val nativeOutlineSupported = supportsLiquidGlassLens(shape)
     val surfaceColor = if (isDark) {
         Color(0xFF101012).copy(alpha = 0.34f - transparency * 0.24f)
     } else {
         Color.White.copy(alpha = 0.32f - transparency * 0.28f)
     }
-    val borderBrush = liquidGlassOutlineBrush(isDark, highlightColor, pressProgress)
     val glassModifier = drawBackdrop(
         backdrop = backdrop,
         // The lens library only accepts rounded rectangular/corner-based shapes. A G2
@@ -202,10 +188,10 @@ internal fun Modifier.liquidGlassBackdrop(
                 scaleY = scale
             }
         },
-        highlight = {
-            Highlight.Default.copy(
-                alpha = if (buttonInteraction) 0f else highlightAlpha + pressProgress * 0.46f
-            )
+        highlight = if (nativeOutlineSupported) {
+            { liquidGlassHighlight() }
+        } else {
+            null
         },
         shadow = {
             Shadow(
@@ -240,12 +226,12 @@ internal fun Modifier.liquidGlassBackdrop(
             }
         }
     )
-    // drawBackdrop installs the interaction transform as the outer graphics layer, so this
-    // outline follows the same pressed stretch as the refracted surface.
-    return if (outlineWidth > 0.dp) {
-        glassModifier.border(outlineWidth, borderBrush, shape)
-    } else {
+    // Kyant's highlight shader only understands CornerBasedShape. Keep custom G2 paths on
+    // the same single 0.5dp outline without layering a second border over normal shapes.
+    return if (nativeOutlineSupported) {
         glassModifier
+    } else {
+        glassModifier.border(LiquidGlassOutlineWidth, liquidGlassFallbackOutlineBrush(), shape)
     }
 }
 
@@ -284,17 +270,15 @@ fun Modifier.liquidGlassSheetSurface(
                 isDark = isDark,
                 transparency = sheetTransparency,
                 contentScrimColor = fallbackColor.copy(alpha = scrimAlpha),
-                scaleOnPress = false,
-                outlineWidth = 1.1.dp,
-                highlightAlpha = 0.30f
+                scaleOnPress = false
             )
         } else {
             floatingSurface
                 .clip(floatingShape)
                 .background(fallbackColor)
                 .border(
-                    width = 1.1.dp,
-                    brush = liquidGlassOutlineBrush(isDark, fallbackColor),
+                    width = LiquidGlassOutlineWidth,
+                    brush = liquidGlassFallbackOutlineBrush(),
                     shape = floatingShape
                 )
         }
@@ -409,9 +393,6 @@ fun LiquidGlassSurface(
     interactive: Boolean = onClick != null,
     pressFeedbackEnabled: Boolean = true,
     effectPadding: Dp = 0.dp,
-    outlineWidth: Dp = 0.8.dp,
-    highlightColor: Color = fallbackColor,
-    highlightAlpha: Float = 0.18f,
     /** Extra blur used by animated glass (menus); 0 keeps the surface untouched. */
     blurBoost: Dp = 0.dp,
     decorationModifier: Modifier? = null,
@@ -485,9 +466,6 @@ fun LiquidGlassSurface(
             buttonInteractionState = interactionState,
             buttonInteraction = handlesButtonGesture,
             motionEnabled = motionEnabled,
-            outlineWidth = outlineWidth,
-            highlightColor = highlightColor,
-            highlightAlpha = highlightAlpha,
             blurBoostPx = with(density) { blurBoost.toPx() },
             shadowRadius = 24.dp,
             shadowAlpha = 0f,
@@ -511,16 +489,10 @@ fun LiquidGlassSurface(
                     )
                 )
             )
-            .then(
-                if (outlineWidth > 0.dp) {
-                    Modifier.border(
-                        outlineWidth,
-                        liquidGlassOutlineBrush(isDark, highlightColor),
-                        shape
-                    )
-                } else {
-                    Modifier
-                }
+            .border(
+                LiquidGlassOutlineWidth,
+                liquidGlassFallbackOutlineBrush(),
+                shape
             )
     } else {
         Modifier

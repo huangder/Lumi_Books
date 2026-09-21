@@ -1320,8 +1320,6 @@ private fun SupportWelcomeButton(
             fallbackColor = glassColor,
             contentScrimColor = scrimColor,
             transparencyOverride = 0.65f,
-            outlineWidth = 0.dp,
-            highlightAlpha = 0f,
             enabled = enabled,
             onClick = onClick,
             decorationModifier = Modifier.shadow(

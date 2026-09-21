@@ -2476,7 +2476,11 @@ private fun BookGridItem(
                     )
                 }
             }
-            BookCoverProgressOverlay(book = book, downloadState = downloadState)
+            BookCoverProgressOverlay(
+                book = book,
+                downloadState = downloadState,
+                badgeCornerRadius = coverCorner
+            )
         }
 
         Spacer(Modifier.height(AppSpace.sm))

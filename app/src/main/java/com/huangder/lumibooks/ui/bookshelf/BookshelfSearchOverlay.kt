@@ -674,7 +674,8 @@ private fun BookshelfSearchResultCard(
                 BookCoverProgressOverlay(
                     book = book,
                     downloadState = downloadState,
-                    compact = true
+                    compact = true,
+                    badgeCornerRadius = 14.dp
                 )
             }
 

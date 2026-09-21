@@ -501,8 +501,6 @@ private fun CoverSearchBottomBar(
                         Color.Transparent
                     },
                     transparencyOverride = 0.28f.takeIf { isLiquidGlass },
-                    outlineWidth = if (isLiquidGlass) 0.55.dp else 0.dp,
-                    highlightAlpha = if (isLiquidGlass) 0.12f else 0f,
                     onClick = { onEngineSelected(engine) },
                     decorationModifier = if (isLiquidGlass) {
                         Modifier
@@ -582,8 +580,6 @@ private fun CoverSearchBottomBar(
                 Color.Transparent
             },
             transparencyOverride = 0.28f.takeIf { isLiquidGlass },
-            outlineWidth = if (isLiquidGlass) 0.55.dp else 0.dp,
-            highlightAlpha = if (isLiquidGlass) 0.12f else 0f,
             onClick = onToggleCrop,
             decorationModifier = if (isLiquidGlass) {
                 Modifier

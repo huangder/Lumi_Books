@@ -46,6 +46,7 @@ import com.huangder.lumibooks.ui.animation.BookReaderTransitionPhase
 import com.huangder.lumibooks.ui.animation.LocalBookReaderAnchorScope
 import com.huangder.lumibooks.ui.animation.coverFlowEntranceItem
 import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
+import com.huangder.lumibooks.ui.components.FinishedReadingIndicator
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.icons.AppIcons
 import com.huangder.lumibooks.ui.theme.AppColors
@@ -339,7 +340,8 @@ private fun CoverFlowMetadata(books: List<Book>, state: CoverFlowState, syncedId
                     horizontalAlignment = Alignment.CenterHorizontally) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                         val percent = (book.readingProgress.takeIf { it.isFinite() } ?: 0f).coerceIn(0f, 1f) * 100f
-                        Text("${book.title} · ${percent.toInt()}%", color = AppColors.TextPrimary, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Serif,
+                        val titleAndProgress = if (book.isReadingFinished) book.title else "${book.title} · ${percent.toInt()}%"
+                        Text(titleAndProgress, color = AppColors.TextPrimary, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Serif,
                             fontSize = 18.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
                             modifier = Modifier.weight(1f, fill = false))
                         if (book.isFavorite) Icon(AppIcons.Heart.filled, null, tint = AppColors.Accent,
@@ -350,6 +352,9 @@ private fun CoverFlowMetadata(books: List<Book>, state: CoverFlowState, syncedId
                     Text(book.author, color = AppColors.TextSecondary, fontSize = 14.sp,
                         fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold,
                         maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                    if (book.isReadingFinished) {
+                        FinishedReadingIndicator(Modifier.padding(top = 4.dp))
+                    }
                     if (book.isMissing) Text(stringResource(R.string.book_file_unavailable),
                         color = androidx.compose.ui.graphics.Color(0xFFD92D3A), fontSize = 12.sp, maxLines = 1)
                 }

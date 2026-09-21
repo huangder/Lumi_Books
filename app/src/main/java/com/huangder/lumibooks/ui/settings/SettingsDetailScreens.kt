@@ -146,6 +146,7 @@ import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.domain.model.HighlightPalette
 import com.huangder.lumibooks.domain.model.AppIconStyle
+import com.huangder.lumibooks.domain.model.BookOpenTransition
 import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
 import com.huangder.lumibooks.domain.model.appAccentHex
 import com.huangder.lumibooks.domain.model.normalizeAppAccentHex
@@ -905,9 +906,36 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
 private fun TxtTocRulesManagerCard(viewModel: SettingsViewModel) {
     val context = LocalContext.current
     val rules by viewModel.txtTocCustomRules.collectAsState(initial = emptyList())
+    val thirdPartyRules by viewModel.txtTocThirdPartyRules.collectAsState(initial = emptyList())
+    val noticeAcknowledged by viewModel.txtTocCompatNoticeAcknowledged.collectAsState(initial = false)
     val scope = rememberCoroutineScope()
     var dialogVisible by remember { mutableStateOf(false) }
     var pendingExport by remember { mutableStateOf<String?>(null) }
+    var compatNoticeVisible by remember { mutableStateOf(false) }
+    val runImport: (String) -> Unit = { payload ->
+        viewModel.importTxtTocRules(payload) { result ->
+            val message = result.fold(
+                onSuccess = { imported ->
+                    context.getString(
+                        R.string.txt_toc_import_result,
+                        imported.lumiRules.size,
+                        imported.thirdPartyRules.size,
+                        imported.skipped,
+                        imported.scriptIgnored
+                    )
+                },
+                onFailure = { error ->
+                    error.message ?: context.getString(R.string.txt_toc_import_unknown_format)
+                }
+            )
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            // The one-time declaration is shown after the first successful compatible import, so
+            // importing a native rule file never interrupts the user with an unrelated notice.
+            if (!noticeAcknowledged && result.getOrNull()?.thirdPartyRules?.isNotEmpty() == true) {
+                compatNoticeVisible = true
+            }
+        }
+    }
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -930,9 +958,7 @@ private fun TxtTocRulesManagerCard(viewModel: SettingsViewModel) {
                     context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
                 }.getOrNull()
                 if (!payload.isNullOrBlank()) {
-                    viewModel.importTxtTocRules(payload) { result ->
-                        if (result.isFailure) Toast.makeText(context, result.exceptionOrNull()?.message ?: "导入失败", Toast.LENGTH_SHORT).show()
-                    }
+                    runImport(payload)
                 }
             }
         }
@@ -947,7 +973,11 @@ private fun TxtTocRulesManagerCard(viewModel: SettingsViewModel) {
             Spacer(Modifier.width(AppSpace.md))
             Column(Modifier.weight(1f)) {
                 Text("TXT目录规则", fontSize = AppType.Body, color = AppColors.TextPrimary)
-                Text("${rules.size} 条自定义规则，可导入或导出", fontSize = AppType.Caption, color = AppColors.TextSecondary)
+                Text(
+                    stringResource(R.string.txt_toc_library_summary, rules.size, thirdPartyRules.size),
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary
+                )
             }
             Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
         }
@@ -971,6 +1001,67 @@ private fun TxtTocRulesManagerCard(viewModel: SettingsViewModel) {
                             }) { Icon(AppIcons.TrashSimple, "删除", tint = AppColors.TextSecondary) }
                         }
                     }
+                    Spacer(Modifier.height(AppSpace.sm))
+                    Text(
+                        stringResource(R.string.txt_toc_compat_section_title),
+                        color = AppColors.TextPrimary,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                    )
+                    Text(
+                        stringResource(R.string.txt_toc_compat_description),
+                        color = AppColors.TextSecondary,
+                        fontSize = 11.sp
+                    )
+                    if (thirdPartyRules.isEmpty()) {
+                        Text(
+                            stringResource(R.string.txt_toc_compat_empty),
+                            color = AppColors.TextSecondary
+                        )
+                    }
+                    thirdPartyRules.forEach { rule ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(rule.name, color = AppColors.TextPrimary)
+                                Text(
+                                    rule.chapterRegex + if (rule.hasIgnoredScript) {
+                                        " · " + stringResource(R.string.txt_toc_compat_badge_script)
+                                    } else {
+                                        ""
+                                    },
+                                    color = AppColors.TextSecondary,
+                                    fontSize = 11.sp,
+                                    maxLines = 2
+                                )
+                            }
+                            IconButton(onClick = {
+                                viewModel.saveTxtTocThirdPartyRules(thirdPartyRules.filterNot { it.id == rule.id })
+                            }) { Icon(AppIcons.TrashSimple, "删除", tint = AppColors.TextSecondary) }
+                        }
+                    }
+                    Row {
+                        TextButton(onClick = {
+                            viewModel.importTxtTocCompatibilityPreset { result ->
+                                val message = result.fold(
+                                    onSuccess = { count ->
+                                        if (count > 0 && !noticeAcknowledged) compatNoticeVisible = true
+                                        context.getString(R.string.txt_toc_compat_preset_result, count)
+                                    },
+                                    onFailure = { error ->
+                                        error.message ?: context.getString(R.string.txt_toc_import_unknown_format)
+                                    }
+                                )
+                                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                            }
+                        }) { Text(stringResource(R.string.txt_toc_compat_import_preset)) }
+                        TextButton(onClick = {
+                            viewModel.clearTxtTocThirdPartyRules()
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.txt_toc_compat_cleared),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }) { Text(stringResource(R.string.txt_toc_compat_clear)) }
+                    }
                 }
             },
             confirmButton = {
@@ -983,6 +1074,36 @@ private fun TxtTocRulesManagerCard(viewModel: SettingsViewModel) {
                         }
                     }) { Text("导出") }
                     TextButton(onClick = { dialogVisible = false }) { Text("完成") }
+                }
+            }
+        )
+    }
+
+    if (compatNoticeVisible && !noticeAcknowledged) {
+        LiquidGlassAlertDialog(
+            onDismissRequest = { compatNoticeVisible = false },
+            title = {
+                Text(
+                    stringResource(R.string.txt_toc_compat_notice_title),
+                    color = AppColors.TextPrimary,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                )
+            },
+            text = {
+                Text(
+                    stringResource(R.string.txt_toc_compat_notice_body),
+                    color = AppColors.TextSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    compatNoticeVisible = false
+                    viewModel.acknowledgeTxtTocCompatNotice()
+                }) { Text(stringResource(R.string.txt_toc_compat_notice_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { compatNoticeVisible = false }) {
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -1417,6 +1538,22 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             ),
             selected = uiState.motionPreference,
             onSelect = viewModel::saveMotionPreference
+        )
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    DetailCard {
+        DropdownSettingRow(
+            icon = AppIcons.BookOpen,
+            label = stringResource(R.string.book_open_transition_label),
+            options = listOf(
+                BookOpenTransition.HERO.storedValue to stringResource(R.string.book_open_transition_hero),
+                BookOpenTransition.LOADING_PAGE.storedValue to
+                    stringResource(R.string.book_open_transition_loading_page)
+            ),
+            selected = uiState.bookOpenTransition,
+            onSelect = viewModel::saveBookOpenTransition
         )
     }
 

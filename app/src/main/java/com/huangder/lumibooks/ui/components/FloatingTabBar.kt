@@ -12,9 +12,12 @@ import com.huangder.lumibooks.ui.icons.IconPair
  * Source: https://github.com/Kyant0/AndroidLiquidGlass
  */
 
-import android.graphics.Paint
-import android.graphics.RectF
-import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.EaseOut
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -45,33 +48,23 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.toArgb
 import androidx.annotation.StringRes
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -103,7 +96,6 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
-import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
 import dev.chrisbanes.haze.HazeState
@@ -112,12 +104,19 @@ import dev.chrisbanes.haze.hazeChild
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sign
+import kotlinx.coroutines.launch
 
 data class TabItem(
     val icons: IconPair,
     @StringRes val titleRes: Int,
     val testTag: String
 )
+
+private val LiquidTabBarHeight = 64.dp
+private val LiquidTabSelectionHeight = 56.dp
+private val LiquidTabHorizontalPadding = 36.dp
+private val LiquidImportButtonReserve = 100.dp
+private val LiquidImportIconSize = 28.dp
 
 val tabs = listOf(
     TabItem(AppIcons.HomeTab, R.string.home_title, "home_tab"),
@@ -171,7 +170,7 @@ fun FloatingTabBar(
     val transparency = LocalLiquidGlassTransparency.current
     val motionEnabled = LocalMotionEnabled.current
     val density = LocalDensity.current
-    val barHeight = if (isLiquidGlass) 72.dp else 56.dp
+    val barHeight = if (isLiquidGlass) LiquidTabBarHeight else 56.dp
     val accent = AppColors.Accent
     // Automatic backdrop sampling is intentionally disabled. PixelCopy and draw
     // observation both add work to every animated frame on affected devices.
@@ -192,8 +191,12 @@ fun FloatingTabBar(
     val animationScope = rememberCoroutineScope()
     // Compensate the light glass' neutral overlay so the sampled result matches Lumi pink.
     val glassShape = CircleShape
-    val horizontalPadding = if (isLiquidGlass) 24.dp else 80.dp
-    val endPadding = if (isLiquidGlass && reserveImportButtonSpace) 108.dp else horizontalPadding
+    val horizontalPadding = if (isLiquidGlass) LiquidTabHorizontalPadding else 80.dp
+    val endPadding = if (isLiquidGlass && reserveImportButtonSpace) {
+        LiquidImportButtonReserve
+    } else {
+        horizontalPadding
+    }
     val glassBrush = if (isLiquidGlass && isDark) {
         val alpha = 0.42f - transparency * 0.24f
         Brush.verticalGradient(
@@ -217,23 +220,7 @@ fun FloatingTabBar(
     } else {
         SolidColor(Color.White.copy(alpha = 0.80f))
     }
-    val borderBrush = if (isLiquidGlass && isDark) {
-        Brush.verticalGradient(
-            colors = listOf(
-                Color.White.copy(alpha = 0.68f - transparency * 0.18f),
-                Color.White.copy(alpha = 0.26f),
-                Color.White.copy(alpha = 0.08f)
-            )
-        )
-    } else if (isLiquidGlass) {
-        Brush.verticalGradient(
-            colors = listOf(
-                Color.White.copy(alpha = 0.98f),
-                Color.White.copy(alpha = 0.58f + transparency * 0.10f),
-                Color.White.copy(alpha = 0.18f + transparency * 0.08f)
-            )
-        )
-    } else if (isDark) {
+    val fallbackBorderBrush = if (isDark) {
         SolidColor(Color.White.copy(alpha = 0.22f))
     } else {
         SolidColor(Color.White.copy(alpha = 0.58f))
@@ -281,9 +268,7 @@ fun FloatingTabBar(
                 }
                 lens(16.dp.toPx(), 28.dp.toPx())
             },
-            highlight = {
-                Highlight.Default.copy(alpha = 0.26f)
-            },
+            highlight = { liquidGlassHighlight() },
             onDrawSurface = { drawRect(liquidSurfaceColor) }
         )
     } else {
@@ -291,10 +276,14 @@ fun FloatingTabBar(
             .then(hazeModifier)
             .background(glassBrush)
     }
-    val shadowColor = if (isDark) {
-        Color.White.copy(alpha = 0.10f)
-    } else {
-        Color.Black.copy(alpha = 0.14f)
+    val outerOutlineModifier = when {
+        isLiquidGlass && liquidGlassBackdrop != null -> Modifier
+        isLiquidGlass -> Modifier.border(
+            LiquidGlassOutlineWidth,
+            liquidGlassFallbackOutlineBrush(),
+            glassShape
+        )
+        else -> Modifier.border(0.8.dp, fallbackBorderBrush, glassShape)
     }
 
     Box(
@@ -323,7 +312,7 @@ fun FloatingTabBar(
                 .height(barHeight),
         ) {
             // Keep the original three-column rhythm, with only a subtle inset.
-            val contentPadding = if (isLiquidGlass) 6.dp else 0.dp
+            val contentPadding = if (isLiquidGlass) 4.dp else 0.dp
             val contentPaddingPx = with(density) { contentPadding.toPx() }
             val contentWidth = maxWidth - contentPadding * 2
             val contentWidthPx = with(density) { contentWidth.toPx() }
@@ -333,181 +322,90 @@ fun FloatingTabBar(
             val indicatorExtraWidthPx = with(density) { indicatorExtraWidth.toPx() }
             val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
             var currentIndex by remember { mutableIntStateOf(selectedIndex) }
-            var pointerPosition by remember { mutableStateOf(Offset.Zero) }
             val dragState = remember(animationScope, indicatorWidthPx, motionEnabled) {
-                LiquidGlassDampedMotionState(
+                LiquidGlassTabMotionState(
                     animationScope = animationScope,
                     initialValue = selectedIndex.toFloat(),
                     valueRange = 0f..tabs.lastIndex.toFloat(),
-                    motionEnabled = motionEnabled,
-                    pressedScale = 78f / 56f
+                    motionEnabled = motionEnabled
                 )
             }
-            var panelDragDistancePx by remember { mutableFloatStateOf(0f) }
-            var panelOffsetTargetPx by remember { mutableFloatStateOf(0f) }
-            val panelOffsetPx by animateFloatAsState(
-                targetValue = panelOffsetTargetPx,
-                animationSpec = if (dragState.isInteracting) {
-                    snap()
-                } else {
-                    spring(
-                        dampingRatio = Spring.DampingRatioNoBouncy,
-                        stiffness = 300f
+            val panelOffsetAnimation = remember(animationScope, motionEnabled) { Animatable(0f) }
+            val panelOffsetPx by remember(density, contentWidthPx) {
+                derivedStateOf {
+                    dampedTabPanelOffset(
+                        dragDistancePx = panelOffsetAnimation.value,
+                        panelWidthPx = contentWidthPx,
+                        maxOffsetPx = with(density) { 4.dp.toPx() }
                     )
-                },
-                label = "liquidTabPanelOffset"
-            )
+                }
+            }
+            val interactiveHighlight = remember(
+                animationScope,
+                dragState,
+                indicatorWidthPx,
+                isLtr,
+                motionEnabled
+            ) {
+                LiquidGlassTabInteractiveHighlight(
+                    animationScope = animationScope,
+                    motionEnabled = motionEnabled
+                ) { size, _ ->
+                    Offset(
+                        x = if (isLtr) {
+                            (dragState.value + 0.5f) * indicatorWidthPx + panelOffsetPx
+                        } else {
+                            size.width - (dragState.value + 0.5f) * indicatorWidthPx +
+                                panelOffsetPx
+                        },
+                        y = size.height / 2f
+                    )
+                }
+            }
 
             LaunchedEffect(selectedIndex, dragState) {
                 if (selectedIndex != currentIndex) {
                     currentIndex = selectedIndex
                     if (abs(dragState.targetValue - selectedIndex.toFloat()) > 0.001f) {
-                        dragState.syncToValue(selectedIndex.toFloat())
+                        dragState.animateToValue(selectedIndex.toFloat())
                     }
                 }
             }
 
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .then(
-                        if (isLiquidGlass) {
-                            Modifier.liquidGlassTabDrag(
-                                state = dragState,
-                                onDragStart = { position ->
-                                    pointerPosition = position
-                                    panelDragDistancePx = 0f
-                                    panelOffsetTargetPx = 0f
-                                },
-                                onPointerMove = { position ->
-                                    pointerPosition = position
-                                },
-                                onDrag = { dragAmount ->
-                                    val direction = if (isLtr) 1f else -1f
-                                    dragState.dragTo(
-                                        dragState.targetValue +
-                                            dragAmount.x / indicatorWidthPx * direction
-                                    )
-                                    panelDragDistancePx += dragAmount.x
-                                    panelOffsetTargetPx = dampedTabPanelOffset(
-                                        dragDistancePx = panelDragDistancePx,
-                                        panelWidthPx = contentWidthPx,
-                                        maxOffsetPx = with(density) { 4.dp.toPx() }
-                                    )
-                                },
-                                onDragEnd = { dragged ->
-                                    val target = if (dragged) {
-                                        projectedTabTarget(
-                                            currentValue = dragState.targetValue,
-                                            velocity = dragState.velocity,
-                                            lastIndex = tabs.lastIndex
-                                        )
-                                    } else {
-                                        currentIndex
-                                    }
-                                    dragState.settleTo(target.toFloat())
-                                    panelOffsetTargetPx = 0f
-                                    if (target != currentIndex) {
-                                        currentIndex = target
-                                        currentOnTabSelected(target)
-                                    }
-                                },
-                                onDragCancel = {
-                                    dragState.cancelInteraction(currentIndex.toFloat())
-                                    panelOffsetTargetPx = 0f
-                                }
-                            )
-                        } else {
-                            Modifier
-                        }
-                    )
-            ) {
+            val settleTabDrag: () -> Unit = {
+                val target = dragState.targetValue.roundToInt().coerceIn(0, tabs.lastIndex)
+                dragState.animateToValue(target.toFloat())
+                animationScope.launch {
+                    panelOffsetAnimation.animateTo(0f, spring(1f, 300f, 0.5f))
+                }
+                if (target != currentIndex) {
+                    currentIndex = target
+                    currentOnTabSelected(target)
+                }
+            }
+
+            Box(modifier = Modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        val scale = if (motionEnabled) {
-                            1f + 0.014f * dragState.pressProgress
+                        translationX = panelOffsetPx
+                        val scale = if (motionEnabled && size.width > 0f) {
+                            1f + 16.dp.toPx() / size.width * dragState.pressProgress
                         } else {
                             1f
                         }
                         scaleX = scale
                         scaleY = scale
                     }
-            ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .drawBehind {
-                        val shadowRadius = 28.dp.toPx()
-                        val cornerRadius = size.height / 2f
-                        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                            color = Color.White.copy(alpha = 0.01f).toArgb()
-                            setShadowLayer(shadowRadius, 0f, 0f, shadowColor.toArgb())
-                        }
-                        drawIntoCanvas { canvas ->
-                            canvas.nativeCanvas.drawRoundRect(
-                                RectF(0f, 0f, size.width, size.height),
-                                cornerRadius,
-                                cornerRadius,
-                                paint
-                            )
-                        }
-                    }
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
                     .then(
                         if (isLiquidGlass && liquidGlassBackdrop != null) Modifier
                         else Modifier.clip(glassShape)
                     )
                     .then(outerGlassModifier)
-                    .border(width = if (isLiquidGlass) 1.dp else 0.8.dp, brush = borderBrush, shape = glassShape)
-            )
-
-            if (isLiquidGlass && liquidGlassBackdrop != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(glassShape)
-                        .drawBehind {
-                            val progress = dragState.pressProgress
-                            if (progress > 0f) {
-                                val barScale = if (motionEnabled) {
-                                    1f + 0.014f * progress
-                                } else {
-                                    1f
-                                }
-                                // Counter the bar's visual scale so the rendered glow
-                                // remains exactly beneath the physical pointer.
-                                val center = Offset(
-                                    x = size.width / 2f +
-                                        (pointerPosition.x - size.width / 2f) / barScale,
-                                    y = size.height / 2f +
-                                        (pointerPosition.y - size.height / 2f) / barScale
-                                )
-                                val radius = size.minDimension * 1.8f
-                                drawCircle(
-                                    brush = Brush.radialGradient(
-                                        colors = listOf(
-                                            Color.White.copy(alpha = 0.28f * progress),
-                                            Color.White.copy(alpha = 0.09f * progress),
-                                            Color.Transparent
-                                        ),
-                                        center = center,
-                                        radius = radius
-                                    ),
-                                    radius = radius,
-                                    center = center,
-                                    blendMode = BlendMode.Plus
-                                )
-                            }
-                        }
-                )
-            }
-
+                    .then(outerOutlineModifier)
+                    .then(if (isLiquidGlass) interactiveHighlight.modifier else Modifier)
+            ) {
             // A translucent tonal veil keeps the bar readable over changing content;
             // the prism remains a separate, brighter layer above it.
             Box(
@@ -539,14 +437,18 @@ fun FloatingTabBar(
                 liquidGlass = isLiquidGlass,
                 interactive = true
             )
+            }
 
             if (isLiquidGlass && liquidGlassBackdrop != null) {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
+                        .align(Alignment.Center)
+                        .fillMaxWidth()
+                        .height(LiquidTabSelectionHeight)
                         .clearAndSetSemantics {}
                         .alpha(0f)
                         .layerBackdrop(tabsBackdrop)
+                        .graphicsLayer { translationX = panelOffsetPx }
                         .drawBackdrop(
                             backdrop = liquidGlassBackdrop,
                             shape = { glassShape },
@@ -561,8 +463,10 @@ fun FloatingTabBar(
                                     20.dp.toPx() * progress
                                 )
                             },
+                            highlight = null,
                             onDrawSurface = { drawRect(liquidSurfaceColor) }
                         )
+                        .then(interactiveHighlight.modifier)
                 ) {
                     FixedTabItems(
                         currentIndex = currentIndex,
@@ -598,7 +502,25 @@ fun FloatingTabBar(
                         }
                         IntOffset((baseTranslation + panelOffsetPx).roundToInt(), 0)
                     }
-                    .padding(3.dp)
+                    .padding(4.dp)
+                    .then(interactiveHighlight.gestureModifier)
+                    .liquidGlassTabDrag(
+                        state = dragState,
+                        onDrag = { _, dragAmount ->
+                            val direction = if (isLtr) 1f else -1f
+                            dragState.updateValue(
+                                dragState.targetValue +
+                                    dragAmount.x / indicatorWidthPx * direction
+                            )
+                            animationScope.launch {
+                                panelOffsetAnimation.snapTo(
+                                    panelOffsetAnimation.value + dragAmount.x
+                                )
+                            }
+                        },
+                        onDragEnd = settleTabDrag,
+                        onDragCancel = settleTabDrag
+                    )
                 val prismVisualModifier = if (combinedTabsBackdrop != null) {
                     Modifier.drawBackdrop(
                         backdrop = combinedTabsBackdrop,
@@ -612,9 +534,7 @@ fun FloatingTabBar(
                                 chromaticAberration = opticalProgress > 0.05f
                             )
                         },
-                        highlight = {
-                            Highlight.Default.copy(alpha = dragState.pressProgress)
-                        },
+                        highlight = null,
                         shadow = {
                             Shadow(alpha = dragState.pressProgress)
                         },
@@ -623,12 +543,11 @@ fun FloatingTabBar(
                             InnerShadow(radius = 8.dp * progress, alpha = progress)
                         },
                         layerBlock = {
-                            scaleY = dragState.scale
-                            scaleX = equalEdgePrismScaleX(
-                                scaleY = scaleY,
-                                widthPx = size.width,
-                                heightPx = size.height
-                            )
+                            scaleX = dragState.scaleX
+                            scaleY = dragState.scaleY
+                            val velocity = dragState.velocity / 10f
+                            scaleX /= 1f - (velocity * 0.75f).coerceIn(-0.2f, 0.2f)
+                            scaleY *= 1f - (velocity * 0.25f).coerceIn(-0.2f, 0.2f)
                         },
                         onDrawSurface = {
                             val progress = dragState.pressProgress
@@ -655,19 +574,9 @@ fun FloatingTabBar(
 
             }
             }
-            }
     }
     }
 }
-
-internal fun projectedTabTarget(
-    currentValue: Float,
-    velocity: Float,
-    lastIndex: Int,
-    projectionSeconds: Float = 0.18f
-): Int = (currentValue + velocity * projectionSeconds)
-    .roundToInt()
-    .coerceIn(0, lastIndex)
 
 internal fun dampedTabPanelOffset(
     dragDistancePx: Float,
@@ -675,18 +584,8 @@ internal fun dampedTabPanelOffset(
     maxOffsetPx: Float
 ): Float {
     if (panelWidthPx <= 0f || maxOffsetPx <= 0f) return 0f
-    val fraction = (abs(dragDistancePx) / panelWidthPx).coerceIn(0f, 1f)
-    val easedFraction = 1f - (1f - fraction) * (1f - fraction)
-    return maxOffsetPx * dragDistancePx.sign * easedFraction
-}
-
-internal fun equalEdgePrismScaleX(
-    scaleY: Float,
-    widthPx: Float,
-    heightPx: Float
-): Float {
-    if (widthPx <= 0f) return 1f
-    return 1f + (scaleY - 1f) * (heightPx / widthPx)
+    val fraction = (dragDistancePx / panelWidthPx).coerceIn(-1f, 1f)
+    return maxOffsetPx * fraction.sign * EaseOut.transform(abs(fraction))
 }
 
 @Composable
@@ -700,8 +599,8 @@ fun LiquidGlassImportButton(
         fallbackColor = Color.Black,
         backdrop = liquidGlassBackdrop,
         contentScrimColor = Color.Black.copy(alpha = 0.85f),
-        // Keep the action button on the same 72dp baseline as the Liquid Glass tab bar.
-        modifier = modifier.size(72.dp),
+        // Match the action button to the 64dp Liquid Glass tab bar.
+        modifier = modifier.size(LiquidTabBarHeight),
         onClick = onClick,
         contentAlignment = Alignment.Center
     ) {
@@ -709,7 +608,7 @@ fun LiquidGlassImportButton(
             imageVector = AppIcons.Plus,
             contentDescription = stringResource(R.string.import_books),
             tint = Color.White,
-            modifier = Modifier.size(32.dp)
+            modifier = Modifier.size(LiquidImportIconSize)
         )
     }
 }

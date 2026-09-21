@@ -69,11 +69,14 @@ import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.animation.cardPressEffect
 import androidx.compose.ui.res.stringResource
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
+import com.huangder.lumibooks.ui.components.LiquidGlassSegmentedControl
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.Backdrop
 import com.huangder.lumibooks.ui.animation.PageEntranceItem
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
@@ -94,6 +97,7 @@ fun StatisticsScreen(
     val uiState by viewModel.uiState.collectAsState()
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val topBlurBackdrop = rememberLayerBackdrop()
+    val segmentedControlBackdrop = rememberLayerBackdrop()
     val statusBarTopPadding = WindowInsets.statusBars
         .asPaddingValues()
         .calculateTopPadding()
@@ -120,6 +124,15 @@ fun StatisticsScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(AppColors.WindowBg)) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (isLiquidGlass) Modifier.layerBackdrop(segmentedControlBackdrop)
+                    else Modifier
+                )
+                .background(AppColors.WindowBg)
+        )
         OverscrollBounce(
             modifier = Modifier
                 .fillMaxSize()
@@ -159,7 +172,8 @@ fun StatisticsScreen(
                         PeriodSegmentedControl(
                             labels = tabs,
                             selectedIndex = selectedPeriod,
-                            onSelected = viewModel::selectTab
+                            onSelected = viewModel::selectTab,
+                            backdrop = segmentedControlBackdrop.takeIf { isLiquidGlass }
                         )
                     }
                     Spacer(Modifier.height(AppSpace.md))
@@ -224,8 +238,31 @@ fun StatisticsScreen(
 private fun PeriodSegmentedControl(
     labels: List<String>,
     selectedIndex: Int,
-    onSelected: (Int) -> Unit
+    onSelected: (Int) -> Unit,
+    backdrop: Backdrop?
 ) {
+    if (LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current) {
+        LiquidGlassSegmentedControl(
+            itemCount = labels.size,
+            selectedIndex = selectedIndex,
+            onSelected = onSelected,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = AppSpace.lg),
+            trackHeight = 44.dp,
+            trackPadding = 3.dp,
+            backdrop = backdrop
+        ) { index, isSelected ->
+            Text(
+                text = labels[index],
+                fontSize = AppType.BodySmall,
+                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (isSelected) AppColors.TextPrimary.copy(alpha = 0.86f) else AppColors.TextSecondary
+            )
+        }
+        return
+    }
+
     val motionEnabled = LocalMotionEnabled.current
     val shape = RoundedCornerShape(AppRadius.md)
     BoxWithConstraints(

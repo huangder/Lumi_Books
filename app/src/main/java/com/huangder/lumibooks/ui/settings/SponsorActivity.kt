@@ -63,7 +63,10 @@ import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
+import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
+import com.huangder.lumibooks.ui.components.LiquidGlassSegmentedControl
 import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -282,6 +285,25 @@ private fun SponsorPaymentTagSwitcher(
         PaymentMethod.PAYPAL to R.string.sponsor_payment_paypal
     )
     val selectedIndex = options.indexOfFirst { it.first == selectedPayment }.coerceAtLeast(0)
+    if (LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current) {
+        LiquidGlassSegmentedControl(
+            itemCount = options.size,
+            selectedIndex = selectedIndex,
+            onSelected = { onPaymentSelected(options[it].first) },
+            modifier = modifier.fillMaxWidth(),
+            trackHeight = 40.dp,
+            trackPadding = 2.dp
+        ) { index, isSelected ->
+            Text(
+                text = stringResource(options[index].second),
+                fontSize = AppType.BodySmall,
+                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (isSelected) AppColors.TextPrimary.copy(alpha = 0.86f) else AppColors.TextSecondary
+            )
+        }
+        return
+    }
+
     val indicatorProgress by animateFloatAsState(
         targetValue = selectedIndex.toFloat(),
         animationSpec = tween(200),

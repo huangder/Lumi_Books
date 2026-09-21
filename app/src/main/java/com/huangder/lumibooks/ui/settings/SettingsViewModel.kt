@@ -11,6 +11,7 @@ import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.domain.model.normalizeAppAccentHex
 import com.huangder.lumibooks.domain.model.AppIconStyle
+import com.huangder.lumibooks.domain.model.BookOpenTransition
 import com.huangder.lumibooks.util.BookFileAccess
 import com.huangder.lumibooks.util.FileUtils
 import com.huangder.lumibooks.util.UpdateChecker
@@ -56,6 +57,7 @@ import com.huangder.lumibooks.service.FloatingSubtitleOverlayController
 import com.huangder.lumibooks.mineru.MineruTokenStore
 import com.huangder.lumibooks.data.backup.BackupArchiveManager
 import com.huangder.lumibooks.util.parser.TxtTocRule
+import com.huangder.lumibooks.util.parser.TxtTocRuleImportResult
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
@@ -76,16 +78,41 @@ class SettingsViewModel @Inject constructor(
 ) : ViewModel() {
 
     val txtTocCustomRules: kotlinx.coroutines.flow.Flow<List<TxtTocRule>> = dataStoreManager.txtTocCustomRules()
+    val txtTocThirdPartyRules: kotlinx.coroutines.flow.Flow<List<TxtTocRule>> =
+        dataStoreManager.txtTocThirdPartyRules()
 
     fun saveTxtTocCustomRules(rules: List<TxtTocRule>) {
         viewModelScope.launch { dataStoreManager.saveTxtTocCustomRules(rules) }
     }
 
-    fun importTxtTocRules(payload: String, onResult: (Result<List<TxtTocRule>>) -> Unit = {}) {
+    fun saveTxtTocThirdPartyRules(rules: List<TxtTocRule>) {
+        viewModelScope.launch { dataStoreManager.saveTxtTocThirdPartyRules(rules) }
+    }
+
+    fun importTxtTocRules(payload: String, onResult: (Result<TxtTocRuleImportResult>) -> Unit = {}) {
         viewModelScope.launch {
             val result = runCatching { dataStoreManager.importTxtTocRules(payload) }
             onResult(result)
         }
+    }
+
+    /** Imports the compatible rule preset shipped in the APK. Returns the imported rule count. */
+    fun importTxtTocCompatibilityPreset(onResult: (Result<Int>) -> Unit = {}) {
+        viewModelScope.launch {
+            val result = runCatching { dataStoreManager.importTxtTocCompatibilityPreset() }
+            onResult(result)
+        }
+    }
+
+    fun clearTxtTocThirdPartyRules() {
+        viewModelScope.launch { dataStoreManager.clearTxtTocThirdPartyRules() }
+    }
+
+    val txtTocCompatNoticeAcknowledged: kotlinx.coroutines.flow.Flow<Boolean> =
+        dataStoreManager.txtTocCompatNoticeAcknowledged()
+
+    fun acknowledgeTxtTocCompatNotice() {
+        viewModelScope.launch { dataStoreManager.acknowledgeTxtTocCompatNotice() }
     }
 
     fun exportTxtTocRules(onResult: (String) -> Unit) {
@@ -206,6 +233,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.entranceAnimationsEnabled.collectLatest { enabled ->
                 _uiState.value = _uiState.value.copy(entranceAnimationsEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.bookOpenTransition.collectLatest { transition ->
+                _uiState.value = _uiState.value.copy(bookOpenTransition = transition)
             }
         }
         viewModelScope.launch {
@@ -575,6 +607,15 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun saveBookOpenTransition(transition: String) {
+        val normalized = BookOpenTransition.normalize(transition)
+        if (_uiState.value.bookOpenTransition == normalized) return
+        _uiState.value = _uiState.value.copy(bookOpenTransition = normalized)
+        viewModelScope.launch {
+            dataStoreManager.saveBookOpenTransition(normalized)
+        }
+    }
+
     fun saveEInkModeEnabled(enabled: Boolean) {
         if (_uiState.value.eInkModeEnabled == enabled) return
         _uiState.value = _uiState.value.copy(eInkModeEnabled = enabled)
@@ -854,8 +895,9 @@ class SettingsViewModel @Inject constructor(
     fun clearCache() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                com.huangder.lumibooks.util.cache.ReaderCacheStore.get(context).clear()
                 context.cacheDir.listFiles()?.forEach { entry ->
-                    if (entry.name != ExternalTtsAudioCache.DIRECTORY_NAME) {
+                    if (entry.name != ExternalTtsAudioCache.DIRECTORY_NAME && entry.name != "reader_cache") {
                         entry.deleteRecursively()
                     }
                 }

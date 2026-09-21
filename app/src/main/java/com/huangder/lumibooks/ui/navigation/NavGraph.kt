@@ -207,6 +207,7 @@ fun MainNavGraph(
     startDestination: String = Screen.Home.route,
     initialBookshelfLayoutMode: Int? = null,
     entranceAnimationsEnabled: Boolean = true,
+    bookOpenUsesHeroTransition: Boolean = true,
     predictiveBackEnabled: Boolean = true,
     requestedOpenBookId: String? = null,
     requestedOpenBookDirect: Boolean = false,
@@ -408,7 +409,7 @@ fun MainNavGraph(
             readerReady = false
             showTransition = false
             navController.navigate(Screen.Reader.createRoute(book.id))
-        } else if (entranceAnimationsEnabled) {
+        } else if (entranceAnimationsEnabled && bookOpenUsesHeroTransition) {
             ReaderOpenPerformance.start(book.id)
             readerReady = false
             showTransition = false

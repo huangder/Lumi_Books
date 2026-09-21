@@ -253,8 +253,8 @@ fun LiquidGlassSwitch(
                 .clip(CircleShape)
                 .background(trackColor)
                 .border(
-                    0.8.dp,
-                    Color.White.copy(alpha = if (isDark) 0.18f else 0.52f),
+                    LiquidGlassOutlineWidth,
+                    Color.White.copy(alpha = if (isDark) 0.10f else 0.30f),
                     CircleShape
                 )
         )
@@ -306,7 +306,7 @@ fun LiquidGlassSwitch(
             Modifier
                 .clip(CircleShape)
                 .background(thumbScrim)
-                .border(0.8.dp, Color.White.copy(alpha = 0.72f), CircleShape)
+                .border(LiquidGlassOutlineWidth, Color.White.copy(alpha = 0.30f), CircleShape)
         }
 
         Box(modifier = thumbPositionModifier.then(thumbVisualModifier))

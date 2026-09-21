@@ -100,31 +100,46 @@ internal class LiquidGlassDampedMotionState(
         trackedVelocity = velocityTracker.calculateVelocity().x
     }
 
-    fun settleTo(value: Float) {
+    fun settleTo(
+        value: Float,
+        animationSpec: AnimationSpec<Float>? = null,
+        initialVelocity: Float = 0f
+    ) {
         startTransition(
             value = value,
             ensurePressed = false,
             releaseAtEnd = false,
-            animationSpec = dragSettleSpec()
+            animationSpec = animationSpec ?: dragSettleSpec(),
+            initialVelocity = initialVelocity
         )
         startPressRelease()
     }
 
-    fun animateToValue(value: Float) {
+    fun animateToValue(
+        value: Float,
+        animationSpec: AnimationSpec<Float>? = null,
+        initialVelocity: Float = 0f
+    ) {
         startTransition(
             value = value,
             ensurePressed = true,
             releaseAtEnd = true,
-            animationSpec = programmaticSpec()
+            animationSpec = animationSpec ?: programmaticSpec(),
+            initialVelocity = initialVelocity
         )
     }
 
-    fun syncToValue(value: Float) {
+    fun syncToValue(
+        value: Float,
+        animationSpec: AnimationSpec<Float>? = null,
+        initialVelocity: Float = 0f
+    ) {
         startTransition(
             value = value,
             ensurePressed = false,
             releaseAtEnd = false,
-            animationSpec = programmaticSpec()
+            animationSpec = animationSpec ?: programmaticSpec(),
+            initialVelocity = initialVelocity
         )
     }
 
@@ -133,7 +148,8 @@ internal class LiquidGlassDampedMotionState(
             value = value,
             ensurePressed = false,
             releaseAtEnd = false,
-            animationSpec = programmaticSpec()
+            animationSpec = programmaticSpec(),
+            initialVelocity = 0f
         )
         startPressRelease()
     }
@@ -142,7 +158,8 @@ internal class LiquidGlassDampedMotionState(
         value: Float,
         ensurePressed: Boolean,
         releaseAtEnd: Boolean,
-        animationSpec: AnimationSpec<Float>
+        animationSpec: AnimationSpec<Float>,
+        initialVelocity: Float
     ) {
         val target = value.coerceIn(valueRange)
         val start = this.value
@@ -163,7 +180,11 @@ internal class LiquidGlassDampedMotionState(
                         null
                     }
                     val moveJob = launch {
-                        valueAnimation.animateTo(target, animationSpec)
+                        valueAnimation.animateTo(
+                            targetValue = target,
+                            animationSpec = animationSpec,
+                            initialVelocity = initialVelocity
+                        )
                     }
 
                     if (releaseAtEnd) {

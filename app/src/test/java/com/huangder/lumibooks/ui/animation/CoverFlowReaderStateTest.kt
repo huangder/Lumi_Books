@@ -56,6 +56,23 @@ class CoverFlowReaderStateTest {
         assertEquals(0f, CoverFlowReaderMotion.readerAlpha(state.coverFlowProgressSnapshot.value), 0f)
     }
 
+    @Test fun `window transition inherits hidden progress from its source cover`() = runTest {
+        val state = transition()
+        state.registerCoverAnchor(
+            anchorKey = "home-continue",
+            bookId = book.id,
+            bounds = source,
+            cornerRadiusDp = 8f,
+            titleStyle = null,
+            showReadingProgress = false
+        )
+
+        assertTrue(state.startOpen(book, null, source, 8f))
+        assertFalse(state.coverShowsReadingProgress)
+        state.markReaderReady()
+        advanceUntilIdle()
+    }
+
     @Test fun `entering uses staggered nonlinear motion with finite endpoints`() {
         for (rank in 0..5) {
             assertEquals(0f, CoverFlowEntranceMotion.cover(0f, rank.toFloat()), 0f)

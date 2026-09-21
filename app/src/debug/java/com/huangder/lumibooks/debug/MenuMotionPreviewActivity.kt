@@ -64,11 +64,10 @@ private fun SurfaceSamples() {
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().layerBackdrop(backdrop).background(AppColors.WindowBg))
         Column(Modifier.fillMaxSize().statusBarsPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            listOf("Default", "No shadow", "No scrim", "No highlight").forEachIndexed { index, label ->
+            listOf("Default", "No shadow", "No scrim").forEachIndexed { index, label ->
                 LiquidGlassSurface(
                     shape = RoundedCornerShape(24.dp), fallbackColor = AppColors.CardBg, backdrop = backdrop,
                     contentScrimColor = if (index == 2) Color.Transparent else AppColors.CardBg.copy(alpha = 0.62f),
-                    highlightAlpha = if (index == 3) 0f else 0.18f,
                     decorationModifier = if (index == 1) Modifier else null,
                     modifier = Modifier.fillMaxWidth().height(128.dp)
                 ) { Text(label, color = AppColors.TextPrimary) }

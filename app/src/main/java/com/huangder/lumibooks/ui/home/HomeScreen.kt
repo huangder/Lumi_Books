@@ -86,6 +86,7 @@ import com.huangder.lumibooks.ui.animation.OverscrollBounceState
 import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
 import com.huangder.lumibooks.ui.components.BookCoverProgressOverlay
+import com.huangder.lumibooks.ui.components.FinishedReadingIndicator
 import com.huangder.lumibooks.ui.components.CloudAwareBookDeleteDialog
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -101,6 +102,7 @@ import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.cardOutline
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.huangder.lumibooks.ui.theme.SansSerif
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
@@ -111,6 +113,7 @@ import com.huangder.lumibooks.ui.animation.bookCoverMemoryCacheKey
 import com.huangder.lumibooks.ui.animation.bookCoverTransitionAnchor
 import com.huangder.lumibooks.ui.layout.currentAdaptiveWindowInfo
 import com.huangder.lumibooks.util.TimeUtils
+import com.huangder.lumibooks.util.ReaderBackgroundBlurTransformation
 
 @Composable
 fun HomeScreen(
@@ -460,8 +463,29 @@ private fun ContinueReadingCard(
     }
     val deleteMenuLabel = stringResource(R.string.delete_book)
     val coverBounds = remember { java.util.concurrent.atomic.AtomicReference(Rect.Zero) }
+    val context = LocalContext.current
+    val blurRadiusPx = with(LocalDensity.current) { 24.dp.roundToPx() }
+    val useCoverBackground = book.coverPath != null && !LocalEInkMode.current
+    val primaryContentColor = if (useCoverBackground) Color.White else AppColors.TextPrimary
+    val secondaryContentColor = if (useCoverBackground) {
+        Color.White.copy(alpha = 0.78f)
+    } else {
+        AppColors.TextSecondary
+    }
+    val blurredCoverRequest = remember(book.id, book.coverPath, blurRadiusPx) {
+        book.coverPath?.let { coverPath ->
+            ImageRequest.Builder(context)
+                .data(coverPath)
+                .allowHardware(false)
+                .memoryCacheKey(
+                    "${bookCoverMemoryCacheKey(book.id, coverPath)}:home-card-blur-v1:$blurRadiusPx"
+                )
+                .transformations(ReaderBackgroundBlurTransformation(blurRadiusPx))
+                .build()
+        }
+    }
 
-    Row(
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
@@ -472,9 +496,27 @@ private fun ContinueReadingCard(
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                 onClick(coverBounds.get().takeUnless { it == Rect.Zero })
             }
-            .padding(AppSpace.md),
-        verticalAlignment = Alignment.CenterVertically
     ) {
+        if (useCoverBackground && blurredCoverRequest != null) {
+            AsyncImage(
+                model = blurredCoverRequest,
+                contentDescription = null,
+                modifier = Modifier.matchParentSize(),
+                contentScale = ContentScale.Crop
+            )
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(Color.Black.copy(alpha = 0.30f))
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
         // 封面（3:4 比例）
         Box(
             modifier = Modifier
@@ -491,7 +533,8 @@ private fun ContinueReadingCard(
                         color = BookCoverTitleColor.Primary,
                         useKaiTi = true,
                         textAlignCenter = true
-                    )
+                    ),
+                    showReadingProgress = false
                 )
                 .clip(RoundedCornerShape(AppRadius.sm))
                 .background(AppColors.BgGray)
@@ -504,7 +547,7 @@ private fun ContinueReadingCard(
                 )
             } else {
                 AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
+                    model = ImageRequest.Builder(context)
                         .data(book.coverPath)
                         .memoryCacheKey(
                             bookCoverMemoryCacheKey(book.id, book.coverPath)
@@ -518,7 +561,9 @@ private fun ContinueReadingCard(
             BookCoverProgressOverlay(
                 book = book,
                 downloadState = downloadState,
-                compact = true
+                compact = true,
+                showReadingProgress = false,
+                badgeCornerRadius = AppRadius.sm
             )
         }
         Spacer(Modifier.width(AppSpace.md))
@@ -528,7 +573,7 @@ private fun ContinueReadingCard(
                 fontSize = AppType.Body,
                 fontWeight = FontWeight.SemiBold,
                 fontFamily = resolveAppFontFamily(KaiTi),
-                color = AppColors.TextPrimary,
+                color = primaryContentColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -536,7 +581,7 @@ private fun ContinueReadingCard(
             Text(
                 text = book.author,
                 fontSize = AppType.BodySmall,
-                color = AppColors.TextSecondary,
+                color = secondaryContentColor,
                 maxLines = 1
             )
             if (book.isMissing) {
@@ -549,18 +594,24 @@ private fun ContinueReadingCard(
                 )
             }
             Spacer(Modifier.height(AppSpace.xs))
-            Text(
-                text = if (downloadState is BookDownloadState.Downloading) {
+            if (book.isReadingFinished && downloadState !is BookDownloadState.Downloading) {
+                FinishedReadingIndicator(
+                    tint = if (useCoverBackground) secondaryContentColor else null
+                )
+            } else {
+                Text(
+                    text = if (downloadState is BookDownloadState.Downloading) {
                     stringResource(
                         R.string.book_download_progress,
                         (downloadState.progress * 100f).toInt().coerceIn(0, 100)
                     )
                 } else {
                     stringResource(R.string.book_progress, (book.readingProgress * 100).toInt())
-                },
-                fontSize = AppType.Caption,
-                color = AppColors.TextSecondary
-            )
+                    },
+                    fontSize = AppType.Caption,
+                    color = secondaryContentColor
+                )
+            }
         }
         Box {
             // A button instead of a bare icon, so the anchored menu has a trigger
@@ -602,9 +653,9 @@ private fun ContinueReadingCard(
                 },
                 size = 32.dp,
                 iconSize = 18.dp,
-                contentColor = AppColors.TextSecondary,
-                liquidContainerColor = AppColors.CardBg,
-                liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
+                contentColor = secondaryContentColor,
+                liquidContainerColor = if (useCoverBackground) Color.Black.copy(alpha = 0.18f) else AppColors.CardBg,
+                liquidScrimColor = if (useCoverBackground) Color.Black.copy(alpha = 0.22f) else AppColors.CardBg.copy(alpha = 0.58f),
                 modifier = Modifier.liquidGlassMenuAnchor().onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
             )
             }
@@ -655,6 +706,7 @@ private fun ContinueReadingCard(
                     Text(stringResource(R.string.delete_book), fontSize = AppType.BodySmall, color = AppColors.Accent)
                 }
             }
+        }
         }
     }
 
@@ -761,11 +813,15 @@ private fun RecentBookCard(
                 color = AppColors.TextSecondary,
                 maxLines = 1
             )
-            Text(
-                text = "${(book.readingProgress * 100).toInt()}%",
-                fontSize = AppType.Caption,
-                color = AppColors.Accent
-            )
+            if (book.isReadingFinished) {
+                FinishedReadingIndicator()
+            } else {
+                Text(
+                    text = "${(book.readingProgress * 100).toInt()}%",
+                    fontSize = AppType.Caption,
+                    color = AppColors.Accent
+                )
+            }
         }
     }
 }
@@ -1059,7 +1115,8 @@ private fun BooksReadGrid(
                 BookCoverProgressOverlay(
                     book = book,
                     downloadState = downloadStates[book.id],
-                    compact = true
+                    compact = true,
+                    badgeCornerRadius = coverRadiusDp.dp
                 )
             }
         }

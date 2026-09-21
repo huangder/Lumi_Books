@@ -6,11 +6,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -22,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
@@ -142,7 +146,8 @@ fun BookCoverProgressOverlay(
     downloadState: BookDownloadState?,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
-    showReadingProgress: Boolean = true
+    showReadingProgress: Boolean = true,
+    badgeCornerRadius: Dp = if (compact) 6.dp else 8.dp
 ) {
     val downloading = downloadState as? BookDownloadState.Downloading
     val progress = downloading?.progress ?: book.readingProgress
@@ -150,6 +155,10 @@ fun BookCoverProgressOverlay(
         ?.coerceIn(0f, 1f)
         .orEmptyProgress()
     val showProgress = downloading != null || (showReadingProgress && progress > 0f && !book.isCloudOnly)
+    val showFinished = downloading == null &&
+        showReadingProgress &&
+        !book.isCloudOnly &&
+        book.isReadingFinished
 
     Box(modifier = modifier.fillMaxSize()) {
         if (book.isCloudOnly && downloading == null) {
@@ -171,21 +180,34 @@ fun BookCoverProgressOverlay(
             }
         }
 
-        if (showProgress) {
+        if (showFinished) {
+            FinishedReadingIndicator(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = if (compact) 5.dp else 6.dp, bottom = if (compact) 6.dp else 7.dp),
+                compact = compact,
+                showContainer = true,
+                tint = Color.White,
+                containerCornerRadius = badgeCornerRadius
+            )
+        } else if (showProgress) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = if (compact) 5.dp else 6.dp, bottom = if (compact) 6.dp else 7.dp)
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(badgeCornerRadius))
                     .background(Color.Black.copy(alpha = 0.64f))
-                    .padding(horizontal = if (compact) 5.dp else 6.dp, vertical = 2.dp)
+                    .padding(horizontal = if (compact) 3.dp else 4.dp, vertical = 1.dp)
             ) {
                 Text(
                     text = "${(progress * 100f).toInt().coerceIn(0, 100)}%",
                     color = Color.White,
-                    fontSize = if (compact) 9.sp else 10.sp
+                    fontSize = if (compact) 8.sp else 9.sp
                 )
             }
+        }
+
+        if (showProgress && !showFinished) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -201,6 +223,53 @@ fun BookCoverProgressOverlay(
                 )
             }
         }
+    }
+}
+
+@Composable
+fun FinishedReadingIndicator(
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+    showContainer: Boolean = false,
+    tint: Color? = null,
+    containerCornerRadius: Dp = 4.dp
+) {
+    val indicatorColor = tint ?: AppColors.TextSecondary
+    val circleColor = if (showContainer) Color(0xFF8E8E93) else indicatorColor
+    val contentModifier = if (showContainer) {
+        modifier
+            .clip(RoundedCornerShape(containerCornerRadius))
+            .background(Color.Black.copy(alpha = 0.64f))
+            .padding(horizontal = if (compact) 3.dp else 4.dp, vertical = 1.dp)
+    } else {
+        modifier
+    }
+
+    Row(
+        modifier = contentModifier,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(if (compact) 11.dp else 13.dp)
+                .clip(CircleShape)
+                .background(circleColor),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = AppIcons.Check,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(if (compact) 7.dp else 9.dp)
+            )
+        }
+        Spacer(Modifier.width(if (compact) 3.dp else 4.dp))
+        Text(
+            text = stringResource(R.string.book_read_finished),
+            color = indicatorColor,
+            fontSize = if (compact) 8.sp else 10.sp,
+            maxLines = 1
+        )
     }
 }
 

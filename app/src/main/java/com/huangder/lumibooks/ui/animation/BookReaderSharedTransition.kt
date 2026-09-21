@@ -113,6 +113,7 @@ internal data class BookCoverAnchor(
     val bounds: Rect,
     val cornerRadiusDp: Float,
     val titleStyle: BookCoverTitleStyle?,
+    val showReadingProgress: Boolean = true,
     val presentation: BookReaderPresentation = BookReaderPresentation.Window
 )
 
@@ -295,6 +296,9 @@ internal class BookReaderTransitionState internal constructor(
     var coverTitleStyle by mutableStateOf<BookCoverTitleStyle?>(null)
         private set
 
+    var coverShowsReadingProgress by mutableStateOf(true)
+        private set
+
     var sourceBounds by mutableStateOf<Rect?>(null)
         private set
 
@@ -331,6 +335,7 @@ internal class BookReaderTransitionState internal constructor(
         bounds: Rect,
         cornerRadiusDp: Float,
         titleStyle: BookCoverTitleStyle?,
+        showReadingProgress: Boolean = true,
         presentation: BookReaderPresentation = BookReaderPresentation.Window
     ) {
         if (bounds.width <= 0f || bounds.height <= 0f) return
@@ -340,6 +345,7 @@ internal class BookReaderTransitionState internal constructor(
             bounds = bounds,
             cornerRadiusDp = cornerRadiusDp.coerceAtLeast(0f),
             titleStyle = titleStyle,
+            showReadingProgress = showReadingProgress,
             presentation = presentation
         )
         if (coverAnchors[anchorKey] != anchor) {
@@ -376,7 +382,14 @@ internal class BookReaderTransitionState internal constructor(
         val anchor = selectCoverAnchor(bookId, sourceBounds, sourcePresentation)
             ?: if (sourcePresentation == BookReaderPresentation.CoverFlow &&
                 sourceBounds != null && sourceBounds.width > 0f && sourceBounds.height > 0f) {
-                BookCoverAnchor("cover-flow-launch-$bookId", bookId, sourceBounds, 2f, null, sourcePresentation)
+                BookCoverAnchor(
+                    key = "cover-flow-launch-$bookId",
+                    bookId = bookId,
+                    bounds = sourceBounds,
+                    cornerRadiusDp = 2f,
+                    titleStyle = null,
+                    presentation = sourcePresentation
+                )
             } else return false
         val startRadius = if (sourceCornerRadiusDp > 0f) {
             sourceCornerRadiusDp
@@ -394,6 +407,7 @@ internal class BookReaderTransitionState internal constructor(
         coverPath = book.coverPath
         coverTitle = book.title
         coverTitleStyle = anchor.titleStyle
+        coverShowsReadingProgress = anchor.showReadingProgress
         this.sourceBounds = if (sourcePresentation == BookReaderPresentation.CoverFlow && sourceBounds != null) {
             sourceBounds
         } else anchor.bounds
@@ -505,6 +519,7 @@ internal class BookReaderTransitionState internal constructor(
             ?: anchor?.cornerRadiusDp
             ?: BookReaderMotion.DEFAULT_CORNER_RADIUS_DP
         coverTitleStyle = anchor?.titleStyle ?: coverTitleStyle
+        coverShowsReadingProgress = anchor?.showReadingProgress ?: coverShowsReadingProgress
 
         motionJob?.cancel()
         revealJob?.cancel()
@@ -533,6 +548,7 @@ internal class BookReaderTransitionState internal constructor(
                     targetBounds = candidate.bounds
                     targetRadius = candidate.cornerRadiusDp
                     coverTitleStyle = candidate.titleStyle
+                    coverShowsReadingProgress = candidate.showReadingProgress
                     sourceBounds = candidate.bounds
                     sourceCornerRadiusDp = candidate.cornerRadiusDp
                     closeAnchorKey = candidate.key
@@ -706,6 +722,7 @@ internal class BookReaderTransitionState internal constructor(
             ?: return
         sourceBounds = refreshed.bounds
         sourceCornerRadiusDp = refreshed.cornerRadiusDp
+        coverShowsReadingProgress = refreshed.showReadingProgress
         closeAnchorKey = refreshed.key
     }
 
@@ -749,6 +766,7 @@ internal fun Modifier.bookCoverTransitionAnchor(
     bookId: String,
     cornerRadiusDp: Float,
     titleStyle: BookCoverTitleStyle? = null,
+    showReadingProgress: Boolean = true,
     presentation: BookReaderPresentation = BookReaderPresentation.Window
 ): Modifier {
     val anchors = LocalBookReaderAnchorScope.current ?: return this
@@ -782,6 +800,7 @@ internal fun Modifier.bookCoverTransitionAnchor(
                 bounds = coordinates.boundsInRoot(),
                 cornerRadiusDp = cornerRadiusDp,
                 titleStyle = titleStyle,
+                showReadingProgress = showReadingProgress,
                 presentation = presentation
             )
         }
@@ -1167,7 +1186,8 @@ internal fun BookHeroWindowOverlay(
                     BookCoverProgressOverlay(
                         book = coverBook,
                         downloadState = transition.coverDownloadState,
-                        compact = compactProgress
+                        compact = compactProgress,
+                        showReadingProgress = transition.coverShowsReadingProgress
                     )
                 }
             }
