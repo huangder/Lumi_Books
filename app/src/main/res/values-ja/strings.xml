@@ -85,6 +85,10 @@
     <string name="cbz_direction_ltr">左から右</string>
     <string name="cbz_direction_rtl">右から左</string>
     <string name="cbz_two_page_spread">見開き表示</string>
+    <string name="page_render_mode_normal">通常</string>
+    <string name="page_render_mode_high">高画質</string>
+    <string name="page_render_mode_native">原寸</string>
+    <string name="page_render_mode_desc">描画品質：%1$s、タップで切り替え</string>
     <string name="cbz_chapter_label">第 %1$d 話</string>
     <string name="cbz_page_title">%1$d ページ</string>
     <string name="cbz_page_title_in_chapter">%1$s · %2$d ページ</string>
@@ -255,6 +259,7 @@
     <string name="home_manage_hint">ローカルのPDF・EPUB書籍をここで管理</string>
     <string name="home_pull_to_resume_recent_book">離すと最近読んだ本を開きます</string>
     <string name="book_progress">書籍 · %d%%</string>
+    <string name="book_read_finished">読了</string>
     <string name="remove_favorite">お気に入り解除</string>
     <string name="add_favorite">お気に入り</string>
     <string name="delete_book">削除</string>
@@ -593,6 +598,7 @@
     <string name="pdf_convert_notification_channel">PDF変換</string>
     <string name="pdf_convert_notification_channel_description">PDF変換の進捗と結果</string>
     <string name="reader_load_failed">書籍を読み込めませんでした</string>
+    <string name="book_file_missing_local">この書籍のファイルが端末上にありません（システムのクリーンアップで削除された可能性があります）。もう一度インポートしてください。</string>
 
     <!-- その他 -->
     <string name="loading_text">読み込み中</string>
@@ -937,6 +943,27 @@
     <string name="txt_toc_help_template_body">正規表現の括弧はキャプチャグループです。$0 は行全体、$1 は1つ目、$2 は2つ目を表します。空欄なら行全体を使い、例えば「第 $1 章」と整形できます。</string>
     <string name="txt_toc_help_notes_title">巻と章が両方ある場合</string>
     <string name="txt_toc_help_notes_body">巻の正規表現を入力すると、章より先に巻を判定します。例：^第\\s*[0-9０-９]+巻.*$。巻がない TXT は章の正規表現だけで構いません。保存して適用すると目次と読書位置が更新されます。</string>
+    <string name="txt_toc_help_compat_title">互換ルールとは？</string>
+    <string name="txt_toc_help_compat_body">互換ルールは他社リーダーアプリの目次ルールファイルから取り込みます。Lumi はその中の正規表現だけを使い、ファイル全体に一致させる方式で実行します。各行は前後の行と一緒に照合されるため、先読み・後読みの記法は使えますが、後方参照には対応しません。ルール内のスクリプトは保存も実行もされません。Lumi は書籍コンテンツもオンライン書源も提供・取り込みしません。互換ルールは、あなたが閲覧権限を持つローカル TXT ファイルの解析だけに使われます。</string>
+    <string name="txt_toc_library_summary">カスタムルール %1$d 件、互換ルール %2$d 件</string>
+    <string name="txt_toc_compat_section_title">互換ルール（他社リーダーアプリ形式）</string>
+    <string name="txt_toc_compat_description">ファイル全体の一致方式で、ルール内の正規表現だけを使用します。スクリプトによる置換は実行しません。</string>
+    <string name="txt_toc_compat_empty">互換ルールはありません</string>
+    <string name="txt_toc_compat_badge_script">スクリプトあり（未実行）</string>
+    <string name="txt_toc_compat_import_preset">内蔵の互換プリセットを読み込む</string>
+    <string name="txt_toc_compat_preset_result">互換プリセットを %1$d 件読み込みました</string>
+    <string name="txt_toc_compat_clear">互換ルールを消去</string>
+    <string name="txt_toc_compat_cleared">互換ルールを消去しました</string>
+    <string name="txt_toc_compat_notice_title">他社ルールの利用前にご確認ください</string>
+    <string name="txt_toc_compat_notice_body">Lumi は書籍コンテンツもオンライン書源も提供・取り込みしません。互換ルールは、あなたが閲覧権限を持つローカル TXT ファイルの解析のみに使用され、ルール内のスクリプトは実行されません。</string>
+    <string name="txt_toc_compat_notice_confirm">了解しました</string>
+    <string name="txt_toc_rule_compat_prefix">互換：%1$s</string>
+    <string name="txt_toc_import_empty">ルールファイルが空です</string>
+    <string name="txt_toc_import_not_json">判別できないルールファイル形式です</string>
+    <string name="txt_toc_import_unknown_format">判別できないルールファイル形式です。TXT 目次ルールのみ対応します</string>
+    <string name="txt_toc_import_book_source_unsupported">本アプリは書源形式に対応していません。TXT 目次ルールのみ対応します</string>
+    <string name="txt_toc_import_builtin_reserved">取り込んだルールで内蔵ルールを上書きできません</string>
+    <string name="txt_toc_import_result">Lumi ルール %1$d 件、互換ルール %2$d 件を読み込み、%3$d 件をスキップしました（うち %4$d 件は未実行のスクリプトを含みます）</string>
 
     <string name="reader_writing_mode">組み方向</string>
     <string name="reader_writing_horizontal">横組み</string>
@@ -1113,6 +1140,9 @@
     <string name="motion_preference_label">モーション</string>
     <string name="motion_preference_reduced">モーションを減らす</string>
     <string name="motion_preference_standard">標準</string>
+    <string name="book_open_transition_label">本を開く演出</string>
+    <string name="book_open_transition_hero">シームレス</string>
+    <string name="book_open_transition_loading_page">ローディング画面</string>
     <string name="page_turn_module_label">ページめくり</string>
     <string name="replace_input_hint">置換後の文字を入力</string>
     <string name="replace_no_match">置換できる内容が見つかりませんでした</string>

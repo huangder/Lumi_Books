@@ -85,6 +85,10 @@
     <string name="cbz_direction_ltr">왼쪽에서 오른쪽</string>
     <string name="cbz_direction_rtl">오른쪽에서 왼쪽</string>
     <string name="cbz_two_page_spread">양면 보기</string>
+    <string name="page_render_mode_normal">일반</string>
+    <string name="page_render_mode_high">고화질</string>
+    <string name="page_render_mode_native">원본</string>
+    <string name="page_render_mode_desc">렌더링 품질: %1$s, 탭하여 전환</string>
     <string name="cbz_chapter_label">%1$d화</string>
     <string name="cbz_page_title">%1$d페이지</string>
     <string name="cbz_page_title_in_chapter">%1$s · %2$d페이지</string>
@@ -255,6 +259,7 @@
     <string name="home_manage_hint">여기서 로컬 PDF 및 EPUB 도서를 관리하세요</string>
     <string name="home_pull_to_resume_recent_book">손을 떼면 최근 읽은 책을 이어봅니다</string>
     <string name="book_progress">도서 · %d%%</string>
+    <string name="book_read_finished">완독</string>
     <string name="remove_favorite">즐겨찾기 해제</string>
     <string name="add_favorite">즐겨찾기</string>
     <string name="delete_book">삭제</string>
@@ -593,6 +598,7 @@
     <string name="pdf_convert_notification_channel">PDF 변환</string>
     <string name="pdf_convert_notification_channel_description">PDF 변환 진행률 및 결과</string>
     <string name="reader_load_failed">책을 불러오지 못했습니다</string>
+    <string name="book_file_missing_local">이 책의 파일이 기기에 없습니다(시스템 정리로 삭제되었을 수 있습니다). 다시 가져와 주세요.</string>
 
     <!-- 기타 -->
     <string name="loading_text">불러오는 중</string>
@@ -937,6 +943,27 @@
     <string name="txt_toc_help_template_body">정규식의 괄호는 캡처 그룹을 만듭니다. $0은 전체 줄, $1은 첫 번째 그룹, $2는 두 번째 그룹입니다. 비워 두면 전체 줄을 사용하고 “제 $1 장”처럼 꾸밀 수 있습니다.</string>
     <string name="txt_toc_help_notes_title">권과 장이 함께 있는 경우</string>
     <string name="txt_toc_help_notes_body">권 정규식을 입력하면 장보다 먼저 권을 확인합니다. 예: ^제\\s*[0-9０-９]+권.*$. 권이 없는 TXT는 장 정규식만 입력하면 됩니다. 저장하고 적용하면 목차와 읽던 위치가 함께 갱신됩니다.</string>
+    <string name="txt_toc_help_compat_title">호환 규칙이란?</string>
+    <string name="txt_toc_help_compat_body">호환 규칙은 다른 리더 앱의 목차 규칙 파일에서 가져옵니다. Lumi는 그중 정규식만 사용하며 파일 전체 일치 방식으로 실행합니다. 각 줄은 앞뒤 줄과 함께 검사되므로 전후방 탐색 표기는 사용할 수 있지만 역참조는 지원하지 않습니다. 규칙의 스크립트는 저장되지도 실행되지도 않습니다. Lumi는 어떤 도서 콘텐츠도, 온라인 서원도 제공하거나 가져오지 않습니다. 호환 규칙은 사용자가 접근 권한을 가진 로컬 TXT 파일을 분석하는 데만 사용됩니다.</string>
+    <string name="txt_toc_library_summary">사용자 규칙 %1$d개, 호환 규칙 %2$d개</string>
+    <string name="txt_toc_compat_section_title">호환 규칙(다른 리더 앱 형식)</string>
+    <string name="txt_toc_compat_description">파일 전체 일치 방식이며 규칙의 정규식만 사용합니다. 스크립트 정화는 실행하지 않습니다.</string>
+    <string name="txt_toc_compat_empty">호환 규칙이 없습니다</string>
+    <string name="txt_toc_compat_badge_script">스크립트 포함(미실행)</string>
+    <string name="txt_toc_compat_import_preset">내장 호환 프리셋 가져오기</string>
+    <string name="txt_toc_compat_preset_result">호환 프리셋 %1$d개를 가져왔습니다</string>
+    <string name="txt_toc_compat_clear">호환 규칙 비우기</string>
+    <string name="txt_toc_compat_cleared">호환 규칙을 비웠습니다</string>
+    <string name="txt_toc_compat_notice_title">다른 앱 규칙을 사용하기 전 확인해 주세요</string>
+    <string name="txt_toc_compat_notice_body">Lumi는 도서 콘텐츠와 온라인 서원을 제공하거나 가져오지 않습니다. 호환 규칙은 접근 권한이 있는 로컬 TXT 파일을 분석하는 데만 사용되며, 규칙의 스크립트는 실행되지 않습니다.</string>
+    <string name="txt_toc_compat_notice_confirm">확인했습니다</string>
+    <string name="txt_toc_rule_compat_prefix">호환: %1$s</string>
+    <string name="txt_toc_import_empty">규칙 파일이 비어 있습니다</string>
+    <string name="txt_toc_import_not_json">인식할 수 없는 규칙 파일 형식입니다</string>
+    <string name="txt_toc_import_unknown_format">인식할 수 없는 규칙 파일 형식입니다. TXT 목차 규칙만 지원합니다</string>
+    <string name="txt_toc_import_book_source_unsupported">이 앱은 서원 형식을 지원하지 않습니다. TXT 목차 규칙만 지원합니다</string>
+    <string name="txt_toc_import_builtin_reserved">가져온 규칙으로 내장 규칙을 덮어쓸 수 없습니다</string>
+    <string name="txt_toc_import_result">Lumi 규칙 %1$d개, 호환 규칙 %2$d개를 가져왔고 %3$d개를 건너뛰었습니다(그중 %4$d개는 미실행 스크립트 포함)</string>
 
     <string name="reader_writing_mode">텍스트 방향</string>
     <string name="reader_writing_horizontal">가로쓰기</string>
@@ -1113,6 +1140,9 @@
     <string name="motion_preference_label">모션</string>
     <string name="motion_preference_reduced">모션 줄이기</string>
     <string name="motion_preference_standard">표준</string>
+    <string name="book_open_transition_label">책 열기 전환</string>
+    <string name="book_open_transition_hero">심리스</string>
+    <string name="book_open_transition_loading_page">로딩 화면</string>
     <string name="page_turn_module_label">페이지 넘기기</string>
     <string name="replace_input_hint">바꿀 내용을 입력하세요</string>
     <string name="replace_no_match">바꿀 수 있는 내용이 없습니다</string>

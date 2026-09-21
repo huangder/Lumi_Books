@@ -73,6 +73,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
     override var paragraphSpacingDp: Float = 0f
     override var firstLineIndentChars: Float = 0f
     override var contentWidth: Int = 0
+    override var contentHeight: Int = 0
     override var useEpubCss: Boolean = false  // TxtParser 不支持 EPUB CSS，保留接口兼容
     override var preserveEpubBackground: Boolean = true  // TxtParser 无原书装饰，保留接口兼容
 
@@ -108,6 +109,16 @@ class TxtParser(private val context: Context? = null) : BookParser {
             field = value
             lastTocDiagnostics = emptyList()
         }
+    /**
+     * Compatible (third-party dialect) rules. They are only consulted when native detection finds
+     * fewer than two headings, so importing them never re-splits books that already worked.
+     */
+    var thirdPartyTocRules: List<TxtTocRule> = emptyList()
+    /**
+     * Salt folded into the automatic index namespace. It changes when the installed compatible
+     * rules change, which invalidates previously cached automatic results for that book.
+     */
+    var autoRuleSalt: String = ""
     var lastTocDiagnostics: List<TxtTocRuleDiagnostics> = emptyList()
         private set
     private var encodingInfo = EncodingInfo(Charsets.UTF_8, 0L)
@@ -202,6 +213,8 @@ class TxtParser(private val context: Context? = null) : BookParser {
         val worker = TxtParser(context).apply {
             selectedEncoding = this@TxtParser.selectedEncoding
             selectedTocRule = this@TxtParser.selectedTocRule
+            thirdPartyTocRules = this@TxtParser.thirdPartyTocRules
+            autoRuleSalt = this@TxtParser.autoRuleSalt
         }
         return try {
             val content = worker.parse(filePath)
@@ -412,7 +425,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
             sourceIdentity = identity,
             sourceVersion = sourceVersion,
             encoding = selectedEncoding.storageValue,
-            tocRule = TxtTocRuleCodec.fingerprint(selectedTocRule),
+            tocRule = tocRuleCacheToken(),
             localeTag = localeTag
         )
     }
@@ -583,7 +596,17 @@ class TxtParser(private val context: Context? = null) : BookParser {
     }
 
     private fun txtIndexNamespace(): String =
-        "txt_index_${selectedEncoding.storageValue}_${TxtTocRuleCodec.fingerprint(selectedTocRule)}"
+        "txt_index_${selectedEncoding.storageValue}_${tocRuleCacheToken()}"
+
+    /**
+     * Cache token for the effective rule. Automatic detection folds [autoRuleSalt] in so importing
+     * or removing compatible rules re-parses books instead of serving a stale chapter index.
+     */
+    private fun tocRuleCacheToken(): String =
+        if (selectedTocRule == null && autoRuleSalt.isNotBlank()) {
+            "${TxtTocRuleCodec.fingerprint(null)}-$autoRuleSalt"
+        }
+        else TxtTocRuleCodec.fingerprint(selectedTocRule)
 
     private fun resolveEncoding(file: File): EncodingInfo {
         val requestedCharset = selectedEncoding.charsetOrNull() ?: return detectEncoding(file)
@@ -673,37 +696,16 @@ class TxtParser(private val context: Context? = null) : BookParser {
     }
 
     private fun findChapterHeadings(file: File, encoding: EncodingInfo): List<Heading> {
-        selectedTocRule?.let { rule ->
-            detectedEmbeddedTocRange = null
-            val compiled = TxtTocRuleCompiler.compile(rule).getOrElse { error ->
-                throw IllegalArgumentException("Unable to compile TXT TOC rule '${rule.name}': ${error.message}", error)
-            }
-            val headings = mutableListOf<Heading>()
-            var nonBlankLines = 0
-            var samples = emptyList<String>()
-            forEachLinePrefix(file, encoding, encoding.contentStart, file.length()) { start, _, prefix ->
-                val line = prefix.trim()
-                if (line.isNotEmpty()) nonBlankLines++
-                val match = compiled.match(line) ?: return@forEachLinePrefix
-                if (samples.size < 3) samples = samples + match.title
-                headings += Heading(match.title.take(TITLE_PREFIX_BYTES), start, match.role)
-            }
-            lastTocDiagnostics = listOf(
-                TxtTocRuleDiagnostics(
-                    rule.id,
-                    rule.name,
-                    headings.count { it.role == TxtTocHeadingRole.CHAPTER },
-                    headings.count { it.role == TxtTocHeadingRole.VOLUME },
-                    nonBlankLines,
-                    headings.size * 20,
-                    headings.isNotEmpty(),
-                    reason = if (headings.isEmpty()) "No heading matched" else null,
-                    samples = samples
-                )
-            )
-            return normalizeHeadingLevels(headings)
-        }
+        selectedTocRule?.let { rule -> return scanWithFixedRule(file, encoding, rule) }
 
+        val native = findNativeChapterHeadings(file, encoding)
+        if (native.size >= 2) return native
+        val compatible = findThirdPartyChapterHeadings(file, encoding)
+        return if (compatible != null && compatible.size >= 2) compatible else native
+    }
+
+    /** Native detection: Lumi's own heuristics and built-in rules. */
+    private fun findNativeChapterHeadings(file: File, encoding: EncodingInfo): List<Heading> {
         if (file.length() >= FAST_AUTO_SCAN_MIN_BYTES) {
             findLargeAutoChapterHeadings(file, encoding)?.let {
                 return applyEmbeddedTocDetection(file, encoding, it)
@@ -796,6 +798,179 @@ class TxtParser(private val context: Context? = null) : BookParser {
         }
         return applyEmbeddedTocDetection(file, encoding, selected)
     }
+
+    /** Scans the whole file with one explicitly selected rule: native or compatible. */
+    private fun scanWithFixedRule(
+        file: File,
+        encoding: EncodingInfo,
+        rule: TxtTocRule,
+        recordDiagnostics: Boolean = true
+    ): List<Heading> {
+        detectedEmbeddedTocRange = null
+        val compiled = TxtTocRuleCompiler.compile(rule).getOrElse { error ->
+            throw IllegalArgumentException("Unable to compile TXT TOC rule '${rule.name}': ${error.message}", error)
+        }
+        val headings = mutableListOf<Heading>()
+        var nonBlankLines = 0
+        var samples = emptyList<String>()
+        if (rule.dialect == TxtTocDialect.LEGADO) {
+            forEachThirdPartyLine(file, encoding) { previous, rawLine, next, startByte ->
+                if (rawLine.isNotBlank()) nonBlankLines++
+                val match = compiled.match(rawLine, previous, next) ?: return@forEachThirdPartyLine
+                if (samples.size < 3) samples = samples + match.title
+                headings += Heading(match.title.take(TITLE_PREFIX_BYTES), startByte, match.role)
+            }
+        } else {
+            forEachLinePrefix(file, encoding, encoding.contentStart, file.length()) { start, _, prefix ->
+                val line = prefix.trim()
+                if (line.isNotEmpty()) nonBlankLines++
+                val match = compiled.match(line) ?: return@forEachLinePrefix
+                if (samples.size < 3) samples = samples + match.title
+                headings += Heading(match.title.take(TITLE_PREFIX_BYTES), start, match.role)
+            }
+        }
+        if (recordDiagnostics) {
+            lastTocDiagnostics = listOf(
+                TxtTocRuleDiagnostics(
+                    rule.id,
+                    rule.name,
+                    headings.count { it.role == TxtTocHeadingRole.CHAPTER },
+                    headings.count { it.role == TxtTocHeadingRole.VOLUME },
+                    nonBlankLines,
+                    headings.size * 20,
+                    headings.isNotEmpty(),
+                    reason = if (headings.isEmpty()) "No heading matched" else null,
+                    samples = samples,
+                    dialect = rule.dialect
+                )
+            )
+        }
+        return normalizeHeadingLevels(headings)
+    }
+
+    /**
+     * Tries the imported compatible rules when native detection found fewer than two headings.
+     * The rules run in their own `serialNumber` order, like the reader they were imported from.
+     */
+    private fun findThirdPartyChapterHeadings(file: File, encoding: EncodingInfo): List<Heading>? {
+        val rules = thirdPartyTocRules
+        if (rules.isEmpty()) return null
+        val sampleLines = ArrayList<String>(THIRD_PARTY_SAMPLE_LINES)
+        forEachThirdPartyLine(file, encoding) { _, line, _, _ ->
+            if (line.isNotBlank() && sampleLines.size < THIRD_PARTY_SAMPLE_LINES) {
+                sampleLines += line
+            }
+        }
+        if (sampleLines.size < 2) return null
+        val selection = LegadoTocRuleSelector.choose(rules, sampleLines)
+        lastTocDiagnostics = selection.diagnostics
+        val rule = selection.rule ?: return null
+        val headings = scanWithFixedRule(file, encoding, rule, recordDiagnostics = false)
+        lastTocDiagnostics = lastTocDiagnostics.map { diagnostic ->
+            if (diagnostic.ruleId != rule.id) {
+                diagnostic
+            } else {
+                diagnostic.copy(
+                    chapterMatches = headings.count { it.role == TxtTocHeadingRole.CHAPTER },
+                    volumeMatches = headings.count { it.role == TxtTocHeadingRole.VOLUME },
+                    accepted = headings.isNotEmpty()
+                )
+            }
+        }
+        return headings.takeIf { it.isNotEmpty() }
+    }
+
+    /**
+     * Streams full decoded lines together with their neighbours and byte offsets. Compatible rules
+     * were written against a whole file, so look-around patterns need the previous and next line,
+     * and the selection algorithm needs the real line length to measure heading distances.
+     * Extremely long lines are truncated at [MAX_THIRD_PARTY_LINE_BYTES]: they can never be a
+     * heading, and the matcher rejects anything longer than its own line limit anyway.
+     */
+    private fun forEachThirdPartyLine(
+        file: File,
+        encoding: EncodingInfo,
+        action: (previous: String, line: String, next: String, startByte: Long) -> Unit
+    ) {
+        val charset = encoding.charset
+        val endByte = file.length()
+        if (endByte <= encoding.contentStart) return
+        val utf16 = charset == Charsets.UTF_16LE || charset == Charsets.UTF_16BE
+        RandomAccessFile(file, "r").use { randomAccess ->
+            randomAccess.seek(encoding.contentStart)
+            val buffer = ByteArray(STREAM_BUFFER_SIZE)
+            var lineBytes = ByteArray(INITIAL_LINE_BYTES)
+            var lineLength = 0
+            var absolutePosition = encoding.contentStart
+            var lineStart = encoding.contentStart
+            var remaining = endByte - encoding.contentStart
+            var previousLine = ""
+            var currentLine: String? = null
+            var currentStart = encoding.contentStart
+
+            fun append(value: Byte) {
+                if (lineLength >= MAX_THIRD_PARTY_LINE_BYTES) return
+                if (lineLength == lineBytes.size) lineBytes = lineBytes.copyOf(lineBytes.size * 2)
+                lineBytes[lineLength++] = value
+            }
+
+            fun emit(terminatedAt: Long) {
+                val startedAt = lineStart
+                val decoded = if (lineLength == 0) {
+                    ""
+                } else {
+                    String(lineBytes, 0, lineLength, charset).stripLineEnd()
+                }
+                lineLength = 0
+                val pending = currentLine
+                if (pending != null) {
+                    action(previousLine, pending, decoded, currentStart)
+                    previousLine = pending
+                }
+                currentLine = decoded
+                currentStart = startedAt
+                lineStart = terminatedAt
+            }
+
+            while (remaining > 0) {
+                val requested = minOf(buffer.size.toLong(), remaining).toInt()
+                val read = randomAccess.read(buffer, 0, requested)
+                if (read <= 0) break
+                if (utf16) {
+                    var index = 0
+                    while (index + 1 < read) {
+                        val isNewline = if (charset == Charsets.UTF_16LE) {
+                            buffer[index] == 0x0A.toByte() && buffer[index + 1] == 0x00.toByte()
+                        } else {
+                            buffer[index] == 0x00.toByte() && buffer[index + 1] == 0x0A.toByte()
+                        }
+                        if (isNewline) {
+                            emit(absolutePosition + index + 2)
+                        } else {
+                            append(buffer[index])
+                            append(buffer[index + 1])
+                        }
+                        index += 2
+                    }
+                } else {
+                    for (index in 0 until read) {
+                        if (buffer[index] == 0x0A.toByte()) {
+                            emit(absolutePosition + index + 1)
+                        } else {
+                            append(buffer[index])
+                        }
+                    }
+                }
+                absolutePosition += read
+                remaining -= read
+            }
+            if (lineStart < endByte) emit(endByte)
+            currentLine?.let { line -> action(previousLine, line, "", currentStart) }
+        }
+    }
+
+    private fun String.stripLineEnd(): String =
+        if (endsWith("\r")) dropLast(1) else this
 
     /**
      * Some TXT exports place a complete, title-only table of contents before the real text.
@@ -1958,11 +2133,16 @@ class TxtParser(private val context: Context? = null) : BookParser {
         const val CACHE_VERSION = "TXT_INDEX_V8"  // V8: persist complete/fast index metadata
         const val STREAM_BUFFER_SIZE = 64 * 1024
         const val HEADING_PREFIX_BYTES = 512
+        const val INITIAL_LINE_BYTES = 256
+        /** Upper bound for one decoded compatible-rule line; longer lines cannot be headings. */
+        const val MAX_THIRD_PARTY_LINE_BYTES = 8 * 1024
         const val TITLE_PREFIX_BYTES = 512
         const val HEADING_CANDIDATE_PREFIX_BYTES = 96
         const val FAST_AUTO_SCAN_MIN_BYTES = 2L * 1024L * 1024L
         const val FAST_RAW_INDEX_MAX_BYTES = 32L * 1024L * 1024L
         const val FAST_AUTO_SAMPLE_LINES = 2_000
+        /** Lines sampled before the compatible-rule selection runs. */
+        const val THIRD_PARTY_SAMPLE_LINES = 2_000
         const val FALLBACK_TARGET_CHARS = 3_000
         const val MAX_RAW_CHUNK_BYTES = 32_000L
         /** Keep each TXT chapter small enough for a bounded StaticLayout allocation. */

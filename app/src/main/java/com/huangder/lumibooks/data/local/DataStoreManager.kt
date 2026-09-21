@@ -22,6 +22,7 @@ import com.huangder.lumibooks.domain.model.CustomFontPresetCodec
 import com.huangder.lumibooks.domain.model.HighlightPalette
 import com.huangder.lumibooks.domain.model.HighlightPaletteCodec
 import com.huangder.lumibooks.domain.model.AppIconStyle
+import com.huangder.lumibooks.domain.model.BookOpenTransition
 import com.huangder.lumibooks.domain.model.WebdavConfig
 import com.huangder.lumibooks.domain.model.WebdavSyncContent
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
@@ -41,6 +42,7 @@ import com.huangder.lumibooks.domain.model.ReaderThemeSuiteState
 import com.huangder.lumibooks.domain.model.ReaderThemeSuites
 import com.huangder.lumibooks.domain.model.ReaderLayoutTarget
 import com.huangder.lumibooks.domain.model.PdfPageMode
+import com.huangder.lumibooks.domain.model.PageRenderMode
 import com.huangder.lumibooks.domain.model.ReaderPageAnimationSettings
 import com.huangder.lumibooks.domain.model.ReaderPageTransition
 import com.huangder.lumibooks.domain.model.ReaderFirstOpenHintPolicy
@@ -51,6 +53,12 @@ import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.util.parser.TxtTocRule
 import com.huangder.lumibooks.util.parser.TxtTocRuleBuiltIns
 import com.huangder.lumibooks.util.parser.TxtTocRuleCodec
+import com.huangder.lumibooks.util.parser.TxtTocRuleCompiler
+import com.huangder.lumibooks.util.parser.TxtTocDialect
+import com.huangder.lumibooks.util.parser.TxtTocRuleImport
+import com.huangder.lumibooks.util.parser.TxtTocRuleImportException
+import com.huangder.lumibooks.util.parser.TxtTocRuleImportResult
+import com.huangder.lumibooks.util.parser.LegadoTxtTocRuleCodec
 import com.huangder.lumibooks.tts.ExternalTtsProtocol
 import com.huangder.lumibooks.tts.ExternalTtsResumePosition
 import com.huangder.lumibooks.tts.ExternalTtsSettings
@@ -122,6 +130,8 @@ data class ReaderPreferencesSnapshot(
     val bodyFontWeight: Int,
     val eInkModeEnabled: Boolean,
     val twoPageSpreadEnabled: Boolean,
+    /** 栅格页面（PDF / CBZ）解码清晰度："normal" | "high" | "native"。 */
+    val pageRenderMode: String,
     val screenSleepTimeoutSeconds: Int,
     val readerEdgeTapMode: ReaderEdgeTapMode,
     val readerTopLeftContent: ReaderCornerContent,
@@ -208,6 +218,8 @@ class DataStoreManager @Inject constructor(
         private val ACTIVE_BOOK_LAYOUT_THEME_SUITE_ID =
             stringPreferencesKey("active_book_layout_theme_suite_id")
         private val TXT_TOC_CUSTOM_RULES = stringPreferencesKey("txt_toc_custom_rules_v1")
+        private val TXT_TOC_LEGADO_RULES = stringPreferencesKey("txt_toc_legado_rules_v1")
+        private val TXT_TOC_COMPAT_NOTICE = booleanPreferencesKey("txt_toc_compat_notice_ack_v1")
         private val READER_THEME_SUITES_VERSION = intPreferencesKey("reader_theme_suites_version")
         /** 主题套装数据版本：4 = 「原排版」内置套装排到列表第一位。 */
         private const val READER_THEME_SUITES_VERSION_VALUE = 4
@@ -273,8 +285,10 @@ class DataStoreManager @Inject constructor(
         private val DARK_MODE = stringPreferencesKey("dark_mode")
         private val ENTRANCE_ANIMATIONS_ENABLED = booleanPreferencesKey("entrance_animations_enabled")
         private val MOTION_PREFERENCE = stringPreferencesKey("motion_preference")
+        private val BOOK_OPEN_TRANSITION = stringPreferencesKey("book_open_transition")
         private val E_INK_MODE_ENABLED = booleanPreferencesKey("e_ink_mode_enabled")
         private val TWO_PAGE_SPREAD_ENABLED = booleanPreferencesKey("two_page_spread_enabled")
+        private val PAGE_RENDER_MODE = stringPreferencesKey("page_render_mode")
         private val PREDICTIVE_BACK_ENABLED = booleanPreferencesKey("predictive_back_enabled")
         private val SPLASH_ENABLED = booleanPreferencesKey("splash_enabled")
         private val LAST_READ_BOOK = stringPreferencesKey("last_read_book")
@@ -461,6 +475,7 @@ class DataStoreManager @Inject constructor(
                 bodyFontWeight = preferences[BODY_FONT_WEIGHT] ?: 400,
                 eInkModeEnabled = preferences[E_INK_MODE_ENABLED] ?: false,
                 twoPageSpreadEnabled = preferences[TWO_PAGE_SPREAD_ENABLED] ?: true,
+                pageRenderMode = PageRenderMode.normalizeKey(preferences[PAGE_RENDER_MODE]),
                 screenSleepTimeoutSeconds = preferences[SCREEN_SLEEP_TIMEOUT_SECONDS]
                     ?.takeIf { it in SCREEN_SLEEP_TIMEOUT_SECONDS_OPTIONS }
                     ?: DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS,
@@ -851,12 +866,22 @@ class DataStoreManager @Inject constructor(
             ?: if (preferences[ENTRANCE_ANIMATIONS_ENABLED] == false) "reduced" else "standard"
     }
 
+    /** Opening transition for books. Defaults to the cover-to-window hero motion. */
+    val bookOpenTransition: Flow<String> = context.dataStore.data.map { preferences ->
+        BookOpenTransition.normalize(preferences[BOOK_OPEN_TRANSITION])
+    }
+
     val eInkModeEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[E_INK_MODE_ENABLED] ?: false
     }
 
     val twoPageSpreadEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[TWO_PAGE_SPREAD_ENABLED] ?: true
+    }
+
+    /** 栅格页面解码清晰度档位（正常 / 高清 / 原图）。 */
+    val pageRenderMode: Flow<String> = context.dataStore.data.map { preferences ->
+        PageRenderMode.normalizeKey(preferences[PAGE_RENDER_MODE])
     }
 
     val bookshelfLayoutMode: Flow<Int> = context.dataStore.data.map { preferences ->
@@ -2025,23 +2050,114 @@ class DataStoreManager @Inject constructor(
     suspend fun saveTxtTocCustomRules(rules: List<TxtTocRule>) {
         require(rules.map { it.id }.distinct().size == rules.size) { "TXT TOC rule IDs must be unique" }
         require(rules.none { TxtTocRuleBuiltIns.byId(it.id) != null }) { "Built-in rule IDs are reserved" }
-        rules.forEach { com.huangder.lumibooks.util.parser.TxtTocRuleCompiler.compile(it).getOrThrow() }
+        require(rules.none { it.dialect != TxtTocDialect.LUMI }) { "Compatible rules use their own store" }
+        rules.forEach { TxtTocRuleCompiler.compile(it).getOrThrow() }
         context.dataStore.edit { preferences -> preferences[TXT_TOC_CUSTOM_RULES] = TxtTocRuleCodec.encode(rules) }
     }
 
-    suspend fun exportTxtTocRules(): String = TxtTocRuleCodec.encode(txtTocCustomRules().first())
+    /**
+     * Compatible (third-party dialect) rules live in their own preference key. Keeping them apart
+     * from [txtTocCustomRules] means older builds never try to compile a foreign dialect while
+     * loading the native rule list.
+     */
+    fun txtTocThirdPartyRules(): Flow<List<TxtTocRule>> = context.dataStore.data.map { preferences ->
+        LegadoTxtTocRuleCodec.decode(preferences[TXT_TOC_LEGADO_RULES] ?: "")
+    }.distinctUntilChanged()
 
-    /** Validates and merges an imported Lumi JSON rule file. Built-in IDs are never overwritten. */
-    suspend fun importTxtTocRules(payload: String): List<TxtTocRule> {
-        val imported = TxtTocRuleCodec.decode(payload)
-        require(imported.none { TxtTocRuleBuiltIns.byId(it.id) != null }) {
-            "Imported rules cannot replace built-in rules"
+    suspend fun txtTocThirdPartyRulesOnce(): List<TxtTocRule> = txtTocThirdPartyRules().first()
+
+    suspend fun saveTxtTocThirdPartyRules(rules: List<TxtTocRule>) {
+        require(rules.all { it.dialect == TxtTocDialect.LEGADO }) {
+            "Compatible rule storage only accepts compatible rules"
         }
-        val current = txtTocCustomRules().first().associateBy { it.id }.toMutableMap()
-        imported.forEach { current[it.id] = it }
-        val merged = current.values.sortedBy { it.order }.mapIndexed { index, rule -> rule.copy(order = index) }
-        saveTxtTocCustomRules(merged)
-        return merged
+        require(rules.map { it.id }.distinct().size == rules.size) { "TXT TOC rule IDs must be unique" }
+        rules.forEach { TxtTocRuleCompiler.compile(it).getOrThrow() }
+        context.dataStore.edit { preferences ->
+            preferences[TXT_TOC_LEGADO_RULES] = LegadoTxtTocRuleCodec.encode(rules)
+        }
+    }
+
+    suspend fun clearTxtTocThirdPartyRules() {
+        context.dataStore.edit { preferences -> preferences.remove(TXT_TOC_LEGADO_RULES) }
+    }
+
+    /**
+     * One-time acknowledgement that compatible rules only parse the user's own local files and
+     * that Lumi neither ships nor accepts online book sources.
+     */
+    fun txtTocCompatNoticeAcknowledged(): Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[TXT_TOC_COMPAT_NOTICE] ?: false
+    }.distinctUntilChanged()
+
+    suspend fun acknowledgeTxtTocCompatNotice() {
+        context.dataStore.edit { preferences -> preferences[TXT_TOC_COMPAT_NOTICE] = true }
+    }
+
+    /**
+     * Short hash of the installed compatible rules. Automatic TXT indexes fold it in so importing
+     * or removing compatible rules re-parses books instead of serving a stale chapter index.
+     */
+    suspend fun txtTocThirdPartyRulesSalt(): String {
+        val rules = txtTocThirdPartyRulesOnce()
+        if (rules.isEmpty()) return ""
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(LegadoTxtTocRuleCodec.encode(rules).toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { "%02x".format(it) }.take(8)
+    }
+
+    suspend fun exportTxtTocRules(): String =
+        TxtTocRuleCodec.encode(txtTocCustomRules().first(), txtTocThirdPartyRulesOnce())
+
+    /**
+     * Validates and merges an imported rule file. The payload shape decides where the rules land:
+     * native rules go to the Lumi store, compatible rules to their own; online book sources are
+     * rejected outright because Lumi has no book-source features.
+     */
+    suspend fun importTxtTocRules(payload: String): TxtTocRuleImportResult {
+        val parsed = try {
+            TxtTocRuleImport.parse(payload)
+        } catch (error: TxtTocRuleImportException) {
+            throw IllegalStateException(context.getString(error.reason.messageRes()), error)
+        }
+        if (parsed.lumiRules.isNotEmpty()) {
+            require(parsed.lumiRules.none { TxtTocRuleBuiltIns.byId(it.id) != null }) {
+                context.getString(R.string.txt_toc_import_builtin_reserved)
+            }
+            val current = txtTocCustomRules().first().associateBy { it.id }.toMutableMap()
+            parsed.lumiRules.forEach { current[it.id] = it }
+            val merged = current.values.sortedBy { it.order }.mapIndexed { index, rule -> rule.copy(order = index) }
+            saveTxtTocCustomRules(merged)
+        }
+        if (parsed.thirdPartyRules.isNotEmpty()) {
+            val merged = LegadoTxtTocRuleCodec.merge(txtTocThirdPartyRulesOnce(), parsed.thirdPartyRules)
+            saveTxtTocThirdPartyRules(merged)
+        }
+        return parsed
+    }
+
+    /**
+     * Imports the compatible rule preset shipped in the APK. It is never seeded automatically:
+     * the user has to ask for it. Returns the number of rules written.
+     */
+    suspend fun importTxtTocCompatibilityPreset(): Int {
+        val payload = runCatching {
+            context.assets.open(LegadoTxtTocRuleCodec.PRESET_ASSET)
+                .bufferedReader(Charsets.UTF_8)
+                .use { it.readText() }
+        }.getOrNull() ?: return 0
+        val parsed = TxtTocRuleImport.parse(payload)
+        if (parsed.thirdPartyRules.isEmpty()) return 0
+        val merged = LegadoTxtTocRuleCodec.merge(txtTocThirdPartyRulesOnce(), parsed.thirdPartyRules)
+        saveTxtTocThirdPartyRules(merged)
+        return parsed.thirdPartyRules.size
+    }
+
+    private fun TxtTocRuleImportException.Reason.messageRes(): Int = when (this) {
+        TxtTocRuleImportException.Reason.EMPTY -> R.string.txt_toc_import_empty
+        TxtTocRuleImportException.Reason.NOT_JSON -> R.string.txt_toc_import_not_json
+        TxtTocRuleImportException.Reason.UNKNOWN_FORMAT -> R.string.txt_toc_import_unknown_format
+        TxtTocRuleImportException.Reason.BOOK_SOURCE_UNSUPPORTED ->
+            R.string.txt_toc_import_book_source_unsupported
     }
 
     suspend fun upsertTxtTocRule(rule: TxtTocRule) {
@@ -2066,6 +2182,8 @@ class DataStoreManager @Inject constructor(
         val custom = runCatching { TxtTocRuleCodec.decode(preferences[TXT_TOC_CUSTOM_RULES] ?: "") }
             .getOrDefault(emptyList())
         return custom.firstOrNull { it.id == selectedId && it.enabled }
+            ?: LegadoTxtTocRuleCodec.decode(preferences[TXT_TOC_LEGADO_RULES] ?: "")
+                .firstOrNull { it.id == selectedId && it.enabled }
     }
 
     suspend fun savePageTransition(mode: String) {
@@ -2211,6 +2329,13 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    suspend fun saveBookOpenTransition(transition: String) {
+        val normalized = BookOpenTransition.normalize(transition)
+        context.dataStore.edit { preferences ->
+            preferences[BOOK_OPEN_TRANSITION] = normalized
+        }
+    }
+
     suspend fun saveEInkModeEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[E_INK_MODE_ENABLED] = enabled
@@ -2220,6 +2345,13 @@ class DataStoreManager @Inject constructor(
     suspend fun saveTwoPageSpreadEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[TWO_PAGE_SPREAD_ENABLED] = enabled
+        }
+    }
+
+    /** 栅格页面解码清晰度档位（全局，所有 PDF / CBZ 共用）。 */
+    suspend fun savePageRenderMode(mode: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PAGE_RENDER_MODE] = mode
         }
     }
 

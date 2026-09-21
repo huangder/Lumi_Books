@@ -86,6 +86,10 @@
     <string name="cbz_direction_ltr">从左到右</string>
     <string name="cbz_direction_rtl">从右到左</string>
     <string name="cbz_two_page_spread">双页对开</string>
+    <string name="page_render_mode_normal">正常</string>
+    <string name="page_render_mode_high">高清</string>
+    <string name="page_render_mode_native">原图</string>
+    <string name="page_render_mode_desc">渲染清晰度：%1$s，点击切换</string>
     <string name="cbz_chapter_label">第 %1$d 话</string>
     <string name="cbz_page_title">第 %1$d 页</string>
     <string name="cbz_page_title_in_chapter">%1$s · 第 %2$d 页</string>
@@ -297,6 +301,7 @@
     <string name="home_manage_hint">在此处管理您的本地 PDF 和 EPUB 图书</string>
     <string name="home_pull_to_resume_recent_book">松手以继续阅读最近书籍</string>
     <string name="book_progress">图书 · %d%%</string>
+    <string name="book_read_finished">已读完</string>
     <string name="remove_favorite">取消收藏</string>
     <string name="add_favorite">收藏</string>
     <string name="delete_book">删除</string>
@@ -627,6 +632,7 @@
     <string name="pdf_convert_notification_channel">PDF 解析</string>
     <string name="pdf_convert_notification_channel_description">显示 PDF 转换进度和完成结果</string>
     <string name="reader_load_failed">书籍加载失败</string>
+    <string name="book_file_missing_local">这本书的文件已不在设备上（可能被系统清理或误删）。请重新导入。</string>
 
     <!-- 其他 -->
     <string name="loading_text">加载中</string>
@@ -1021,6 +1027,27 @@
     <string name="txt_toc_help_template_body">正则中的括号会产生捕获组。$0 代表整行，$1 代表第一对括号匹配的内容，$2 代表第二对。模板留空时保留整行，例如正则捕获 12 后可写“第 $1 章”。</string>
     <string name="txt_toc_help_notes_title">卷和章节同时存在时</string>
     <string name="txt_toc_help_notes_body">填写卷正则后，先判断卷，再判断章节。卷正则可以写 ^第\\s*[0-9一二三四五六七八九十百千万]+卷.*$；没有卷的 TXT 只填写章节正则即可。保存并应用后，目录和阅读位置会一起更新。</string>
+    <string name="txt_toc_help_compat_title">兼容规则是什么？</string>
+    <string name="txt_toc_help_compat_body">兼容规则来自第三方阅读 App 的目录规则文件，Lumi 只使用其中的正则，并按整文件匹配的语义执行：每一行会连同上一行和下一行一起匹配，所以规则里的环视写法可以用，但反向引用仍不支持。规则里的脚本净化代码不会被保存也不会执行，只作为原始数据保留。Lumi 不提供任何书籍内容，也不提供、不导入在线书源；兼容规则只用于解析你自己有权访问的本地 TXT 文件。</string>
+    <string name="txt_toc_library_summary">%1$d 条自定义规则，%2$d 条兼容规则</string>
+    <string name="txt_toc_compat_section_title">兼容规则（第三方阅读 App 格式）</string>
+    <string name="txt_toc_compat_description">按整文件语义匹配，只使用规则里的正则；规则中的脚本净化不会执行。</string>
+    <string name="txt_toc_compat_empty">暂无兼容规则</string>
+    <string name="txt_toc_compat_badge_script">含脚本（未执行）</string>
+    <string name="txt_toc_compat_import_preset">导入内置兼容预设</string>
+    <string name="txt_toc_compat_preset_result">已导入 %1$d 条兼容预设规则</string>
+    <string name="txt_toc_compat_clear">清空兼容规则</string>
+    <string name="txt_toc_compat_cleared">兼容规则已清空</string>
+    <string name="txt_toc_compat_notice_title">使用第三方规则前请确认</string>
+    <string name="txt_toc_compat_notice_body">Lumi 不提供任何书籍内容，也不提供、不导入在线书源。兼容规则只用于解析你自己有权访问的本地 TXT 文件，规则中的脚本净化代码不会被执行。</string>
+    <string name="txt_toc_compat_notice_confirm">我已知悉</string>
+    <string name="txt_toc_rule_compat_prefix">兼容：%1$s</string>
+    <string name="txt_toc_import_empty">规则文件为空</string>
+    <string name="txt_toc_import_not_json">无法识别的规则文件格式</string>
+    <string name="txt_toc_import_unknown_format">无法识别的规则文件格式，仅支持 TXT 目录规则</string>
+    <string name="txt_toc_import_book_source_unsupported">本应用不支持书源格式，仅支持 TXT 目录规则</string>
+    <string name="txt_toc_import_builtin_reserved">导入的规则不能覆盖内置规则</string>
+    <string name="txt_toc_import_result">已导入 Lumi 规则 %1$d 条、兼容规则 %2$d 条，跳过 %3$d 条，其中 %4$d 条含未执行的脚本</string>
 
     <string name="reader_writing_mode">排版方向</string>
     <string name="reader_writing_horizontal">横排</string>
@@ -1139,6 +1166,9 @@
     <string name="motion_preference_label">动效</string>
     <string name="motion_preference_reduced">减弱动态</string>
     <string name="motion_preference_standard">标准</string>
+    <string name="book_open_transition_label">打开书籍过渡</string>
+    <string name="book_open_transition_hero">一镜到底</string>
+    <string name="book_open_transition_loading_page">加载页</string>
     <string name="no_tags">还没有创建标签</string>
     <string name="replace_input_hint">请输入替换的文字</string>
     <string name="replace_no_match">未找到可替换的内容</string>

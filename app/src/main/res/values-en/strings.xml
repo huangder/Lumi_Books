@@ -6,6 +6,9 @@
     <string name="motion_preference_label">Motion</string>
     <string name="motion_preference_standard">Standard</string>
     <string name="motion_preference_reduced">Reduced</string>
+    <string name="book_open_transition_label">Opening a book</string>
+    <string name="book_open_transition_hero">Seamless</string>
+    <string name="book_open_transition_loading_page">Loading page</string>
     <string name="label_app_theme">Theme</string>
     <string name="label_global_font">Global font</string>
     <string name="label_card_outlines">Show card outlines</string>
@@ -89,6 +92,10 @@
     <string name="cbz_direction_ltr">Left to right</string>
     <string name="cbz_direction_rtl">Right to left</string>
     <string name="cbz_two_page_spread">Two-page spread</string>
+    <string name="page_render_mode_normal">Normal</string>
+    <string name="page_render_mode_high">High</string>
+    <string name="page_render_mode_native">Original</string>
+    <string name="page_render_mode_desc">Render quality: %1$s. Tap to switch.</string>
     <string name="cbz_chapter_label">Chapter %1$d</string>
     <string name="cbz_page_title">Page %1$d</string>
     <string name="cbz_page_title_in_chapter">%1$s · Page %2$d</string>
@@ -354,6 +361,7 @@
     <string name="home_manage_hint">Manage your local PDF and EPUB books here</string>
     <string name="home_pull_to_resume_recent_book">Release to continue reading your latest book</string>
     <string name="book_progress">Book · %d%%</string>
+    <string name="book_read_finished">Finished</string>
     <string name="remove_favorite">Remove Favorite</string>
     <string name="add_favorite">Add to Favorites</string>
     <string name="delete_book">Delete</string>
@@ -741,6 +749,7 @@
     <string name="pdf_convert_notification_channel">PDF conversion</string>
     <string name="pdf_convert_notification_channel_description">PDF conversion progress and results</string>
     <string name="reader_load_failed">Failed to load book</string>
+    <string name="book_file_missing_local">This book\'s file is no longer on this device (it may have been removed by system cleanup). Please import it again.</string>
 
     <!-- Other -->
     <string name="loading_text">Loading</string>
@@ -1148,6 +1157,27 @@
     <string name="txt_toc_help_template_body">Parentheses in a regex create capture groups. $0 is the whole line, $1 is the first group, and $2 is the second. Leave the template empty to keep the whole line, or write Chapter $1 to format a captured number.</string>
     <string name="txt_toc_help_notes_title">When volumes and chapters are both present</string>
     <string name="txt_toc_help_notes_body">When a volume regex is provided, Lumi checks it before the chapter regex. A volume example is ^Volume\\s*[0-9IVXLCDM]+.*$. For books without volumes, only fill in the chapter regex. Saving and applying updates the TOC and keeps the reading position together.</string>
+    <string name="txt_toc_help_compat_title">What are compatible rules?</string>
+    <string name="txt_toc_help_compat_body">Compatible rules come from third-party reader apps. Lumi uses only their regular expressions and runs them with whole-file semantics: each line is matched together with the previous and next line, so look-around syntax works while back-references stay unsupported. A rule script replacement is kept as raw data and is never executed. Lumi ships no book content and neither ships nor imports online book sources; compatible rules only parse local TXT files you have the right to access.</string>
+    <string name="txt_toc_library_summary">%1$d custom rules, %2$d compatible rules</string>
+    <string name="txt_toc_compat_section_title">Compatible rules (third-party reader format)</string>
+    <string name="txt_toc_compat_description">Matched with whole-file semantics using only the rule regular expression; script replacements are never executed.</string>
+    <string name="txt_toc_compat_empty">No compatible rules yet</string>
+    <string name="txt_toc_compat_badge_script">Contains a script (not executed)</string>
+    <string name="txt_toc_compat_import_preset">Import built-in compatible preset</string>
+    <string name="txt_toc_compat_preset_result">Imported %1$d compatible preset rules</string>
+    <string name="txt_toc_compat_clear">Clear compatible rules</string>
+    <string name="txt_toc_compat_cleared">Compatible rules cleared</string>
+    <string name="txt_toc_compat_notice_title">Before using third-party rules</string>
+    <string name="txt_toc_compat_notice_body">Lumi provides no book content and neither ships nor imports online book sources. Compatible rules only parse local TXT files you have the right to access, and any script inside a rule is never executed.</string>
+    <string name="txt_toc_compat_notice_confirm">I understand</string>
+    <string name="txt_toc_rule_compat_prefix">Compatible: %1$s</string>
+    <string name="txt_toc_import_empty">The rule file is empty</string>
+    <string name="txt_toc_import_not_json">Unrecognized rule file format</string>
+    <string name="txt_toc_import_unknown_format">Unrecognized rule file format; only TXT TOC rules are supported</string>
+    <string name="txt_toc_import_book_source_unsupported">This app does not support book sources; only TXT TOC rules are supported</string>
+    <string name="txt_toc_import_builtin_reserved">Imported rules cannot replace built-in rules</string>
+    <string name="txt_toc_import_result">Imported %1$d Lumi rules and %2$d compatible rules, skipped %3$d, of which %4$d contain a script that is not executed</string>
 
     <string name="reader_writing_mode">Text direction</string>
     <string name="reader_writing_horizontal">Horizontal</string>

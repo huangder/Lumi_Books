@@ -243,6 +243,8 @@ class TxtEditorViewModel @Inject constructor(
                     val txtParser = TxtParser(application).apply {
                         selectedEncoding = encoding
                         selectedTocRule = dataStoreManager.resolveTxtTocRule(bookId)
+                        thirdPartyTocRules = dataStoreManager.txtTocThirdPartyRules().first()
+                        autoRuleSalt = dataStoreManager.txtTocThirdPartyRulesSalt()
                     }
                     val content = txtParser.parse(book.filePath)
                     Triple(book, txtParser, content)

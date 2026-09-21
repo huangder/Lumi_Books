@@ -124,6 +124,10 @@ private fun TxtTocRuleHelpContent() {
             title = stringResource(R.string.txt_toc_help_notes_title),
             body = stringResource(R.string.txt_toc_help_notes_body)
         )
+        HelpSection(
+            title = stringResource(R.string.txt_toc_help_compat_title),
+            body = stringResource(R.string.txt_toc_help_compat_body)
+        )
     }
 }
 

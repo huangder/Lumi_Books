@@ -101,6 +101,7 @@ import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
 import com.huangder.lumibooks.ui.components.LiquidGlassDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
+import com.huangder.lumibooks.ui.components.LiquidGlassSegmentedControl
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.animateBottomSheetIn
 import com.huangder.lumibooks.ui.components.animateBottomSheetOut
@@ -109,6 +110,8 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
+import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.delay
@@ -724,7 +727,6 @@ private fun TxtEditorActionCapsule(
         fallbackColor = AppColors.BgGray,
         backdrop = backdrop,
         forceFallback = true,
-        highlightColor = Color.White,
         enabled = enabled,
         onClick = onClick,
         modifier = modifier.alpha(if (enabled) 1f else 0.42f)
@@ -1009,6 +1011,33 @@ private fun TxtScopeSelector(
     onSelected: (TxtSearchScope) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    if (LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current) {
+        val options = listOf(TxtSearchScope.CHAPTER, TxtSearchScope.BOOK)
+        LiquidGlassSegmentedControl(
+            itemCount = options.size,
+            selectedIndex = options.indexOf(selected).coerceAtLeast(0),
+            onSelected = { onSelected(options[it]) },
+            modifier = modifier,
+            trackHeight = 40.dp,
+            trackPadding = 3.dp
+        ) { index, isSelected ->
+            Text(
+                text = stringResource(
+                    if (options[index] == TxtSearchScope.CHAPTER) {
+                        R.string.txt_editor_scope_chapter
+                    } else {
+                        R.string.txt_editor_scope_book
+                    }
+                ),
+                fontSize = 12.sp,
+                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (isSelected) AppColors.TextPrimary.copy(alpha = 0.86f) else AppColors.TextSecondary,
+                maxLines = 1
+            )
+        }
+        return
+    }
+
     Row(
         modifier = modifier.clip(RoundedCornerShape(20.dp)).background(AppColors.BgGray).padding(3.dp)
     ) {
