@@ -21,6 +21,8 @@ android {
         versionCode = 15
         versionName = "2.1.9"
 
+        buildConfigField("boolean", "DIAGNOSTIC_BUILD", "false")
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
@@ -44,6 +46,15 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        create("diagnostic") {
+            initWith(getByName("release"))
+            versionNameSuffix = "-diagnostic"
+            isDebuggable = true
+            isMinifyEnabled = false
+            isShrinkResources = false
+            matchingFallbacks += listOf("release")
+            buildConfigField("boolean", "DIAGNOSTIC_BUILD", "true")
         }
         create("benchmark") {
             initWith(getByName("release"))
@@ -69,6 +80,11 @@ android {
     }
     testOptions {
         unitTests {
+            isIncludeAndroidResources = true
+            all {
+                it.maxHeapSize = "2g"
+                it.systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
+            }
             // 本地单测跑在 JVM 上，解析层里的 android.util.Log 没有实现；
             // 允许框架方法返回默认值，避免 "Method ... not mocked" 直接把用例打挂。
             isReturnDefaultValues = true
@@ -83,6 +99,8 @@ kotlin {
 }
 
 dependencies {
+    implementation(project(":third_party:subsampling-scale-image-view"))
+
     // Core Android
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
@@ -146,6 +164,7 @@ dependencies {
 
     // Testing
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.16.1")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
     testImplementation("org.json:json:20240303")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")

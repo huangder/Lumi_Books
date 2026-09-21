@@ -19,3 +19,4 @@ dependencyResolutionManagement {
 rootProject.name = "EBookReader"
 include(":app")
 include(":benchmark")
+include(":third_party:subsampling-scale-image-view")

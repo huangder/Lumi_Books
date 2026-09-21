@@ -18,6 +18,7 @@ CLAUDE.md
 /app/build-codex*/
 /app/release/
 /app/build/
+/app/diagnostic/
 /captures
 .externalNativeBuild
 .cxx

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+	<declare-styleable name="SubsamplingScaleImageView">
+		<attr name="src" format="reference" />
+		<attr name="assetName" format="string" />
+		<attr name="panEnabled" format="boolean" />
+		<attr name="zoomEnabled" format="boolean" />
+		<attr name="quickScaleEnabled" format="boolean" />
+		<attr name="tileBackgroundColor" format="color" />
+		<attr name="restoreStrategy" format="enum">
+			<enum name="none" value="0" />
+			<enum name="immediate" value="1" />
+			<enum name="deferred" value="2" />
+		</attr>
+		<attr name="downSampling" format="integer" />
+		<attr name="doubleTapZoomStyle" format="enum">
+			<enum name="fixed" value="1" />
+			<enum name="center" value="2" />
+			<enum name="immediate" value="3" />
+		</attr>
+		<attr name="panLimit" format="enum">
+			<enum name="inside" value="1" />
+			<enum name="outside" value="2" />
+			<enum name="center" value="3" />
+		</attr>
+	</declare-styleable>
+
+</resources>
