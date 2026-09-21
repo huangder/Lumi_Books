@@ -51,6 +51,7 @@ import com.huangder.lumibooks.ui.home.findMatchingAuthorizedBook
 import com.huangder.lumibooks.tts.TtsController
 import com.huangder.lumibooks.tts.TtsPlaybackState
 import com.huangder.lumibooks.service.TtsMediaButtons
+import com.huangder.lumibooks.service.logMediaButtonDelivery
 import com.huangder.lumibooks.ui.splash.SplashScreen
 import com.huangder.lumibooks.ui.components.AppUpdateDialog
 import com.huangder.lumibooks.ui.components.ExternalImportChoiceDialog
@@ -215,11 +216,12 @@ class MainActivity : ComponentActivity() {
         }
         // 部分 ROM / 耳机把媒体按键投递给前台窗口而不是 MediaSession。
         // 听书进行中时在这里兜底处理；未听书时不拦截，仍交给系统的媒体按键路由。
-        if (TtsMediaButtons.isSupportedEvent(event) &&
-            ttsController.playbackState.value != TtsPlaybackState.IDLE
-        ) {
-            TtsMediaButtons.handle(ttsController, event.keyCode)
-            return true
+        if (TtsMediaButtons.isSupportedKey(event.keyCode)) {
+            val result = TtsMediaButtons.handleEvent(ttsController, event)
+            logMediaButtonDelivery("activity_window", event, result, ttsController)
+            if (result.consumed && ttsController.playbackState.value != TtsPlaybackState.IDLE) {
+                return true
+            }
         }
         return super.dispatchKeyEvent(event)
     }
@@ -692,6 +694,9 @@ class MainActivity : ComponentActivity() {
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
             val entranceAnimationsEnabled by dataStoreManager.entranceAnimationsEnabled.collectAsState(initial = true)
             val motionPreferenceValue by dataStoreManager.motionPreference.collectAsState(initial = "standard")
+            val bookOpenTransition by dataStoreManager.bookOpenTransition.collectAsState(
+                initial = com.huangder.lumibooks.domain.model.BookOpenTransition.HERO.storedValue
+            )
             val eInkModeEnabled by dataStoreManager.eInkModeEnabled.collectAsState(initial = false)
             val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
             val isDark = if (eInkModeEnabled) {
@@ -808,6 +813,8 @@ class MainActivity : ComponentActivity() {
                                     entranceAnimationsEnabled = entranceAnimationsEnabled &&
                                         motionPreferenceValue == "standard" &&
                                         !showSplash && !eInkModeEnabled,
+                                    bookOpenUsesHeroTransition = bookOpenTransition ==
+                                        com.huangder.lumibooks.domain.model.BookOpenTransition.HERO.storedValue,
                                     predictiveBackEnabled = predictiveBackEnabled && !eInkModeEnabled,
                                     requestedOpenBookId = requestedOpenBookId,
                                     requestedOpenBookDirect = requestedOpenBookDirect,

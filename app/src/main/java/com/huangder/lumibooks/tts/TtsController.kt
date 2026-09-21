@@ -1,5 +1,6 @@
 ﻿package com.huangder.lumibooks.tts
 
+import com.huangder.lumibooks.BuildConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -249,6 +250,20 @@ class TtsController(
         _activeBookId.value = bookId
         _playbackState.value = TtsPlaybackState.INITIALIZING
         logTtsEvent("session_start", state = TtsPlaybackState.INITIALIZING)
+        if (BuildConfig.DIAGNOSTIC_BUILD) {
+            DiagnosticLoggerRegistry.logger?.log(
+                category = "tts",
+                event = "playback_engine_selected",
+                attributes = mapOf(
+                    "providerSelection" to selection.javaClass.simpleName,
+                    "externalEngine" to activeEngine.isExternal,
+                    "startChapter" to startChapter,
+                    "startPage" to startPage,
+                    "hasCharacterOffset" to (startCharacterOffset != null)
+                ),
+                bookId = bookId
+            )
+        }
 
         val engine = activeEngine
         var initializeResult: Result<Unit> = Result.failure(SystemTtsException.Initialization())
@@ -347,7 +362,11 @@ class TtsController(
     fun pause() {
         scope.launch {
             commandMutex.withLock {
-            if (_playbackState.value != TtsPlaybackState.PLAYING) return@withLock
+            if (_playbackState.value != TtsPlaybackState.PLAYING) {
+                logTtsCommand("PAUSE", accepted = false, reason = "state_not_playing")
+                return@withLock
+            }
+            logTtsCommand("PAUSE", accepted = true)
             val engine = activeEngine
             if (!engine.isExternal) activeUtteranceId = null
             engine.pause()
@@ -360,7 +379,15 @@ class TtsController(
     fun resume() {
         scope.launch {
             commandMutex.withLock {
-            if (_playbackState.value != TtsPlaybackState.PAUSED || segments.isEmpty()) return@withLock
+            if (_playbackState.value != TtsPlaybackState.PAUSED) {
+                logTtsCommand("PLAY", accepted = false, reason = "state_not_paused")
+                return@withLock
+            }
+            if (segments.isEmpty()) {
+                logTtsCommand("PLAY", accepted = false, reason = "no_segments")
+                return@withLock
+            }
+            logTtsCommand("PLAY", accepted = true)
             _playbackState.value = TtsPlaybackState.PLAYING
             logTtsEvent("state_changed", state = TtsPlaybackState.PLAYING)
             if (!activeEngine.resume()) speakCurrentSegment()
@@ -369,14 +396,28 @@ class TtsController(
     }
 
     fun stop() {
-        scope.launch { commandMutex.withLock { stopInternal() } }
+        scope.launch {
+            commandMutex.withLock {
+                logTtsCommand(
+                    "STOP",
+                    accepted = _playbackState.value != TtsPlaybackState.IDLE,
+                    reason = if (_playbackState.value == TtsPlaybackState.IDLE) "already_idle" else null
+                )
+                stopInternal()
+            }
+        }
     }
 
     fun skip(forward: Boolean = true) {
         scope.launch {
             commandMutex.withLock {
             val state = _playbackState.value
-            if (state != TtsPlaybackState.PLAYING && state != TtsPlaybackState.PAUSED) return@withLock
+            val command = if (forward) "NEXT" else "PREVIOUS"
+            if (state != TtsPlaybackState.PLAYING && state != TtsPlaybackState.PAUSED) {
+                logTtsCommand(command, accepted = false, reason = "state_not_active")
+                return@withLock
+            }
+            logTtsCommand(command, accepted = true)
             activeUtteranceId = null
             resetClausePlayback()
             activeEngine.stop()
@@ -1267,6 +1308,24 @@ class TtsController(
                 put("sentenceIndex", sentenceIndex)
             },
             bookId = _activeBookId.value
+        )
+    }
+
+    private fun logTtsCommand(command: String, accepted: Boolean, reason: String? = null) {
+        if (!BuildConfig.DIAGNOSTIC_BUILD) return
+        DiagnosticLoggerRegistry.logger?.log(
+            category = "tts",
+            event = "controller_command",
+            level = DiagnosticLevel.INFO,
+            attributes = buildMap {
+                put("command", command)
+                put("accepted", accepted)
+                put("state", _playbackState.value.name)
+                put("segmentCount", segments.size)
+                reason?.let { put("reason", it) }
+            },
+            bookId = _activeBookId.value,
+            result = if (accepted) "accepted" else "rejected"
         )
     }
 }

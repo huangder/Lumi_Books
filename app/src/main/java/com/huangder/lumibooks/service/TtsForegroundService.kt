@@ -70,6 +70,7 @@ class TtsForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        logTtsServiceEvent("foreground_service_created", ttsController)
         notificationManager.createChannel()
         audioFocusController = TtsAudioFocusController(this, ttsController)
         playbackWakeLock = getSystemService(PowerManager::class.java)
@@ -94,6 +95,11 @@ class TtsForegroundService : Service() {
                 setMediaButtonBroadcastReceiver(
                     ComponentName(this@TtsForegroundService, TtsMediaButtonReceiver::class.java)
                 )
+                logTtsServiceEvent(
+                    "media_button_receiver_registered",
+                    ttsController,
+                    mapOf("api" to Build.VERSION.SDK_INT, "method" to "broadcast_receiver")
+                )
             }
             // 会话级媒体按键接收器：MediaSessionCompat/Media3 也这么做。系统会把它记成
             // “Last MediaButtonReceiver”，部分机型（实测 ColorOS）正是按这条记录投递耳机按键。
@@ -101,14 +107,27 @@ class TtsForegroundService : Service() {
             @Suppress("DEPRECATION")
             setMediaButtonReceiver(mediaButtonReceiverIntent())
             setCallback(object : MediaSession.Callback() {
-                override fun onPlay() = ttsController.resume()
-                override fun onPause() = ttsController.pause()
+                override fun onPlay() {
+                    logTransportCommand("media_session_transport", "PLAY")
+                    ttsController.resume()
+                }
+                override fun onPause() {
+                    logTransportCommand("media_session_transport", "PAUSE")
+                    ttsController.pause()
+                }
                 override fun onStop() {
+                    logTransportCommand("media_session_transport", "STOP")
                     ttsController.stop()
                     stopSelf()
                 }
-                override fun onSkipToNext() = ttsController.skip(forward = true)
-                override fun onSkipToPrevious() = ttsController.skip(forward = false)
+                override fun onSkipToNext() {
+                    logTransportCommand("media_session_transport", "NEXT")
+                    ttsController.skip(forward = true)
+                }
+                override fun onSkipToPrevious() {
+                    logTransportCommand("media_session_transport", "PREVIOUS")
+                    ttsController.skip(forward = false)
+                }
 
                 override fun onMediaButtonEvent(mediaButtonEvent: Intent): Boolean {
                     val event = IntentCompat.getParcelableExtra(
@@ -116,11 +135,16 @@ class TtsForegroundService : Service() {
                         Intent.EXTRA_KEY_EVENT,
                         KeyEvent::class.java
                     )
-                        ?: return super.onMediaButtonEvent(mediaButtonEvent)
-                    if (!TtsMediaButtons.isSupportedEvent(event)) {
-                        return super.onMediaButtonEvent(mediaButtonEvent)
-                    }
-                    TtsMediaButtons.handle(ttsController, event.keyCode)
+                        ?: return super.onMediaButtonEvent(mediaButtonEvent).also {
+                            logTtsServiceEvent(
+                                event = "media_button_missing_key_event",
+                                controller = ttsController,
+                                result = "ignored"
+                            )
+                        }
+                    val result = TtsMediaButtons.handleEvent(ttsController, event)
+                    logMediaButtonDelivery("media_session", event, result, ttsController)
+                    if (!result.consumed) return super.onMediaButtonEvent(mediaButtonEvent)
                     if (event.keyCode == KeyEvent.KEYCODE_MEDIA_STOP &&
                         ttsController.playbackState.value == TtsPlaybackState.IDLE
                     ) {
@@ -130,6 +154,11 @@ class TtsForegroundService : Service() {
                 }
             })
             isActive = true
+            logTtsServiceEvent(
+                "media_session_activated",
+                ttsController,
+                mapOf("sessionTag" to "LumiTtsPlayback")
+            )
         }
 
         serviceScope.launch {
@@ -173,13 +202,29 @@ class TtsForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        logTtsServiceEvent(
+            "foreground_service_command",
+            ttsController,
+            mapOf(
+                "action" to (intent?.action ?: "null"),
+                "startId" to startId,
+                "stateBefore" to ttsController.playbackState.value.name
+            )
+        )
         when (intent?.action) {
             ACTION_PLAY_PAUSE -> {
                 togglePlayback()
             }
-            ACTION_PREVIOUS -> ttsController.skip(forward = false)
-            ACTION_NEXT -> ttsController.skip(forward = true)
+            ACTION_PREVIOUS -> {
+                logTransportCommand("notification", "PREVIOUS")
+                ttsController.skip(forward = false)
+            }
+            ACTION_NEXT -> {
+                logTransportCommand("notification", "NEXT")
+                ttsController.skip(forward = true)
+            }
             ACTION_STOP -> {
+                logTransportCommand("notification", "STOP")
                 ttsController.stop()
                 stopSelf()
                 return START_NOT_STICKY
@@ -204,7 +249,20 @@ class TtsForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun togglePlayback() {
+        logTransportCommand("notification", "PLAY_PAUSE")
         TtsMediaButtons.toggle(ttsController)
+    }
+
+    private fun logTransportCommand(source: String, command: String) {
+        logTtsServiceEvent(
+            event = "transport_command_received",
+            controller = ttsController,
+            attributes = mapOf(
+                "source" to source,
+                "command" to command,
+                "stateBefore" to ttsController.playbackState.value.name
+            )
+        )
     }
 
     private fun buildPlaybackNotification(state: TtsPlaybackState, chapterIndex: Int) =
@@ -312,6 +370,14 @@ class TtsForegroundService : Service() {
     )
 
     override fun onDestroy() {
+        logTtsServiceEvent(
+            "foreground_service_destroyed",
+            ttsController,
+            mapOf(
+                "stateBefore" to ttsController.playbackState.value.name,
+                "foregroundStarted" to foregroundStarted
+            )
+        )
         releasePlaybackWakeLock()
         audioFocusController.release()
         if (ttsController.playbackState.value != TtsPlaybackState.IDLE) {
@@ -360,6 +426,16 @@ class TtsForegroundService : Service() {
                 .setActions(actions)
                 .setState(playbackState, PlaybackState.PLAYBACK_POSITION_UNKNOWN, if (state == TtsPlaybackState.PLAYING) 1f else 0f)
                 .build()
+        )
+        logTtsServiceEvent(
+            "media_session_state_synced",
+            ttsController,
+            mapOf(
+                "appState" to state.name,
+                "platformState" to playbackState,
+                "actions" to actions,
+                "active" to mediaSession.isActive
+            )
         )
     }
 

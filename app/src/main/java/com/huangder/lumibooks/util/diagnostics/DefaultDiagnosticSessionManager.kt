@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import com.huangder.lumibooks.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -39,7 +40,10 @@ private class DiagnosticBundleBuilder(
     private val logger: DiagnosticLogger
 ) {
     companion object {
-        private const val MAX_EVENTS = 2000
+        private const val DEFAULT_MAX_EVENTS = 2000
+        private const val DIAGNOSTIC_MAX_EVENTS = 8000
+        private const val DEFAULT_WINDOW_MS = 20 * 60 * 1000L
+        private const val DIAGNOSTIC_WINDOW_MS = 60 * 60 * 1000L
         private const val MAX_SUMMARY_BYTES = 12 * 1024
         private const val MAX_SCREENSHOTS = 3
         private const val MAX_SCREENSHOT_BYTES = 2L * 1024L * 1024L
@@ -48,11 +52,13 @@ private class DiagnosticBundleBuilder(
     fun build(request: DiagnosticBundleRequest): File {
         val now = System.currentTimeMillis()
         val session = logger.activeSession()?.takeIf { it.id == request.sessionId }
+        val eventWindowMs = if (BuildConfig.DIAGNOSTIC_BUILD) DIAGNOSTIC_WINDOW_MS else DEFAULT_WINDOW_MS
+        val maxEvents = if (BuildConfig.DIAGNOSTIC_BUILD) DIAGNOSTIC_MAX_EVENTS else DEFAULT_MAX_EVENTS
         val all = buildList {
-            addAll(logger.snapshot().filter { it.timestamp >= now - 20 * 60 * 1000L })
+            addAll(logger.snapshot().filter { it.timestamp >= now - eventWindowMs })
             if (request.includePreviousCrash) logger.previousCrash()?.let(::add)
         }
-        val selected = selectEvents(all, request, session).takeLast(MAX_EVENTS)
+        val selected = selectEvents(all, request, session).takeLast(maxEvents)
         val outputDir = File(context.cacheDir, "diagnostics").also { it.mkdirs() }
         outputDir.listFiles()?.filter { now - it.lastModified() > 24 * 60 * 60 * 1000L }?.forEach { it.delete() }
         val output = File(outputDir, "lumi-diagnostic-${now}.zip")
@@ -123,6 +129,8 @@ private class DiagnosticBundleBuilder(
         put("schemaVersion", 1)
         put("generatedAt", now)
         put("appId", context.packageName)
+        put("buildType", BuildConfig.BUILD_TYPE)
+        put("diagnosticBuild", BuildConfig.DIAGNOSTIC_BUILD)
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0) }.getOrNull()?.let { info ->
             put("appVersion", info.versionName)
             put("buildVersion", if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode)

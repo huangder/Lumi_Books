@@ -2,6 +2,7 @@ package com.huangder.lumibooks.util.diagnostics
 
 import android.content.Context
 import android.util.Log
+import com.huangder.lumibooks.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,9 +23,10 @@ class DefaultDiagnosticLogger @Inject constructor(
 ) : DiagnosticLogger {
     companion object {
         private const val TAG = "LumiDiagnostic"
-        private const val MAX_MEMORY_EVENTS = 4000
-        private const val MAX_MEMORY_BYTES = 2L * 1024L * 1024L
-        private const val MAX_PERSISTED_BYTES = 2L * 1024L * 1024L
+        private const val DEFAULT_MAX_MEMORY_EVENTS = 4000
+        private const val DEFAULT_MAX_BYTES = 2L * 1024L * 1024L
+        private const val DIAGNOSTIC_MAX_MEMORY_EVENTS = 8000
+        private const val DIAGNOSTIC_MAX_BYTES = 8L * 1024L * 1024L
         private const val MAX_VALUE_LENGTH = 256
         private const val SESSION_FILE = "active-session.json"
         private const val CRASH_FILE = "last-crash.json"
@@ -32,7 +34,18 @@ class DefaultDiagnosticLogger @Inject constructor(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lock = Any()
-    private val events = ArrayDeque<DiagnosticEvent>(MAX_MEMORY_EVENTS)
+    private val maxMemoryEvents = if (BuildConfig.DIAGNOSTIC_BUILD) {
+        DIAGNOSTIC_MAX_MEMORY_EVENTS
+    } else {
+        DEFAULT_MAX_MEMORY_EVENTS
+    }
+    private val maxMemoryBytes = if (BuildConfig.DIAGNOSTIC_BUILD) {
+        DIAGNOSTIC_MAX_BYTES
+    } else {
+        DEFAULT_MAX_BYTES
+    }
+    private val maxPersistedBytes = maxMemoryBytes
+    private val events = ArrayDeque<DiagnosticEvent>(maxMemoryEvents)
     private var memoryBytes = 0L
     private val directory = File(context.filesDir, "diagnostics").also { it.mkdirs() }
     private val eventFile = File(directory, "events.ndjson")
@@ -163,7 +176,7 @@ class DefaultDiagnosticLogger @Inject constructor(
         val job = scope.launch {
             runCatching {
                 synchronized(lock) {
-                    if (eventFile.length() + line.toByteArray().size > MAX_PERSISTED_BYTES) {
+                    if (eventFile.length() + line.toByteArray().size > maxPersistedBytes) {
                         runCatching { oldEventFile.delete() }
                         runCatching { eventFile.renameTo(oldEventFile) }
                     }
@@ -183,7 +196,7 @@ class DefaultDiagnosticLogger @Inject constructor(
             }
         }
         synchronized(lock) {
-            loaded.takeLast(MAX_MEMORY_EVENTS).forEach { event ->
+            loaded.takeLast(maxMemoryEvents).forEach { event ->
                 events.addLast(event)
                 memoryBytes += event.toJson().toString().toByteArray(Charsets.UTF_8).size
             }
@@ -192,7 +205,7 @@ class DefaultDiagnosticLogger @Inject constructor(
     }
 
     private fun trimMemoryBuffer() {
-        while (events.size > MAX_MEMORY_EVENTS || memoryBytes > MAX_MEMORY_BYTES) {
+        while (events.size > maxMemoryEvents || memoryBytes > maxMemoryBytes) {
             if (events.isEmpty()) break
             val removed = events.removeFirst()
             memoryBytes -= removed.toJson().toString().toByteArray(Charsets.UTF_8).size

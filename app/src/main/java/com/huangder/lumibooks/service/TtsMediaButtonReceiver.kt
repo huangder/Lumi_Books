@@ -25,11 +25,11 @@ class TtsMediaButtonReceiver : BroadcastReceiver() {
         if (intent.action != Intent.ACTION_MEDIA_BUTTON) return
         val event = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
             ?: return
-        if (!TtsMediaButtons.isSupportedEvent(event)) return
-        val handled = TtsMediaButtons.handle(ttsController, event.keyCode)
+        val result = TtsMediaButtons.handleEvent(ttsController, event)
+        logMediaButtonDelivery("broadcast_receiver", event, result, ttsController)
         Log.i(
             TAG,
-            "media button keyCode=${event.keyCode} handled=$handled " +
+            "media button keyCode=${event.keyCode} outcome=${result.outcome} " +
                 "state=${ttsController.playbackState.value}"
         )
     }

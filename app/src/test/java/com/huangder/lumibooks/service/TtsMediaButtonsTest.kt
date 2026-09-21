@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.service
 
 import android.view.KeyEvent
+import com.huangder.lumibooks.tts.TtsPlaybackState
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -57,5 +58,57 @@ class TtsMediaButtonsTest {
     fun differentKeysInsideTheWindowAreNotDeduplicated() {
         assertTrue(TtsMediaButtons.shouldProcess(KeyEvent.KEYCODE_MEDIA_NEXT, 7_000L))
         assertTrue(TtsMediaButtons.shouldProcess(KeyEvent.KEYCODE_MEDIA_PREVIOUS, 7_010L))
+    }
+
+    @Test
+    fun keyUpAndLongPressRepeatAreNotSupportedEvents() {
+        assertFalse(
+            TtsMediaButtons.isSupportedEvent(
+                KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+            )
+        )
+        assertFalse(
+            TtsMediaButtons.isSupportedEvent(
+                KeyEvent(
+                    1L,
+                    2L,
+                    KeyEvent.ACTION_DOWN,
+                    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+                    1
+                )
+            )
+        )
+    }
+
+    @Test
+    fun idlePlaybackRejectsTransportCommands() {
+        assertEquals(
+            TtsMediaButtons.Outcome.STATE_NOT_ALLOWED,
+            TtsMediaButtons.outcomeFor(
+                TtsMediaButtons.Command.TOGGLE,
+                TtsPlaybackState.IDLE,
+                duplicate = false
+            )
+        )
+    }
+
+    @Test
+    fun activePlaybackDispatchesCommandsAndDuplicateWins() {
+        assertEquals(
+            TtsMediaButtons.Outcome.DISPATCHED,
+            TtsMediaButtons.outcomeFor(
+                TtsMediaButtons.Command.PAUSE,
+                TtsPlaybackState.PLAYING,
+                duplicate = false
+            )
+        )
+        assertEquals(
+            TtsMediaButtons.Outcome.DUPLICATE,
+            TtsMediaButtons.outcomeFor(
+                TtsMediaButtons.Command.PAUSE,
+                TtsPlaybackState.PLAYING,
+                duplicate = true
+            )
+        )
     }
 }

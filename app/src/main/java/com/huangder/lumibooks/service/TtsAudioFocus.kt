@@ -52,7 +52,18 @@ internal class TtsAudioFocusController(
     private var pausedForLoss = false
 
     private val listener = AudioManager.OnAudioFocusChangeListener { change ->
-        when (ttsAudioFocusActionForChange(change, pausedForLoss)) {
+        val action = ttsAudioFocusActionForChange(change, pausedForLoss)
+        logTtsServiceEvent(
+            event = "audio_focus_changed",
+            controller = ttsController,
+            attributes = mapOf(
+                "change" to change,
+                "action" to action.name,
+                "holding" to holding,
+                "outputTypes" to outputDeviceTypes()
+            )
+        )
+        when (action) {
             TtsAudioFocusAction.PAUSE_FOR_LOSS -> {
                 if (ttsController.playbackState.value == TtsPlaybackState.PLAYING) {
                     pausedForLoss = true
@@ -75,12 +86,34 @@ internal class TtsAudioFocusController(
         val shouldHold = usesSystemEngine &&
             (playbackState == TtsPlaybackState.PLAYING ||
                 playbackState == TtsPlaybackState.INITIALIZING)
+        logTtsServiceEvent(
+            event = "audio_focus_policy_evaluated",
+            controller = ttsController,
+            attributes = mapOf(
+                "playbackState" to playbackState.name,
+                "usesSystemEngine" to usesSystemEngine,
+                "shouldHold" to shouldHold,
+                "currentlyHolding" to holding,
+                "outputTypes" to outputDeviceTypes()
+            )
+        )
         if (shouldHold) acquire() else release()
     }
 
     fun release() {
         if (!holding && focusRequest == null) return
-        focusRequest?.let { request -> runCatching { audioManager.abandonAudioFocusRequest(request) } }
+        val abandonResult = focusRequest?.let { request ->
+            runCatching { audioManager.abandonAudioFocusRequest(request) }.getOrNull()
+        }
+        logTtsServiceEvent(
+            event = "audio_focus_released",
+            controller = ttsController,
+            attributes = mapOf(
+                "wasHolding" to holding,
+                "abandonResult" to abandonResult,
+                "outputTypes" to outputDeviceTypes()
+            )
+        )
         focusRequest = null
         holding = false
         pausedForLoss = false
@@ -96,6 +129,13 @@ internal class TtsAudioFocusController(
         val result = runCatching { audioManager.requestAudioFocus(request) }
             .getOrElse { error ->
                 Log.w(TAG, "Unable to request audio focus for TTS playback", error)
+                logTtsServiceEvent(
+                    event = "audio_focus_request_failed",
+                    controller = ttsController,
+                    throwable = error,
+                    level = com.huangder.lumibooks.util.diagnostics.DiagnosticLevel.WARN,
+                    result = "exception"
+                )
                 AudioManager.AUDIOFOCUS_REQUEST_FAILED
             }
         focusRequest = request
@@ -103,7 +143,31 @@ internal class TtsAudioFocusController(
         if (!holding) {
             Log.i(TAG, "Audio focus not granted for TTS playback (result=$result)")
         }
+        logTtsServiceEvent(
+            event = "audio_focus_requested",
+            controller = ttsController,
+            attributes = mapOf(
+                "requestResult" to result,
+                "granted" to holding,
+                "outputTypes" to outputDeviceTypes()
+            ),
+            level = if (holding) {
+                com.huangder.lumibooks.util.diagnostics.DiagnosticLevel.INFO
+            } else {
+                com.huangder.lumibooks.util.diagnostics.DiagnosticLevel.WARN
+            },
+            result = if (holding) "granted" else "denied"
+        )
     }
+
+    private fun outputDeviceTypes(): String = runCatching {
+        audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            .map { it.type }
+            .distinct()
+            .sorted()
+            .joinToString(",")
+            .ifEmpty { "none" }
+    }.getOrDefault("unavailable")
 
     private companion object {
         const val TAG = "TtsAudioFocus"

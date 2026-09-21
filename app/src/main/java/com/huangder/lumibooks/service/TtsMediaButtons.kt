@@ -24,6 +24,20 @@ internal object TtsMediaButtons {
         PREVIOUS
     }
 
+    enum class Outcome {
+        DISPATCHED,
+        DUPLICATE,
+        STATE_NOT_ALLOWED,
+        UNSUPPORTED
+    }
+
+    data class Result(
+        val command: Command?,
+        val outcome: Outcome,
+        val stateBefore: TtsPlaybackState,
+        val consumed: Boolean
+    )
+
     private var lastKeyCode = 0
     private var lastHandledAtMs = Long.MIN_VALUE
 
@@ -50,14 +64,31 @@ internal object TtsMediaButtons {
      * 处理一次媒体按键。
      * @return true 表示这是受支持的按键（已消费；听书未启动时无副作用）。
      */
+    fun handleEvent(
+        controller: TtsController,
+        event: KeyEvent,
+        nowMs: Long = android.os.SystemClock.uptimeMillis()
+    ): Result {
+        val state = controller.playbackState.value
+        val command = commandFor(event.keyCode)
+        if (command == null || event.action != KeyEvent.ACTION_DOWN || event.repeatCount != 0) {
+            return Result(command, Outcome.UNSUPPORTED, state, consumed = false)
+        }
+        return handle(controller, event.keyCode, nowMs)
+    }
+
     fun handle(
         controller: TtsController,
         keyCode: Int,
         nowMs: Long = android.os.SystemClock.uptimeMillis()
-    ): Boolean {
-        val command = commandFor(keyCode) ?: return false
-        if (!shouldProcess(keyCode, nowMs)) return true
-        if (controller.playbackState.value == TtsPlaybackState.IDLE) return true
+    ): Result {
+        val state = controller.playbackState.value
+        val command = commandFor(keyCode)
+            ?: return Result(null, Outcome.UNSUPPORTED, state, consumed = false)
+        val outcome = outcomeFor(command, state, duplicate = !shouldProcess(keyCode, nowMs))
+        if (outcome != Outcome.DISPATCHED) {
+            return Result(command, outcome, state, consumed = true)
+        }
         when (command) {
             Command.TOGGLE -> toggle(controller)
             Command.PLAY -> controller.resume()
@@ -66,7 +97,24 @@ internal object TtsMediaButtons {
             Command.NEXT -> controller.skip(forward = true)
             Command.PREVIOUS -> controller.skip(forward = false)
         }
-        return true
+        return Result(command, Outcome.DISPATCHED, state, consumed = true)
+    }
+
+    internal fun outcomeFor(
+        command: Command,
+        state: TtsPlaybackState,
+        duplicate: Boolean
+    ): Outcome {
+        if (duplicate) return Outcome.DUPLICATE
+        val allowed = when (command) {
+            Command.TOGGLE -> state == TtsPlaybackState.PLAYING || state == TtsPlaybackState.PAUSED
+            Command.PLAY -> state == TtsPlaybackState.PAUSED
+            Command.PAUSE -> state == TtsPlaybackState.PLAYING
+            Command.STOP,
+            Command.NEXT,
+            Command.PREVIOUS -> state == TtsPlaybackState.PLAYING || state == TtsPlaybackState.PAUSED
+        }
+        return if (allowed) Outcome.DISPATCHED else Outcome.STATE_NOT_ALLOWED
     }
 
     /**
