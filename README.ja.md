@@ -14,7 +14,7 @@
 
 > シンプルでエレガントな Android ローカル電子書籍リーダー。EPUB、PDF、TXT、MOBI 電子書と CBZ 漫画に対応。プライバシー最優先、完全オフライン。
 
-[![Version](https://img.shields.io/badge/version-1.7.8-coral)](https://github.com/huangder/Lumi_Books/releases)
+[![Version](https://img.shields.io/badge/version-2.1.9-coral)](https://github.com/huangder/Lumi_Books/releases)
 [![License](https://img.shields.io/badge/license-GPLv3-green)](LICENSE)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-blue)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3.10-purple)](https://kotlinlang.org)
