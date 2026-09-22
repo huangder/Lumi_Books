@@ -26,11 +26,36 @@ class TtsControllerTest {
         try {
             controller.start("book", FakePageSource(page(0, "第一小句，第二小句，句子结束。")), 0, 0)
             assertEquals("第一小句，第二小句，句子结束。", controller.currentSentence.value?.text)
+            assertEquals("第一小句，第二小句，句子结束。", controller.currentUtterance.value?.text)
 
             engine.complete(engine.lastUtteranceId)
             runCurrent()
             assertEquals(null, controller.currentSentence.value)
+            assertEquals(null, controller.currentUtterance.value)
             assertEquals(listOf("第一小句，第二小句，句子结束。"), engine.spokenTexts)
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun repeatedSentenceTextStillPublishesANewUtterance() = runTest {
+        val main = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(main)
+        val engine = FakePlaybackEngine()
+        val controller = controller(engine)
+        try {
+            controller.start("book", FakePageSource(page(0, "重复。重复。")), 0, 0)
+            val firstUtterance = controller.currentUtterance.value
+
+            engine.complete(engine.lastUtteranceId)
+            runCurrent()
+
+            assertEquals("重复。", controller.currentUtterance.value?.text)
+            assertNotEquals(firstUtterance, controller.currentUtterance.value)
+            assertEquals(3, controller.currentUtterance.value?.startCharacterOffset)
         } finally {
             controller.shutdown()
             runCurrent()
@@ -77,6 +102,7 @@ class TtsControllerTest {
             runCurrent()
 
             assertEquals("第二小句，", controller.currentSentence.value?.text)
+            assertEquals("第一小句，第二小句，句子结束。", controller.currentUtterance.value?.text)
             assertEquals(listOf("第一小句，第二小句，句子结束。"), engine.spokenTexts)
         } finally {
             controller.shutdown()
@@ -136,6 +162,7 @@ class TtsControllerTest {
         try {
             controller.start("book", FakePageSource(page(0, "第一小句，第二小句，句子结束。下一句。")), 0, 0)
             assertEquals(listOf("第一小句，第二小句，句子结束。"), externalEngine.spokenTexts)
+            assertEquals("第一小句，第二小句，句子结束。", controller.currentUtterance.value?.text)
             assertEquals("第一小句，", controller.currentSentence.value?.text)
 
             externalEngine.complete(externalEngine.lastUtteranceId)

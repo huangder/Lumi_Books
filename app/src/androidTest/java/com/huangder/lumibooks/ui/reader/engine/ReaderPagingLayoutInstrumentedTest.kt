@@ -348,4 +348,23 @@ class ReaderPagingLayoutInstrumentedTest {
             )
         }
     }
+
+    /** 章首标题段落是唯一的例外：不管用户选哪种对齐模式都固定按起始边对齐。 */
+    @Test
+    fun chapterTitleParagraphIgnoresExplicitTextAlignment() {
+        val source = SpannableStringBuilder("Heading\nBody\n")
+        val titleEnd = source.indexOf('\n') + 1
+
+        val formatted =
+            applyReaderTextAlignment(source, ReaderTextAlignment.CENTER, titleEnd) as Spanned
+
+        assertEquals(
+            Layout.Alignment.ALIGN_NORMAL,
+            formatted.getSpans(0, 1, AlignmentSpan::class.java).single().alignment
+        )
+        assertEquals(
+            Layout.Alignment.ALIGN_CENTER,
+            formatted.getSpans(titleEnd, titleEnd + 1, AlignmentSpan::class.java).single().alignment
+        )
+    }
 }

@@ -134,7 +134,8 @@ object AnnotationNoteEditPlanner {
         startLocatorJson = null,
         endLocatorJson = null,
         selectedText = text.substring(start, end),
-        note = if (keepNote) note.note else ""
+        note = if (keepNote) note.note else "",
+        isNote = keepNote && note.isNoteEntry
     )
 
     private fun overlaps(firstStart: Int, firstEnd: Int, secondStart: Int, secondEnd: Int): Boolean =

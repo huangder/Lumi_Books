@@ -34,7 +34,7 @@ internal object BookNotesExportFormatter {
         labels: BookNotesExportLabels
     ): String = buildString {
         appendLine("【${labels.highlightSection}：】")
-        notes.filter { it.note.isBlank() }.forEach { note ->
+        notes.filter { !it.isNoteEntry }.forEach { note ->
             appendLine()
             appendLine("【${labels.highlightContent}】${note.selectedText.trim()}")
             appendLine("【${labels.chapter}】${chapterTitle(note.chapterIndex, chapterTitles, labels)}")
@@ -43,7 +43,7 @@ internal object BookNotesExportFormatter {
 
         appendLine()
         appendLine("【${labels.noteSection}：】")
-        notes.filter { it.note.isNotBlank() }.forEach { note ->
+        notes.filter { it.isNoteEntry }.forEach { note ->
             appendLine()
             appendLine("【${labels.noteSource}】${note.selectedText.trim()}")
             appendLine("【${labels.userNote}】${note.note.trim()}")

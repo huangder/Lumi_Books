@@ -17,6 +17,7 @@ import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.TextView
 import androidx.core.graphics.ColorUtils
+import androidx.core.view.doOnLayout
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.tts.FloatingSubtitleSettings
@@ -25,6 +26,7 @@ import com.huangder.lumibooks.tts.SUBTITLE_SCROLL_SPEED_DP_PER_SECOND
 import com.huangder.lumibooks.tts.SUBTITLE_SCROLL_START_DELAY_MS
 import com.huangder.lumibooks.tts.TtsController
 import com.huangder.lumibooks.tts.TtsPlaybackState
+import com.huangder.lumibooks.tts.TtsTextSegment
 import com.huangder.lumibooks.tts.subtitleScrollDistancePx
 import com.huangder.lumibooks.tts.subtitleScrollDurationMs
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -34,6 +36,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 @Singleton
@@ -51,6 +54,7 @@ class FloatingSubtitleOverlayController @Inject constructor(
     private var persistedSettings = FloatingSubtitleSettings()
     private var previewSettings: FloatingSubtitleSettings? = null
     private var playbackState = TtsPlaybackState.IDLE
+    private var subtitleSegment: TtsTextSegment? = null
     private var subtitleText: String? = null
     private var motionReduced = false
     private var scrollRestartPending = false
@@ -72,22 +76,24 @@ class FloatingSubtitleOverlayController @Inject constructor(
             combine(
                 dataStoreManager.floatingSubtitleSettings,
                 ttsController.playbackState,
-                ttsController.currentSentence,
+                ttsController.currentUtterance,
                 dataStoreManager.motionPreference
-            ) { settings, state, sentence, motionPreference ->
+            ) { settings, state, utterance, motionPreference ->
                 OverlaySnapshot(
                     settings = settings,
                     playbackState = state,
-                    text = sentence?.text,
+                    utterance = utterance,
                     motionReduced = motionPreference == REDUCED_MOTION_VALUE
                 )
             }
+                .distinctUntilChanged()
                 .collect { snapshot ->
-                    val textChanged = snapshot.text != subtitleText
+                    val textChanged = snapshot.utterance != subtitleSegment
                     val motionChanged = snapshot.motionReduced != motionReduced
                     persistedSettings = snapshot.settings
                     playbackState = snapshot.playbackState
-                    subtitleText = snapshot.text
+                    subtitleSegment = snapshot.utterance
+                    subtitleText = snapshot.utterance?.text
                     motionReduced = snapshot.motionReduced
                     if (textChanged || motionChanged) scrollRestartPending = true
                     reconcile()
@@ -98,7 +104,7 @@ class FloatingSubtitleOverlayController @Inject constructor(
     private data class OverlaySnapshot(
         val settings: FloatingSubtitleSettings,
         val playbackState: TtsPlaybackState,
-        val text: String?,
+        val utterance: TtsTextSegment?,
         val motionReduced: Boolean
     )
 
@@ -138,19 +144,29 @@ class FloatingSubtitleOverlayController @Inject constructor(
             return
         }
 
-        val view = subtitleView ?: createSubtitleView().also { subtitleView = it }
+        val view = subtitleView ?: createSubtitleView().also {
+            subtitleView = it
+            scrollRestartPending = true
+        }
         val params = layoutParams ?: createLayoutParams(settings).also { layoutParams = it }
         updateView(view, settings)
         updateLayoutParams(params, settings, view)
 
         if (!overlayRegistered) {
-            runCatching {
+            val registered = runCatching {
                 windowManager.addView(view, params)
                 overlayRegistered = true
-            }.onFailure { removeOverlay() }
+            }.isSuccess
+            if (!registered) {
+                removeOverlay()
+                return
+            }
         } else {
-            runCatching { windowManager.updateViewLayout(view, params) }
-                .onFailure { removeOverlay() }
+            val updated = runCatching { windowManager.updateViewLayout(view, params) }.isSuccess
+            if (!updated) {
+                removeOverlay()
+                return
+            }
         }
         if (scrollRestartPending) {
             scrollRestartPending = false
@@ -159,7 +175,9 @@ class FloatingSubtitleOverlayController @Inject constructor(
     }
 
     private fun createSubtitleView(): TextView = TextView(context).apply {
-        gravity = Gravity.CENTER
+        // Single-line TextView uses an extra-wide layout for horizontal scrolling. Horizontal
+        // centering can place that layout's text outside the visible window, so anchor at start.
+        gravity = Gravity.CENTER_VERTICAL or Gravity.START
         includeFontPadding = false
         isSingleLine = true
         maxLines = 1
@@ -326,7 +344,11 @@ class FloatingSubtitleOverlayController @Inject constructor(
     private fun restartSubtitleScroll(view: TextView) {
         cancelSubtitleScroll(reset = true)
         if (motionReduced) return
-        view.post { startSubtitleScrollIfNeeded(view) }
+        view.doOnLayout { laidOutView ->
+            if (overlayRegistered && subtitleView === laidOutView) {
+                startSubtitleScrollIfNeeded(laidOutView)
+            }
+        }
     }
 
     private fun startSubtitleScrollIfNeeded(view: TextView) {

@@ -10,6 +10,13 @@ import org.junit.Test
 
 class PortableSnapshotTest {
     @Test
+    fun emptyNoteIdentitySurvivesBackupRoundTrip() {
+        val emptyNote = note("empty").copy(note = "", isNote = true)
+        val original = snapshot(deviceId = "device-a", notes = listOf(emptyNote))
+        assertEquals(emptyNote, PortableSnapshot.fromJson(original.toJson()).notes.single())
+    }
+
+    @Test
     fun jsonRoundTripPreservesSnapshot() {
         val snapshot = snapshot(
             deviceId = "device-a",

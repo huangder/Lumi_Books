@@ -4,6 +4,7 @@ import android.os.Build
 import android.text.Layout
 import android.text.Spanned
 import android.text.style.LeadingMarginSpan
+import com.huangder.lumibooks.ui.reader.ReaderChapterTitleSpan
 import kotlin.math.abs
 
 /**
@@ -257,7 +258,9 @@ internal class ReaderLineGeometry(
         // covers the page's final line when the paragraph keeps flowing on the
         // next page; it must not bypass the paragraph-break guard for the rest of
         // the page, or every paragraph-final line here would be stretched.
-        val canJustify = isLtr && justificationMode != Layout.JUSTIFICATION_MODE_NONE &&
+        // 章首标题段落固定左对齐：标题行即使被分页切在段落中间也不拉伸。
+        val canJustify = !isChapterTitleLine(lineStart) &&
+            isLtr && justificationMode != Layout.JUSTIFICATION_MODE_NONE &&
             contentEnd > lineStart &&
             shouldJustifyReaderLine(
                 lineIndex = line,
@@ -646,5 +649,14 @@ internal class ReaderLineGeometry(
             (start + 1).coerceAtMost(text.length),
             LeadingMarginSpan::class.java
         ).sumOf { it.getLeadingMargin(firstLine).toDouble() }.toFloat()
+    }
+
+    /** 该行首字符是否落在章首标题段落里（标题段落一律不参与两端对齐拉伸）。 */
+    private fun isChapterTitleLine(lineStart: Int): Boolean {
+        val spanned = text as? Spanned ?: return false
+        val start = lineStart.coerceIn(0, text.length)
+        val end = (start + 1).coerceAtMost(text.length)
+        if (start >= end) return false
+        return spanned.getSpans(start, end, ReaderChapterTitleSpan::class.java).isNotEmpty()
     }
 }

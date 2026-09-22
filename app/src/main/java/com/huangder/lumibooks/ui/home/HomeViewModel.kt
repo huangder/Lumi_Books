@@ -112,7 +112,7 @@ data class HomeUiState(
     val avatarUri: String? = null,
     val searchQuery: String = "",
     val isSearchActive: Boolean = false,
-    val sortBy: SortBy = SortBy.LAST_READ,
+    val sortBy: SortBy = SortBy.DATE_ADDED,
     val isLoading: Boolean = true,
     val bookshelfLayoutMode: Int = 2,
     val bookshelfLayoutModeLoaded: Boolean = false,
@@ -465,7 +465,7 @@ class HomeViewModel @Inject constructor(
     private fun loadBookshelfSortMode() {
         viewModelScope.launch {
             dataStoreManager.bookshelfSortMode.collectLatest { stored ->
-                val sort = runCatching { SortBy.valueOf(stored) }.getOrDefault(SortBy.LAST_READ)
+                val sort = runCatching { SortBy.valueOf(stored) }.getOrDefault(SortBy.DATE_ADDED)
                 _uiState.value = _uiState.value.copy(
                     sortBy = sort,
                     books = sortBooks(_uiState.value.books, sort)
@@ -542,7 +542,7 @@ class HomeViewModel @Inject constructor(
             SortBy.LAST_READ -> books.sortedByDescending { it.lastReadTime }
             SortBy.TITLE -> books.sortedBy { it.title.lowercase() }
             SortBy.AUTHOR -> books.sortedBy { it.author.lowercase() }
-            SortBy.DATE_ADDED -> books.sortedByDescending { it.createdAt }
+            SortBy.DATE_ADDED -> books.sortedWith(compareByDescending<Book> { it.createdAt }.thenBy { it.id })
         }
     }
 

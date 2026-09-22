@@ -123,6 +123,7 @@ import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
+import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
 import com.huangder.lumibooks.ui.theme.MotionPreference
@@ -1174,6 +1175,11 @@ private fun AnimationPreviewScreen(
     onDurationChange: (String, Int) -> Unit
 ) {
     val mode = state.animationMode
+    val previewTheme = if (LocalIsDarkTheme.current) {
+        ReaderThemeSuites.NIGHT_ID
+    } else {
+        ReaderThemeSuites.DAY_ID
+    }
     val duration = state.animationSettings.durationFor(mode)
     val range = ReaderPageAnimationSettings.rangeFor(mode)
     val step = ReaderPageAnimationSettings.stepFor(mode)
@@ -1192,12 +1198,16 @@ private fun AnimationPreviewScreen(
                 .layerBackdrop(previewBackdrop)
         ) {
             PreviewReadView(
-                ReaderThemeSettings(),
+                ReaderThemeSettings(
+                    backgroundSelection = previewTheme,
+                    backgroundColorSelection = previewTheme
+                ),
                 emptyList(),
                 emptyList(),
                 mode,
                 displayedDuration.roundToInt(),
-                sample
+                sample,
+                readerTheme = previewTheme
             )
         }
         ProvideLiquidGlassBackdrop(previewBackdrop) {
@@ -1248,8 +1258,7 @@ private fun AnimationPreviewScreen(
                                 onDurationPreview(mode, snapped)
                             },
                             valueRange = range.first.toFloat()..range.last.toFloat(),
-                            step = step.toFloat(),
-                            opaqueLiquidThumb = true
+                            step = step.toFloat()
                         )
                     }
                 }
@@ -1266,10 +1275,6 @@ private fun AnimationPreviewScreen(
                 AnimationCapsule(stringResource(R.string.page_animation_scroll_short), "scroll", mode, onModeChange)
                 AnimationCapsule(stringResource(R.string.page_animation_fade_short), "fade", mode, onModeChange)
                 AnimationCapsule(stringResource(R.string.page_animation_curl_short), "curl", mode, onModeChange)
-                DurationCapsule(
-                    displayedDuration.roundToInt(),
-                    onClick = { showDurationInput = true }
-                )
             }
         }
     }
@@ -1302,7 +1307,7 @@ private fun AnimationCapsule(
     mode: String,
     selectedMode: String,
     onClick: (String) -> Unit
-) = CapsuleButton(label, AppIcons.FilmStripPair, mode == selectedMode) { onClick(mode) }
+) = CapsuleButton(label, null, mode == selectedMode) { onClick(mode) }
 
 @Composable
 private fun PreviewReadView(
@@ -1312,7 +1317,8 @@ private fun PreviewReadView(
     pageTransition: String,
     pageDurationMs: Int,
     sample: String,
-    preservePublisherLayout: Boolean = false
+    preservePublisherLayout: Boolean = false,
+    readerTheme: String = "day"
 ) {
     val density = LocalDensity.current.density
     // Publisher layout keeps the book's own typography, so the sample mirrors
@@ -1383,7 +1389,7 @@ private fun PreviewReadView(
             view.post {
                 view.configure(
                     fontSizePx = effectiveSettings.fontSize * density,
-                    theme = "day",
+                    theme = readerTheme,
                     chapterCount = 1,
                     startChapter = 0,
                     startPage = view.slotManager.getCurSlot().pageIndex.coerceAtLeast(0),
@@ -1437,7 +1443,7 @@ private fun ExitButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
 @Composable
 private fun CapsuleButton(
     text: String,
-    icon: com.huangder.lumibooks.ui.icons.IconPair,
+    icon: com.huangder.lumibooks.ui.icons.IconPair?,
     selected: Boolean,
     onClick: () -> Unit
 ) {
@@ -1451,8 +1457,10 @@ private fun CapsuleButton(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon.resolve(selected), contentDescription = null, modifier = Modifier.size(17.dp))
-            Spacer(Modifier.width(5.dp))
+            icon?.let {
+                Icon(it.resolve(selected), contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(5.dp))
+            }
             Text(text, fontSize = AppType.Caption, fontWeight = FontWeight.SemiBold)
         }
     }
@@ -1525,23 +1533,6 @@ private fun CommandCapsuleButton(
             Spacer(Modifier.width(AppSpace.sm))
             Text(text, fontSize = AppType.BodySmall, fontWeight = FontWeight.SemiBold)
         }
-    }
-}
-
-@Composable
-private fun DurationCapsule(duration: Int, onClick: () -> Unit) {
-    ReaderControlCapsule(
-        onClick = onClick,
-        containerColor = AppColors.CardBg,
-        contentColor = AppColors.TextPrimary
-    ) {
-        Text(
-            "$duration ms",
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
-            fontSize = AppType.Caption,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1
-        )
     }
 }
 

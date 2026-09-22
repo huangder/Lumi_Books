@@ -14,5 +14,9 @@ data class Note(
     val createdAt: Long,
     val type: String = "highlight",
     val syncId: String = "",
-    val updatedAt: Long = createdAt
-)
+    val updatedAt: Long = createdAt,
+    val isNote: Boolean = note.isNotBlank() || type == "note"
+) {
+    /** The annotation style (highlight/underline) is independent of note intent. */
+    val isNoteEntry: Boolean get() = isNote || note.isNotBlank() || type == "note"
+}

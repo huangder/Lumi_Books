@@ -103,11 +103,14 @@ internal class CoverFlowState(initialPosition: Float = 0f, initialBookId: String
         isMoving = true
         motionJob = scope.launch {
             try {
-                val animation = AnimationState(position, velocity.coerceIn(-18f, 18f))
+                val animation = AnimationState(position, velocity.coerceIn(
+                    -CoverFlowPhysics.MaxFlingVelocity, CoverFlowPhysics.MaxFlingVelocity
+                ))
                 animation.animateTo(
                     targetValue = target.toFloat(),
                     animationSpec = if (motionEnabled) spring(
-                        dampingRatio = 0.9f, stiffness = 220f,
+                        dampingRatio = 0.95f,
+                        stiffness = if (abs(velocity) >= 4f) 65f else 220f,
                         visibilityThreshold = CoverFlowPhysics.VisibilityThreshold
                     ) else tween(100)
                 ) {

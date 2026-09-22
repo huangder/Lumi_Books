@@ -60,6 +60,14 @@ class WebdavFailureClassifierTest {
             WebdavFailureCategory.INVALID_URL,
             WebdavFailureClassifier.classify(WebdavErrorKind.INVALID_URL, null)
         )
+        assertEquals(
+            WebdavFailureCategory.REDIRECT,
+            WebdavFailureClassifier.classify(WebdavErrorKind.REDIRECT, 302)
+        )
+        assertEquals(
+            WebdavFailureCategory.INVALID_RESPONSE,
+            WebdavFailureClassifier.classify(WebdavErrorKind.INVALID_RESPONSE, 200)
+        )
     }
 
     @Test

@@ -61,10 +61,15 @@ import kotlin.coroutines.resume
 import kotlin.math.abs
 
 private const val EPUB_ALLOWED_ORIGIN = "https://appassets.androidplatform.net"
+private const val EPUB_INITIAL_PAGE_READY_TIMEOUT_MS = 8_000L
 
 internal class EpubContentWebView(context: android.content.Context) : WebView(context) {
     val documentLifecycle = EpubDocumentLifecycle()
+    val initialLoadRecovery = EpubInitialLoadRecovery()
     var documentLoadStartedAt = 0L
+    var onInitialLoadTimeout: ((EpubInitialLoadAttempt) -> Unit)? = null
+    private var initialLoadTimeout: Runnable? = null
+    private var startedInitialLoadAttempt: EpubInitialLoadAttempt? = null
     private var selectionActionMode: ActionMode? = null
     private data class PendingDrawCallback(
         var remainingDraws: Int,
@@ -78,6 +83,67 @@ internal class EpubContentWebView(context: android.content.Context) : WebView(co
         documentLifecycle.beginDocument()
         pendingDrawCallbacks.clear()
         super.loadUrl(url)
+    }
+
+    fun beginRecoverableLoad(chapterIndex: Int, url: String) {
+        val attempt = initialLoadRecovery.begin(chapterIndex)
+        startedInitialLoadAttempt = null
+        loadUrl(url)
+        scheduleInitialLoadTimeout(attempt)
+    }
+
+    fun retryRecoverableLoad(attempt: EpubInitialLoadAttempt, url: String) {
+        if (!initialLoadRecovery.isCurrent(attempt)) return
+        startedInitialLoadAttempt = null
+        loadUrl(url)
+        scheduleInitialLoadTimeout(attempt)
+    }
+
+    fun markRecoverableLoadStarted() {
+        startedInitialLoadAttempt = initialLoadRecovery.current()
+    }
+
+    fun currentStartedRecoverableLoad(chapterIndex: Int? = null): EpubInitialLoadAttempt? =
+        startedInitialLoadAttempt?.takeIf { attempt ->
+            initialLoadRecovery.isCurrent(attempt) &&
+                (chapterIndex == null || attempt.chapterIndex == chapterIndex)
+        }
+
+    fun consumeInitialLoadFailure(
+        attempt: EpubInitialLoadAttempt
+    ): EpubInitialLoadRecoveryAction {
+        val action = initialLoadRecovery.fail(attempt)
+        if (action !is EpubInitialLoadRecoveryAction.Ignore) clearInitialLoadTimeout()
+        return action
+    }
+
+    fun markRecoverableLoadReady(chapterIndex: Int): Boolean {
+        val attempt = currentStartedRecoverableLoad(chapterIndex) ?: return false
+        if (!initialLoadRecovery.complete(attempt)) return false
+        startedInitialLoadAttempt = null
+        clearInitialLoadTimeout()
+        return true
+    }
+
+    fun cancelRecoverableLoad() {
+        initialLoadRecovery.cancel()
+        startedInitialLoadAttempt = null
+        clearInitialLoadTimeout()
+    }
+
+    private fun scheduleInitialLoadTimeout(attempt: EpubInitialLoadAttempt) {
+        clearInitialLoadTimeout()
+        val timeout = Runnable {
+            initialLoadTimeout = null
+            if (initialLoadRecovery.isCurrent(attempt)) onInitialLoadTimeout?.invoke(attempt)
+        }
+        initialLoadTimeout = timeout
+        postDelayed(timeout, EPUB_INITIAL_PAGE_READY_TIMEOUT_MS)
+    }
+
+    private fun clearInitialLoadTimeout() {
+        initialLoadTimeout?.let(::removeCallbacks)
+        initialLoadTimeout = null
     }
 
     fun runAfterNextDraw(callback: () -> Unit) {
@@ -111,6 +177,7 @@ internal class EpubContentWebView(context: android.content.Context) : WebView(co
 
     override fun onDetachedFromWindow() {
         pendingDrawCallbacks.clear()
+        cancelRecoverableLoad()
         super.onDetachedFromWindow()
     }
 
@@ -649,6 +716,87 @@ internal fun EpubWebViewReader(
                     locatorRequest = null,
                     pageRequest = null
                 )
+
+                fun logInitialLoadRecovery(
+                    view: EpubContentWebView,
+                    attempt: EpubInitialLoadAttempt,
+                    reason: EpubInitialLoadFailureReason,
+                    event: String,
+                    level: DiagnosticLevel,
+                    result: String
+                ) {
+                    val startedAt = view.documentLoadStartedAt
+                    DiagnosticLoggerRegistry.logger?.log(
+                        category = "reader",
+                        event = event,
+                        level = level,
+                        attributes = mapOf(
+                            "chapterIndex" to attempt.chapterIndex,
+                            "attempt" to attempt.retryCount + 1,
+                            "reason" to reason.name.lowercase()
+                        ),
+                        screen = "ReaderScreen",
+                        bookFormat = latestBookFormat.value,
+                        durationMs = if (startedAt > 0L) {
+                            (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(0L)
+                        } else {
+                            null
+                        },
+                        result = result
+                    )
+                }
+
+                fun handleInitialLoadFailure(
+                    view: EpubContentWebView,
+                    attempt: EpubInitialLoadAttempt,
+                    reason: EpubInitialLoadFailureReason
+                ) {
+                    if (pageTurnHost.roleOf(view) != EpubPageTurnHost.WebViewRole.ACTIVE ||
+                        loadedChapter.value != attempt.chapterIndex ||
+                        latestChapterIndex.value != attempt.chapterIndex
+                    ) {
+                        return
+                    }
+                    when (val action = view.consumeInitialLoadFailure(attempt)) {
+                        EpubInitialLoadRecoveryAction.Ignore -> Unit
+                        is EpubInitialLoadRecoveryAction.Retry -> {
+                            logInitialLoadRecovery(
+                                view = view,
+                                attempt = attempt,
+                                reason = reason,
+                                event = "epub_initial_load_retry",
+                                level = DiagnosticLevel.WARN,
+                                result = "retrying"
+                            )
+                            configuredKey.value = ""
+                            chapterLoadPending.value = true
+                            readyChapter.value = -1
+                            activeVisualRequestByView.remove(view)
+                            loadedChapterByView.remove(view)
+                            loadingChapterByView[view] = attempt.chapterIndex
+                            view.retryRecoverableLoad(
+                                action.attempt,
+                                session.chapterUrl(
+                                    attempt.chapterIndex,
+                                    latestInitialFragment.value
+                                )
+                            )
+                        }
+                        is EpubInitialLoadRecoveryAction.Fallback -> {
+                            logInitialLoadRecovery(
+                                view = view,
+                                attempt = action.failedAttempt,
+                                reason = reason,
+                                event = "epub_initial_load_fallback",
+                                level = DiagnosticLevel.ERROR,
+                                result = "fallback"
+                            )
+                            chapterLoadPending.value = false
+                            readyChapter.value = -1
+                            pageTurnHost.post { latestRenderUnavailable.value() }
+                        }
+                    }
+                }
 
                 fun configurePreloadReader(view: EpubContentWebView, request: EpubPreloadRequest) {
                     val target = request.target
@@ -1608,6 +1756,7 @@ internal fun EpubWebViewReader(
                                                 view,
                                                 EpubPageTarget(messageChapterIndex, pageIndex)
                                             )
+                                            view.markRecoverableLoadReady(messageChapterIndex)
                                             revealStableDocument(view, generation, revision)
                                         }
                                         when {
@@ -1767,6 +1916,13 @@ internal fun EpubWebViewReader(
 
                 fun attachWebView(view: EpubContentWebView) {
                     configureEpubWebViewSettings(view)
+                    view.onInitialLoadTimeout = { attempt ->
+                        handleInitialLoadFailure(
+                            view = view,
+                            attempt = attempt,
+                            reason = EpubInitialLoadFailureReason.PAGE_READY_TIMEOUT
+                        )
+                    }
                     if (!WebViewFeature.isFeatureSupported(
                             WebViewFeature.WEB_MESSAGE_LISTENER
                         )
@@ -1842,6 +1998,7 @@ internal fun EpubWebViewReader(
                         override fun onPageStarted(sourceView: WebView, url: String?, favicon: android.graphics.Bitmap?) {
                             (sourceView as? EpubContentWebView)?.let { contentView ->
                                 contentView.documentLifecycle.beginDocument()
+                                contentView.markRecoverableLoadStarted()
                                 contentView.documentLoadStartedAt = SystemClock.elapsedRealtime()
                             }
                         }
@@ -1919,6 +2076,18 @@ internal fun EpubWebViewReader(
                                 )
                                 return
                             }
+                            val activeAttempt = contentView.currentStartedRecoverableLoad()
+                            if (activeAttempt != null &&
+                                pageTurnHost.roleOf(contentView) ==
+                                EpubPageTurnHost.WebViewRole.ACTIVE
+                            ) {
+                                handleInitialLoadFailure(
+                                    view = contentView,
+                                    attempt = activeAttempt,
+                                    reason = EpubInitialLoadFailureReason.MAIN_FRAME_ERROR
+                                )
+                                return
+                            }
                             val (slot, request) = preloadRequestFor(contentView) ?: return
                             if (preloadRequestByView[contentView] !== request) return
                             pageTurnHost.markPreloadFailed(
@@ -1953,6 +2122,18 @@ internal fun EpubWebViewReader(
                                 failNavigation(
                                     navigation,
                                     EpubNavigationFailureReason.HTTP_ERROR
+                                )
+                                return
+                            }
+                            val activeAttempt = contentView.currentStartedRecoverableLoad()
+                            if (activeAttempt != null &&
+                                pageTurnHost.roleOf(contentView) ==
+                                EpubPageTurnHost.WebViewRole.ACTIVE
+                            ) {
+                                handleInitialLoadFailure(
+                                    view = contentView,
+                                    attempt = activeAttempt,
+                                    reason = EpubInitialLoadFailureReason.HTTP_ERROR
                                 )
                                 return
                             }
@@ -2066,6 +2247,8 @@ internal fun EpubWebViewReader(
                                 latestContinuousScroll.value,
                                 latestPageTransition.value
                             )
+                            val activeLoadAttempt =
+                                contentView.currentStartedRecoverableLoad(sourceChapter)
                             configureReader(
                                 view = contentView,
                                 session = session,
@@ -2106,7 +2289,16 @@ internal fun EpubWebViewReader(
                                 marginLeftDp = latestMarginLeftDp.value,
                                 notes = epubNotesForChapter(latestNotes.value, sourceChapter),
                                 locatorRequest = latestLocatorRequest.value,
-                                pageRequest = latestPageRequest.value
+                                pageRequest = latestPageRequest.value,
+                                onConfigured = { configured ->
+                                    if (!configured && activeLoadAttempt != null) {
+                                        handleInitialLoadFailure(
+                                            view = contentView,
+                                            attempt = activeLoadAttempt,
+                                            reason = EpubInitialLoadFailureReason.READER_SCRIPT_MISSING
+                                        )
+                                    }
+                                }
                             )
                             if (nativePageTurn) {
                                 preloadConfigurationByView[contentView] =
@@ -2362,7 +2554,7 @@ internal fun EpubWebViewReader(
                         } else {
                             webView.alpha = 0f
                         }
-                        webView.loadUrl(targetUrl)
+                        webView.beginRecoverableLoad(targetChapter, targetUrl)
                     }
                 }
                 if (firstLoad) {

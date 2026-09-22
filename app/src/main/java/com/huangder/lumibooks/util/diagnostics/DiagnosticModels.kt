@@ -92,6 +92,7 @@ data class DiagnosticBundleRequest(
     val userDescription: String,
     val screenshotUris: List<android.net.Uri> = emptyList(),
     val includePreviousCrash: Boolean = true,
+    val startupOnly: Boolean = false,
     val shareCopyName: String = "lumi-diagnostic.zip"
 )
 

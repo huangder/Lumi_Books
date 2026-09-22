@@ -962,6 +962,8 @@
     <string name="webdav_error_timeout">Connection timed out: check the network, server status, and address.</string>
     <string name="webdav_error_tls">Certificate validation failed: the server certificate is invalid or self-signed. Use a trusted HTTPS certificate.</string>
     <string name="webdav_error_invalid_url">Invalid server address: it must start with http:// or https://</string>
+    <string name="webdav_error_redirect">The server redirected the WebDAV request to another address (target host: %1$s). Enter the final WebDAV address directly.</string>
+    <string name="webdav_error_invalid_response">The server returned an unrecognized WebDAV response (HTTP %1$s). A login page, reverse proxy, or gateway may be intercepting the request.</string>
     <string name="webdav_server_url_help">Use the full WebDAV address, for example https://dav.example.com/dav/, or Nextcloud https://host/remote.php/dav/files/username/</string>
     <string name="webdav_sync_success">Sync completed</string>
     <string name="webdav_sync_failed">Sync failed. Check your network and the server.</string>

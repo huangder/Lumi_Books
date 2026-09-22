@@ -811,6 +811,8 @@
     <string name="webdav_error_timeout">接続がタイムアウトしました：ネットワーク、サーバーの状態、アドレスを確認してください</string>
     <string name="webdav_error_tls">証明書の検証に失敗しました：サーバー証明書が無効か自己署名です。信頼できる HTTPS 証明書を使用してください</string>
     <string name="webdav_error_invalid_url">サーバーアドレスが無効です：http:// または https:// で始めてください</string>
+    <string name="webdav_error_redirect">WebDAV リクエストが別のアドレス（対象ホスト：%1$s）へリダイレクトされました。最終的な WebDAV アドレスを直接入力してください</string>
+    <string name="webdav_error_invalid_response">認識できない WebDAV 応答（HTTP %1$s）です。ログインページ、リバースプロキシ、ゲートウェイが要求を遮っている可能性があります</string>
     <string name="webdav_server_url_help">WebDAV の完全なアドレスを入力してください（例：https://dav.example.com/dav/、Nextcloud：https://ホスト/remote.php/dav/files/ユーザー名/）</string>
     <string name="webdav_sync_success">同期完了</string>
     <string name="webdav_sync_failed">同期失敗。ネットワークとサーバーの状態を確認してください。</string>

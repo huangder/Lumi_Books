@@ -2456,25 +2456,44 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    fun savePageTransition(mode: String) {
+    fun savePageTransition(
+        mode: String,
+        visibleAnchor: com.huangder.lumibooks.ui.reader.engine.ReaderTextAnchor? = null
+    ) {
         if (_uiState.value.eInkModeEnabled) return
         val normalizedMode = ReaderPageTransition.normalizeKey(mode)
         val state = _uiState.value
         val crossesContinuousBoundary =
             (state.pageTransition == "continuous") != (normalizedMode == "continuous")
-        val chapterFraction = if (state.totalPages > 0) {
-            state.currentPageIndex.toFloat().div(state.totalPages).coerceIn(0f, 0.9999f)
-        } else {
-            0f
+        val destination = if (normalizedMode == "continuous") ReaderPositionFlow.CONTINUOUS
+            else ReaderPositionFlow.PAGED
+        val supportsBookLayout = state.book?.format?.name in setOf("EPUB", "MOBI")
+        val readerLayout = state.useNewEngine &&
+            !(supportsBookLayout && state.renderMode == EpubRenderMode.BOOK_LAYOUT)
+        val position = positionForReaderFlowChange(
+            chapterIndex = state.currentChapterIndex,
+            pageIndex = state.currentPageIndex,
+            pageCount = state.totalPages,
+            pendingPosition = state.pendingReaderPosition,
+            pendingFraction = state.pendingPageFraction,
+            characterOffset = if (readerLayout && state.pageTransition != "continuous") {
+                pageLayoutEngine.getPageLayout(state.currentChapterIndex, state.currentPageIndex)?.startCharOffset
+            } else null,
+            destination = destination
+        ).let { pending ->
+            if (readerLayout && state.pendingReaderPosition == null && visibleAnchor != null) {
+                pending.copy(chapterIndex = visibleAnchor.chapterIndex, characterOffset = visibleAnchor.characterOffset)
+            } else pending
         }
         _uiState.value = if (crossesContinuousBoundary) {
             state.copy(
                 pageTransition = normalizedMode,
+                currentChapterIndex = position.chapterIndex,
                 currentPageIndex = 0,
                 totalPages = 0,
-                pendingPageFraction = chapterFraction,
+                pendingPageFraction = position.chapterFraction,
                 pendingPageFractionSemantics = ReaderPageFractionSemantics.START,
-                pendingReaderPosition = null,
+                pendingReaderPosition = position.takeIf { readerLayout },
                 pageReady = false
             )
         } else {
@@ -4318,7 +4337,13 @@ class ReaderViewModel @Inject constructor(
         } else {
             chapterText
         }
-        val aligned = applyReaderTextAlignment(formatted, state.textAlignment)
+        // 章首标题段落固定左对齐（不跟随居中/右对齐，也不参与两端对齐拉伸），
+        // 正文段落仍按用户设置排版。
+        val titleParagraphEnd = chapterTitleParagraphEnd(
+            formatted,
+            state.chapterTitles.getOrNull(index)
+        )
+        val aligned = applyReaderTextAlignment(formatted, state.textAlignment, titleParagraphEnd)
         // 竖排由独立排版器逐字度量，不识别挤压 span，保持原字宽以免分页与绘制错位。
         if (state.readerWritingMode.isVertical) return aligned
         // 全角标点挤压：标点只占半个汉字宽，行内更紧凑、行尾也更容易对齐。
@@ -4509,7 +4534,8 @@ class ReaderViewModel @Inject constructor(
         color: String = DefaultReaderHighlightColor,
         startLocatorJson: String? = null,
         endLocatorJson: String? = null,
-        type: String = "highlight"
+        type: String = "highlight",
+        isNote: Boolean = noteText.isNotBlank()
     ) {
         val state = _uiState.value
         val book = state.book ?: return
@@ -4525,7 +4551,8 @@ class ReaderViewModel @Inject constructor(
             note = noteText,
             color = color,
             createdAt = System.currentTimeMillis(),
-            type = type
+            type = type,
+            isNote = isNote
         )
         // Render immediately instead of waiting for Room's Flow to emit the inserted record.
         // The database observer replaces this temporary id=0 record with the persisted one.
@@ -4758,13 +4785,22 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    fun resolvedReaderNote(note: Note): Note? = _readerNotes.value.firstOrNull { candidate ->
+    private fun resolvedReaderNote(note: Note): Note? = _readerNotes.value.firstOrNull { candidate ->
         if (note.id != 0L) {
             candidate.id == note.id
         } else {
             candidate.createdAt == note.createdAt &&
                 candidate.chapterIndex == note.chapterIndex &&
                 candidate.selectedText == note.selectedText
+        }
+    }
+
+    suspend fun resolveReaderNoteForNavigation(note: Note): Note? {
+        if (note.chapterIndex !in 0 until _uiState.value.chapterCount) return null
+        resolvedReaderNote(note)?.let { return it }
+        return withContext(Dispatchers.IO) {
+            val text = getChapterText(note.chapterIndex)
+            resolveReaderNoteNavigation(note, text)
         }
     }
 

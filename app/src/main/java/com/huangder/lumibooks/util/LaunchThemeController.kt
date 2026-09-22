@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.util
 
+import com.huangder.lumibooks.util.diagnostics.StartupTrace
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -200,6 +201,7 @@ object LaunchThemeController {
         style: String,
         splashEnabled: Boolean
     ): Boolean = synchronized(launcherSwitchLock) {
+        StartupTrace.aliases(context, "before_switch")
         val packageManager = context.packageManager
         val desired = launcherComponentStates(style, splashEnabled)
         val manifestDefaults = mapOf(
@@ -216,7 +218,10 @@ object LaunchThemeController {
             )
             current == shouldBeEnabled
         }
-        if (alreadySynchronized) return@synchronized true
+        if (alreadySynchronized) {
+            StartupTrace.aliases(context, "already_synchronized", true)
+            return@synchronized true
+        }
 
         runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -253,7 +258,7 @@ object LaunchThemeController {
             true
         }.onFailure { error ->
             Log.e("LaunchThemeController", "Failed to switch launcher component", error)
-        }.getOrDefault(false)
+        }.getOrDefault(false).also { StartupTrace.aliases(context, "after_switch", it) }
     }
 
     private fun isComponentEnabled(state: Int, manifestDefault: Boolean): Boolean = when (state) {

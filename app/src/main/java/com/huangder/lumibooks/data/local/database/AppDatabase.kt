@@ -33,7 +33,7 @@ import com.huangder.lumibooks.data.local.entity.SyncTombstoneEntity
         SyncStateEntity::class,
         SyncTombstoneEntity::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

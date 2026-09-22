@@ -1,5 +1,6 @@
 package com.huangder.lumibooks
 
+import com.huangder.lumibooks.util.diagnostics.StartupTrace
 import android.app.Application
 import android.app.Activity
 import android.content.Context
@@ -20,7 +21,6 @@ import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.combine
 import com.huangder.lumibooks.data.sync.WebdavAutoSyncScheduler
 import com.huangder.lumibooks.util.diagnostics.DiagnosticLevel
 import com.huangder.lumibooks.util.diagnostics.DiagnosticLogger
@@ -67,6 +67,13 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
         ErrorHandler.installDiagnosticLogger(diagnosticLogger)
         DiagnosticLoggerRegistry.logger = diagnosticLogger
         diagnosticLogger.log("app", "process_started", DiagnosticLevel.INFO)
+        StartupTrace.event("process_started", mapOf(
+            "buildType" to BuildConfig.BUILD_TYPE,
+            "version" to BuildConfig.VERSION_NAME,
+            "startupTraceEnabled" to BuildConfig.STARTUP_TRACE_ENABLED,
+            "diagnosticBuild" to BuildConfig.DIAGNOSTIC_BUILD,
+            "debuggable" to ((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0)
+        ))
         LaunchThemeController.synchronizeLauncherComponents(this)
         registerActivityLifecycleCallbacks(this)
         floatingSubtitleOverlayController.start()
@@ -77,24 +84,20 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
             }
         }
         applicationScope.launch(Dispatchers.IO) {
-            combine(
-                dataStoreManager.completedWelcomeInstallTime,
-                dataStoreManager.splashEnabled,
-                dataStoreManager.hasCompletedWelcomeLanguageSetup
-            ) { completedInstallTime, splashEnabled, hasCompletedLanguageSetup ->
-                Triple(completedInstallTime, splashEnabled, hasCompletedLanguageSetup)
-            }.collectLatest { (completedInstallTime, splashEnabled, hasCompletedLanguageSetup) ->
+            dataStoreManager.welcomeLaunchSnapshot.collectLatest { snapshot ->
+                if (BuildConfig.STARTUP_TRACE_ENABLED) StartupTrace.event("persisted_welcome_observed", mapOf("completedInstallTime" to snapshot.completedInstallTime, "splashEnabled" to snapshot.splashEnabled, "languageCompleted" to snapshot.hasCompletedLanguageSetup, "mirrorBefore" to LaunchThemeController.welcomeSnapshot(this@EBookReaderApp).toString(), "mirrorMismatch" to (LaunchThemeController.welcomeSnapshot(this@EBookReaderApp) != snapshot)))
                 LaunchThemeController.updateWelcomeSnapshot(
                     context = this@EBookReaderApp,
-                    completedInstallTime = completedInstallTime,
-                    splashEnabled = splashEnabled,
-                    hasCompletedLanguageSetup = hasCompletedLanguageSetup
+                    completedInstallTime = snapshot.completedInstallTime,
+                    splashEnabled = snapshot.splashEnabled,
+                    hasCompletedLanguageSetup = snapshot.hasCompletedLanguageSetup
                 )
             }
         }
     }
 
     override fun onActivityStarted(activity: Activity) {
+        StartupTrace.activity(activity, "activity_started")
         val wasInBackground = startedActivityCount == 0
         startedActivityCount++
         if (wasInBackground) floatingSubtitleOverlayController.setAppInForeground(true)
@@ -102,6 +105,7 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
     }
 
     override fun onActivityStopped(activity: Activity) {
+        StartupTrace.activity(activity, "activity_stopped")
         startedActivityCount = (startedActivityCount - 1).coerceAtLeast(0)
         if (startedActivityCount == 0 && !activity.isChangingConfigurations) {
             floatingSubtitleOverlayController.setAppInForeground(false)
@@ -111,8 +115,12 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
         }
     }
 
-    override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+    override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
+        StartupTrace.activity(activity, "activity_created", savedInstanceState != null)
+        StartupTrace.observeFirstDraw(activity)
+    }
     override fun onActivityResumed(activity: Activity) {
+        StartupTrace.activity(activity, "activity_resumed")
         if (!postFirstFrameStarted.compareAndSet(false, true)) return
         activity.window.decorView.post {
             activity.window.decorView.post {
@@ -123,9 +131,9 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
             }
         }
     }
-    override fun onActivityPaused(activity: Activity) = Unit
+    override fun onActivityPaused(activity: Activity) { StartupTrace.activity(activity, "activity_paused") }
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
-    override fun onActivityDestroyed(activity: Activity) = Unit
+    override fun onActivityDestroyed(activity: Activity) { StartupTrace.activity(activity, "activity_destroyed") }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)

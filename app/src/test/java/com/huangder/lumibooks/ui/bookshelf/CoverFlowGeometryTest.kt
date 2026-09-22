@@ -105,11 +105,13 @@ class CoverFlowGeometryTest {
         assertEquals(0f, CoverFlowPhysics.resist(-10f, 0), 0f)
     }
 
-    @Test fun `release predicts direction but cannot escape edges or skip unbounded books`() {
+    @Test fun `fast release crosses many books while slow release and edges stay precise`() {
         assertEquals(2, CoverFlowPhysics.releaseTarget(2.37f, 0.1f, 20, true))
-        assertEquals(4, CoverFlowPhysics.releaseTarget(2.37f, 10f, 20, true))
-        assertEquals(1, CoverFlowPhysics.releaseTarget(2.37f, -10f, 20, true))
-        assertEquals(5, CoverFlowPhysics.releaseTarget(2.37f, 10000f, 20, true))
+        assertEquals(3, CoverFlowPhysics.releaseTarget(2.37f, 2f, 20, true))
+        assertEquals(6, CoverFlowPhysics.releaseTarget(2.37f, 10f, 20, true))
+        assertEquals(10, CoverFlowPhysics.releaseTarget(20f, -20f, 100, true))
+        assertEquals(30, CoverFlowPhysics.releaseTarget(20f, 20f, 100, true))
+        assertEquals(19, CoverFlowPhysics.releaseTarget(2.37f, 10000f, 20, true))
         assertEquals(2, CoverFlowPhysics.releaseTarget(2.37f, 10f, 20, false))
         assertEquals(0, CoverFlowPhysics.releaseTarget(0f, -10f, 20, true))
         assertEquals(19, CoverFlowPhysics.releaseTarget(19f, 10f, 20, true))

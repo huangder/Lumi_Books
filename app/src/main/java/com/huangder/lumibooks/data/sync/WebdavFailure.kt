@@ -35,6 +35,12 @@ enum class WebdavErrorKind {
     /** The configured address could not be parsed as an http(s) URL. */
     INVALID_URL,
 
+    /** The server redirected the DAV request in an unsafe or unusable way. */
+    REDIRECT,
+
+    /** The server returned a response that is incompatible with the DAV probe. */
+    INVALID_RESPONSE,
+
     UNKNOWN
 }
 
@@ -51,6 +57,8 @@ enum class WebdavFailureCategory {
     TLS,
     QUOTA,
     INVALID_URL,
+    REDIRECT,
+    INVALID_RESPONSE,
     UNKNOWN
 }
 
@@ -93,6 +101,8 @@ object WebdavFailureClassifier {
             WebdavErrorKind.TIMEOUT -> WebdavFailureCategory.TIMEOUT
             WebdavErrorKind.TLS -> WebdavFailureCategory.TLS
             WebdavErrorKind.INVALID_URL -> WebdavFailureCategory.INVALID_URL
+            WebdavErrorKind.REDIRECT -> WebdavFailureCategory.REDIRECT
+            WebdavErrorKind.INVALID_RESPONSE -> WebdavFailureCategory.INVALID_RESPONSE
             WebdavErrorKind.UNKNOWN -> statusCode
                 ?.let(::kindForStatus)
                 ?.takeIf { it != WebdavErrorKind.UNKNOWN }

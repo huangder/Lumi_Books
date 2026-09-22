@@ -1,5 +1,6 @@
 package com.huangder.lumibooks
 
+import com.huangder.lumibooks.util.diagnostics.StartupTrace
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
@@ -242,6 +243,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        StartupTrace.event("main_new_intent", StartupTrace.intentFields(intent))
         setIntent(intent)
         handleNavigationIntent(intent)
         handleImportIntent(intent)
@@ -676,6 +678,7 @@ class MainActivity : ComponentActivity() {
         } else {
             LaunchThemeController.splashEnabledSnapshot(this)
         }
+        StartupTrace.event("main_splash_decision", mapOf("enabled" to splashEnabledAtLaunch, "source" to if (isExternalBookOpen) "external_book" else if (intent.hasExtra(LaunchThemeController.EXTRA_SPLASH_ENABLED)) "intent" else "cache", "snapshot" to LaunchThemeController.splashEnabledSnapshot(this)))
         val iconStyleAtLaunch = LaunchThemeController.iconStyleSnapshot(this)
 
         setContent {
@@ -715,6 +718,14 @@ class MainActivity : ComponentActivity() {
             var policyDialog by remember { mutableStateOf<PendingPolicyUpdate?>(null) }
             var showSplash by remember { mutableStateOf(splashEnabledAtLaunch) }
 
+            if (BuildConfig.STARTUP_TRACE_ENABLED) {
+                LaunchedEffect(showSplash, eInkModeEnabled) {
+                    StartupTrace.event("splash_visibility_decision", mapOf("showSplash" to showSplash, "eInkMode" to eInkModeEnabled, "visible" to (showSplash && !eInkModeEnabled)))
+                }
+                LaunchedEffect(startupScreen, bookshelfLayoutMode) {
+                    StartupTrace.event("main_content_readiness", mapOf("startupScreen" to startupScreen, "bookshelfLayoutReady" to (bookshelfLayoutMode != null)))
+                }
+            }
             LaunchedEffect(eInkModeEnabled) {
                 if (eInkModeEnabled) {
                     showSplash = false
@@ -785,6 +796,9 @@ class MainActivity : ComponentActivity() {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
+                                .then(com.huangder.lumibooks.util.diagnostics.startupTraceModifier(
+                                    if (startupScreen != null && bookshelfLayoutMode != null) "main_content" else "main_loading"
+                                ))
                                 .then(
                                     if (isLiquidGlass && globalGlassDialogVisible) {
                                         Modifier.layerBackdrop(mainBackdrop)

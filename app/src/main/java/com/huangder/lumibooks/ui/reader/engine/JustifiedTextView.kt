@@ -172,6 +172,17 @@ class JustifiedTextView @JvmOverloads constructor(
     private var spannable: Spannable? = null
     private var layout: StaticLayout? = null
 
+    /**
+     * 建 layout 专用的画笔副本。
+     *
+     * StaticLayout 会保留这把画笔，并在 `getPrimaryHorizontal()` / `getLineRight()` 等查询时
+     * 按它重新度量。若直接复用绘制画笔，坐标就会跟着「上一个字」的 span 状态漂移：绘制层
+     * 按 span 逐字改字号（章首标题的 RelativeSizeSpan 把基准 65px 放大到 91px），布局坐标
+     * 会在这基础上再放大一次（91×1.4＝127px），于是字形是 91px、位置却按 127px 排开，
+     * 标题变成巨大字距。这里始终用基准字号的副本建 layout，绘制画笔怎么改都不影响坐标。
+     */
+    private val layoutPaint = TextPaint(Paint.ANTI_ALIAS_FLAG)
+
     /** The selectable layer owns the canonical Layout; reuse it for visible glyphs. */
     private var sourceLayoutProvider: (() -> Layout?)? = null
 
@@ -200,7 +211,17 @@ class JustifiedTextView @JvmOverloads constructor(
         invalidate()
     }
 
-    private fun currentLayout(): Layout? = sourceLayoutProvider?.invoke() ?: layout
+    private fun currentLayout(): Layout? {
+        val supplied = sourceLayoutProvider?.invoke()
+        val local = layout
+        // A slot can receive new text before its selectable TextView has completed
+        // the next layout pass. Never combine the new Spannable with the old
+        // DynamicLayout: that makes glyph coordinates overlap until a later tap
+        // happens to invalidate the page. The local StaticLayout is built
+        // synchronously by the text setter and is the correct transient fallback.
+        if (supplied != null && spannable != null && supplied.text === spannable) return supplied
+        return local ?: supplied
+    }
 
     /** TTS 褰撳墠鍙ラ珮浜壒ange锛?start, end, color锛夛紝鍦?onDraw 缁樺埗鏁翠綋鍦嗚搴?*/
     private var ttsHighlight: Triple<Int, Int, Int>? = null
@@ -221,6 +242,8 @@ class JustifiedTextView @JvmOverloads constructor(
         set(value) {
             if (field == value) return
             field = value
+            lineOffsetsCache.clear()
+            lineOffsetsCacheLayout = null
             invalidate()
         }
 
@@ -279,15 +302,23 @@ class JustifiedTextView @JvmOverloads constructor(
     // ── StaticLayout 重建 ──
 
     private fun rebuildLayout() {
+        // A selectable TextView may reuse its DynamicLayout after text/span
+        // changes. Layout identity alone cannot validate cached glyph positions.
+        lineOffsetsCache.clear()
+        lineOffsetsCacheLayout = null
         val s = spannable
         if (s == null || s.isEmpty()) {
             layout = null
             return
         }
+        // 绘制画笔回到基准字号：onDraw 会按 span 逐字改它，不能把上次的字号带进布局度量。
+        textPaint.textSize = defaultTextSize
         // 显示大小 / 字体缩放变化后，dip span 必须按最新密度度量。
         textPaint.density = readerSpanPaintDensity(resources.displayMetrics.density)
+        layoutPaint.set(textPaint)
+        layoutPaint.textSize = defaultTextSize
         val w = (width - paddingLeft - paddingRight).coerceAtLeast(1)
-        layout = StaticLayout.Builder.obtain(s, 0, s.length, textPaint, w)
+        layout = StaticLayout.Builder.obtain(s, 0, s.length, layoutPaint, w)
             .setAlignment(Layout.Alignment.ALIGN_NORMAL)
             .setLineSpacing(lineSpacingExtra, lineSpacingMult)
             .setIncludePad(false)
@@ -408,9 +439,11 @@ class JustifiedTextView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         drawTtsHighlightBackground(canvas)
         drawWaveUnderlines(canvas)
-        super.onDraw(canvas)
         val sl = currentLayout() ?: return
         val s = spannable ?: return
+        // The visible layer owns the glyph drawing. Calling TextView's draw
+        // path here would paint the same characters once more when the
+        // selectable layer is temporarily using a stale layout.
         val textStr = s.toString()
 
         var skippedFFFC = 0  // 🔥 统计跳过的 U+FFFC 字符（图片加载失败）

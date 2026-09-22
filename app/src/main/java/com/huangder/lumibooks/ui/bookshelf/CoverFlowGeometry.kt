@@ -73,6 +73,7 @@ internal data class CoverFlowTransform(
 internal object CoverFlowPhysics {
     const val EdgeLimit = 0.35f
     const val VisibilityThreshold = 0.001f
+    const val MaxFlingVelocity = 40f
 
     fun resist(position: Float, count: Int): Float {
         if (count <= 1) return 0f
@@ -84,7 +85,10 @@ internal object CoverFlowPhysics {
     fun releaseTarget(position: Float, velocity: Float, count: Int, motionEnabled: Boolean): Int {
         if (count <= 1) return 0
         val prediction = if (motionEnabled && abs(velocity) >= 0.4f) {
-            (velocity * 0.18f).coerceIn(-3f, 3f)
+            val speed = velocity.coerceIn(-MaxFlingVelocity, MaxFlingVelocity)
+            // Slow drags still park precisely; a fast flick can cross a large library.
+            val coastSeconds = 0.18f + ((abs(speed) - 3f) * 0.025f).coerceIn(0f, 0.32f)
+            speed * coastSeconds
         } else 0f
         return (position + prediction).roundToInt().coerceIn(0, count - 1)
     }

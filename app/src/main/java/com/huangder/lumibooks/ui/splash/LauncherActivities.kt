@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.splash
 
+import com.huangder.lumibooks.util.diagnostics.StartupTrace
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
@@ -12,7 +13,10 @@ import com.huangder.lumibooks.util.LaunchThemeController
 abstract class BaseLauncherActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        startActivity(createDestinationIntent())
+        StartupTrace.activity(this, "launcher_entry", savedInstanceState != null)
+        val destination = createDestinationIntent()
+        StartupTrace.event("launcher_destination", StartupTrace.intentFields(destination))
+        startActivity(destination)
         finish()
         overridePendingTransition(0, 0)
     }
@@ -36,12 +40,13 @@ class DirectLaunchActivity : BaseLauncherActivity() {
  * lets a stale splash alias show the welcome screen for one frame on affected devices.
  */
 private fun Activity.welcomeOrMainIntent(): Intent {
+    val installState = readWelcomeInstallState()
     val welcomeLaunch = resolveWelcomeLaunchSnapshot(
         context = this,
-        dataStoreManager = DataStoreManager(applicationContext)
+        dataStoreManager = DataStoreManager(applicationContext),
+        installState = installState
     )
-    val shouldShowWelcome = readWelcomeInstallState()
-        .shouldShowWelcome(welcomeLaunch.completedInstallTime)
+    val shouldShowWelcome = installState.shouldShowWelcome(welcomeLaunch.completedInstallTime)
     return if (shouldShowWelcome) {
         Intent(this, WelcomeActivity::class.java)
     } else {

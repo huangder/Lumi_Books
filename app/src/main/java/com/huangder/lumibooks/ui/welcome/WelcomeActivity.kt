@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.welcome
 
+import com.huangder.lumibooks.util.diagnostics.StartupTrace
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -69,12 +70,13 @@ class WelcomeActivity : ComponentActivity() {
         )
         val isDebugWelcomePreview = isDebugLanguagePreview || isDebugPolicyPreview || isDebugSupportPreview
         val installState = readWelcomeInstallState()
-        val welcomeLaunch = resolveWelcomeLaunchSnapshot(this, dataStoreManager)
+        val welcomeLaunch = resolveWelcomeLaunchSnapshot(this, dataStoreManager, installState)
         val launchTheme = LaunchThemeController.themeSnapshot(this)
         val completedInstallTime = welcomeLaunch.completedInstallTime
         val splashEnabled = welcomeLaunch.splashEnabled
         val hasCompletedLanguageSetup = welcomeLaunch.hasCompletedLanguageSetup
         val initialLanguage = LocaleHelper.getLanguage(this)
+        StartupTrace.event("welcome_activity_decision", mapOf("debugPreview" to isDebugWelcomePreview, "willShow" to (isDebugWelcomePreview || installState.shouldShowWelcome(completedInstallTime)), "languageSetup" to (isDebugLanguagePreview || !hasCompletedLanguageSetup)))
         if (!isDebugWelcomePreview) {
             LaunchThemeController.deferSplashEnabled(this, splashEnabled)
         }
@@ -128,7 +130,7 @@ class WelcomeActivity : ComponentActivity() {
                 )
                 CompositionLocalProvider(LocalPredictiveBackEnabled provides predictiveBackEnabled) {
                     Surface(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().then(com.huangder.lumibooks.util.diagnostics.startupTraceModifier("welcome")),
                         color = MaterialTheme.colorScheme.background
                     ) {
                         com.huangder.lumibooks.ui.components.LiquidGlassDialogHost(
@@ -183,6 +185,7 @@ class WelcomeActivity : ComponentActivity() {
     }
 
     private fun startMainActivity(splashEnabled: Boolean) {
+        StartupTrace.event("welcome_to_main", mapOf("splashEnabled" to splashEnabled))
         startActivity(LaunchThemeController.mainIntent(this, splashEnabled))
         finish()
     }

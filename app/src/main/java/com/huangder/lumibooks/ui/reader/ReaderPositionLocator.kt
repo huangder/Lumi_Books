@@ -87,3 +87,20 @@ internal fun hasPendingReaderRestore(
     locator: ReaderPositionLocator?,
     chapterFraction: Float
 ): Boolean = locator != null || chapterFraction > 0f
+
+/** Capture before mode switching clears page counters; rapid switches retain the pending anchor. */
+internal fun positionForReaderFlowChange(
+    chapterIndex: Int,
+    pageIndex: Int,
+    pageCount: Int,
+    pendingPosition: ReaderPositionLocator?,
+    pendingFraction: Float,
+    characterOffset: Int?,
+    destination: ReaderPositionFlow
+): ReaderPositionLocator = pendingPosition?.copy(flow = destination) ?: ReaderPositionLocator(
+    chapterIndex = chapterIndex,
+    chapterFraction = (if (pageCount > 0) pageIndex.toFloat() / pageCount else pendingFraction)
+        .coerceIn(0f, 0.9999f),
+    flow = destination,
+    characterOffset = characterOffset
+)

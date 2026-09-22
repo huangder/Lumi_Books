@@ -205,6 +205,22 @@ fun DiagnosticPage(
         }.onFailure { Toast.makeText(context, it.message ?: "Share failed", Toast.LENGTH_LONG).show() }
     }
 
+    fun generateStartup() {
+        isGenerating = true
+        errorMessage = null
+        scope.launch {
+            runCatching {
+                diagnosticSessionManager.buildBundle(DiagnosticBundleRequest(
+                    issueType = DiagnosticIssueType.OTHER,
+                    userDescription = description.trim().ifEmpty { "启动闪屏专项诊断" },
+                    startupOnly = true
+                ))
+            }.onSuccess { file -> generatedFile = file; share(file) }
+                .onFailure { errorMessage = it.message ?: "Export failed" }
+            isGenerating = false
+        }
+    }
+
     fun generate() {
         isGenerating = true
         errorMessage = null
@@ -237,6 +253,22 @@ fun DiagnosticPage(
         title = stringResource(R.string.diagnostic_capture_title),
         onBack = onBack
     ) {
+        if (com.huangder.lumibooks.BuildConfig.STARTUP_TRACE_ENABLED) {
+            Text(
+                stringResource(R.string.startup_diagnostic_title),
+                modifier = Modifier.padding(horizontal = AppSpace.lg),
+                color = AppColors.TextPrimary
+            )
+            Text(
+                stringResource(R.string.startup_diagnostic_help),
+                modifier = Modifier.padding(horizontal = AppSpace.lg),
+                fontSize = AppType.BodySmall,
+                color = AppColors.TextSecondary
+            )
+            TextButton(onClick = { generateStartup() }, enabled = !isGenerating) {
+                Text(stringResource(R.string.startup_diagnostic_export), color = AppColors.Accent)
+            }
+        }
         DiagnosticComposer(
             issueType = issueType,
             onIssueTypeChange = { issueType = it },
@@ -459,6 +491,16 @@ private fun DiagnosticComposer(
             singleLine = false,
             shape = RoundedCornerShape(26.dp),
             colors = TextFieldDefaults.colors(
+                focusedTextColor = AppColors.TextPrimary,
+                unfocusedTextColor = AppColors.TextPrimary,
+                disabledTextColor = AppColors.TextSecondary,
+                focusedLabelColor = AppColors.Accent,
+                unfocusedLabelColor = AppColors.TextSecondary,
+                disabledLabelColor = AppColors.TextSecondary,
+                focusedPlaceholderColor = AppColors.TextSecondary,
+                unfocusedPlaceholderColor = AppColors.TextSecondary,
+                disabledPlaceholderColor = AppColors.TextSecondary,
+                cursorColor = AppColors.Accent,
                 focusedContainerColor = AppColors.BgGray,
                 unfocusedContainerColor = AppColors.BgGray,
                 disabledContainerColor = AppColors.BgGray,

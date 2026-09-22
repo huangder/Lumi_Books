@@ -6,6 +6,40 @@ import org.junit.Test
 
 class ReaderPositionLocatorTest {
     @Test
+    fun switchingToScrollCapturesPageStartBeforeCountersAreReset() {
+        val position = positionForReaderFlowChange(
+            chapterIndex = 4, pageIndex = 8, pageCount = 20,
+            pendingPosition = null, pendingFraction = 0f, characterOffset = 812,
+            destination = ReaderPositionFlow.CONTINUOUS
+        )
+        assertEquals(4, position.chapterIndex)
+        assertEquals(0.4f, position.chapterFraction, 0.0001f)
+        assertEquals(812, position.characterOffset)
+    }
+
+    @Test
+    fun switchingAgainBeforeRestoreKeepsAnchorInsteadOfTemporaryPageZero() {
+        val pending = ReaderPositionLocator(4, 0.4f, ReaderPositionFlow.CONTINUOUS, 812)
+        val position = positionForReaderFlowChange(
+            chapterIndex = 4, pageIndex = 0, pageCount = 0,
+            pendingPosition = pending, pendingFraction = 0.4f, characterOffset = 0,
+            destination = ReaderPositionFlow.PAGED
+        )
+        assertEquals(pending.copy(flow = ReaderPositionFlow.PAGED), position)
+    }
+
+    @Test
+    fun legacyPendingFractionSurvivesMissingPagination() {
+        val position = positionForReaderFlowChange(
+            chapterIndex = 2, pageIndex = 0, pageCount = 0,
+            pendingPosition = null, pendingFraction = 0.6f, characterOffset = null,
+            destination = ReaderPositionFlow.CONTINUOUS
+        )
+        assertEquals(0.6f, position.chapterFraction, 0f)
+        assertNull(position.characterOffset)
+    }
+
+    @Test
     fun continuousTtsPageFractionsMapBackToEveryRequestedPage() {
         val totalPages = 31
 

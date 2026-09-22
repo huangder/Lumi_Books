@@ -23,5 +23,7 @@ data class NoteEntity(
     val createdAt: Long,
     val type: String = "highlight",
     val syncId: String = "",
-    val updatedAt: Long = createdAt
+    val updatedAt: Long = createdAt,
+    @androidx.room.ColumnInfo(defaultValue = "0")
+    val isNote: Boolean = note.isNotBlank() || type == "note"
 )

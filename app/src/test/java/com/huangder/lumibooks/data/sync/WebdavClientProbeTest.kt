@@ -6,6 +6,7 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -33,9 +34,9 @@ class WebdavClientProbeTest {
         }
         server.start()
         try {
-            val code = WebdavClient().probeCollection(server.url("/dav/").toString(), "user", "secret")
+            val result = WebdavClient().probeCollection(server.url("/dav/").toString(), "user", "secret")
 
-            assertEquals(207, code)
+            assertEquals(207, result.statusCode)
             // Exactly one request: the probe must never fall back to GET.
             assertEquals(1, server.requestCount)
             val request = server.takeRequest()
@@ -55,7 +56,7 @@ class WebdavClientProbeTest {
         try {
             assertEquals(
                 200,
-                WebdavClient().probeCollection(server.url("/dav/").toString(), "user", "secret")
+                WebdavClient().probeCollection(server.url("/dav/").toString(), "user", "secret").statusCode
             )
         } finally {
             server.shutdown()
@@ -75,9 +76,9 @@ class WebdavClientProbeTest {
         }
         server.start()
         try {
-            val code = WebdavClient().probeCollection(server.url("/dav").toString(), "user", "secret")
+            val result = WebdavClient().probeCollection(server.url("/dav").toString(), "user", "secret")
 
-            assertEquals(207, code)
+            assertEquals(207, result.statusCode)
             assertEquals(2, server.requestCount)
             assertEquals("/dav", server.takeRequest().path)
             assertEquals("/dav/", server.takeRequest().path)
@@ -97,11 +98,168 @@ class WebdavClientProbeTest {
             try {
                 assertEquals(
                     code,
-                    WebdavClient().probeCollection(server.url("/dav/").toString(), "user", "secret")
+                    WebdavClient().probeCollection(server.url("/dav/").toString(), "user", "secret").statusCode
                 )
             } finally {
                 server.shutdown()
             }
+        }
+    }
+
+    @Test
+    fun `same origin redirects preserve PROPFIND depth and authorization`() = runTest {
+        for (code in listOf(301, 302, 303, 307, 308)) {
+            val server = MockWebServer()
+            server.enqueue(MockResponse().setResponseCode(code).setHeader("Location", "/dav/final/"))
+            server.enqueue(MockResponse().setResponseCode(207).setBody(MULTISTATUS))
+            server.start()
+            try {
+                val result = WebdavClient().probeCollection(
+                    server.url("/dav/start/").toString(),
+                    "user",
+                    "secret"
+                )
+
+                assertEquals(207, result.statusCode)
+                assertTrue(result.redirected)
+                assertEquals(1, result.redirectCount)
+                val first = server.takeRequest()
+                val redirected = server.takeRequest()
+                assertEquals("PROPFIND", first.method)
+                assertEquals("PROPFIND", redirected.method)
+                assertEquals("0", redirected.getHeader("Depth"))
+                assertEquals(first.getHeader("Authorization"), redirected.getHeader("Authorization"))
+            } finally {
+                server.shutdown()
+            }
+        }
+    }
+
+    @Test
+    fun `cross host redirect is rejected without forwarding credentials`() = runTest {
+        val target = MockWebServer()
+        val origin = MockWebServer()
+        target.start()
+        origin.enqueue(
+            MockResponse()
+                .setResponseCode(302)
+                .setHeader("Location", target.url("/login").toString())
+        )
+        origin.start()
+        try {
+            val error = captureWebdavException {
+                WebdavClient().probeCollection(origin.url("/dav/").toString(), "user", "secret")
+            }
+
+            assertNotNull(error)
+            assertEquals(WebdavErrorKind.REDIRECT, error!!.kind)
+            assertEquals(target.hostName, error.finalUrl?.let(WebdavUrl::host))
+            assertEquals(0, target.requestCount)
+        } finally {
+            origin.shutdown()
+            target.shutdown()
+        }
+    }
+
+    @Test
+    fun `redirect without location is reported clearly`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(302))
+        server.start()
+        try {
+            val error = captureWebdavException {
+                WebdavClient().probeCollection(server.url("/dav/").toString(), "user", "secret")
+            }
+
+            assertEquals(WebdavErrorKind.REDIRECT, error!!.kind)
+            assertTrue(error.message.orEmpty().contains("Location"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `redirect loop is reported clearly`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(302).setHeader("Location", "/dav/b/"))
+        server.enqueue(MockResponse().setResponseCode(302).setHeader("Location", "/dav/a/"))
+        server.start()
+        try {
+            val error = captureWebdavException {
+                WebdavClient().probeCollection(server.url("/dav/a/").toString(), "user", "secret")
+            }
+
+            assertEquals(WebdavErrorKind.REDIRECT, error!!.kind)
+            assertTrue(error.message.orEmpty().contains("loop"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `redirect chain stops after the configured limit`() = runTest {
+        val server = MockWebServer()
+        repeat(4) { index ->
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(307)
+                    .setHeader("Location", "/dav/${index + 1}/")
+            )
+        }
+        server.start()
+        try {
+            val error = captureWebdavException {
+                WebdavClient().probeCollection(server.url("/dav/0/").toString(), "user", "secret")
+            }
+
+            assertEquals(WebdavErrorKind.REDIRECT, error!!.kind)
+            assertEquals(3, error.redirectCount)
+            assertTrue(error.message.orEmpty().contains("limit"))
+            assertEquals(4, server.requestCount)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `probe retries without xml body when gateway rejects it`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(415))
+        server.enqueue(MockResponse().setResponseCode(207).setBody(MULTISTATUS))
+        server.start()
+        try {
+            val result = WebdavClient().probeCollection(server.url("/dav/").toString(), "user", "secret")
+
+            assertEquals(207, result.statusCode)
+            val withBody = server.takeRequest()
+            val withoutBody = server.takeRequest()
+            assertTrue(withBody.bodySize > 0)
+            assertEquals(0L, withoutBody.bodySize)
+            assertEquals("PROPFIND", withoutBody.method)
+            assertEquals("0", withoutBody.getHeader("Depth"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `html login page is marked as a non DAV response`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "text/html")
+                .setBody("<html><body><form>Sign in</form></body></html>")
+        )
+        server.start()
+        try {
+            val result = WebdavClient().probeCollection(server.url("/dav/").toString(), "user", "secret")
+
+            assertEquals(200, result.statusCode)
+            assertTrue(result.htmlResponse)
+            assertFalse(result.responseSummary.isNullOrBlank())
+        } finally {
+            server.shutdown()
         }
     }
 

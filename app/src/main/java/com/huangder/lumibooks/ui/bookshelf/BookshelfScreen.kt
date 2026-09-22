@@ -484,6 +484,18 @@ fun BookshelfScreen(
     val currentLevelBooks = remember(uiState.books, uiState.bookFolderLinks, renderedFolderId) {
         booksAtFolderLevel(uiState.books, uiState.bookFolderLinks, renderedFolderId)
     }
+    val layoutBooks = remember(
+        uiState.books,
+        uiState.bookFolderLinks,
+        renderedFolderId,
+        effectiveLayoutMode
+    ) {
+        if (effectiveLayoutMode == BookshelfLayout.CoverFlow) {
+            booksForCoverFlow(uiState.books, uiState.bookFolderLinks, renderedFolderId)
+        } else {
+            currentLevelBooks
+        }
+    }
     val folderCounts = remember(uiState.folders, uiState.bookFolderLinks) {
         folderBookCounts(uiState.folders, uiState.bookFolderLinks)
     }
@@ -515,13 +527,13 @@ fun BookshelfScreen(
         }
     }
     val filteredBooks = when (val filter = selectedFilter) {
-        BookshelfFilter.All -> currentLevelBooks
-        BookshelfFilter.EpubMobi -> currentLevelBooks.filter(Book::isEpubMobi)
-        BookshelfFilter.Pdf -> currentLevelBooks.filter { it.format == BookFormat.PDF }
-        BookshelfFilter.Txt -> currentLevelBooks.filter { it.format == BookFormat.TXT }
-        BookshelfFilter.Comic -> currentLevelBooks.filter { it.format == BookFormat.CBZ }
-        BookshelfFilter.Favorites -> currentLevelBooks.filter { it.isFavorite }
-        is BookshelfFilter.Tag -> currentLevelBooks.filter { book ->
+        BookshelfFilter.All -> layoutBooks
+        BookshelfFilter.EpubMobi -> layoutBooks.filter(Book::isEpubMobi)
+        BookshelfFilter.Pdf -> layoutBooks.filter { it.format == BookFormat.PDF }
+        BookshelfFilter.Txt -> layoutBooks.filter { it.format == BookFormat.TXT }
+        BookshelfFilter.Comic -> layoutBooks.filter { it.format == BookFormat.CBZ }
+        BookshelfFilter.Favorites -> layoutBooks.filter { it.isFavorite }
+        is BookshelfFilter.Tag -> layoutBooks.filter { book ->
             filter.tagId in tagIdsByBook[book.id].orEmpty()
         }
     }
@@ -596,7 +608,7 @@ fun BookshelfScreen(
     }
     val chooseCoverFromList: (Book) -> Unit = { book ->
         expandedListBookId = null
-        launchCoverPicker(book)
+        coverSourceBook = book
     }
     val removeCoverFromList: (Book) -> Unit = { book ->
         expandedListBookId = null
@@ -1036,7 +1048,7 @@ fun BookshelfScreen(
                 },
                 onCustomCover = { book ->
                     expandedSearchBookId = null
-                    launchCoverPicker(book)
+                    coverSourceBook = book
                 },
                 onRemoveCustomCover = { book ->
                     expandedSearchBookId = null

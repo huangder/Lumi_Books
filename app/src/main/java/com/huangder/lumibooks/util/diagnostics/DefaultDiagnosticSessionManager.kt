@@ -58,7 +58,9 @@ private class DiagnosticBundleBuilder(
             addAll(logger.snapshot().filter { it.timestamp >= now - eventWindowMs })
             if (request.includePreviousCrash) logger.previousCrash()?.let(::add)
         }
-        val selected = selectEvents(all, request, session).takeLast(maxEvents)
+        val selected = if (request.startupOnly && BuildConfig.STARTUP_TRACE_ENABLED) {
+            selectStartupEvents(logger.snapshot(), now, maxEvents)
+        } else selectEvents(all, request, session).takeLast(maxEvents)
         val outputDir = File(context.cacheDir, "diagnostics").also { it.mkdirs() }
         outputDir.listFiles()?.filter { now - it.lastModified() > 24 * 60 * 60 * 1000L }?.forEach { it.delete() }
         val output = File(outputDir, "lumi-diagnostic-${now}.zip")
@@ -84,6 +86,7 @@ private class DiagnosticBundleBuilder(
             putText(zip, "errors.json", "[${errors.joinToString(",") { it.toString(2) }}]")
             putText(zip, "summary.md", summary(request, selected, errors, session).take(MAX_SUMMARY_BYTES))
             putText(zip, "README.txt", readme())
+            if (BuildConfig.STARTUP_TRACE_ENABLED) putText(zip, "startup-summary.md", startupSummary(selected))
 
             zip.putNextEntry(ZipEntry("events.ndjson.gz"))
             val gzip = GZIPOutputStream(NonClosingOutputStream(zip))
@@ -131,6 +134,9 @@ private class DiagnosticBundleBuilder(
         put("appId", context.packageName)
         put("buildType", BuildConfig.BUILD_TYPE)
         put("diagnosticBuild", BuildConfig.DIAGNOSTIC_BUILD)
+        put("startupOnly", request.startupOnly)
+        put("startupTraceEnabled", BuildConfig.STARTUP_TRACE_ENABLED)
+        put("debuggable", (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0)
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0) }.getOrNull()?.let { info ->
             put("appVersion", info.versionName)
             put("buildVersion", if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode)

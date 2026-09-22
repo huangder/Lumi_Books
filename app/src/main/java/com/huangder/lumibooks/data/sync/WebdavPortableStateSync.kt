@@ -55,7 +55,7 @@ class WebdavPortableStateSync @Inject constructor(
                         files[asset.id] = localFile
                         if (asset.id !in remoteAssetIds) {
                             client.uploadStream(
-                                url = "$serverUrl/$root/assets/${asset.fileName}",
+                                url = WebdavUrl.append(serverUrl, root, "assets", asset.fileName),
                                 contentLength = asset.sizeBytes,
                                 inputStreamProvider = localSource.openStream,
                                 username = config.username,
@@ -66,7 +66,7 @@ class WebdavPortableStateSync @Inject constructor(
                     } else if (assetReferenced(localPayload, asset.id)) {
                         val target = File(workDir, asset.fileName)
                         val result = client.downloadToFile(
-                            "$serverUrl/$root/assets/${asset.fileName}",
+                            WebdavUrl.append(serverUrl, root, "assets", asset.fileName),
                             target,
                             config.username,
                             password,
@@ -83,7 +83,7 @@ class WebdavPortableStateSync @Inject constructor(
                     try {
                         if (remoteVersioned == null || remoteVersioned.etag != null) {
                             client.uploadConditional(
-                                "$serverUrl/$root/state.json",
+                                WebdavUrl.append(serverUrl, root, "state.json"),
                                 bytes,
                                 config.username,
                                 password,
@@ -92,7 +92,7 @@ class WebdavPortableStateSync @Inject constructor(
                             )
                         } else {
                             client.upload(
-                                "$serverUrl/$root/state.json",
+                                WebdavUrl.append(serverUrl, root, "state.json"),
                                 bytes,
                                 config.username,
                                 password,
@@ -103,7 +103,7 @@ class WebdavPortableStateSync @Inject constructor(
                         if (error.statusCode == 412 && attempt + 1 < MAX_CONFLICT_RETRIES) return@repeat
                         if (error.statusCode in setOf(400, 405, 501)) {
                             client.upload(
-                                "$serverUrl/$root/state.json",
+                                WebdavUrl.append(serverUrl, root, "state.json"),
                                 bytes,
                                 config.username,
                                 password,
@@ -138,7 +138,7 @@ class WebdavPortableStateSync @Inject constructor(
         username: String,
         password: String
     ): WebdavVersionedData? = try {
-        client.downloadVersioned("$serverUrl/$root/state.json", username, password)
+        client.downloadVersioned(WebdavUrl.append(serverUrl, root, "state.json"), username, password)
     } catch (error: WebdavException) {
         if (error.statusCode == 404) null else throw error
     }
@@ -248,14 +248,18 @@ class WebdavPortableStateSync @Inject constructor(
     ) {
         val referencedNames = committed.assets.mapTo(mutableSetOf()) { it.fileName }
         runCatching {
-            client.listDirectory("$serverUrl/$root/assets", username, password)
+            client.listDirectory(WebdavUrl.append(serverUrl, root, "assets"), username, password)
                 .asSequence()
                 .filterNot { it.isCollection }
                 .map { it.href.substringBefore('?').trimEnd('/').substringAfterLast('/') }
                 .filter { it.matches(Regex("[a-f0-9]{64}\\.[a-z0-9]{1,10}")) }
                 .filterNot { it in referencedNames }
                 .forEach { name ->
-                    client.delete("$serverUrl/$root/assets/$name", username, password)
+                    client.delete(
+                        WebdavUrl.appendEncoded(WebdavUrl.append(serverUrl, root, "assets"), name),
+                        username,
+                        password
+                    )
                 }
         }
     }

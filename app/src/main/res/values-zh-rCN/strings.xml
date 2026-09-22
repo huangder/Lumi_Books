@@ -845,6 +845,8 @@
     <string name="webdav_error_timeout">连接超时：请检查网络、服务器状态或地址是否正确</string>
     <string name="webdav_error_tls">证书校验失败：服务器证书无效或为自签名证书，请改用受信任的 HTTPS 证书</string>
     <string name="webdav_error_invalid_url">服务器地址无效：请以 http:// 或 https:// 开头</string>
+    <string name="webdav_error_redirect">服务器将 WebDAV 请求重定向到了其他地址（目标主机：%1$s），请直接填写最终 WebDAV 地址</string>
+    <string name="webdav_error_invalid_response">服务器返回了无法识别的 WebDAV 响应（HTTP %1$s），可能被登录页、反向代理或网关拦截</string>
     <string name="webdav_server_url_help">建议填写 WebDAV 的完整访问地址，例如 https://dav.example.com/dav/，Nextcloud 为 https://主机/remote.php/dav/files/用户名/</string>
     <string name="webdav_sync_success">同步完成</string>
     <string name="webdav_sync_failed">同步失败，请检查网络和服务器状态</string>

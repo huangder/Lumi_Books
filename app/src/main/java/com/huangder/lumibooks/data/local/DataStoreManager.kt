@@ -49,6 +49,7 @@ import com.huangder.lumibooks.domain.model.ReaderFirstOpenHintPolicy
 import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
 import com.huangder.lumibooks.util.LaunchThemeController
 import com.huangder.lumibooks.util.LaunchThemeSnapshot
+import com.huangder.lumibooks.util.WelcomeLaunchSnapshot
 import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.util.parser.TxtTocRule
 import com.huangder.lumibooks.util.parser.TxtTocRuleBuiltIns
@@ -920,7 +921,7 @@ class DataStoreManager @Inject constructor(
     }
 
     val bookshelfSortMode: Flow<String> = context.dataStore.data.map { preferences ->
-        preferences[BOOKSHELF_SORT_MODE] ?: "LAST_READ"
+        preferences[BOOKSHELF_SORT_MODE] ?: "DATE_ADDED"
     }
 
     /** Single DataStore read used to refresh the non-blocking Activity launch snapshot. */
@@ -949,6 +950,15 @@ class DataStoreManager @Inject constructor(
 
     val lastReadBook: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[LAST_READ_BOOK]
+    }
+
+    // Read routing fields from one DataStore revision, not independently combined flows.
+    val welcomeLaunchSnapshot: Flow<WelcomeLaunchSnapshot> = context.dataStore.data.map { preferences ->
+        WelcomeLaunchSnapshot(
+            completedInstallTime = preferences[COMPLETED_WELCOME_INSTALL_TIME] ?: 0L,
+            splashEnabled = preferences[SPLASH_ENABLED] ?: true,
+            hasCompletedLanguageSetup = preferences[HAS_COMPLETED_WELCOME_LANGUAGE_SETUP] ?: false
+        )
     }
 
     val hasSeenWelcome: Flow<Boolean> = context.dataStore.data.map { preferences ->

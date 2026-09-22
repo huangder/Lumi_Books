@@ -62,6 +62,11 @@ class TtsController(
     private val _currentSentence = MutableStateFlow<TtsTextSegment?>(null)
     val currentSentence: StateFlow<TtsTextSegment?> = _currentSentence.asStateFlow()
 
+    // Keep the display sentence separate from currentSentence: Android TTS range callbacks
+    // refine currentSentence to a word or phrase for reader highlighting.
+    private val _currentUtterance = MutableStateFlow<TtsTextSegment?>(null)
+    val currentUtterance: StateFlow<TtsTextSegment?> = _currentUtterance.asStateFlow()
+
     private val _pageTurnRequests = MutableSharedFlow<TtsPageTurnRequest>(replay = 1, extraBufferCapacity = 1)
     val pageTurnRequests: SharedFlow<TtsPageTurnRequest> = _pageTurnRequests.asSharedFlow()
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -1020,6 +1025,7 @@ class TtsController(
         activeUtteranceId = utteranceId
         activeSegment = segment
         activeSentenceSegment = sentence
+        _currentUtterance.value = segment
         _currentSentence.value = if (activeEngine.isExternal) clause else sentence
         logTtsEvent(
             event = "utterance_requested",
@@ -1043,7 +1049,6 @@ class TtsController(
         if (result.isFailure && activeUtteranceId == utteranceId) {
             activeUtteranceId = null
             activeSegment = null
-            _currentSentence.value = null
             _errors.tryEmit(result.exceptionOrNull())
             stopInternal()
             return
@@ -1236,6 +1241,7 @@ class TtsController(
         sentenceIndex = 0
         _currentPage.value = null
         _currentSentence.value = null
+        _currentUtterance.value = null
         _activeBookId.value = null
         sessionEngine = null
         pendingResume = null

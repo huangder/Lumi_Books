@@ -18,6 +18,16 @@ internal fun booksAtFolderLevel(
     return books.filter { book -> folderByBook[book.id] == folderId }
 }
 
+internal fun booksForCoverFlow(
+    books: List<Book>,
+    links: List<BookFolderLink>,
+    folderId: String?
+): List<Book> = if (folderId == null) {
+    books
+} else {
+    booksAtFolderLevel(books, links, folderId)
+}
+
 internal fun folderPath(
     folders: List<LibraryFolder>,
     folderId: String?

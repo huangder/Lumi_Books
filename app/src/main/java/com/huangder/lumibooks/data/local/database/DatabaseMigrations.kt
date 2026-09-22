@@ -187,4 +187,11 @@ object DatabaseMigrations {
             db.execSQL("ALTER TABLE folders ADD COLUMN storageMissing INTEGER NOT NULL DEFAULT 0")
         }
     }
+    val MIGRATION_12_13 = object : Migration(12, 13) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE notes ADD COLUMN isNote INTEGER NOT NULL DEFAULT 0")
+            // Old empty notes and highlights are indistinguishable. Preserve their stored style.
+            db.execSQL("UPDATE notes SET isNote = 1 WHERE length(trim(note)) > 0 OR type = 'note'")
+        }
+    }
 }

@@ -39,6 +39,24 @@ class BookshelfFolderHierarchyTest {
     }
 
     @Test
+    fun coverFlowShowsTheWholeLibraryAtRootAndDirectBooksInsideAFolder() {
+        val rootBook = book("root")
+        val directBook = book("direct")
+        val descendantBook = book("descendant")
+        val unrelatedBook = book("unrelated")
+        val books = listOf(rootBook, directBook, descendantBook, unrelatedBook)
+        val links = listOf(
+            BookFolderLink(directBook.id, rootA.id),
+            BookFolderLink(descendantBook.id, grandchildA.id),
+            BookFolderLink(unrelatedBook.id, rootB.id)
+        )
+
+        assertEquals(books, booksForCoverFlow(books, links, null))
+        assertEquals(listOf(directBook), booksForCoverFlow(books, links, rootA.id))
+        assertEquals(listOf(descendantBook), booksForCoverFlow(books, links, grandchildA.id))
+    }
+
+    @Test
     fun countsBooksAcrossAllDescendantFolders() {
         val links = listOf(
             BookFolderLink("book-1", rootA.id),

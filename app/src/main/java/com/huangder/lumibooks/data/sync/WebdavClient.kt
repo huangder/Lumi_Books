@@ -44,29 +44,27 @@ class WebdavClient @Inject constructor() {
         .followRedirects(true)
         .build()
 
+    /** Probe requests must not let OkHttp turn a redirected PROPFIND into a GET. */
+    private val probeClient = client.newBuilder()
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .build()
+
     // ── Authentication ──────────────────────────────────────────────
 
     private fun authHeader(username: String, password: String): String =
         Credentials.basic(username, password)
-
-    // ── URL helpers ─────────────────────────────────────────────────
-
-    private fun joinUrl(base: String, vararg segments: String): String {
-        val sb = StringBuilder(base.trimEnd('/'))
-        for (s in segments) {
-            if (s.isEmpty()) continue
-            sb.append('/')
-            sb.append(s.trim('/'))
-        }
-        return sb.toString()
-    }
 
     // ── Request helpers ────────────────────────────────────────────
 
     /** Build a request builder with the shared Authorization header.
      *  A malformed address (missing scheme, illegal characters, ...) is reported as a
      *  [WebdavException] so callers never have to handle [IllegalArgumentException]. */
-    private fun requestFor(url: String, username: String, password: String): Request.Builder =
+    private fun requestFor(
+        url: String,
+        username: String,
+        password: String
+    ): Request.Builder =
         try {
             Request.Builder()
                 .url(url)
@@ -82,8 +80,8 @@ class WebdavClient @Inject constructor() {
 
     /** Execute [request], converting transport failures (DNS, timeout, TLS, refused, ...) into
      *  [WebdavException] with a classified [WebdavErrorKind]. Cancelled calls stay cancellations. */
-    private fun execute(request: Request): okhttp3.Response {
-        val call = client.newCall(request)
+    private fun execute(request: Request, httpClient: OkHttpClient = client): okhttp3.Response {
+        val call = httpClient.newCall(request)
         return try {
             call.execute()
         } catch (error: IOException) {
@@ -114,8 +112,9 @@ class WebdavClient @Inject constructor() {
      * plenty of servers (Nextcloud's `/remote.php/dav/` for example) answer it with 404, which
      * used to make a perfectly valid configuration look broken.
      *
-     * Returns the final HTTP status code (200/207 mean the server speaks WebDAV and accepted the
-     * credentials). Throws [WebdavException] only for transport failures / malformed addresses.
+     * Returns the final response metadata (200/207 mean the server speaks WebDAV and accepted the
+     * credentials). Throws [WebdavException] only for transport failures, malformed addresses, or
+     * unsafe/unusable redirects.
      *
      * Some servers only serve a collection at the `.../` form, so when the address has no trailing
      * slash and comes back as a redirect or 404/405 we retry once with a trailing slash.
@@ -125,25 +124,177 @@ class WebdavClient @Inject constructor() {
         url: String,
         username: String,
         password: String
-    ): Int = withContext(Dispatchers.IO) {
-        val base = url.trim()
-        val withSlash = if (base.endsWith('/')) base else "$base/"
+    ): WebdavProbeResult = withContext(Dispatchers.IO) {
+        val initialUrl = WebdavUrl.parse(url).toString()
+        var currentUrl = initialUrl
+        var redirectCount = 0
+        val visited = mutableSetOf(initialUrl)
+        var bodyRetried = false
+        var probeResult: WebdavProbeResult? = null
 
-        var code = propfindStatus(base, username, password)
-        val shouldRetry = (code in REDIRECT_CODES || code == 404 || code == 405) && withSlash != base
-        if (shouldRetry) {
-            code = propfindStatus(withSlash, username, password)
+        while (true) {
+            val response = propfindProbe(currentUrl, username, password, includeBody = !bodyRetried)
+            val code = response.code
+            val requestUrl = response.request.url
+            val location = response.header("Location")
+            val server = response.header("Server")
+            val requestId = response.header("X-Request-Id")
+                ?: response.header("X-Nutstore-Request-Id")
+                ?: response.header("X-Cloud-Trace-Context")
+            val contentType = response.header("Content-Type")
+            val davHeader = response.header("DAV")
+            val responseBody = responseBody(response)
+            response.close()
+
+            // A few DAV gateways reject an XML body even though they support a bodyless PROPFIND.
+            if (code in PROBE_BODY_RETRY_CODES && !bodyRetried) {
+                bodyRetried = true
+                continue
+            }
+
+            if (code !in REDIRECT_CODES) {
+                // Preserve the previous DAV compatibility behavior without delegating redirects to
+                // OkHttp: some servers expose a collection only at the slash-terminated URL.
+                if ((code == 404 || code == 405) && redirectCount == 0 && !currentUrl.endsWith('/')) {
+                    val slashUrl = "$currentUrl/"
+                    if (visited.add(slashUrl)) {
+                        currentUrl = slashUrl
+                        bodyRetried = false
+                        continue
+                    }
+                }
+                probeResult = WebdavProbeResult(
+                    initialUrl = initialUrl,
+                    finalUrl = currentUrl,
+                    statusCode = code,
+                    redirected = redirectCount > 0,
+                    redirectCount = redirectCount,
+                    server = server,
+                    requestId = requestId,
+                    responseSummary = responseBody.summary,
+                    contentType = contentType,
+                    davHeader = davHeader,
+                    htmlResponse = responseBody.looksHtml ||
+                        contentType.orEmpty().startsWith("text/html", ignoreCase = true)
+                )
+                break
+            }
+
+            if (redirectCount >= MAX_PROBE_REDIRECTS) {
+                throw redirectException(
+                    message = "WebDAV probe exceeded the redirect limit",
+                    statusCode = code,
+                    initialUrl = initialUrl,
+                    finalUrl = currentUrl,
+                    redirectCount = redirectCount,
+                    server = server,
+                    requestId = requestId,
+                    responseSummary = responseBody.summary
+                )
+            }
+            val target = location
+                ?.takeIf { it.isNotBlank() }
+                ?.let(requestUrl::resolve)
+                ?: throw redirectException(
+                    message = "WebDAV server returned a redirect without a usable Location",
+                    statusCode = code,
+                    initialUrl = initialUrl,
+                    finalUrl = currentUrl,
+                    redirectCount = redirectCount,
+                    server = server,
+                    requestId = requestId,
+                    responseSummary = responseBody.summary
+                )
+            if (!isSafeRedirect(requestUrl, target)) {
+                throw redirectException(
+                    message = "WebDAV server redirected to a different host or insecure URL",
+                    statusCode = code,
+                    initialUrl = initialUrl,
+                    finalUrl = target.toString(),
+                    redirectCount = redirectCount + 1,
+                    server = server,
+                    requestId = requestId,
+                    responseSummary = responseBody.summary
+                )
+            }
+            val targetUrl = target.toString()
+            if (!visited.add(targetUrl)) {
+                throw redirectException(
+                    message = "WebDAV server returned a redirect loop",
+                    statusCode = code,
+                    initialUrl = initialUrl,
+                    finalUrl = targetUrl,
+                    redirectCount = redirectCount + 1,
+                    server = server,
+                    requestId = requestId,
+                    responseSummary = responseBody.summary
+                )
+            }
+            currentUrl = targetUrl
+            redirectCount++
+            bodyRetried = false
         }
-        code
+        probeResult
     }
 
-    private fun propfindStatus(url: String, username: String, password: String): Int {
+    private fun propfindProbe(
+        url: String,
+        username: String,
+        password: String,
+        includeBody: Boolean
+    ): okhttp3.Response {
         val request = requestFor(url, username, password)
             .header("Depth", "0")
-            .method("PROPFIND", PROPFIND_BODY_DEPTH_0.toRequestBody(XML_MEDIA_TYPE))
+            .method(
+                "PROPFIND",
+                if (includeBody) PROPFIND_BODY_DEPTH_0.toRequestBody(XML_MEDIA_TYPE) else null
+            )
             .build()
-        return execute(request).use { it.code }
+        return execute(request, probeClient)
     }
+
+    private fun isSafeRedirect(from: okhttp3.HttpUrl, to: okhttp3.HttpUrl): Boolean {
+        val sameHost = from.host == to.host
+        val sameOrigin = sameHost && from.scheme == to.scheme && from.port == to.port
+        val allowedSchemeChange = from.scheme == "http" && to.scheme == "https"
+        return sameOrigin || (sameHost && allowedSchemeChange)
+    }
+
+    private fun responseBody(response: okhttp3.Response): ProbeResponseBody {
+        val body = runCatching { response.body?.string().orEmpty() }.getOrDefault("")
+        val summary = body
+            .replace(Regex("<[^>]*>"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .take(300)
+            .takeIf { it.isNotBlank() }
+        return ProbeResponseBody(
+            summary = summary,
+            looksHtml = Regex("(?is)<\\s*html\\b|<\\s*body\\b|<\\s*form\\b").containsMatchIn(body)
+        )
+    }
+
+    private fun redirectException(
+        message: String,
+        statusCode: Int,
+        initialUrl: String,
+        finalUrl: String,
+        redirectCount: Int,
+        server: String?,
+        requestId: String?,
+        responseSummary: String?
+    ) = WebdavException(
+        message = message,
+        statusCode = statusCode,
+        kind = WebdavErrorKind.REDIRECT,
+        initialUrl = initialUrl,
+        finalUrl = finalUrl,
+        redirected = true,
+        redirectCount = redirectCount,
+        server = server,
+        requestId = requestId,
+        responseSummary = responseSummary
+    )
 
     // ── PROPFIND (list directory) ───────────────────────────────────
 
@@ -466,7 +617,7 @@ class WebdavClient @Inject constructor() {
         val segments = path.trim('/').split('/')
         var current = serverUrl
         for (seg in segments) {
-            current = joinUrl(current, seg)
+            current = WebdavUrl.append(current, seg)
             createDirectory(current, username, password)
         }
     }
@@ -610,6 +761,11 @@ class WebdavClient @Inject constructor() {
         /** Redirects that mean "this collection lives at another (usually slashed) URL". */
         val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
 
+        /** Gateways that reject a PROPFIND body but accept the standards-compatible empty form. */
+        val PROBE_BODY_RETRY_CODES = setOf(400, 415)
+
+        const val MAX_PROBE_REDIRECTS = 3
+
         /** Marker for MKCOL 409 responses so the UI can explain the missing parent directory. */
         const val PARENT_COLLECTION_MISSING = "ParentCollectionMissing"
 
@@ -658,6 +814,25 @@ data class WebdavResource(
     val lastModified: Long
 )
 
+data class WebdavProbeResult(
+    val initialUrl: String,
+    val finalUrl: String,
+    val statusCode: Int,
+    val redirected: Boolean,
+    val redirectCount: Int,
+    val server: String?,
+    val requestId: String?,
+    val responseSummary: String?,
+    val contentType: String? = null,
+    val davHeader: String? = null,
+    val htmlResponse: Boolean = false
+)
+
+private data class ProbeResponseBody(
+    val summary: String?,
+    val looksHtml: Boolean
+)
+
 class WebdavException(
     message: String,
     val statusCode: Int? = null,
@@ -666,5 +841,15 @@ class WebdavException(
     val requiredBytes: Long? = null,
     val serverDetail: String? = null,
     val kind: WebdavErrorKind = WebdavErrorKind.UNKNOWN,
-    cause: Throwable? = null
+    cause: Throwable? = null,
+    val initialUrl: String? = null,
+    val finalUrl: String? = null,
+    val redirected: Boolean = false,
+    val redirectCount: Int = 0,
+    val server: String? = null,
+    val requestId: String? = null,
+    val responseSummary: String? = null,
+    val contentType: String? = null,
+    val davHeader: String? = null,
+    val htmlResponse: Boolean = false
 ) : Exception(message, cause)

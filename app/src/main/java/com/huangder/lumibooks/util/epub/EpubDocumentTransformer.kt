@@ -2861,17 +2861,56 @@ private const val READER_SCRIPT_PART_3 = """
     );
   }
 
+  function previewImageFromTarget(target) {
+    if (!target || !target.closest) return null;
+    var image = target.closest('img,image,svg');
+    if (image) return image;
+    // A publisher may put a transparent caption/link layer over the illustration.
+    return target.matches && target.matches('picture,a') && target.querySelector ?
+      target.querySelector('img,image,svg') : null;
+  }
+
+  function previewImageAt(target, x, y) {
+    var image = previewImageFromTarget(target);
+    if (image) {
+      var bounds = image.getBoundingClientRect();
+      if (x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom) return image;
+    }
+    var layers = document.elementsFromPoint ? document.elementsFromPoint(x, y) : [];
+    for (var i = 0; i < layers.length; i++) {
+      if (layers[i] === document.body || layers[i] === document.documentElement) continue;
+      image = previewImageFromTarget(layers[i]);
+      if (!image) continue;
+      var rect = image.getBoundingClientRect();
+      if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) return image;
+    }
+    return null;
+  }
+
   function imageFromTarget(target) {
-    var image = target && target.closest ? target.closest('img') : null;
+    var image = previewImageFromTarget(target);
     if (!image) return null;
     var isCoverMedia = image.getAttribute('data-lumi-cover-media') === 'true';
     if ((!isCoverMedia && interactiveFromTarget(image)) || image.hasAttribute('usemap') || image.hasAttribute('ismap')) return null;
     return image;
   }
 
+  function imagePreviewSource(image) {
+    var tag = String(image.localName || '').toLowerCase();
+    if (tag === 'svg') {
+      var embedded = image.querySelectorAll('image');
+      if (embedded.length === 1) return imagePreviewSource(embedded[0]);
+      return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(image));
+    }
+    var source = image.currentSrc || (typeof image.src === 'string' ? image.src : '') ||
+      image.getAttribute('src') || image.getAttribute('href') || image.getAttribute('xlink:href') || '';
+    if (!String(source).trim()) return '';
+    try { return new URL(source, document.baseURI).href; } catch (_) { return String(source).trim(); }
+  }
+
   function postImagePreview(image) {
     if (!image) return false;
-    var source = String(image.currentSrc || image.src || image.getAttribute('src') || '').trim();
+    var source = imagePreviewSource(image);
     if (!source) return false;
     var bounds = image.getBoundingClientRect();
     var width = viewportWidth();
@@ -3307,7 +3346,7 @@ private const val READER_SCRIPT_PART_3 = """
     // Footnote markers are often tiny images wrapped in an anchor. Let their
     // short tap reach the link handler instead of arming image preview.
     beginImageLongPress(
-      initialAnchor && isFootnoteReference(initialAnchor) ? null : imageFromTarget(event.target)
+      initialAnchor && isFootnoteReference(initialAnchor) ? null : previewImageAt(event.target, touch.clientX, touch.clientY)
     );
     if (pageStageActive) {
       settleActivePageStageForInput(true);
@@ -3457,11 +3496,11 @@ private const val READER_SCRIPT_PART_3 = """
       Math.abs(dx) < 12 && Math.abs(dy) < 12;
     var tapRatio = touch.clientX / viewportWidth();
     var centerImageTap = imageTap && tapRatio >= 0.3 && tapRatio <= 0.7;
-    // Covers are commonly wrapped in an anchor by EPUB generators. A short
-    // center tap on that image is still the reader menu gesture; edge taps
-    // and non-cover links retain their normal link/image behavior.
-    var isTap = !footnoteAnchor && !touchPaging && !shouldTurn && (!anchor || centerImageTap) &&
-      (!interactiveTarget || centerImageTap) && (!tappedImage || centerImageTap) &&
+    // Plain images share the reader tap zones. Publisher links keep short taps,
+    // while the dedicated long-press path can preview linked images as well.
+    var coverImageTap = imageTap && tappedImage.getAttribute('data-lumi-cover-media') === 'true';
+    var isTap = !footnoteAnchor && !touchPaging && !shouldTurn && (!anchor || coverImageTap) &&
+      (!interactiveTarget || coverImageTap) && elapsed < 520 &&
       Math.abs(dx) < 12 && Math.abs(dy) < 12;
     var selection = window.getSelection && window.getSelection();
     var hasSelection = !!(selection && !selection.isCollapsed && selection.rangeCount > 0);
@@ -3488,11 +3527,6 @@ private const val READER_SCRIPT_PART_3 = """
       return;
     }
     if (!state.fixed && wasPaging && state.transition !== 'fade' && state.transition !== 'none') snapBackPage();
-    if (imageTap && !centerImageTap) {
-      pageStageDurationOverride = 0;
-      state.suppressClickUntil = Date.now() + 450;
-      return;
-    }
     if (isTap && (!window.getSelection || window.getSelection().isCollapsed)) {
       var ratio = tapRatio;
       if (ratio < 0.3) {
@@ -3510,7 +3544,7 @@ private const val READER_SCRIPT_PART_3 = """
       state.suppressClickUntil = Date.now() + 450;
     }
     else pageStageDurationOverride = 0;
-  }, { passive: false });
+  }, { passive: false, capture: true });
 
   document.addEventListener('touchcancel', function () {
     cancelImageLongPress();
@@ -3524,7 +3558,7 @@ private const val READER_SCRIPT_PART_3 = """
   document.addEventListener('submit', function (event) { event.preventDefault(); }, true);
 
   document.addEventListener('contextmenu', function (event) {
-    var image = imageFromTarget(event.target);
+    var image = previewImageAt(event.target, event.clientX, event.clientY);
     if (!image) return;
     event.preventDefault();
     event.stopPropagation();
@@ -3549,11 +3583,6 @@ private const val READER_SCRIPT_PART_3 = """
     }
     var anchor = event.target && event.target.closest ? event.target.closest('a[href],area[href]') : null;
     var tappedImage = imageFromTarget(event.target);
-    if (tappedImage && !(anchor && isFootnoteReference(anchor))) {
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
     if (anchor) {
       event.preventDefault();
       event.stopPropagation();

@@ -811,6 +811,8 @@
     <string name="webdav_error_timeout">연결 시간 초과: 네트워크, 서버 상태 또는 주소를 확인하세요</string>
     <string name="webdav_error_tls">인증서 검증 실패: 서버 인증서가 유효하지 않거나 자체 서명입니다. 신뢰할 수 있는 HTTPS 인증서를 사용하세요</string>
     <string name="webdav_error_invalid_url">서버 주소가 올바르지 않습니다: http:// 또는 https://로 시작해야 합니다</string>
+    <string name="webdav_error_redirect">WebDAV 요청이 다른 주소(대상 호스트: %1$s)로 리디렉션되었습니다. 최종 WebDAV 주소를 직접 입력하세요</string>
+    <string name="webdav_error_invalid_response">인식할 수 없는 WebDAV 응답(HTTP %1$s)입니다. 로그인 페이지, 역방향 프록시 또는 게이트웨이가 요청을 가로채고 있을 수 있습니다</string>
     <string name="webdav_server_url_help">WebDAV 전체 주소를 입력하세요(예: https://dav.example.com/dav/, Nextcloud: https://호스트/remote.php/dav/files/사용자이름/)</string>
     <string name="webdav_sync_success">동기화 완료</string>
     <string name="webdav_sync_failed">동기화 실패. 네트워크와 서버 상태를 확인하세요.</string>

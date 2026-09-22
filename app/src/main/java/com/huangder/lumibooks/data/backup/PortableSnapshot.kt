@@ -214,6 +214,7 @@ private fun noteToJson(item: NoteEntity) = JSONObject().apply {
     put("startPosition", item.startPosition); put("endPosition", item.endPosition)
     putNullable("startLocatorJson", item.startLocatorJson); putNullable("endLocatorJson", item.endLocatorJson)
     put("selectedText", item.selectedText); put("note", item.note); put("color", item.color)
+    put("isNote", item.isNote)
     put("createdAt", item.createdAt); put("type", item.type); put("syncId", item.syncId)
     put("updatedAt", item.updatedAt)
 }
@@ -225,6 +226,7 @@ private fun noteFromJson(json: JSONObject) = NoteEntity(
     endLocatorJson = json.nullableString("endLocatorJson"), selectedText = json.optString("selectedText"),
     note = json.optString("note"), color = json.optString("color"), createdAt = json.optLong("createdAt"),
     type = json.optString("type", "highlight"), syncId = json.optString("syncId"),
+    isNote = json.optBoolean("isNote", json.optString("note").isNotBlank() || json.optString("type") == "note"),
     updatedAt = json.optLong("updatedAt", json.optLong("createdAt"))
 )
 

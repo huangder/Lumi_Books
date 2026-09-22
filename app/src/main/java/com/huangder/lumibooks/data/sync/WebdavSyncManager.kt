@@ -7,7 +7,6 @@ import android.util.Log
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.util.BookFileAccess
-import java.net.URLEncoder
 import com.huangder.lumibooks.data.local.WebdavTokenStore
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.BookFormat
@@ -22,6 +21,7 @@ import com.huangder.lumibooks.util.diagnostics.DiagnosticLevel
 import com.huangder.lumibooks.util.diagnostics.DiagnosticLoggerRegistry
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -510,7 +510,7 @@ class WebdavSyncManager @Inject constructor(
                 bookId to BookDownloadState.Downloading(0L, entry.sizeBytes)
             )
             val result = webdavClient.downloadToFile(
-                url = "${config.serverUrl}/${config.syncPath}/books/${encodePathSegment(entry.fileName)}",
+                url = WebdavUrl.append(config.serverUrl, config.syncPath, "books", entry.fileName),
                 destination = partialFile,
                 username = config.username,
                 password = password,
@@ -715,18 +715,18 @@ class WebdavSyncManager @Inject constructor(
         syncPath: String
     ): SyncResult {
         return try {
-            val rootCode = webdavClient.probeCollection(serverUrl, username, password)
-            val syncDirUrl = joinRemoteUrl(serverUrl, syncPath)
-            val dirCode = webdavClient.probeCollection(syncDirUrl, username, password)
+            val rootProbe = webdavClient.probeCollection(serverUrl, username, password)
+            val syncDirUrl = WebdavUrl.append(serverUrl, syncPath)
+            val dirProbe = webdavClient.probeCollection(syncDirUrl, username, password)
             when {
                 // The directory the app actually syncs into is reachable — that is what matters,
                 // even if the server refuses to describe the collection root itself.
-                WebdavFailureClassifier.isSuccessStatus(dirCode) -> SyncResult(
+                isDavProbeSuccess(dirProbe) -> SyncResult(
                     message = context.getString(R.string.webdav_test_success),
                     success = true
                 )
                 // The sync directory does not exist yet — the first sync creates it with MKCOL.
-                dirCode == 404 && WebdavFailureClassifier.isSuccessStatus(rootCode) -> SyncResult(
+                dirProbe.statusCode == 404 && isDavProbeSuccess(rootProbe) -> SyncResult(
                     message = context.getString(R.string.webdav_test_success_dir_pending),
                     success = true
                 )
@@ -734,9 +734,9 @@ class WebdavSyncManager @Inject constructor(
                     // A missing sync directory is only conclusive when the root probe also worked;
                     // otherwise the root failure is the real diagnosis (wrong address, no write
                     // permission, authentication, ...).
-                    val failedUrl = if (dirCode == 404) serverUrl else syncDirUrl
-                    val failedCode = if (dirCode == 404) rootCode else dirCode
-                    val error = probeFailure("PROPFIND", failedCode)
+                    val failedProbe = if (dirProbe.statusCode == 404) rootProbe else dirProbe
+                    val failedUrl = if (dirProbe.statusCode == 404) serverUrl else syncDirUrl
+                    val error = probeFailure("PROPFIND", failedProbe)
                     logWebdavFailure("TEST_CONNECTION", failedUrl, error)
                     SyncResult(
                         message = context.getString(
@@ -756,35 +756,51 @@ class WebdavSyncManager @Inject constructor(
                 ),
                 success = false
             )
-        } catch (error: IllegalArgumentException) {
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            val wrapped = WebdavException(
+                message = "Unexpected WebDAV probe failure",
+                kind = WebdavErrorKind.INVALID_RESPONSE,
+                cause = error
+            )
+            logWebdavFailure("TEST_CONNECTION", serverUrl, wrapped)
             SyncResult(
                 message = context.getString(
                     R.string.webdav_test_failed_detail,
-                    context.getString(R.string.webdav_error_invalid_url)
+                    userFacingWebdavError(wrapped)
                 ),
                 success = false
             )
         }
     }
 
-    private fun probeFailure(operation: String, statusCode: Int): WebdavException = WebdavException(
-        message = "$operation failed — HTTP $statusCode",
-        statusCode = statusCode,
-        kind = WebdavFailureClassifier.kindForStatus(statusCode)
-    )
+    private fun isDavProbeSuccess(probe: WebdavProbeResult): Boolean =
+        WebdavFailureClassifier.isSuccessStatus(probe.statusCode) && !probe.htmlResponse
 
-    private fun joinRemoteUrl(serverUrl: String, path: String): String {
-        val base = serverUrl.trim().trimEnd('/')
-        val suffix = path.trim().trim('/')
-        return if (suffix.isEmpty()) "$base/" else "$base/$suffix"
+    private fun probeFailure(operation: String, probe: WebdavProbeResult): WebdavException {
+        val kind = when {
+            probe.htmlResponse -> WebdavErrorKind.INVALID_RESPONSE
+            else -> WebdavFailureClassifier.kindForStatus(probe.statusCode)
+        }
+        return WebdavException(
+            message = "$operation failed — HTTP ${probe.statusCode}",
+            statusCode = probe.statusCode,
+            kind = kind,
+            initialUrl = probe.initialUrl,
+            finalUrl = probe.finalUrl,
+            redirected = probe.redirected,
+            redirectCount = probe.redirectCount,
+            server = probe.server,
+            requestId = probe.requestId,
+            responseSummary = probe.responseSummary,
+            contentType = probe.contentType,
+            davHeader = probe.davHeader,
+            htmlResponse = probe.htmlResponse
+        )
     }
 
     // ── Private helpers ─────────────────────────────────────────────
-
-    /** Encode a file name for safe use in a URL path segment.
-     *  Handles Chinese, spaces, and other non-ASCII characters. */
-    private fun encodePathSegment(name: String): String =
-        URLEncoder.encode(name, "UTF-8").replace("+", "%20")
 
     private fun userFacingWebdavError(error: WebdavException): String {
         val category = WebdavFailureClassifier.classify(
@@ -811,6 +827,14 @@ class WebdavSyncManager @Inject constructor(
             WebdavFailureCategory.TIMEOUT -> context.getString(R.string.webdav_error_timeout)
             WebdavFailureCategory.TLS -> context.getString(R.string.webdav_error_tls)
             WebdavFailureCategory.INVALID_URL -> context.getString(R.string.webdav_error_invalid_url)
+            WebdavFailureCategory.REDIRECT -> context.getString(
+                R.string.webdav_error_redirect,
+                error.finalUrl?.let(WebdavUrl::host).orEmpty().ifBlank { context.getString(R.string.webdav_unknown_value) }
+            )
+            WebdavFailureCategory.INVALID_RESPONSE -> context.getString(
+                R.string.webdav_error_invalid_response,
+                error.statusCode?.toString() ?: context.getString(R.string.webdav_unknown_value)
+            )
             WebdavFailureCategory.SERVER_ERROR -> context.getString(
                 R.string.webdav_request_failed_http,
                 error.statusCode ?: 0
@@ -840,7 +864,18 @@ class WebdavSyncManager @Inject constructor(
                 "statusCode" to error.statusCode,
                 "host" to host,
                 "serverCode" to error.serverCode,
-                "responseBodyPresent" to !error.serverDetail.isNullOrBlank()
+                "server" to error.server,
+                "requestId" to error.requestId,
+                "finalHost" to error.finalUrl?.let(WebdavUrl::host),
+                "redirected" to error.redirected,
+                "redirectCount" to error.redirectCount,
+                "contentType" to error.contentType,
+                "davHeader" to error.davHeader,
+                "htmlResponse" to error.htmlResponse,
+                "responseBodyPresent" to (
+                    !error.serverDetail.isNullOrBlank() ||
+                        !error.responseSummary.isNullOrBlank()
+                    )
             ),
             throwable = error
         )
@@ -957,7 +992,7 @@ class WebdavSyncManager @Inject constructor(
         }
         val fileName = "${book.id}.jpg"
         webdavClient.upload(
-            "$serverUrl/$syncPath/covers/${encodePathSegment(fileName)}",
+            WebdavUrl.append(serverUrl, syncPath, "covers", fileName),
             bytes,
             username,
             password,
@@ -1019,7 +1054,7 @@ class WebdavSyncManager @Inject constructor(
             val destination = File(coversDirectory, "cloud_${bookId}_$hash.jpg")
             if (!destination.exists()) {
                 val bytes = webdavClient.download(
-                    "$serverUrl/$syncPath/covers/${encodePathSegment(entry.fileName)}",
+                    WebdavUrl.append(serverUrl, syncPath, "covers", entry.fileName),
                     username,
                     password
                 )
@@ -1069,7 +1104,7 @@ class WebdavSyncManager @Inject constructor(
         for ((directory, fileName) in targets) {
             try {
                 webdavClient.delete(
-                    "$serverUrl/$syncPath/$directory/${encodePathSegment(fileName)}",
+                    WebdavUrl.append(serverUrl, syncPath, directory, fileName),
                     username,
                     password
                 )
@@ -1193,7 +1228,7 @@ class WebdavSyncManager @Inject constructor(
             // which not every WebDAV server accepts.
             val data = readBookData(book.filePath)
             webdavClient.upload(
-                "$serverUrl/$syncPath/books/${encodePathSegment(fileName)}",
+                WebdavUrl.append(serverUrl, syncPath, "books", fileName),
                 data,
                 username,
                 password
@@ -1208,7 +1243,7 @@ class WebdavSyncManager @Inject constructor(
 
         return try {
             val uploadResult = webdavClient.uploadStream(
-                url = "$serverUrl/$syncPath/books/${encodePathSegment(fileName)}",
+                url = WebdavUrl.append(serverUrl, syncPath, "books", fileName),
                 contentLength = expectedSize,
                 inputStreamProvider = { BookFileAccess.openInputStream(context, book.filePath) },
                 username = username,
@@ -1229,7 +1264,7 @@ class WebdavSyncManager @Inject constructor(
             Log.w("WebDAV", "Stream upload failed; retrying fixed-length upload book=${book.id}: ${streamError.message}")
             val data = readBookData(book.filePath)
             webdavClient.upload(
-                "$serverUrl/$syncPath/books/${encodePathSegment(fileName)}",
+                WebdavUrl.append(serverUrl, syncPath, "books", fileName),
                 data,
                 username,
                 password
@@ -1251,7 +1286,7 @@ class WebdavSyncManager @Inject constructor(
     ): SyncManifest? {
         return try {
             val data = webdavClient.download(
-                "$serverUrl/$syncPath/manifest.json",
+                WebdavUrl.append(serverUrl, syncPath, "manifest.json"),
                 username,
                 password
             )
@@ -1276,7 +1311,7 @@ class WebdavSyncManager @Inject constructor(
         } else {
             try {
                 val remoteData = webdavClient.download(
-                    "$serverUrl/$syncPath/data/$bookId.json",
+                    WebdavUrl.append(serverUrl, syncPath, "data", "$bookId.json"),
                     username,
                     password
                 )
@@ -1288,7 +1323,7 @@ class WebdavSyncManager @Inject constructor(
         val json = buildBookDataJson(bookId, config, existingJson)
         val data = json.toByteArray(Charsets.UTF_8)
         webdavClient.upload(
-            "$serverUrl/$syncPath/data/$bookId.json",
+            WebdavUrl.append(serverUrl, syncPath, "data", "$bookId.json"),
             data, username, password,
             "application/json"
         )
@@ -1304,7 +1339,7 @@ class WebdavSyncManager @Inject constructor(
     ) {
         try {
             val data = webdavClient.download(
-                "$serverUrl/$syncPath/data/$bookId.json",
+                WebdavUrl.append(serverUrl, syncPath, "data", "$bookId.json"),
                 username, password
             )
             val json = data.toString(Charsets.UTF_8)
@@ -1379,6 +1414,7 @@ class WebdavSyncManager @Inject constructor(
                             n.endLocatorJson?.let { put("endLocatorJson", it) }
                             put("selectedText", n.selectedText)
                             put("note", n.note)
+                            put("isNote", n.isNoteEntry)
                             put("color", n.color)
                             put("createdAt", n.createdAt)
                             put("type", n.type)
@@ -1480,6 +1516,7 @@ class WebdavSyncManager @Inject constructor(
                     color = n.getString("color"),
                     createdAt = n.getLong("createdAt"),
                     type = n.optString("type", "highlight"),
+                    isNote = n.optBoolean("isNote", n.optString("note").isNotBlank() || n.optString("type") == "note"),
                     syncId = n.optString("syncId").ifBlank {
                         legacyAnnotationSyncId(
                             "note",
@@ -1513,7 +1550,7 @@ class WebdavSyncManager @Inject constructor(
         syncPath: String,
         atomic: Boolean = false
     ) {
-        val finalUrl = "$serverUrl/$syncPath/manifest.json"
+        val finalUrl = WebdavUrl.append(serverUrl, syncPath, "manifest.json")
         val payload = manifest.copy(version = SyncManifest.CURRENT_VERSION)
             .toJson()
             .toByteArray(Charsets.UTF_8)
@@ -1526,7 +1563,7 @@ class WebdavSyncManager @Inject constructor(
             return
         }
 
-        val temporaryUrl = "$serverUrl/$syncPath/manifest.json.next"
+        val temporaryUrl = WebdavUrl.append(serverUrl, syncPath, "manifest.json.next")
         webdavClient.upload(temporaryUrl, payload, username, password, "application/json")
         try {
             webdavClient.move(

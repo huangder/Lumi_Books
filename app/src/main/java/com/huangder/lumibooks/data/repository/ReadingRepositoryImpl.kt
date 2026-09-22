@@ -264,7 +264,8 @@ class ReadingRepositoryImpl @Inject constructor(
             createdAt = createdAt,
             type = type,
             syncId = syncId,
-            updatedAt = updatedAt
+            updatedAt = updatedAt,
+            isNote = isNote
         )
     }
 
@@ -283,7 +284,8 @@ class ReadingRepositoryImpl @Inject constructor(
             createdAt = createdAt,
             type = type,
             syncId = syncId,
-            updatedAt = updatedAt
+            updatedAt = updatedAt,
+            isNote = isNote
         )
     }
 }

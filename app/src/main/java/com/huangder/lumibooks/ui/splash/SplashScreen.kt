@@ -35,6 +35,7 @@ fun SplashScreen(isDark: Boolean, iconStyle: String) {
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .then(com.huangder.lumibooks.util.diagnostics.startupTraceModifier("app_splash"))
             .background(background),
         contentAlignment = Alignment.Center
     ) {

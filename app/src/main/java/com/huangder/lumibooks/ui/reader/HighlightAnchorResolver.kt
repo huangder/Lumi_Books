@@ -224,6 +224,10 @@ internal fun resolveReaderNote(note: Note, readerChapterText: CharSequence): Not
         endLocatorJson = note.endLocatorJson,
         selectedText = note.selectedText
     )
+    if (note.isNoteEntry && note.selectedText.isBlank() && reference?.exact.isNullOrBlank()) {
+        val start = (reference?.textPosition ?: note.startPosition).coerceIn(0, readerChapterText.length)
+        return note.copy(startPosition = start, endPosition = note.endPosition.coerceIn(start, readerChapterText.length))
+    }
     val range = HighlightAnchorResolver.resolve(
         chapterText = readerChapterText,
         storedStart = note.startPosition,
@@ -232,6 +236,15 @@ internal fun resolveReaderNote(note: Note, readerChapterText: CharSequence): Not
         reference = reference
     ) ?: return null
     return note.copy(startPosition = range.start, endPosition = range.end)
+}
+
+/** Navigation still has a saved position when the quote cannot be matched for drawing a highlight. */
+internal fun resolveReaderNoteNavigation(note: Note, readerChapterText: CharSequence?): Note {
+    if (readerChapterText != null) resolveReaderNote(note, readerChapterText)?.let { return it }
+    val reference = parseHighlightTextReference(note.startLocatorJson, note.endLocatorJson, note.selectedText)
+    val offset = (reference?.textPosition ?: note.startPosition).coerceAtLeast(0)
+        .let { if (readerChapterText != null) it.coerceAtMost(readerChapterText.length) else it }
+    return note.copy(startPosition = offset, endPosition = offset)
 }
 
 internal fun parseHighlightTextReference(

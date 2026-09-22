@@ -96,4 +96,21 @@ class CoverFlowStateTest {
         assertEquals(2f, state.position, 0f)
         assertEquals("b", state.focusedId)
     }
+
+    @Test fun `fast fling traverses a large shelf and can be caught mid flight`() = runTest {
+        val state = CoverFlowState(20f, "book-20")
+        state.updateBooks((0..99).map { "book-$it" })
+        state.release(motionScope(), 20f, true)
+        advanceUntilIdle()
+        assertEquals(30f, state.position, 0f)
+        assertEquals("book-30", state.focusedId)
+        state.release(motionScope(), -30f, true)
+        advanceTimeBy(160)
+        runCurrent()
+        assertTrue(state.position in 15f..30f)
+        state.beginDrag()
+        val stopped = state.position
+        advanceUntilIdle()
+        assertEquals(stopped, state.position, 0f)
+    }
 }

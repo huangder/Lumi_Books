@@ -9,6 +9,11 @@ plugins {
     id("androidx.baselineprofile")
 }
 
+// Opt in without changing release's debuggability, R8 or resource shrinking.
+val releaseStartupTrace = providers.gradleProperty("lumiStartupTrace")
+    .map { it.toBooleanStrict() }
+    .orElse(false)
+
 android {
     namespace = "com.huangder.lumibooks"
     compileSdk = 36
@@ -22,6 +27,7 @@ android {
         versionName = "2.1.9"
 
         buildConfigField("boolean", "DIAGNOSTIC_BUILD", "false")
+        buildConfigField("boolean", "STARTUP_TRACE_ENABLED", "false")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -40,6 +46,7 @@ android {
 
     buildTypes {
         release {
+            buildConfigField("boolean", "STARTUP_TRACE_ENABLED", releaseStartupTrace.get().toString())
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -55,9 +62,11 @@ android {
             isShrinkResources = false
             matchingFallbacks += listOf("release")
             buildConfigField("boolean", "DIAGNOSTIC_BUILD", "true")
+            buildConfigField("boolean", "STARTUP_TRACE_ENABLED", "true")
         }
         create("benchmark") {
             initWith(getByName("release"))
+            buildConfigField("boolean", "STARTUP_TRACE_ENABLED", "false")
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("release")
             isDebuggable = false
@@ -165,6 +174,7 @@ dependencies {
     // Testing
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
     testImplementation("org.json:json:20240303")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
