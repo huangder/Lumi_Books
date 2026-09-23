@@ -17,4 +17,10 @@ class AppIconStyleTest {
         assertEquals(AppIconStyle.CLASSIC, AppIconStyle.fromStoredValue("classic"))
         assertEquals("classic", AppIconStyle.normalize("classic"))
     }
+
+    @Test
+    fun `lumi chan requires the unlocked flag`() {
+        assertEquals(AppIconStyle.LUMI_2, AppIconStyle.fromStoredValue("lumi_chan", false))
+        assertEquals(AppIconStyle.LUMI_CHAN, AppIconStyle.fromStoredValue("lumi_chan", true))
+    }
 }

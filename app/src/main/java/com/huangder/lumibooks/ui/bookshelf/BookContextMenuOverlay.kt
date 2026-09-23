@@ -125,6 +125,7 @@ fun BookContextMenuOverlay(
         // ── 2. 高亮封面（在遮罩之上，原始位置放大） ──
         HighlightedCover(
             book = book,
+
             coverBounds = coverBounds,
             coverScale = coverScale
         )

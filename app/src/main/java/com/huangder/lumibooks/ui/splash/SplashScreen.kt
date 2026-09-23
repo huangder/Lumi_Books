@@ -24,10 +24,11 @@ private val Lumi2DarkSplashBackground = Color(0xFF130F10)
 fun SplashScreen(isDark: Boolean, iconStyle: String) {
     val style = AppIconStyle.fromStoredValue(iconStyle)
     val background = when (style) {
-        AppIconStyle.LUMI_2 -> if (isDark) Lumi2DarkSplashBackground else Lumi2LightSplashBackground
+        AppIconStyle.LUMI_CHAN, AppIconStyle.LUMI_2 -> if (isDark) Lumi2DarkSplashBackground else Lumi2LightSplashBackground
         AppIconStyle.CLASSIC -> if (isDark) DarkSplashBackground else LightSplashBackground
     }
     val imageResource = when (style) {
+        AppIconStyle.LUMI_CHAN -> R.drawable.splash_lumi2
         AppIconStyle.LUMI_2 -> R.drawable.splash_lumi2
         AppIconStyle.CLASSIC -> if (isDark) R.drawable.splash_dark else R.drawable.splash_light
     }

@@ -1,5 +1,9 @@
 package com.huangder.lumibooks.ui.navigation
 
+import com.huangder.lumibooks.ui.theme.LumiBackgroundHost
+import com.huangder.lumibooks.ui.theme.LumiBackgroundScene
+import com.huangder.lumibooks.ui.theme.LocalAppThemeVariant
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.huangder.lumibooks.ui.theme.AppColors
 
 import android.net.Uri
@@ -130,7 +134,7 @@ private fun ReaderRouter(
     // PDF and CBZ share the raster page reader; every other format uses the text engines.
     val isRasterPageFormat = documentState.book?.format?.isRasterPageFormat == true
     val isAppDarkTheme = LocalIsDarkTheme.current
-    val appTheme = LocalAppTheme.current
+    val appTheme = LocalAppThemeVariant.current
     val appAccentColor = LocalAppAccentHex.current
     val liquidGlassTransparency = LocalLiquidGlassTransparency.current
     val liquidGlassHdrHighlightEnabled = LocalLiquidGlassHdrHighlightEnabled.current
@@ -267,6 +271,7 @@ fun MainNavGraph(
     val eInkMode = LocalEInkMode.current
     val useMaterial3Navigation = LocalUseMaterial3Theme.current
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkMode
+    val isLumiChan = LocalAppThemeVariant.current == "lumi_chan"
     val glassBackdropBackground = AppColors.WindowBg
     val liquidGlassBackdrop = rememberLayerBackdrop(onDraw = {
         drawRect(glassBackdropBackground)
@@ -577,6 +582,23 @@ fun MainNavGraph(
     // 监听路由变化，从阅读页/设置页返回时延迟显示 TabBar
     val currentEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentEntry?.destination?.route
+    var lastMainRoute by rememberSaveable {
+        mutableStateOf(if (requestedOpenBookshelf) Screen.Bookshelf.route else mainStartDestination)
+    }
+    var bookshelfFolderOpen by rememberSaveable { mutableStateOf(requestedOpenFolderId != null) }
+    val windowConfiguration = androidx.compose.ui.platform.LocalConfiguration.current
+    var bookshelfHeaderBottom by remember(windowConfiguration.screenWidthDp, windowConfiguration.screenHeightDp, windowConfiguration.fontScale) {
+        mutableFloatStateOf(0f)
+    }
+    val backgroundRoute = if (requestedOpenBookshelf) Screen.Bookshelf.route else currentRoute?.takeIf {
+        it == Screen.Home.route || it == Screen.Bookshelf.route || it == Screen.Statistics.route
+    } ?: lastMainRoute
+    androidx.compose.runtime.SideEffect { lastMainRoute = backgroundRoute }
+    val backgroundScene = when {
+        backgroundRoute != Screen.Bookshelf.route -> LumiBackgroundScene.HOME
+        bookshelfFolderOpen -> LumiBackgroundScene.SECONDARY
+        else -> LumiBackgroundScene.BOOKSHELF
+    }
 
     if (currentRoute == Screen.Reader.route) {
         // Keep one owner while switching between PDF and parsed TXT reader entries.
@@ -628,6 +650,12 @@ fun MainNavGraph(
 
     CompositionLocalProvider(LocalPredictiveBackEnabled provides predictiveBackEnabled,
         LocalCoverFlowEntrance provides coverFlowEntrance) {
+    LumiBackgroundHost(
+        scene = backgroundScene,
+        modifier = Modifier.fillMaxSize(),
+        bookshelfHeaderBottom = bookshelfHeaderBottom,
+        backgroundBackdrop = liquidGlassBackdrop
+    ) {
     LiquidGlassMenuHost(
         modifier = Modifier.fillMaxSize(),
         backdrop = liquidGlassBackdrop.takeIf {
@@ -653,7 +681,7 @@ fun MainNavGraph(
                 modifier = Modifier
                     .fillMaxSize()
                     .then(
-                        if (isLiquidGlass && currentRoute != Screen.Reader.route) {
+                        if (isLiquidGlass && !isLumiChan && currentRoute != Screen.Reader.route) {
                             Modifier.layerBackdrop(liquidGlassBackdrop)
                         } else if (!eInkMode) {
                             Modifier.haze(hazeState)
@@ -831,6 +859,8 @@ fun MainNavGraph(
                         blurEnabled = !eInkMode
                     ) {
                 BookshelfScreen(
+                    onFolderOpenChange = { bookshelfFolderOpen = it },
+                    onHeaderBottomChange = { bookshelfHeaderBottom = it },
                     initialLayoutMode = initialBookshelfLayoutMode,
                     playEntranceAnimation = playEntranceAnimation,
                     onNavigateToReader = { book, sourceBounds ->
@@ -1447,6 +1477,7 @@ fun MainNavGraph(
         }
 
         }
+    }
     }
     }
 }

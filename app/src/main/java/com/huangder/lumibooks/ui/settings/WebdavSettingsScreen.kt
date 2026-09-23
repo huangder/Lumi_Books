@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.settings
 import com.huangder.lumibooks.ui.icons.AppIcons
 
+import com.huangder.lumibooks.ui.components.lumiCardSurface
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -307,7 +308,7 @@ private fun WebdavStatusCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadius.md))
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
             .padding(AppSpace.md)
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
@@ -397,7 +398,7 @@ private fun WebdavSecondaryButton(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadius.md))
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
             .clickable(
                 enabled = enabled,
                 interactionSource = remember { MutableInteractionSource() },
@@ -461,7 +462,7 @@ private fun WebdavSyncModeSelector(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadius.md))
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
             .padding(AppSpace.md)
     ) {
         Text(
@@ -499,7 +500,7 @@ private fun WebdavSyncContentSelector(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadius.md))
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
             .padding(vertical = AppSpace.sm)
     ) {
         Text(

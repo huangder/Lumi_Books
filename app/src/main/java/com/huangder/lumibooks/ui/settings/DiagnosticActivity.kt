@@ -31,17 +31,27 @@ class DiagnosticActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        val launchTheme = com.huangder.lumibooks.util.LaunchThemeController.themeSnapshot(this)
         setContent {
-            val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
-            val accent by dataStoreManager.appAccentColor.collectAsState(initial = DEFAULT_APP_ACCENT_HEX)
-            val fontMode by dataStoreManager.globalFontMode.collectAsState(initial = "system")
-            val transparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = 0.55f)
-            val hdr by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = false)
-            val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
-            val predictiveBack by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
+            val appTheme by dataStoreManager.appTheme.collectAsState(initial = launchTheme.appTheme)
+            val accent by dataStoreManager.appAccentColor.collectAsState(initial = launchTheme.appAccentColor)
+            val fontMode by dataStoreManager.globalFontMode.collectAsState(initial = launchTheme.globalFontMode)
+            val transparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = launchTheme.liquidGlassTransparency)
+            val hdr by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = launchTheme.liquidGlassHdrHighlightEnabled)
+            val darkMode by dataStoreManager.darkMode.collectAsState(initial = launchTheme.darkMode)
+            val predictiveBack by dataStoreManager.predictiveBackEnabled.collectAsState(initial = launchTheme.predictiveBackEnabled)
             val isDark = when (darkMode) { "dark" -> true; "light" -> false; else -> isSystemInDarkTheme() }
             val resolved = effectiveAppTheme(appTheme, rememberLiquidGlassCapability(view = LocalView.current))
-            EBookReaderTheme(darkTheme = isDark, dynamicColor = resolved == "material3", appTheme = resolved, appAccentColor = accent, liquidGlassTransparency = transparency, liquidGlassHdrHighlightEnabled = hdr, globalFontMode = fontMode) {
+            val eInkMode by dataStoreManager.eInkModeEnabled.collectAsState(initial = launchTheme.eInkModeEnabled)
+            val motion by dataStoreManager.motionPreference.collectAsState(initial = launchTheme.motionPreference)
+            EBookReaderTheme(
+                darkTheme = isDark, dynamicColor = resolved == "material3", appTheme = appTheme,
+                appAccentColor = accent, liquidGlassTransparency = transparency,
+                liquidGlassHdrHighlightEnabled = hdr, globalFontMode = fontMode,
+                eInkMode = eInkMode,
+                motionPreference = com.huangder.lumibooks.ui.theme.MotionPreference.fromStoredValue(motion),
+                lumiBackgroundScene = com.huangder.lumibooks.ui.theme.LumiBackgroundScene.SECONDARY
+            ) {
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(predictiveBackEnabled = predictiveBack, onBack = ::finish)
                 DiagnosticPage(onBack = ::finish, diagnosticSessionManager = diagnosticSessionManager, diagnosticLogger = diagnosticLogger)
             }

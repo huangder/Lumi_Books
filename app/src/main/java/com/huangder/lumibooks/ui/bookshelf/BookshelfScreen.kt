@@ -171,6 +171,8 @@ fun BookshelfScreen(
     onRefreshAuthorizedDirectories: () -> Unit = {},
     onOverlayProgressChange: (Float) -> Unit = {},
     onContextMenuVisibleChange: (Boolean) -> Unit = {},
+    onFolderOpenChange: (Boolean) -> Unit = {},
+    onHeaderBottomChange: (Float) -> Unit = {},
     onEnterCoverFlow: (((() -> Unit)) -> Unit)? = null,
     onNavigateToReaderCoverFlow: ((Book, Rect?) -> Unit)? = null,
     viewModel: HomeViewModel = hiltViewModel()
@@ -194,6 +196,9 @@ fun BookshelfScreen(
     var currentFolderId by rememberSaveable { mutableStateOf<String?>(null) }
     var renderedFolderId by rememberSaveable { mutableStateOf<String?>(null) }
     var folderNavigationForward by remember { mutableStateOf(true) }
+    LaunchedEffect(currentFolderId, requestedFolderId) {
+        onFolderOpenChange(currentFolderId != null || requestedFolderId != null)
+    }
     val folderTransitionAlpha = remember { Animatable(1f) }
     val folderTransitionOffset = remember { Animatable(0f) }
     val context = LocalContext.current
@@ -717,7 +722,7 @@ fun BookshelfScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(AppColors.WindowBg)
+            .background(AppColors.PageBg)
             .semantics { testTagsAsResourceId = true }
             .testTag(BOOKSHELF_SCREEN_TAG)
     ) {
@@ -741,7 +746,7 @@ fun BookshelfScreen(
                         null
                     }
                 }
-                .background(AppColors.WindowBg)
+                .background(AppColors.PageBg)
         ) {
             if (isLiquidGlass) {
                 OverscrollBounce(modifier = Modifier.fillMaxSize()) {
@@ -986,6 +991,7 @@ fun BookshelfScreen(
                         .zIndex(2f)
                         .onGloballyPositioned { coordinates ->
                             bookshelfHeaderHeightPx = coordinates.size.height
+                            onHeaderBottomChange(coordinates.boundsInRoot().bottom)
                         }
                         .graphicsLayer {
                             renderEffect = if (
@@ -1975,7 +1981,7 @@ private fun BookshelfCapsuleHeader(
         modifier = modifier
             .fillMaxWidth()
             .then(
-                if (isLiquidGlass) Modifier else Modifier.background(AppColors.WindowBg)
+                if (isLiquidGlass) Modifier else Modifier.background(AppColors.PageBg)
             )
             .statusBarsPadding()
             .padding(top = 12.dp)
@@ -2848,7 +2854,7 @@ private fun AddBookItem(onClick: () -> Unit) {
                 .fillMaxWidth()
                 .aspectRatio(0.75f)
                 .clip(RoundedCornerShape(coverCorner))
-                .background(AppColors.WindowBg),
+                .background(AppColors.PageBg),
             contentAlignment = Alignment.Center
         ) {
             // 虚线边框（用 Canvas 绘制）

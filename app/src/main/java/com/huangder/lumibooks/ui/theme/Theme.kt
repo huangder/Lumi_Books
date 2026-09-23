@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -137,6 +138,7 @@ fun EBookReaderTheme(
     eInkMode: Boolean = false,
     globalFontMode: String = GlobalFontMode.DEFAULT,
     motionPreference: MotionPreference = MotionPreference.STANDARD,
+    lumiBackgroundScene: LumiBackgroundScene? = null,
     content: @Composable () -> Unit
 ) {
     val effectiveDarkTheme = if (eInkMode) false else darkTheme
@@ -199,6 +201,7 @@ fun EBookReaderTheme(
         LocalIsDarkTheme provides effectiveDarkTheme,
         LocalUseMaterial3Theme provides effectiveDynamicColor,
         LocalAppTheme provides effectiveAppTheme,
+        LocalAppThemeVariant provides appTheme,
         LocalAppAccentHex provides normalizedAccentHex,
         LocalAppAccentColor provides effectiveAccentColor,
         LocalOnAppAccentColor provides effectiveOnAccentColor,
@@ -214,7 +217,12 @@ fun EBookReaderTheme(
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,
-            content = content
-        )
+        ) {
+            if (lumiBackgroundScene != null) {
+                LumiBackgroundHost(scene = lumiBackgroundScene, modifier = androidx.compose.ui.Modifier.fillMaxSize()) { content() }
+            } else {
+                CompositionLocalProvider(LocalLumiBackgroundPresent provides false, LocalLumiBackgroundBackdrop provides null) { content() }
+            }
+        }
     }
 }

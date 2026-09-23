@@ -192,7 +192,7 @@ internal fun CoverFlowBookshelf(
         .onGloballyPositioned { rootCoordinates[0] = it }) {
         Box(Modifier.matchParentSize()
             .then(if (isLiquidGlass) Modifier.layerBackdrop(controlsBackdrop) else Modifier)
-            .background(AppColors.WindowBg))
+            .background(AppColors.PageBg))
         Column(Modifier.fillMaxSize().padding(top = topPadding, bottom = bottomPadding)) {
             CoverFlowFolderNavigation(
                 folders, folderBookCounts, onFolderClick, onFolderRename, onFolderDelete,

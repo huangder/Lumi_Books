@@ -682,7 +682,7 @@ class MainActivity : ComponentActivity() {
         val iconStyleAtLaunch = LaunchThemeController.iconStyleSnapshot(this)
 
         setContent {
-            val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
+            val appTheme by dataStoreManager.appTheme.collectAsState(initial = LaunchThemeController.themeSnapshot(this).appTheme)
             val startupScreen by produceState<String?>(initialValue = null, dataStoreManager) {
                 value = dataStoreManager.startupScreen.first()
             }
@@ -763,7 +763,7 @@ class MainActivity : ComponentActivity() {
             EBookReaderTheme(
                 darkTheme = isDark,
                 dynamicColor = effectiveAppTheme == "material3",
-                appTheme = effectiveAppTheme,
+                appTheme = appTheme,
                 appAccentColor = appAccentColor,
                 liquidGlassTransparency = liquidGlassTransparency,
                 liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled && !eInkModeEnabled,

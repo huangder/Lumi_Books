@@ -81,6 +81,7 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
         applicationScope.launch(Dispatchers.IO) {
             dataStoreManager.launchThemeSnapshot.collectLatest { snapshot ->
                 LaunchThemeController.updateThemeSnapshot(this@EBookReaderApp, snapshot)
+                LaunchThemeController.synchronizeLauncherComponents(this@EBookReaderApp)
             }
         }
         applicationScope.launch(Dispatchers.IO) {
@@ -92,6 +93,7 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
                     splashEnabled = snapshot.splashEnabled,
                     hasCompletedLanguageSetup = snapshot.hasCompletedLanguageSetup
                 )
+                LaunchThemeController.synchronizeLauncherComponents(this@EBookReaderApp)
             }
         }
     }

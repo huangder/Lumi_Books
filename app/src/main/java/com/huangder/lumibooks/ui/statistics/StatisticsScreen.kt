@@ -2,6 +2,7 @@ package com.huangder.lumibooks.ui.statistics
 import com.huangder.lumibooks.ui.icons.directionalIcon
 import com.huangder.lumibooks.ui.icons.AppIcons
 
+import com.huangder.lumibooks.ui.components.lumiCardSurface
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -123,7 +124,7 @@ fun StatisticsScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(AppColors.WindowBg)) {
+    Box(modifier = Modifier.fillMaxSize().background(AppColors.PageBg)) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -131,7 +132,7 @@ fun StatisticsScreen(
                     if (isLiquidGlass) Modifier.layerBackdrop(segmentedControlBackdrop)
                     else Modifier
                 )
-                .background(AppColors.WindowBg)
+                .background(AppColors.PageBg)
         )
         OverscrollBounce(
             modifier = Modifier
@@ -288,7 +289,7 @@ private fun PeriodSegmentedControl(
                 .shadow(3.dp, RoundedCornerShape(AppRadius.sm))
                 .cardOutline(RoundedCornerShape(AppRadius.sm))
                 .clip(RoundedCornerShape(AppRadius.sm))
-                .background(AppColors.CardBg)
+                .lumiCardSurface(shape = RoundedCornerShape(AppRadius.sm))
         )
         Row(modifier = Modifier.fillMaxSize()) {
             labels.forEachIndexed { index, label ->
@@ -399,7 +400,7 @@ private fun WeeklyOverview(
             .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
             .cardOutline(RoundedCornerShape(AppRadius.lg))
             .clip(RoundedCornerShape(AppRadius.lg))
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.lg))
             .padding(AppSpace.md)
     ) {
         // 标题 + 导航箭头
@@ -548,7 +549,7 @@ private fun MonthlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsView
             .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
             .cardOutline(RoundedCornerShape(AppRadius.lg))
             .clip(RoundedCornerShape(AppRadius.lg))
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.lg))
             .padding(AppSpace.md)
     ) {
         // 月份标题 + 导航箭头
@@ -748,7 +749,7 @@ private fun YearlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewM
             .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
             .cardOutline(RoundedCornerShape(AppRadius.lg))
             .clip(RoundedCornerShape(AppRadius.lg))
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.lg))
             .padding(AppSpace.md)
     ) {
         // 标题 + 导航箭头
@@ -936,7 +937,7 @@ private fun MostReadBooks(books: List<MostReadBook>) {
             .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
             .cardOutline(RoundedCornerShape(AppRadius.lg))
             .clip(RoundedCornerShape(AppRadius.lg))
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.lg))
             .cardPressEffect()
             .padding(AppSpace.md)
     ) {
@@ -996,7 +997,7 @@ private fun CompletionProgress(uiState: StatisticsUiState) {
             .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
             .cardOutline(RoundedCornerShape(AppRadius.lg))
             .clip(RoundedCornerShape(AppRadius.lg))
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.lg))
             .cardPressEffect()
             .padding(AppSpace.lg)
     ) {

@@ -32,9 +32,10 @@ fun StatusGradientOverlay(
     solidFraction: Float = 0.12f
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
-    if (isLiquidGlass && backdrop != null) {
+    val activeBackdrop = com.huangder.lumibooks.ui.theme.LocalLumiBackgroundBackdrop.current ?: backdrop
+    if (isLiquidGlass && activeBackdrop != null) {
         ProgressiveBlurOverlay(
-            backdrop = backdrop,
+            backdrop = activeBackdrop,
             exportedBackdrop = exportedBackdrop,
             height = height,
             blurRadius = blurRadius,

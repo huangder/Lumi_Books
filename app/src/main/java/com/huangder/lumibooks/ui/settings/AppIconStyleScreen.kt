@@ -49,6 +49,7 @@ fun AppIconStyleDetail(viewModel: SettingsViewModel) {
 
     AppIconStyleOptions(
         selectedStyle = uiState.appIconStyle,
+        easterEggUnlocked = uiState.lumiEasterEggUnlocked,
         onSelect = viewModel::saveAppIconStyle
     )
 }
@@ -56,6 +57,7 @@ fun AppIconStyleDetail(viewModel: SettingsViewModel) {
 @Composable
 internal fun AppIconStyleOptions(
     selectedStyle: String,
+    easterEggUnlocked: Boolean = false,
     onSelect: (String) -> Unit
 ) {
     Row(
@@ -74,6 +76,16 @@ internal fun AppIconStyleOptions(
             onSelect = onSelect,
             modifier = Modifier.weight(1f)
         )
+        if (easterEggUnlocked) {
+            AppIconStyleOption(
+                style = AppIconStyle.LUMI_CHAN,
+                label = stringResource(R.string.icon_style_lumi_chan),
+                imageRes = R.mipmap.ic_launcher_lumi_chan,
+                selected = selectedStyle == AppIconStyle.LUMI_CHAN.storedValue,
+                onSelect = onSelect,
+                modifier = Modifier.weight(1f)
+            )
+        }
         AppIconStyleOption(
             style = AppIconStyle.CLASSIC,
             label = stringResource(R.string.icon_style_classic),

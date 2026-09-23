@@ -22,6 +22,8 @@ import com.huangder.lumibooks.util.DownloadedFonts
 val LocalIsDarkTheme = staticCompositionLocalOf { false }
 val LocalUseMaterial3Theme = staticCompositionLocalOf { false }
 val LocalAppTheme = staticCompositionLocalOf { "lumi" }
+/** Raw persisted theme id, retained when a theme resolves to liquid glass. */
+val LocalAppThemeVariant = staticCompositionLocalOf { "lumi" }
 val LocalAppAccentHex = staticCompositionLocalOf { DEFAULT_APP_ACCENT_HEX }
 val LocalAppAccentColor = staticCompositionLocalOf { Color(parseAppAccentArgb(DEFAULT_APP_ACCENT_HEX)) }
 val LocalOnAppAccentColor = staticCompositionLocalOf { Color.White }
@@ -116,6 +118,7 @@ object AppColors {
 
     // Material 3 uses the system palette; Default and Liquid Glass use the configured accent.
     val WindowBg: Color @Composable get() = if (LocalEInkMode.current) Color.White else if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.background else if (LocalIsDarkTheme.current) DarkWindowBg else LightWindowBg
+    val PageBg: Color @Composable get() = if (LocalLumiBackgroundPresent.current) Color.Transparent else WindowBg
     val CardBg: Color @Composable get() = if (LocalEInkMode.current) Color.White else if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.surfaceContainerLow else if (LocalIsDarkTheme.current) DarkCardBg else LightCardBg
     val TextPrimary: Color @Composable get() = if (LocalEInkMode.current) Color.Black else if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.onBackground else if (LocalIsDarkTheme.current) DarkTextPrimary else LightTextPrimary
     val TextSecondary: Color @Composable get() = if (LocalEInkMode.current) Color(0xFF444444) else if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.onSurfaceVariant else if (LocalIsDarkTheme.current) DarkTextSecondary else LightTextSecondary

@@ -57,6 +57,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.shape.CircleShape
@@ -173,7 +174,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.huangder.lumibooks.domain.model.resolveImageSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -5779,6 +5782,77 @@ private fun ActionCapsule(
     }
 }
 
+/** 连续滚动列表里章节之间的固定间距（dp）。占位高度要按它换算成正文字高。 */
+private const val CONTINUOUS_CHAPTER_GAP_DP = 28f
+
+/** 恢复定位的等待预算：帧预算与时间预算取先到者，避免把列表钉在目标章上。 */
+internal const val CONTINUOUS_RESTORE_WAIT_MAX_FRAMES = 45
+internal const val CONTINUOUS_RESTORE_WAIT_BUDGET_MS = 1_200L
+
+/** 恢复定位期间允许的补锚次数（目标章被前面变高的章节顶出视口时）。 */
+private const val CONTINUOUS_RESTORE_MAX_REANCHORS = 2
+
+/** 判定「量稳了」需要的连续稳定帧数。 */
+private const val CONTINUOUS_RESTORE_STABLE_FRAMES = 3
+
+/** 上报当前章节前的稳定等待上限（帧）。 */
+private const val CONTINUOUS_REPORT_STABILITY_MAX_FRAMES = 30
+private const val CONTINUOUS_REPORT_STABLE_FRAMES = 2
+
+/** 同一章解码失败的重试上限（按章节数 / 排版参数分组，排版变化时重新计数）。 */
+private const val CONTINUOUS_CHAPTER_MAX_LOAD_ATTEMPTS = 16
+
+/** 无实测样本时，未解码章节占位高度按视口高度的这个倍数估算。 */
+private const val CONTINUOUS_PLACEHOLDER_VIEWPORT_FACTOR = 1.4f
+private const val CONTINUOUS_PLACEHOLDER_MIN_VIEWPORT_FACTOR = 0.5f
+private const val CONTINUOUS_PLACEHOLDER_MAX_VIEWPORT_FACTOR = 6f
+
+/** 典型章节高度（EMA）的新样本权重，以及写回状态的最小变化量。 */
+private const val CONTINUOUS_TYPICAL_HEIGHT_SAMPLE_WEIGHT = 0.35f
+private const val CONTINUOUS_TYPICAL_HEIGHT_MIN_DELTA_PX = 24
+
+/**
+ * 未解码章节的占位正文高度（不含章间距）。
+ *
+ * 空条目只有 [CONTINUOUS_CHAPTER_GAP_DP] 高时，一屏能塞下二十多个空章节，任何小幅滚动都会
+ * 跨过四五章 —— 章节标题、进度和正文一起乱跳。这里优先用本章上次实测高度（减去章间距），
+ * 否则用全书典型高度，再退回按视口高度估算，并做上下限收敛。
+ */
+internal fun continuousPlaceholderContentHeightPx(
+    rememberedTotalHeightPx: Int?,
+    typicalChapterHeightPx: Int,
+    viewportHeightPx: Int,
+    chapterGapPx: Int
+): Int {
+    val viewport = viewportHeightPx.coerceAtLeast(0)
+    if (viewport <= 0) return 0
+    val gap = chapterGapPx.coerceAtLeast(0)
+    val lowerBound = (viewport * CONTINUOUS_PLACEHOLDER_MIN_VIEWPORT_FACTOR).roundToInt()
+    val upperBound = (viewport * CONTINUOUS_PLACEHOLDER_MAX_VIEWPORT_FACTOR).roundToInt()
+    val remembered = rememberedTotalHeightPx?.takeIf { it > 0 }?.minus(gap)
+    val candidate = when {
+        remembered != null && remembered > 0 -> remembered
+        typicalChapterHeightPx > 0 -> typicalChapterHeightPx - gap
+        else -> (viewport * CONTINUOUS_PLACEHOLDER_VIEWPORT_FACTOR).roundToInt() - gap
+    }
+    return candidate
+        .coerceIn(lowerBound.coerceAtLeast(1), upperBound.coerceAtLeast(lowerBound + 1))
+        .coerceAtLeast(1)
+}
+
+/** 全书典型章节高度：新实测高度按权重并入，避免单章（整页图）把估算拉跑偏。 */
+internal fun continuousTypicalChapterHeight(previousPx: Int, measuredPx: Int): Int {
+    if (measuredPx <= 0) return previousPx
+    if (previousPx <= 0) return measuredPx
+    return (previousPx + (measuredPx - previousPx) * CONTINUOUS_TYPICAL_HEIGHT_SAMPLE_WEIGHT)
+        .roundToInt()
+}
+
+/** 典型高度写回状态前的最小变化量，避免 ±1 抖动引起无意义的重复重组。 */
+internal fun continuousTypicalChapterHeightChangedEnough(previousPx: Int, nextPx: Int): Boolean =
+    nextPx != previousPx &&
+        kotlin.math.abs(nextPx - previousPx) >= CONTINUOUS_TYPICAL_HEIGHT_MIN_DELTA_PX
+
 @Composable
 internal fun ContinuousScrollReader(
     chapterCount: Int,
@@ -5837,6 +5911,7 @@ internal fun ContinuousScrollReader(
     // 章节内插图（ImageSpan）按这个宽度排版，否则解析器会退回“整屏减 44dp”的兜底值，
     // 导致拖动左右边距时图片尺寸不跟随、甚至被边距裁切。
     var viewportWidthPx by remember { mutableIntStateOf(0) }
+    var viewportHeightPx by remember { mutableIntStateOf(0) }
     val readerDensity = LocalDensity.current.density
     val contentWidthPx = if (viewportWidthPx <= 0) {
         0
@@ -5853,16 +5928,63 @@ internal fun ContinuousScrollReader(
     // 原始章节文本缓存：相邻章节提前拉取，衔接处不再出现“只有标题/空白、松手后突然加载”。
     // 只允许存放「框架绘制」变体（getFrameworkDrawnChapterText）：上下滚动用的是原生 TextView，
     // 混入「阅读器自绘」变体会让框架按整字宽画半字宽槽位，行尾标点被正文列右边缘裁掉半截。
+    // 解码失败（null / 空）绝不写入缓存：写空串会让该章整场会话都渲染成空条目、且不再重试。
     val rawChapterTextCache = remember(chapterCount, contentRevision, textAlignment, contentWidthPx) {
         mutableStateMapOf<Int, CharSequence>()
     }
     val chapterTextViews = remember(chapterCount, contentRevision, contentWidthPx) {
         mutableMapOf<Int, java.lang.ref.WeakReference<ContinuousSelectableTextView>>()
     }
-    // 跟踪各章节的实际测量高度，用于连续进度加权计算
-    val chapterHeights = remember(chapterCount, contentRevision, contentWidthPx) {
-        mutableStateMapOf<Int, Int>()
+    // 各章节的实测高度：未解码章节按它预留占位高度，避免空条目只有 28dp 导致一滚跨四五章。
+    // 只按章节数重建：改字号 / 改宽度时保留旧高度，列表不会瞬间塌成占位。
+    val chapterHeights = remember(chapterCount) { mutableStateMapOf<Int, Int>() }
+    var typicalChapterHeightPx by remember(chapterCount) { mutableIntStateOf(0) }
+    val chapterGapPx = (CONTINUOUS_CHAPTER_GAP_DP * readerDensity).roundToInt()
+    val chapterLoadScope = rememberCoroutineScope()
+    // 同一章会被「恢复定位 / 预加载 / 条目自身」同时请求；没有去重时 EPUB 会被解析三遍，
+    // 先到的那次还可能被 updateReaderContentWidth 清掉解析缓存而返回空章节。
+    val inFlightChapterLoads = remember(chapterCount, contentRevision, textAlignment, contentWidthPx) {
+        mutableMapOf<Int, Deferred<CharSequence?>>()
     }
+    val failedChapterLoadCounts = remember(chapterCount, contentRevision, textAlignment, contentWidthPx) {
+        mutableMapOf<Int, Int>()
+    }
+
+    /**
+     * 解码一章正文并写入缓存，同一 (chapter, 排版参数) 的并发请求共用一次解码。
+     *
+     * 返回 null 表示这一章暂时没有正文（失败或空章节）；失败次数有上限，
+     * 避免不可读的章节在每次视口变化时都重新解码一遍。
+     */
+    suspend fun loadChapterOnce(index: Int): CharSequence? {
+        rawChapterTextCache[index]?.let { cached ->
+            if (cached.isNotEmpty()) return cached
+        }
+        if ((failedChapterLoadCounts[index] ?: 0) >= CONTINUOUS_CHAPTER_MAX_LOAD_ATTEMPTS) return null
+        val started = inFlightChapterLoads[index]?.takeIf { it.isActive } ?: chapterLoadScope
+            .async(Dispatchers.IO) {
+                val loaded = loadChapterText(index, contentWidthPx.takeIf { it > 0 })
+                if (loaded.isNullOrEmpty()) {
+                    null
+                } else {
+                    rawChapterTextCache[index] = loaded
+                    loaded
+                }
+            }
+            .also { inFlightChapterLoads[index] = it }
+        val loaded = try {
+            started.await()
+        } finally {
+            if (inFlightChapterLoads[index] === started) inFlightChapterLoads.remove(index)
+        }
+        if (loaded.isNullOrEmpty()) {
+            failedChapterLoadCounts[index] = (failedChapterLoadCounts[index] ?: 0) + 1
+        } else {
+            failedChapterLoadCounts.remove(index)
+        }
+        return loaded
+    }
+
     val restoreTarget = remember(chapterCount, contentRevision) {
         currentChapter.coerceIn(0, chapterCount - 1)
     }
@@ -5871,30 +5993,75 @@ internal fun ContinuousScrollReader(
     }
     val restoreCharacterOffset = remember(chapterCount, contentRevision) { initialCharacterOffset }
     var initialRestoreCompleted by remember(chapterCount, contentRevision) { mutableStateOf(false) }
-    var isRestoringPosition by remember { mutableStateOf(true) }
+    var isRestoringPosition by remember { mutableStateOf(false) }
+    // 用户拖动计数（开始 / 结束都计数）：恢复定位一旦发现它变化就让位给用户，
+    // 不再把位置拉回去；纯滚动模式下也用它决定是否还允许把位置强拉回恢复点。
+    var userScrollGeneration by remember { mutableIntStateOf(0) }
+    var userDragging by remember { mutableStateOf(false) }
+    LaunchedEffect(listState) {
+        listState.interactionSource.interactions.collect { interaction ->
+            when (interaction) {
+                is DragInteraction.Start -> {
+                    userDragging = true
+                    userScrollGeneration++
+                }
+                is DragInteraction.Stop, is DragInteraction.Cancel -> {
+                    userDragging = false
+                    userScrollGeneration++
+                }
+                else -> Unit
+            }
+        }
+    }
     val requestedPosition by scrollRequests.collectAsState()
 
+    /** 首个跨过视口顶边的章节条目（index, offset, size）。 */
+    fun firstVisibleItem(): Triple<Int, Int, Int>? =
+        listState.layoutInfo.visibleItemsInfo
+            .firstOrNull { item -> item.offset + item.size > 0 }
+            ?.let { item -> Triple(item.index, item.offset, item.size) }
+
+    /**
+     * 等待目标章节量出真实高度。
+     *
+     * 旧实现在等待期间每帧都 `scrollToItem(target)`，会把列表钉在目标章上最长 300 帧（约 5 秒），
+     * 用户表现为“完全滚不动”、松手后又被拉回去。现在是有界等待（帧预算 + 时间预算），
+     * 补锚最多两次，且用户一开始拖动就立刻放弃。
+     */
     suspend fun awaitStableChapterMeasurement(
-        target: Int
+        target: Int,
+        startUserScrollGeneration: Int
     ): androidx.compose.foundation.lazy.LazyListItemInfo? {
         var lastSize = -1
         var stableFrames = 0
-        repeat(300) {
+        var reAnchors = 0
+        var frames = 0
+        val deadlineNanos = System.nanoTime() + CONTINUOUS_RESTORE_WAIT_BUDGET_MS * 1_000_000L
+        while (frames < CONTINUOUS_RESTORE_WAIT_MAX_FRAMES && System.nanoTime() < deadlineNanos) {
             withFrameNanos { }
+            frames++
+            if (userScrollGeneration != startUserScrollGeneration) return null
             val item = listState.layoutInfo.visibleItemsInfo
                 .firstOrNull { it.index == target && it.size > 0 }
             if (item == null) {
                 // Chapters before the target can expand after their placeholders load and push the
-                // target out of the viewport. Re-anchor until its real, stable height is measurable.
-                listState.scrollToItem(target)
+                // target out of the viewport. Re-anchor a bounded number of times, and never while
+                // the user is dragging — otherwise the list fights the finger.
+                if (!userDragging && reAnchors < CONTINUOUS_RESTORE_MAX_REANCHORS) {
+                    reAnchors++
+                    listState.scrollToItem(target)
+                }
                 lastSize = -1
                 stableFrames = 0
-                return@repeat
+                continue
             }
-            if (loadedChapters[target] != true) {
+            // 以「正文已解码进缓存」为就绪信号：条目自身的 loadedChapters 只在它自己那次
+            // produceState 完成后才置位，晚到的解码（预加载 / 恢复定位补拉）即使落进缓存，
+            // 也不该让恢复流程一直等下去。
+            if (rawChapterTextCache[target].isNullOrEmpty()) {
                 lastSize = -1
                 stableFrames = 0
-                return@repeat
+                continue
             }
             if (item.size == lastSize) {
                 stableFrames++
@@ -5905,27 +6072,47 @@ internal fun ContinuousScrollReader(
             val textView = chapterTextViews[target]?.get()
             val textMeasured = textView != null && textView.layout != null && !textView.isLayoutRequested
             val imagesMeasured = rawChapterTextCache[target]?.let { continuousChapterImages(it).isNotEmpty() } == true
-            if (stableFrames >= 3 && (textMeasured || imagesMeasured)) return item
+            if (stableFrames >= CONTINUOUS_RESTORE_STABLE_FRAMES && (textMeasured || imagesMeasured)) {
+                return item
+            }
         }
-        return null
+        // 超时也交回目标条目：宁可粗落点，也不能让列表停在“恢复中”或被一直按住。
+        return listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == target && it.size > 0 }
     }
 
-    suspend fun scrollToPosition(target: Int, fraction: Float, characterOffset: Int?): Float? {
+    /** 把目标章节锚到 TOP，再按字符锚点 / 章内比例落到具体位置，返回落点比例。 */
+    suspend fun scrollToPosition(
+        target: Int,
+        fraction: Float,
+        characterOffset: Int?,
+        startUserScrollGeneration: Int
+    ): Float? {
         // Decode before waiting for frames: slow chapters must not consume the restore while they
         // still show a placeholder, or lose their load when preceding chapters push them offscreen.
-        if (target !in rawChapterTextCache) {
-            val text = withContext(Dispatchers.IO) { loadChapterText(target, contentWidthPx) }
-            rawChapterTextCache[target] = text ?: ""
+        // 等待仍然有界（帧预算）：解码在共享 scope 里继续跑，稍后照样会落进缓存，
+        // 卡住 / 极慢的章节不能把恢复流程挂死。
+        if (rawChapterTextCache[target].isNullOrEmpty()) {
+            chapterLoadScope.launch { loadChapterOnce(target) }
+            var decodeFrames = 0
+            while (decodeFrames < CONTINUOUS_RESTORE_WAIT_MAX_FRAMES &&
+                rawChapterTextCache[target].isNullOrEmpty()
+            ) {
+                withFrameNanos { }
+                decodeFrames++
+            }
         }
+        // 用户在解码期间自己滚了：立刻让位，不再把位置拉到目标章。
+        if (userScrollGeneration != startUserScrollGeneration) return null
         listState.scrollToItem(target)
-        val item = awaitStableChapterMeasurement(target) ?: return null
+        val item = awaitStableChapterMeasurement(target, startUserScrollGeneration) ?: return null
         val textOffset = characterOffset?.let { offset ->
             chapterTextViews[target]?.get()?.layout?.let { continuousCharacterTop(it, offset) }
                 ?: rawChapterTextCache[target]?.let { text ->
                     continuousImageCharacterTop(text, contentWidthPx, if (comicModeEnabled) 0 else (8 * readerDensity).roundToInt(), offset)
                 }
         }
-        val scrollOffset = textOffset?.toFloat() ?: (item.size * fraction)
+        val scrollOffset = (textOffset?.toFloat() ?: (item.size * fraction))
+            .coerceIn(0f, (item.size - 1).coerceAtLeast(0).toFloat())
         // A single absolute placement also works for a target several viewports into a chapter.
         listState.scrollToItem(target, scrollOffset.roundToInt())
         return (scrollOffset / item.size.coerceAtLeast(1)).coerceIn(0f, 0.9999f)
@@ -5937,68 +6124,105 @@ internal fun ContinuousScrollReader(
         if (request == null && initialRestoreCompleted) return@LaunchedEffect
         val target = (request?.chapterIndex ?: restoreTarget).coerceIn(0, chapterCount - 1)
         val fraction = (request?.chapterFraction ?: restoreFraction).coerceIn(0f, 0.9999f)
-        isRestoringPosition = true
-        try {
-            val reached = scrollToPosition(target, fraction,
-                if (request != null) request.characterOffset else restoreCharacterOffset)
-                ?: return@LaunchedEffect
-            onChapterVisible(target, reached, request?.origin ?: TtsPageChangeOrigin.LAYOUT)
-            initialRestoreCompleted = true
-            onRestoreComplete()
-            withFrameNanos { }
-            // Keep a newer request if it arrived during loading or measurement.
-            if (request != null) scrollRequests.compareAndSet(request, null)
-        } finally {
-            isRestoringPosition = false
+        // 初始恢复到进度时，用户已经自己滚过就不再强拉回恢复点（改排版、改字号会重跑本 effect）。
+        val canForceScroll = request != null || userScrollGeneration == 0
+        val startUserScrollGeneration = userScrollGeneration
+        var reached: Float? = null
+        if (canForceScroll) {
+            isRestoringPosition = true
+            try {
+                reached = scrollToPosition(
+                    target,
+                    fraction,
+                    if (request != null) request.characterOffset else restoreCharacterOffset,
+                    startUserScrollGeneration
+                )
+            } finally {
+                isRestoringPosition = false
+            }
         }
+        // 无论成功、超时还是让位给用户都要收尾：标记恢复完成、清 pending、消费请求。
+        // 否则后续 contentRevision 变化会重放同一次跳转，表现为反复跳章节。
+        reached?.let { value ->
+            onChapterVisible(target, value, request?.origin ?: TtsPageChangeOrigin.LAYOUT)
+        }
+        initialRestoreCompleted = true
+        onRestoreComplete()
+        withFrameNanos { }
+        // Keep a newer request if it arrived during loading or measurement.
+        if (request != null) scrollRequests.compareAndSet(request, null)
     }
     LaunchedEffect(restoreTarget, chapterCount, contentRevision, contentWidthPx) {
         if (contentWidthPx <= 0) return@LaunchedEffect
-        // 进入连续滚动时立即预加载恢复章节附近的章节
-        listOf(restoreTarget - 1, restoreTarget, restoreTarget + 1, restoreTarget + 2)
-            .filter { it in 0 until chapterCount && it !in rawChapterTextCache }
-            .forEach { neighbor ->
-                kotlinx.coroutines.withContext(Dispatchers.IO) {
-                    loadChapterText(neighbor, contentWidthPx.takeIf { it > 0 })
-                        ?.let { rawChapterTextCache[neighbor] = it }
-                }
-            }
+        // 进入连续滚动时立即预加载恢复章节附近的章节（双向），首屏不会是一屏空白占位。
+        listOf(restoreTarget - 2, restoreTarget - 1, restoreTarget, restoreTarget + 1, restoreTarget + 2)
+            .filter { it in 0 until chapterCount }
+            .forEach { neighbor -> loadChapterOnce(neighbor) }
     }
+
+    /**
+     * 等视口静下来（首个可见条目连续 [CONTINUOUS_REPORT_STABLE_FRAMES] 帧不变）再取位置。
+     * 章节陆续解码时条目高度会跳变，直接上报会把“正在加载的邻居”报成当前章节。
+     */
+    suspend fun awaitStableViewportItem(): Triple<Int, Int, Int>? {
+        var last: Triple<Int, Int, Int>? = null
+        var lastIndex = -1
+        var lastSize = -1
+        var stableFrames = 0
+        repeat(CONTINUOUS_REPORT_STABILITY_MAX_FRAMES) {
+            withFrameNanos { }
+            val item = firstVisibleItem()
+            if (item == null) {
+                last = null
+                lastIndex = -1
+                lastSize = -1
+                stableFrames = 0
+                return@repeat
+            }
+            val (index, _, size) = item
+            if (index == lastIndex && size == lastSize) {
+                stableFrames++
+            } else {
+                lastIndex = index
+                lastSize = size
+                stableFrames = 1
+            }
+            last = item
+            if (stableFrames >= CONTINUOUS_REPORT_STABLE_FRAMES) return item
+        }
+        return last
+    }
+
     LaunchedEffect(listState, chapterCount, contentRevision, contentWidthPx) {
         if (contentWidthPx <= 0) return@LaunchedEffect
-        var userScrollObserved = false
+        var userScrollPending = false
         snapshotFlow {
-            val layout = listState.layoutInfo
-            val item = layout.visibleItemsInfo.firstOrNull { item ->
-                item.offset + item.size > 0
-            }?.let { item ->
-                Triple(item.index, item.offset, item.size)
-            }
-            Triple(listState.isScrollInProgress, isRestoringPosition, item)
+            Triple(userDragging, isRestoringPosition, firstVisibleItem())
         }.distinctUntilChanged().collectLatest { viewport ->
-            val (isScrolling, isProgrammaticScroll, item) = viewport
+            val (dragging, restoring, item) = viewport
             item ?: return@collectLatest
-            val (index, offset, size) = item
-            if (isScrolling) {
-                if (!isProgrammaticScroll) userScrollObserved = true
-            } else if (userScrollObserved && !isProgrammaticScroll &&
-                index in 0 until chapterCount &&
-                loadedChapters[index] == true &&
-                size > 0
+            val (index, _, _) = item
+            // 双向预加载：向上滚动时同样不会一路空白占位。
+            listOf(index - 2, index - 1, index + 1, index + 2)
+                .filter { it in 0 until chapterCount }
+                .forEach { neighbor -> loadChapterOnce(neighbor) }
+            if (dragging) {
+                userScrollPending = true
+                return@collectLatest
+            }
+            // 恢复定位还没收尾时不上报：否则恢复过程本身会被记成“用户翻了章节”。
+            if (!userScrollPending || restoring) return@collectLatest
+            val stable = awaitStableViewportItem() ?: return@collectLatest
+            userScrollPending = false
+            val (stableIndex, stableOffset, stableSize) = stable
+            if (stableIndex !in 0 until chapterCount ||
+                loadedChapters[stableIndex] != true ||
+                stableSize <= 0
             ) {
-                userScrollObserved = false
-                val fraction = (-offset).toFloat().div(size).coerceIn(0f, 0.9999f)
-                onChapterVisible(index, fraction, TtsPageChangeOrigin.USER)
+                return@collectLatest
             }
-            // 预加载当前可见章节之后的两章，保证章节衔接处内容已就绪
-            listOf(index + 1, index + 2).forEach { neighbor ->
-                if (neighbor in 0 until chapterCount && neighbor !in rawChapterTextCache) {
-                    kotlinx.coroutines.withContext(Dispatchers.IO) {
-                        loadChapterText(neighbor, contentWidthPx.takeIf { it > 0 })
-                            ?.let { rawChapterTextCache[neighbor] = it }
-                    }
-                }
-            }
+            val fraction = (-stableOffset).toFloat().div(stableSize).coerceIn(0f, 0.9999f)
+            onChapterVisible(stableIndex, fraction, TtsPageChangeOrigin.USER)
         }
     }
     LaunchedEffect(searchHighlight) {
@@ -6055,7 +6279,10 @@ internal fun ContinuousScrollReader(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                .onSizeChanged { viewportWidthPx = it.width }
+                .onSizeChanged { size ->
+                    viewportWidthPx = size.width
+                    viewportHeightPx = size.height
+                }
                 .pointerInput(Unit) { detectTapGestures(onTap = { onMenuToggle() }) },
             contentPadding = PaddingValues(
                 start = marginLeft.dp,
@@ -6066,7 +6293,9 @@ internal fun ContinuousScrollReader(
         ) {
         items(chapterCount, key = { it }) { chapterIndex ->
             val itemTransitionProgress = remember(chapterIndex) { Animatable(0f) }
-            val isLoaded = loadedChapters[chapterIndex] == true
+            // 缓存里已经有正文时直接按已加载渲染，避免先闪一帧占位再换成正文。
+            val isLoaded = loadedChapters[chapterIndex] == true ||
+                !rawChapterTextCache[chapterIndex].isNullOrEmpty()
             LaunchedEffect(isLoaded, chapterIndex) {
                 if (isLoaded) {
                     itemTransitionProgress.snapTo(0f)
@@ -6091,20 +6320,9 @@ internal fun ContinuousScrollReader(
             ) {
                 if (contentWidthPx <= 0) return@produceState
                 val cached = rawChapterTextCache[chapterIndex]
-                val rawText = if (cached != null) {
-                    cached
-                } else {
-                    withContext(Dispatchers.IO) {
-                        // 上下滚动用原生 TextView 绘制，标点挤压要靠
-                        // ReplacementSpan 自己把字形居中画进半宽槽位。
-                        loadChapterText(
-                            chapterIndex,
-                            contentWidthPx.takeIf { it > 0 }
-                        )
-                    }.also { loaded ->
-                        if (loaded != null) rawChapterTextCache[chapterIndex] = loaded
-                    }
-                }
+                // 与恢复定位 / 预加载共用同一次解码（loadChapterOnce 内部去重），
+                // 不再各自解析一遍；失败（null / 空）不会写进缓存，视口变化时会重试。
+                val rawText = cached ?: loadChapterOnce(chapterIndex)
                 if (BuildConfig.DEBUG) {
                     val spanned = rawText as? android.text.Spanned
                     val replacementSpans = spanned
@@ -6128,15 +6346,29 @@ internal fun ContinuousScrollReader(
                             " replacementSpans=$replacementSpans measureOnlySpans=$measureOnlySpans"
                     )
                 }
-                value = rawText?.let {
+                val resolved = rawText?.takeIf { it.isNotEmpty() }?.let {
                     // LeadingMarginSpan (first-line indent), image spans, and paragraph spacing must
                     // survive simplified/traditional conversion in the continuous reader.
                     com.huangder.lumibooks.util.ChineseConverter.convertPreservingSpans(it, chineseMode)
                 }
-                loadedChapters[chapterIndex] = true
+                value = resolved
+                // 只有真的拿到正文才算已加载：把空章节标记成已加载会让它永远停在 28dp 空条目，
+                // 视口里塞满空章节后，滚动既不跟手（滚不动），章节标题也会乱跳。
+                if (!resolved.isNullOrEmpty()) loadedChapters[chapterIndex] = true
             }
+            // 正文可能在本条目之外被补上（相邻章节预加载、恢复定位补拉）。直接以缓存为准，
+            // 缓存一到就渲染，不必等 produceState 重跑 —— 否则这章会一直停在占位 / 空白。
+            val cachedChapterText = rawChapterTextCache[chapterIndex]
+            val cachedConvertedText = remember(cachedChapterText, chineseMode) {
+                cachedChapterText
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let {
+                        com.huangder.lumibooks.util.ChineseConverter.convertPreservingSpans(it, chineseMode)
+                    }
+            }
+            val displayChapterText = chapterText ?: cachedConvertedText
             val selectableText = remember(
-                chapterText,
+                displayChapterText,
                 notes,
                 searchHighlight,
                 searchHighlightAlpha.value,
@@ -6145,7 +6377,7 @@ internal fun ContinuousScrollReader(
                 backgroundColor
             ) {
                 continuousSpannableText(
-                    text = chapterText,
+                    text = displayChapterText,
                     bionicReadingEnabled = bionicReadingEnabled,
                     notes = notes.filter { it.chapterIndex == chapterIndex },
                     searchHighlight = searchHighlight?.takeIf { it.chapterIndex == chapterIndex },
@@ -6160,16 +6392,52 @@ internal fun ContinuousScrollReader(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    // 只记录真正渲染出正文的高度：占位高度不能反过来当成测量结果，否则会自我放大。
+                    .onSizeChanged { size ->
+                        if (!isLoaded || size.height <= 0) return@onSizeChanged
+                        if (chapterHeights[chapterIndex] != size.height) {
+                            chapterHeights[chapterIndex] = size.height
+                        }
+                        val nextTypical = continuousTypicalChapterHeight(
+                            previousPx = typicalChapterHeightPx,
+                            measuredPx = size.height
+                        )
+                        if (continuousTypicalChapterHeightChangedEnough(
+                                typicalChapterHeightPx,
+                                nextTypical
+                            )
+                        ) {
+                            typicalChapterHeightPx = nextTypical
+                        }
+                    }
                     .graphicsLayer {
                         // 使用入场动画：平滑淡入 + 上移效果
                         val progress = itemTransitionProgress.value
                         alpha = progress.coerceIn(0.01f, 1f)
                         translationY = ((1f - progress) * 20f).dp.toPx()
                     }
-                    // 绔犺妭闂撮殧锛氶槻姝㈠墠涓€绔犳湯灏句笌涓嬩竴绔犳爣棰樿创澶繎
-                    .padding(bottom = 28.dp)
+                    // 章节间隔：防止前一章末尾与下一章标题贴太近
+                    .padding(bottom = CONTINUOUS_CHAPTER_GAP_DP.dp)
             ) {
-                if (continuousImages.isNotEmpty()) {
+                if (!isLoaded) {
+                    // 未解码章节按典型高度占位。空条目只有 28dp 时，一屏能塞下二十多章，
+                    // 任何小幅滚动都会跨过四五章：章节标题 / 进度与正文一起乱跳；
+                    // 可见区域全是空条目时列表总高度接近视口，还会表现为“完全滚不动”。
+                    Spacer(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(
+                                with(LocalDensity.current) {
+                                    continuousPlaceholderContentHeightPx(
+                                        rememberedTotalHeightPx = chapterHeights[chapterIndex],
+                                        typicalChapterHeightPx = typicalChapterHeightPx,
+                                        viewportHeightPx = viewportHeightPx,
+                                        chapterGapPx = chapterGapPx
+                                    ).toDp()
+                                }
+                            )
+                    )
+                } else if (continuousImages.isNotEmpty()) {
                     // Reuse EPUB-resolved drawables, including SVG and failure placeholders.
                     // Never discard novel text merely because comic mode was enabled globally.
                     Column(verticalArrangement = Arrangement.spacedBy(if (comicModeEnabled) 0.dp else 8.dp)) {

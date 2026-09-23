@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.home
 
+import com.huangder.lumibooks.ui.components.lumiCardSurface
 import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
 
 import android.widget.Toast
@@ -1044,7 +1045,7 @@ private fun FolderBooksFolderRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadius.md))
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() }
@@ -1099,7 +1100,7 @@ private fun FolderBooksBookRow(
                 shape = RoundedCornerShape(AppRadius.md)
             )
             .clip(RoundedCornerShape(AppRadius.md))
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },

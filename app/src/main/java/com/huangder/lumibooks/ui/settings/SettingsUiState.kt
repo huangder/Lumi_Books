@@ -66,7 +66,8 @@ data class SettingsUiState(
 
     // 显示与外观
     val appIconStyle: String = AppIconStyle.LUMI_2.storedValue,
-    val appTheme: String = "lumi",         // "lumi" / "material3" / "liquid_glass"
+    val appTheme: String = "lumi",         // "lumi" / "material3" / "liquid_glass" / "lumi_chan"
+    val lumiEasterEggUnlocked: Boolean = false,
     val startupScreen: String = DataStoreManager.DEFAULT_STARTUP_SCREEN,
     val appAccentColor: String = DEFAULT_APP_ACCENT_HEX,
     val globalFontMode: String = "system", // "default" / "system"

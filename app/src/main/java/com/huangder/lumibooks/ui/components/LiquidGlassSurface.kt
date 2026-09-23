@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalLumiBackgroundBackdrop
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassHdrHighlightEnabled
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassCapability
@@ -115,7 +116,7 @@ fun ProvideLiquidGlassBackdrop(
     backdrop: Backdrop?,
     content: @Composable () -> Unit
 ) {
-    CompositionLocalProvider(LocalLiquidGlassBackdrop provides backdrop, content = content)
+    CompositionLocalProvider(LocalLiquidGlassBackdrop provides (LocalLumiBackgroundBackdrop.current ?: backdrop), content = content)
 }
 
 internal fun Modifier.liquidGlassBackdrop(
@@ -408,7 +409,7 @@ fun LiquidGlassSurface(
         .coerceIn(0f, 1f)
     val hdrHighlightEnabled = LocalLiquidGlassHdrHighlightEnabled.current
     val motionEnabled = LocalMotionEnabled.current
-    val activeBackdrop = backdrop ?: LocalLiquidGlassBackdrop.current
+    val activeBackdrop = LocalLumiBackgroundBackdrop.current ?: backdrop ?: LocalLiquidGlassBackdrop.current
     val density = LocalDensity.current
     val clickInteractionSource = remember { MutableInteractionSource() }
     val pressed by clickInteractionSource.collectIsPressedAsState()
@@ -453,7 +454,14 @@ fun LiquidGlassSurface(
     } else {
         Modifier
     }
-    val surfaceModifier = if (isLiquidGlass && activeBackdrop != null) {
+    // Neutral cards use the artwork's soft 8dp glass. Action surfaces keep their
+    // explicit tint/scrim: their foreground colors depend on that contrast.
+    val surfaceModifier = if (
+        isLiquidGlass && LocalLumiBackgroundBackdrop.current != null &&
+        !interactive && onClick == null && tintColor == null
+    ) {
+        Modifier.lumiCardSurface(fallbackColor, shape)
+    } else if (isLiquidGlass && activeBackdrop != null) {
         Modifier.liquidGlassBackdrop(
             backdrop = activeBackdrop,
             shape = shape,

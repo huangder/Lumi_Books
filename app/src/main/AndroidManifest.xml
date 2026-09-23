@@ -93,8 +93,36 @@
             </intent-filter>
         </activity-alias>
 
+        <activity-alias
+            android:name=".ui.splash.LumiChanSplashLauncherActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_lumi_chan"
+            android:label="@string/app_name"
+            android:targetActivity=".ui.splash.SplashLaunchActivity"
+            android:theme="@style/Theme.EBookReader.Launch">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".ui.splash.LumiChanDirectLauncherActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_lumi_chan"
+            android:label="@string/app_name"
+            android:targetActivity=".ui.splash.DirectLaunchActivity"
+            android:theme="@style/Theme.EBookReader">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
         <!-- Classic launcher entries keep the legacy icon and launch artwork available as a
-             user-selectable pair. Only one of the four launcher components is enabled at a time. -->
+             user-selectable pair. Only one of the six launcher components is enabled at a time. -->
         <activity-alias
             android:name=".ui.splash.ClassicSplashLauncherActivity"
             android:enabled="false"

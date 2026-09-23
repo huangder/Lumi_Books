@@ -129,22 +129,26 @@ class BookDetailsActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val bookId = intent.getStringExtra(EXTRA_BOOK_ID).orEmpty()
+        val launchTheme = com.huangder.lumibooks.util.LaunchThemeController.themeSnapshot(this)
         setContent {
-            val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
-            val accent by dataStoreManager.appAccentColor.collectAsState(initial = DEFAULT_APP_ACCENT_HEX)
-            val font by dataStoreManager.globalFontMode.collectAsState(initial = "system")
-            val transparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = 0.55f)
-            val hdr by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = false)
-            val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
-            val eInk by dataStoreManager.eInkModeEnabled.collectAsState(initial = false)
-            val predictiveBack by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
+            val appTheme by dataStoreManager.appTheme.collectAsState(initial = launchTheme.appTheme)
+            val accent by dataStoreManager.appAccentColor.collectAsState(initial = launchTheme.appAccentColor)
+            val font by dataStoreManager.globalFontMode.collectAsState(initial = launchTheme.globalFontMode)
+            val transparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = launchTheme.liquidGlassTransparency)
+            val hdr by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = launchTheme.liquidGlassHdrHighlightEnabled)
+            val darkMode by dataStoreManager.darkMode.collectAsState(initial = launchTheme.darkMode)
+            val eInk by dataStoreManager.eInkModeEnabled.collectAsState(initial = launchTheme.eInkModeEnabled)
+            val predictiveBack by dataStoreManager.predictiveBackEnabled.collectAsState(initial = launchTheme.predictiveBackEnabled)
             val isDark = if (eInk) false else when (darkMode) { "dark" -> true; "light" -> false; else -> (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES }
             val capability = rememberLiquidGlassCapability(eInk, LocalView.current)
             val resolvedTheme = effectiveAppTheme(appTheme, capability)
+            val motion by dataStoreManager.motionPreference.collectAsState(initial = launchTheme.motionPreference)
             EBookReaderTheme(
+                motionPreference = com.huangder.lumibooks.ui.theme.MotionPreference.fromStoredValue(motion),
                 darkTheme = isDark,
                 dynamicColor = resolvedTheme == "material3",
-                appTheme = resolvedTheme,
+                appTheme = appTheme,
+                lumiBackgroundScene = com.huangder.lumibooks.ui.theme.LumiBackgroundScene.SECONDARY,
                 appAccentColor = accent,
                 liquidGlassTransparency = transparency,
                 liquidGlassHdrHighlightEnabled = hdr && !eInk,
@@ -166,7 +170,7 @@ class BookDetailsActivity : ComponentActivity() {
                             Modifier
                                 .fillMaxSize()
                                 .then(activeControlsBackdrop?.let { Modifier.layerBackdrop(it) } ?: Modifier)
-                                .background(AppColors.WindowBg)
+                                .background(AppColors.PageBg)
                         )
                         ProvideLiquidGlassBackdrop(activeControlsBackdrop) {
                             BookDetailsScreen(bookId = bookId, onBack = { finish() }, onOpenReader = { id ->
@@ -275,7 +279,7 @@ fun BookDetailsScreen(
         }
     }
 
-    Box(Modifier.fillMaxSize().background(AppColors.WindowBg)) {
+    Box(Modifier.fillMaxSize().background(AppColors.PageBg)) {
         LazyColumn(
             modifier = Modifier.fillMaxSize().statusBarsPadding(),
             contentPadding = PaddingValues(start = AppSpace.md, end = AppSpace.md, top = 10.dp, bottom = 124.dp),

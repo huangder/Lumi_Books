@@ -57,23 +57,24 @@ class AuthorizedFolderBooksActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         systemDarkMode = resources.configuration.isNightModeEnabled()
 
+        val launchTheme = com.huangder.lumibooks.util.LaunchThemeController.themeSnapshot(this)
         setContent {
-            val appTheme by dataStoreManager.appTheme.collectAsState(initial = "lumi")
+            val appTheme by dataStoreManager.appTheme.collectAsState(initial = launchTheme.appTheme)
             val appAccentColor by dataStoreManager.appAccentColor
-                .collectAsState(initial = DEFAULT_APP_ACCENT_HEX)
-            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "system")
+                .collectAsState(initial = launchTheme.appAccentColor)
+            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = launchTheme.globalFontMode)
             val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency
-                .collectAsState(initial = 0.55f)
+                .collectAsState(initial = launchTheme.liquidGlassTransparency)
             val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled
-                .collectAsState(initial = false)
+                .collectAsState(initial = launchTheme.liquidGlassHdrHighlightEnabled)
             val cardOutlinesEnabled by dataStoreManager.cardOutlinesEnabled
-                .collectAsState(initial = false)
-            val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
+                .collectAsState(initial = launchTheme.cardOutlinesEnabled)
+            val darkMode by dataStoreManager.darkMode.collectAsState(initial = launchTheme.darkMode)
             val motionPreferenceValue by dataStoreManager.motionPreference
-                .collectAsState(initial = "standard")
+                .collectAsState(initial = launchTheme.motionPreference)
             val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled
-                .collectAsState(initial = true)
-            val eInkMode by dataStoreManager.eInkModeEnabled.collectAsState(initial = false)
+                .collectAsState(initial = launchTheme.predictiveBackEnabled)
+            val eInkMode by dataStoreManager.eInkModeEnabled.collectAsState(initial = launchTheme.eInkModeEnabled)
             val isDark = if (eInkMode) {
                 false
             } else {
@@ -89,7 +90,8 @@ class AuthorizedFolderBooksActivity : ComponentActivity() {
             EBookReaderTheme(
                 darkTheme = isDark,
                 dynamicColor = effectiveTheme == "material3",
-                appTheme = effectiveTheme,
+                appTheme = appTheme,
+                lumiBackgroundScene = com.huangder.lumibooks.ui.theme.LumiBackgroundScene.SECONDARY,
                 appAccentColor = appAccentColor,
                 liquidGlassTransparency = liquidGlassTransparency,
                 liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled && !eInkMode,
@@ -106,7 +108,7 @@ class AuthorizedFolderBooksActivity : ComponentActivity() {
                 val glassBackdrop = pageBackdrop.takeIf {
                     effectiveTheme == "liquid_glass" && !eInkMode
                 }
-                Surface(modifier = Modifier.fillMaxSize(), color = AppColors.WindowBg) {
+                Surface(modifier = Modifier.fillMaxSize(), color = AppColors.PageBg) {
                     // Anchored glass menus (sort) need a host; without one the sort button just
                     // toggled its state and nothing was ever drawn.
                     LiquidGlassMenuHost(

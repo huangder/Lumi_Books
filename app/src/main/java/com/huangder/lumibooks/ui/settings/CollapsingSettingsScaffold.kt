@@ -173,7 +173,7 @@ internal fun CollapsingSettingsScaffold(
         if (blurEnabled) {
             ProgressiveTopBlurBand(
                 progress = collapseProgress,
-                backdrop = topBlurBackdrop,
+                backdrop = com.huangder.lumibooks.ui.theme.LocalLumiBackgroundBackdrop.current ?: topBlurBackdrop,
                 bandHeight = bandHeight,
                 tint = tint,
                 tintAlpha = tintAlpha,

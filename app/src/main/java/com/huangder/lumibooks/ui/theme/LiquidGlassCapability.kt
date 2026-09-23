@@ -25,7 +25,9 @@ data class LiquidGlassCapability(
 )
 
 fun effectiveAppTheme(appTheme: String, capability: LiquidGlassCapability): String =
-    if (appTheme == "liquid_glass" && !capability.supported) "lumi" else appTheme
+    if ((appTheme == "liquid_glass" || appTheme == "lumi_chan") && !capability.supported) "lumi"
+    else if (appTheme == "lumi_chan") "liquid_glass"
+    else appTheme
 
 fun detectLiquidGlassCapability(view: View, eInkMode: Boolean = false): LiquidGlassCapability {
     if (eInkMode || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {

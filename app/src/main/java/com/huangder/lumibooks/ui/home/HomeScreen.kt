@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.home
 
+import com.huangder.lumibooks.ui.components.lumiCardSurface
 import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
 import com.huangder.lumibooks.ui.icons.AppIcons
 
@@ -176,7 +177,7 @@ fun HomeScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(AppColors.WindowBg)
+            .background(AppColors.PageBg)
             .semantics { testTagsAsResourceId = true }
             .testTag(HOME_SCREEN_TAG)
     ) {
@@ -465,7 +466,8 @@ private fun ContinueReadingCard(
     val coverBounds = remember { java.util.concurrent.atomic.AtomicReference(Rect.Zero) }
     val context = LocalContext.current
     val blurRadiusPx = with(LocalDensity.current) { 24.dp.roundToPx() }
-    val useCoverBackground = book.coverPath != null && !LocalEInkMode.current
+    val useCoverBackground = book.coverPath != null && !LocalEInkMode.current &&
+        !com.huangder.lumibooks.ui.theme.LocalLumiBackgroundPresent.current
     val primaryContentColor = if (useCoverBackground) Color.White else AppColors.TextPrimary
     val secondaryContentColor = if (useCoverBackground) {
         Color.White.copy(alpha = 0.78f)
@@ -491,7 +493,7 @@ private fun ContinueReadingCard(
             .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
             .cardOutline(RoundedCornerShape(AppRadius.lg))
             .clip(RoundedCornerShape(AppRadius.lg))
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.lg))
             .cardPressEffect()
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                 onClick(coverBounds.get().takeUnless { it == Rect.Zero })
@@ -753,7 +755,7 @@ private fun RecentBookCard(
             .shadow(10.dp, RoundedCornerShape(AppRadius.md), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
             .cardOutline(RoundedCornerShape(AppRadius.md))
             .clip(RoundedCornerShape(AppRadius.md))
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
             .cardPressEffect()
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onClick)
             .padding(AppSpace.sm),
@@ -852,7 +854,7 @@ private fun ReadingGoalCard(
             .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
             .cardOutline(RoundedCornerShape(AppRadius.lg))
             .clip(RoundedCornerShape(AppRadius.lg))
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.lg))
             .cardPressEffect()
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onCardClick)
             .padding(AppSpace.lg),

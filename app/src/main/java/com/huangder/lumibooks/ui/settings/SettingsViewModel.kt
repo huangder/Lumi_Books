@@ -120,7 +120,10 @@ class SettingsViewModel @Inject constructor(
     }
 
     private val _uiState = MutableStateFlow(
-        SettingsUiState(nickname = context.getString(R.string.default_nickname))
+        SettingsUiState(
+            nickname = context.getString(R.string.default_nickname),
+            lumiEasterEggUnlocked = com.huangder.lumibooks.util.LaunchThemeController.themeSnapshot(context).easterEggUnlocked
+        )
     )
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
     private var predictiveBackVisualOverride: Boolean? = null
@@ -188,6 +191,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.appTheme.collectLatest { theme ->
                 _uiState.value = _uiState.value.copy(appTheme = theme)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.lumiEasterEggUnlocked.collectLatest { unlocked ->
+                _uiState.value = _uiState.value.copy(lumiEasterEggUnlocked = unlocked)
             }
         }
         viewModelScope.launch {
@@ -477,7 +485,8 @@ class SettingsViewModel @Inject constructor(
     // ─── 显示与外观 ───
 
     fun saveAppIconStyle(style: String) {
-        val normalized = AppIconStyle.normalize(style)
+        if (!com.huangder.lumibooks.domain.model.LumiEasterEgg.canSelect(style, _uiState.value.lumiEasterEggUnlocked)) return
+        val normalized = AppIconStyle.normalize(style, _uiState.value.lumiEasterEggUnlocked)
         if (_uiState.value.appIconStyle == normalized) return
         _uiState.value = _uiState.value.copy(appIconStyle = normalized)
         viewModelScope.launch {
@@ -488,6 +497,10 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun saveAppTheme(theme: String) {
+        if (theme == "lumi_chan" && !_uiState.value.lumiEasterEggUnlocked) {
+            Toast.makeText(context, "诶？这是什么Σ(°△°|||)︴", Toast.LENGTH_SHORT).show()
+            return
+        }
         if (_uiState.value.appTheme == theme) return
         _uiState.value = _uiState.value.copy(appTheme = theme)
         viewModelScope.launch {
@@ -604,6 +617,14 @@ class SettingsViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(entranceAnimationsEnabled = enabled)
         viewModelScope.launch {
             dataStoreManager.saveEntranceAnimationsEnabled(enabled)
+        }
+    }
+
+    fun unlockLumiEasterEgg(onComplete: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val succeeded = runCatching { dataStoreManager.unlockLumiEasterEgg() }.isSuccess
+            if (succeeded) _uiState.update { it.copy(lumiEasterEggUnlocked = true) }
+            onComplete(succeeded)
         }
     }
 

@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.settings
 
+import com.huangder.lumibooks.ui.components.lumiCardSurface
 import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
 import com.huangder.lumibooks.ui.icons.AppIcons
 
@@ -415,7 +416,7 @@ fun ExternalTtsConfigurationDetail(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(AppRadius.md))
-                .background(AppColors.CardBg)
+                .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
@@ -683,7 +684,7 @@ private fun ExternalTtsStatusCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadius.md))
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
             .clickable(
                 role = Role.Button,
                 onClickLabel = stringResource(R.string.external_tts_configure),
@@ -752,7 +753,7 @@ private fun ExternalTtsProtocolCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadius.md))
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
             .border(
                 width = if (selected) 1.5.dp else 1.dp,
                 color = if (selected) AppColors.Accent else AppColors.Divider,

@@ -70,10 +70,13 @@ class SettingsActivity : ComponentActivity() {
                 else -> systemDarkMode
             }
 
+            val eInkMode by dataStoreManager.eInkModeEnabled.collectAsState(initial = launchTheme.eInkModeEnabled)
             EBookReaderTheme(
+                eInkMode = eInkMode,
                 darkTheme = isDark,
                 dynamicColor = effectiveAppTheme == "material3",
-                appTheme = effectiveAppTheme,
+                appTheme = appTheme,
+                lumiBackgroundScene = com.huangder.lumibooks.ui.theme.LumiBackgroundScene.SECONDARY,
                 appAccentColor = appAccentColor,
                 liquidGlassTransparency = liquidGlassTransparency,
                 liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled,
@@ -87,7 +90,7 @@ class SettingsActivity : ComponentActivity() {
                     predictiveBackEnabled = predictiveBackEnabled,
                     onBack = { finish() }
                 )
-                Surface(modifier = Modifier.fillMaxSize()) {
+                Surface(modifier = Modifier.fillMaxSize(), color = com.huangder.lumibooks.ui.theme.AppColors.PageBg) {
                     com.huangder.lumibooks.ui.components.LiquidGlassDialogHost(
                         modifier = Modifier.fillMaxSize(),
                         backdrop = settingsBackdrop.takeIf { effectiveAppTheme == "liquid_glass" }
@@ -113,7 +116,7 @@ class SettingsActivity : ComponentActivity() {
                                             Modifier
                                         }
                                     )
-                                    .background(AppColors.WindowBg)
+                                    .background(AppColors.PageBg)
                             )
                             com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop(
                                 settingsControlsBackdrop.takeIf { effectiveAppTheme == "liquid_glass" }

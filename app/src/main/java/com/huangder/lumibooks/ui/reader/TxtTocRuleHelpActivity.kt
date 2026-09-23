@@ -63,20 +63,25 @@ class TxtTocRuleHelpActivity : ComponentActivity() {
             val capability = rememberLiquidGlassCapability(view = LocalView.current)
             val resolvedTheme = effectiveAppTheme(appTheme, capability)
 
+            val eInkMode by dataStoreManager.eInkModeEnabled.collectAsState(initial = launchTheme.eInkModeEnabled)
+            val motion by dataStoreManager.motionPreference.collectAsState(initial = launchTheme.motionPreference)
             EBookReaderTheme(
+                motionPreference = com.huangder.lumibooks.ui.theme.MotionPreference.fromStoredValue(motion),
+                eInkMode = eInkMode,
                 darkTheme = isDark,
                 dynamicColor = resolvedTheme == "material3",
-                appTheme = resolvedTheme,
+                appTheme = appTheme,
+                lumiBackgroundScene = com.huangder.lumibooks.ui.theme.LumiBackgroundScene.SECONDARY,
                 appAccentColor = appAccentColor.ifBlank { DEFAULT_APP_ACCENT_HEX },
                 liquidGlassTransparency = liquidGlassTransparency,
                 liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled,
                 globalFontMode = globalFontMode
             ) {
                 ConfigurableActivityBack(
-                    predictiveBackEnabled = dataStoreManager.predictiveBackEnabled.collectAsState(initial = true).value,
+                    predictiveBackEnabled = dataStoreManager.predictiveBackEnabled.collectAsState(initial = launchTheme.predictiveBackEnabled).value,
                     onBack = { finish() }
                 )
-                Surface(color = AppColors.WindowBg) {
+                Surface(color = AppColors.PageBg) {
                     DetailPage(
                         title = stringResource(R.string.txt_toc_rule_help),
                         onBack = { finish() }

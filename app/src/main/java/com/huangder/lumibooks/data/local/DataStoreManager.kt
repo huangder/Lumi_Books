@@ -22,6 +22,7 @@ import com.huangder.lumibooks.domain.model.CustomFontPresetCodec
 import com.huangder.lumibooks.domain.model.HighlightPalette
 import com.huangder.lumibooks.domain.model.HighlightPaletteCodec
 import com.huangder.lumibooks.domain.model.AppIconStyle
+import com.huangder.lumibooks.domain.model.LumiEasterEgg
 import com.huangder.lumibooks.domain.model.BookOpenTransition
 import com.huangder.lumibooks.domain.model.WebdavConfig
 import com.huangder.lumibooks.domain.model.WebdavSyncContent
@@ -277,6 +278,7 @@ class DataStoreManager @Inject constructor(
         // 应用设置
         private val APP_ICON_STYLE = stringPreferencesKey("app_icon_style")
         private val APP_THEME = stringPreferencesKey("app_theme")
+        private val LUMI_EASTER_EGG_UNLOCKED = booleanPreferencesKey("lumi_easter_egg_unlocked")
         private val STARTUP_SCREEN = stringPreferencesKey("startup_screen")
         private val APP_ACCENT_COLOR = stringPreferencesKey("app_accent_color")
         private val GLOBAL_FONT_MODE = stringPreferencesKey("global_font_mode")
@@ -818,11 +820,18 @@ class DataStoreManager @Inject constructor(
 
     // 应用设置
     val appIconStyle: Flow<String> = context.dataStore.data.map { preferences ->
-        AppIconStyle.normalize(preferences[APP_ICON_STYLE])
+        AppIconStyle.normalize(
+            preferences[APP_ICON_STYLE],
+            preferences[LUMI_EASTER_EGG_UNLOCKED] ?: false
+        )
     }
 
+    val lumiEasterEggUnlocked: Flow<Boolean> = context.dataStore.data.map {
+        it[LUMI_EASTER_EGG_UNLOCKED] ?: false
+    }.distinctUntilChanged()
+
     val appTheme: Flow<String> = context.dataStore.data.map { preferences ->
-        preferences[APP_THEME] ?: "lumi"
+        LumiEasterEgg.normalizeTheme(preferences[APP_THEME], preferences[LUMI_EASTER_EGG_UNLOCKED] == true)
     }
 
     val startupScreen: Flow<String> = context.dataStore.data.map { preferences ->
@@ -927,8 +936,12 @@ class DataStoreManager @Inject constructor(
     /** Single DataStore read used to refresh the non-blocking Activity launch snapshot. */
     val launchThemeSnapshot: Flow<LaunchThemeSnapshot> = context.dataStore.data.map { preferences ->
         LaunchThemeSnapshot(
-            iconStyle = AppIconStyle.normalize(preferences[APP_ICON_STYLE]),
-            appTheme = preferences[APP_THEME] ?: "lumi",
+            iconStyle = AppIconStyle.normalize(
+                preferences[APP_ICON_STYLE],
+                preferences[LUMI_EASTER_EGG_UNLOCKED] ?: false
+            ),
+            easterEggUnlocked = preferences[LUMI_EASTER_EGG_UNLOCKED] ?: false,
+            appTheme = LumiEasterEgg.normalizeTheme(preferences[APP_THEME], preferences[LUMI_EASTER_EGG_UNLOCKED] == true),
             appAccentColor = normalizeAppAccentHex(preferences[APP_ACCENT_COLOR]),
             globalFontMode = if (preferences[GLOBAL_FONT_MODE] == "default") "default" else "system",
             liquidGlassTransparency = preferences[LIQUID_GLASS_TRANSPARENCY] ?: 0.55f,
@@ -2261,8 +2274,15 @@ class DataStoreManager @Inject constructor(
 
     suspend fun saveAppTheme(theme: String) {
         context.dataStore.edit { preferences ->
-            preferences[APP_THEME] = theme
+            if (LumiEasterEgg.canSelect(theme, preferences[LUMI_EASTER_EGG_UNLOCKED] == true)) {
+                preferences[APP_THEME] = theme
+            }
         }
+    }
+
+    suspend fun unlockLumiEasterEgg() {
+        context.dataStore.edit { it[LUMI_EASTER_EGG_UNLOCKED] = true }
+        LaunchThemeController.updateEasterEggSnapshot(context, true)
     }
 
     suspend fun saveStartupScreen(screen: String) {
@@ -2272,10 +2292,15 @@ class DataStoreManager @Inject constructor(
     }
 
     suspend fun saveAppIconStyle(style: String): Boolean {
+        var accepted = false
         val normalized = AppIconStyle.normalize(style)
-        context.dataStore.edit { preferences ->
+        val saved = context.dataStore.edit { preferences ->
+            if (!LumiEasterEgg.canSelect(style, preferences[LUMI_EASTER_EGG_UNLOCKED] == true)) return@edit
             preferences[APP_ICON_STYLE] = normalized
+            accepted = true
         }
+        if (!accepted) return false
+        LaunchThemeController.updateEasterEggSnapshot(context, saved[LUMI_EASTER_EGG_UNLOCKED] == true)
         LaunchThemeController.updateIconStyleSnapshot(context, normalized)
         return LaunchThemeController.applyIconStyle(context, normalized)
     }
@@ -2788,6 +2813,7 @@ class DataStoreManager @Inject constructor(
     suspend fun applyPortablePreferences(entries: List<PortablePreference>) {
         if (entries.isEmpty()) return
         context.dataStore.edit { preferences ->
+            val alreadyUnlocked = preferences[LUMI_EASTER_EGG_UNLOCKED] == true
             val metadata = JSONObject(preferences[PORTABLE_PREFERENCE_METADATA] ?: "{}")
             for (entry in entries) {
                 if (!isPortablePreferenceKey(entry.key)) continue
@@ -2804,6 +2830,10 @@ class DataStoreManager @Inject constructor(
                 )
             }
             preferences[PORTABLE_PREFERENCE_METADATA] = metadata.toString()
+            if (alreadyUnlocked) preferences[LUMI_EASTER_EGG_UNLOCKED] = true
+            val unlocked = preferences[LUMI_EASTER_EGG_UNLOCKED] == true
+            preferences[APP_THEME] = LumiEasterEgg.normalizeTheme(preferences[APP_THEME], unlocked)
+            preferences[APP_ICON_STYLE] = AppIconStyle.normalize(preferences[APP_ICON_STYLE], unlocked)
         }
     }
 

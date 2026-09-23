@@ -2,6 +2,7 @@ package com.huangder.lumibooks.ui.settings
 import com.huangder.lumibooks.ui.icons.AppIcons
 import com.huangder.lumibooks.ui.icons.IconPair
 
+import com.huangder.lumibooks.ui.components.lumiCardSurface
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -271,7 +272,7 @@ private fun MineruManualSection(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadius.md))
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
             .border(1.dp, AppColors.Divider, RoundedCornerShape(AppRadius.md))
             .padding(AppSpace.md),
         verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
@@ -309,7 +310,7 @@ private fun MineruStatusCard(mode: MineruMode) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadius.md))
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
             .padding(AppSpace.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -358,7 +359,7 @@ private fun MineruModeCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadius.md))
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
             .border(
                 width = if (selected) 1.5.dp else 1.dp,
                 color = if (selected) AppColors.Accent else AppColors.Divider,

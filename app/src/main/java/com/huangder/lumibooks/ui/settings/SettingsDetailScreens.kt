@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.settings
 
+import com.huangder.lumibooks.ui.components.lumiCardSurface
 import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
 import com.huangder.lumibooks.ui.icons.AppIcons
 
@@ -191,7 +192,7 @@ fun DetailPage(
     LiquidGlassMenuHost(
         modifier = Modifier
             .fillMaxSize()
-            .background(AppColors.WindowBg),
+            .background(AppColors.PageBg),
         backdrop = activeBackdrop
     ) {
         LiquidGlassDialogHost(
@@ -209,7 +210,7 @@ fun DetailPage(
                         .then(
                             activeControlsBackdrop?.let { Modifier.layerBackdrop(it) } ?: Modifier
                         )
-                        .background(AppColors.WindowBg)
+                        .background(AppColors.PageBg)
                 )
                 // Page overlays sample the completed pageBackdrop. Inline controls use the
                 // background-only source so they never capture surfaces drawing that same source.
@@ -1215,11 +1216,11 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
     val appThemeOptions = listOf(
         "lumi" to stringResource(R.string.app_theme_lumi),
         "material3" to stringResource(R.string.app_theme_material3)
-    ) + if (uiState.eInkModeEnabled || !liquidGlassSupported) {
+    ) + (if (uiState.eInkModeEnabled || !liquidGlassSupported) {
         emptyList()
     } else {
         listOf("liquid_glass" to stringResource(R.string.app_theme_liquid_glass))
-    }
+    }) + listOf("lumi_chan" to "？")
     val globalFontOptions = listOf(
         "default" to stringResource(R.string.global_font_default),
         "system" to stringResource(R.string.global_font_system)
@@ -1337,7 +1338,9 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
                 modifier = Modifier.weight(1f)
             )
             Text(
-                if (uiState.appIconStyle == AppIconStyle.CLASSIC.storedValue) {
+                if (uiState.appIconStyle == AppIconStyle.LUMI_CHAN.storedValue) {
+                    stringResource(R.string.icon_style_lumi_chan)
+                } else if (uiState.appIconStyle == AppIconStyle.CLASSIC.storedValue) {
                     stringResource(R.string.icon_style_classic)
                 } else {
                     stringResource(R.string.icon_style_lumi2)
@@ -2164,7 +2167,7 @@ private fun StorageCard(content: @Composable () -> Unit) {
             .shadow(8.dp, shape, ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
             .cardOutline(shape)
             .clip(shape)
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = shape)
     ) { content() }
 }
 
@@ -2626,7 +2629,7 @@ private fun StorageBookCard(title: String, format: String, size: String) {
             .shadow(2.dp, shape, ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
             .cardOutline(shape)
             .clip(shape)
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = shape)
             .padding(horizontal = AppSpace.lg, vertical = 18.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -2962,55 +2965,13 @@ fun AboutDetail(viewModel: SettingsViewModel) {
         }
     }
 
-    // ── 版本主视觉与就地更新检查 ──
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = AppSpace.md)
-            .aspectRatio(1.46f)
-            .shadow(8.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
-            .clip(RoundedCornerShape(AppRadius.lg))
-    ) {
-        Image(
-            painter = painterResource(R.drawable.about_header),
-            contentDescription = null,
-            modifier = Modifier.matchParentSize(),
-            contentScale = ContentScale.Crop
-        )
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = AppSpace.lg, bottom = AppSpace.lg)
-        ) {
-            Text(
-                text = currentVersion,
-                color = Color.White,
-                fontSize = 40.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(Modifier.height(AppSpace.sm))
-            Box(
-                modifier = Modifier
-                    .width(120.dp)
-                    .height(40.dp)
-                    .clip(RoundedCornerShape(AppRadius.capsule))
-                    .background(Color.White.copy(alpha = 0.36f))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        enabled = !update.isChecking
-                    ) { viewModel.checkUpdate(isAutoCheck = false) },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = stringResource(if (update.isChecking) R.string.checking_update else R.string.check_update),
-                    color = Color.White,
-                    fontSize = AppType.BodySmall,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }
-    }
+    LumiAboutHeader(
+        unlocked = uiState.lumiEasterEggUnlocked,
+        currentVersion = currentVersion,
+        isCheckingUpdate = update.isChecking,
+        onCheckUpdate = { viewModel.checkUpdate(isAutoCheck = false) },
+        onUnlock = viewModel::unlockLumiEasterEgg
+    )
 
     Spacer(Modifier.height(AppSpace.md))
 
@@ -3220,7 +3181,7 @@ fun HighlightColorDetail(viewModel: SettingsViewModel) {
                 .fillMaxWidth()
                 .padding(horizontal = AppSpace.md)
                 .animateContentSize(animationSpec = tween(360))
-                .background(AppColors.CardBg, g2CardShape)
+                .lumiCardSurface(shape = g2CardShape)
         ) {
             Column(Modifier.padding(AppSpace.md)) {
                 Text(
@@ -3676,7 +3637,7 @@ private fun DetailCard(
             .shadow(8.dp, shape, ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
             .cardOutline(shape)
             .clip(shape)
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = shape)
     ) { content() }
 }
 
@@ -3842,7 +3803,7 @@ private fun DropdownSettingRow(
                     .height(42.dp)
                     .liquidGlassMenuAnchor(cornerRadius = 14.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(AppColors.WindowBg)
+                    .background(AppColors.PageBg)
                     .border(1.dp, AppColors.Divider, RoundedCornerShape(14.dp))
                     .onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
                     .clickable {

@@ -3,6 +3,8 @@ package com.huangder.lumibooks.util
 import com.huangder.lumibooks.domain.model.AppIconStyle
 
 internal object LauncherComponentNames {
+    const val LUMI_CHAN_SPLASH = "com.huangder.lumibooks.ui.splash.LumiChanSplashLauncherActivity"
+    const val LUMI_CHAN_DIRECT = "com.huangder.lumibooks.ui.splash.LumiChanDirectLauncherActivity"
     const val LUMI_2_SPLASH =
         "com.huangder.lumibooks.ui.splash.SplashLauncherActivity"
     const val LUMI_2_DIRECT =
@@ -15,10 +17,15 @@ internal object LauncherComponentNames {
 
 internal fun launcherComponentStates(
     style: String?,
-    splashEnabled: Boolean
+    splashEnabled: Boolean,
+    easterEggUnlocked: Boolean = false
 ): Map<String, Boolean> {
-    val normalizedStyle = AppIconStyle.normalize(style)
+    val normalizedStyle = AppIconStyle.normalize(style, easterEggUnlocked)
     return linkedMapOf(
+        LauncherComponentNames.LUMI_CHAN_SPLASH to
+            (normalizedStyle == AppIconStyle.LUMI_CHAN.storedValue && splashEnabled),
+        LauncherComponentNames.LUMI_CHAN_DIRECT to
+            (normalizedStyle == AppIconStyle.LUMI_CHAN.storedValue && !splashEnabled),
         LauncherComponentNames.LUMI_2_SPLASH to
             (normalizedStyle == AppIconStyle.LUMI_2.storedValue && splashEnabled),
         LauncherComponentNames.LUMI_2_DIRECT to

@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.settings
 import com.huangder.lumibooks.ui.icons.AppIcons
 
+import com.huangder.lumibooks.ui.components.lumiCardSurface
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -119,7 +120,7 @@ fun SettingsScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(AppColors.WindowBg)
+            .background(AppColors.PageBg)
     ) {
         CollapsingSettingsScaffold(
             title = stringResource(R.string.settings_title),
@@ -135,7 +136,7 @@ fun SettingsScreen(
                         .padding(horizontal = AppSpace.md)
                         .shadow(8.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
                         .clip(RoundedCornerShape(AppRadius.lg))
-                        .background(AppColors.CardBg)
+                        .lumiCardSurface(shape = RoundedCornerShape(AppRadius.lg))
                         .padding(AppSpace.md),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -320,7 +321,7 @@ private fun CategoryItem(
             .fillMaxWidth()
             .then(if (grouped) Modifier else Modifier.padding(horizontal = AppSpace.md, vertical = 1.dp))
             .then(if (grouped) Modifier else Modifier.shadow(6.dp, shape, ambientColor = Color(0x04000000), spotColor = Color(0x04000000)))
-            .then(if (grouped) Modifier else Modifier.clip(shape).background(AppColors.CardBg))
+            .then(if (grouped) Modifier else Modifier.clip(shape).lumiCardSurface(shape = shape))
             .clickable(onClick = onClick)
             .padding(horizontal = AppSpace.md, vertical = AppSpace.md + 2.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -345,7 +346,7 @@ private fun SettingsCategoryGroup(content: @Composable () -> Unit) {
             .fillMaxWidth()
             .padding(horizontal = AppSpace.md)
             .clip(RoundedCornerShape(AppRadius.lg))
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.lg))
     ) {
         content()
     }

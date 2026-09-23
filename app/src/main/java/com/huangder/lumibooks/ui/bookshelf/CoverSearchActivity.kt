@@ -170,7 +170,10 @@ class CoverSearchActivity : ComponentActivity() {
             EBookReaderTheme(
                 darkTheme = isDark,
                 dynamicColor = resolvedAppTheme == "material3",
-                appTheme = resolvedAppTheme,
+                appTheme = launchTheme.appTheme,
+                eInkMode = launchTheme.eInkModeEnabled,
+                motionPreference = com.huangder.lumibooks.ui.theme.MotionPreference.fromStoredValue(launchTheme.motionPreference),
+                lumiBackgroundScene = com.huangder.lumibooks.ui.theme.LumiBackgroundScene.SECONDARY,
                 appAccentColor = launchTheme.appAccentColor,
                 liquidGlassTransparency = launchTheme.liquidGlassTransparency,
                 liquidGlassHdrHighlightEnabled = launchTheme.liquidGlassHdrHighlightEnabled,
@@ -342,7 +345,7 @@ private fun CoverSearchScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(AppColors.WindowBg)
+            .background(AppColors.PageBg)
     ) {
         Column(
             modifier = Modifier

@@ -2,6 +2,7 @@ package com.huangder.lumibooks.ui.bookshelf
 import com.huangder.lumibooks.ui.icons.directionalIcon
 import com.huangder.lumibooks.ui.icons.AppIcons
 
+import com.huangder.lumibooks.ui.components.lumiCardSurface
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -139,7 +140,7 @@ fun BookNotesScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(AppColors.WindowBg)
+            .background(AppColors.PageBg)
     ) {
         Box(
             modifier = Modifier
@@ -148,7 +149,7 @@ fun BookNotesScreen(
                     if (isLiquidGlass) Modifier.layerBackdrop(segmentedControlBackdrop)
                     else Modifier
                 )
-                .background(AppColors.WindowBg)
+                .background(AppColors.PageBg)
         )
         Column(
             modifier = Modifier
@@ -157,7 +158,7 @@ fun BookNotesScreen(
                 .then(
                     if (isLiquidGlass) Modifier.layerBackdrop(glassBackdrop) else Modifier
                 )
-                .background(AppColors.WindowBg)
+                .background(AppColors.PageBg)
         ) {
             // ── 顶栏：返回 + 标题 ──
             Row(
@@ -535,7 +536,7 @@ private fun BookmarkItem(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppRadius.sm))
-            .background(AppColors.CardBg)
+            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.sm))
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
