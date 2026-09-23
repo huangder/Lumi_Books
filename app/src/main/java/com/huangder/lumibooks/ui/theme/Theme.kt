@@ -138,6 +138,7 @@ fun EBookReaderTheme(
     eInkMode: Boolean = false,
     globalFontMode: String = GlobalFontMode.DEFAULT,
     motionPreference: MotionPreference = MotionPreference.STANDARD,
+    menuAnimationStyle: com.huangder.lumibooks.domain.model.MenuAnimationStyle = LocalMenuAnimationStyle.current,
     lumiBackgroundScene: LumiBackgroundScene? = null,
     content: @Composable () -> Unit
 ) {
@@ -209,6 +210,7 @@ fun EBookReaderTheme(
         LocalEInkMode provides eInkMode,
         LocalMotionEnabled provides (!eInkMode && motionPreference == MotionPreference.STANDARD),
         LocalMotionPreference provides motionPreference,
+        LocalMenuAnimationStyle provides menuAnimationStyle,
         LocalGlobalFontMode provides GlobalFontMode.normalize(globalFontMode),
         LocalLiquidGlassTransparency provides liquidGlassTransparency.coerceIn(0f, 1f),
         LocalLiquidGlassHdrHighlightEnabled provides hdrHighlightActive,

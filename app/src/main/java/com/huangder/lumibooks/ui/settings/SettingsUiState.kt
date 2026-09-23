@@ -76,6 +76,7 @@ data class SettingsUiState(
     val cardOutlinesEnabled: Boolean = false,
     val darkMode: String = "system",       // "system" / "light" / "dark"
     val motionPreference: String = "standard", // "standard" / "reduced"
+    val menuAnimationStyle: String = com.huangder.lumibooks.domain.model.MenuAnimationStyle.LIQUID.storedValue,
     val entranceAnimationsEnabled: Boolean = true,
     val bookOpenTransition: String = BookOpenTransition.HERO.storedValue, // "hero" / "loading_page"
     val eInkModeEnabled: Boolean = false,

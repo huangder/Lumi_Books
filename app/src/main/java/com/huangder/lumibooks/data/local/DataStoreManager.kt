@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.data.local
 
 import android.content.Context
+import com.huangder.lumibooks.domain.model.MenuAnimationStyle
 import android.hardware.display.DisplayManager
 import android.view.Display
 import androidx.datastore.core.DataStore
@@ -288,6 +289,7 @@ class DataStoreManager @Inject constructor(
         private val DARK_MODE = stringPreferencesKey("dark_mode")
         private val ENTRANCE_ANIMATIONS_ENABLED = booleanPreferencesKey("entrance_animations_enabled")
         private val MOTION_PREFERENCE = stringPreferencesKey("motion_preference")
+        private val MENU_ANIMATION_STYLE = stringPreferencesKey("menu_animation_style")
         private val BOOK_OPEN_TRANSITION = stringPreferencesKey("book_open_transition")
         private val E_INK_MODE_ENABLED = booleanPreferencesKey("e_ink_mode_enabled")
         private val TWO_PAGE_SPREAD_ENABLED = booleanPreferencesKey("two_page_spread_enabled")
@@ -876,6 +878,11 @@ class DataStoreManager @Inject constructor(
             ?: if (preferences[ENTRANCE_ANIMATIONS_ENABLED] == false) "reduced" else "standard"
     }
 
+    /** Menu style is independent of the global reduced-motion preference. */
+    val menuAnimationStyle: Flow<String> = context.dataStore.data.map { preferences ->
+        MenuAnimationStyle.normalize(preferences[MENU_ANIMATION_STYLE])
+    }.distinctUntilChanged()
+
     /** Opening transition for books. Defaults to the cover-to-window hero motion. */
     val bookOpenTransition: Flow<String> = context.dataStore.data.map { preferences ->
         BookOpenTransition.normalize(preferences[BOOK_OPEN_TRANSITION])
@@ -949,6 +956,7 @@ class DataStoreManager @Inject constructor(
                 preferences[LIQUID_GLASS_HDR_HIGHLIGHT_ENABLED] ?: deviceSupportsHdr,
             cardOutlinesEnabled = preferences[CARD_OUTLINES_ENABLED] ?: false,
             darkMode = preferences[DARK_MODE] ?: "system",
+            menuAnimationStyle = MenuAnimationStyle.normalize(preferences[MENU_ANIMATION_STYLE]),
             motionPreference = preferences[MOTION_PREFERENCE]
                 ?.takeIf { it == "standard" || it == "reduced" }
                 ?: if (preferences[ENTRANCE_ANIMATIONS_ENABLED] == false) "reduced" else "standard",
@@ -2368,6 +2376,12 @@ class DataStoreManager @Inject constructor(
         val normalized = BookOpenTransition.normalize(transition)
         context.dataStore.edit { preferences ->
             preferences[BOOK_OPEN_TRANSITION] = normalized
+        }
+    }
+
+    suspend fun saveMenuAnimationStyle(style: String) {
+        context.dataStore.edit { preferences ->
+            preferences[MENU_ANIMATION_STYLE] = MenuAnimationStyle.normalize(style)
         }
     }
 

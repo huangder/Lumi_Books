@@ -167,7 +167,9 @@ class CoverSearchActivity : ComponentActivity() {
         setContent {
             val capability = rememberLiquidGlassCapability(view = LocalView.current)
             val resolvedAppTheme = effectiveAppTheme(launchTheme.appTheme, capability)
+            val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = launchTheme.menuAnimationStyle)
             EBookReaderTheme(
+                menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
                 darkTheme = isDark,
                 dynamicColor = resolvedAppTheme == "material3",
                 appTheme = launchTheme.appTheme,

@@ -1548,6 +1548,27 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
 
     DetailCard {
         DropdownSettingRow(
+            icon = AppIcons.FilmStrip,
+            label = stringResource(R.string.menu_animation_style_label),
+            options = listOf(
+                "normal" to stringResource(R.string.menu_animation_style_normal),
+                "liquid" to stringResource(R.string.menu_animation_style_liquid)
+            ),
+            selected = uiState.menuAnimationStyle,
+            onSelect = viewModel::saveMenuAnimationStyle
+        )
+        Text(
+            stringResource(R.string.menu_animation_style_hint),
+            fontSize = AppType.Caption,
+            color = AppColors.TextSecondary,
+            modifier = Modifier.padding(start = AppSpace.md, end = AppSpace.md, bottom = AppSpace.md)
+        )
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    DetailCard {
+        DropdownSettingRow(
             icon = AppIcons.BookOpen,
             label = stringResource(R.string.book_open_transition_label),
             options = listOf(

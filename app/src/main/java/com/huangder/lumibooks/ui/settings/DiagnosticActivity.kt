@@ -44,7 +44,9 @@ class DiagnosticActivity : ComponentActivity() {
             val resolved = effectiveAppTheme(appTheme, rememberLiquidGlassCapability(view = LocalView.current))
             val eInkMode by dataStoreManager.eInkModeEnabled.collectAsState(initial = launchTheme.eInkModeEnabled)
             val motion by dataStoreManager.motionPreference.collectAsState(initial = launchTheme.motionPreference)
+            val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = launchTheme.menuAnimationStyle)
             EBookReaderTheme(
+                menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
                 darkTheme = isDark, dynamicColor = resolved == "material3", appTheme = appTheme,
                 appAccentColor = accent, liquidGlassTransparency = transparency,
                 liquidGlassHdrHighlightEnabled = hdr, globalFontMode = fontMode,

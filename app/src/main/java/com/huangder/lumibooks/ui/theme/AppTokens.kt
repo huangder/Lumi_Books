@@ -55,6 +55,9 @@ enum class MotionPreference {
 }
 
 val LocalMotionPreference = staticCompositionLocalOf { MotionPreference.STANDARD }
+val LocalMenuAnimationStyle = staticCompositionLocalOf {
+    com.huangder.lumibooks.domain.model.MenuAnimationStyle.LIQUID
+}
 
 object GlobalFontMode {
     const val DEFAULT = "default"

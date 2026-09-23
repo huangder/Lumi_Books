@@ -71,7 +71,9 @@ class SettingsActivity : ComponentActivity() {
             }
 
             val eInkMode by dataStoreManager.eInkModeEnabled.collectAsState(initial = launchTheme.eInkModeEnabled)
+            val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = launchTheme.menuAnimationStyle)
             EBookReaderTheme(
+                menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
                 eInkMode = eInkMode,
                 darkTheme = isDark,
                 dynamicColor = effectiveAppTheme == "material3",

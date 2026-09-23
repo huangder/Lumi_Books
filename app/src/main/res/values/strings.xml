@@ -1537,4 +1537,8 @@
     <string name="startup_diagnostic_title">启动闪屏日志</string>
     <string name="startup_diagnostic_help">本包已开启启动日志，自动在本机记录启动过程，无需先开始抓取。覆盖安装后，先完成可能出现的欢迎流程，确认关闭开屏动画，再结束应用并从桌面图标打开。闪现后尽快回来导出最近一小时日志并分享给开发者；日志不会自动上传。系统启动画面需结合录屏确认。</string>
     <string name="startup_diagnostic_export">导出启动闪屏日志</string>
+    <string name="menu_animation_style_label">展开菜单动画样式</string>
+    <string name="menu_animation_style_normal">普通</string>
+    <string name="menu_animation_style_liquid">液态</string>
+    <string name="menu_animation_style_hint">普通更轻快；液态在玻璃主题下呈现水滴形变与折射。</string>
 </resources>

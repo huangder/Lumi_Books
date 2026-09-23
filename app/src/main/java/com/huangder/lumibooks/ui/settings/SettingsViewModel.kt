@@ -239,6 +239,11 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            dataStoreManager.menuAnimationStyle.collectLatest { style ->
+                _uiState.value = _uiState.value.copy(menuAnimationStyle = style)
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.entranceAnimationsEnabled.collectLatest { enabled ->
                 _uiState.value = _uiState.value.copy(entranceAnimationsEnabled = enabled)
             }
@@ -618,6 +623,13 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.saveEntranceAnimationsEnabled(enabled)
         }
+    }
+
+    fun saveMenuAnimationStyle(style: String) {
+        val normalized = com.huangder.lumibooks.domain.model.MenuAnimationStyle.normalize(style)
+        if (_uiState.value.menuAnimationStyle == normalized) return
+        _uiState.value = _uiState.value.copy(menuAnimationStyle = normalized)
+        viewModelScope.launch { dataStoreManager.saveMenuAnimationStyle(normalized) }
     }
 
     fun unlockLumiEasterEgg(onComplete: (Boolean) -> Unit) {

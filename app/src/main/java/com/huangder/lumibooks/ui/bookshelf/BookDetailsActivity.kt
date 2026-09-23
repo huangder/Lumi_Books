@@ -143,7 +143,9 @@ class BookDetailsActivity : ComponentActivity() {
             val capability = rememberLiquidGlassCapability(eInk, LocalView.current)
             val resolvedTheme = effectiveAppTheme(appTheme, capability)
             val motion by dataStoreManager.motionPreference.collectAsState(initial = launchTheme.motionPreference)
+            val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = launchTheme.menuAnimationStyle)
             EBookReaderTheme(
+                menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
                 motionPreference = com.huangder.lumibooks.ui.theme.MotionPreference.fromStoredValue(motion),
                 darkTheme = isDark,
                 dynamicColor = resolvedTheme == "material3",

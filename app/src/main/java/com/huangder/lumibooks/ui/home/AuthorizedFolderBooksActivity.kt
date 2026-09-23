@@ -87,7 +87,9 @@ class AuthorizedFolderBooksActivity : ComponentActivity() {
             val capability = rememberLiquidGlassCapability(eInkMode, LocalView.current)
             val effectiveTheme = effectiveAppTheme(appTheme, capability)
 
+            val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = launchTheme.menuAnimationStyle)
             EBookReaderTheme(
+                menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
                 darkTheme = isDark,
                 dynamicColor = effectiveTheme == "material3",
                 appTheme = appTheme,

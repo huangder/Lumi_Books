@@ -107,7 +107,9 @@ class WelcomeActivity : ComponentActivity() {
             val liquidGlassCapability = rememberLiquidGlassCapability(eInkModeEnabled, LocalView.current)
             val resolvedAppTheme = effectiveAppTheme(appTheme, liquidGlassCapability)
 
+            val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = launchTheme.menuAnimationStyle)
             EBookReaderTheme(
+                menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
                 darkTheme = isDark,
                 dynamicColor = resolvedAppTheme == "material3",
                 appTheme = resolvedAppTheme,

@@ -1493,4 +1493,8 @@
     <string name="coverflow_more">更多</string>
     <string name="coverflow_previous">上一本</string>
     <string name="coverflow_next">下一本</string>
+    <string name="menu_animation_style_label">展开菜单动画样式</string>
+    <string name="menu_animation_style_normal">普通</string>
+    <string name="menu_animation_style_liquid">液态</string>
+    <string name="menu_animation_style_hint">普通更轻快；液态在玻璃主题下呈现水滴形变与折射。</string>
 </resources>

@@ -1803,6 +1803,7 @@ private fun BookshelfHeaderActions(
     val refreshLabel = stringResource(R.string.refresh_authorized_folders)
     val importLabel = stringResource(R.string.import_books)
     val editLabel = stringResource(R.string.edit)
+    val layoutGroupLabel = stringResource(R.string.bookshelf_layout)
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1819,7 +1820,7 @@ private fun BookshelfHeaderActions(
                     menuHost.show(
                         LiquidGlassMenuSpec(
                             anchorBounds = menuAnchorBounds,
-                            width = 196.dp,
+                            width = if (isLiquidGlass) 220.dp else 196.dp,
                             onDismiss = { menuExpanded = false },
                             items = buildList {
                                 if (onEdit != null) add(LiquidGlassMenuItem(editLabel, AppIcons.PencilSimple, onClick = onEdit))
@@ -1848,6 +1849,7 @@ private fun BookshelfHeaderActions(
                                 add(
                                     LiquidGlassMenuItem(
                                         label = standardGridLabel,
+                                        groupTitle = layoutGroupLabel,
                                         icon = layoutIcon(layoutMode = 2, compact = false),
                                         selected = layoutMode == 2,
                                         onClick = { onLayoutModeChange(2) }

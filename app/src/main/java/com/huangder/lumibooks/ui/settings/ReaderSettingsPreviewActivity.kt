@@ -175,7 +175,9 @@ class ReaderSettingsPreviewActivity : ComponentActivity() {
                 else -> systemDarkMode
             }
 
+            val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = launchTheme.menuAnimationStyle)
             EBookReaderTheme(
+                menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
                 darkTheme = isDark,
                 dynamicColor = resolvedAppTheme == "material3",
                 appTheme = resolvedAppTheme,

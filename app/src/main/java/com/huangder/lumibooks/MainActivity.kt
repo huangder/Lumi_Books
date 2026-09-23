@@ -760,7 +760,9 @@ class MainActivity : ComponentActivity() {
                 pendingPolicyUpdate = null
             }
 
+            val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = com.huangder.lumibooks.util.LaunchThemeController.themeSnapshot(this).menuAnimationStyle)
             EBookReaderTheme(
+                menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
                 darkTheme = isDark,
                 dynamicColor = effectiveAppTheme == "material3",
                 appTheme = appTheme,

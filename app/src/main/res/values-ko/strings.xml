@@ -1449,4 +1449,8 @@
     <string name="coverflow_more">더보기</string>
     <string name="coverflow_previous">이전 책</string>
     <string name="coverflow_next">다음 책</string>
+    <string name="menu_animation_style_label">메뉴 애니메이션 스타일</string>
+    <string name="menu_animation_style_normal">일반</string>
+    <string name="menu_animation_style_liquid">리퀴드</string>
+    <string name="menu_animation_style_hint">일반은 더 가볍게 작동하며, 리퀴드는 유리 테마에서 물방울 변형과 굴절을 표현합니다.</string>
 </resources>

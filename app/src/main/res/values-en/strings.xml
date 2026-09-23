@@ -1523,4 +1523,8 @@
     <string name="coverflow_more">More</string>
     <string name="coverflow_previous">Previous book</string>
     <string name="coverflow_next">Next book</string>
+    <string name="menu_animation_style_label">Menu animation style</string>
+    <string name="menu_animation_style_normal">Normal</string>
+    <string name="menu_animation_style_liquid">Liquid</string>
+    <string name="menu_animation_style_hint">Normal is lighter; Liquid adds droplet motion and refraction in glass themes.</string>
 </resources>

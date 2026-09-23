@@ -10,6 +10,7 @@ import android.util.Log
 import com.huangder.lumibooks.MainActivity
 import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
 import com.huangder.lumibooks.domain.model.AppIconStyle
+import com.huangder.lumibooks.domain.model.MenuAnimationStyle
 
 data class LaunchThemeSnapshot(
     val iconStyle: String = AppIconStyle.LUMI_2.storedValue,
@@ -22,6 +23,7 @@ data class LaunchThemeSnapshot(
     val cardOutlinesEnabled: Boolean = false,
     val darkMode: String = "system",
     val motionPreference: String = "standard",
+    val menuAnimationStyle: String = MenuAnimationStyle.LIQUID.storedValue,
     val eInkModeEnabled: Boolean = false,
     val predictiveBackEnabled: Boolean = true
 )
@@ -50,6 +52,7 @@ object LaunchThemeController {
     private const val CARD_OUTLINES_ENABLED = "card_outlines_enabled"
     private const val DARK_MODE = "dark_mode"
     private const val MOTION_PREFERENCE = "motion_preference"
+    private const val MENU_ANIMATION_STYLE = "menu_animation_style"
     private const val E_INK_MODE_ENABLED = "e_ink_mode_enabled"
     private const val PREDICTIVE_BACK_ENABLED = "predictive_back_enabled"
     private const val COMPLETED_WELCOME_INSTALL_TIME = "completed_welcome_install_time"
@@ -98,6 +101,7 @@ object LaunchThemeController {
             cardOutlinesEnabled = preferences.getBoolean(CARD_OUTLINES_ENABLED, false),
             darkMode = preferences.getString(DARK_MODE, "system") ?: "system",
             motionPreference = preferences.getString(MOTION_PREFERENCE, "standard") ?: "standard",
+            menuAnimationStyle = MenuAnimationStyle.normalize(preferences.getString(MENU_ANIMATION_STYLE, null)),
             eInkModeEnabled = preferences.getBoolean(E_INK_MODE_ENABLED, false),
             predictiveBackEnabled = preferences.getBoolean(PREDICTIVE_BACK_ENABLED, true)
         )
@@ -144,6 +148,7 @@ object LaunchThemeController {
             .putBoolean(CARD_OUTLINES_ENABLED, snapshot.cardOutlinesEnabled)
             .putString(DARK_MODE, snapshot.darkMode)
             .putString(MOTION_PREFERENCE, snapshot.motionPreference)
+            .putString(MENU_ANIMATION_STYLE, MenuAnimationStyle.normalize(snapshot.menuAnimationStyle))
             .putBoolean(E_INK_MODE_ENABLED, snapshot.eInkModeEnabled)
             .putBoolean(PREDICTIVE_BACK_ENABLED, snapshot.predictiveBackEnabled)
             .apply()

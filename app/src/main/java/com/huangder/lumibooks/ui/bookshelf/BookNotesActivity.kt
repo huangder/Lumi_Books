@@ -73,7 +73,9 @@ class BookNotesActivity : ComponentActivity() {
 
             val eInkMode by dataStoreManager.eInkModeEnabled.collectAsState(initial = launchTheme.eInkModeEnabled)
             val motion by dataStoreManager.motionPreference.collectAsState(initial = launchTheme.motionPreference)
+            val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = launchTheme.menuAnimationStyle)
             EBookReaderTheme(
+                menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
                 motionPreference = com.huangder.lumibooks.ui.theme.MotionPreference.fromStoredValue(motion),
                 eInkMode = eInkMode,
                 darkTheme = isDark,
