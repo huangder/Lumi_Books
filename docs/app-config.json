@@ -16,12 +16,12 @@
     "force_update_below_version_code": 0
   },
   "notice": {
-    "id": "notice-disabled-20260902",
-    "enabled": false,
-    "min_version_code": 1,
-    "max_version_code": 999999,
-    "title": "",
-    "message": ""
+    "id": "notice-20260923-219-scroll-jump-fix",
+    "enabled": true,
+    "min_version_code": 15,
+    "max_version_code": 15,
+    "title": "2.1.9 修复版通知",
+    "message": "如果您使用 2.1.9 版本，且遇到滚动翻页出现跳章节的情况，可前往原下载地址重新下载覆盖安装。修复版已经上传。"
   },
   "fonts": [
     {
