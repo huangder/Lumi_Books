@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
+    <exclude domain="external" path="dictionary-downloads/" />
     <exclude domain="sharedpref" path="mineru_secure.xml" />
     <exclude domain="sharedpref" path="external_tts_secure.xml" />
     <exclude domain="sharedpref" path="webdav_secure.xml" />

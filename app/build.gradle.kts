@@ -148,6 +148,9 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
+    // Linear-time regular expressions for local highlight rules.
+    implementation("com.google.re2j:re2j:1.8")
+
     // PDF text extraction and persistent background conversion
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     implementation("androidx.work:work-runtime-ktx:2.10.0")

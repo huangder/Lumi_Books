@@ -22,6 +22,46 @@ h1 { font-size:24px; font-weight:700; margin-bottom:20px; }
 <p style="font-size:14px;color:var(--text2);margin-bottom:20px;">本应用使用了以下随 APK 分发的开源组件，特此致谢。构建工具和测试依赖不包含在本清单中。</p>
 
 <div class="lib">
+<div class="lib-name">LUMI 可选本地词典</div>
+<div class="lib-info">词库正文不随 APK 分发；您可在“设置 → 服务 → 本地词典”按需下载，安装后可离线查询。每个词库包同时包含完整许可证、署名、来源、上游版本和修改说明。</div>
+<div class="lib-license">LUMI 对所有词库执行统一的版本化内容规则；显示内容可能与上游不同，剩余释义不由 LUMI 改写。</div>
+</div>
+
+<div class="lib">
+<div class="lib-name">中文词典（社区版） · chinese-xinhua</div>
+<div class="lib-info">来源：pwxcoo/chinese-xinhua · 上游 commit：fe6d6c2e8baa82187f4c96bbe042e43f96c05666 · 署名：Copyright (c) 2018 PWXCOO</div>
+<div class="lib-license">MIT License · LUMI 将原始 JSON 转为 SQLite，建立词头/别名索引，并按 filterVersion 过滤词条、义项和例句。</div>
+<a class="lib-link" href="https://github.com/pwxcoo/chinese-xinhua">上游项目</a>
+</div>
+
+<div class="lib">
+<div class="lib-name">Open English WordNet</div>
+<div class="lib-info">来源：Open English WordNet · 上游版本：2025-edition · 署名：Open English WordNet Team、Princeton University</div>
+<div class="lib-license">CC BY 4.0 + Princeton WordNet License · LUMI 转换 SQLite、建立索引并按 filterVersion 过滤内容。</div>
+<a class="lib-link" href="https://github.com/globalwordnet/english-wordnet">上游项目</a>
+</div>
+
+<div class="lib">
+<div class="lib-name">维基汉语 · 简体</div>
+<div class="lib-info">来源：中文维基词典 / Kaikki.org · 上游：zhwiktionary 2026-09-01、Wiktextract 1a05e46 · 署名：维基词典贡献者</div>
+<div class="lib-license">CC BY-SA 4.0 · LUMI 进行中文简体转换、SQLite/索引转换，排除外部引用例句和媒体，并按 filterVersion 过滤内容；派生数据继续采用 CC BY-SA 4.0。</div>
+<a class="lib-link" href="https://kaikki.org/zhwiktionary/rawdata.html">上游数据</a>
+</div>
+
+<div class="lib">
+<div class="lib-name">维基英汉</div>
+<div class="lib-info">来源：中文维基词典 / Kaikki.org · 上游：zhwiktionary 2026-09-01、Wiktextract 1a05e46 · 署名：维基词典贡献者</div>
+<div class="lib-license">CC BY-SA 4.0 · LUMI 提取英语词条及中文释义，进行简体转换、SQLite/索引转换，排除外部引用例句和媒体，并按 filterVersion 过滤内容；派生数据继续采用 CC BY-SA 4.0。</div>
+<a class="lib-link" href="https://kaikki.org/zhwiktionary/rawdata.html">上游数据</a>
+</div>
+
+<div class="lib">
+<div class="lib-name">词典处理工具 · OpenCC</div>
+<div class="lib-info">仅用于维基词典派生数据的简繁转换。完整许可证随词库包中的 licenses.txt 提供。</div>
+<div class="lib-license">Apache License 2.0</div>
+</div>
+
+<div class="lib">
 <div class="lib-name">Lumi Books</div>
 <div class="lib-info">Lumi 原创代码</div>
 <a class="lib-link" href="../licenses/gpl-3.0.txt">GNU GPLv3 完整文本</a>

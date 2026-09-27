@@ -46,6 +46,12 @@
         android:usesCleartextTraffic="true"
         tools:targetApi="34">
 
+        <receiver android:name=".dictionary.DictionaryDownloadReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
+            </intent-filter>
+        </receiver>
+
         <activity
             android:name=".ui.welcome.WelcomeActivity"
             android:exported="false"
