@@ -36,6 +36,7 @@ local.properties
 # Dev logs
 devlog/
 /test/
+tools/dictionaries/__pycache__/
 
 # Window dumps
 window*.xml
