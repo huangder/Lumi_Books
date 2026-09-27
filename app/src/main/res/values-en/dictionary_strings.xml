@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dictionary_entry_source">Original entry and contributor history (opens online)</string>
+    <string name="dictionary_title">Local dictionaries</string>
+    <string name="dictionary_management_intro">Download dictionaries on demand and look up words offline. New downloads are enabled automatically. Downloads and updates require your confirmation.</string>
+    <string name="dictionary_refresh">Check dictionaries and content rules</string>
+    <string name="dictionary_not_published">Package not published yet</string>
+    <string name="dictionary_download_install_size">Download / installed size:</string>
+    <string name="dictionary_installed_version">Installed: %1$s</string>
+    <string name="dictionary_download_paused">Waiting for the network or system</string>
+    <string name="dictionary_installing">Verifying and installing…</string>
+    <string name="dictionary_retry">Retry</string>
+    <string name="dictionary_download">Download</string>
+    <string name="dictionary_update">Update</string>
+    <string name="dictionary_sources">Sources and licenses</string>
+    <string name="dictionary_move_up">Move up</string>
+    <string name="dictionary_move_down">Move down</string>
+    <string name="dictionary_delete">Delete dictionary</string>
+    <string name="dictionary_delete_message">Delete the local dictionary “%1$s”? You can download it again later.</string>
+    <string name="dictionary_disclaimer_title">Dictionary sources and disclaimer</string>
+    <string name="dictionary_feedback">Suggest a dictionary / Report an issue</string>
+    <string name="dictionary_confirm_download">I understand, download</string>
+    <string name="dictionary_confirm_update">I understand, update</string>
+    <string name="dictionary_enable_after_download">New dictionaries are enabled after installation. You can disable or delete them at any time.</string>
+    <string name="dictionary_back_results">Back to dictionary results</string>
+    <string name="dictionary_partial_filtered">Some content has been filtered by dictionary content rules.</string>
+    <string name="dictionary_all_filtered">No definitions can be shown under the current content rules.</string>
+    <string name="dictionary_no_installed">No local dictionaries are enabled. Download or enable one in Manage dictionaries.</string>
+    <string name="dictionary_no_result">No entry found in the enabled dictionaries.</string>
+    <string name="dictionary_lookup_failed">Some dictionaries could not be searched. Check or reinstall them in Manage dictionaries.</string>
+    <string name="dictionary_manage">Manage dictionaries</string>
+    <string name="dictionary_external">Other dictionary apps</string>
+    <string name="dictionary_web">Search the web</string>
+    <string name="dictionary_disclaimer_short">Third-party dictionary content is for reference and does not represent LUMI’s views. Some content may be filtered. Mainland Chinese dictionary suggestions are welcome and will be reviewed.</string>
+    <string name="dictionary_disclaimer_full">LUMI has made efforts to find and prioritize open-source dictionaries contributed by mainland Chinese communities. The primary Chinese dictionary uses the chinese-xinhua community project; optional dictionaries from other sources are also available. See each dictionary for its sources and license.\n\nIf you know of suitable mainland Chinese dictionary resources, please share the project link, data sources, and licensing information. We will prioritize reviewing them and add resources after checking authorization, content quality, and compatibility.\n\nThird-party content is for learning and reading reference and may contain errors, outdated information, or regional usage differences. Entries, examples, and quotations do not represent LUMI’s views. LUMI builds indexes, reformats data, converts Chinese characters where appropriate, and filters selected entries, senses, and examples using content rules. Displayed content may differ from the original.\n\nThis notice does not change the rights granted by each dictionary license. Filtering may miss content or affect legitimate entries. Please report errors, rights issues, inappropriate content, or incorrect filtering.</string>
+</resources>

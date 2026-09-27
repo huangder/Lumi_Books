@@ -1,0 +1,317 @@
+{
+  "formatVersion": 1,
+  "version": 1,
+  "charMap": {
+    "臺": "台",
+    "灣": "湾",
+    "獨": "独",
+    "國": "国",
+    "藏": "藏",
+    "疆": "疆",
+    "穢": "秽",
+    "媽": "妈",
+    "傻": "傻",
+    "養": "养",
+    "陰": "阴",
+    "莖": "茎",
+    "體": "体",
+    "幹": "干",
+    "視": "视",
+    "頻": "频",
+    "種": "种",
+    "歧": "歧"
+  },
+  "rules": [
+    {
+      "id": "regional-1",
+      "category": "regional",
+      "text": "台湾独立",
+      "mode": "phrase",
+      "fields": [
+        "headword",
+        "definition",
+        "example",
+        "related"
+      ],
+      "exceptions": []
+    },
+    {
+      "id": "regional-2",
+      "category": "regional",
+      "text": "台独",
+      "mode": "exact",
+      "fields": [
+        "headword"
+      ],
+      "exceptions": []
+    },
+    {
+      "id": "regional-3",
+      "category": "regional",
+      "text": "西藏独立",
+      "mode": "phrase",
+      "fields": [
+        "headword",
+        "definition",
+        "example",
+        "related"
+      ],
+      "exceptions": []
+    },
+    {
+      "id": "regional-4",
+      "category": "regional",
+      "text": "新疆独立",
+      "mode": "phrase",
+      "fields": [
+        "headword",
+        "definition",
+        "example",
+        "related"
+      ],
+      "exceptions": []
+    },
+    {
+      "id": "regional-5",
+      "category": "regional",
+      "text": "香港独立",
+      "mode": "phrase",
+      "fields": [
+        "headword",
+        "definition",
+        "example",
+        "related"
+      ],
+      "exceptions": []
+    },
+    {
+      "id": "explicit-1",
+      "category": "explicit",
+      "text": "色情影片",
+      "mode": "phrase",
+      "fields": [
+        "headword",
+        "definition",
+        "example",
+        "related"
+      ],
+      "exceptions": []
+    },
+    {
+      "id": "explicit-2",
+      "category": "explicit",
+      "text": "淫秽",
+      "mode": "phrase",
+      "fields": [
+        "headword",
+        "definition",
+        "example",
+        "related"
+      ],
+      "exceptions": []
+    },
+    {
+      "id": "explicit-3",
+      "category": "explicit",
+      "text": "性交表演",
+      "mode": "phrase",
+      "fields": [
+        "headword",
+        "definition",
+        "example",
+        "related"
+      ],
+      "exceptions": []
+    },
+    {
+      "id": "explicit-4",
+      "category": "explicit",
+      "text": "pornography",
+      "mode": "word",
+      "fields": [
+        "headword",
+        "definition",
+        "example",
+        "related"
+      ],
+      "exceptions": []
+    },
+    {
+      "id": "explicit-5",
+      "category": "explicit",
+      "text": "pornographic",
+      "mode": "word",
+      "fields": [
+        "headword",
+        "definition",
+        "example",
+        "related"
+      ],
+      "exceptions": []
+    },
+    {
+      "id": "abuse-1",
+      "category": "abuse",
+      "text": "操你妈",
+      "mode": "phrase",
+      "fields": [
+        "headword",
+        "definition",
+        "example",
+        "related"
+      ],
+      "exceptions": []
+    },
+    {
+      "id": "abuse-2",
+      "category": "abuse",
+      "text": "他妈的",
+      "mode": "phrase",
+      "fields": [
+        "headword",
+        "definition",
+        "example",
+        "related"
+      ],
+      "exceptions": []
+    },
+    {
+      "id": "abuse-3",
+      "category": "abuse",
+      "text": "傻逼",
+      "mode": "phrase",
+      "fields": [
+        "headword",
+        "definition",
+        "example",
+        "related"
+      ],
+      "exceptions": []
+    },
+    {
+      "id": "abuse-4",
+      "category": "abuse",
+      "text": "狗娘养的",
+      "mode": "phrase",
+      "fields": [
+        "headword",
+        "definition",
+        "example",
+        "related"
+      ],
+      "exceptions": []
+    },
+    {
+      "id": "abuse-5",
+      "category": "abuse",
+      "text": "fuck",
+      "mode": "word",
+      "fields": [
+        "headword",
+        "definition",
+        "example",
+        "related"
+      ],
+      "exceptions": []
+    },
+    {
+      "id": "abuse-6",
+      "category": "abuse",
+      "text": "fucking",
+      "mode": "word",
+      "fields": [
+        "headword",
+        "definition",
+        "example",
+        "related"
+      ],
+      "exceptions": []
+    },
+    {
+      "id": "abuse-7",
+      "category": "abuse",
+      "text": "motherfucker",
+      "mode": "word",
+      "fields": [
+        "headword",
+        "definition",
+        "example",
+        "related"
+      ],
+      "exceptions": []
+    },
+    {
+      "id": "discrimination-1",
+      "category": "discrimination",
+      "text": "支那人",
+      "mode": "phrase",
+      "fields": [
+        "headword",
+        "definition",
+        "example",
+        "related"
+      ],
+      "exceptions": []
+    },
+    {
+      "id": "discrimination-2",
+      "category": "discrimination",
+      "text": "黑鬼",
+      "mode": "phrase",
+      "fields": [
+        "headword",
+        "definition",
+        "example",
+        "related"
+      ],
+      "exceptions": []
+    },
+    {
+      "id": "discrimination-3",
+      "category": "discrimination",
+      "text": "白人至上",
+      "mode": "phrase",
+      "fields": [
+        "headword",
+        "definition",
+        "example",
+        "related"
+      ],
+      "exceptions": []
+    },
+    {
+      "id": "discrimination-4",
+      "category": "discrimination",
+      "text": "nigger",
+      "mode": "word",
+      "fields": [
+        "headword",
+        "definition",
+        "example",
+        "related"
+      ],
+      "exceptions": []
+    },
+    {
+      "id": "discrimination-5",
+      "category": "discrimination",
+      "text": "chink",
+      "mode": "word",
+      "fields": [
+        "example",
+        "related"
+      ],
+      "exceptions": []
+    },
+    {
+      "id": "discrimination-6",
+      "category": "discrimination",
+      "text": "offensive term for a person of Chinese descent",
+      "mode": "phrase",
+      "fields": [
+        "definition"
+      ],
+      "exceptions": []
+    }
+  ]
+}

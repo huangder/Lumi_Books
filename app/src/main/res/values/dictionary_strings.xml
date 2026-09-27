@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dictionary_entry_source">原词条来源与贡献记录（联网打开）</string>
+    <string name="dictionary_title">本地词典</string>
+    <string name="dictionary_management_intro">词库按需下载，安装后离线查词。下载后自动启用，不会自动下载或更新词库。</string>
+    <string name="dictionary_refresh">检查词典与规则更新</string>
+    <string name="dictionary_not_published">资源尚未发布</string>
+    <string name="dictionary_download_install_size">下载 / 安装占用：</string>
+    <string name="dictionary_installed_version">已安装版本：%1$s</string>
+    <string name="dictionary_download_paused">等待网络或系统继续下载</string>
+    <string name="dictionary_installing">正在校验并安装…</string>
+    <string name="dictionary_retry">重试</string>
+    <string name="dictionary_download">下载</string>
+    <string name="dictionary_update">更新</string>
+    <string name="dictionary_sources">来源与许可</string>
+    <string name="dictionary_move_up">上移</string>
+    <string name="dictionary_move_down">下移</string>
+    <string name="dictionary_delete">删除词典</string>
+    <string name="dictionary_delete_message">删除“%1$s”的本地词库？以后可以重新下载。</string>
+    <string name="dictionary_disclaimer_title">词典来源说明与免责声明</string>
+    <string name="dictionary_feedback">提供词典资源 / 问题反馈</string>
+    <string name="dictionary_confirm_download">我已知悉，继续下载</string>
+    <string name="dictionary_confirm_update">我已知悉，继续更新</string>
+    <string name="dictionary_enable_after_download">首次下载成功后自动启用，可随时在此停用或删除。</string>
+    <string name="dictionary_back_results">返回词典结果</string>
+    <string name="dictionary_partial_filtered">部分内容已按词典内容规则过滤</string>
+    <string name="dictionary_all_filtered">当前内容规则下暂无可显示释义</string>
+    <string name="dictionary_no_installed">尚未启用本地词典。请前往管理词典下载或启用。</string>
+    <string name="dictionary_no_result">已启用的词典暂未收录该词语</string>
+    <string name="dictionary_lookup_failed">部分词典暂时无法查询，请在管理页检查或重新下载。</string>
+    <string name="dictionary_manage">管理词典</string>
+    <string name="dictionary_external">其他词典应用</string>
+    <string name="dictionary_web">搜索网页</string>
+    <string name="dictionary_disclaimer_short">第三方词典内容仅供参考，不代表 LUMI 的观点或立场；部分内容可能经规则过滤。欢迎提供更多中国大陆词典资源，我们将在核实后添加。</string>
+    <string name="dictionary_disclaimer_full">LUMI 已尽力寻找并优先接入中国大陆社区提供的开源词典资源，目前中文主词库采用 chinese-xinhua 社区项目，同时提供其他来源的可选词典。具体来源和许可请查看各词典说明。\n\n如果您了解其他合适的中国大陆词典资源，欢迎提供项目链接、数据来源及授权说明。我们会优先核实，并在确认授权、内容质量和技术兼容性后添加。\n\n第三方词典内容仅供学习与阅读参考，可能存在错误、过时内容或地区用语差异。词条、例句及引用中的表述不代表 LUMI 的观点或立场。LUMI 会进行索引、格式整理及必要的字形转换，并根据内容规则过滤部分词条、义项或例句，因此显示内容可能与原始词典不同。\n\n本说明不改变各词库许可证赋予您的权利。过滤规则可能存在遗漏或误判，如发现错误、侵权、不当内容或误过滤，请通过“问题反馈”联系我们。</string>
+</resources>
