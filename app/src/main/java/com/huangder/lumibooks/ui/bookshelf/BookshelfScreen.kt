@@ -1979,6 +1979,15 @@ private fun BookshelfCapsuleHeader(
         return
     }
 
+    val headerCapsuleHeight = 46.dp
+    val headerCapsuleShadow = Modifier.shadow(
+        elevation = 8.dp,
+        shape = CircleShape,
+        clip = false,
+        ambientColor = Color.Black.copy(alpha = 0.06f),
+        spotColor = Color.Black.copy(alpha = 0.08f)
+    )
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -1998,10 +2007,10 @@ private fun BookshelfCapsuleHeader(
                 onClick = onEditToggle,
                 tintedColor = AppColors.CardBg.takeUnless { isLiquidGlass },
                 contentColor = AppColors.TextPrimary,
-                prominentShadow = true,
+                decorationModifier = headerCapsuleShadow,
                 modifier = Modifier
                     .width(88.dp)
-                    .height(46.dp)
+                    .height(headerCapsuleHeight)
             ) {
                 Text(
                     text = stringResource(if (isEditing) R.string.done else R.string.edit),
@@ -2066,20 +2075,14 @@ private fun BookshelfCapsuleHeader(
 
             if (!isEditing) {
                 LiquidGlassSurface(
+                    controlEdge = true,
                     shape = CircleShape,
                     fallbackColor = AppColors.CardBg,
                     contentScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
-                    effectPadding = if (isLiquidGlass) 2.dp else 0.dp,
-                    decorationModifier = Modifier.shadow(
-                        elevation = 16.dp,
-                        shape = CircleShape,
-                        clip = false,
-                        ambientColor = Color.Black.copy(alpha = 0.10f),
-                        spotColor = Color.Black.copy(alpha = 0.12f)
-                    ),
+                    decorationModifier = headerCapsuleShadow,
                     modifier = Modifier
                         .width(154.dp)
-                        .height(46.dp)
+                        .height(headerCapsuleHeight)
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         Row(

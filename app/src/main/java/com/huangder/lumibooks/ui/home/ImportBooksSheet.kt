@@ -753,6 +753,7 @@ private fun ImportLayoutSwitchButton(
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val layoutModeDescription = stringResource(R.string.import_layout_mode)
     LiquidGlassSurface(
+        controlEdge = true,
         shape = CircleShape,
         fallbackColor = if (isLiquidGlass) AppColors.CardBg else AppColors.Accent,
         contentScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
@@ -781,6 +782,7 @@ private fun ImportSearchField(
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
     LiquidGlassSurface(
+        controlEdge = true,
         shape = CircleShape,
         fallbackColor = AppColors.CardBg,
         contentScrimColor = AppColors.CardBg.copy(alpha = 0.72f),

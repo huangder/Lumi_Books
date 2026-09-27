@@ -508,6 +508,7 @@ internal fun shouldStackDetailRow(
             ambientColor = Color.Black.copy(alpha = if (isDark) 0.34f else 0.18f),
             spotColor = Color.Black.copy(alpha = if (isDark) 0.40f else 0.24f)
         ),
+        controlEdge = true,
         contentScrimColor = if (isDark) Color.Black.copy(alpha = .22f) else Color.White.copy(alpha = .28f)
     ) {
         Row(
@@ -542,6 +543,7 @@ internal fun shouldStackDetailRow(
 @Composable private fun ReadTagAction(onClick: () -> Unit) {
     val isDark = LocalIsDarkTheme.current
     LiquidGlassSurface(
+        controlEdge = true,
         shape = RoundedCornerShape(23.dp),
         fallbackColor = if (isDark) Color(0xFF202023) else Color(0xFFF6F6F8),
         contentScrimColor = if (isDark) Color.Black.copy(alpha = .34f) else Color.White.copy(alpha = .62f),

@@ -494,6 +494,7 @@ private fun CoverSearchBottomBar(
                 }
                 val shape = RoundedCornerShape(50)
                 LiquidGlassSurface(
+                    controlEdge = true,
                     shape = shape,
                     fallbackColor = if (selected) AppColors.Accent else AppColors.CardBg,
                     contentScrimColor = if (isLiquidGlass) {
@@ -573,6 +574,7 @@ private fun CoverSearchBottomBar(
         Spacer(Modifier.size(AppSpace.sm))
         val cropShape = CircleShape
         LiquidGlassSurface(
+            controlEdge = true,
             shape = cropShape,
             fallbackColor = if (cropMode) AppColors.Accent else AppColors.CardBg,
             contentScrimColor = if (isLiquidGlass) {
@@ -663,6 +665,7 @@ private fun CoverSearchTopBar(
 
         if (isLiquidGlass) {
             LiquidGlassSurface(
+                controlEdge = true,
                 shape = RoundedCornerShape(50),
                 fallbackColor = AppColors.CardBg,
                 contentScrimColor = AppColors.CardBg.copy(alpha = 0.42f),

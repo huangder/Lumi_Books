@@ -605,6 +605,7 @@ private fun ExportBookmarksButton(
 
     if (isLiquidGlass) {
         LiquidGlassSurface(
+            controlEdge = true,
             shape = shape,
             fallbackColor = Color.Black,
             contentScrimColor = Color.Black.copy(alpha = 0.85f),

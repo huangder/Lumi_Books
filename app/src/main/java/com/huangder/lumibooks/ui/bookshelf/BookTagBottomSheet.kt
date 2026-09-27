@@ -677,6 +677,7 @@ fun BatchBookTagSheet(
                     tags.forEach { tag ->
                         val selected = tag.id in selectedTagIds
                         LiquidGlassSurface(
+                            controlEdge = true,
                             shape = RoundedCornerShape(50),
                             fallbackColor = if (selected) {
                                 AppColors.Accent.copy(alpha = 0.18f)
@@ -767,6 +768,7 @@ private fun TagSelectionChip(
     val shape = RoundedCornerShape(50)
     val chipHeight = if (small) 30.dp else 36.dp
     LiquidGlassSurface(
+        controlEdge = true,
         shape = shape,
         fallbackColor = if (selected) AppColors.Accent.copy(alpha = 0.18f) else AppColors.BgGray,
         contentScrimColor = if (selected) {

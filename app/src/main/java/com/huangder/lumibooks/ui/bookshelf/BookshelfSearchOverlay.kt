@@ -118,6 +118,7 @@ internal fun BookshelfSearchLauncher(
     val shape = CircleShape
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     LiquidGlassSurface(
+        controlEdge = true,
         shape = shape,
         fallbackColor = AppColors.CardBg,
         contentScrimColor = AppColors.CardBg.copy(alpha = 0.72f),
@@ -401,6 +402,7 @@ private fun ActiveBookshelfSearchField(
 ) {
     val shape = CircleShape
     LiquidGlassSurface(
+        controlEdge = true,
         shape = shape,
         fallbackColor = AppColors.CardBg,
         contentScrimColor = AppColors.CardBg.copy(alpha = 0.78f),
@@ -997,6 +999,7 @@ internal fun SearchActionButton(
         }
     ) {
     LiquidGlassSurface(
+        controlEdge = true,
         shape = shape,
         fallbackColor = fallback,
         contentScrimColor = scrim,

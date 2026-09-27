@@ -646,6 +646,7 @@ private fun FolderBooksHeader(
             )
             Spacer(Modifier.width(AppSpace.sm))
             LiquidGlassSurface(
+                controlEdge = true,
                 shape = CircleShape,
                 fallbackColor = AppColors.BgGray,
                 contentScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
@@ -685,6 +686,7 @@ private fun FolderBooksSearchPill(
         }
     }
     LiquidGlassSurface(
+        controlEdge = true,
         shape = CircleShape,
         fallbackColor = AppColors.BgGray,
         contentScrimColor = AppColors.CardBg.copy(alpha = 0.58f),

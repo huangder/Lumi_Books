@@ -69,6 +69,7 @@ internal fun CoverFlowActionBar(
     }
     fun run(action: (Book) -> Unit) { onDismiss(); action(book) }
     LiquidGlassSurface(
+        controlEdge = true,
         shape = RoundedCornerShape(22.dp),
         fallbackColor = AppColors.CardBg,
         contentScrimColor = AppColors.CardBg.copy(alpha = 0.68f),

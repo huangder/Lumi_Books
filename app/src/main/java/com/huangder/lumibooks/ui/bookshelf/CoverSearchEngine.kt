@@ -21,6 +21,15 @@ internal enum class CoverSearchEngine(
         }
     }
 
+    fun buildWebSearchUrl(query: String): String {
+        val encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8.name())
+        return when (this) {
+            BING -> "https://www.bing.com/search?q=$encodedQuery"
+            BAIDU -> "https://m.baidu.com/s?word=$encodedQuery"
+            GOOGLE -> "https://www.google.com/search?q=$encodedQuery"
+        }
+    }
+
     fun queryFromUrl(url: String): String? {
         val rawQuery = runCatching { URI(url).rawQuery }.getOrNull() ?: return null
         return rawQuery
