@@ -56,9 +56,26 @@ internal class ReaderLineGeometry(
     )
 
     private val metricsCache = HashMap<Int, LineMetrics>()
+    private val compressedCache = HashMap<Int, ReaderLineOffsets?>()
+
+    private fun compressedOffsets(line: Int): ReaderLineOffsets? {
+        if (compressedCache.containsKey(line)) return compressedCache[line]
+        val spanned = text as? Spanned ?: return null
+        val start = layout.getLineStart(line)
+        val end = readerLineContentEnd(text, start, layout.getLineEnd(line))
+        return readerLineOffsets(layout, spanned, line, start, end, justificationMode,
+            forceLastLineJustification).also { compressedCache[line] = it }
+    }
 
     fun horizontalRange(line: Int, start: Int, end: Int): HorizontalRange? {
         if (line !in 0 until layout.lineCount || start >= end) return null
+        compressedOffsets(line)?.let { offsets ->
+            val lineStart = layout.getLineStart(line)
+            val a = (start - lineStart).coerceIn(0, offsets.lefts.size)
+            val b = (end - lineStart).coerceIn(a, offsets.lefts.size)
+            if (a < b) return HorizontalRange(offsets.lefts[a],
+                offsets.lefts.getOrNull(b) ?: offsets.right)
+        }
         return try {
             val metrics = lineMetrics(line)
             val segmentStart = maxOf(start, metrics.lineStart)
@@ -106,6 +123,10 @@ internal class ReaderLineGeometry(
                     layout.getLineStart(candidate) == safe
                 ) candidate - 1 else candidate
             }
+            compressedOffsets(line)?.let { offsets ->
+                val local = (safe - layout.getLineStart(line)).coerceAtLeast(0)
+                return offsets.lefts.getOrNull(local) ?: offsets.right
+            }
             val metrics = lineMetrics(line)
             val native = nativePosition(safe)
             val corrected = if (!metrics.justified) {
@@ -121,6 +142,7 @@ internal class ReaderLineGeometry(
 
     fun lineRange(line: Int): HorizontalRange? {
         if (line !in 0 until layout.lineCount) return null
+        compressedOffsets(line)?.let { return HorizontalRange(it.lefts.first(), it.right) }
         return try {
             val metrics = lineMetrics(line)
             if (metrics.contentEnd <= metrics.lineStart) return null
@@ -138,6 +160,14 @@ internal class ReaderLineGeometry(
     /** Maps a touch x coordinate through the same expansion as the drawn line. */
     fun offsetForHorizontal(line: Int, x: Float): Int? {
         if (line !in 0 until layout.lineCount) return null
+        compressedOffsets(line)?.let { offsets ->
+            if (!x.isFinite()) return null
+            for (i in offsets.lefts.indices) {
+                val next = offsets.lefts.getOrNull(i + 1) ?: offsets.right
+                if (x < (offsets.lefts[i] + next) / 2f) return layout.getLineStart(line) + i
+            }
+            return layout.getLineStart(line) + offsets.lefts.size
+        }
         return try {
             val metrics = lineMetrics(line)
             val contentEnd = metrics.contentEnd

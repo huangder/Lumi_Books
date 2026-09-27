@@ -30,8 +30,8 @@ class ReaderPunctuationCompressionTest {
     @Test
     fun compressedSlotNeverNarrowerThanInk() {
         assertEquals(28f, readerCompressedSlotWidth(naturalAdvance = 56f, inkWidth = 25f), 0.001f)
-        assertEquals(19f, readerCompressedSlotWidth(naturalAdvance = 26f, inkWidth = 19f), 0.001f)
-        assertEquals(48f, readerCompressedSlotWidth(naturalAdvance = 56f, inkWidth = 48f), 0.001f)
+        assertEquals(21f, readerCompressedSlotWidth(naturalAdvance = 26f, inkWidth = 19f), 0.001f)
+        assertEquals(50f, readerCompressedSlotWidth(naturalAdvance = 56f, inkWidth = 48f), 0.001f)
         assertEquals(0f, readerCompressedSlotWidth(naturalAdvance = Float.NaN, inkWidth = 0f), 0.001f)
     }
 
@@ -43,7 +43,7 @@ class ReaderPunctuationCompressionTest {
     @Test
     fun proportionalQuoteFromCustomFontWidensItsSlot() {
         val slot = readerCompressedSlotWidth(naturalAdvance = 35f, inkWidth = 25f)
-        assertEquals(25f, slot, 0.001f)
+        assertEquals(27f, slot, 0.001f)
 
         val inkLeft = 6.5f
         val inkWidth = 25f

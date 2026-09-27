@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.reader.engine
+import com.huangder.lumibooks.domain.model.ReaderImageAdjustments
 
 import android.content.Context
 import android.animation.ValueAnimator
@@ -286,6 +287,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var fadeTransitionDurationMs = ReaderPageAnimationSettings.FADE_DEFAULT_MS
     private var curlTransitionDurationMs = ReaderPageAnimationSettings.CURL_DEFAULT_MS
     private var currentEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT
+    private var selectionMenuVisible = false
     private var currentWritingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL
     /** 双页开关（不含方向）：设备/设置允许时 true，是否启用由实测宽高决定 */
     private var currentTwoPageSpreadEnabled: Boolean = false
@@ -664,6 +666,11 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         this.bgColor = bgColor
     }
 
+    fun setImageAdjustments(settings: ReaderImageAdjustments) {
+        listOf(prevPageView, curPageView, nextPageView, prevPageRightView, curPageRightView, nextPageRightView)
+            .forEach { it.setImageAdjustments(settings) }
+    }
+
     fun setReaderBackground(
         backgroundColor: Int,
         textColor: Int,
@@ -692,6 +699,10 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     fun setCallbacks(cbs: ReadViewCallbacks) {
         callbacks = cbs
+    }
+
+    fun setSelectionMenuVisible(visible: Boolean) {
+        selectionMenuVisible = visible
     }
 
     /**
@@ -1772,7 +1783,11 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private fun handleShortTapGesture(ev: MotionEvent): Boolean {
         val x = rvTouchStartX
         val y = rvTouchStartY
-        val action = captureShortTapAction(x, y)
+        // Snapshot before cancelling the child stream: TextView may clear its
+        // native selection on ACTION_CANCEL while the selection menu is still
+        // visible or Compose has not yet synchronized its visibility flag.
+        val dismissSelection = selectionMenuVisible || hasActiveTextSelection() || contentSelection != null
+        val action = captureShortTapAction(x, y, dismissSelection)
         abortChildTouchStream(ev)
         if (!ttsSentenceJumpEnabled) {
             rvSentenceJumpGate.reset()
@@ -1803,7 +1818,11 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean = false
 
     /** 短按（未移动）的既有行为：链接、图片、边缘翻页、中间切换菜单。 */
-    private fun captureShortTapAction(x: Float, y: Float): () -> Unit {
+    private fun captureShortTapAction(
+        x: Float,
+        y: Float,
+        dismissSelection: Boolean
+    ): () -> Unit {
         val location = getCurrentLocation()
         val edgeTouch = rvIsEdgeTouch
         val hitView = pageViewAt(x, y) ?: curPageView
@@ -1812,6 +1831,10 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         return tap@{
             // Deferred TTS single taps belong to the page and hit geometry at UP.
             if (getCurrentLocation() != location) return@tap
+            if (dismissSelection || selectionMenuVisible || hasActiveTextSelection() || contentSelection != null) {
+                callbacks?.onSelectionMenuDismiss()
+                return@tap
+            }
             if (applyContentSelectionTapTarget(x, y)) return@tap
             val href = link ?: image?.link
             if (href != null) {
@@ -2635,6 +2658,13 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         pendingContentSelectionTurn = null
         applyReaderSelectionToPages()
         callbacks?.onReaderSelectionCleared()
+        invalidate()
+    }
+
+    /** Clear native text selections on every page slot and any cross-page selection. */
+    fun clearActiveTextSelection() {
+        clearReaderSelection()
+        contentSelectionViews().forEach(PageContentView::clearSelection)
         invalidate()
     }
 

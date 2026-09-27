@@ -6,6 +6,7 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.text.Layout
 import android.text.Spanned
+import android.text.style.LeadingMarginSpan
 
 /** 一行逐字左边界，以及该行内容结束位置（绘制文字用的同一套坐标）。 */
 internal class ReaderLineOffsets(
@@ -26,62 +27,74 @@ internal fun readerLineOffsets(
     lineStart: Int,
     contentEnd: Int,
     justificationMode: Int,
-    forceLastLineJustification: Boolean,
-    letterSpacingPx: Float,
-    measure: (index: Int) -> Float
+    forceLastLineJustification: Boolean
 ): ReaderLineOffsets? {
     val count = contentEnd - lineStart
-    if (count <= 0) return null
-
-    var hasCompressed = false
+    if (count <= 0 || layout.getParagraphDirection(line) != Layout.DIR_LEFT_TO_RIGHT) return null
+    if (text.getSpans(lineStart, contentEnd, ReaderPunctuationCompressionSpan::class.java).isEmpty()) return null
+    // Complex shaping and replacement runs keep the platform's cluster/bidi geometry.
+    // updateDrawState and updateMeasureState agree, so these native carets are compressed too.
+    if (text.getSpans(lineStart, contentEnd, android.text.style.ReplacementSpan::class.java).isNotEmpty()) return null
     for (index in lineStart until contentEnd) {
-        if (readerIsCompressedPunctuation(text, index)) {
-            hasCompressed = true
-            break
-        }
+        val ch = text[index]
+        val type = Character.getType(ch)
+        val script = Character.UnicodeScript.of(ch.code)
+        if (ch.isSurrogate() || ch == '\t' || layout.isRtlCharAt(index) ||
+            type == Character.NON_SPACING_MARK.toInt() ||
+            type == Character.COMBINING_SPACING_MARK.toInt() ||
+            type == Character.ENCLOSING_MARK.toInt() ||
+            (script != Character.UnicodeScript.HAN && script != Character.UnicodeScript.COMMON)) return null
     }
-    if (!hasCompressed) return null
-
+    val paint = android.text.TextPaint()
     val slots = FloatArray(count)
-    var naturalTotal = 0f
+    val tracking = FloatArray(count)
     for (index in lineStart until contentEnd) {
-        val natural = measure(index)
-        if (!natural.isFinite() || natural <= 0f) return null
-        val slot = if (readerIsCompressedPunctuation(text, index)) {
-            natural * READER_PUNCTUATION_COMPRESSION
-        } else {
-            natural
+        readerGlyphPaint(layout.paint, text, index, index + 1, paint)
+        val compressed = readerIsCompressedPunctuation(text, index)
+        tracking[index - lineStart] = paint.letterSpacing * paint.textSize * paint.textScaleX
+        val slot = if (compressed) readerPunctuationSlotWidth(paint, text, index, index + 1) else {
+            paint.letterSpacing = 0f
+            readerNaturalAdvance(paint, text, index, index + 1)
         }
+        if (!slot.isFinite() || slot <= 0f) return null
         slots[index - lineStart] = slot
-        naturalTotal += slot
     }
-
-    val baseStart = layout.getPrimaryHorizontal(lineStart)
+    val gaps = FloatArray((count - 1).coerceAtLeast(0)) { (tracking[it] + tracking[it + 1]) / 2f }
+    // Android 13 and 15 trim run-edge tracking differently. Ask the same
+    // styled text measurer for the line's advance, rather than assuming n-1
+    // tracking gaps. Distribute only that edge delta across existing gaps.
+    val estimatedTotal = slots.sum() + gaps.sum()
+    // getDesiredWidth measures a standalone paragraph, so it includes every
+    // LeadingMarginSpan's FIRST-line margin even for a continuation-line slice.
+    // Layout has already placed that margin in the line origin. Only the text
+    // advance belongs in tracking; including it again pushes ink into the right
+    // padding and spreads paragraph-final punctuation away from the last glyph.
+    val paragraphMargin = text.getSpans(lineStart, contentEnd, LeadingMarginSpan::class.java)
+        .sumOf { it.getLeadingMargin(true) }
+    val measuredTotal = (Layout.getDesiredWidth(text, lineStart, contentEnd, layout.paint) - paragraphMargin)
+        .takeIf { it.isFinite() && it > 0f } ?: estimatedTotal
+    val edgeCorrection = if (gaps.isNotEmpty()) (measuredTotal - estimatedTotal) / gaps.size else 0f
+    val naturalTotal = if (gaps.isNotEmpty()) measuredTotal else estimatedTotal
+    val alignment = layout.getParagraphAlignment(line)
+    val canStretch = alignment == Layout.Alignment.ALIGN_NORMAL &&
+        justificationMode != Layout.JUSTIFICATION_MODE_NONE &&
+        shouldJustifyReaderLine(line, layout.lineCount,
+            readerLineEndsParagraph(text, lineStart, layout.getLineEnd(line)), forceLastLineJustification)
+    val lineRight = layout.getParagraphRight(line).toFloat()
+    val baseStart = when (alignment) {
+        Layout.Alignment.ALIGN_CENTER -> (layout.getParagraphLeft(line) + lineRight - naturalTotal) / 2f
+        Layout.Alignment.ALIGN_OPPOSITE -> lineRight - naturalTotal
+        else -> layout.getPrimaryHorizontal(lineStart)
+    }
     if (!baseStart.isFinite()) return null
-    val lineRight = layout.getParagraphRight(line).toFloat().takeIf { it.isFinite() } ?: return null
-    val gapCount = count - 1
-    val endsWithParagraphBreak = readerLineEndsParagraph(text, lineStart, layout.getLineEnd(line))
-    val canStretch = justificationMode != Layout.JUSTIFICATION_MODE_NONE &&
-        layout.getParagraphDirection(line) != Layout.DIR_RIGHT_TO_LEFT &&
-        shouldJustifyReaderLine(
-            lineIndex = line,
-            lineCount = layout.lineCount,
-            endsWithParagraphBreak = endsWithParagraphBreak,
-            pageEndsMidParagraph = forceLastLineJustification
-        )
-    val extra = if (canStretch && gapCount > 0) {
-        (lineRight - baseStart - naturalTotal - letterSpacingPx * gapCount).coerceAtLeast(0f)
-    } else {
-        0f
-    }
-    val extraPerGap = if (gapCount > 0) extra / gapCount else 0f
-
+    val extra = if (canStretch && gaps.isNotEmpty())
+        (lineRight - baseStart - naturalTotal).coerceAtLeast(0f) / gaps.size else 0f
     val lefts = FloatArray(count)
     var cursor = baseStart
     for (index in 0 until count) {
         lefts[index] = cursor
         cursor += slots[index]
-        if (index < gapCount) cursor += letterSpacingPx + extraPerGap
+        if (index < gaps.size) cursor += gaps[index] + edgeCorrection + extra
     }
     return ReaderLineOffsets(lefts, cursor)
 }
@@ -113,12 +126,7 @@ internal class ReaderHighlightPainter(
         geometry: ReaderLineGeometry,
         start: Int,
         end: Int,
-        color: Int,
-        /**
-         * 该行逐字左边界（含被挤压标点的重排结果）。文字是按这份坐标绘制的，
-         * 高亮必须用同一份坐标，否则会和字形差几个像素。
-         */
-        lineOffsets: ((line: Int, lineStart: Int, contentEnd: Int) -> ReaderLineOffsets?)? = null
+        color: Int
     ) {
         if (color ushr 24 == 0) return
         val safeStart = start.coerceIn(0, text.length)
@@ -127,8 +135,10 @@ internal class ReaderHighlightPainter(
 
         paint.color = color
         val fontMetrics = layout.paint.fontMetrics
-        val firstLine = layout.getLineForOffset(safeStart)
-        val lastLine = layout.getLineForOffset(safeEnd - 1)
+        val visible = readerVisibleLines(canvas, layout)
+        if (visible.isEmpty()) return
+        val firstLine = maxOf(layout.getLineForOffset(safeStart), visible.first)
+        val lastLine = minOf(layout.getLineForOffset(safeEnd - 1), visible.last)
         for (line in firstLine..lastLine) {
             drawLineSegment(
                 canvas = canvas,
@@ -138,8 +148,7 @@ internal class ReaderHighlightPainter(
                 start = safeStart,
                 end = safeEnd,
                 fontMetrics = fontMetrics,
-                line = line,
-                lineOffsets = lineOffsets
+                line = line
             )
         }
     }
@@ -152,8 +161,7 @@ internal class ReaderHighlightPainter(
         start: Int,
         end: Int,
         fontMetrics: Paint.FontMetrics,
-        line: Int,
-        lineOffsets: ((line: Int, lineStart: Int, contentEnd: Int) -> ReaderLineOffsets?)?
+        line: Int
     ) {
         val lineStart = layout.getLineStart(line)
         val rawLineEnd = layout.getLineEnd(line)
@@ -164,15 +172,8 @@ internal class ReaderHighlightPainter(
 
         val paragraphIsLtr = layout.getParagraphDirection(line) == Layout.DIR_LEFT_TO_RIGHT
         val geometryRange = geometry.horizontalRange(line, segmentStart, segmentEnd) ?: return
-        val offsets = lineOffsets?.invoke(line, lineStart, contentEnd)
-        val startOffset = offsets?.lefts?.getOrNull(segmentStart - lineStart)
-        val endOffset = when {
-            offsets == null -> null
-            segmentEnd >= contentEnd -> offsets.right
-            else -> offsets.lefts.getOrNull(segmentEnd - lineStart)
-        }
-        val segmentStartX = startOffset ?: geometryRange.left
-        val segmentEndX = endOffset ?: geometryRange.right
+        val segmentStartX = geometryRange.left
+        val segmentEndX = geometryRange.right
         // 常规 LTR 文本直接用排版推进量；选区路径边界可能带上相邻 run，只在 RTL/混排时使用。
         val hasRtlRun = !paragraphIsLtr || (segmentStart until segmentEnd)
             .any { offset -> layout.isRtlCharAt(offset) }

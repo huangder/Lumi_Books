@@ -1,6 +1,11 @@
 package com.huangder.lumibooks.ui.reader.engine
+import com.huangder.lumibooks.domain.model.ReaderImageAdjustments
+import com.huangder.lumibooks.ui.reader.adjustedReaderImages
+import com.huangder.lumibooks.ui.reader.AdjustedReaderDrawable
+import kotlinx.coroutines.*
 
 import android.content.Context
+import android.graphics.Color
 import android.graphics.Typeface
 import android.text.Layout
 import android.text.Selection
@@ -20,6 +25,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import coil.load
 import com.huangder.lumibooks.domain.model.ReaderTextAlignment
+import com.huangder.lumibooks.ui.reader.readerCoverEdgeColor
 import com.huangder.lumibooks.ui.reader.readerBreakStrategy
 import com.huangder.lumibooks.ui.reader.readerJustificationMode
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
@@ -277,6 +283,31 @@ class PageContentView(context: Context) : FrameLayout(context) {
 
     /** 原始 spannable（含真实 BitmapDrawable ImageSpan），供 syncText/moveSlot 使用 */
     private var originalSpannable: Spannable? = null
+    private var imageSettings = ReaderImageAdjustments()
+    private var imageScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    fun setImageAdjustments(settings: ReaderImageAdjustments) {
+        if (imageSettings == settings) return
+        imageSettings = settings
+        val current = originalSpannable ?: return
+        val adjusted = adjustedReaderImages(current, settings, imageScope) { invalidateRenderers(); coverImageView.invalidate() }
+        syncText(adjusted, adjusted as? Spannable, justifyLastLine, chapterStartOffset, verticalGeometry)
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (!imageScope.isActive) {
+            imageScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+            originalSpannable?.let {
+                adjustedReaderImages(it, imageSettings, imageScope) { invalidateRenderers(); coverImageView.invalidate() }
+            }
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        imageScope.cancel()
+        super.onDetachedFromWindow()
+    }
     /** 最近一次写入的瞬态跨页选区（章节级），避免拖拽时重复刷同一个范围。 */
     private var appliedReaderSelection: Pair<Int, Int>? = null
     private var appliedReaderSelectionColor: Int = 0
@@ -470,12 +501,13 @@ class PageContentView(context: Context) : FrameLayout(context) {
         }
 
         // One layout now owns visible glyphs, images, highlights, and selection geometry.
-        textView.text = spannable
+        val adjusted = adjustedReaderImages(spannable, imageSettings, imageScope) { invalidateRenderers(); coverImageView.invalidate() } as Spannable
+        textView.text = adjusted
         textView.scrollTo(0, 0)
-        justifiedView.text = spannable
+        justifiedView.text = adjusted
         // 保存原始 spannable（含真实 BitmapDrawable ImageSpan），供 moveSlot/syncText 使用
-        this.originalSpannable = spannable
-        updateCoverPage(spannable)
+        this.originalSpannable = adjusted
+        updateCoverPage(adjusted)
 
         // setTextIsSelectable(true) 时 Android 内部通过 Editable.Factory.newEditable() 创建副本
         // 必须从 textView.text 取实际存储的 Spannable，否则 SpanWatcher 注册在死对象上
@@ -660,7 +692,10 @@ class PageContentView(context: Context) : FrameLayout(context) {
 
         showingCoverPage = true
         coverImageSpan = image
-        coverImageView.setImageDrawable(image.drawable.constantState?.newDrawable()?.mutate() ?: image.drawable)
+        coverImageView.setBackgroundColor(readerCoverEdgeColor(image.drawable, currentBgColor))
+        // ImageView sizes its drawable to intrinsic dimensions. Keep those
+        // display bounds separate from the ImageSpan's fixed layout bounds.
+        coverImageView.setImageDrawable(AdjustedReaderDrawable(image.drawable))
         coverImageView.visibility = View.VISIBLE
         updateContentRendererVisibility()
     }
@@ -668,6 +703,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
     private fun clearCoverPage() {
         showingCoverPage = false
         coverImageSpan = null
+        coverImageView.setBackgroundColor(Color.TRANSPARENT)
         coverImageView.setImageDrawable(null)
         coverImageView.visibility = View.GONE
         updateContentRendererVisibility()

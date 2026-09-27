@@ -242,6 +242,13 @@ class PageLayoutEngine {
         var globalCharOffset = 0
 
         while (pageStartLine < sl.lineCount) {
+            // StaticLayout adds a terminal zero-width line for text ending in
+            // a newline. It has no character range to render and must not
+            // become a separate page: PageContentView treats start == end as
+            // an empty slot, which otherwise appears as a blank page when the
+            // conveyor rotates back to the chapter tail.
+            if (sl.getLineStart(pageStartLine) >= text.length) break
+
             // 找到本页的最后一行
             var pageEndLine = pageStartLine
             var accumulatedHeight = 0f

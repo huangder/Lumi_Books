@@ -111,6 +111,33 @@ class ReaderPagingLayoutInstrumentedTest {
     }
 
     @Test
+    fun trailingNewlineDoesNotCreateBlankPage() = runBlocking {
+        val engine = PageLayoutEngine()
+        val text = "最后一行正文。\n"
+        engine.configure(
+            width = 420,
+            // Keep only the first line in the viewport so the terminal
+            // StaticLayout line would otherwise become a second empty page.
+            height = 140,
+            fontSizePx = 32f,
+            lineSpacingPx = 0f,
+            lineSpacingMult = 1f,
+            marginTopPx = 48f,
+            marginBottomPx = 48f,
+            chapterCount = 1
+        )
+
+        val chapter = engine.layout(0, text)
+
+        assertTrue("a non-empty chapter must have a page", chapter.pages.isNotEmpty())
+        assertTrue(
+            "terminal StaticLayout line must not become a zero-length page",
+            chapter.pages.all { it.startCharOffset < it.endCharOffset }
+        )
+        assertEquals(text.length, chapter.pages.last().endCharOffset)
+    }
+
+    @Test
     fun globalVerticalMarginsAreDeterministicAndProtectBottomInset() {
         val first = resolveReaderVerticalMargins(
             heightPx = 720,

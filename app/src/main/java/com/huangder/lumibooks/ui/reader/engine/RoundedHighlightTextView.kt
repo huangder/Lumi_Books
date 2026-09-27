@@ -45,7 +45,7 @@ internal class TtsSentenceHighlightSpan(val color: Int) : CharacterStyle(), Upda
 
     companion object {
         /** Small theme-aware contrast boost used by every TTS renderer. */
-        const val DEFAULT_CONTRAST_DELTA = 0.10f
+        const val DEFAULT_CONTRAST_DELTA = 0.13f
 
         fun computeHighlightColor(bgColor: Int, delta: Float = DEFAULT_CONTRAST_DELTA): Int {
             val r = android.graphics.Color.red(bgColor)
@@ -128,22 +128,6 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         paint = highlightPaint,
         density = resources.displayMetrics.density
     )
-    /** 可见文字层按挤压标点重排过，选区/高亮必须复用同一份逐字坐标。 */
-    private fun readerLineOffsetsProvider(
-        textLayout: Layout,
-        spanned: Spanned
-    ): (Int, Int, Int) -> ReaderLineOffsets? = { line, lineStart, contentEnd ->
-        readerLineOffsets(
-            layout = textLayout,
-            text = spanned,
-            line = line,
-            lineStart = lineStart,
-            contentEnd = contentEnd,
-            justificationMode = readerJustificationMode,
-            forceLastLineJustification = readerForceLastLineJustification,
-            letterSpacingPx = readerExplicitLetterSpacing(paint.letterSpacing, paint.textSize)
-        ) { index -> paint.measureText(spanned, index, index + 1) }
-    }
     private val selectionPainter = ReaderHighlightPainter(
         paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL },
         density = resources.displayMetrics.density
@@ -155,6 +139,8 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
     private var rightSelectionHandle: OffsetSelectionHandleDrawable? = null
     private var selectionHandleColor: Int? = null
     private var draggingSelectionHandle: Boolean? = null
+    internal val readerDraggingStartHandle: Boolean?
+        get() = draggingSelectionHandle
     private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private var nativeSelectionSuppressed = false
     private var internalSelectionMutation = false
@@ -238,7 +224,7 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
     private fun installReaderOffsetMapper() {
         readerOffsetMapper = { targetLayout, line, x ->
             val spanned = text as? Spanned
-            if (spanned == null || readerJustificationMode == Layout.JUSTIFICATION_MODE_NONE ||
+            if (spanned == null ||
                 line !in 0 until targetLayout.lineCount || !x.isFinite()
             ) {
                 null
@@ -255,9 +241,6 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
 
     /** Public counterpart used by framework/OEM code paths that skip the bridge. */
     override fun getOffsetForPosition(x: Float, y: Float): Int {
-        if (readerJustificationMode == Layout.JUSTIFICATION_MODE_NONE) {
-            return super.getOffsetForPosition(x, y)
-        }
         val spanned = text as? Spanned ?: return super.getOffsetForPosition(x, y)
         val textLayout = layout ?: return super.getOffsetForPosition(x, y)
         val localX = x - totalPaddingLeft + scrollX
@@ -451,6 +434,13 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         draggingSelectionHandle = null
         handleDragBeyondEdgeNotified = false
         endMagnifierPointerSession()
+        val start = Selection.getSelectionStart(text)
+        val end = Selection.getSelectionEnd(text)
+        if (start < 0 || end < 0 || start == end) {
+            // Restore before the next DOWN reaches View's click/long-click dispatch.
+            // Restoring from inside onTouchEvent is too late on the second long press.
+            restoreNativeSelectionController()
+        }
         invalidate()
     }
 
@@ -472,6 +462,8 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         }
     }
 
+    private val readerTextPainter = ReaderTextPainter()
+
     override fun onDraw(canvas: Canvas) {
         updateSelectionHandleOffsets()
         if (readerSelectionOnly) {
@@ -482,7 +474,18 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         drawRoundedHighlights(canvas)
         drawWaveUnderlines(canvas)
         drawReaderSelection(canvas)
-        super.onDraw(canvas)
+        val spanned = text as? Spanned
+        val textLayout = layout
+        if (spanned != null && textLayout != null) {
+            val saved = canvas.save()
+            canvas.translate(totalPaddingLeft.toFloat() - scrollX, totalPaddingTop.toFloat() - scrollY)
+            readerTextPainter.draw(canvas, textLayout, spanned,
+                ReaderLineGeometry(textLayout, spanned, readerJustificationMode, readerForceLastLineJustification),
+                frameworkImagePlacement = true)
+            canvas.restoreToCount(saved)
+        } else {
+            super.onDraw(canvas)
+        }
         drawCustomSelectionHandles(canvas)
     }
 
@@ -527,29 +530,7 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         trailing: Boolean
     ): HandleAnchor? {
         val line = readerHandleLine(textLayout, offset, trailing)
-        // 手柄要和选区高亮用同一份逐字坐标：文字层按挤压标点重排过，
-        // 直接用 Layout 几何会让手柄整体偏右几个像素。
-        val spanned = text as? Spanned
-        val lineStart = textLayout.getLineStart(line)
-        val lineEnd = textLayout.getLineEnd(line)
-        val contentEnd = spanned?.let { readerLineContentEnd(it, lineStart, lineEnd) } ?: lineEnd
-        val offsets = spanned?.let {
-            readerLineOffsetsProvider(textLayout, it)(line, lineStart, contentEnd)
-        }
-        val x = when {
-            offsets == null -> geometry.horizontalPosition(offset, trailing) ?: return null
-            trailing -> {
-                val lastIndex = offset - 1 - lineStart
-                when {
-                    lastIndex < 0 -> offsets.lefts.firstOrNull() ?: return null
-                    lastIndex + 1 < offsets.lefts.size -> offsets.lefts[lastIndex + 1]
-                    else -> offsets.right
-                }
-            }
-            else -> offsets.lefts.getOrNull(offset - lineStart)
-                ?: geometry.horizontalPosition(offset, trailing)
-                ?: return null
-        }
+        val x = geometry.horizontalPosition(offset, trailing) ?: return null
         val density = resources.displayMetrics.density
         val fontMetrics = paint.fontMetrics
         val baseline = textLayout.getLineBaseline(line).toFloat()
@@ -598,20 +579,24 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         val forwardSelection = rawStart < rawEnd
         val density = resources.displayMetrics.density
         val hitRadius = 26f * density
-        fun near(offset: Int, trailing: Boolean): Boolean {
-            val anchor = readerHandleAnchor(geometry, textLayout, offset, trailing) ?: return false
-            return kotlin.math.abs(eventX - (anchor.x + totalPaddingLeft - scrollX)) <= hitRadius &&
-                kotlin.math.abs(eventY - (anchor.circleY + totalPaddingTop - scrollY)) <= hitRadius
+        fun distance(offset: Int, trailing: Boolean): Float {
+            val anchor = readerHandleAnchor(geometry, textLayout, offset, trailing) ?: return Float.POSITIVE_INFINITY
+            val dx = eventX - (anchor.x + totalPaddingLeft - scrollX)
+            val dy = eventY - (anchor.circleY + totalPaddingTop - scrollY)
+            return if (kotlin.math.abs(dx) <= hitRadius && kotlin.math.abs(dy) <= hitRadius)
+                dx * dx + dy * dy else Float.POSITIVE_INFINITY
         }
+        val startDistance = distance(start, false)
+        val endDistance = distance(end, true)
         return when {
-            near(start, false) -> {
+            startDistance.isFinite() && startDistance <= endDistance -> {
                 draggingSelectionHandle = forwardSelection
                 draggingSelectionStartHandle = true
                 draggingHandleMagnifierOffset = start
                 draggingHandleMagnifierTrailing = false
                 true
             }
-            near(end, true) -> {
+            endDistance.isFinite() -> {
                 draggingSelectionHandle = !forwardSelection
                 draggingSelectionStartHandle = false
                 draggingHandleMagnifierOffset = end
@@ -680,6 +665,32 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         )
     }
 
+    /** Reuse the same glyph geometry when the viewport moves under a held handle. */
+    internal fun updateReaderSelectionHandlePosition(x: Float, y: Float): Boolean {
+        val drag = draggingSelectionHandle ?: return false
+        val spanned = text as? Spannable ?: return false
+        val textLayout = layout ?: return false
+        if (spanned.isEmpty() || textLayout.height <= 0) return false
+        val localX = x - totalPaddingLeft + scrollX
+        val localY = y - totalPaddingTop + scrollY
+        val line = textLayout.getLineForVertical(localY.toInt().coerceIn(0, textLayout.height - 1))
+        val mapped = ReaderLineGeometry(
+            textLayout, spanned, readerJustificationMode, readerForceLastLineJustification
+        ).offsetForHorizontal(line, localX) ?: return false
+        val otherEndpoint = if (drag) Selection.getSelectionEnd(spanned)
+            else Selection.getSelectionStart(spanned)
+        if (otherEndpoint !in 0..spanned.length) return false
+        updateMagnifierPointerPosition(x, y)
+        // Crossing the fixed endpoint reverses the selection; the moving endpoint
+        // still belongs to the handle that received DOWN.
+        draggingHandleMagnifierOffset = mapped
+        draggingHandleMagnifierTrailing = mapped > otherEndpoint
+        if (drag) Selection.setSelection(spanned, mapped, otherEndpoint)
+        else Selection.setSelection(spanned, otherEndpoint, mapped)
+        updateMagnifierForCurrentSelection()
+        return true
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (handleDragHandedOff) {
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
@@ -714,40 +725,12 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
                 return super.onTouchEvent(event)
             }
             MotionEvent.ACTION_MOVE -> {
-                updateMagnifierPointerPosition(event.x, event.y)
                 if (drag != null) {
-                    val spanned = text as? Spannable
-                    val textLayout = layout
-                    if (spanned != null && textLayout != null && spanned.isNotEmpty()) {
-                        val localX = event.x - totalPaddingLeft + scrollX
-                        val localY = event.y - totalPaddingTop + scrollY
-                        val line = textLayout.getLineForVertical(localY.toInt().coerceIn(0, textLayout.height - 1))
-                        val mapped = ReaderLineGeometry(
-                            textLayout,
-                            spanned,
-                            readerJustificationMode,
-                            readerForceLastLineJustification
-                        ).offsetForHorizontal(line, localX)
-                        if (mapped != null) {
-                            // Anchor on the offset under the finger, not on the
-                            // stored start/end: crossing the other handle flips
-                            // the selection direction and the stored endpoint then
-                            // points at the OTHER handle.
-                            val otherEndpoint = if (drag) {
-                                Selection.getSelectionEnd(spanned)
-                            } else {
-                                Selection.getSelectionStart(spanned)
-                            }
-                            draggingHandleMagnifierOffset = mapped
-                            draggingHandleMagnifierTrailing = mapped > otherEndpoint
-                            if (drag) Selection.setSelection(spanned, mapped, Selection.getSelectionEnd(spanned))
-                            else Selection.setSelection(spanned, Selection.getSelectionStart(spanned), mapped)
-                        }
-                    }
+                    updateReaderSelectionHandlePosition(event.x, event.y)
                     notifyHandleDragBeyondEdge(event.y)
-                    updateMagnifierForCurrentSelection()
                     return true
                 }
+                updateMagnifierPointerPosition(event.x, event.y)
                 val handled = super.onTouchEvent(event)
                 updateMagnifierForCurrentSelection()
                 return handled
@@ -1041,8 +1024,7 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
             geometry = geometry,
             start = start,
             end = end,
-            color = readerSelectionColor,
-            lineOffsets = readerLineOffsetsProvider(textLayout, spanned)
+            color = readerSelectionColor
         )
         canvas.restoreToCount(saveCount)
     }
@@ -1093,7 +1075,10 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
             wavePaint.color = span.color
             val amplitude = 1.6f * density
             val wavelength = 5.5f * density
-            for (line in textLayout.getLineForOffset(spanStart)..textLayout.getLineForOffset(spanEnd - 1)) {
+            val visible = readerVisibleLines(canvas, textLayout)
+            if (visible.isEmpty()) return@forEach
+            for (line in maxOf(visible.first, textLayout.getLineForOffset(spanStart))..
+                minOf(visible.last, textLayout.getLineForOffset(spanEnd - 1))) {
                 val layoutLineStart = textLayout.getLineStart(line)
                 val rawLineEnd = textLayout.getLineEnd(line)
                 val contentEnd = readerLineContentEnd(spanned, layoutLineStart, rawLineEnd)
@@ -1136,6 +1121,9 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
             totalPaddingLeft.toFloat() - scrollX,
             totalPaddingTop.toFloat() - scrollY
         )
+        spanned.getSpans(0, spanned.length, android.text.style.BackgroundColorSpan::class.java).forEach { span ->
+            drawRoundedHighlight(canvas, spanned, textLayout, span, span.backgroundColor)
+        }
         spanned.getSpans(0, spanned.length, ReaderHighlightSpan::class.java).forEach { span ->
             drawRoundedHighlight(canvas, spanned, textLayout, span, span.color)
         }
@@ -1169,11 +1157,7 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
             ),
             start = spanStart,
             end = spanEnd,
-            color = color,
-            lineOffsets = readerLineOffsetsProvider(
-                textLayout,
-                spanned
-            )
+            color = color
         )
     }
 
@@ -1197,7 +1181,9 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         val firstLine = textLayout.getLineForOffset(spanStart)
         val lastLine = textLayout.getLineForOffset(spanEnd - 1)
         val top = textLayout.getLineTop(firstLine).toFloat() + minimumLineGap
-        val bottom = textLayout.getLineBottom(lastLine).toFloat() - minimumLineGap
+        val glyphBottom = textLayout.getLineBaseline(lastLine).toFloat() +
+            textLayout.paint.fontMetrics.descent + 2f * density
+        val bottom = minOf(glyphBottom, textLayout.getLineBottom(lastLine).toFloat() - minimumLineGap)
         if (bottom <= top) return
 
         highlightPaint.color = color

@@ -6,6 +6,8 @@ import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Looper
 import android.os.SystemClock
+import android.text.Selection
+import android.text.Spannable
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.ImageSpan
@@ -36,6 +38,7 @@ class ReaderImageTapEventTest {
     private var links = 0
     private var longPresses = 0
     private var pageChanges = 0
+    private var selectionDismisses = 0
 
     @Before fun setUp() {
         val screen = activity.setup().get()
@@ -49,6 +52,10 @@ class ReaderImageTapEventTest {
                 chapterTotalPages: Int, origin: TtsPageChangeOrigin) { pageChanges++ }
             override fun onLinkClick(href: String, x: Float, y: Float) { links++ }
             override fun onImageLongPress(chapterIndex: Int, image: ReaderImageHit) { longPresses++ }
+            override fun onSelectionMenuDismiss() {
+                selectionDismisses++
+                reader.clearActiveTextSelection()
+            }
         })
         reader.slotManager.getCurSlot().apply { chapterIndex = 1; pageIndex = 0; isLoaded = true }
         showImage()
@@ -101,6 +108,34 @@ class ReaderImageTapEventTest {
         tap(340f)
         assertEquals(1, edges)
         assertEquals(0, menus)
+    }
+
+    @Test fun activeTextSelectionConsumesBothEdgeTapsWhenMenuVisibilityIsStale() {
+        val content = SpannableString("a page with selected text")
+        reader.curPageView.setPageContent(content, 0, content.length)
+        reader.measure(View.MeasureSpec.makeMeasureSpec(400, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(800, View.MeasureSpec.EXACTLY))
+        reader.layout(0, 0, 400, 800)
+        val displayedText = reader.curPageView.textView.text as Spannable
+        Selection.setSelection(displayedText, 2, 6)
+        reader.setSelectionMenuVisible(false)
+
+        var edgeTurns = 0
+        reader.animationController.onTapLeft = { edgeTurns++ }
+        reader.animationController.onTapRight = { edgeTurns++ }
+        tap(20f)
+        assertNull(reader.curPageView.getSelectionRange())
+
+        val nextContent = SpannableString("selection on a cached page")
+        reader.nextPageView.setPageContent(nextContent, 0, nextContent.length)
+        val nextDisplayedText = reader.nextPageView.textView.text as Spannable
+        Selection.setSelection(nextDisplayedText, 2, 6)
+        tap(380f)
+
+        assertEquals(2, selectionDismisses)
+        assertEquals(0, edgeTurns)
+        assertEquals(0, menus)
+        assertNull(reader.nextPageView.getSelectionRange())
     }
 
     @Test fun linkedImageKeepsLinkPriority() {

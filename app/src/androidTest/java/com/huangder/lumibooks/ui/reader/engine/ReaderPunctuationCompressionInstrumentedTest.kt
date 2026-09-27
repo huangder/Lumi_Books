@@ -11,106 +11,23 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/**
- * 标点挤压的两套 span 不能混用：分页模式自己逐字绘制（只改测量值），
- * 上下滚动模式交给原生 TextView 绘制（ReplacementSpan 把字形居中画进半宽槽位）。
- * 混用会让框架按整字宽落笔而排版只给它半个字宽，行尾越过正文列右边缘被平台裁掉半截。
- */
+/** Both reading modes retain punctuation characters for Android line breaking. */
 @RunWith(AndroidJUnit4::class)
 class ReaderPunctuationCompressionInstrumentedTest {
 
     private val sample = "他说：“你好，天麟。”随后离开"
 
     @Test
-    fun frameworkDrawnVariantCarriesOnlyReplacementSpans() {
-        val text = applyReaderPunctuationCompression(sample, frameworkDrawsText = true)
-        assertTrue(text is Spanned)
-        val spanned = text as Spanned
-
-        assertEquals(0, spanned.getSpans(0, spanned.length, ReaderPunctuationCompressionSpan::class.java).size)
-        assertTrue(
-            spanned.getSpans(0, spanned.length, ReaderPunctuationReplacementSpan::class.java).isNotEmpty()
-        )
-        for (index in sample.indices) {
-            if (!isReaderCompressiblePunctuation(sample[index])) continue
-            assertTrue(
-                "索引 $index 的标点必须是框架绘制变体",
-                readerIsCompressedPunctuation(
-                    spanned,
-                    index,
-                    ReaderPunctuationReplacementSpan::class.java
-                )
-            )
-            assertFalse(
-                readerIsCompressedPunctuation(
-                    spanned,
-                    index,
-                    ReaderPunctuationCompressionSpan::class.java
-                )
-            )
+    fun bothModesKeepRealPunctuationAndOneMeasureSpanPerCharacter() {
+        var text: CharSequence = sample
+        repeat(4) { pass ->
+            text = applyReaderPunctuationCompression(text, frameworkDrawsText = pass % 2 == 0)
+            val spanned = text as Spanned
+            assertEquals(sample, text.toString())
+            assertEquals(0, spanned.getSpans(0, text.length, android.text.style.ReplacementSpan::class.java).size)
+            assertEquals(sample.count { isReaderCompressiblePunctuation(it) },
+                spanned.getSpans(0, text.length, ReaderPunctuationCompressionSpan::class.java).size)
         }
-    }
-
-    @Test
-    fun readerDrawnVariantCarriesOnlyMeasureSpans() {
-        val text = applyReaderPunctuationCompression(sample, frameworkDrawsText = false)
-        val spanned = text as Spanned
-
-        assertEquals(0, spanned.getSpans(0, spanned.length, ReaderPunctuationReplacementSpan::class.java).size)
-        assertTrue(
-            spanned.getSpans(0, spanned.length, ReaderPunctuationCompressionSpan::class.java).isNotEmpty()
-        )
-        for (index in sample.indices) {
-            if (!isReaderCompressiblePunctuation(sample[index])) continue
-            assertTrue(
-                readerIsCompressedPunctuation(
-                    spanned,
-                    index,
-                    ReaderPunctuationCompressionSpan::class.java
-                )
-            )
-        }
-    }
-
-    @Test
-    fun reApplyingTheSameVariantKeepsOnlyOneSpanPerPunctuation() {
-        val once = applyReaderPunctuationCompression(sample, frameworkDrawsText = true)
-        val twice = applyReaderPunctuationCompression(once, frameworkDrawsText = true)
-        val punctuationCount = sample.count { isReaderCompressiblePunctuation(it) }
-
-        assertEquals(
-            punctuationCount,
-            (twice as Spanned)
-                .getSpans(0, twice.length, ReaderPunctuationReplacementSpan::class.java)
-                .size
-        )
-    }
-
-    /** 切换绘制通道时必须清掉另一种变体，否则会留下「半字宽测量 + 整字宽绘制」的混用状态。 */
-    @Test
-    fun switchingVariantsClearsTheOtherVariant() {
-        val measureOnly = applyReaderPunctuationCompression(sample, frameworkDrawsText = false)
-        val asFramework = applyReaderPunctuationCompression(measureOnly, frameworkDrawsText = true)
-        val frameworkSpanned = asFramework as Spanned
-        assertEquals(
-            0,
-            frameworkSpanned.getSpans(0, asFramework.length, ReaderPunctuationCompressionSpan::class.java).size
-        )
-        assertTrue(
-            frameworkSpanned.getSpans(0, asFramework.length, ReaderPunctuationReplacementSpan::class.java)
-                .isNotEmpty()
-        )
-
-        val backToReader = applyReaderPunctuationCompression(asFramework, frameworkDrawsText = false)
-        val readerSpanned = backToReader as Spanned
-        assertEquals(
-            0,
-            readerSpanned.getSpans(0, backToReader.length, ReaderPunctuationReplacementSpan::class.java).size
-        )
-        assertTrue(
-            readerSpanned.getSpans(0, backToReader.length, ReaderPunctuationCompressionSpan::class.java)
-                .isNotEmpty()
-        )
     }
 
     /** 真实字体下，槽位（框架预留的推进量）必须覆盖字形墨迹，行末才不会越界被裁。 */

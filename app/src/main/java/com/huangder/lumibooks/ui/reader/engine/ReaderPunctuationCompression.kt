@@ -1,21 +1,18 @@
 package com.huangder.lumibooks.ui.reader.engine
 
-import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Rect
-import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.TextPaint
 import android.text.style.MetricAffectingSpan
 import android.text.style.ReplacementSpan
-import kotlin.math.roundToInt
 
 /**
  * 全角标点挤压：标点只占半个汉字宽，不再和汉字一样宽。
  *
  * 通过 [MetricAffectingSpan] 只修改"测量"结果，分页、翻页、选择手柄使用的字宽都会同步变小；
- * 可见字形仍由 [JustifiedTextView] 用原字宽绘制，所以标点本身不会被横向压扁，
+ * 可见字形由 [ReaderTextPainter] 用原字宽绘制，所以标点本身不会被横向压扁，
  * 只是占的位置变窄了。
  */
 internal const val READER_PUNCTUATION_COMPRESSION = 0.5f
@@ -30,58 +27,32 @@ internal val READER_COMPRESSIBLE_PUNCTUATION: Set<Char> = setOf(
     '「', '『', '【', '《', '〈', '〔', '〖', '〘', '〚', '（', '［', '｛', '“', '‘'
 )
 
-internal class ReaderPunctuationCompressionSpan : MetricAffectingSpan() {
+internal class ReaderPunctuationCompressionSpan(private val glyph: String) : MetricAffectingSpan() {
     override fun updateMeasureState(paint: TextPaint) {
-        paint.textScaleX *= READER_PUNCTUATION_COMPRESSION
+        paint.isSubpixelText = true
+        val spacing = paint.letterSpacing
+        val ratio = readerPunctuationMetrics(paint, glyph, 0, glyph.length).scale
+        paint.textScaleX *= ratio
+        // Letter spacing is in em and is also multiplied by textScaleX.
+        // Negative tracking is compensated in the slot, without changing the
+        // paragraph's tracking rules (Minikin justification uses those rules).
+        paint.letterSpacing = spacing / ratio
     }
 
-    // 只改测量值：字形的绘制由阅读器自己负责，避免被横向压扁。
-    override fun updateDrawState(paint: TextPaint) = Unit
-}
-
-/**
- * 供框架直接绘制文本的通道使用（如上下滚动模式的原生 TextView）。
- *
- * [getSize] 只占半个汉字宽（墨迹更宽时以墨迹为准，见 [readerCompressedSlotWidth]）；
- * [draw] 把原字形居中画进这个窄槽位，于是标点既不占满一个字，也不会被拉扁。
- *
- * 槽位必须覆盖墨迹：框架在行末按槽位预留推进量，而正文列右边缘就是平台的硬裁切线
- * （TextView.onDraw 会把画布裁到内容框），槽位窄于墨迹就会把标点在行尾切掉半截。
- */
-internal class ReaderPunctuationReplacementSpan : ReplacementSpan() {
-    override fun getSize(
-        paint: Paint,
-        text: CharSequence,
-        start: Int,
-        end: Int,
-        fm: Paint.FontMetricsInt?
-    ): Int {
-        return readerPunctuationSlotWidth(paint, text, start, end).roundToInt().coerceAtLeast(1)
-    }
-
-    override fun draw(
-        canvas: Canvas,
-        text: CharSequence,
-        start: Int,
-        end: Int,
-        x: Float,
-        top: Int,
-        y: Int,
-        bottom: Int,
-        paint: Paint
-    ) {
-        if (start >= end) return
-        val glyph = text.subSequence(start, end).toString()
-        val slotWidth = readerPunctuationSlotWidth(paint, text, start, end)
-        val ink = readerGlyphInk(paint, glyph)
-        val shift = readerPunctuationDrawShift(ink.left, ink.width, slotWidth)
-        canvas.drawText(glyph, x + shift, y.toFloat(), paint)
-    }
+    // TextLine uses draw state even for caret/selection measurements. Keep both
+    // states identical; ReaderTextPainter excludes this span when painting ink.
+    override fun updateDrawState(paint: TextPaint) = updateMeasureState(paint)
 }
 
 /** 字形墨迹相对绘制原点的位置与宽度。 */
 internal data class ReaderGlyphInk(val left: Float, val width: Float) {
     val right: Float get() = left + width
+}
+
+/** measureText rounds up on Android; shaping advances must stay fractional. */
+internal fun readerNaturalAdvance(paint: Paint, text: CharSequence, start: Int, end: Int): Float {
+    val chars = CharArray(end - start) { text[start + it] }
+    return paint.getTextRunAdvances(chars, 0, chars.size, 0, chars.size, false, null, 0)
 }
 
 /** 量取 [start, end) 区间字形的墨迹；无墨迹时返回零值。 */
@@ -104,14 +75,22 @@ internal fun readerGlyphInk(
  * 比例标点（自定义字体里的 “ ” ‘ ’ 等）与满框字形，墨迹常常比半个字宽更宽；
  * 若仍按半字宽留槽位，框架绘制时字形会越过正文列右边缘，被平台在行末裁掉半截。
  */
-internal fun readerCompressedSlotWidth(naturalAdvance: Float, inkWidth: Float): Float {
+internal fun readerCompressedSlotWidth(
+    naturalAdvance: Float,
+    inkWidth: Float,
+    textSize: Float = 0f,
+    letterSpacingPx: Float = 0f
+): Float {
     val compressed = if (naturalAdvance.isFinite() && naturalAdvance > 0f) {
         naturalAdvance * READER_PUNCTUATION_COMPRESSION
     } else {
         0f
     }
     val ink = if (inkWidth.isFinite() && inkWidth > 0f) inkWidth else 0f
-    return maxOf(compressed, ink).coerceAtLeast(0f)
+    if (compressed == 0f && ink == 0f) return 0f
+    val bearing = maxOf(1f, textSize.takeIf { it.isFinite() }?.times(0.025f) ?: 0f)
+    val negativeTracking = if (letterSpacingPx.isFinite()) maxOf(0f, -letterSpacingPx) else 0f
+    return maxOf(compressed, ink + bearing * 2f) + negativeTracking * 2f
 }
 
 /** [readerCompressedSlotWidth] 的 Paint 版本：直接量取 [start, end) 的推进量与墨迹。 */
@@ -121,10 +100,45 @@ internal fun readerPunctuationSlotWidth(
     start: Int,
     end: Int
 ): Float {
-    if (start >= end || start < 0 || end > text.length) return 0f
-    val natural = paint.measureText(text, start, end)
-    val ink = readerGlyphInk(paint, text, start, end)
-    return readerCompressedSlotWidth(natural, ink.width)
+    return readerPunctuationMetrics(paint, text, start, end).advance
+}
+
+private data class PunctuationMetrics(val scale: Float, val advance: Float)
+
+/** Use the actual shaped advance after scaling, including font hinting/rounding. */
+private fun readerPunctuationMetrics(
+    paint: Paint, text: CharSequence, start: Int, end: Int
+): PunctuationMetrics {
+    if (start >= end || start < 0 || end > text.length) return PunctuationMetrics(1f, 0f)
+    val spacing = paint.letterSpacing
+    val subpixel = paint.isSubpixelText
+    val scale = paint.textScaleX
+    val spacingPx = spacing * paint.textSize * paint.textScaleX
+    paint.letterSpacing = 0f
+    paint.isSubpixelText = true
+    return try {
+        val natural = readerNaturalAdvance(paint, text, start, end)
+        if (!natural.isFinite() || natural <= 0f) return PunctuationMetrics(1f, 0f)
+        val ink = readerGlyphInk(paint, text, start, end)
+        val target = readerCompressedSlotWidth(natural, ink.width, paint.textSize, spacingPx)
+        var ratio = target / natural
+        paint.textScaleX = scale * ratio
+        var advance = readerNaturalAdvance(paint, text, start, end)
+        // Hinted fonts need not scale advances linearly. Keep the actual slot
+        // large enough for the unscaled ink instead of correcting draw positions.
+        repeat(3) {
+            if (advance + 0.01f < target && advance > 0f) {
+                ratio *= (target + 0.25f) / advance
+                paint.textScaleX = scale * ratio
+                advance = readerNaturalAdvance(paint, text, start, end)
+            }
+        }
+        PunctuationMetrics(ratio, advance)
+    } finally {
+        paint.letterSpacing = spacing
+        paint.isSubpixelText = subpixel
+        paint.textScaleX = scale
+    }
 }
 
 /** 是否为需要挤压的全角标点。 */
@@ -146,6 +160,7 @@ internal fun readerIsCompressedPunctuation(
 /**
  * 给全角标点打上挤压 span。文本没有可挤压标点时原样返回，避免多余的对象重建。
  */
+@Suppress("UNUSED_PARAMETER") // Retained for the chapter-loading API; both renderers now share spans.
 internal fun applyReaderPunctuationCompression(
     text: CharSequence,
     frameworkDrawsText: Boolean = false
@@ -159,25 +174,15 @@ internal fun applyReaderPunctuationCompression(
     }
     if (!hasPunctuation) return text
 
-    val result = if (text is Spannable) {
-        SpannableStringBuilder(text)
-    } else {
-        SpannableStringBuilder(text.toString())
-    }
-    // 两套 span 互斥：先清掉两种变体，避免已经把文本交给另一种绘制通道后
-    // 再套用时留下「半字宽测量 + 整字宽绘制」的混用状态（行末标点会被裁掉半截）。
-    result.getSpans(0, result.length, ReaderPunctuationReplacementSpan::class.java)
-        .forEach(result::removeSpan)
+    val result = SpannableStringBuilder(text)
+    // Reapplication and mode switches keep exactly one measuring span per mark.
     result.getSpans(0, result.length, ReaderPunctuationCompressionSpan::class.java)
         .forEach(result::removeSpan)
     for (index in 0 until result.length) {
-        if (isReaderCompressiblePunctuation(result[index])) {
+        if (isReaderCompressiblePunctuation(result[index]) &&
+            result.getSpans(index, index + 1, ReplacementSpan::class.java).isEmpty()) {
             result.setSpan(
-                if (frameworkDrawsText) {
-                    ReaderPunctuationReplacementSpan()
-                } else {
-                    ReaderPunctuationCompressionSpan()
-                },
+                ReaderPunctuationCompressionSpan(result[index].toString()),
                 index,
                 index + 1,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
