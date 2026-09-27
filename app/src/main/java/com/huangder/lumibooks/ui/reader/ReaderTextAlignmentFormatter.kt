@@ -12,10 +12,8 @@ import com.huangder.lumibooks.util.parser.normalizeHeadingText
 
 /**
  * 章首标题段落的标记 span，只在阅读器内部使用，没有任何绘制效果。
- *
- * 标题段落固定按起始边（左）对齐，也不能被两端对齐拉伸；可见文字层需要知道哪些
- * 行属于标题。标记放在文本 span 上而不是当作额外参数传递，分页切片、简繁转换、
- * 标点挤压和翻页槽位轮转都会连同 span 一起复制。
+ * 可见文字层需要知道哪些行属于标题。标记放在文本 span 上而不是当作额外参数传递，
+ * 分页切片、简繁转换、标点挤压和翻页槽位轮转都会连同 span 一起复制。
  */
 internal class ReaderChapterTitleSpan
 
@@ -99,7 +97,6 @@ internal fun applyReaderTextAlignment(
     alignment: ReaderTextAlignment,
     titleParagraphEnd: Int = 0
 ): CharSequence {
-    val titleEnd = titleParagraphEnd.coerceIn(0, text.length)
     val layoutAlignment = when (alignment) {
         ReaderTextAlignment.LEFT -> Layout.Alignment.ALIGN_NORMAL
         ReaderTextAlignment.CENTER -> Layout.Alignment.ALIGN_CENTER
@@ -110,45 +107,17 @@ internal fun applyReaderTextAlignment(
     // NATURAL 保留出版社自己的段落对齐；其余模式按用户设置覆盖。
     val overridesPublisherAlignment = alignment != ReaderTextAlignment.NATURAL
     // 没有标题、又不需要改段落对齐时原样返回，避免复制大章节（EPUB 单章可能 400K+）。
-    if (titleEnd <= 0 && !overridesPublisherAlignment) return text
+    if (!overridesPublisherAlignment) return text
 
     val result = SpannableStringBuilder(text)
     if (overridesPublisherAlignment) {
         result.getSpans(0, result.length, AlignmentSpan::class.java).forEach(result::removeSpan)
-    } else {
-        // NATURAL：出版社把标题段落居中的情况也要按要求改成左对齐，正文段落的
-        // 出版社对齐原样保留（跨到标题之外的部分按原范围补回）。
-        result.getSpans(0, result.length, AlignmentSpan::class.java)
-            .filter { result.getSpanStart(it) < titleEnd }
-            .forEach { span ->
-                val spanEnd = result.getSpanEnd(span)
-                result.removeSpan(span)
-                if (spanEnd > titleEnd) {
-                    result.setSpan(span, titleEnd, spanEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                }
-            }
     }
 
-    if (titleEnd > 0) {
-        // 标题一律左对齐：不跟随「居中 / 右对齐」，两端对齐下也不拉伸。
-        result.setSpan(
-            ReaderChapterTitleSpan(),
-            0,
-            titleEnd,
-            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-        )
-        result.setSpan(
-            AlignmentSpan.Standard(Layout.Alignment.ALIGN_NORMAL),
-            0,
-            titleEnd,
-            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-        )
-    }
-
-    if (layoutAlignment != null && titleEnd < result.length) {
+    if (layoutAlignment != null) {
         result.setSpan(
             AlignmentSpan.Standard(layoutAlignment),
-            titleEnd,
+            0,
             result.length,
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
         )

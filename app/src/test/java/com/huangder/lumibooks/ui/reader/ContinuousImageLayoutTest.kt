@@ -68,6 +68,23 @@ class ContinuousImageLayoutTest {
         assertTrue(continuousChapterImages("plain novel").isEmpty())
     }
 
+    @Test fun imageAndParagraphGapStayFixedAcrossTextLineSpacingSettings() {
+        for (imageHeight in listOf(40, 800, 1800)) for (multiplier in listOf(1f, 1.5f, 2.8f)) {
+            val text = SpannableStringBuilder("before\n")
+            image(text, imageHeight)
+            val spacer = text.length
+            text.append("\nafter\nlast")
+            text.setSpan(com.huangder.lumibooks.util.parser.EpubParser.ParagraphLineHeightSpan(14),
+                spacer, spacer + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            protectContinuousImageHeights(text, multiplier)
+            val layout = StaticLayout.Builder.obtain(text, 0, text.length,
+                TextPaint().apply { textSize = 20f }, 300).setIncludePad(false).build()
+            assertEquals("image=$imageHeight multiplier=$multiplier", imageHeight,
+                layout.getLineTop(2) - layout.getLineTop(1))
+            assertEquals("paragraph gap is counted once", 14, layout.getLineTop(3) - layout.getLineTop(2))
+        }
+    }
+
     @Test fun imageRowsReserveFullHeightDespitePublisherLineHeight() {
         val text = SpannableStringBuilder()
         image(text, 800)
@@ -84,5 +101,35 @@ class ContinuousImageLayoutTest {
         assertEquals(layout.getLineTop(2), continuousCharacterTop(layout, 4))
         assertEquals(0, continuousCharacterTop(layout, -1))
         assertEquals(layout.getLineTop(2), continuousCharacterTop(layout, Int.MAX_VALUE))
+    }
+
+    @Test fun imageHitGeometryMatchesNativeDrawingForEveryAlignment() {
+        for (alignment in listOf(ImageSpan.ALIGN_BOTTOM, ImageSpan.ALIGN_BASELINE, ImageSpan.ALIGN_CENTER)) {
+            val text = SpannableStringBuilder("before\nX\uFFFC after\nlast")
+            val span = ImageSpan(ColorDrawable(Color.RED).apply { setBounds(0, 0, 30, 12) }, alignment)
+            text.setSpan(span, 8, 9, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            protectContinuousImageHeights(text, 2f)
+            val layout = StaticLayout.Builder.obtain(text, 0, text.length,
+                TextPaint().apply { textSize = 24f; color = Color.BLACK }, 300).setIncludePad(false).build()
+            val bounds = continuousImageBounds(layout, span, android.text.Layout.JUSTIFICATION_MODE_NONE)!!
+            val bitmap = android.graphics.Bitmap.createBitmap(300, layout.height, android.graphics.Bitmap.Config.ARGB_8888)
+            layout.draw(android.graphics.Canvas(bitmap))
+            val x = ((bounds.left + bounds.right) / 2).toInt()
+            val rows = (0 until bitmap.height).filter { bitmap.getPixel(x, it) == Color.RED }
+            assertEquals("alignment=$alignment top", bounds.top.toInt(), rows.first())
+            assertEquals("alignment=$alignment bottom", bounds.bottom.toInt() - 1, rows.last())
+            bitmap.recycle()
+        }
+    }
+
+    @Test fun wrappedParagraphDoesNotAccumulateLineSpacingAcrossLines() {
+        val text = SpannableStringBuilder("A long paragraph with consistent wrapped text spacing. ".repeat(40))
+        protectContinuousImageHeights(text, 1.5f)
+        val paint = TextPaint().apply { textSize = 24f }
+        val layout = StaticLayout.Builder.obtain(text, 0, text.length, paint, 300).setIncludePad(false).build()
+        val first = layout.getLineTop(1) - layout.getLineTop(0)
+        for (line in 1 until layout.lineCount - 1) {
+            assertEquals("wrapped line $line", first, layout.getLineTop(line + 1) - layout.getLineTop(line))
+        }
     }
 }

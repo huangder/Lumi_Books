@@ -10,3 +10,9 @@ import com.huangder.lumibooks.domain.model.ReaderCornerContent
  */
 internal fun readerCornerContentMaxLines(content: ReaderCornerContent): Int =
     if (content == ReaderCornerContent.CHAPTER_INFO) 1 else 2
+
+/** 左侧章节仅在同排右侧无内容时占满整排。 */
+internal fun readerLeftCornerUsesFullRow(
+    left: ReaderCornerContent,
+    right: ReaderCornerContent
+): Boolean = left == ReaderCornerContent.CHAPTER_INFO && right == ReaderCornerContent.NONE

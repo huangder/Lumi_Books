@@ -389,6 +389,23 @@ html.lumi-scrolled body[data-lumi-media-only="true"] {
   min-height: 0 !important;
   max-height: none !important;
 }
+/* Keep an EPUB cover centered when continuous scrolling is enabled. The cover
+   still grows naturally when it is taller than the viewport. */
+html.lumi-scrolled body[data-lumi-media-only="true"][data-lumi-cover="true"] {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  height: auto !important;
+  min-height: var(--lumi-page-height, 100vh) !important;
+  max-height: none !important;
+}
+html.lumi-scrolled body[data-lumi-media-only="true"][data-lumi-cover="true"] [data-lumi-cover-container="true"] {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: auto !important;
+  min-height: var(--lumi-page-height, 100vh) !important;
+}
 html.lumi-scrolled body[data-lumi-media-only="true"] [data-lumi-cover-media="true"] {
   position: static !important;
   width: 100% !important;
@@ -654,13 +671,13 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     transition: 'slide', transitionDurationMs: 260, nativePaging: false, animationTimer: 0, suppressClickUntil: 0, preservePublisherBackground: true,
     imagePageCrop: false, publisherPaintOnly: false,
     restoreProgressionInclusive: false, pendingLocator: null,
-    readerBackgroundColor: null, autoTextColor: null, publisherHasImageBackground: false,
+    readerBackgroundColor: null, coverBackgroundColor: null, autoTextColor: null, publisherHasImageBackground: false,
     readerBackgroundActive: false,
     readerBackgroundHasImage: false,
     readerBackgroundUrl: null,
     edgeTapLeft: -1, edgeTapRight: 1, canTurnPrevious: true, canTurnNext: true,
     bionicReading: false, chineseMode: 'original', chineseMap: null, pendingPreparedPage: null, prepareSerial: 0,
-    highlightItems: [], ttsHighlight: null, searchHighlight: null,
+    highlightItems: [], ttsHighlight: null, searchHighlight: null, dictionarySelection: null,
     insets: { top: 0, right: 0, bottom: 0, left: 0 }
   };
   var resizeTimer = 0;
@@ -1744,6 +1761,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     state.stableLayoutRevision = -1;
     state.paginating = true;
     var body = document.body;
+    applyPendingRuleStyles();
     markFootnoteMarkers();
     resolveFootnoteBodies();
     capturePublisherBox(body);
@@ -2110,9 +2128,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     var textColor = config.textColor ? String(config.textColor) : '';
     var bodyFontWeight = Math.max(100, Math.min(900, Math.round(Number(config.bodyFontWeight) || 400)));
     var textAlignment = String(config.textAlignment || '');
-    // 「自然对齐」在阅读器排版里就是中文两端对齐；原排版同样按两端对齐处理，
-    // 否则整页右边缘会参差不齐。
-    if (textAlignment === 'natural') textAlignment = 'justify';
+    // 原排版的「自然对齐」保留书籍 CSS（包括标题居中、段落继承和署名右对齐）。
+    // 只有用户明确选择的对齐方式才覆盖原书；恢复自然对齐时也要移除旧覆盖。
     if (!/^(left|center|right|justify)$/.test(textAlignment)) textAlignment = '';
     var letterSpacingDp = Number(config.letterSpacingDp);
     var hasLetterSpacing = Number.isFinite(letterSpacingDp);
@@ -2267,6 +2284,25 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     }
   }
 
+  // Only paginated covers use an edge color. Scrolling keeps the reader's
+  // background continuous, including when switching from paginated mode.
+  function applyCoverBackgroundColor() {
+    var existing = document.getElementById('lumi-cover-background');
+    var isCover = document.body && document.body.getAttribute('data-lumi-cover') === 'true';
+    var color = isCover && state.flow !== 'scrolled' && state.coverBackgroundColor ? String(state.coverBackgroundColor) : '';
+    if (!color) {
+      if (existing) existing.remove();
+      return;
+    }
+    var style = existing || document.createElement('style');
+    style.id = 'lumi-cover-background';
+    style.textContent =
+      'html{background-color:' + color + ' !important;background-image:none !important;}' +
+      'html body{background-color:' + color + ' !important;background-image:none !important;}' +
+      'body[data-lumi-cover] [data-lumi-cover-container]{background-color:' + color + ' !important;background-image:none !important;}';
+    if (!existing) document.head.appendChild(style);
+  }
+
   function configure(config) {
     closeFootnotePopover(true);
     config = config || {};
@@ -2305,6 +2341,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     // 「原排版」套装：阅读器完全不参与配色，原书自己的底色与文字颜色照原样渲染。
     state.publisherPaintOnly = config.publisherPaintOnly === true;
     state.readerBackgroundColor = config.backgroundColor ? String(config.backgroundColor) : null;
+    state.coverBackgroundColor = config.coverBackgroundColor ? String(config.coverBackgroundColor) : null;
     state.autoTextColor = config.autoTextColor ? String(config.autoTextColor) : null;
     state.readerBackgroundHasImage = config.backgroundImage === true;
     state.readerBackgroundUrl = config.backgroundUrl ? String(config.backgroundUrl) : null;
@@ -2326,6 +2363,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       restoreSolidPagePaint();
     }
     applyReaderPageBackgroundLayer(readerBackgroundActive);
+    applyCoverBackgroundColor();
     applyReaderOverrides(config);
     applyReaderAutoTextColor(config, readerBackgroundActive);
     applyChineseConversion(config);
@@ -2339,6 +2377,14 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     if (state.ready || state.mediaSettled) {
       paginate(state.pendingProgression);
       if (liveLocator) restore(liveLocator);
+    }
+  }
+
+  // Reusing an unchanged document does not paginate, so it has no new stable
+  // event. A navigation must explicitly ask for the current layout's status.
+  function reportLayoutStatus() {
+    if (state.ready && !state.paginating && state.stableLayoutRevision === state.layoutRevision) {
+      post('layoutStable', currentPagePayload());
     }
   }
 
@@ -2641,6 +2687,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
 
   function resetScrolledChapterDrag(animate) {
     clearTimeout(scrollChapterAnimationTimer);
+    scrollChapterTurnPending = false;
     var body = document.body;
     if (body) {
       body.style.transition = animate
@@ -2678,16 +2725,10 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     if (!direction || scrollChapterTurnPending) return;
     scrollChapterTurnPending = true;
     clearTimeout(scrollChapterAnimationTimer);
-    var body = document.body;
-    var exitDistance = Math.max(Math.abs(scrollChapterDragOffset), state.viewportHeight * 0.34);
-    body.style.transition = 'transform 150ms cubic-bezier(.32,0,.2,1), opacity 135ms ease-out';
-    body.style.transform = 'translate3d(0,' + (direction * exitDistance) + 'px,0)';
-    body.style.opacity = '0';
-    scrollChapterAnimationTimer = setTimeout(function () {
-      post('chapterTurn', { direction: direction < 0 ? 1 : -1, animated: true });
-      scrollChapterTurnPending = false;
-      touchPaging = false;
-    }, 155);
+    // Keep the dragged page visible while native prepares the next chapter.
+    // Native fades the two ready WebViews, then resets this hidden document.
+    touchPaging = false;
+    post('chapterTurn', { direction: direction < 0 ? 1 : -1, animated: true });
   }
 
   function appendUnderlineRange(layer, range, color) {
@@ -2781,11 +2822,101 @@ private const val READER_SCRIPT_PART_3 = """
     return merged.length;
   }
 
+  function clearRuleInlineStyles() {
+    Array.from(document.querySelectorAll('[data-lumi-rule-style="true"]')).forEach(function (span) {
+      var parent = span.parentNode;
+      if (!parent) return;
+      while (span.firstChild) parent.insertBefore(span.firstChild, span);
+      parent.removeChild(span);
+      parent.normalize();
+    });
+  }
+
+  function applyRuleInlineStyle(range, style, includePaint) {
+    var hasColor = /^#[0-9a-f]{6,8}$/i.test(style.textColor || '');
+    var underline = Number(style.underlineMode) === 1 || Number(style.underlineMode) === 3;
+    var needsInline = Number(style.fontWeight) >= 600 || style.italic === true ||
+      (includePaint && (hasColor || underline));
+    if (!needsInline) return;
+    var root = range.commonAncestorContainer;
+    var walkerRoot = root.nodeType === Node.TEXT_NODE ? root.parentNode : root;
+    if (!walkerRoot) return;
+    var walker = document.createTreeWalker(walkerRoot, NodeFilter.SHOW_TEXT);
+    var segments = [];
+    var node;
+    while ((node = walker.nextNode())) {
+      var intersects = false;
+      try { intersects = range.intersectsNode(node); } catch (_) {}
+      if (!intersects || !node.nodeValue) continue;
+      var start = node === range.startContainer ? range.startOffset : 0;
+      var end = node === range.endContainer ? range.endOffset : node.nodeValue.length;
+      start = Math.max(0, Math.min(start, node.nodeValue.length));
+      end = Math.max(start, Math.min(end, node.nodeValue.length));
+      if (end > start) segments.push({ node: node, start: start, end: end });
+    }
+    segments.reverse().forEach(function (segment) {
+      var target = segment.node;
+      if (segment.end < target.nodeValue.length) target.splitText(segment.end);
+      if (segment.start > 0) target = target.splitText(segment.start);
+      var span = document.createElement('span');
+      span.setAttribute('data-lumi-rule-style', 'true');
+      if (Number(style.fontWeight) >= 600) span.style.fontWeight = '700';
+      if (style.italic === true) span.style.fontStyle = 'italic';
+      if (includePaint && hasColor) span.style.color = style.textColor;
+      if (includePaint && underline) {
+        span.style.textDecorationLine = 'underline';
+        span.style.textDecorationStyle = Number(style.underlineMode) === 3 ? 'wavy' : 'solid';
+        if (hasColor) span.style.textDecorationColor = style.textColor;
+      }
+      target.parentNode.insertBefore(span, target);
+      span.appendChild(target);
+    });
+  }
+
+  var ruleStylesDirty = false;
+  var highlightItemsKey = '[]';
+  var ruleLayoutKey = '[]';
+
+  function applyPendingRuleStyles() {
+    if (!ruleStylesDirty || !document.body) return;
+    ruleStylesDirty = false;
+    try {
+      clearRuleInlineStyles();
+      (state.highlightItems || []).forEach(function (item) {
+        try {
+          if (!item || !item.ruleStyle) return;
+          var range = rangeFromLocators(item.start, item.end, item.exact) ||
+            (item.exact ? quoteRange(Object.assign({}, item.start || {}, { exact: item.exact })) : null);
+          if (range) applyRuleInlineStyle(range, item.ruleStyle, !(window.CSS && CSS.highlights && window.Highlight));
+        } catch (_) { post('highlightDiagnostic', { stage: 'inline', failed: true }); }
+      });
+    } catch (_) { post('highlightDiagnostic', { stage: 'inline', failed: true }); }
+  }
+
   function rebuildHighlightLayer() {
+    var started = Date.now();
+    try { return renderHighlightLayer(); }
+    catch (_) { post('highlightDiagnostic', { stage: 'paint', failed: true }); return false; }
+    finally { post('highlightDiagnostic', { stage: 'paint', durationMs: Date.now() - started,
+      count: (state.highlightItems || []).length }); }
+  }
+
+  function renderHighlightLayer() {
     if (!document.body) return false;
+    applyPendingRuleStyles();
     var layer = annotationLayer('lumi-highlight-layer');
     var underlineLayer = annotationLayer('lumi-underline-layer');
-    (state.highlightItems || []).forEach(function (item) {
+    if (window.CSS && CSS.highlights) {
+      Array.from(CSS.highlights.keys()).forEach(function (key) {
+        if (String(key).indexOf('lumi-rule-') === 0) CSS.highlights.delete(key);
+      });
+    }
+    var oldRuleStyle = document.getElementById('lumi-rule-highlight-styles');
+    if (oldRuleStyle) oldRuleStyle.remove();
+    var ruleCss = [];
+    (state.highlightItems || []).forEach(function (item, itemIndex) {
+      try {
+      if (!item) return;
       var range = rangeFromLocators(item.start, item.end, item.exact);
       if (!range && item.exact) {
         var quote = Object.assign({}, item.start || {}, { exact: item.exact });
@@ -2793,12 +2924,39 @@ private const val READER_SCRIPT_PART_3 = """
       }
       if (!range) return;
       var color = /^#[0-9a-f]{6,8}$/i.test(item.color || '') ? item.color : '#66ffeb3b';
+      if (item.ruleStyle) {
+        var style = item.ruleStyle;
+        var hasRuleColor = /^#[0-9a-f]{6,8}$/i.test(style.textColor || '');
+        var ruleColor = hasRuleColor ? style.textColor : color;
+        if (window.CSS && CSS.highlights && window.Highlight) {
+          var name = 'lumi-rule-' + itemIndex;
+          var declarations = [];
+          if (hasRuleColor) declarations.push('color:' + ruleColor);
+          if (Number(style.underlineMode) === 1 || Number(style.underlineMode) === 3) {
+            declarations.push('text-decoration-line:underline');
+            declarations.push('text-decoration-style:' + (Number(style.underlineMode) === 3 ? 'wavy' : 'solid'));
+            if (hasRuleColor) declarations.push('text-decoration-color:' + ruleColor);
+          }
+          if (declarations.length) {
+            CSS.highlights.set(name, new Highlight(range));
+            ruleCss.push('::highlight(' + name + '){' + declarations.join(';') + '}');
+          }
+        }
+        return;
+      }
       if (item.type === 'underline') {
         appendUnderlineRange(underlineLayer, range, color);
       } else {
         appendHighlightRange(layer, range, color);
       }
+      } catch (_) { post('highlightDiagnostic', { stage: 'item', failed: true }); }
     });
+    if (ruleCss.length) {
+      var ruleStyleElement = document.createElement('style');
+      ruleStyleElement.id = 'lumi-rule-highlight-styles';
+      ruleStyleElement.textContent = ruleCss.join('\n');
+      (document.head || document.documentElement).appendChild(ruleStyleElement);
+    }
     if (state.ttsHighlight) {
       var tts = state.ttsHighlight;
       var ttsRange = rangeAtOffsets(textIndex(), tts.start, tts.end);
@@ -2812,15 +2970,43 @@ private const val READER_SCRIPT_PART_3 = """
         layer, searchRange, 'rgba(255,193,7,.62)', 'lumi-search-highlight-block'
       );
     }
+    if (state.dictionarySelection) {
+      var dictionaryRange = rangeFromLocators(
+        state.dictionarySelection.start,
+        state.dictionarySelection.end,
+        state.dictionarySelection.exact
+      );
+      if (dictionaryRange) appendHighlightRange(
+        layer, dictionaryRange, 'rgba(255,193,7,.42)', 'lumi-dictionary-selection-block'
+      );
+    }
     return true;
   }
 
   function setHighlights(items) {
-    state.highlightItems = Array.isArray(items) ? items : [];
+    items = Array.isArray(items) ? items : [];
+    var key = JSON.stringify(items);
+    if (key === highlightItemsKey) return true;
+    var locator = state.ready ? currentLocator() : null;
+    var nextLayoutKey = JSON.stringify(items.filter(function (item) {
+      return item && item.ruleStyle && (Number(item.ruleStyle.fontWeight) >= 600 || item.ruleStyle.italic === true);
+    }));
+    var layoutChanged = ruleLayoutKey !== nextLayoutKey;
+    ruleLayoutKey = nextLayoutKey;
+    highlightItemsKey = key;
+    state.highlightItems = items;
+    ruleStylesDirty = true;
+    if (layoutChanged && state.ready && !state.paginating) {
+      if (locator) state.pendingLocator = locator;
+      paginate(state.total > 1 ? state.page / (state.total - 1) : 0);
+      return true;
+    }
     return rebuildHighlightLayer();
   }
 
   function setTtsHighlight(start, end, color) {
+    if (start == null && end == null && !state.ttsHighlight) return true;
+    var previousKey = JSON.stringify(state.ttsHighlight);
     var index = textIndex();
     var normalizedStart = Number(start);
     var normalizedEnd = Number(end);
@@ -2837,6 +3023,7 @@ private const val READER_SCRIPT_PART_3 = """
         color: normalizedColor
       };
     }
+    if (previousKey === JSON.stringify(state.ttsHighlight)) return true;
     return rebuildHighlightLayer();
   }
 
@@ -2849,6 +3036,13 @@ private const val READER_SCRIPT_PART_3 = """
     if (selection.removeAllRanges) selection.removeAllRanges();
     if (selection.empty) selection.empty();
     return hadSelection;
+  }
+
+  function setDictionarySelection(start, end, exact) {
+    state.dictionarySelection = start && end ? { start: start, end: end, exact: exact } : null;
+    rebuildHighlightLayer();
+    if (state.dictionarySelection) clearDocumentSelection();
+    return true;
   }
 
   function interactiveFromTarget(target) {
@@ -3733,6 +3927,7 @@ private const val READER_SCRIPT_PART_3 = """
 
   window.LumiReader = {
     configure: configure,
+    reportLayoutStatus: reportLayoutStatus,
     next: function () { turnByDirection(1); },
     previous: function () { turnByDirection(-1); },
     goToPage: function (page) { moveToPage(page, true); },
@@ -3754,10 +3949,12 @@ private const val READER_SCRIPT_PART_3 = """
     restore: restore,
     currentLocator: currentLocator,
     setHighlights: setHighlights,
+    setDictionarySelection: setDictionarySelection,
     setTtsHighlight: setTtsHighlight,
     findText: findText,
     clearSearchHighlight: clearSearchHighlight,
     cancelChapterTurn: function () { resetScrolledChapterDrag(true); },
+    finishChapterTurn: function () { resetScrolledChapterDrag(false); },
     pageText: pageText,
     visibleText: function () { return document.body ? document.body.innerText : ''; },
     repaginate: function () {

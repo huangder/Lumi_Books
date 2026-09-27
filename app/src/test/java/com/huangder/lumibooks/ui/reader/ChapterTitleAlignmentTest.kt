@@ -109,23 +109,6 @@ class ChapterTitleAlignmentTest {
     // ── 段落对齐 ──
 
     @Test
-    fun titleParagraphStaysLeadingAlignedInEveryMode() {
-        ReaderTextAlignment.entries.forEach { alignment ->
-            val aligned = applyReaderTextAlignment(txtChapter(), alignment, titleEnd) as Spanned
-            val spans = aligned.getSpans(0, 1, AlignmentSpan::class.java)
-
-            assertEquals("$alignment 下标题段落应只有一个对齐 span", 1, spans.size)
-            assertEquals(
-                "$alignment 下标题应左对齐",
-                Layout.Alignment.ALIGN_NORMAL,
-                spans.single().alignment
-            )
-            assertEquals(0, aligned.getSpanStart(spans.single()))
-            assertEquals(titleEnd, aligned.getSpanEnd(spans.single()))
-        }
-    }
-
-    @Test
     fun bodyParagraphsKeepConfiguredAlignment() {
         val expected = mapOf(
             ReaderTextAlignment.LEFT to Layout.Alignment.ALIGN_NORMAL,
@@ -138,7 +121,7 @@ class ChapterTitleAlignmentTest {
 
             assertEquals("$alignment 下正文段落应只有一个对齐 span", 1, spans.size)
             assertEquals(layoutAlignment, spans.single().alignment)
-            assertEquals(titleEnd, aligned.getSpanStart(spans.single()))
+            assertEquals(0, aligned.getSpanStart(spans.single()))
             assertEquals(aligned.length, aligned.getSpanEnd(spans.single()))
         }
 
@@ -166,16 +149,12 @@ class ChapterTitleAlignmentTest {
         val aligned = applyReaderTextAlignment(source, ReaderTextAlignment.NATURAL, titleEnd) as Spanned
         val bodySpans = aligned.getSpans(titleEnd, titleEnd + 1, AlignmentSpan::class.java)
 
-        assertEquals(
-            Layout.Alignment.ALIGN_NORMAL,
-            aligned.getSpans(0, 1, AlignmentSpan::class.java).single().alignment
-        )
         assertEquals(1, bodySpans.size)
         assertEquals(Layout.Alignment.ALIGN_CENTER, bodySpans.single().alignment)
     }
 
     @Test
-    fun publisherCenteredTitleIsForcedBackToLeading() {
+    fun publisherCenteredTitleIsPreserved() {
         val source = txtChapter().apply {
             setSpan(
                 AlignmentSpan.Standard(Layout.Alignment.ALIGN_CENTER),
@@ -188,13 +167,10 @@ class ChapterTitleAlignmentTest {
         val aligned = applyReaderTextAlignment(source, ReaderTextAlignment.NATURAL, titleEnd) as Spanned
 
         assertEquals(
-            Layout.Alignment.ALIGN_NORMAL,
+            Layout.Alignment.ALIGN_CENTER,
             aligned.getSpans(0, 1, AlignmentSpan::class.java).single().alignment
         )
-        // 覆盖到标题之外的出版社对齐要原样补回正文。
-        val bodySpans = aligned.getSpans(titleEnd, titleEnd + 1, AlignmentSpan::class.java)
-        assertEquals(Layout.Alignment.ALIGN_CENTER, bodySpans.single().alignment)
-        assertEquals(titleEnd, aligned.getSpanStart(bodySpans.single()))
+        assertSame(source, aligned)
     }
 
     @Test
@@ -215,10 +191,7 @@ class ChapterTitleAlignmentTest {
 
     // ── 两端对齐与 span 存活 ──
 
-    /**
-     * 用户反馈的「标题被拉伸成字距很大」来自分页把标题段落切在中间：标题行成了续行，
-     * 于是被当成两端对齐的拉伸对象。标记 span 必须让标题行保持排版原生坐标。
-     */
+    /** Long headings still exercise the pagination geometry path. */
     @Test
     fun titleLineIsNotStretchedByJustification() {
         val longTitle = "第5章 " + "很长很长的章节标题".repeat(3)
@@ -252,17 +225,4 @@ class ChapterTitleAlignmentTest {
         )
     }
 
-    @Test
-    fun titleMarkerSurvivesReaderTransforms() {
-        val aligned = applyReaderTextAlignment(txtChapter(), ReaderTextAlignment.NATURAL, titleEnd)
-        val compressed = applyReaderPunctuationCompression(aligned)
-        val converted = ChineseConverter.convertPreservingSpans(compressed, "simplified")
-
-        val marked = converted as Spanned
-        val markers = marked.getSpans(0, marked.length, ReaderChapterTitleSpan::class.java)
-
-        assertEquals(1, markers.size)
-        assertEquals(0, marked.getSpanStart(markers.single()))
-        assertEquals(titleEnd, marked.getSpanEnd(markers.single()))
-    }
 }

@@ -4,9 +4,12 @@ import android.content.Context
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.text.SpannableString
+import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.AbsoluteSizeSpan
+import android.text.style.ForegroundColorSpan
 import android.text.style.StyleSpan
+import android.text.style.UnderlineSpan
 import android.graphics.Typeface
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.SavedStateHandle
@@ -19,8 +22,10 @@ import com.huangder.lumibooks.data.local.ReaderPreferencesSnapshot
 import com.huangder.lumibooks.domain.model.AnnotationEditPlan
 import com.huangder.lumibooks.domain.model.AnnotationNoteEditPlanner
 import com.huangder.lumibooks.domain.model.Book
+import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.domain.model.Bookmark
 import com.huangder.lumibooks.domain.model.Note
+import com.huangder.lumibooks.domain.model.HighlightRule
 import com.huangder.lumibooks.domain.model.ReadingRecord
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
@@ -44,6 +49,14 @@ import com.huangder.lumibooks.util.diagnostics.DiagnosticLevel
 import com.huangder.lumibooks.util.diagnostics.DiagnosticLoggerRegistry
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.domain.repository.ReadingRepository
+import com.huangder.lumibooks.domain.repository.HighlightRuleRepository
+import com.huangder.lumibooks.highlight.HighlightRuleCodec
+import com.huangder.lumibooks.highlight.HighlightRuleMatcher
+import com.huangder.lumibooks.highlight.HighlightRuleImportPlanner
+import com.huangder.lumibooks.highlight.HighlightRuleMaterializer
+import com.huangder.lumibooks.highlight.HighlightRuleScanManager
+import com.huangder.lumibooks.highlight.HighlightRuleScanState
+import com.huangder.lumibooks.highlight.RuleStyleJson
 import com.huangder.lumibooks.pdfconversion.PdfConversionManager
 import com.huangder.lumibooks.pdfconversion.PdfConversionContract
 import com.huangder.lumibooks.pdfconversion.PdfConversionEngine
@@ -83,6 +96,7 @@ import com.huangder.lumibooks.util.epub.EpubLocator
 import com.huangder.lumibooks.util.epub.BookSearchSource
 import com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatter
 import com.huangder.lumibooks.ui.reader.engine.applyReaderPunctuationCompression
+import com.huangder.lumibooks.ui.reader.engine.WaveUnderlineSpan
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.service.TtsForegroundService
 import com.huangder.lumibooks.tts.TtsController
@@ -109,6 +123,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -120,6 +135,8 @@ import java.io.FileNotFoundException
 import java.io.IOException
 import java.util.Locale
 import java.util.UUID
+import java.io.OutputStreamWriter
+import java.util.zip.ZipInputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import com.huangder.lumibooks.domain.model.bookmarkPositionForCharacterOffset
 import kotlin.math.roundToInt
@@ -309,6 +326,8 @@ data class ReaderUiState(
     val pageAnimationSettings: ReaderPageAnimationSettings = ReaderPageAnimationSettings(),
     /** 阅读页显示效果："auto" | "day" | "night" */
     val readerDisplayMode: String = "auto",
+    /** Theme editor bucket. This is independent from the currently rendered system mode. */
+    val themeEditingDark: Boolean = false,
     /** 段间距（dp），默认 8 */
     val paragraphSpacing: Float = 2f,
     /** 首行缩进字符数，默认 2 */
@@ -323,12 +342,18 @@ data class ReaderUiState(
     val volumeKeyPageTurnEnabled: Boolean = false,
     val bionicReadingEnabled: Boolean = false,
     val comicModeEnabled: Boolean = false,
+    val imageBrightness: Float = 0f,
+    val imageContrast: Float = 1f,
+    val imageSharpen: Float = 0f,
     /** 正文字重（PR #19 #24）：>=600 视为加粗 */
     val bodyFontWeight: Int = 400,
     val eInkModeEnabled: Boolean = false,
     val twoPageSpreadEnabled: Boolean = true,
     /** PDF / CBZ 栅格页面解码清晰度："normal" | "high" | "native" */
     val pageRenderMode: String = "normal",
+    /** PDF / CBZ 是否按书锁定缩放比例。 */
+    val rasterZoomLocked: Boolean = false,
+    val rasterZoomScale: Float = 1f,
     /** 双页对开模式当前跨页的右半页（无右页时为 null） */
     val rightPageIndex: Int? = null,
     /** 右半页所属章节；跨章对开时与 currentChapterIndex 不同。 */
@@ -356,6 +381,12 @@ data class ReaderTtsState(
     val activeBookId: String? = null,
     val errorMessage: String? = null,
     val sleepTimerRemainingMs: Long? = null
+)
+
+data class HighlightRuleImportResult(
+    val imported: Int,
+    val skipped: Int,
+    val renamedConflicts: Int
 )
 
 data class TtsSentencePosition(
@@ -501,7 +532,10 @@ class ReaderViewModel @Inject constructor(
     private val mineruTokenStore: MineruTokenStore,
     private val webdavSyncManager: com.huangder.lumibooks.data.sync.WebdavSyncManager,
     private val webdavAutoSyncScheduler: com.huangder.lumibooks.data.sync.WebdavAutoSyncScheduler,
-    private val fontDownloadManager: com.huangder.lumibooks.util.FontDownloadManager
+    private val fontDownloadManager: com.huangder.lumibooks.util.FontDownloadManager,
+    private val highlightRuleRepository: HighlightRuleRepository,
+    private val highlightRuleMaterializer: HighlightRuleMaterializer,
+    private val highlightRuleScanManager: HighlightRuleScanManager
 ) : ViewModel() {
 
     private companion object {
@@ -551,6 +585,16 @@ class ReaderViewModel @Inject constructor(
 
     private val _readerNotes = MutableStateFlow<List<Note>>(emptyList())
     val readerNotes: StateFlow<List<Note>> = _readerNotes.asStateFlow()
+
+    val highlightRules: StateFlow<List<HighlightRule>> = highlightRuleRepository
+        .observeRulesForBook(bookId)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val highlightSettings = highlightRuleRepository
+        .observeSettings(bookId)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, com.huangder.lumibooks.domain.model.BookHighlightSettings(bookId))
+    val highlightScanState: StateFlow<HighlightRuleScanState> = highlightRuleScanManager
+        .observe(bookId)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, HighlightRuleScanState.Idle)
 
     private val _pdfConversionState = MutableStateFlow<PdfConversionState>(PdfConversionState.Idle)
     val pdfConversionState: StateFlow<PdfConversionState> = _pdfConversionState.asStateFlow()
@@ -679,6 +723,19 @@ class ReaderViewModel @Inject constructor(
     }
 
     init {
+        viewModelScope.launch {
+            highlightRules.drop(1).collectLatest {
+                _uiState.value = _uiState.value.copy(contentRevision = _uiState.value.contentRevision + 1)
+                if (highlightSettings.value.materializeNotes) highlightRuleScanManager.enqueue(bookId)
+            }
+        }
+        viewModelScope.launch {
+            highlightSettings.drop(1).collectLatest { settings ->
+                _uiState.value = _uiState.value.copy(contentRevision = _uiState.value.contentRevision + 1)
+                if (settings.materializeNotes) highlightRuleScanManager.enqueue(bookId)
+                else highlightRuleScanManager.cancel(bookId)
+            }
+        }
         viewModelScope.launch {
             coroutineScope {
                 val bookDeferred = async {
@@ -858,6 +915,8 @@ class ReaderViewModel @Inject constructor(
     }
 
     private fun applyReaderPreferences(preferences: ReaderPreferencesSnapshot) {
+        if (pendingImageAdjustments == preferences.imageAdjustments) pendingImageAdjustments = null
+        val imageSettings = pendingImageAdjustments ?: preferences.imageAdjustments
         val suiteState = preferences.readerThemeSuiteState
         val scopedReaderSuiteId = if (preferences.readerThemeSuiteBookScoped) {
             preferences.readerThemeSuiteBookActiveId
@@ -944,10 +1003,15 @@ class ReaderViewModel @Inject constructor(
             volumeKeyPageTurnEnabled = preferences.volumeKeyPageTurnEnabled,
             bionicReadingEnabled = preferences.bionicReadingEnabled,
             comicModeEnabled = preferences.comicModeEnabled,
+            imageBrightness = imageSettings.brightness,
+            imageContrast = imageSettings.contrast,
+            imageSharpen = imageSettings.sharpen,
             bodyFontWeight = preferences.bodyFontWeight,
             eInkModeEnabled = preferences.eInkModeEnabled,
             twoPageSpreadEnabled = preferences.twoPageSpreadEnabled,
             pageRenderMode = preferences.pageRenderMode,
+            rasterZoomLocked = preferences.rasterZoomLocked,
+            rasterZoomScale = preferences.rasterZoomScale,
             screenSleepTimeoutSeconds = preferences.screenSleepTimeoutSeconds,
             readerEdgeTapMode = preferences.readerEdgeTapMode,
             readerTopLeftContent = preferences.readerTopLeftContent,
@@ -1769,7 +1833,11 @@ class ReaderViewModel @Inject constructor(
     ): ReaderUiState = copy(
         readerThemeSuites = readerThemeSuites.map { suite ->
             if (suite.id == activeThemeSuiteIdFor(layout)) {
-                suite.withSettings(layout, suite.settingsFor(layout).transform())
+                if (layout == ReaderLayoutTarget.READER_LAYOUT) {
+                    suite.withModeSettings(themeEditingDark, suite.settingsFor(layout, themeEditingDark).transform())
+                } else {
+                    suite.withSettings(layout, suite.settingsFor(layout).transform())
+                }
             } else {
                 suite
             }
@@ -1779,7 +1847,8 @@ class ReaderViewModel @Inject constructor(
     private fun ReaderUiState.currentThemeSettings(
         layout: ReaderLayoutTarget = readerLayoutTarget()
     ): ReaderThemeSettings =
-        readerThemeSuites.firstOrNull { it.id == activeThemeSuiteIdFor(layout) }?.settingsFor(layout)
+        readerThemeSuites.firstOrNull { it.id == activeThemeSuiteIdFor(layout) }
+            ?.let { suite -> if (layout == ReaderLayoutTarget.READER_LAYOUT) suite.settingsFor(layout, themeEditingDark) else suite.settingsFor(layout) }
             ?: ReaderThemeSettings(
                 backgroundSelection = readerBackgroundSelection,
                 backgroundColorSelection = readerBackgroundColorSelection,
@@ -1806,7 +1875,12 @@ class ReaderViewModel @Inject constructor(
     ) {
         val suiteId = _uiState.value.activeThemeSuiteIdFor(layout)
         viewModelScope.launch {
-            dataStoreManager.updateReaderThemeSuite(suiteId, layout, settings)
+            dataStoreManager.updateReaderThemeSuite(
+                suiteId,
+                layout,
+                settings,
+                modeDark = _uiState.value.themeEditingDark.takeIf { layout == ReaderLayoutTarget.READER_LAYOUT }
+            )
         }
     }
 
@@ -1837,6 +1911,64 @@ class ReaderViewModel @Inject constructor(
             .withReaderThemeSettings(updated)
         persistCurrentThemeSettings(updated, layout)
         return updated
+    }
+
+    fun saveReaderThemeForMode(dark: Boolean, theme: String) {
+        if (_uiState.value.keepsPublisherPaint()) return
+        selectThemeEditMode(dark)
+        updateThemeSettingsForMode(dark) { copy(backgroundSelection = theme, backgroundColorSelection = theme) }
+    }
+
+    fun selectThemeEditMode(dark: Boolean) {
+        val state = _uiState.value
+        if (state.themeEditingDark == dark) return
+        // The edit-mode tag is UI selection only. The reader itself must keep
+        // rendering from the actual display mode until the settings sheet closes.
+        _uiState.value = state.copy(themeEditingDark = dark)
+    }
+
+    /** Refreshes the flattened render state from the active suite when the effective system mode changes. */
+    fun applyReaderThemeMode(dark: Boolean) {
+        val state = _uiState.value
+        if (state.readerLayoutTarget() != ReaderLayoutTarget.READER_LAYOUT) return
+        val suite = state.readerThemeSuites.firstOrNull { it.id == state.activeThemeSuiteIdFor(ReaderLayoutTarget.READER_LAYOUT) }
+            ?: return
+        val settings = suite.settingsFor(ReaderLayoutTarget.READER_LAYOUT, dark)
+        // Apply the complete mode-specific settings. Comparing only a few fields
+        // leaves stale line-height, image, alignment, or other values visible when
+        // light and dark themes differ only in one of those fields.
+        _uiState.value = state.withReaderThemeSettings(settings)
+    }
+
+    fun saveReaderTextColorForMode(dark: Boolean, color: Int?) {
+        if (_uiState.value.keepsPublisherPaint()) return
+        updateThemeSettingsForMode(dark) { copy(textColor = color) }
+    }
+
+    private fun updateThemeSettingsForMode(
+        dark: Boolean,
+        transform: ReaderThemeSettings.() -> ReaderThemeSettings
+    ) {
+        val state = _uiState.value
+        val layout = state.readerLayoutTarget()
+        val suiteId = state.activeThemeSuiteIdFor(layout)
+        val suite = state.readerThemeSuites.firstOrNull { it.id == suiteId } ?: return
+        val updated = suite.settingsFor(layout, dark).transform()
+        val replaced = state.readerThemeSuites.map { current ->
+            if (current.id != suiteId) current
+            else if (layout == ReaderLayoutTarget.READER_LAYOUT) current.withModeSettings(dark, updated)
+            else current.withSettings(layout, updated)
+        }
+        _uiState.value = state.copy(readerThemeSuites = replaced, themeEditingDark = dark)
+            .let { next -> if (dark == next.themeEditingDark) next.withReaderThemeSettings(updated) else next }
+        viewModelScope.launch {
+            dataStoreManager.saveReaderThemeSuiteState(
+                replaced,
+                state.globalActiveReaderThemeSuiteId,
+                applyActiveSuite = false,
+                activeBookLayoutSuiteId = state.globalActiveBookLayoutThemeSuiteId
+            )
+        }
     }
 
     /** Ensures persisted image blur has a bitmap copy that curl snapshots can retain. */
@@ -1958,18 +2090,17 @@ class ReaderViewModel @Inject constructor(
         val remaining = state.customReaderBackgrounds.filterNot { it.id == id }
         val wasSelected = state.readerBackgroundSelection == removed.selectionKey
         val repairedSuites = state.readerThemeSuites.map { suite ->
-            ReaderLayoutTarget.entries.fold(suite) { acc, layout ->
+            val repairedLayouts = ReaderLayoutTarget.entries.fold(suite) { acc, layout ->
                 val layoutSettings = acc.settingsFor(layout)
                 if (layoutSettings.backgroundSelection == removed.selectionKey) {
-                    acc.withSettings(
-                        layout,
-                        layoutSettings.copy(
-                            backgroundSelection = layoutSettings.backgroundColorSelection
-                        )
-                    )
-                } else {
-                    acc
-                }
+                    acc.withSettings(layout, layoutSettings.copy(backgroundSelection = layoutSettings.backgroundColorSelection))
+                } else acc
+            }
+            listOf(false, true).fold(repairedLayouts) { acc, dark ->
+                val modeSettings = acc.settingsFor(ReaderLayoutTarget.READER_LAYOUT, dark)
+                if (modeSettings.backgroundSelection == removed.selectionKey) {
+                    acc.withModeSettings(dark, modeSettings.copy(backgroundSelection = modeSettings.backgroundColorSelection))
+                } else acc
             }
         }
         val restoredSelection = repairedSuites
@@ -2016,10 +2147,8 @@ class ReaderViewModel @Inject constructor(
         val updated = state.customReaderBackgrounds + preset
         val updatedSuites = state.readerThemeSuites.map { suite ->
             if (suite.id == state.activeThemeSuiteIdFor(layout)) {
-                val current = suite.settingsFor(layout)
-                suite.withSettings(
-                    layout,
-                    current.copy(
+                val current = suite.settingsFor(layout, state.themeEditingDark)
+                val updated = current.copy(
                         backgroundSelection = preset.selectionKey,
                         backgroundColorSelection = if (preset.type == ReaderBackgroundType.COLOR) {
                             preset.selectionKey
@@ -2027,7 +2156,8 @@ class ReaderViewModel @Inject constructor(
                             current.backgroundColorSelection
                         }
                     )
-                )
+                if (layout == ReaderLayoutTarget.READER_LAYOUT) suite.withModeSettings(state.themeEditingDark, updated)
+                else suite.withSettings(layout, updated)
             } else {
                 suite
             }
@@ -2045,11 +2175,16 @@ class ReaderViewModel @Inject constructor(
         )
         val targetSuiteId = state.activeThemeSuiteIdFor(layout)
         val settings = updatedSuites.firstOrNull { it.id == targetSuiteId }
-            ?.settingsFor(layout)
+            ?.settingsFor(layout, state.themeEditingDark)
             ?: return
         viewModelScope.launch {
             dataStoreManager.saveCustomReaderBackgrounds(updated)
-            dataStoreManager.updateReaderThemeSuite(targetSuiteId, layout, settings)
+            dataStoreManager.updateReaderThemeSuite(
+                targetSuiteId,
+                layout,
+                settings,
+                modeDark = state.themeEditingDark.takeIf { layout == ReaderLayoutTarget.READER_LAYOUT }
+            )
         }
     }
 
@@ -2554,6 +2689,18 @@ class ReaderViewModel @Inject constructor(
             .key
         _uiState.value = _uiState.value.copy(pageRenderMode = next)
         viewModelScope.launch { dataStoreManager.savePageRenderMode(next) }
+    }
+
+    /** Locks or unlocks the current PDF/CBZ zoom ratio for this book. */
+    fun setRasterZoomLocked(locked: Boolean, scale: Float) {
+        val normalizedScale = scale.coerceIn(1f, 5f)
+        _uiState.value = _uiState.value.copy(
+            rasterZoomLocked = locked,
+            rasterZoomScale = normalizedScale
+        )
+        viewModelScope.launch {
+            dataStoreManager.saveRasterZoom(bookId, locked, normalizedScale)
+        }
     }
 
     /** Applies a built-in or user TXT TOC rule and keeps the reader near its old byte anchor. */
@@ -4238,9 +4385,7 @@ class ReaderViewModel @Inject constructor(
      *  contentWidthPx 非空表示调用方（连续滚动阅读器）已量出真实内容宽度；
      *  用它刷新解析器的图片基准宽度，插图尺寸才能跟随左右边距。
      *
-     *  这里的标点挤压是「阅读器自绘」变体（只改测量值），供分页引擎、TTS、设置预览等
-     *  自己逐字绘制正文的通道使用。需要框架（原生 TextView）直接绘制正文的上下滚动模式，
-     *  必须改用 [getFrameworkDrawnChapterText]：两套 span 不能混用，否则行末标点会被裁切。
+     *  滚动与分页共用保留原字符的测量 span，由 ReaderTextPainter 按原字形绘制。
      */
     fun getChapterText(
         index: Int,
@@ -4256,9 +4401,7 @@ class ReaderViewModel @Inject constructor(
     /**
      * 供框架直接绘制正文的通道使用（上下滚动模式的原生 TextView）。
      *
-     * 标点改用 [com.huangder.lumibooks.ui.reader.engine.ReaderPunctuationReplacementSpan]：
-     * 框架按半个字宽排版，并由 span 自己把整字宽字形居中画进槽位。若这里误用自绘变体，
-     * 框架会按整字宽落笔，行内标点之后的内容整体右移，行尾会越过正文列右边缘被裁掉半截。
+     * 保留独立加载入口以维持连续模式的图片尺寸规则；标点测量与分页模式一致。
      */
     fun getFrameworkDrawnChapterText(index: Int, contentWidthPx: Int? = null): CharSequence? =
         buildChapterText(index, contentWidthPx, contentHeightPx = 0, frameworkDrawsText = true)
@@ -4269,19 +4412,27 @@ class ReaderViewModel @Inject constructor(
         contentHeightPx: Int?,
         frameworkDrawsText: Boolean
     ): CharSequence? {
-        if (contentWidthPx != null) {
+        val activeParser = parser
+        val continuousEpub = (activeParser as? com.huangder.lumibooks.util.parser.EpubParser)?.takeIf {
+            frameworkDrawsText && contentWidthPx != null
+        }
+        if (contentWidthPx != null && continuousEpub == null) {
             if (contentHeightPx != null) {
                 updateReaderContentSize(contentWidthPx, contentHeightPx)
             } else {
                 updateReaderContentWidth(contentWidthPx)
             }
         }
+        fun decode(): CharSequence? = try {
+            if (continuousEpub != null) continuousEpub.getChapterContent(index, contentWidthPx!!, 0)
+            else activeParser?.getChapterContent(index)
+        } catch (_: Exception) { null }
         val raw = if (firstChapterDecodeTraced.compareAndSet(false, true)) {
             ReaderOpenPerformance.traceStage(bookId, ReaderOpenStage.FIRST_CHAPTER_DECODE) {
-                try { parser?.getChapterContent(index) } catch (_: Exception) { null }
+                decode()
             }
         } else {
-            try { parser?.getChapterContent(index) } catch (_: Exception) { null }
+            decode()
         } ?: return null
         if (raw.isEmpty()) return raw
 
@@ -4345,10 +4496,163 @@ class ReaderViewModel @Inject constructor(
         )
         val aligned = applyReaderTextAlignment(formatted, state.textAlignment, titleParagraphEnd)
         // 竖排由独立排版器逐字度量，不识别挤压 span，保持原字宽以免分页与绘制错位。
-        if (state.readerWritingMode.isVertical) return aligned
+        if (state.readerWritingMode.isVertical) return applyHighlightRuleStyles(index, aligned)
         // 全角标点挤压：标点只占半个汉字宽，行内更紧凑、行尾也更容易对齐。
         // 放在最后一步，段落缩进/对齐都会连同 span 一起复制。
-        return applyReaderPunctuationCompression(aligned, frameworkDrawsText = frameworkDrawsText)
+        return applyReaderPunctuationCompression(
+            applyHighlightRuleStyles(index, aligned),
+            frameworkDrawsText = frameworkDrawsText
+        )
+    }
+
+    fun exportReaderThemeBundle(uri: Uri, suiteId: String, onResult: (Result<Unit>) -> Unit = {}) {
+        val theme = _uiState.value.readerThemeSuites.firstOrNull { it.id == suiteId }
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                requireNotNull(theme) { "Theme no longer exists" }
+                context.contentResolver.openOutputStream(uri)?.use { output ->
+                    OutputStreamWriter(output, Charsets.UTF_8).use { writer ->
+                        writer.write(com.huangder.lumibooks.domain.model.LumiThemeBundleCodec.encode(listOf(theme)))
+                    }
+                } ?: error("Unable to open export file")
+            }
+            withContext(Dispatchers.Main.immediate) { onResult(result) }
+        }
+    }
+
+    fun importReaderThemeBundle(uri: Uri, onResult: (Result<Int>) -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                val raw = context.contentResolver.openInputStream(uri)?.use { input ->
+                    val bytes = input.readBytes()
+                    val text = bytes.toString(Charsets.UTF_8)
+                    if (text.trimStart().startsWith("{") || text.trimStart().startsWith("[")) {
+                        text
+                    } else {
+                        ZipInputStream(bytes.inputStream()).use { zip ->
+                            var entry = zip.nextEntry
+                            var json: String? = null
+                            while (entry != null) {
+                                if (!entry.isDirectory && entry.name.lowercase().endsWith(".json")) {
+                                    val candidate = zip.readBytes().toString(Charsets.UTF_8)
+                                    if (candidate.contains("lumi-theme-bundle") || candidate.trimStart().startsWith("[")) {
+                                        json = candidate
+                                        break
+                                    }
+                                }
+                                zip.closeEntry()
+                                entry = zip.nextEntry
+                            }
+                            json ?: error("No LUMI theme JSON found in ZIP")
+                        }
+                    }
+                } ?: error("Unable to open theme file")
+                val imported = com.huangder.lumibooks.domain.model.LumiThemeBundleCodec.decode(raw)
+                require(imported.isNotEmpty()) { "Theme bundle is empty" }
+                val state = _uiState.value
+                val existingIds = state.readerThemeSuites.mapTo(mutableSetOf()) { it.id }
+                val existingNames = state.readerThemeSuites.mapNotNull { it.customName }
+                    .mapTo(mutableSetOf()) { it.lowercase() }
+                val copies = imported.map { suite ->
+                    val baseName = suite.customName?.takeIf(String::isNotBlank) ?: "LUMI Theme"
+                    var name = baseName
+                    var suffix = 1
+                    while (name.lowercase() in existingNames) {
+                        name = if (suffix == 1) {
+                            context.getString(R.string.theme_bundle_copy_name, baseName)
+                        } else {
+                            context.getString(R.string.theme_bundle_copy_name_number, baseName, suffix)
+                        }
+                        suffix++
+                    }
+                    existingNames += name.lowercase()
+                    var id = UUID.randomUUID().toString()
+                    while (!existingIds.add(id)) id = UUID.randomUUID().toString()
+                    suite.copy(id = id, customName = name)
+                }
+                val merged = ReaderThemeSuites.normalized(state.readerThemeSuites + copies)
+                _uiState.value = state.copy(readerThemeSuites = merged)
+                dataStoreManager.saveReaderThemeSuiteState(
+                    merged,
+                    state.globalActiveReaderThemeSuiteId,
+                    applyActiveSuite = false,
+                    activeBookLayoutSuiteId = state.globalActiveBookLayoutThemeSuiteId
+                )
+                copies.size
+            }
+            withContext(Dispatchers.Main.immediate) { onResult(result) }
+        }
+    }
+
+
+    private var pendingImageAdjustments: com.huangder.lumibooks.domain.model.ReaderImageAdjustments? = null
+
+    fun saveImageAdjustments(value: com.huangder.lumibooks.domain.model.ReaderImageAdjustments) {
+        val settings = value.normalized()
+        pendingImageAdjustments = settings
+        _uiState.value = _uiState.value.copy(imageBrightness = settings.brightness,
+            imageContrast = settings.contrast, imageSharpen = settings.sharpen)
+        dataStoreManager.persistReaderImageAdjustments(bookId, settings)
+    }
+    fun saveImageBrightness(value: Float) = saveImageAdjustments(_uiState.value.imageAdjustments.copy(brightness = value))
+    fun saveImageContrast(value: Float) = saveImageAdjustments(_uiState.value.imageAdjustments.copy(contrast = value))
+    fun saveImageSharpen(value: Float) = saveImageAdjustments(_uiState.value.imageAdjustments.copy(sharpen = value))
+
+    private fun applyHighlightRuleStyles(chapterIndex: Int, text: CharSequence): CharSequence {
+        val rules = highlightRules.value
+        val knownRuleIds = rules.mapTo(mutableSetOf(), HighlightRule::id)
+        val liveMatches = HighlightRuleMatcher.match(text, chapterIndex, rules)
+        val detachedSnapshots = _readerNotes.value.asSequence()
+            .filter { note ->
+                note.chapterIndex == chapterIndex && note.styleSnapshotJson != null &&
+                    (!note.isGeneratedByHighlightRule || note.sourceRuleId !in knownRuleIds)
+            }
+            .mapNotNull { note ->
+                val style = RuleStyleJson.decode(note.styleSnapshotJson) ?: return@mapNotNull null
+                com.huangder.lumibooks.domain.model.RuleMatch(
+                    ruleId = note.sourceRuleId.orEmpty(),
+                    ruleName = "",
+                    chapterIndex = chapterIndex,
+                    start = note.startPosition,
+                    end = note.endPosition,
+                    text = note.selectedText,
+                    matchKey = note.sourceMatchKey.orEmpty(),
+                    style = style,
+                    position = Int.MAX_VALUE
+                )
+            }
+            .toList()
+        if (liveMatches.isEmpty() && detachedSnapshots.isEmpty()) return text
+        val spannable = SpannableStringBuilder(text)
+        (liveMatches + detachedSnapshots).sortedBy { it.position }.forEach { match ->
+            val start = match.start.coerceIn(0, spannable.length)
+            val end = match.end.coerceIn(start, spannable.length)
+            if (start >= end) return@forEach
+            match.style.textColor?.let { color ->
+                spannable.setSpan(ForegroundColorSpan(color), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            val typefaceStyle = when {
+                match.style.fontWeight >= 600 && match.style.italic -> Typeface.BOLD_ITALIC
+                match.style.fontWeight >= 600 -> Typeface.BOLD
+                match.style.italic -> Typeface.ITALIC
+                else -> null
+            }
+            typefaceStyle?.let { style ->
+                spannable.setSpan(StyleSpan(style), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            when (match.style.underlineMode) {
+                HighlightRule.UNDERLINE_STRAIGHT -> spannable.setSpan(
+                    UnderlineSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+                HighlightRule.UNDERLINE_WAVE -> spannable.setSpan(
+                    WaveUnderlineSpan(match.style.textColor ?: android.graphics.Color.GRAY),
+                    start,
+                    end,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+        }
+        return spannable
     }
 
     internal fun resolveTxtEditorCharOffset(chapterIndex: Int, readerOffset: Int): Int {
@@ -4605,11 +4909,172 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun updateNote(note: Note) {
-        viewModelScope.launch { readingRepository.updateNote(note) }
+        viewModelScope.launch {
+            if (note.isGeneratedByHighlightRule) {
+                highlightRuleRepository.addExclusion(
+                    note.bookId,
+                    requireNotNull(note.sourceRuleId),
+                    requireNotNull(note.sourceMatchKey)
+                )
+                readingRepository.updateNote(note.detachFromHighlightRule())
+            } else {
+                readingRepository.updateNote(note)
+            }
+        }
     }
 
     fun deleteNote(note: Note) {
-        viewModelScope.launch { readingRepository.deleteNote(note) }
+        viewModelScope.launch {
+            if (note.isGeneratedByHighlightRule) {
+                highlightRuleRepository.addExclusion(
+                    note.bookId,
+                    requireNotNull(note.sourceRuleId),
+                    requireNotNull(note.sourceMatchKey)
+                )
+            }
+            readingRepository.deleteNote(note)
+        }
+    }
+
+    fun saveHighlightRule(rule: HighlightRule) {
+        viewModelScope.launch {
+            highlightRuleRepository.saveRule(rule.copy(updatedAt = System.currentTimeMillis()))
+        }
+    }
+
+    fun duplicateHighlightRule(rule: HighlightRule) {
+        val nextPosition = (highlightRules.value.maxOfOrNull(HighlightRule::position) ?: -1) + 1
+        saveHighlightRule(
+            rule.copy(
+                id = UUID.randomUUID().toString(),
+                name = context.getString(R.string.highlight_rule_copy_name, rule.name),
+                position = nextPosition,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    fun deleteHighlightRule(ruleId: String) {
+        viewModelScope.launch { highlightRuleRepository.deleteRule(ruleId) }
+    }
+
+    fun setHighlightRuleEnabled(ruleId: String, enabled: Boolean) {
+        viewModelScope.launch { highlightRuleRepository.setRuleEnabled(bookId, ruleId, enabled) }
+    }
+
+    fun moveHighlightRule(ruleId: String, delta: Int) {
+        val ordered = highlightRules.value.map(HighlightRule::id).toMutableList()
+        val oldIndex = ordered.indexOf(ruleId)
+        val newIndex = (oldIndex + delta).coerceIn(0, ordered.lastIndex)
+        if (oldIndex < 0 || oldIndex == newIndex) return
+        ordered.removeAt(oldIndex)
+        ordered.add(newIndex, ruleId)
+        viewModelScope.launch { highlightRuleRepository.reorderRules(bookId, ordered) }
+    }
+
+    fun setHighlightRulesMaterialized(enabled: Boolean) {
+        viewModelScope.launch {
+            highlightRuleRepository.setMaterializeNotes(bookId, enabled)
+            if (!enabled) {
+                highlightRuleScanManager.cancel(bookId)
+                return@launch
+            }
+
+            val state = _uiState.value
+            val book = state.book
+            val chapterIndex = state.currentChapterIndex
+            if (book != null && book.format in setOf(BookFormat.TXT, BookFormat.EPUB)) {
+                try {
+                    val text = withContext(Dispatchers.IO) {
+                        parser?.getChapterContent(chapterIndex)?.toString()
+                    }
+                    if (text != null) {
+                        highlightRuleMaterializer.materializeChapter(
+                            bookId = bookId,
+                            format = book.format,
+                            chapterIndex = chapterIndex,
+                            text = text
+                        )
+                    }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    // The full scan below recovers from a transient chapter read failure.
+                }
+            }
+            highlightRuleScanManager.enqueue(bookId)
+        }
+    }
+
+    fun rebuildHighlightRuleNotes() {
+        viewModelScope.launch {
+            highlightRuleRepository.clearExclusions(bookId)
+            if (!highlightSettings.value.materializeNotes) {
+                highlightRuleRepository.setMaterializeNotes(bookId, true)
+            } else {
+                highlightRuleScanManager.enqueue(bookId)
+            }
+        }
+    }
+
+    fun cancelHighlightRuleScan() = highlightRuleScanManager.cancel(bookId)
+
+    suspend fun importHighlightRules(bytes: ByteArray, replaceConflicts: Boolean = false): HighlightRuleImportResult {
+        val incoming = withContext(Dispatchers.Default) { HighlightRuleCodec.decode(bytes) }
+        val plan = HighlightRuleImportPlanner.plan(
+            current = highlightRules.value,
+            incoming = incoming,
+            replaceConflicts = replaceConflicts,
+            importedName = { context.getString(R.string.highlight_rule_imported_name, it) }
+        )
+        highlightRuleRepository.saveRules(plan.rulesToSave)
+        return HighlightRuleImportResult(plan.rulesToSave.size, plan.skipped, plan.conflicts)
+    }
+
+    fun exportHighlightRules(asZip: Boolean): ByteArray = if (asZip) {
+        HighlightRuleCodec.encodeZip(highlightRules.value)
+    } else {
+        HighlightRuleCodec.encodeJson(highlightRules.value)
+    }
+
+    suspend fun highlightRulePreviewNotes(chapterIndex: Int, rules: List<HighlightRule>): List<Note> {
+        if (rules.none { it.enabled }) return emptyList()
+        val source = parser
+        val text = withContext(Dispatchers.IO) {
+            runCatching { source?.getChapterContent(chapterIndex)?.toString() }.getOrNull()
+        }
+            ?: return emptyList()
+        val epub = _uiState.value.book?.format?.name == "EPUB"
+        return withContext(Dispatchers.Default) {
+        val started = android.os.SystemClock.elapsedRealtime()
+        val result = HighlightRuleMatcher.match(text, chapterIndex, rules).map { match ->
+            val locators = if (epub) {
+                createHighlightLocatorPair(text, match.start, match.end, match.text)
+            } else null to null
+            Note(
+                bookId = bookId,
+                chapterIndex = chapterIndex,
+                startPosition = match.start,
+                endPosition = match.end,
+                startLocatorJson = locators.first,
+                endLocatorJson = locators.second,
+                selectedText = match.text,
+                note = "",
+                color = match.style.textColor?.let { String.format("#%08X", it) } ?: "#FF777777",
+                createdAt = 0L,
+                type = if (match.style.underlineMode == HighlightRule.UNDERLINE_NONE) "highlight" else "underline",
+                origin = Note.ORIGIN_HIGHLIGHT_RULE,
+                sourceRuleId = match.ruleId,
+                sourceMatchKey = match.matchKey,
+                styleSnapshotJson = RuleStyleJson.encode(match.style)
+            )
+        }
+        DiagnosticLoggerRegistry.logger?.log(category = "reader", event = "epub_rule_match",
+            level = DiagnosticLevel.INFO, attributes = mapOf("chapterIndex" to chapterIndex,
+                "ruleCount" to rules.size, "matchCount" to result.size),
+            durationMs = android.os.SystemClock.elapsedRealtime() - started)
+        result
+        }
     }
 
     private val cancelledPdfInkLocators = mutableSetOf<String>()
@@ -4714,7 +5179,11 @@ class ReaderViewModel @Inject constructor(
                 val chapterText = withContext(Dispatchers.IO) {
                     getChapterText(chapterIndex)?.toString()
                 } ?: return@launch
-                val plan = buildPlan(chapterText, _readerNotes.value, book)
+                val plan = buildPlan(
+                    chapterText,
+                    _readerNotes.value.filterNot(Note::isGeneratedByHighlightRule),
+                    book
+                )
                 if (plan.isEmpty) return@launch
                 val prepared = withContext(Dispatchers.IO) {
                     prepareAnnotationLocators(plan, chapterText, book.format.name == "EPUB")

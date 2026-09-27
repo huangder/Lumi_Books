@@ -4,6 +4,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class EpubDocumentLifecycleTest {
+    @Test fun unmeasuredDocumentIsNeverStable() {
+        val state = EpubDocumentLifecycle()
+        assertFalse(state.isStable(state.configurationGeneration, -1))
+        state.beginDocument()
+        state.configure("scrolled")
+        assertFalse(state.isStable(state.configurationGeneration, -1))
+    }
+
     @Test
     fun promotedPageDoesNotReplayTheDocumentEntrance() {
         val state = EpubDocumentLifecycle()

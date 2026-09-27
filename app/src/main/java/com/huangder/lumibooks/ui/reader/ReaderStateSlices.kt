@@ -245,3 +245,56 @@ internal fun ReaderUiState.activeThemeSuite(): ReaderThemeSuite? =
 internal fun ReaderUiState.keepsPublisherPaint(): Boolean =
     readerLayoutTarget() == ReaderLayoutTarget.BOOK_LAYOUT &&
         activeThemeSuite()?.isBookLayoutOnly == true
+
+internal fun ReaderUiState.activeThemeSettingsForMode(dark: Boolean): com.huangder.lumibooks.domain.model.ReaderThemeSettings {
+    val suite = activeThemeSuite() ?: return currentThemeSettingsFallback()
+    return suite.settingsFor(readerLayoutTarget(), dark)
+}
+
+internal fun ReaderUiState.withActiveThemeSettingsForMode(dark: Boolean): ReaderUiState {
+    val settings = activeThemeSettingsForMode(dark)
+    val customFontPath = settings.fontType.removePrefix("custom:")
+        .takeIf { settings.fontType.startsWith("custom:") }
+        ?.let { id -> customFonts.firstOrNull { it.id == id }?.path }
+    return copy(
+        fontSize = settings.fontSize,
+        lineHeight = settings.lineHeight,
+        letterSpacing = settings.letterSpacing,
+        textAlignment = settings.textAlignment,
+        fontType = settings.fontType,
+        customFontPath = customFontPath ?: this.customFontPath,
+        marginLeftDp = settings.marginLeft,
+        marginRightDp = settings.marginRight,
+        marginTopDp = settings.marginTop,
+        marginBottomDp = settings.marginBottom,
+        paragraphSpacing = settings.paragraphSpacing,
+        firstLineIndent = settings.firstLineIndent,
+        bodyFontWeight = settings.bodyFontWeight,
+        readerTheme = settings.backgroundSelection,
+        readerBackgroundSelection = settings.backgroundSelection,
+        readerBackgroundColorSelection = settings.backgroundColorSelection,
+        readerBackgroundImageOpacity = settings.backgroundImageOpacity,
+        readerBackgroundImageBlurDp = settings.backgroundImageBlurDp,
+        readerTextColor = settings.textColor
+    )
+}
+
+private fun ReaderUiState.currentThemeSettingsFallback() = com.huangder.lumibooks.domain.model.ReaderThemeSettings(
+    backgroundSelection = readerBackgroundSelection,
+    backgroundColorSelection = readerBackgroundColorSelection,
+    backgroundImageOpacity = readerBackgroundImageOpacity,
+    backgroundImageBlurDp = readerBackgroundImageBlurDp,
+    textColor = readerTextColor,
+    fontSize = fontSize,
+    fontType = fontType,
+    bodyFontWeight = bodyFontWeight,
+    lineHeight = lineHeight,
+    letterSpacing = letterSpacing,
+    textAlignment = textAlignment,
+    paragraphSpacing = paragraphSpacing,
+    firstLineIndent = firstLineIndent,
+    marginLeft = marginLeftDp,
+    marginRight = marginRightDp,
+    marginTop = marginTopDp,
+    marginBottom = marginBottomDp
+)

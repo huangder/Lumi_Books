@@ -18,7 +18,7 @@ class EpubInitialLoadRecoveryTest {
         assertTrue(recovery.isCurrent(retry.attempt))
 
         assertEquals(
-            EpubInitialLoadRecoveryAction.Fallback(retry.attempt),
+            EpubInitialLoadRecoveryAction.Failed(retry.attempt),
             recovery.fail(retry.attempt)
         )
         assertNull(recovery.current())

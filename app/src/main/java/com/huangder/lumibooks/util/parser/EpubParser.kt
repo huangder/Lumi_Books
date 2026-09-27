@@ -18,7 +18,6 @@ import com.huangder.lumibooks.R
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
-import java.lang.ref.WeakReference
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import java.util.zip.ZipEntry
@@ -669,7 +668,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         val chapterIndex: Int,
         val optimizeLayout: Boolean
     )
-    private data class ContentLoadKey(val revision: Long, val chapterIndex: Int)
+    private data class ContentLoadKey(val revision: Long, val chapterIndex: Int, val width: Int, val height: Int)
     private data class AnchoredChapter(
         val text: SpannableStringBuilder,
         val offsets: Map<String, Int>
@@ -1403,14 +1402,18 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
     /**
      * 按需加载单个章节的 Spanned，带缓存
      */
-    override fun getChapterContent(chapterIndex: Int): CharSequence {
+    override fun getChapterContent(chapterIndex: Int): CharSequence =
+        getChapterContent(chapterIndex, contentWidth, contentHeight)
+
+    /** Request-local geometry: preview/paged/continuous layouts must not resize one another. */
+    fun getChapterContent(chapterIndex: Int, width: Int, height: Int): CharSequence {
         if (chapterIndex !in chapterPaths.indices) {
             android.util.Log.w("EpubParser", "getChapterContent: idx=$chapterIndex out of range (chapterPaths.size=${chapterPaths.size})")
             return ""
         }
 
         val revision = contentRevision.get()
-        val loadKey = ContentLoadKey(revision, chapterIndex)
+        val loadKey = ContentLoadKey(revision, chapterIndex, width, height)
         contentCache[loadKey]?.let {
             android.util.Log.d("EpubParser", "getChapterContent: idx=$chapterIndex from cache, length=${it.length}")
             return it
@@ -1437,7 +1440,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 android.util.Log.d("EpubParser", "getChapterContent: idx=$chapterIndex rawHtml.length=${rawHtml.length}")
 
                 val parseStartedAt = android.os.SystemClock.elapsedRealtime()
-                val spanned = htmlToSpanned(chapterIndex, rawHtml, zipFile)
+                val spanned = htmlToSpanned(chapterIndex, rawHtml, zipFile, width, height)
                 val htmlParsedAt = android.os.SystemClock.elapsedRealtime()
                 if (!isActiveRevision(revision, zipFile)) return@chapterLoad ""
 
@@ -1569,9 +1572,8 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
 
     private fun clearDecodedImageCache() {
         synchronized(zipLock) {
-            imageBitmapCache.values.toSet().forEach { bitmap ->
-                if (!bitmap.isRecycled) bitmap.recycle()
-            }
+            // A visible drawable or a sharpening job can still own these pixels.
+            // Eviction releases cache ownership; Bitmap lifetime belongs to its consumers.
             imageBitmapCache.clear()
         }
     }
@@ -2378,7 +2380,10 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             ((bytes[offset + 1].toInt() and 0xFF) shl 8) or
             ((bytes[offset + 2].toInt() and 0xFF) shl 16)
 
-    private fun htmlToSpanned(chapterIndex: Int, html: String, zipFile: ZipFile): Spanned {
+    private fun htmlToSpanned(
+        chapterIndex: Int, html: String, zipFile: ZipFile,
+        contentWidth: Int = this.contentWidth, contentHeight: Int = this.contentHeight
+    ): Spanned {
         val bodyContent = extractBody(html) ?: html
 
         // 出版社用 CSS/内联背景图做的装饰在阅读器排版里没有渲染路径，先把它还原成图片；
@@ -2668,34 +2673,51 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         override val isInlineFootnoteMarker: Boolean = false,
         /** 矢量图源码：非空时按 [drawWidth] × [drawHeight] 光栅化，而不是解码位图。 */
         private val vectorSource: ByteArray? = null
-    ) : Drawable(), InlineFootnoteMarkerDrawable {
+    ) : Drawable(), InlineFootnoteMarkerDrawable, ReaderImageTransparencyInfo, ReaderImagePixelSource {
+        override val hasAlphaChannel: Boolean by lazy {
+            val sourceEntry = entry
+            sourceEntry != null && runCatching {
+                synchronized(zipLock) {
+                    zipFile.getInputStream(sourceEntry).use(::pngHasAlphaChannel)
+                }
+            }.getOrDefault(false)
+        }
+
         private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
-        private var bitmapRef: WeakReference<Bitmap>? = null
-        private var decodeFailed = false
+        // Parser spans live in the chapter cache. Only a displayed image wrapper should
+        // pin pixels; otherwise every previously visited illustration stays resident.
+        private var bitmap: java.lang.ref.WeakReference<Bitmap>? = null
+        private var lastDecodeFailureNanos = 0L
 
         override fun draw(canvas: android.graphics.Canvas) {
-            val bitmap = bitmapRef?.get()
-                ?: imageBitmapCache[cacheKey]?.also { bitmapRef = WeakReference(it) }
+            val pixels = acquireReaderBitmap()
+            if (pixels != null) canvas.drawBitmap(pixels, null, bounds, paint)
+            else drawFailurePlaceholder(canvas)
+        }
+
+        override fun acquireReaderBitmap(): Bitmap? = synchronized(zipLock) {
+            bitmap?.get()?.takeUnless { it.isRecycled }
+                ?: imageBitmapCache[cacheKey]?.takeUnless { it.isRecycled }?.also {
+                    bitmap = java.lang.ref.WeakReference(it)
+                }
                 ?: loadBitmap()?.also {
-                    bitmapRef = WeakReference(it)
+                    bitmap = java.lang.ref.WeakReference(it)
                     if (it.allocationByteCount.toLong() <= IMAGE_BITMAP_CACHE_BYTES) {
                         imageBitmapCache.put(cacheKey, it)
                     }
                 }
-            if (bitmap != null && !bitmap.isRecycled) {
-                canvas.drawBitmap(bitmap, null, bounds, paint)
-            } else {
-                drawFailurePlaceholder(canvas)
-            }
         }
 
         private fun loadBitmap(): Bitmap? {
-            if (decodeFailed) return null
+            // Avoid hammering a closed/temporarily unavailable ZIP on every invalidation,
+            // while still allowing a later frame to recover the image.
+            val now = System.nanoTime()
+            if (now - lastDecodeFailureNanos < 250_000_000L) return null
             vectorSource?.let { markup ->
                 return try {
                     renderVectorBitmap(markup, drawWidth, drawHeight)
                 } catch (error: Throwable) {
-                    decodeFailed = true
+                    lastDecodeFailureNanos = now
                     android.util.Log.w("EpubParser", "Vector render failed: $cacheKey", error)
                     null
                 }
@@ -2718,7 +2740,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                     }
                 }
             } catch (error: Throwable) {
-                decodeFailed = true
+                lastDecodeFailureNanos = now
                 android.util.Log.w("EpubParser", "Lazy image decode failed: ${sourceEntry.name}", error)
                 null
             }

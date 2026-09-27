@@ -7,6 +7,21 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EpubNavigationTest {
+    @Test
+    fun scrollPreloadsChaptersEvenWhenCurrentChapterHasManyVirtualPages() {
+        assertEquals(EpubPageTarget(1, Int.MAX_VALUE) to EpubPageTarget(3, 0),
+            epubAdjacentPreloadTargets(2, 4, 10, 5, scrolling = true))
+        assertEquals(EpubPageTarget(2, 3) to EpubPageTarget(2, 5),
+            epubAdjacentPreloadTargets(2, 4, 10, 5, scrolling = false))
+    }
+
+    @Test
+    fun scrollPreloadBoundsIncludeSingleChapterBooks() {
+        assertEquals(null to EpubPageTarget(1, 0), epubAdjacentPreloadTargets(0, 0, 1, 3, true))
+        assertEquals(EpubPageTarget(1, Int.MAX_VALUE) to null, epubAdjacentPreloadTargets(2, 0, 1, 3, true))
+        assertEquals(null to null, epubAdjacentPreloadTargets(0, 0, 5, 1, true))
+    }
+
     private fun request(
         operationId: Long,
         sourceChapter: Int = 2,
@@ -48,8 +63,8 @@ class EpubNavigationTest {
     }
 
     @Test
-    fun timeoutUsesTenSecondDeadlineAndRejectsLateSuccess() {
-        assertEquals(10_000L, EPUB_NAVIGATION_TIMEOUT_MS)
+    fun timeoutUsesEightSecondDeadlineAndRejectsLateSuccess() {
+        assertEquals(8_000L, EPUB_NAVIGATION_TIMEOUT_MS)
         val tracker = EpubNavigationOperationTracker()
         tracker.begin(31L)
         assertTrue(tracker.finish(31L))

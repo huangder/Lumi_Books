@@ -2,18 +2,6 @@ package com.huangder.lumibooks.ui.reader
 
 import com.huangder.lumibooks.util.parser.TocEntry
 
-private val volumeTitlePattern = run {
-    val number = "[0-9０-９一二三四五六七八九十百千零两〇]+"
-    Regex(
-        """^(?:第\s*$number\s*[卷篇部巻](?=$|\s|[:：·、，,．.\-—])""" +
-            """|[卷篇部巻]\s*$number\s*[章回]?(?=$|\s|[:：·、，,．.\-—])""" +
-            """|.+(?:\s|[:：·、，,．.\-—])第\s*$number\s*[卷篇部巻]\s*$""" +
-            """|(?:Volume|Vol\.|Book|Part)\s*(?:[0-9]+|[IVXLCDM]+)(?=$|\s|[:：.\-—])""" +
-            """|제\s*[0-9]+\s*권(?=$|\s|[:：.\-—]))""",
-        RegexOption.IGNORE_CASE
-    )
-}
-
 internal data class TocVisibleEntry(
     val sourceIndex: Int,
     val entry: TocEntry
@@ -46,24 +34,16 @@ internal fun collapsedTocAncestors(
 
 /**
  * Returns foldable entry indexes and the exclusive end of each entry's descendants.
- * Explicit EPUB groups use TOC levels; inferred volume headings delimit flat TXT/MOBI lists.
+ *
+ * Folding is based only on the hierarchy level. This keeps the behavior consistent for
+ * arbitrary parent titles instead of depending on a title keyword such as "volume".
  */
 internal fun findTocFoldGroups(entries: List<TocEntry>): Map<Int, Int> = buildMap {
     entries.forEachIndexed { index, entry ->
-        val inferredVolume = !entry.isGroup && volumeTitlePattern.containsMatchIn(entry.title.trim())
-        if (!entry.isGroup && !inferredVolume) return@forEachIndexed
-
         var endExclusive = index + 1
         while (endExclusive < entries.size) {
             val candidate = entries[endExclusive]
-            val isBoundary = if (entry.isGroup) {
-                candidate.level <= entry.level
-            } else {
-                candidate.level < entry.level ||
-                    (candidate.level == entry.level &&
-                        (candidate.isGroup || volumeTitlePattern.containsMatchIn(candidate.title.trim())))
-            }
-            if (isBoundary) break
+            if (candidate.level <= entry.level) break
             endExclusive++
         }
 

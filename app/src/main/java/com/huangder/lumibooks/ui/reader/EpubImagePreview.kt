@@ -73,6 +73,7 @@ internal data class EpubImagePreviewRequest(
 @Composable
 internal fun EpubImagePreviewOverlay(
     session: BookRenderSession,
+    imageAdjustments: com.huangder.lumibooks.domain.model.ReaderImageAdjustments = com.huangder.lumibooks.domain.model.ReaderImageAdjustments(),
     request: EpubImagePreviewRequest,
     progress: Float,
     onDismissRequest: () -> Unit
@@ -217,12 +218,17 @@ internal fun EpubImagePreviewOverlay(
                     model = ImageRequest.Builder(context)
                         .data(image.bytes)
                         .crossfade(false)
+                        .allowHardware(false)
+                        .transformations(ReaderSharpenTransformation(imageAdjustments.sharpen))
                         .build(),
                     imageLoader = imageLoader,
                     contentDescription = request.altText.ifBlank {
                         context.getString(R.string.epub_image_preview)
                     },
                     contentScale = ContentScale.Fit,
+                    colorFilter = androidx.compose.ui.graphics.ColorFilter.colorMatrix(
+                        androidx.compose.ui.graphics.ColorMatrix(imageAdjustments.colorMatrixValues())
+                    ),
                     modifier = Modifier.fillMaxSize()
                 )
             } else if (!loadFinished) {

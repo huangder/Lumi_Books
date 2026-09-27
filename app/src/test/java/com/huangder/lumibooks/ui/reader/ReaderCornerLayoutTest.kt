@@ -2,6 +2,7 @@ package com.huangder.lumibooks.ui.reader
 
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderCornerMargins
+import com.huangder.lumibooks.domain.model.ReaderThemeSettings
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -23,6 +24,31 @@ class ReaderCornerLayoutTest {
         ).forEach { content ->
             assertEquals(content.name, 2, readerCornerContentMaxLines(content))
         }
+    }
+
+    @Test
+    fun leftChapterUsesFullRowOnlyWhenRightCornerIsEmpty() {
+        assertEquals(
+            true,
+            readerLeftCornerUsesFullRow(
+                ReaderCornerContent.CHAPTER_INFO,
+                ReaderCornerContent.NONE
+            )
+        )
+        assertEquals(
+            false,
+            readerLeftCornerUsesFullRow(
+                ReaderCornerContent.CHAPTER_INFO,
+                ReaderCornerContent.BATTERY
+            )
+        )
+        assertEquals(
+            false,
+            readerLeftCornerUsesFullRow(
+                ReaderCornerContent.BOOK_PROGRESS,
+                ReaderCornerContent.NONE
+            )
+        )
     }
 
     /** 没调过的边保持旧版位置：左右跟正文，上下用固定值。 */
@@ -61,8 +87,10 @@ class ReaderCornerLayoutTest {
     @Test
     fun cornerMarginClampMatchesSliderRanges() {
         assertEquals(0f, ReaderCornerMargins.clampHorizontal(-10f))
-        assertEquals(80f, ReaderCornerMargins.clampHorizontal(200f))
+        assertEquals(160f, ReaderCornerMargins.clampHorizontal(1_000f))
         assertEquals(0f, ReaderCornerMargins.clampVertical(-10f))
-        assertEquals(120f, ReaderCornerMargins.clampVertical(200f))
+        assertEquals(400f, ReaderCornerMargins.clampVertical(1_000f))
+        assertEquals(ReaderThemeSettings.HORIZONTAL_MARGIN_RANGE, ReaderCornerMargins.HORIZONTAL_RANGE)
+        assertEquals(ReaderThemeSettings.VERTICAL_MARGIN_RANGE, ReaderCornerMargins.VERTICAL_RANGE)
     }
 }

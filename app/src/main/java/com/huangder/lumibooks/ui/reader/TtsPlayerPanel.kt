@@ -189,6 +189,7 @@ fun TtsPlayerPanel(
                 )
         ) {
             LiquidGlassSurface(
+                controlEdge = true,
                 shape = capsuleShape,
                 fallbackColor = readerBackgroundColor,
                 contentScrimColor = readerBackgroundColor.copy(alpha = 0.85f),

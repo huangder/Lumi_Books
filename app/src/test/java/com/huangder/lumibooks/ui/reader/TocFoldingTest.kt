@@ -8,23 +8,21 @@ import org.junit.Test
 
 class TocFoldingTest {
     @Test
-    fun infersVolumesInAFlatChapterList() {
+    fun anyEntryWithChildLevelCanBeCollapsed() {
         val entries = listOf(
-            chapter("序章", 0),
-            chapter("第一卷 开端", 1),
-            chapter("第一章", 2),
-            chapter("第二章", 3),
-            chapter("检察官室的提议 第二卷", 4),
-            chapter("第三章", 5)
+            chapter("开端", 0, level = 1),
+            chapter("没有卷关键字的子章节", 1, level = 2),
+            chapter("另一个子章节", 2, level = 2),
+            chapter("结尾", 3, level = 1)
         )
 
         val groups = findTocFoldGroups(entries)
 
-        assertEquals(mapOf(1 to 4, 4 to 6), groups)
+        assertEquals(mapOf(0 to 3), groups)
     }
 
     @Test
-    fun doesNotTreatSimilarChapterTitlesAsVolumes() {
+    fun flatEntriesWithoutChildrenAreNotFoldable() {
         val entries = listOf(
             chapter("第一卷轴的秘密", 0),
             chapter("第二章", 1)
@@ -93,12 +91,12 @@ class TocFoldingTest {
     @Test
     fun currentChapterFallsBackToItsCollapsedGroupHeader() {
         val entries = listOf(
-            chapter("序章", 0),
-            chapter("第一卷", 1),
-            chapter("第一章", 2),
-            chapter("第二章", 3),
-            chapter("第二卷", 4),
-            chapter("第三章", 5)
+            chapter("序章", 0, level = 1),
+            chapter("第一卷", 1, level = 1),
+            chapter("第一章", 2, level = 2),
+            chapter("第二章", 3, level = 2),
+            chapter("第二卷", 4, level = 1),
+            chapter("第三章", 5, level = 2)
         )
         val groups = findTocFoldGroups(entries)
         val collapsed = setOf(1)

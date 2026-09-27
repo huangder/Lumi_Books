@@ -12,7 +12,7 @@ data class Chapter(
 /**
  * 目录条目——支持层级结构（卷→章）
  * @param title 显示标题
- * @param level 层级深度（1=顶级，2=卷下章节）
+ * @param level 层级深度（1=顶级，数值越大表示越深的子级）
  * @param chapterIndex 对应 spine 中的索引（isGroup=true 时为 -1）
  * @param isGroup true=分组标题（不可点击，如"第X卷"），false=实际章节
  */

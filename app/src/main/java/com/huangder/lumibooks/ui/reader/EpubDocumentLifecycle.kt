@@ -49,7 +49,7 @@ internal class EpubDocumentLifecycle {
     }
 
     fun isCurrent(generation: Long, revision: Long): Boolean =
-        generation == configurationGeneration && revision == layoutRevision
+        revision >= 0 && generation == configurationGeneration && revision == layoutRevision
 
     fun isStable(generation: Long, revision: Long): Boolean =
         isCurrent(generation, revision) && stableRevision == revision

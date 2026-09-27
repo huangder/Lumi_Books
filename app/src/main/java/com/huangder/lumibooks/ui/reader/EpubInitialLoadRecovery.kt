@@ -8,15 +8,28 @@ internal data class EpubInitialLoadAttempt(
 
 internal enum class EpubInitialLoadFailureReason {
     READER_SCRIPT_MISSING,
+    SCRIPT_EXECUTION_ERROR,
     MAIN_FRAME_ERROR,
     HTTP_ERROR,
-    PAGE_READY_TIMEOUT
+    PAGE_READY_TIMEOUT,
+    RENDERER_GONE
 }
+
+internal data class EpubReadingPosition(
+    val chapterIndex: Int, val pageIndex: Int, val pageCount: Int, val locatorJson: String?
+)
+
+internal data class EpubRenderFailure(
+    val reason: EpubInitialLoadFailureReason,
+    val chapterIndex: Int,
+    val lastSuccessfulPosition: EpubReadingPosition?,
+    val hasVisiblePage: Boolean
+)
 
 internal sealed interface EpubInitialLoadRecoveryAction {
     data object Ignore : EpubInitialLoadRecoveryAction
     data class Retry(val attempt: EpubInitialLoadAttempt) : EpubInitialLoadRecoveryAction
-    data class Fallback(val failedAttempt: EpubInitialLoadAttempt) : EpubInitialLoadRecoveryAction
+    data class Failed(val failedAttempt: EpubInitialLoadAttempt) : EpubInitialLoadRecoveryAction
 }
 
 /** Bounds recovery of the active EPUB document and rejects callbacks from older loads. */
@@ -46,7 +59,7 @@ internal class EpubInitialLoadRecovery(
         if (!isCurrent(attempt)) return EpubInitialLoadRecoveryAction.Ignore
         if (attempt.retryCount >= maxRetries) {
             activeAttempt = null
-            return EpubInitialLoadRecoveryAction.Fallback(attempt)
+            return EpubInitialLoadRecoveryAction.Failed(attempt)
         }
         val retry = attempt.copy(
             generation = ++nextGeneration,

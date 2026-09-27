@@ -339,7 +339,9 @@ class EpubRenderSession private constructor(
         val chapter = logicalChapters.getOrNull(chapterIndex) ?: return null
         val spineItem = epubPackage.spine.getOrNull(chapter.spineIndex) ?: return null
         val raw = readRawChapter(chapter.path) ?: return null
-        val sliced = sliceLogicalChapterHtml(String(raw.bytes, Charsets.UTF_8), chapter)
+        val sliced = sliceEpubLogicalChapter(
+            String(raw.bytes, Charsets.UTF_8), chapter.startAnchor, chapter.endAnchor
+        )
         return raw.copy(
             bytes = sliced.toByteArray(Charsets.UTF_8),
             mediaType = spineItem.manifestItem.mediaType
@@ -374,33 +376,6 @@ class EpubRenderSession private constructor(
             item?.mediaType?.ifBlank { null } ?: EpubMimeTypes.fromPath(normalized),
             bytes
         )
-    }
-
-    private fun sliceLogicalChapterHtml(html: String, chapter: LogicalChapter): String {
-        val startAnchor = chapter.startAnchor ?: return html
-        val start = findAnchorElementStart(html, startAnchor) ?: return html
-        val end = chapter.endAnchor
-            ?.let { findAnchorElementStart(html, it, start + 1) }
-            ?.coerceAtLeast(start)
-            ?: html.length
-        val bodyOpen = Regex("<body\\b[^>]*>", RegexOption.IGNORE_CASE).find(html)
-            ?: return html.substring(start, end)
-        val bodyClose = Regex("</body\\s*>", RegexOption.IGNORE_CASE).find(html, end)
-            ?: return html.substring(start, end)
-        if (start < bodyOpen.range.last + 1 || end > bodyClose.range.first) {
-            return html.substring(start, end)
-        }
-        return html.substring(0, bodyOpen.range.last + 1) +
-            html.substring(start, end) +
-            html.substring(bodyClose.range.first)
-    }
-
-    private fun findAnchorElementStart(html: String, anchor: String, fromIndex: Int = 0): Int? {
-        val escaped = Regex.escape(anchor)
-        return Regex(
-            """<[^>]+\b(?:id|name)\s*=\s*[\"']$escaped[\"'][^>]*>""",
-            RegexOption.IGNORE_CASE
-        ).find(html, fromIndex)?.range?.first
     }
 
     private fun physicalChapterUrl(path: String): String {

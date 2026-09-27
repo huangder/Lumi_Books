@@ -97,6 +97,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -436,6 +438,7 @@ fun RasterReaderScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showPdfToc by remember { mutableStateOf(false) }
     var showPdfBookmarks by remember { mutableStateOf(false) }
+    var showImageAdjustments by remember { mutableStateOf(false) }
     var annotationMode by remember(bookId) { mutableStateOf(false) }
     var selectedInkTool by remember(bookId) { mutableStateOf(PdfInkTool.PEN) }
     var selectedInkColorSlot by remember(bookId) { mutableStateOf(0) }
@@ -449,7 +452,7 @@ fun RasterReaderScreen(
         viewModel.stopTts()
         onOpenBook(targetBookId)
     }
-    val isAnySheetOpen = showPdfToc || showPdfBookmarks || conversionSheet != null
+    val isAnySheetOpen = showPdfToc || showPdfBookmarks || conversionSheet != null || showImageAdjustments
     // 返回手势只负责触发退出：不走"内容跟随手指"的预见式动画，避免与阅读页既有的退出动画叠加。
     ConfigurableBackHandler(
         enabled = !isAnySheetOpen,
@@ -607,6 +610,7 @@ fun RasterReaderScreen(
     val pageMode = PdfPageMode.fromKey(effectivePdfPageMode)
     // 解码清晰度档位（正常 / 高清 / 原图）：跟随全局设置，在顶部栏直接切换。
     val renderMode = PageRenderMode.fromKey(uiState.pageRenderMode)
+    val imageAdjustments = uiState.imageAdjustments.forDisplay(eInkMode)
     val isHorizontal = pageMode == PdfPageMode.HORIZONTAL_PAGING
     val isVerticalPaging = pageMode == PdfPageMode.VERTICAL_PAGING
 
@@ -810,6 +814,14 @@ fun RasterReaderScreen(
     var scale by remember { mutableStateOf(1f) }
     var offsetX by remember { mutableStateOf(0f) }
     var offsetY by remember { mutableStateOf(0f) }
+    // A locked zoom is restored when the book opens and retained across paged navigation.
+    LaunchedEffect(bookId, uiState.rasterZoomLocked, uiState.rasterZoomScale) {
+        if (uiState.rasterZoomLocked) {
+            scale = uiState.rasterZoomScale.coerceIn(1f, 5f)
+            offsetX = 0f
+            offsetY = 0f
+        }
+    }
     // 惯性平移的收尾动画：新手势开始时取消，避免它继续用旧缩放级别写回位移。
     val zoomPanDecayJob = remember { mutableStateOf<Job?>(null) }
     val rasterDisplayWidth = (LocalConfiguration.current.screenWidthDp * LocalDensity.current.density *
@@ -896,7 +908,11 @@ fun RasterReaderScreen(
         // visible page must not reset the user's zoom or viewport. Pager modes still
         // reset per-page transforms when the page changes.
         if (pageMode != PdfPageMode.VERTICAL_SCROLL) {
-            scale = 1f
+            scale = if (uiState.rasterZoomLocked) {
+                uiState.rasterZoomScale.coerceIn(1f, 5f)
+            } else {
+                1f
+            }
             offsetX = 0f
             offsetY = 0f
         }
@@ -916,6 +932,12 @@ fun RasterReaderScreen(
         }
     }
 
+    // In vertical scroll mode the first page is the book cover. Keep a short cover
+    // vertically centered in the viewport instead of pinning it to the list top.
+    // The measured height is only used as a minimum: tall covers retain their
+    // natural scrollable height.
+    var scrollViewportHeightPx by remember(bookId) { mutableStateOf(0) }
+
     val pdfGlassBackdrop = rememberLayerBackdrop()
     ProvideLiquidGlassBackdrop(pdfGlassBackdrop.takeIf { isLiquidGlass }) {
     Box(
@@ -927,6 +949,7 @@ fun RasterReaderScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .onSizeChanged { scrollViewportHeightPx = it.height }
                 .then(
                     if (isLiquidGlass) Modifier.layerBackdrop(pdfGlassBackdrop)
                     else Modifier
@@ -981,6 +1004,7 @@ fun RasterReaderScreen(
                                 pageSource = pageSource,
                                 aspectRatios = pageAspectRatios,
                                 renderMode = renderMode,
+                                imageAdjustments = imageAdjustments,
                                 annotationMode = annotationMode,
                                 activeInkTool = selectedInkTool,
                                 activeInkColor = ReaderHighlightPalette
@@ -1000,6 +1024,7 @@ fun RasterReaderScreen(
                                 pageSource = pageSource,
                                 aspectRatios = pageAspectRatios,
                                 renderMode = renderMode,
+                                imageAdjustments = imageAdjustments,
                                 scale = scale,
                                 offsetX = offsetX,
                                 offsetY = offsetY,
@@ -1032,6 +1057,7 @@ fun RasterReaderScreen(
                             pageSource = pageSource,
                             aspectRatios = pageAspectRatios,
                             renderMode = renderMode,
+                            imageAdjustments = imageAdjustments,
                             scale = scale,
                             offsetX = offsetX,
                             offsetY = offsetY,
@@ -1211,23 +1237,42 @@ fun RasterReaderScreen(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         items(pageCount) {
-                            PdfPageItem(
-                                pageSource = pageSource,
-                                aspectRatios = pageAspectRatios,
-                                pageIndex = it,
-                                fitToViewport = false,
-                                zoomScale = scale,
-                                renderMode = renderMode,
-                                requestSelectedQuality = it == currentPage,
-                                annotationEnabled = true,
-                                annotationInteractive = false,
-                                activeInkTool = selectedInkTool,
-                                activeInkColor = ReaderHighlightPalette.getOrNull(selectedInkColorSlot)?.first
-                                    ?: DefaultReaderHighlightColor,
-                                existingStrokes = inkStrokes,
-                                onStrokeCommitted = viewModel::addPdfInkStroke,
-                                onStrokeErased = viewModel::deletePdfInkStroke
-                            )
+                            // A cover shorter than the viewport gets a centered
+                            // landing position; subsequent pages keep normal list sizing.
+                            val coverMinHeight = if (it == 0 && scrollViewportHeightPx > 0) {
+                                with(LocalDensity.current) { scrollViewportHeightPx.toDp() }
+                            } else {
+                                0.dp
+                            }
+                            Box(
+                                modifier = (if (coverMinHeight > 0.dp) {
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = coverMinHeight)
+                                } else {
+                                    Modifier
+                                }).background(rasterBackgroundColor),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                PdfPageItem(
+                                    pageSource = pageSource,
+                                    aspectRatios = pageAspectRatios,
+                                    pageIndex = it,
+                                    fitToViewport = false,
+                                    zoomScale = scale,
+                                    renderMode = renderMode,
+                                    imageAdjustments = imageAdjustments,
+                                    requestSelectedQuality = it == currentPage,
+                                    annotationEnabled = true,
+                                    annotationInteractive = false,
+                                    activeInkTool = selectedInkTool,
+                                    activeInkColor = ReaderHighlightPalette.getOrNull(selectedInkColorSlot)?.first
+                                        ?: DefaultReaderHighlightColor,
+                                    existingStrokes = inkStrokes,
+                                    onStrokeCommitted = viewModel::addPdfInkStroke,
+                                    onStrokeErased = viewModel::deletePdfInkStroke
+                                )
+                            }
                         }
                     }
                     if (annotationMode) {
@@ -1269,6 +1314,7 @@ fun RasterReaderScreen(
                 isBookmarked = isCurrentPageBookmarked,
                 pageMode = pageMode,
                 renderMode = renderMode,
+                isZoomLocked = uiState.rasterZoomLocked,
                 eInkModeEnabled = eInkMode,
                 glassContentScrimColor = pdfGlassContentScrim,
                 showTtsAction = !isComic,
@@ -1278,13 +1324,20 @@ fun RasterReaderScreen(
                 onPageModeToggle = {
                     if (!eInkMode) {
                         pendingModePage = currentPage
-                        scale = 1f
+                        scale = if (uiState.rasterZoomLocked) {
+                            uiState.rasterZoomScale.coerceIn(1f, 5f)
+                        } else {
+                            1f
+                        }
                         offsetX = 0f
                         offsetY = 0f
                         viewModel.togglePdfPageMode()
                     }
                 },
                 onRenderModeToggle = viewModel::togglePageRenderMode,
+                onZoomLockToggle = {
+                    viewModel.setRasterZoomLocked(!uiState.rasterZoomLocked, scale)
+                },
                 onTtsToggle = {
                     if (ttsState.activeBookId == bookId &&
                         ttsState.playbackState != TtsPlaybackState.IDLE
@@ -1350,6 +1403,7 @@ fun RasterReaderScreen(
         ) {
             Box(Modifier.fillMaxSize()) {
                 PdfBottomMenu(
+                    onImageAdjustmentsClick = { showMenu = false; showImageAdjustments = true },
                     chapterTitle = if (isComic) {
                         uiState.chapterTitles.getOrNull(currentPage) ?: (book?.title ?: "")
                     } else {
@@ -1428,6 +1482,17 @@ fun RasterReaderScreen(
                     modifier = Modifier.align(Alignment.BottomCenter)
                 )
             }
+        }
+        if (showImageAdjustments) {
+            RasterImageAdjustmentSheet(
+                settings = uiState.imageAdjustments,
+                eInk = eInkMode,
+                onBrightness = viewModel::saveImageBrightness,
+                onContrast = viewModel::saveImageContrast,
+                onSharpen = viewModel::saveImageSharpen,
+                onReset = { viewModel.saveImageAdjustments(com.huangder.lumibooks.domain.model.ReaderImageAdjustments()) },
+                onDismiss = { showImageAdjustments = false }
+            )
         }
         val annotationBottomPadding by animateDpAsState(
             targetValue = if (showMenu) 206.dp else 24.dp,
@@ -1630,6 +1695,7 @@ private fun PdfPagerPage(
     pageSource: BitmapPageSource?,
     aspectRatios: androidx.compose.runtime.snapshots.SnapshotStateMap<Int, Float>,
     renderMode: PageRenderMode,
+    imageAdjustments: com.huangder.lumibooks.domain.model.ReaderImageAdjustments,
     scale: Float,
     offsetX: Float,
     offsetY: Float,
@@ -1852,6 +1918,7 @@ private fun PdfPagerPage(
             // Pager 会预组合相邻页；只给当前页补缩放分辨率，避免同时分配三张大图。
             zoomScale = if (pageIndex == pagerState.currentPage) scale else 1f,
             renderMode = renderMode,
+            imageAdjustments = imageAdjustments,
             requestSelectedQuality = pageIndex == pagerState.currentPage,
             annotationEnabled = true,
             annotationInteractive = annotationMode,
@@ -1876,6 +1943,7 @@ private fun PdfSpreadPage(
     pageSource: BitmapPageSource?,
     aspectRatios: androidx.compose.runtime.snapshots.SnapshotStateMap<Int, Float>,
     renderMode: PageRenderMode,
+    imageAdjustments: com.huangder.lumibooks.domain.model.ReaderImageAdjustments,
     annotationMode: Boolean,
     activeInkTool: PdfInkTool,
     activeInkColor: String,
@@ -1891,6 +1959,7 @@ private fun PdfSpreadPage(
             pageSource = pageSource,
             aspectRatios = aspectRatios,
             renderMode = renderMode,
+            imageAdjustments = imageAdjustments,
             annotationMode = annotationMode,
             activeInkTool = activeInkTool,
             activeInkColor = activeInkColor,
@@ -1904,6 +1973,7 @@ private fun PdfSpreadPage(
             pageSource = pageSource,
             aspectRatios = aspectRatios,
             renderMode = renderMode,
+            imageAdjustments = imageAdjustments,
             annotationMode = annotationMode,
             activeInkTool = activeInkTool,
             activeInkColor = activeInkColor,
@@ -1921,6 +1991,7 @@ private fun PdfSpreadSlot(
     pageSource: BitmapPageSource?,
     aspectRatios: androidx.compose.runtime.snapshots.SnapshotStateMap<Int, Float>,
     renderMode: PageRenderMode,
+    imageAdjustments: com.huangder.lumibooks.domain.model.ReaderImageAdjustments,
     annotationMode: Boolean,
     activeInkTool: PdfInkTool,
     activeInkColor: String,
@@ -1938,6 +2009,7 @@ private fun PdfSpreadSlot(
             fitToViewport = true,
             displayWidthFactor = 0.5f,
             renderMode = renderMode,
+            imageAdjustments = imageAdjustments,
             annotationEnabled = true,
             annotationInteractive = annotationMode,
             activeInkTool = activeInkTool,
@@ -1958,6 +2030,7 @@ private fun PdfTopBar(
     isBookmarked: Boolean = false,
     pageMode: PdfPageMode,
     renderMode: PageRenderMode = PageRenderMode.NORMAL,
+    isZoomLocked: Boolean = false,
     eInkModeEnabled: Boolean = false,
     glassContentScrimColor: Color,
     /** 漫画没有文字层，朗读入口不适用。 */
@@ -1966,6 +2039,7 @@ private fun PdfTopBar(
     onBack: () -> Unit,
     onPageModeToggle: () -> Unit,
     onRenderModeToggle: () -> Unit = {},
+    onZoomLockToggle: () -> Unit = {},
     onTtsToggle: () -> Unit,
     onBookmarkToggle: () -> Unit = {}
 ) {
@@ -2002,6 +2076,7 @@ private fun PdfTopBar(
             // 左侧：返回按钮 + 页码（内部垂直居中，整体与右侧第一个按钮对齐）
             Row(verticalAlignment = Alignment.CenterVertically) {
                 LiquidGlassSurface(
+                    controlEdge = true,
                     shape = CircleShape,
                     fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
                     contentScrimColor = glassContentScrimColor,
@@ -2015,6 +2090,7 @@ private fun PdfTopBar(
                 Spacer(Modifier.width(10.dp))
                 // 页码徽章：与返回键等高的胶囊，左侧控件保持同一视觉高度
                 LiquidGlassSurface(
+                    controlEdge = true,
                     shape = RoundedCornerShape(18.dp),
                     fallbackColor = Color.Black.copy(alpha = 0.35f),
                     contentScrimColor = glassContentScrimColor,
@@ -2040,6 +2116,7 @@ private fun PdfTopBar(
                         }
                     )
                     LiquidGlassSurface(
+                        controlEdge = true,
                         shape = RoundedCornerShape(18.dp),
                         fallbackColor = if (renderMode == PageRenderMode.NORMAL) {
                             AppColors.BgGray.copy(alpha = 0.8f)
@@ -2103,6 +2180,7 @@ private fun PdfTopBar(
             ) {
                 if (!eInkMode) {
                     LiquidGlassSurface(
+                        controlEdge = true,
                         shape = CircleShape,
                         fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
                         contentScrimColor = glassContentScrimColor,
@@ -2130,8 +2208,31 @@ private fun PdfTopBar(
                         )
                     }
                 }
+                LiquidGlassSurface(
+                    controlEdge = true,
+                    shape = CircleShape,
+                    fallbackColor = if (isZoomLocked) {
+                        AppColors.Accent.copy(alpha = 0.18f)
+                    } else {
+                        AppColors.BgGray.copy(alpha = 0.8f)
+                    },
+                    contentScrimColor = glassContentScrimColor,
+                    modifier = Modifier.size(36.dp),
+                    onClick = onZoomLockToggle,
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isZoomLocked) AppIcons.Lock else AppIcons.LockOpen,
+                        contentDescription = stringResource(
+                            if (isZoomLocked) R.string.pdf_zoom_unlock else R.string.pdf_zoom_lock
+                        ),
+                        tint = if (isZoomLocked) AppColors.Accent else AppColors.TextPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
                 if (showTtsAction) {
                     LiquidGlassSurface(
+                        controlEdge = true,
                         shape = CircleShape,
                         fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
                         contentScrimColor = glassContentScrimColor,
@@ -2148,6 +2249,7 @@ private fun PdfTopBar(
                     }
                 }
                 LiquidGlassSurface(
+                    controlEdge = true,
                     shape = CircleShape,
                     fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
                     contentScrimColor = glassContentScrimColor,
@@ -2171,6 +2273,7 @@ private fun PdfTopBar(
 // ── 底部胶囊菜单 ──
 @Composable
 private fun PdfBottomMenu(
+    onImageAdjustmentsClick: () -> Unit,
     chapterTitle: String,
     chapterProgress: Float,
     pageSource: BitmapPageSource?,
@@ -2260,6 +2363,12 @@ private fun PdfBottomMenu(
                 modifier = Modifier.weight(1f),
                 onClick = onBookmarksClick
             )
+            PdfActionCapsule(
+                icon = AppIcons.Gear,
+                label = stringResource(R.string.reader_image_adjustment_entry),
+                modifier = Modifier.weight(1f),
+                onClick = onImageAdjustmentsClick
+            )
         }
     }
 }
@@ -2272,6 +2381,7 @@ private fun PdfConversionCapsule(
 ) {
     val running = conversionState as? PdfConversionState.Running
     LiquidGlassSurface(
+        controlEdge = true,
         shape = RoundedCornerShape(24.dp),
         fallbackColor = AppColors.BgGray,
         contentScrimColor = glassContentScrimColor,
@@ -2917,6 +3027,7 @@ private fun PdfCatalogCapsule(
             }
         }
         LiquidGlassSurface(
+            controlEdge = true,
             shape = RoundedCornerShape(24.dp),
             fallbackColor = AppColors.BgGray,
             contentScrimColor = glassContentScrimColor,
@@ -3050,6 +3161,7 @@ private fun PdfActionCapsule(
 ) {
     val contentColor = if (active) AppColors.Accent else AppColors.TextPrimary
     LiquidGlassSurface(
+        controlEdge = true,
         shape = RoundedCornerShape(22.dp),
         fallbackColor = if (active) AppColors.Accent.copy(alpha = 0.14f) else AppColors.BgGray,
         contentScrimColor = AppColors.WindowBg.copy(alpha = 0.18f),
@@ -3083,6 +3195,7 @@ private fun PdfAnnotationToolCapsule(
         label = "pdfAnnotationCapsuleWidth"
     )
     LiquidGlassSurface(
+        controlEdge = true,
         shape = RoundedCornerShape(24.dp),
         fallbackColor = AppColors.BgGray,
         contentScrimColor = AppColors.WindowBg.copy(alpha = 0.18f),
@@ -3216,6 +3329,7 @@ private fun PdfPageItem(
     /** 解码清晰度档位：正常只解到够显示用，高清 / 原图按原图解码。 */
     renderMode: PageRenderMode = PageRenderMode.NORMAL,
     /** Only the reading anchor may consume the single high-resolution render slot. */
+    imageAdjustments: com.huangder.lumibooks.domain.model.ReaderImageAdjustments = com.huangder.lumibooks.domain.model.ReaderImageAdjustments(),
     requestSelectedQuality: Boolean = true,
     annotationEnabled: Boolean,
     annotationInteractive: Boolean,
@@ -3345,13 +3459,14 @@ private fun PdfPageItem(
         contentAlignment = Alignment.Center
     ) {
         val tiled = activeTileSource
-        val renderedPage = bitmap ?: baseBitmap ?: previewBitmap
+        val renderedPage = rememberSharpenedBitmap(bitmap ?: baseBitmap ?: previewBitmap, imageAdjustments.sharpen)
         if (tiled != null) {
             CbzTiledPage(
                 source = tiled,
                 zoomScale = zoomScale,
                 foreground = visible,
                 fallback = renderedPage,
+                adjustments = imageAdjustments,
                 modifier = Modifier.fillMaxSize(),
                 onImageLoaded = {
                     tileLoaded = true
@@ -3368,6 +3483,7 @@ private fun PdfPageItem(
                     pageSource?.pageDrawn(pageIndex, bitmap != null && bitmapTargetWidthPx >= renderTargetWidthPx)
                 },
                 contentScale = if (fitToViewport) ContentScale.Fit else ContentScale.FillWidth
+                , colorFilter = ColorFilter.colorMatrix(ColorMatrix(imageAdjustments.colorMatrixValues()))
             )
         } else {
             Box(

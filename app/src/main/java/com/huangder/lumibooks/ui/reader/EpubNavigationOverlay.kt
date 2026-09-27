@@ -35,7 +35,9 @@ internal fun EpubNavigationLoadingOverlay(
     stage: EpubNavigationStage,
     backgroundColor: Color,
     contentColor: Color,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    compact: Boolean = false,
+    modifier: Modifier = Modifier
 ) {
     val status = when (stage) {
         EpubNavigationStage.STARTING -> stringResource(R.string.epub_navigation_preparing)
@@ -44,8 +46,8 @@ internal fun EpubNavigationLoadingOverlay(
         EpubNavigationStage.WAITING_FOR_FRAME -> stringResource(R.string.epub_navigation_rendering)
     }
     Surface(
-        modifier = Modifier
-            .fillMaxSize()
+        modifier = modifier
+            .then(if (compact) Modifier.fillMaxWidth() else Modifier.fillMaxSize())
             .testTag("epubNavigationLoading")
             .pointerInput(Unit) {
                 awaitPointerEventScope {
@@ -59,6 +61,16 @@ internal fun EpubNavigationLoadingOverlay(
         color = backgroundColor,
         contentColor = contentColor
     ) {
+        if (compact) {
+            Row(
+                modifier = Modifier.navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = contentColor, strokeWidth = 2.dp)
+                Text(status, modifier = Modifier.weight(1f).padding(horizontal = 12.dp), color = contentColor)
+                TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel), color = contentColor) }
+            }
+        } else {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -93,6 +105,7 @@ internal fun EpubNavigationLoadingOverlay(
                 Text(stringResource(R.string.cancel), color = contentColor)
             }
         }
+        }
     }
 }
 
@@ -103,6 +116,7 @@ internal fun EpubNavigationFailureBar(
     contentColor: Color,
     onRetry: () -> Unit,
     onDismiss: () -> Unit,
+    onSwitchLayout: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val message = when (reason) {
@@ -119,25 +133,54 @@ internal fun EpubNavigationFailureBar(
         tonalElevation = 4.dp,
         shadowElevation = 4.dp
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .background(backgroundColor)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 16.dp, vertical = 10.dp)
         ) {
             Text(
                 text = message,
-                modifier = Modifier.weight(1f),
                 color = contentColor,
                 fontSize = 14.sp
             )
-            Spacer(Modifier.width(4.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             TextButton(onClick = onRetry) {
                 Text(stringResource(R.string.retry), color = contentColor)
             }
             TextButton(onClick = onDismiss) {
                 Text(stringResource(R.string.cancel), color = contentColor.copy(alpha = 0.75f))
             }
+            TextButton(onClick = onSwitchLayout) {
+                Text(stringResource(R.string.epub_switch_reader_layout), color = contentColor)
+            }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun EpubRenderFailureOverlay(
+    failure: EpubRenderFailure,
+    backgroundColor: Color,
+    contentColor: Color,
+    onRetry: () -> Unit,
+    onSwitchLayout: () -> Unit,
+    onClose: () -> Unit
+) {
+    val message = when (failure.reason) {
+        EpubInitialLoadFailureReason.PAGE_READY_TIMEOUT -> R.string.epub_load_timeout_kept
+        EpubInitialLoadFailureReason.RENDERER_GONE -> R.string.epub_renderer_stopped_kept
+        EpubInitialLoadFailureReason.READER_SCRIPT_MISSING -> R.string.epub_script_missing_kept
+        EpubInitialLoadFailureReason.SCRIPT_EXECUTION_ERROR -> R.string.epub_script_error_kept
+        else -> R.string.epub_document_error_kept
+    }
+    Surface(Modifier.fillMaxSize().testTag("epubRenderFailure"), color = backgroundColor) {
+        Column(Modifier.fillMaxSize().padding(32.dp),
+            verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(stringResource(message), color = contentColor, textAlign = TextAlign.Center)
+            TextButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
+            TextButton(onClick = onSwitchLayout) { Text(stringResource(R.string.epub_switch_reader_layout)) }
+            TextButton(onClick = onClose) { Text(stringResource(R.string.epub_close_book)) }
         }
     }
 }

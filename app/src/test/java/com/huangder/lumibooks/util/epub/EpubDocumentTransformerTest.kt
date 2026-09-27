@@ -10,6 +10,24 @@ import org.junit.Test
 
 class EpubDocumentTransformerTest {
     @Test
+    fun injectsIndependentLumiRuleStylingAndFallbackCleanup() {
+        val output = EpubDocumentTransformer.transform(
+            EpubResource(
+                "OPS/Text/chapter.xhtml",
+                "application/xhtml+xml",
+                "<html><body><p>Text</p></body></html>".toByteArray()
+            ),
+            EpubRenditionLayout.REFLOWABLE
+        ).toString(Charsets.UTF_8)
+
+        assertTrue(output.contains("lumi-rule-highlight-styles"))
+        assertTrue(output.contains("data-lumi-rule-style"))
+        assertTrue(output.contains("clearRuleInlineStyles"))
+        assertTrue(output.contains("CSS.highlights.set"))
+        assertTrue(output.contains("textDecorationStyle"))
+    }
+
+    @Test
     fun expandsFirstImageOnlyDocumentAsCover() {
         val source = """
             <html><body><div class="cover"><img src="../Images/cover.jpg" alt="Cover"/></div></body></html>
@@ -27,6 +45,23 @@ class EpubDocumentTransformerTest {
         assertEquals("true", document.selectFirst("div")!!.attr("data-lumi-cover-container"))
         assertTrue(output.contains("object-fit: contain !important"))
         assertTrue(output.contains("return { top: 0, right: 0, bottom: 0, left: 0 }"))
+    }
+
+    @Test
+    fun scrollingRemovesCoverColorWithoutChangingPaginatedCoverBehavior() {
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("OPS/Text/cover.xhtml", "application/xhtml+xml",
+                "<html><body><img src='cover.png'/></body></html>".toByteArray()),
+            EpubRenditionLayout.REFLOWABLE,
+            isCoverCandidate = true
+        ).toString(Charsets.UTF_8)
+        val applyCover = output.substringAfter("function applyCoverBackgroundColor()")
+            .substringBefore("function configure(config)")
+        assertTrue(applyCover.contains("isCover && state.flow !== 'scrolled' && state.coverBackgroundColor"))
+        assertTrue(applyCover.contains("if (existing) existing.remove()"))
+        assertTrue(applyCover.contains("background-color:' + color"))
+        val configure = output.substringAfter("function configure(config)")
+        assertTrue(configure.indexOf("state.flow =") < configure.indexOf("applyCoverBackgroundColor();"))
     }
 
     @Test
@@ -328,8 +363,9 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("@keyframes lumi-search-highlight-pulse"))
         assertTrue(output.contains("searchHighlightTimer = setTimeout"))
         assertTrue(output.contains("clearTimeout(searchHighlightTimer)"))
-        assertFalse(output.contains("CSS.highlights"))
-        assertFalse(output.contains("::highlight("))
+        assertTrue(output.contains("CSS.highlights"))
+        assertTrue(output.contains("::highlight("))
+        assertTrue(output.contains("data-lumi-rule-style"))
         assertTrue(output.contains("applyChineseConversion(config)"))
         assertTrue(output.contains("config.chineseSource"))
         assertTrue(output.contains("convertChineseText(String(value || ''), state.chineseMap)"))

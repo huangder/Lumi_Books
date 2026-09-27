@@ -34,6 +34,7 @@ internal fun ReaderTitleCapsule(
     ) {
         if (isLiquidGlass) {
             LiquidGlassSurface(
+                controlEdge = true,
                 shape = RoundedCornerShape(50),
                 fallbackColor = fallbackColor,
                 contentScrimColor = glassContentScrimColor,
