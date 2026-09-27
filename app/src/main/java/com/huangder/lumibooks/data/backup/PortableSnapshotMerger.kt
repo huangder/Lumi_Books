@@ -97,7 +97,16 @@ object PortableSnapshotMerger {
                 { it.id },
                 { 0L },
                 { it.toString() }
-            )
+            ),
+            highlightRules = mergeLatest(
+                local.highlightRules, remote.highlightRules, { it.id }, { it.updatedAt }, { it.rawJson }
+            ),
+            bookHighlightRuleStates = (local.bookHighlightRuleStates + remote.bookHighlightRuleStates)
+                .distinctBy { "${it.bookId}:${it.ruleId}" },
+            bookHighlightSettings = (local.bookHighlightSettings + remote.bookHighlightSettings)
+                .groupBy { it.bookId }.map { (_, values) -> values.maxBy { it.revision } },
+            highlightRuleExclusions = (local.highlightRuleExclusions + remote.highlightRuleExclusions)
+                .distinctBy { "${it.bookId}:${it.ruleId}:${it.matchKey}" }
         )
     }
 

@@ -10,16 +10,19 @@ import com.huangder.lumibooks.data.local.dao.NoteDao
 import com.huangder.lumibooks.data.local.dao.ReadingRecordDao
 import com.huangder.lumibooks.data.local.dao.TagDao
 import com.huangder.lumibooks.data.local.dao.SyncStateDao
+import com.huangder.lumibooks.data.local.dao.HighlightRuleDao
 import com.huangder.lumibooks.data.local.database.AppDatabase
 import com.huangder.lumibooks.data.local.database.DatabaseMigrations
 import com.huangder.lumibooks.data.repository.BookRepositoryImpl
 import com.huangder.lumibooks.data.repository.FolderRepositoryImpl
 import com.huangder.lumibooks.data.repository.ReadingRepositoryImpl
 import com.huangder.lumibooks.data.repository.TagRepositoryImpl
+import com.huangder.lumibooks.data.repository.HighlightRuleRepositoryImpl
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.domain.repository.FolderRepository
 import com.huangder.lumibooks.domain.repository.ReadingRepository
 import com.huangder.lumibooks.domain.repository.TagRepository
+import com.huangder.lumibooks.domain.repository.HighlightRuleRepository
 import com.huangder.lumibooks.tts.TtsController
 import com.huangder.lumibooks.tts.TtsEngine
 import com.huangder.lumibooks.tts.ExternalTtsEngine
@@ -66,7 +69,8 @@ object AppModule {
             DatabaseMigrations.MIGRATION_9_10,
             DatabaseMigrations.MIGRATION_10_11,
             DatabaseMigrations.MIGRATION_11_12,
-            DatabaseMigrations.MIGRATION_12_13
+            DatabaseMigrations.MIGRATION_12_13,
+            DatabaseMigrations.MIGRATION_13_14
         )
             .build()
     }
@@ -94,6 +98,19 @@ object AppModule {
     fun provideNoteDao(database: AppDatabase): NoteDao {
         return database.noteDao()
     }
+
+    @Provides
+    @Singleton
+    fun provideHighlightRuleDao(database: AppDatabase): HighlightRuleDao = database.highlightRuleDao()
+
+    @Provides
+    @Singleton
+    fun provideHighlightRuleRepository(
+        dao: HighlightRuleDao,
+        noteDao: NoteDao,
+        database: AppDatabase,
+        syncIdentityStore: com.huangder.lumibooks.data.sync.SyncIdentityStore
+    ): HighlightRuleRepository = HighlightRuleRepositoryImpl(dao, noteDao, database, syncIdentityStore)
 
     @Provides
     @Singleton

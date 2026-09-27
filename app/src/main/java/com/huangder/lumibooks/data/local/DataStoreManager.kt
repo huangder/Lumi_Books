@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.data.local
+import kotlinx.coroutines.launch
 
 import android.content.Context
 import com.huangder.lumibooks.domain.model.MenuAnimationStyle
@@ -160,13 +161,43 @@ data class ReaderPreferencesSnapshot(
     val readerFirstOpenHintsDisabled: Boolean,
     val optimizeLayout: Boolean,
     val useEpubCss: Boolean,
-    val readerWritingMode: ReaderWritingMode
+    val readerWritingMode: ReaderWritingMode,
+    val imageAdjustments: com.huangder.lumibooks.domain.model.ReaderImageAdjustments =
+        com.huangder.lumibooks.domain.model.ReaderImageAdjustments(),
+    /** PDF / CBZ 的按书锁定缩放比例。 */
+    val rasterZoomLocked: Boolean = false,
+    val rasterZoomScale: Float = 1f
 )
 
 @Singleton
 class DataStoreManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) : TtsSettingsStore {
+    // Application-owned writer finishes final slider commits even when the reader closes.
+    private val imageAdjustmentWrites = kotlinx.coroutines.channels.Channel<Pair<String,
+        com.huangder.lumibooks.domain.model.ReaderImageAdjustments>>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+    private val imageAdjustmentScope = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO
+    )
+    init {
+        imageAdjustmentScope.launch {
+            for ((bookId, settings) in imageAdjustmentWrites) {
+                try {
+                    saveReaderImageAdjustments(bookId, settings)
+                } catch (error: java.io.IOException) {
+                    android.util.Log.e("DataStoreManager", "Could not save image adjustments", error)
+                }
+            }
+        }
+    }
+
+    fun persistReaderImageAdjustments(bookId: String, settings: com.huangder.lumibooks.domain.model.ReaderImageAdjustments) {
+        imageAdjustmentWrites.trySend(bookId to settings.normalized())
+    }
+
+    suspend fun saveReaderImageAdjustments(bookId: String, settings: com.huangder.lumibooks.domain.model.ReaderImageAdjustments) {
+        context.dataStore.edit { it[stringPreferencesKey("reader_image_adjustments_$bookId")] = settings.encode() }
+    }
     private val readerMigrationMutex = Mutex()
     @Volatile private var readerMigrationsComplete = false
     private val deviceSupportsHdr: Boolean by lazy {
@@ -477,10 +508,16 @@ class DataStoreManager @Inject constructor(
                 volumeKeyPageTurnEnabled = preferences[VOLUME_KEY_PAGE_TURN] ?: false,
                 bionicReadingEnabled = preferences[BIONIC_READING_ENABLED] ?: false,
                 comicModeEnabled = preferences[COMIC_MODE] ?: false,
+                imageAdjustments = com.huangder.lumibooks.domain.model.ReaderImageAdjustments.decode(
+                    preferences[stringPreferencesKey("reader_image_adjustments_$bookId")]
+                ),
                 bodyFontWeight = preferences[BODY_FONT_WEIGHT] ?: 400,
                 eInkModeEnabled = preferences[E_INK_MODE_ENABLED] ?: false,
                 twoPageSpreadEnabled = preferences[TWO_PAGE_SPREAD_ENABLED] ?: true,
                 pageRenderMode = PageRenderMode.normalizeKey(preferences[PAGE_RENDER_MODE]),
+                rasterZoomLocked = preferences[booleanPreferencesKey("raster_zoom_locked_$bookId")] ?: false,
+                rasterZoomScale = (preferences[floatPreferencesKey("raster_zoom_scale_$bookId")] ?: 1f)
+                    .coerceIn(1f, 5f),
                 screenSleepTimeoutSeconds = preferences[SCREEN_SLEEP_TIMEOUT_SECONDS]
                     ?.takeIf { it in SCREEN_SLEEP_TIMEOUT_SECONDS_OPTIONS }
                     ?: DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS,
@@ -1768,18 +1805,24 @@ class DataStoreManager @Inject constructor(
     suspend fun updateReaderThemeSuite(
         suiteId: String,
         layout: ReaderLayoutTarget,
-        settings: ReaderThemeSettings
+        settings: ReaderThemeSettings,
+        modeDark: Boolean? = null
     ) {
         context.dataStore.edit { preferences ->
             val suites = readThemeSuites(preferences)
             if (suites.none { it.id == suiteId }) return@edit
             val updated = ReaderThemeSuites.normalized(suites.map { suite ->
-                if (suite.id == suiteId) suite.withSettings(layout, settings) else suite
+                if (suite.id != suiteId) suite
+                else if (layout == ReaderLayoutTarget.READER_LAYOUT && modeDark != null) {
+                    suite.withModeSettings(modeDark, settings)
+                } else {
+                    suite.withSettings(layout, settings)
+                }
             })
             preferences[READER_THEME_SUITES] = ReaderThemeSuiteCodec.encode(updated)
             preferences[READER_THEME_SUITES_VERSION] = READER_THEME_SUITES_VERSION_VALUE
             // Legacy flat keys keep mirroring the reader-layout set only.
-            if (layout == ReaderLayoutTarget.READER_LAYOUT &&
+            if (layout == ReaderLayoutTarget.READER_LAYOUT && modeDark == null &&
                 preferences[ACTIVE_READER_THEME_SUITE_ID] == suiteId
             ) {
                 preferences.applyReaderThemeSettings(updated.first { it.id == suiteId }.settings)
@@ -1938,6 +1981,16 @@ class DataStoreManager @Inject constructor(
     suspend fun saveCbzReadingDirection(bookId: String, directionKey: String) {
         val key = stringPreferencesKey("cbz_reading_direction_$bookId")
         context.dataStore.edit { preferences -> preferences[key] = directionKey }
+    }
+
+    /** Saves the per-book zoom ratio used by PDF and CBZ readers. */
+    suspend fun saveRasterZoom(bookId: String, locked: Boolean, scale: Float) {
+        val lockedKey = booleanPreferencesKey("raster_zoom_locked_$bookId")
+        val scaleKey = floatPreferencesKey("raster_zoom_scale_$bookId")
+        context.dataStore.edit { preferences ->
+            preferences[lockedKey] = locked
+            preferences[scaleKey] = scale.coerceIn(1f, 5f)
+        }
     }
 
     suspend fun saveTxtEncoding(bookId: String, encoding: String) {

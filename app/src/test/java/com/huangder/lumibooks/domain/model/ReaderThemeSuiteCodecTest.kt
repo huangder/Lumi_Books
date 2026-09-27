@@ -104,14 +104,20 @@ class ReaderThemeSuiteCodecTest {
         val suite = ReaderThemeSuite(
             id = "custom",
             customName = "Custom",
-            settings = ReaderThemeSettings(marginLeft = 200f),
-            bookLayoutSettings = ReaderThemeSettings(marginTop = 500f, fontSize = 2f)
+            settings = ReaderThemeSettings(marginLeft = 200f, marginTop = 500f),
+            bookLayoutSettings = ReaderThemeSettings(
+                marginRight = 200f,
+                marginBottom = 500f,
+                fontSize = 2f
+            )
         )
 
         val normalized = ReaderThemeSuites.normalized(listOf(suite)).first { it.id == "custom" }
 
-        assertEquals(80f, normalized.settings.marginLeft)
-        assertEquals(120f, normalized.bookLayoutSettings.marginTop)
+        assertEquals(160f, normalized.settings.marginLeft)
+        assertEquals(400f, normalized.settings.marginTop)
+        assertEquals(160f, normalized.bookLayoutSettings.marginRight)
+        assertEquals(400f, normalized.bookLayoutSettings.marginBottom)
         assertEquals(12f, normalized.bookLayoutSettings.fontSize)
     }
 
@@ -193,5 +199,45 @@ class ReaderThemeSuiteCodecTest {
             ReaderThemeSuites.PUBLISHER_ID,
             state.activeSuiteIdFor(ReaderLayoutTarget.BOOK_LAYOUT)
         )
+    }
+
+    @Test
+    fun lumiBundleRoundTripsLightAndDarkSettings() {
+        val suite = ReaderThemeSuites.newCustom("focus", "Focus").copy(
+            lightSettings = ReaderThemeSettings(textColor = 0xFF111111.toInt(), marginLeft = 20f),
+            darkSettings = ReaderThemeSettings(textColor = 0xFFEEEEEE.toInt(), marginLeft = 12f)
+        )
+        val decoded = LumiThemeBundleCodec.decode(LumiThemeBundleCodec.encode(listOf(suite))).single()
+        assertEquals(0xFF111111.toInt(), decoded.settingsFor(ReaderLayoutTarget.READER_LAYOUT, false).textColor)
+        assertEquals(0xFFEEEEEE.toInt(), decoded.settingsFor(ReaderLayoutTarget.READER_LAYOUT, true).textColor)
+        assertEquals(12f, decoded.settingsFor(ReaderLayoutTarget.READER_LAYOUT, true).marginLeft)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun lumiBundleRejectsUnknownVersion() {
+        LumiThemeBundleCodec.decode("{\"format\":\"lumi-theme-bundle\",\"formatVersion\":99,\"source\":\"LUMI\",\"themes\":[]}")
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun lumiBundleRejectsInvalidColorAndDoesNotDecodePartialTheme() {
+        LumiThemeBundleCodec.decode(
+            """{"format":"lumi-theme-bundle","formatVersion":1,"source":"LUMI","themes":[{"id":"bad","settings":{"background":"day","textColor":"#fff","marginLeft":20}}]}"""
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun lumiBundleRejectsOutOfRangeMargin() {
+        LumiThemeBundleCodec.decode(
+            """{"format":"lumi-theme-bundle","formatVersion":1,"source":"LUMI","themes":[{"id":"bad","settings":{"background":"day","marginLeft":161}}]}"""
+        )
+    }
+
+    @Test
+    fun lumiBundleAcceptsLegacyArrayAndIgnoresUnknownFields() {
+        val decoded = LumiThemeBundleCodec.decode(
+            """[{"id":"legacy","name":"Legacy","settings":{"background":"day","fontSize":18,"futureField":true}}]"""
+        )
+        assertEquals("legacy", decoded.single().id)
+        assertEquals(18f, decoded.single().settings.fontSize)
     }
 }

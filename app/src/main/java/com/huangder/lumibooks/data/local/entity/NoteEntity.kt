@@ -6,7 +6,10 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "notes",
-    indices = [Index(value = ["syncId"], unique = true)]
+    indices = [
+        Index(value = ["syncId"], unique = true),
+        Index(value = ["bookId", "sourceRuleId", "sourceMatchKey"], unique = true)
+    ]
 )
 data class NoteEntity(
     @PrimaryKey(autoGenerate = true)
@@ -25,5 +28,10 @@ data class NoteEntity(
     val syncId: String = "",
     val updatedAt: Long = createdAt,
     @androidx.room.ColumnInfo(defaultValue = "0")
-    val isNote: Boolean = note.isNotBlank() || type == "note"
+    val isNote: Boolean = note.isNotBlank() || type == "note",
+    @androidx.room.ColumnInfo(defaultValue = "'manual'")
+    val origin: String = "manual",
+    val sourceRuleId: String? = null,
+    val sourceMatchKey: String? = null,
+    val styleSnapshotJson: String? = null
 )

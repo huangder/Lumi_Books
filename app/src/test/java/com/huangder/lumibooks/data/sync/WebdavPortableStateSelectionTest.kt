@@ -3,12 +3,38 @@ package com.huangder.lumibooks.data.sync
 import com.huangder.lumibooks.data.backup.PortableBook
 import com.huangder.lumibooks.data.backup.PortableSnapshot
 import com.huangder.lumibooks.data.backup.PortableSnapshotMerger
+import com.huangder.lumibooks.data.local.entity.BookHighlightRuleStateEntity
+import com.huangder.lumibooks.data.local.entity.BookHighlightSettingsEntity
+import com.huangder.lumibooks.data.local.entity.HighlightRuleEntity
+import com.huangder.lumibooks.data.local.entity.HighlightRuleExclusionEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WebdavPortableStateSelectionTest {
+
+    @Test
+    fun `automatic WebDAV state excludes rule library but keeps deletion exclusions`() {
+        val source = snapshot(emptyList()).copy(
+            highlightRules = listOf(
+                HighlightRuleEntity(
+                    "r1", "Rule", "a", true, 0, 0, null, 0, 2f, 1f, 400,
+                    false, "", "{}", 10
+                )
+            ),
+            bookHighlightRuleStates = listOf(BookHighlightRuleStateEntity("b1", "r1", true, 0)),
+            bookHighlightSettings = listOf(BookHighlightSettingsEntity("b1", true, 1)),
+            highlightRuleExclusions = listOf(HighlightRuleExclusionEntity("b1", "r1", "match", 10))
+        )
+
+        val stripped = stripHighlightRuleLibraryForWebdav(source)
+
+        assertTrue(stripped.highlightRules.isEmpty())
+        assertTrue(stripped.bookHighlightRuleStates.isEmpty())
+        assertTrue(stripped.bookHighlightSettings.isEmpty())
+        assertEquals(source.highlightRuleExclusions, stripped.highlightRuleExclusions)
+    }
 
     @Test
     fun `local downloaded book stays downloaded while remote placeholder stays cloud-only`() {

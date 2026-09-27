@@ -338,6 +338,55 @@ class DatabaseMigrationsTest {
         }
     }
 
+    @Test
+    fun migration13To14PreservesNotesAndCreatesHighlightRuleStorage() {
+        openHelper(version = 13, createSchema = true).use { helper ->
+            helper.writableDatabase.execSQL(
+                "INSERT INTO notes " +
+                    "(id,bookId,chapterIndex,startPosition,endPosition,selectedText,note,color," +
+                    "createdAt,type,syncId,updatedAt,isNote) VALUES " +
+                    "(9,'book-1',3,12,24,'selected','note','#ffee00',12,'highlight','sync-9',12,1)"
+            )
+        }
+
+        openHelper(version = 14, createSchema = false).use { helper ->
+            val db = helper.writableDatabase
+            db.query(
+                "SELECT origin,sourceRuleId,sourceMatchKey,styleSnapshotJson,isNote " +
+                    "FROM notes WHERE id=9"
+            ).use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("manual", cursor.getString(0))
+                assertNull(cursor.getString(1))
+                assertNull(cursor.getString(2))
+                assertNull(cursor.getString(3))
+                assertEquals(1, cursor.getInt(4))
+            }
+            assertEquals(
+                setOf(
+                    "index_notes_syncId",
+                    "index_notes_bookId_sourceRuleId_sourceMatchKey"
+                ),
+                indexNames(db, "notes")
+            )
+            val tables = mutableSetOf<String>()
+            db.query(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%highlight%'"
+            ).use { cursor ->
+                while (cursor.moveToNext()) tables += cursor.getString(0)
+            }
+            assertEquals(
+                setOf(
+                    "highlight_rules",
+                    "book_highlight_rule_states",
+                    "book_highlight_settings",
+                    "highlight_rule_exclusions"
+                ),
+                tables
+            )
+        }
+    }
+
     private fun openHelper(version: Int, createSchema: Boolean): SupportSQLiteOpenHelper {
         val callback = object : SupportSQLiteOpenHelper.Callback(version) {
             override fun onCreate(db: SupportSQLiteDatabase) {
@@ -351,6 +400,9 @@ class DatabaseMigrationsTest {
                     if (version >= 9) DatabaseMigrations.MIGRATION_8_9.migrate(db)
                     if (version >= 10) DatabaseMigrations.MIGRATION_9_10.migrate(db)
                     if (version >= 11) DatabaseMigrations.MIGRATION_10_11.migrate(db)
+                    if (version >= 12) DatabaseMigrations.MIGRATION_11_12.migrate(db)
+                    if (version >= 13) DatabaseMigrations.MIGRATION_12_13.migrate(db)
+                    if (version >= 14) DatabaseMigrations.MIGRATION_13_14.migrate(db)
                 }
             }
 
@@ -363,6 +415,9 @@ class DatabaseMigrationsTest {
                 if (oldVersion < 9 && newVersion >= 9) DatabaseMigrations.MIGRATION_8_9.migrate(db)
                 if (oldVersion < 10 && newVersion >= 10) DatabaseMigrations.MIGRATION_9_10.migrate(db)
                 if (oldVersion < 11 && newVersion >= 11) DatabaseMigrations.MIGRATION_10_11.migrate(db)
+                if (oldVersion < 12 && newVersion >= 12) DatabaseMigrations.MIGRATION_11_12.migrate(db)
+                if (oldVersion < 13 && newVersion >= 13) DatabaseMigrations.MIGRATION_12_13.migrate(db)
+                if (oldVersion < 14 && newVersion >= 14) DatabaseMigrations.MIGRATION_13_14.migrate(db)
             }
         }
         val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)

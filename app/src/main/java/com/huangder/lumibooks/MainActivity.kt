@@ -785,9 +785,13 @@ class MainActivity : ComponentActivity() {
                     Box(modifier = Modifier.fillMaxSize()) {
                         val navController = rememberNavController()
                         val navCurrentEntry by navController.currentBackStackEntryAsState()
+                        val navVisibleEntries by navController.visibleEntries.collectAsState()
                         // 阅读页（EPUB/TXT/PDF 共用 reader/{bookId} 路由）禁止弹出全局启动弹窗：
                         // 弹窗会切换主内容 layerBackdrop 导致阅读内容闪烁，退出阅读页后补显示。
-                        val onReaderRoute = navCurrentEntry?.destination?.route == Screen.Reader.route
+                        val onReaderRoute = !com.huangder.lumibooks.ui.navigation.navigationBackdropCaptureAllowed(
+                            navCurrentEntry?.destination?.route,
+                            navVisibleEntries.map { it.destination.route }
+                        )
                         val globalGlassDialogVisible = !onReaderRoute && (
                             pendingAppUpdate != null ||
                                 pendingRemoteNotice != null ||

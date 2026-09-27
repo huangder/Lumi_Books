@@ -151,10 +151,10 @@ class WebdavPortableStateSync @Inject constructor(
         val allowedAssets = snapshot.assets.filter { it.kind in allowedKinds }
         val allowedIds = allowedAssets.mapTo(mutableSetOf()) { it.id }
         return copy(
-            snapshot = snapshot.copy(
+            snapshot = stripHighlightRuleLibraryForWebdav(snapshot.copy(
                 books = snapshot.books.map { it.copy(bodyAssetId = null) },
                 assets = allowedAssets
-            ),
+            )),
             assetSources = assetSources.filterKeys { it in allowedIds }
         )
     }
@@ -189,7 +189,9 @@ class WebdavPortableStateSync @Inject constructor(
             },
             assets = (remote.assets + local.assets).associateBy { it.id }.values.toList()
         )
-        return selected.copy(assets = selected.assets.filter { assetReferenced(selected, it.id) })
+        return stripHighlightRuleLibraryForWebdav(
+            selected.copy(assets = selected.assets.filter { assetReferenced(selected, it.id) })
+        )
     }
 
     private fun selectForLocal(
@@ -286,6 +288,10 @@ class WebdavPortableStateSync @Inject constructor(
             readingRecords = snapshot.readingRecords.sortedBy { "${it.bookId}:${it.date}:${it.sourceDeviceId}" },
             bookmarks = snapshot.bookmarks.sortedBy { it.syncId },
             notes = snapshot.notes.sortedBy { it.syncId },
+            highlightRules = snapshot.highlightRules.sortedBy { it.id },
+            bookHighlightRuleStates = snapshot.bookHighlightRuleStates.sortedBy { "${it.bookId}:${it.ruleId}" },
+            bookHighlightSettings = snapshot.bookHighlightSettings.sortedBy { it.bookId },
+            highlightRuleExclusions = snapshot.highlightRuleExclusions.sortedBy { "${it.bookId}:${it.ruleId}:${it.matchKey}" },
             tombstones = snapshot.tombstones.sortedBy { "${it.namespace}:${it.itemId}" },
             assets = snapshot.assets.sortedBy { it.id }
         ).toJson().toByteArray(Charsets.UTF_8)
@@ -297,6 +303,13 @@ class WebdavPortableStateSync @Inject constructor(
         private const val MAX_CONFLICT_RETRIES = 3
     }
 }
+
+/** Rule libraries belong to explicit LUMI backups in v1, not automatic WebDAV state sync. */
+internal fun stripHighlightRuleLibraryForWebdav(snapshot: PortableSnapshot): PortableSnapshot = snapshot.copy(
+    highlightRules = emptyList(),
+    bookHighlightRuleStates = emptyList(),
+    bookHighlightSettings = emptyList()
+)
 
 /**
  * 选取应用到本机（[forLocal]=true）或写回服务器 state.json（[forLocal]=false）的书籍列表。

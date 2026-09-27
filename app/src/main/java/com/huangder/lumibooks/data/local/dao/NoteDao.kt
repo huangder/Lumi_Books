@@ -68,6 +68,18 @@ interface NoteDao {
     @Query("DELETE FROM notes WHERE bookId = :bookId")
     suspend fun deleteAllNotesByBookId(bookId: String)
 
+    @Query("SELECT * FROM notes WHERE bookId = :bookId AND origin = 'highlight_rule'")
+    suspend fun getGeneratedNotesByBookId(bookId: String): List<NoteEntity>
+
+    @Query("SELECT * FROM notes WHERE sourceRuleId = :ruleId AND origin = 'highlight_rule'")
+    suspend fun getGeneratedNotesForRule(ruleId: String): List<NoteEntity>
+
+    @Query("DELETE FROM notes WHERE bookId = :bookId AND origin = 'highlight_rule'")
+    suspend fun deleteGeneratedNotesByBookId(bookId: String)
+
+    @Query("DELETE FROM notes WHERE sourceRuleId = :ruleId AND origin = 'highlight_rule'")
+    suspend fun deleteGeneratedNotesForRule(ruleId: String)
+
     @Query("DELETE FROM notes WHERE bookId = :bookId AND type NOT LIKE 'pdf_ink_%'")
     suspend fun deleteLegacyPdfAnnotationsByBookId(bookId: String)
 }

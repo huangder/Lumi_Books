@@ -265,7 +265,11 @@ class ReadingRepositoryImpl @Inject constructor(
             type = type,
             syncId = syncId,
             updatedAt = updatedAt,
-            isNote = isNote
+            isNote = isNote,
+            origin = origin,
+            sourceRuleId = sourceRuleId,
+            sourceMatchKey = sourceMatchKey,
+            styleSnapshotJson = styleSnapshotJson
         )
     }
 
@@ -285,7 +289,11 @@ class ReadingRepositoryImpl @Inject constructor(
             type = type,
             syncId = syncId,
             updatedAt = updatedAt,
-            isNote = isNote
+            isNote = isNote,
+            origin = origin,
+            sourceRuleId = sourceRuleId,
+            sourceMatchKey = sourceMatchKey,
+            styleSnapshotJson = styleSnapshotJson
         )
     }
 }

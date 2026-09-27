@@ -8,6 +8,10 @@ import com.huangder.lumibooks.data.local.entity.NoteEntity
 import com.huangder.lumibooks.data.local.entity.ReadingRecordEntity
 import com.huangder.lumibooks.data.local.entity.SyncTombstoneEntity
 import com.huangder.lumibooks.data.local.entity.TagEntity
+import com.huangder.lumibooks.data.local.entity.HighlightRuleEntity
+import com.huangder.lumibooks.data.local.entity.BookHighlightRuleStateEntity
+import com.huangder.lumibooks.data.local.entity.BookHighlightSettingsEntity
+import com.huangder.lumibooks.data.local.entity.HighlightRuleExclusionEntity
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -56,7 +60,11 @@ data class PortableSnapshot(
     val bookmarks: List<BookmarkEntity>,
     val notes: List<NoteEntity>,
     val tombstones: List<SyncTombstoneEntity>,
-    val assets: List<PortableAsset>
+    val assets: List<PortableAsset>,
+    val highlightRules: List<HighlightRuleEntity> = emptyList(),
+    val bookHighlightRuleStates: List<BookHighlightRuleStateEntity> = emptyList(),
+    val bookHighlightSettings: List<BookHighlightSettingsEntity> = emptyList(),
+    val highlightRuleExclusions: List<HighlightRuleExclusionEntity> = emptyList()
 ) {
     fun toJson(): String = JSONObject().apply {
         put("schemaVersion", schemaVersion)
@@ -73,6 +81,10 @@ data class PortableSnapshot(
         put("notes", notes.toJsonArray(::noteToJson))
         put("tombstones", tombstones.toJsonArray(::tombstoneToJson))
         put("assets", assets.toJsonArray(::assetToJson))
+        put("highlightRules", highlightRules.toJsonArray(::highlightRuleToJson))
+        put("bookHighlightRuleStates", bookHighlightRuleStates.toJsonArray(::bookHighlightRuleStateToJson))
+        put("bookHighlightSettings", bookHighlightSettings.toJsonArray(::bookHighlightSettingsToJson))
+        put("highlightRuleExclusions", highlightRuleExclusions.toJsonArray(::highlightRuleExclusionToJson))
     }.toString()
 
     companion object {
@@ -96,7 +108,11 @@ data class PortableSnapshot(
                 bookmarks = root.array("bookmarks").mapObjects(::bookmarkFromJson),
                 notes = root.array("notes").mapObjects(::noteFromJson),
                 tombstones = root.array("tombstones").mapObjects(::tombstoneFromJson),
-                assets = root.array("assets").mapObjects(::assetFromJson)
+                assets = root.array("assets").mapObjects(::assetFromJson),
+                highlightRules = root.array("highlightRules").mapObjects(::highlightRuleFromJson),
+                bookHighlightRuleStates = root.array("bookHighlightRuleStates").mapObjects(::bookHighlightRuleStateFromJson),
+                bookHighlightSettings = root.array("bookHighlightSettings").mapObjects(::bookHighlightSettingsFromJson),
+                highlightRuleExclusions = root.array("highlightRuleExclusions").mapObjects(::highlightRuleExclusionFromJson)
             )
         }
     }
@@ -217,6 +233,10 @@ private fun noteToJson(item: NoteEntity) = JSONObject().apply {
     put("isNote", item.isNote)
     put("createdAt", item.createdAt); put("type", item.type); put("syncId", item.syncId)
     put("updatedAt", item.updatedAt)
+    put("origin", item.origin)
+    putNullable("sourceRuleId", item.sourceRuleId)
+    putNullable("sourceMatchKey", item.sourceMatchKey)
+    putNullable("styleSnapshotJson", item.styleSnapshotJson)
 }
 
 private fun noteFromJson(json: JSONObject) = NoteEntity(
@@ -227,7 +247,55 @@ private fun noteFromJson(json: JSONObject) = NoteEntity(
     note = json.optString("note"), color = json.optString("color"), createdAt = json.optLong("createdAt"),
     type = json.optString("type", "highlight"), syncId = json.optString("syncId"),
     isNote = json.optBoolean("isNote", json.optString("note").isNotBlank() || json.optString("type") == "note"),
-    updatedAt = json.optLong("updatedAt", json.optLong("createdAt"))
+    updatedAt = json.optLong("updatedAt", json.optLong("createdAt")),
+    origin = json.optString("origin", "manual"),
+    sourceRuleId = json.nullableString("sourceRuleId"),
+    sourceMatchKey = json.nullableString("sourceMatchKey"),
+    styleSnapshotJson = json.nullableString("styleSnapshotJson")
+)
+
+private fun highlightRuleToJson(item: HighlightRuleEntity) = JSONObject().apply {
+    put("id", item.id); put("name", item.name); put("pattern", item.pattern); put("enabled", item.enabled)
+    put("position", item.position); put("targetScope", item.targetScope); putNullableInt("textColor", item.textColor)
+    put("underlineMode", item.underlineMode); put("underlineOffset", item.underlineOffset.toDouble())
+    put("underlineWidth", item.underlineWidth.toDouble()); put("fontWeight", item.fontWeight)
+    put("isItalic", item.isItalic); put("sampleText", item.sampleText); put("rawJson", item.rawJson)
+    put("updatedAt", item.updatedAt)
+}
+
+private fun highlightRuleFromJson(json: JSONObject) = HighlightRuleEntity(
+    id = json.getString("id"), name = json.optString("name"), pattern = json.optString("pattern"),
+    enabled = json.optBoolean("enabled", true), position = json.optInt("position"),
+    targetScope = json.optInt("targetScope"),
+    textColor = if (json.has("textColor") && !json.isNull("textColor")) json.optInt("textColor") else null,
+    underlineMode = json.optInt("underlineMode"), underlineOffset = json.optDouble("underlineOffset", 2.0).toFloat(),
+    underlineWidth = json.optDouble("underlineWidth", 1.0).toFloat(), fontWeight = json.optInt("fontWeight", 400),
+    isItalic = json.optBoolean("isItalic"), sampleText = json.optString("sampleText"),
+    rawJson = json.optString("rawJson", "{}"), updatedAt = json.optLong("updatedAt")
+)
+
+private fun bookHighlightRuleStateToJson(item: BookHighlightRuleStateEntity) = JSONObject().apply {
+    put("bookId", item.bookId); put("ruleId", item.ruleId); put("enabled", item.enabled); put("position", item.position)
+}
+
+private fun bookHighlightRuleStateFromJson(json: JSONObject) = BookHighlightRuleStateEntity(
+    json.getString("bookId"), json.getString("ruleId"), json.optBoolean("enabled"), json.optInt("position")
+)
+
+private fun bookHighlightSettingsToJson(item: BookHighlightSettingsEntity) = JSONObject().apply {
+    put("bookId", item.bookId); put("materializeNotes", item.materializeNotes); put("revision", item.revision)
+}
+
+private fun bookHighlightSettingsFromJson(json: JSONObject) = BookHighlightSettingsEntity(
+    json.getString("bookId"), json.optBoolean("materializeNotes"), json.optLong("revision")
+)
+
+private fun highlightRuleExclusionToJson(item: HighlightRuleExclusionEntity) = JSONObject().apply {
+    put("bookId", item.bookId); put("ruleId", item.ruleId); put("matchKey", item.matchKey); put("createdAt", item.createdAt)
+}
+
+private fun highlightRuleExclusionFromJson(json: JSONObject) = HighlightRuleExclusionEntity(
+    json.getString("bookId"), json.getString("ruleId"), json.getString("matchKey"), json.optLong("createdAt")
 )
 
 private fun tombstoneToJson(item: SyncTombstoneEntity) = JSONObject().apply {
@@ -260,6 +328,10 @@ private inline fun <T> JSONArray.mapObjects(transform: (JSONObject) -> T): List<
 private fun JSONObject.array(key: String): JSONArray = optJSONArray(key) ?: JSONArray()
 
 private fun JSONObject.putNullable(key: String, value: String?) {
+    if (value == null) put(key, JSONObject.NULL) else put(key, value)
+}
+
+private fun JSONObject.putNullableInt(key: String, value: Int?) {
     if (value == null) put(key, JSONObject.NULL) else put(key, value)
 }
 

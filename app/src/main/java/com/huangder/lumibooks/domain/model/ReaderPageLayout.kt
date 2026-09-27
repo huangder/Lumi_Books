@@ -137,8 +137,8 @@ data class ReaderCornerMargins(
         /** 页脚与屏幕底部的默认距离（旧版固定值）。 */
         const val DEFAULT_BOTTOM_DP = 16f
 
-        val HORIZONTAL_RANGE = 0f..80f
-        val VERTICAL_RANGE = 0f..120f
+        val HORIZONTAL_RANGE = ReaderThemeSettings.HORIZONTAL_MARGIN_RANGE
+        val VERTICAL_RANGE = ReaderThemeSettings.VERTICAL_MARGIN_RANGE
 
         fun clampHorizontal(valueDp: Float): Float =
             valueDp.coerceIn(HORIZONTAL_RANGE.start, HORIZONTAL_RANGE.endInclusive)

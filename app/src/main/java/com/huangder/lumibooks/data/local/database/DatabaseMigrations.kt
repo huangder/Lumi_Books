@@ -194,4 +194,48 @@ object DatabaseMigrations {
             db.execSQL("UPDATE notes SET isNote = 1 WHERE length(trim(note)) > 0 OR type = 'note'")
         }
     }
+
+    val MIGRATION_13_14 = object : Migration(13, 14) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE notes ADD COLUMN origin TEXT NOT NULL DEFAULT 'manual'")
+            db.execSQL("ALTER TABLE notes ADD COLUMN sourceRuleId TEXT DEFAULT NULL")
+            db.execSQL("ALTER TABLE notes ADD COLUMN sourceMatchKey TEXT DEFAULT NULL")
+            db.execSQL("ALTER TABLE notes ADD COLUMN styleSnapshotJson TEXT DEFAULT NULL")
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS index_notes_bookId_sourceRuleId_sourceMatchKey " +
+                    "ON notes (bookId, sourceRuleId, sourceMatchKey)"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS highlight_rules (" +
+                    "id TEXT NOT NULL, name TEXT NOT NULL, pattern TEXT NOT NULL, enabled INTEGER NOT NULL, " +
+                    "position INTEGER NOT NULL, targetScope INTEGER NOT NULL, textColor INTEGER, " +
+                    "underlineMode INTEGER NOT NULL, underlineOffset REAL NOT NULL, underlineWidth REAL NOT NULL, " +
+                    "fontWeight INTEGER NOT NULL, isItalic INTEGER NOT NULL, sampleText TEXT NOT NULL, " +
+                    "rawJson TEXT NOT NULL, updatedAt INTEGER NOT NULL, PRIMARY KEY(id))"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS book_highlight_rule_states (" +
+                    "bookId TEXT NOT NULL, ruleId TEXT NOT NULL, enabled INTEGER NOT NULL, " +
+                    "position INTEGER NOT NULL, PRIMARY KEY(bookId, ruleId))"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_book_highlight_rule_states_ruleId " +
+                    "ON book_highlight_rule_states (ruleId)"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS book_highlight_settings (" +
+                    "bookId TEXT NOT NULL, materializeNotes INTEGER NOT NULL, revision INTEGER NOT NULL, " +
+                    "PRIMARY KEY(bookId))"
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS highlight_rule_exclusions (" +
+                    "bookId TEXT NOT NULL, ruleId TEXT NOT NULL, matchKey TEXT NOT NULL, createdAt INTEGER NOT NULL, " +
+                    "PRIMARY KEY(bookId, ruleId, matchKey))"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_highlight_rule_exclusions_ruleId " +
+                    "ON highlight_rule_exclusions (ruleId)"
+            )
+        }
+    }
 }

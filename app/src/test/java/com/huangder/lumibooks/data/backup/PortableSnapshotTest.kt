@@ -4,6 +4,10 @@ import com.huangder.lumibooks.data.local.entity.BookmarkEntity
 import com.huangder.lumibooks.data.local.entity.NoteEntity
 import com.huangder.lumibooks.data.local.entity.ReadingRecordEntity
 import com.huangder.lumibooks.data.local.entity.SyncTombstoneEntity
+import com.huangder.lumibooks.data.local.entity.BookHighlightRuleStateEntity
+import com.huangder.lumibooks.data.local.entity.BookHighlightSettingsEntity
+import com.huangder.lumibooks.data.local.entity.HighlightRuleEntity
+import com.huangder.lumibooks.data.local.entity.HighlightRuleExclusionEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Test
@@ -27,6 +31,31 @@ class PortableSnapshotTest {
         )
 
         assertEquals(snapshot, PortableSnapshot.fromJson(snapshot.toJson()))
+    }
+
+    @Test
+    fun fullBackupRoundTripPreservesRuleLibraryAndGeneratedNoteSource() {
+        val generated = note("generated").copy(
+            origin = "highlight_rule",
+            sourceRuleId = "r1",
+            sourceMatchKey = "0:1:4:key",
+            styleSnapshotJson = "{\"underlineMode\":3}"
+        )
+        val original = snapshot(deviceId = "device-a", notes = listOf(generated)).copy(
+            highlightRules = listOf(
+                HighlightRuleEntity(
+                    "r1", "Rule", "a+", true, 0, 0, null, 3, 2f, 1f, 700,
+                    true, "aaa", "{\"unknown\":true}", 100
+                )
+            ),
+            bookHighlightRuleStates = listOf(BookHighlightRuleStateEntity("book-a", "r1", true, 0)),
+            bookHighlightSettings = listOf(BookHighlightSettingsEntity("book-a", true, 2)),
+            highlightRuleExclusions = listOf(
+                HighlightRuleExclusionEntity("book-a", "r1", "0:8:9:key", 90)
+            )
+        )
+
+        assertEquals(original, PortableSnapshot.fromJson(original.toJson()))
     }
 
     @Test

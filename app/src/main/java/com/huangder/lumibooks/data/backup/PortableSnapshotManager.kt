@@ -130,7 +130,11 @@ class PortableSnapshotManager @Inject constructor(
                 bookmarks = syncDao.getAllBookmarks(),
                 notes = syncDao.getAllNotes(),
                 tombstones = syncDao.getAllTombstones(),
-                assets = sources.values.map { it.asset }
+                assets = sources.values.map { it.asset },
+                highlightRules = database.highlightRuleDao().getRules(),
+                bookHighlightRuleStates = database.highlightRuleDao().getAllBookStates(),
+                bookHighlightSettings = database.highlightRuleDao().getAllSettings(),
+                highlightRuleExclusions = database.highlightRuleDao().getAllExclusions()
             ),
             assetSources = sources
         )
@@ -197,6 +201,10 @@ class PortableSnapshotManager @Inject constructor(
                     syncDao.clearTags()
                     bookDao.clearBooks()
                     syncDao.clearTombstones()
+                    database.highlightRuleDao().clearBookStates()
+                    database.highlightRuleDao().clearSettings()
+                    database.highlightRuleDao().clearAllExclusions()
+                    database.highlightRuleDao().clearRules()
                 }
                 if (restoredBooks.isNotEmpty()) bookDao.upsertBooks(restoredBooks)
                 val knownFolderIds = if (replace) emptySet() else existingFolders.mapTo(mutableSetOf()) { it.id }
@@ -226,6 +234,18 @@ class PortableSnapshotManager @Inject constructor(
                     it.copy(id = if (replace) 0 else existingNotes[it.syncId]?.id ?: 0)
                 })
                 if (snapshot.tombstones.isNotEmpty()) syncDao.upsertTombstones(snapshot.tombstones)
+                if (snapshot.highlightRules.isNotEmpty()) {
+                    database.highlightRuleDao().upsertRules(snapshot.highlightRules)
+                }
+                if (snapshot.bookHighlightRuleStates.isNotEmpty()) {
+                    database.highlightRuleDao().upsertBookStates(snapshot.bookHighlightRuleStates)
+                }
+                if (snapshot.bookHighlightSettings.isNotEmpty()) {
+                    database.highlightRuleDao().upsertAllSettings(snapshot.bookHighlightSettings)
+                }
+                if (snapshot.highlightRuleExclusions.isNotEmpty()) {
+                    database.highlightRuleDao().upsertExclusions(snapshot.highlightRuleExclusions)
+                }
                 applyTombstones(snapshot)
             }
             preparedAssets.finish()

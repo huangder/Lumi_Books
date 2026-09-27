@@ -1420,6 +1420,10 @@ class WebdavSyncManager @Inject constructor(
                             put("type", n.type)
                             put("syncId", n.syncId)
                             put("updatedAt", n.updatedAt)
+                            put("origin", n.origin)
+                            n.sourceRuleId?.let { put("sourceRuleId", it) }
+                            n.sourceMatchKey?.let { put("sourceMatchKey", it) }
+                            n.styleSnapshotJson?.let { put("styleSnapshotJson", it) }
                         })
                     }
                 })
@@ -1527,7 +1531,11 @@ class WebdavSyncManager @Inject constructor(
                             n.optLong("createdAt").toString()
                         )
                     },
-                    updatedAt = n.optLong("updatedAt", n.optLong("createdAt"))
+                    updatedAt = n.optLong("updatedAt", n.optLong("createdAt")),
+                    origin = n.optString("origin", Note.ORIGIN_MANUAL),
+                    sourceRuleId = n.optString("sourceRuleId", null),
+                    sourceMatchKey = n.optString("sourceMatchKey", null),
+                    styleSnapshotJson = n.optString("styleSnapshotJson", null)
                 ))
             }
         }
