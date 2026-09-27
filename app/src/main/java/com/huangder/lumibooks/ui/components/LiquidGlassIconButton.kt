@@ -77,6 +77,7 @@ fun LiquidGlassIconButton(
         modifier
     }
     LiquidGlassSurface(
+        controlEdge = true,
         shape = CircleShape,
         fallbackColor = if (useWhiteSettingsSurface) Color.White else liquidContainerColor,
         // Keep the sampled backdrop visible, but always place the button's own

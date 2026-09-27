@@ -36,6 +36,8 @@ fun LiquidGlassButton(
     tintedColor: Color? = null,
     prominentShadow: Boolean = false,
     contentColor: Color = if (tintedColor != null) AppColors.OnAccent else AppColors.TextPrimary,
+    /** Optional elevation decoration for controls that share a local surface treatment. */
+    decorationModifier: Modifier? = null,
     content: @Composable RowScope.() -> Unit
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
@@ -77,6 +79,7 @@ fun LiquidGlassButton(
         )
     }
     LiquidGlassSurface(
+        controlEdge = true,
         shape = shape,
         fallbackColor = tintedColor ?: AppColors.CardBg,
         contentScrimColor = if (tintedColor == null) {
@@ -87,7 +90,7 @@ fun LiquidGlassButton(
         tintColor = tintedColor,
         enabled = enabled,
         onClick = onClick,
-        decorationModifier = shadowDecoration,
+        decorationModifier = decorationModifier ?: shadowDecoration,
         modifier = modifier
             .heightIn(min = 44.dp)
             .widthIn(min = 72.dp)

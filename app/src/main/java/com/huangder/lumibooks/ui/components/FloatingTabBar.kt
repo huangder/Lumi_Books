@@ -268,7 +268,7 @@ fun FloatingTabBar(
                 }
                 lens(16.dp.toPx(), 28.dp.toPx())
             },
-            highlight = { liquidGlassHighlight() },
+            highlight = if (LocalLiquidGlassControlEdgeEnabled.current) null else { { liquidGlassHighlight() } },
             onDrawSurface = { drawRect(liquidSurfaceColor) }
         )
     } else {
@@ -277,6 +277,12 @@ fun FloatingTabBar(
             .background(glassBrush)
     }
     val outerOutlineModifier = when {
+        isLiquidGlass && LocalLiquidGlassControlEdgeEnabled.current -> Modifier.liquidGlassControlEdge(
+            glassShape,
+            if (isDark) Color(0xFF121214) else Color.White,
+            isDark,
+            LocalLiquidGlassControlEdgeForceCanvas.current
+        )
         isLiquidGlass && liquidGlassBackdrop != null -> Modifier
         isLiquidGlass -> Modifier.border(
             LiquidGlassOutlineWidth,
@@ -595,6 +601,7 @@ fun LiquidGlassImportButton(
     modifier: Modifier = Modifier
 ) {
     LiquidGlassSurface(
+        controlEdge = true,
         shape = CircleShape,
         fallbackColor = Color.Black,
         backdrop = liquidGlassBackdrop,

@@ -27,6 +27,7 @@ import com.huangder.lumibooks.ui.reader.TtsPlayerPanel
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.MotionPreference
+import com.huangder.lumibooks.ui.theme.LumiBackgroundScene
 import com.huangder.lumibooks.domain.model.MenuAnimationStyle
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -40,6 +41,7 @@ class MenuMotionPreviewActivity : ComponentActivity() {
         setContent {
             EBookReaderTheme(
                 appTheme = intent.getStringExtra("theme") ?: "liquid_glass",
+                lumiBackgroundScene = if (intent.getStringExtra("theme") == "lumi_chan") LumiBackgroundScene.BOOKSHELF else null,
                 dynamicColor = intent.getStringExtra("theme") == "material3",
                 darkTheme = intent.getBooleanExtra("dark", false),
                 eInkMode = intent.getBooleanExtra("eink", false),
@@ -55,7 +57,8 @@ class MenuMotionPreviewActivity : ComponentActivity() {
                     else PreviewMenus(
                         intent.getBooleanExtra("solid", false),
                         intent.getBooleanExtra("transparentBackdrop", false),
-                        intent.getBooleanExtra("demo", false)
+                        intent.getBooleanExtra("demo", false),
+                        intent.getBooleanExtra("open", false)
                     )
                 }
             }
@@ -82,7 +85,7 @@ private fun SurfaceSamples() {
 }
 
 @Composable
-private fun PreviewMenus(solid: Boolean, transparentBackdrop: Boolean, demo: Boolean) {
+private fun PreviewMenus(solid: Boolean, transparentBackdrop: Boolean, demo: Boolean, open: Boolean) {
     val backdrop = rememberLayerBackdrop()
     var selected by remember { mutableStateOf("Ready") }
     var actions by remember { mutableIntStateOf(0) }
@@ -136,6 +139,12 @@ private fun PreviewMenus(solid: Boolean, transparentBackdrop: Boolean, demo: Boo
                 host.show(menu)
                 delay(1200)
                 host.dismiss()
+            }
+        }
+        LaunchedEffect(open) {
+            if (open) {
+                delay(600)
+                host.show(menu)
             }
         }
         LiquidGlassIconButton(

@@ -55,6 +55,8 @@ object AppIcons {
     val ImageBroken = PhosphorIcons.Regular.ImageBroken
     val Tag = PhosphorIcons.Regular.Tag
     val Link = PhosphorIcons.Regular.Link
+    val Lock = PhosphorIcons.Regular.Lock
+    val LockOpen = PhosphorIcons.Regular.LockOpen
 
     val X = PhosphorIcons.Regular.X
     val XFilled = PhosphorIcons.Fill.X

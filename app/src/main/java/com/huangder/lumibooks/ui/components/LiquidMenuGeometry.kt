@@ -1,7 +1,9 @@
 package com.huangder.lumibooks.ui.components
 
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
@@ -18,8 +20,10 @@ import kotlin.math.sin
 /** A single, reversible phase drives the outline, source handoff and both optical layers. */
 internal object LiquidMenuGeometry {
     val Motion = LiquidGlassMenuMotion(
-        openStiffness = 145f, openDampingRatio = 0.68f,
-        closeStiffness = 205f, closeDampingRatio = 0.78f
+        openStiffness = 125f, openDampingRatio = 0.72f,
+        // A critically damped return slows into the button without crossing zero
+        // and freezing at the clamped endpoint while the hidden spring settles.
+        closeStiffness = 155f, closeDampingRatio = 1f
     )
 
     fun smooth(start: Float, end: Float, value: Float): Float {
@@ -28,14 +32,16 @@ internal object LiquidMenuGeometry {
     }
 
     fun contentAlpha(phase: Float): Float = smooth(0.28f, 0.88f, phase)
-    fun sourceAlpha(phase: Float): Float = 1f - smooth(0.02f, 0.22f, phase)
+    fun sourceAlpha(phase: Float): Float = 1f - smooth(0.01f, 0.16f, phase)
     fun distortion(phase: Float): Float = smooth(0.08f, 0.3f, phase) * (1f - smooth(0.65f, 1f, phase))
 
     fun frame(source: Rect, target: Rect, phase: Float, sourceRadius: Float, targetRadius: Float): LiquidMenuFrame {
         val t = phase.coerceIn(0f, 1f)
-        val growth = smooth(0.04f, 1f, t)
-        // Leave room for the spring's natural peak so the rebound has no flat plateau.
-        val overshoot = (phase - 1f).coerceIn(0f, 0.06f)
+        val growth = smooth(0f, 1f, t)
+        // Match the zero slope of smoothstep at the join. A linear overshoot
+        // creates a visible velocity kink as the panel passes its final size.
+        val extra = (phase - 1f).coerceIn(0f, 0.10f)
+        val overshoot = extra * extra / (extra + 0.015f)
         val travel = growth + overshoot
         val nearX = LiquidGlassMenuMorph.nearEdgeBiasX(source, target)
         val nearY = LiquidGlassMenuMorph.nearEdgeBiasY(source, target)
@@ -113,9 +119,15 @@ internal data class LiquidMenuFrame(
 /** Cubic interpolation of the same warped rounded rectangle sampled by the optical shader. */
 internal class LiquidMenuShape(private val frame: LiquidMenuFrame) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
-        val points = frame.outlinePoints()
         val scaleX = size.width / frame.bounds.width
         val scaleY = size.height / frame.bounds.height
+        // Without a neck the menu is a rounded rectangle. Expose that outline so
+        // the shared glass rim uses its exact lighting and fast shader path.
+        if (frame.neck == 0f) {
+            val radius = (frame.radius * min(scaleX, scaleY)).coerceIn(0f, size.minDimension / 2f)
+            return Outline.Rounded(RoundRect(0f, 0f, size.width, size.height, CornerRadius(radius)))
+        }
+        val points = frame.outlinePoints()
         fun point(i: Int): Offset {
             val p = points[(i + points.size) % points.size]
             return Offset(p.x * scaleX, p.y * scaleY)

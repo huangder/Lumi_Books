@@ -21,6 +21,9 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.domain.model.MenuAnimationStyle
+import com.huangder.lumibooks.ui.theme.LiquidGlassCapability
+import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.LocalMenuAnimationStyle
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import org.junit.Assert.*
@@ -49,10 +52,12 @@ class MenuAnimationStyleHostTest {
         forceSolid = true
     )
 
-    private fun show() {
+    private fun show(glass: Boolean = false) {
         compose.setContent {
             view = LocalView.current
             CompositionLocalProvider(
+                LocalAppTheme provides if (glass) "liquid_glass" else LocalAppTheme.current,
+                LocalLiquidGlassCapability provides if (glass) LiquidGlassCapability(true, false) else LocalLiquidGlassCapability.current,
                 LocalMenuAnimationStyle provides style.value,
                 LocalMotionEnabled provides motion.value
             ) {
@@ -73,16 +78,41 @@ class MenuAnimationStyleHostTest {
         compose.mainClock.autoAdvance = false
     }
 
-    private fun advance(milliseconds: Long) {
+    private fun advance(milliseconds: Long, renderFrames: Boolean = false) {
         compose.waitForIdle()
         // Layout/draw run on Android's clock; allow each new menu to measure
         // before consuming the remaining animation frames on Compose's clock.
         var remaining = milliseconds
         while (remaining > 0) {
-            val step = minOf(32L, remaining)
+            val step = minOf(if (renderFrames) 16L else 32L, remaining)
             compose.mainClock.advanceTimeBy(step)
             compose.waitForIdle()
+            if (renderFrames) compose.runOnIdle {
+                val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+                view.draw(Canvas(bitmap))
+                bitmap.recycle()
+            }
             remaining -= step
+        }
+    }
+
+    @Test fun selectingLiquidGlassMenuRendersTheEntireReturnWithTheNewRim() {
+        style.value = MenuAnimationStyle.LIQUID
+        show(glass = true)
+        val glassMenu = menu.copy(
+            forceSolid = false,
+            items = (1..7).map { index -> LiquidGlassMenuItem("Option $index") { selections++ } }
+        )
+        repeat(2) { iteration ->
+            compose.runOnIdle { host.show(glassMenu) }
+            advance(1000, renderFrames = true)
+            compose.onNodeWithText("Option 2").performClick()
+            advance(1000, renderFrames = true)
+            compose.runOnIdle {
+                assertNull(host.displayedMenu)
+                assertFalse(host.ownsDrawing(sourceId))
+                assertEquals(iteration + 1, selections)
+            }
         }
     }
 

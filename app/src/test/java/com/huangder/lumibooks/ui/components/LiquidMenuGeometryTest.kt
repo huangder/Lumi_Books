@@ -103,11 +103,34 @@ class LiquidMenuGeometryTest {
         assertEquals(1f, open.getValueFromNanos(700_000_000), 0.01f)
         val close = TargetBasedAnimation(LiquidMenuGeometry.Motion.closeSpec(), Float.VectorConverter, 1f, 0f)
         assertTrue("Closing must leave time to see the returning droplet", close.getValueFromNanos(150_000_000) > 0.25f)
-        assertEquals(0f, close.getValueFromNanos(550_000_000), 0.01f)
+        assertEquals(0f, close.getValueFromNanos(650_000_000), 0.01f)
         val phase = open.getValueFromNanos(120_000_000)
         val velocity = open.getVelocityVectorFromNanos(120_000_000).value
         val reverse = TargetBasedAnimation(LiquidMenuGeometry.Motion.closeSpec(), Float.VectorConverter, phase, 0f, velocity)
         assertEquals(phase, reverse.getValueFromNanos(0), 0f)
         assertEquals(velocity, reverse.getVelocityVectorFromNanos(0).value, 0.001f)
+    }
+
+    @Test fun closingDeceleratesIntoTheButtonWithoutAnEarlyClampOrRebound() {
+        val close = TargetBasedAnimation(LiquidMenuGeometry.Motion.closeSpec(), Float.VectorConverter, 1f, 0f)
+        var previous = 1f
+        for (ms in 0L..1000L step 10) {
+            val phase = close.getValueFromNanos(ms * 1_000_000)
+            assertTrue("Closing should approach zero without crossing it at $ms ms", phase >= 0f)
+            assertTrue("Closing should never grow back after shrinking", phase <= previous)
+            previous = phase
+        }
+        val tail = close.getValueFromNanos(300_000_000)
+        assertTrue("Keep a visible droplet during the final return", frame(tail).bounds.height > source.height + 10f)
+        assertTrue(LiquidMenuGeometry.sourceAlpha(tail) < 0.25f)
+        val later = close.getValueFromNanos(450_000_000)
+        assertTrue("The source must blend back gradually", LiquidMenuGeometry.sourceAlpha(later) > 0.9f)
+    }
+
+    @Test fun passingTheExpandedSizeDoesNotIntroduceAVelocityKink() {
+        val step = 0.0001f
+        val leftSlope = (frame(1f).bounds.height - frame(1f - step).bounds.height) / step
+        val rightSlope = (frame(1f + step).bounds.height - frame(1f).bounds.height) / step
+        assertTrue("Both sides of the overshoot join should ease toward zero slope", abs(rightSlope - leftSlope) < 5f)
     }
 }

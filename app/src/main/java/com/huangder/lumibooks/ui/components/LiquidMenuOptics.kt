@@ -36,14 +36,30 @@ internal fun LiquidMenuSurface(
     modifier: Modifier = Modifier
 ) {
     val optics = rememberMenuOptics()
-    val scrim = baseColor.copy(alpha = if (isDark) 0.48f else 0.36f)
+    val edge = if (LocalLiquidGlassControlEdgeEnabled.current) {
+        Modifier.liquidGlassControlEdge(
+            shape, baseColor, isDark, LocalLiquidGlassControlEdgeForceCanvas.current
+        )
+    } else {
+        Modifier.border(
+            0.5.dp,
+            Brush.linearGradient(listOf(Color.White.copy(alpha = 0.58f), Color.White.copy(alpha = 0.10f))),
+            shape
+        )
+    }
+    // Like sheet containers, derive frosting from the user's transparency with
+    // a readability offset. Menus use 15 percentage points (70% becomes 55%).
+    val menuTransparency = (transparency - 0.15f).coerceIn(0f, 0.85f)
+    // A light veil above the sampled backdrop softens background lettering while
+    // preserving the glass tint. Foreground menu text is drawn after this layer.
+    val scrim = baseColor.copy(alpha = if (isDark) 0.36f else 0.28f)
     val surface = if (backdrop != null) {
         Modifier.drawPlainBackdrop(
             backdrop = backdrop,
             shape = { shape },
             effects = {
                 vibrancy()
-                blur((12.dp * (1f - transparency * 0.5f)).toPx())
+                blur((6.dp * (1f - menuTransparency)).toPx())
                 if (Build.VERSION.SDK_INT >= 33) {
                     optics?.effect(frame, padding, density, content = false)?.let { effect(it) }
                 }
@@ -58,11 +74,7 @@ internal fun LiquidMenuSurface(
             16.dp, shape, clip = false,
             ambientColor = Color.Black.copy(alpha = if (isDark) 0.24f else 0.12f),
             spotColor = Color.Black.copy(alpha = if (isDark) 0.30f else 0.16f)
-        ).clip(shape).then(surface).border(
-            0.5.dp,
-            Brush.linearGradient(listOf(Color.White.copy(alpha = 0.58f), Color.White.copy(alpha = 0.10f))),
-            shape
-        )
+        ).clip(shape).then(surface).then(edge)
     )
 }
 
@@ -83,9 +95,10 @@ internal class LiquidMenuOptics {
         shader.setFloatUniform("radius", frame.radius)
         shader.setFloatUniform("neck", frame.neck)
         shader.setFloatUniform("side", frame.nearX, frame.nearY)
-        shader.setFloatUniform("band", (if (content) 28f else 14f) * density)
-        shader.setFloatUniform("amount", (if (content) 17f * frame.distortion else 6f + 9f * frame.distortion) * density)
+        shader.setFloatUniform("band", (if (content) 28f else 16f + 4f * frame.distortion) * density)
+        shader.setFloatUniform("amount", (if (content) 17f * frame.distortion else 24f + 9f * frame.distortion) * density)
         shader.setFloatUniform("warpContent", if (content) frame.distortion else 0f)
+        shader.setFloatUniform("surfaceLens", if (content) 0f else 1f)
         return RenderEffect.createRuntimeShaderEffect(shader, "content")
     }
 
@@ -105,6 +118,7 @@ uniform float2 side;
 uniform float band;
 uniform float amount;
 uniform float warpContent;
+uniform float surfaceLens;
 
 float2 unwarp(float2 p) {
     float v = clamp(p.y / size.y, 0.0, 1.0);
@@ -124,9 +138,18 @@ half4 main(float2 coord) {
         distanceToEdge(p + float2(0.75, 0.0)) - distanceToEdge(p - float2(0.75, 0.0)),
         distanceToEdge(p + float2(0.0, 0.75)) - distanceToEdge(p - float2(0.0, 0.75))
     );
-    float2 normal = gradient / max(length(gradient), 0.001);
-    float edge = 1.0 - smoothstep(0.0, band, max(-d, 0.0));
-    float2 samplePoint = mix(p, unwarp(p), warpContent * 0.65) - normal * amount * edge * edge;
+    float gradientLength = max(length(gradient), 0.001);
+    float2 normal = gradient / gradientLength;
+    // Correct the distance for the narrowing neck so the lens keeps a stable
+    // thickness as the outline stretches. At rest this is the rounded-rect SDF.
+    float depth = max(-d * 1.5 / gradientLength, 0.0);
+    float edge = 1.0 - smoothstep(0.0, band, depth);
+    // A circular cross-section produces the pronounced compression at the rim
+    // used by the other liquid-glass controls. It remains present when settled.
+    float rim = clamp(1.0 - depth / band, 0.0, 1.0);
+    float lens = 1.0 - sqrt(max(1.0 - rim * rim, 0.0));
+    float displacement = mix(edge * edge, lens, surfaceLens);
+    float2 samplePoint = mix(p, unwarp(p), warpContent * 0.65) - normal * amount * displacement;
     return content.eval(samplePoint + padding);
 }
 """

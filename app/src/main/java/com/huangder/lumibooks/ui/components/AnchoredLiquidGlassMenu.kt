@@ -98,6 +98,9 @@ import com.huangder.lumibooks.domain.model.MenuAnimationStyle
 import com.huangder.lumibooks.ui.theme.LocalMenuAnimationStyle
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.rememberBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.pow
@@ -528,6 +531,15 @@ fun LiquidGlassMenuHost(
     var animationVelocity by remember { mutableFloatStateOf(0f) }
     val fade = remember { Animatable(0f) }
     val activeMenu = hostState.activeMenu
+    // Menus need the visible page (covers, text and controls), not only Lumi's artwork.
+    // Keep this capture private: descendants retain their existing backdrop and cannot
+    // sample themselves. The menu overlay is a sibling, outside the recorded content.
+    val pageBackdrop = rememberLayerBackdrop()
+    val backgroundBackdrop = LocalLumiBackgroundBackdrop.current ?: backdrop
+    val menuBackdrop = if (backgroundBackdrop != null) {
+        rememberCombinedBackdrop(backgroundBackdrop, pageBackdrop)
+    } else pageBackdrop
+    val capturePage = liquidTheme && (activeMenu != null || hostState.displayedMenu != null)
     var hostWindowBounds by remember { mutableStateOf(Rect.Zero) }
     var hostRootOrigin by remember { mutableStateOf(Offset.Zero) }
 
@@ -609,7 +621,10 @@ fun LiquidGlassMenuHost(
                     hostRootOrigin = it.boundsInRoot().topLeft
                 }
             ) {
-                content()
+                Box(
+                    Modifier.fillMaxSize().then(if (capturePage) Modifier.layerBackdrop(pageBackdrop) else Modifier),
+                    content = content
+                )
                 val menu = hostState.displayedMenu
                 if (menu != null) {
                     val density = LocalDensity.current
@@ -651,7 +666,7 @@ fun LiquidGlassMenuHost(
                                 safeBottom = safeBottom,
                                 motionEnabled = motionEnabled,
                                 menuStyle = displayedStyle,
-                                backdrop = backdrop
+                                backdrop = menuBackdrop
                             )
                         }
                         if (source?.kind == LiquidGlassMenuAnchorKind.Standalone) {
@@ -723,7 +738,8 @@ private fun AnchoredLiquidGlassMenu(
     val isDark = LocalIsDarkTheme.current
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !spec.forceSolid
     val normalMotion = menuStyle == MenuAnimationStyle.NORMAL
-    val droplet = !normalMotion && isLiquidGlass && LocalLiquidGlassCapability.current.supported && source != null
+    val glassSurface = isLiquidGlass && LocalLiquidGlassCapability.current.supported
+    val droplet = !normalMotion && glassSurface && source != null
     val layoutDirection = LocalLayoutDirection.current
     val continuous = source != null
     val embedded = source?.kind == LiquidGlassMenuAnchorKind.Embedded
@@ -781,8 +797,7 @@ private fun AnchoredLiquidGlassMenu(
     val backdropBase = spec.surfaceColor.takeOrElse { AppColors.WindowBg }.copy(alpha = 1f)
     // Partial page captures can have transparent regions, including beyond a list's bounds.
     // Complete the sampled surface before lens/blur so those regions cannot form a rectangle.
-    val activeBackdrop = LocalLumiBackgroundBackdrop.current ?: backdrop
-    val menuBackdrop = activeBackdrop?.let {
+    val menuBackdrop = backdrop?.let {
         rememberBackdrop(it) { drawCapturedBackdrop ->
             drawRect(backdropBase)
             drawCapturedBackdrop()
@@ -833,9 +848,12 @@ private fun AnchoredLiquidGlassMenu(
                 }
             }
     ) {
-        if (frame != null) {
+        if (glassSurface) {
             LiquidMenuSurface(
-                frame = frame, shape = shape, backdrop = menuBackdrop,
+                // Animation style changes motion only; ordinary and unanchored
+                // menus retain the same settled glass lens as the liquid morph.
+                frame = frame ?: LiquidMenuFrame(rect, radiusPx, 0f, 0f, 0f, 0f),
+                shape = shape, backdrop = menuBackdrop,
                 baseColor = color, isDark = isDark, transparency = transparency,
                 modifier = Modifier.matchParentSize().graphicsLayer { this.alpha = 1f - sourceAlpha }
             )

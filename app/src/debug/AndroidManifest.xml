@@ -2,6 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
         <activity
+            android:name=".debug.GlassControlEdgePreviewActivity"
+            android:exported="true"
+            android:theme="@style/Theme.EBookReader" />
+        <activity
             android:name=".debug.MenuMotionPreviewActivity"
             android:exported="true"
             android:theme="@style/Theme.EBookReader" />

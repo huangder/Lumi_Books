@@ -17,7 +17,8 @@ import com.kyant.backdrop.effects.blur
 @Composable
 fun Modifier.lumiCardSurface(
     color: Color = AppColors.CardBg,
-    shape: Shape = RectangleShape
+    shape: Shape = RectangleShape,
+    controlEdge: Boolean = false
 ): Modifier {
     val backdrop = LocalLumiBackgroundBackdrop.current ?: return background(color, shape)
     val tint = if (LocalIsDarkTheme.current) Color(0xFF151518).copy(alpha = 0.42f)
@@ -28,5 +29,9 @@ fun Modifier.lumiCardSurface(
         effects = { blur(8.dp.toPx()) },
         highlight = null,
         onDrawSurface = { drawRect(tint) }
-    ).border(0.5.dp, Color.White.copy(alpha = 0.38f), shape)
+    ).then(
+        if (controlEdge) Modifier.liquidGlassControlEdge(
+            shape, color, LocalIsDarkTheme.current, LocalLiquidGlassControlEdgeForceCanvas.current
+        ) else Modifier.border(0.5.dp, Color.White.copy(alpha = 0.38f), shape)
+    )
 }

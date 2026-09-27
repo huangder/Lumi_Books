@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -582,6 +583,10 @@ fun MainNavGraph(
     // 监听路由变化，从阅读页/设置页返回时延迟显示 TabBar
     val currentEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentEntry?.destination?.route
+    val visibleEntries by navController.visibleEntries.collectAsState()
+    val canCaptureNavigationBackdrop = navigationBackdropCaptureAllowed(
+        currentRoute, visibleEntries.map { it.destination.route }
+    )
     var lastMainRoute by rememberSaveable {
         mutableStateOf(if (requestedOpenBookshelf) Screen.Bookshelf.route else mainStartDestination)
     }
@@ -659,13 +664,13 @@ fun MainNavGraph(
     LiquidGlassMenuHost(
         modifier = Modifier.fillMaxSize(),
         backdrop = liquidGlassBackdrop.takeIf {
-            isLiquidGlass && currentRoute != Screen.Reader.route
+            isLiquidGlass && canCaptureNavigationBackdrop
         }
     ) {
         LiquidGlassDialogHost(
             modifier = Modifier.fillMaxSize(),
             backdrop = liquidGlassBackdrop.takeIf {
-                isLiquidGlass && currentRoute != Screen.Reader.route
+                isLiquidGlass && canCaptureNavigationBackdrop
             }
         ) {
         ConfigurableNavigationBack(
@@ -681,9 +686,9 @@ fun MainNavGraph(
                 modifier = Modifier
                     .fillMaxSize()
                     .then(
-                        if (isLiquidGlass && !isLumiChan && currentRoute != Screen.Reader.route) {
+                        if (canCaptureNavigationBackdrop && isLiquidGlass && !isLumiChan) {
                             Modifier.layerBackdrop(liquidGlassBackdrop)
-                        } else if (!eInkMode) {
+                        } else if (canCaptureNavigationBackdrop && !eInkMode) {
                             Modifier.haze(hazeState)
                         } else {
                             Modifier
