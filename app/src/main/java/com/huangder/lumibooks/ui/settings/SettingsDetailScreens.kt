@@ -1920,7 +1920,8 @@ private val EInkSegmentGrays = listOf(
     Color(0xFF444444),
     Color(0xFF666666),
     Color(0xFF888888),
-    Color(0xFFABABAB)
+    Color(0xFFABABAB),
+    Color(0xFFC8C8C8)
 )
 
 /** 格式标签颜色 */
@@ -1958,14 +1959,16 @@ fun StorageDetail(viewModel: SettingsViewModel, onOpenBooks: () -> Unit) {
         stringResource(R.string.storage_cache),
         stringResource(R.string.storage_tts_short),
         stringResource(R.string.storage_books),
-        stringResource(R.string.storage_covers)
+        stringResource(R.string.storage_covers),
+        stringResource(R.string.dictionary_title)
     )
     val categoryBytes = listOf(
         info.appSizeBytes,
         info.cacheSizeBytes,
         info.externalTtsCacheSizeBytes,
         info.booksSizeBytes,
-        info.coversSizeBytes
+        info.coversSizeBytes,
+        info.dictionarySizeBytes
     )
     val displayColors = if (LocalEInkMode.current) {
         EInkSegmentGrays
@@ -1975,7 +1978,8 @@ fun StorageDetail(viewModel: SettingsViewModel, onOpenBooks: () -> Unit) {
             Color(0xFF8A909E),
             Color(0xFF3B91E8),
             Color(0xFF31C58B),
-            Color(0xFFFFB23F)
+            Color(0xFFFFB23F),
+            Color(0xFF9B76C8)
         )
     }
 

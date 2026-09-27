@@ -266,6 +266,12 @@ fun ThirdPartyServicesDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
 
+    CategoryItem(icon = AppIcons.BookOpen, label = stringResource(R.string.dictionary_title),
+        supportingText = stringResource(R.string.dictionary_management_intro)) {
+        com.huangder.lumibooks.dictionary.openDictionarySettings(context)
+    }
+    Spacer(Modifier.height(AppSpace.sm))
+
     CategoryItem(
         icon = AppIcons.Cloud,
         label = stringResource(R.string.category_mineru),

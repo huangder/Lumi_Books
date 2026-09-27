@@ -74,6 +74,7 @@ class SettingsViewModel @Inject constructor(
     private val webdavTokenStore: com.huangder.lumibooks.data.local.WebdavTokenStore,
     private val floatingSubtitleOverlayController: FloatingSubtitleOverlayController,
     private val backupArchiveManager: BackupArchiveManager,
+    private val dictionaryRepository: com.huangder.lumibooks.dictionary.DictionaryRepository,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -972,6 +973,7 @@ class SettingsViewModel @Inject constructor(
     fun clearAllData() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                dictionaryRepository.clearAll()
                 // 清除缓存
                 context.cacheDir.deleteRecursively()
                 // 清除内部存储（保留头像）
@@ -1025,6 +1027,7 @@ class SettingsViewModel @Inject constructor(
 
             val cacheSize = getDirSize(context.cacheDir)
             val filesSize = getDirSize(context.filesDir)
+            val dictionarySize = dictionaryRepository.sizeBytes()
             val externalTtsCacheSize = externalTtsAudioCache.sizeBytes()
             val genericCacheSize = (cacheSize + filesSize - externalTtsCacheSize).coerceAtLeast(0L)
             val coversDirSize = getDirSize(FileUtils.getCoversDirectory(context))
@@ -1046,6 +1049,7 @@ class SettingsViewModel @Inject constructor(
             _uiState.update { state ->
                 state.copy(
                     storageInfo = StorageInfo(
+                        dictionarySizeBytes = dictionarySize,
                         isCalculating = false,
                         appSizeBytes = appSize,
                         cacheSizeBytes = genericCacheSize,

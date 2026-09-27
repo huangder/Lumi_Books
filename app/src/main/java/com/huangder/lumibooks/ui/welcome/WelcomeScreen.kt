@@ -736,6 +736,7 @@ private fun ThemeSwitchOverlay(
                 LocalLiquidGlassTransparency provides 0.65f
             ) {
                 LiquidGlassSurface(
+                    controlEdge = true,
                     shape = RoundedCornerShape(28.dp),
                     fallbackColor = Color.White,
                     contentScrimColor = Color.White.copy(alpha = 0.38f),
@@ -791,6 +792,7 @@ private fun WelcomeActionButton(
                 }
             } else {
                 LiquidGlassSurface(
+                    controlEdge = true,
                     shape = shape,
                     fallbackColor = if (primary) AccentColor else AppColors.CardBg,
                     contentScrimColor = if (primary) {
@@ -1316,6 +1318,7 @@ private fun SupportWelcomeButton(
         LocalLiquidGlassTransparency provides 0.65f
     ) {
         LiquidGlassSurface(
+            controlEdge = true,
             shape = shape,
             fallbackColor = glassColor,
             contentScrimColor = scrimColor,

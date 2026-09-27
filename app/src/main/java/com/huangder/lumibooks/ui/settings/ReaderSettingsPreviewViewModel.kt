@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
@@ -13,11 +14,17 @@ import com.huangder.lumibooks.domain.model.ReaderLayoutTarget
 import com.huangder.lumibooks.domain.model.ReaderThemeSettings
 import com.huangder.lumibooks.domain.model.ReaderThemeSuite
 import com.huangder.lumibooks.domain.model.ReaderThemeSuites
+import com.huangder.lumibooks.domain.model.LumiThemeBundleCodec
 import com.huangder.lumibooks.util.ReaderBackgroundImageProcessor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
+import java.io.OutputStreamWriter
+import java.nio.charset.StandardCharsets
 import java.util.UUID
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import org.json.JSONObject
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -41,13 +48,19 @@ data class ReaderSettingsPreviewUiState(
     val eInkMode: Boolean = false,
     /** Which layout bucket the editor is touching. */
     val editingLayout: ReaderLayoutTarget = ReaderLayoutTarget.READER_LAYOUT
+    , val editingDark: Boolean = false
 ) {
     val editingSuite: ReaderThemeSuite?
         get() = suites.firstOrNull { it.id == editingSuiteId }
 
     val editingSettings: ReaderThemeSettings?
-        get() = editingSuite?.settingsFor(editingLayout)
+        get() = editingSuite?.settingsFor(editingLayout, editingDark)
 }
+
+data class ReaderThemeImportReport(
+    val importedCount: Int,
+    val missingBackgroundImages: List<String> = emptyList()
+)
 
 @HiltViewModel
 class ReaderSettingsPreviewViewModel @Inject constructor(
@@ -121,6 +134,10 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
         _uiState.update { it.copy(editingLayout = layout) }
     }
 
+    fun selectEditingMode(dark: Boolean) {
+        _uiState.update { it.copy(editingDark = dark) }
+    }
+
     fun createTheme(name: String) {
         val normalized = name.trim()
         if (normalized.isBlank()) return
@@ -142,7 +159,10 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
         _uiState.update { state ->
             state.copy(
                 suites = state.suites.map { suite ->
-                    if (suite.id == suiteId) suite.withSettings(layout, settings) else suite
+                    if (suite.id == suiteId) {
+                        if (layout == ReaderLayoutTarget.READER_LAYOUT) suite.withModeSettings(_uiState.value.editingDark, settings)
+                        else suite.withSettings(layout, settings)
+                    } else suite
                 }
             )
         }
@@ -162,7 +182,7 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
             }
             val latestSuite = _uiState.value.suites.firstOrNull { it.id == suiteId }
             if (_uiState.value.editingSuiteId != suiteId ||
-                latestSuite?.settingsFor(layout) != settings
+                latestSuite?.settingsFor(layout, _uiState.value.editingDark) != settings
             ) {
                 return@launch
             }
@@ -170,7 +190,12 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
                 dataStoreManager.saveCustomReaderBackgrounds(backgrounds)
                 _uiState.update { it.copy(backgrounds = backgrounds) }
             }
-            dataStoreManager.updateReaderThemeSuite(suiteId, layout, settings)
+            dataStoreManager.updateReaderThemeSuite(
+                suiteId,
+                layout,
+                settings,
+                modeDark = _uiState.value.editingDark.takeIf { layout == ReaderLayoutTarget.READER_LAYOUT }
+            )
         }
     }
 
@@ -215,6 +240,293 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
 
     fun setActiveTheme(suiteId: String) {
         viewModelScope.launch { dataStoreManager.setActiveReaderThemeSuite(suiteId) }
+    }
+
+    fun exportThemeBundle(uri: Uri, suiteId: String, onResult: (Result<Unit>) -> Unit = {}) {
+        val suite = _uiState.value.suites.firstOrNull { it.id == suiteId }
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                requireNotNull(suite) { "Theme no longer exists" }
+                context.contentResolver.openOutputStream(uri)?.use { output ->
+                    OutputStreamWriter(output, Charsets.UTF_8).use { writer ->
+                        writer.write(LumiThemeBundleCodec.encode(listOf(suite)))
+                    }
+                } ?: error("Unable to open export file")
+            }
+            withContext(Dispatchers.Main.immediate) { onResult(result) }
+        }
+    }
+
+    fun importThemeBundle(uri: Uri, onResult: (Result<ReaderThemeImportReport>) -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            var stagedDirectory: File? = null
+            val previousBackgrounds = _uiState.value.backgrounds
+            val previousFonts = _uiState.value.customFonts
+            val missingBackgroundImages = linkedSetOf<String>()
+            val result: Result<Int> = try {
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    ?: error("Unable to open theme file")
+                val imported = decodeThemeInput(
+                    bytes,
+                    onStagedDirectory = { directory -> stagedDirectory = directory },
+                    onMissingBackgroundImage = { imageName -> missingBackgroundImages += imageName }
+                )
+                require(imported.isNotEmpty()) { "Theme bundle is empty" }
+                // The external ZIP importer persists image/font assets before returning. Wait
+                // until every custom selection referenced by the imported light/dark settings
+                // is visible in DataStore before publishing the suite to the editor. A plain
+                // first() can observe the collector's initial value and make the preview render
+                // the day fallback while the image presets are still being persisted.
+                val requiredBackgroundKeys = imported
+                    .flatMap { suite ->
+                        buildList {
+                            add(suite.settings)
+                            suite.lightSettings?.let(::add)
+                            suite.darkSettings?.let(::add)
+                            add(suite.bookLayoutSettings)
+                        }
+                    }
+                    .flatMap { settings ->
+                        listOf(settings.backgroundSelection, settings.backgroundColorSelection)
+                    }
+                    .filter { it.startsWith("custom:") }
+                    .toSet()
+                val persistedBackgrounds = if (stagedDirectory != null) {
+                    dataStoreManager.customReaderBackgrounds.first { backgrounds ->
+                        requiredBackgroundKeys.all { key -> backgrounds.any { it.selectionKey == key } }
+                    }
+                } else {
+                    // A JSON-only LUMI export may intentionally reference no local assets.
+                    // Do not wait forever for custom presets that the file does not contain.
+                    dataStoreManager.customReaderBackgrounds.first()
+                }
+                val persistedFonts = dataStoreManager.customFonts.first()
+                val state = _uiState.value.copy(
+                    backgrounds = persistedBackgrounds,
+                    customFonts = persistedFonts
+                )
+                val existingIds = state.suites.mapTo(mutableSetOf()) { it.id }
+                val existingNames = state.suites.mapNotNull { it.customName }.mapTo(mutableSetOf()) { it.lowercase() }
+                val copies = imported.map { suite ->
+                    val baseName = suite.customName?.takeIf(String::isNotBlank) ?: "LUMI Theme"
+                    var name = baseName
+                    var suffix = 1
+                    while (name.lowercase() in existingNames) {
+                        name = if (suffix == 1) context.getString(R.string.theme_bundle_copy_name, baseName)
+                        else context.getString(R.string.theme_bundle_copy_name_number, baseName, suffix)
+                        suffix++
+                    }
+                    existingNames += name.lowercase()
+                    var id = UUID.randomUUID().toString()
+                    while (!existingIds.add(id)) id = UUID.randomUUID().toString()
+                    suite.copy(id = id, customName = name)
+                }
+                val merged = ReaderThemeSuites.normalized(state.suites + copies)
+                dataStoreManager.saveReaderThemeSuiteState(merged, state.activeSuiteId, applyActiveSuite = false)
+                _uiState.value = state.copy(suites = merged)
+                Result.success(copies.size)
+            } catch (error: Throwable) {
+                // External bundles may have staged their assets before the theme
+                // state is written. Restore the previous lists if any later step
+                // fails so a rejected file cannot leave partial preferences.
+                runCatching { dataStoreManager.saveCustomReaderBackgrounds(previousBackgrounds) }
+                runCatching { dataStoreManager.saveCustomFonts(previousFonts) }
+                _uiState.update { it.copy(backgrounds = previousBackgrounds, customFonts = previousFonts) }
+                Result.failure(error)
+            }
+            if (result.isFailure) {
+                stagedDirectory?.deleteRecursively()
+            }
+            val reportResult = result.map { ReaderThemeImportReport(it, missingBackgroundImages.toList()) }
+            withContext(Dispatchers.Main.immediate) { onResult(reportResult) }
+        }
+    }
+
+    /**
+     * Accepts our portable LUMI JSON and ZIP files, plus the common external
+     * reader theme ZIP shape (`readConfig.json` + image/font resources).
+     */
+    private suspend fun decodeThemeInput(
+        bytes: ByteArray,
+        onStagedDirectory: (File) -> Unit,
+        onMissingBackgroundImage: (String) -> Unit
+    ): List<ReaderThemeSuite> {
+        val text = bytes.toString(StandardCharsets.UTF_8)
+        if (text.trimStart().startsWith("{") || text.trimStart().startsWith("[")) {
+            return LumiThemeBundleCodec.decode(text)
+        }
+
+        val entries = linkedMapOf<String, ByteArray>()
+        ZipInputStream(bytes.inputStream().buffered()).use { zip ->
+            var entry: ZipEntry? = zip.nextEntry
+            while (entry != null) {
+                if (!entry!!.isDirectory) {
+                    val name = entry!!.name.replace('\\', '/')
+                    require(name.length <= 512) { "Invalid ZIP entry name" }
+                    val content = zip.readBytes()
+                    require(content.size <= MAX_THEME_ASSET_BYTES) { "Theme asset is too large" }
+                    entries[name] = content
+                }
+                zip.closeEntry()
+                entry = zip.nextEntry
+            }
+        }
+        require(entries.isNotEmpty()) { "Theme ZIP is empty" }
+
+        val lumiJson = entries.entries.firstOrNull { (name, content) ->
+            name.substringAfterLast('/').equals("lumi-theme.json", ignoreCase = true) ||
+                name.substringAfterLast('/').equals("lumi-theme-bundle.json", ignoreCase = true) ||
+                (name.lowercase().endsWith(".json") &&
+                    content.toString(StandardCharsets.UTF_8).contains("\"lumi-theme-bundle\""))
+        }?.value
+        if (lumiJson != null) {
+            return LumiThemeBundleCodec.decode(lumiJson.toString(StandardCharsets.UTF_8))
+        }
+
+        val configEntry = entries.entries.firstOrNull {
+            it.key.substringAfterLast('/').equals("readConfig.json", ignoreCase = true)
+        } ?: error("ZIP 中未找到 LUMI 主题文件或 readConfig.json")
+        val stage = File(context.filesDir, "theme_imports/${UUID.randomUUID()}").apply { mkdirs() }
+        onStagedDirectory(stage)
+        return importExternalThemeZip(
+            JSONObject(configEntry.value.toString(StandardCharsets.UTF_8)),
+            entries,
+            stage,
+            onMissingBackgroundImage
+        )
+    }
+
+    private suspend fun importExternalThemeZip(
+        config: JSONObject,
+        entries: Map<String, ByteArray>,
+        stage: File,
+        onMissingBackgroundImage: (String) -> Unit
+    ): List<ReaderThemeSuite> {
+        // The settings screen collector can lag behind a previous import or a change made
+        // elsewhere in the app. Read the durable lists first so this import appends resources
+        // instead of replacing them with a stale UI snapshot.
+        val backgrounds = dataStoreManager.customReaderBackgrounds.first().toMutableList()
+        val fonts = dataStoreManager.customFonts.first().toMutableList()
+        val assetLookup = entries.entries.associateBy { it.key.substringAfterLast('/').lowercase() }
+        val sharedFontType = config.optString("textFont").takeIf { it.isNotBlank() }?.let { fontName ->
+            val asset = assetLookup[fontName.substringAfterLast('/').lowercase()]
+                ?: error("ZIP 中未找到字体文件：$fontName")
+            val id = UUID.randomUUID().toString().replace("-", "").take(12)
+            val extension = fontName.substringAfterLast('.').lowercase().takeIf { it.length in 2..5 } ?: "ttf"
+            val target = File(stage, "font_$id.$extension")
+            target.writeBytes(asset.value)
+            val preset = CustomFontPreset(id = id, path = target.absolutePath, name = fontName.substringAfterLast('/'))
+            fonts += preset
+            "custom:$id"
+        } ?: "system"
+
+        fun settingsFor(dark: Boolean): ReaderThemeSettings {
+            val imageName = config.optString(if (dark) "bgStrNight" else "bgStr")
+            val bgType = config.optInt(if (dark) "bgTypeNight" else "bgType", config.optInt("bgType", 0))
+            val imageKey = imageName.substringAfterLast('/').lowercase()
+            // The common readConfig format uses 1 for an image background. Some
+            // exporters use 2, so retain that compatibility too. A filename
+            // extension is also enough to recognize an image when the type flag
+            // is missing or incorrect.
+            val isImage = bgType == 1 || bgType == 2 ||
+                assetLookup.containsKey(imageKey) ||
+                imageKey.substringAfterLast('.', "").lowercase() in setOf(
+                    "jpg", "jpeg", "png", "webp", "gif", "bmp"
+                )
+            val textColor = parseExternalColor(
+                config.optString(if (dark) "textColorNight" else "textColor")
+            )
+            val opacity = (config.optDouble("bgAlpha", 100.0) / 100.0).toFloat().coerceIn(0f, 1f)
+            val base = if (isImage) {
+                val asset = assetLookup[imageKey]
+                if (asset == null) {
+                    if (imageName.isNotBlank()) onMissingBackgroundImage(imageName)
+                    // Keep the theme import usable when an exporter omitted its
+                    // referenced image. Both light and dark modes use LUMI's
+                    // default daytime background in this case.
+                    ReaderThemeSuites.DAY_ID to ReaderThemeSuites.DAY_ID
+                } else {
+                val imageId = UUID.randomUUID().toString()
+                val extension = imageName.substringAfterLast('.').lowercase().takeIf { it.length in 2..5 } ?: "jpg"
+                val target = File(stage, "background_$imageId.$extension")
+                target.writeBytes(asset.value)
+                val imagePreset = ReaderBackgroundPreset(
+                    id = imageId,
+                    type = ReaderBackgroundType.IMAGE,
+                    value = target.absolutePath,
+                    name = imageName.substringAfterLast('/')
+                )
+                backgrounds += imagePreset
+                val fallbackId = UUID.randomUUID().toString()
+                val fallbackColor = if (dark) {
+                    parseExternalColor(config.optString("bgStrEInk")) ?: 0xFF1A1A1A.toInt()
+                } else {
+                    0xFFFBFBFC.toInt()
+                }
+                backgrounds += ReaderBackgroundPreset(
+                    id = fallbackId,
+                    type = ReaderBackgroundType.COLOR,
+                    value = String.format("#%08X", fallbackColor),
+                    name = "${imageName.substringAfterLast('/')} fallback"
+                )
+                imagePreset.selectionKey to "custom:$fallbackId"
+                }
+            } else {
+                val color = parseExternalColor(imageName)
+                    ?: if (dark) 0xFF1A1A1A.toInt() else 0xFFFBFBFC.toInt()
+                val colorId = UUID.randomUUID().toString()
+                backgrounds += ReaderBackgroundPreset(
+                    id = colorId,
+                    type = ReaderBackgroundType.COLOR,
+                    value = String.format("#%08X", color),
+                    name = if (dark) "Imported dark" else "Imported light"
+                )
+                "custom:$colorId" to "custom:$colorId"
+            }
+            val (backgroundSelection, backgroundColorSelection) = base
+            return ReaderThemeSettings(
+                backgroundSelection = backgroundSelection,
+                backgroundColorSelection = backgroundColorSelection,
+                backgroundImageOpacity = opacity,
+                textColor = textColor,
+                fontSize = config.optDouble("textSize", 16.0).toFloat(),
+                fontType = sharedFontType,
+                bodyFontWeight = config.optInt("textBold", 400).coerceIn(100, 900),
+                lineHeight = (1.35f + config.optDouble("lineSpacingExtra", 0.0).toFloat() /
+                    config.optDouble("textSize", 16.0).toFloat().coerceAtLeast(1f)).coerceIn(1f, 2.5f),
+                letterSpacing = config.optDouble("letterSpacing", 0.0).toFloat(),
+                paragraphSpacing = config.optDouble("paragraphSpacing", 2.0).toFloat(),
+                firstLineIndent = if (config.optString("paragraphIndent").isNotBlank()) 2f else 0f,
+                marginLeft = config.optDouble("paddingLeft", 38.0).toFloat(),
+                marginRight = config.optDouble("paddingRight", 38.0).toFloat(),
+                marginTop = config.optDouble("paddingTop", 64.0).toFloat(),
+                marginBottom = config.optDouble("paddingBottom", 64.0).toFloat()
+            )
+        }
+
+        val light = settingsFor(dark = false)
+        val dark = settingsFor(dark = true)
+        dataStoreManager.saveCustomReaderBackgrounds(backgrounds)
+        dataStoreManager.saveCustomFonts(fonts)
+        _uiState.update { it.copy(backgrounds = backgrounds, customFonts = fonts) }
+        return listOf(
+            ReaderThemeSuite(
+                id = UUID.randomUUID().toString(),
+                customName = config.optString("name").trim().ifBlank { "Imported theme" },
+                settings = light,
+                lightSettings = light,
+                darkSettings = dark
+            )
+        )
+    }
+
+    private fun parseExternalColor(value: String): Int? {
+        val candidate = value.trim().takeIf { it.isNotBlank() } ?: return null
+        return runCatching { android.graphics.Color.parseColor(candidate) }.getOrNull()
+    }
+
+    private companion object {
+        const val MAX_THEME_ASSET_BYTES = 32 * 1024 * 1024
     }
 
     fun setAnimationMode(mode: String) {
@@ -264,10 +576,15 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
             dataStoreManager.saveCustomReaderBackgrounds(state.backgrounds + preset)
             val suite = state.suites.firstOrNull { it.id == suiteId } ?: return@launch
             val layout = state.editingLayout
+            val currentSettings = suite.settingsFor(
+                layout,
+                state.editingDark
+            )
             dataStoreManager.updateReaderThemeSuite(
                 suiteId,
                 layout,
-                suite.settingsFor(layout).copy(backgroundSelection = preset.selectionKey)
+                currentSettings.copy(backgroundSelection = preset.selectionKey),
+                modeDark = state.editingDark.takeIf { layout == ReaderLayoutTarget.READER_LAYOUT }
             )
         }
     }
@@ -276,17 +593,23 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
         val state = _uiState.value
         val suite = state.editingSuite ?: return
         val layout = state.editingLayout
+        val suiteSettings = suite.settingsFor(layout, state.editingDark)
         val preset = _uiState.value.backgrounds.firstOrNull {
-            it.selectionKey == suite.settingsFor(layout).backgroundSelection
+            it.selectionKey == suiteSettings.backgroundSelection
         }
-        val currentSettings = suite.settingsFor(layout)
+        val currentSettings = suiteSettings
         val updatedSettings = currentSettings.copy(
             backgroundSelection = currentSettings.backgroundColorSelection,
             backgroundImageOpacity = 1f,
             backgroundImageBlurDp = 0f
         )
         viewModelScope.launch {
-            dataStoreManager.updateReaderThemeSuite(suite.id, layout, updatedSettings)
+            dataStoreManager.updateReaderThemeSuite(
+                suite.id,
+                layout,
+                updatedSettings,
+                modeDark = state.editingDark.takeIf { layout == ReaderLayoutTarget.READER_LAYOUT }
+            )
             val usedByAnotherSuite = preset != null && _uiState.value.suites.any {
                 it.id != suite.id && ReaderLayoutTarget.entries.any { target ->
                     it.settingsFor(target).backgroundSelection == preset.selectionKey
@@ -352,7 +675,7 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
         val state = _uiState.value
         val suite = state.editingSuite ?: return
         val layout = state.editingLayout
-        val currentSettings = suite.settingsFor(layout)
+        val currentSettings = suite.settingsFor(layout, state.editingDark)
         val currentIsImage = _uiState.value.backgrounds.any {
             it.selectionKey == currentSettings.backgroundSelection &&
                 it.type == ReaderBackgroundType.IMAGE
@@ -368,7 +691,13 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
         _uiState.update { state ->
             state.copy(
                 suites = state.suites.map {
-                    if (it.id == suite.id) it.withSettings(layout, updatedSettings) else it
+                    if (it.id == suite.id) {
+                        if (layout == ReaderLayoutTarget.READER_LAYOUT) {
+                            it.withModeSettings(state.editingDark, updatedSettings)
+                        } else {
+                            it.withSettings(layout, updatedSettings)
+                        }
+                    } else it
                 }
             )
         }
@@ -376,7 +705,8 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
             dataStoreManager.updateReaderThemeSuite(
                 suite.id,
                 layout,
-                updatedSettings
+                updatedSettings,
+                modeDark = state.editingDark.takeIf { layout == ReaderLayoutTarget.READER_LAYOUT }
             )
         }
     }

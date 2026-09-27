@@ -15,6 +15,7 @@ data class BookSizeItem(
 
 /** 存储空间分解数据 */
 data class StorageInfo(
+    val dictionarySizeBytes: Long = 0,
     val isCalculating: Boolean = true,
     val appSizeBytes: Long = 0,
     val cacheSizeBytes: Long = 0,

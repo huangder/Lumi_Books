@@ -125,6 +125,9 @@ class DetailActivity : ComponentActivity() {
                         "third_party_services" -> DetailPage(stringResource(R.string.title_third_party_services), onBack) {
                             ThirdPartyServicesDetail(viewModel)
                         }
+                        "local_dictionaries" -> DetailPage(stringResource(R.string.dictionary_title), onBack) {
+                            com.huangder.lumibooks.dictionary.LocalDictionarySettings()
+                        }
                         "mineru" -> DetailPage(stringResource(R.string.title_mineru), onBack) { MineruSettingsDetail(viewModel) }
                         "external_tts" -> DetailPage(stringResource(R.string.title_external_tts), onBack) {
                             ExternalTtsSettingsDetail(viewModel) {
