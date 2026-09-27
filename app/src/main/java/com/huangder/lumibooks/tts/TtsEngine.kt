@@ -21,6 +21,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import java.io.File
+import java.io.IOException
 import java.util.Locale
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -43,10 +45,11 @@ sealed class SystemTtsException(message: String, cause: Throwable? = null) :
     class EngineUnavailable(val packageName: String) :
         SystemTtsException("Android TTS engine is unavailable: $packageName")
 
-    class Playback(val errorCode: Int? = null) :
+    class Playback(val errorCode: Int? = null, cause: Throwable? = null) :
         SystemTtsException(
             if (errorCode == null) "System TTS playback failed"
-            else "System TTS playback failed: $errorCode"
+            else "System TTS playback failed: $errorCode",
+            cause
         )
 
     class ProsodyRejected(
@@ -78,6 +81,19 @@ class TtsEngine(
     private var initializedRequestPackageName: String? = null
     private var selectedLocale: Locale? = null
     private var utteranceListener: UtteranceProgressListener? = null
+    private val localAudioPlayer = SystemTtsAudioPlayer()
+    private var activeUtteranceId: String? = null
+    private var activeSynthesisFile: File? = null
+    private var activeSynthesisGeneration = 0L
+    private var activeAudioReceived = false
+    private var activeSynthesisFinished = false
+    private var activeLocalStarted = false
+    private var activePaused = false
+    private val pendingAudioChunks = ArrayList<ByteArray>()
+    private val pendingRanges = ArrayList<Triple<Int, Int, Int>>()
+    private var synthesisSampleRate = 0
+    private var synthesisAudioFormat = 0
+    private var synthesisChannels = 0
     private var pendingSpeechRate: Float? = null
     private var pendingPitch: Float? = null
     private val speechAudioAttributes = AudioAttributes.Builder()
@@ -301,10 +317,14 @@ class TtsEngine(
         }
     }
 
+    override val canResumeWithoutRestart: Boolean = true
+
     override suspend fun speak(text: String, utteranceId: String): Result<Unit> =
         withContext(Dispatchers.Main.immediate) {
             val activeEngine = engine
                 ?: return@withContext Result.failure(SystemTtsException.Initialization())
+
+            stopLocalSynthesis()
 
             val textLocale = if (TtsLocaleResolver.shouldManageLocale(requestedEnginePackageName)) {
                 TtsLocaleResolver.localeForText(text, Locale.getDefault())
@@ -321,7 +341,26 @@ class TtsEngine(
                     )
             }
 
-            val result = activeEngine.speak(text, TextToSpeech.QUEUE_FLUSH, Bundle(), utteranceId)
+            val outputFile = runCatching {
+                File.createTempFile("lumi-tts-", ".wav", appContext.cacheDir)
+            }.getOrElse { error ->
+                return@withContext Result.failure(SystemTtsException.Playback(cause = error))
+            }
+            val generation = ++activeSynthesisGeneration
+            activeUtteranceId = utteranceId
+            activeSynthesisFile = outputFile
+            activeAudioReceived = false
+            activeSynthesisFinished = false
+            activeLocalStarted = false
+            activePaused = false
+            pendingAudioChunks.clear()
+            pendingRanges.clear()
+            val result = activeEngine.synthesizeToFile(
+                text,
+                Bundle(),
+                outputFile,
+                utteranceId
+            )
             if (result == TextToSpeech.SUCCESS) {
                 Result.success(Unit)
             } else {
@@ -330,18 +369,27 @@ class TtsEngine(
                     "speak() rejected: result=$result package=${enginePackageName ?: "<default>"} " +
                         "locale=${selectedLocale?.toLanguageTag()} textLength=${text.length}"
                 )
+                if (generation == activeSynthesisGeneration) stopLocalSynthesis()
                 Result.failure(SystemTtsException.Playback(result))
             }
         }
 
     override suspend fun pause() {
-        stop()
+        withContext(Dispatchers.Main.immediate) {
+            if (activeUtteranceId == null) return@withContext
+            activePaused = true
+            localAudioPlayer.pause()
+        }
     }
 
-    override suspend fun resume(): Boolean = false
+    override suspend fun resume(): Boolean = withContext(Dispatchers.Main.immediate) {
+        if (activeUtteranceId == null) return@withContext false
+        activePaused = false
+        if (activeLocalStarted) localAudioPlayer.resume() else true
+    }
 
     override suspend fun stop() = withContext(Dispatchers.Main.immediate) {
-        engine?.stop()
+        stopLocalSynthesis()
         Unit
     }
 
@@ -412,34 +460,223 @@ class TtsEngine(
     }
 
     override fun setListener(listener: TtsPlaybackListener) {
+        playbackListener = listener
         utteranceListener = object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {
-                utteranceId?.let(listener::onStart)
+                // synthesizeToFile must never own the output stream. Local playback emits onStart.
             }
 
             override fun onDone(utteranceId: String?) {
-                utteranceId?.let(listener::onDone)
+                postSynthesisCallback {
+                    if (utteranceId == null || utteranceId != activeUtteranceId) return@postSynthesisCallback
+                    activeSynthesisFinished = true
+                    if (activeAudioReceived && !activeLocalStarted && synthesisSampleRate > 0 &&
+                        synthesisAudioFormat != 0 && synthesisChannels in 1..2 && pendingAudioChunks.isNotEmpty()
+                    ) {
+                        if (beginLocalPlayback(
+                                utteranceId,
+                                synthesisSampleRate,
+                                synthesisAudioFormat,
+                                synthesisChannels
+                            )
+                        ) {
+                            localAudioPlayer.finish()
+                        } else {
+                            failLocalSynthesis(utteranceId, IOException("Unable to initialize Lumi AudioTrack"))
+                        }
+                    } else if (!activeAudioReceived || !activeLocalStarted) {
+                        runCatching { playSynthesizedFile(utteranceId) }
+                            .onFailure { failLocalSynthesis(utteranceId, it) }
+                    } else {
+                        localAudioPlayer.finish()
+                    }
+                }
+            }
+
+            override fun onBeginSynthesis(
+                utteranceId: String?,
+                sampleRateInHz: Int,
+                audioFormat: Int,
+                channelCount: Int
+            ) {
+                postSynthesisCallback {
+                    if (utteranceId == null || utteranceId != activeUtteranceId) return@postSynthesisCallback
+                    synthesisSampleRate = sampleRateInHz
+                    synthesisAudioFormat = audioFormat
+                    synthesisChannels = channelCount
+                    if (pendingAudioChunks.isNotEmpty()) {
+                        if (!beginLocalPlayback(utteranceId, sampleRateInHz, audioFormat, channelCount)) {
+                            failLocalSynthesis(utteranceId, IOException("Unable to initialize Lumi AudioTrack"))
+                            return@postSynthesisCallback
+                        }
+                    }
+                }
+            }
+
+            override fun onAudioAvailable(utteranceId: String?, audio: ByteArray) {
+                postSynthesisCallback {
+                    if (utteranceId == null || utteranceId != activeUtteranceId || audio.isEmpty()) return@postSynthesisCallback
+                    activeAudioReceived = true
+                    if (!activeLocalStarted) {
+                        if (synthesisSampleRate <= 0 || synthesisAudioFormat == 0 || synthesisChannels <= 0) {
+                            pendingAudioChunks += audio.copyOf()
+                            return@postSynthesisCallback
+                        }
+                        if (!beginLocalPlayback(
+                                utteranceId,
+                                synthesisSampleRate,
+                                synthesisAudioFormat,
+                                synthesisChannels
+                            )
+                        ) {
+                            failLocalSynthesis(utteranceId, IOException("Unable to initialize Lumi AudioTrack"))
+                            return@postSynthesisCallback
+                        }
+                    }
+                    if (pendingAudioChunks.isNotEmpty()) {
+                        pendingAudioChunks.forEach(localAudioPlayer::append)
+                        pendingAudioChunks.clear()
+                    }
+                    localAudioPlayer.append(audio)
+                }
             }
 
             override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
-                utteranceId?.let { listener.onRangeStart(it, start, end) }
+                postSynthesisCallback {
+                    if (utteranceId == null || utteranceId != activeUtteranceId) return@postSynthesisCallback
+                    if (!activeLocalStarted) {
+                        pendingRanges += Triple(start, end, frame)
+                    } else {
+                        localAudioPlayer.scheduleRange(frame.toLong()) {
+                            playbackListener?.onRangeStart(utteranceId, start, end)
+                        }
+                    }
+                }
             }
 
             @Deprecated("Deprecated by Android")
             override fun onError(utteranceId: String?) {
-                utteranceId?.let { listener.onError(it, SystemTtsException.Playback()) }
+                postSynthesisCallback {
+                    utteranceId?.let { failLocalSynthesis(it, SystemTtsException.Playback()) }
+                }
             }
 
             override fun onError(utteranceId: String?, errorCode: Int) {
-                utteranceId?.let { listener.onError(it, SystemTtsException.Playback(errorCode)) }
+                postSynthesisCallback {
+                    utteranceId?.let { failLocalSynthesis(it, SystemTtsException.Playback(errorCode)) }
+                }
             }
         }
+        localAudioPlayer.setCallbacks(
+            onDone = {
+                val id = activeUtteranceId ?: return@setCallbacks
+                if (activeSynthesisFinished) {
+                    listener.onDone(id)
+                    stopLocalSynthesis(stopEngine = false)
+                }
+            },
+            onError = { error ->
+                val id = activeUtteranceId ?: return@setCallbacks
+                failLocalSynthesis(id, SystemTtsException.Playback(cause = error))
+            }
+        )
         utteranceListener?.let { progressListener ->
             engine?.setOnUtteranceProgressListener(progressListener)
         }
     }
 
+    /** TextToSpeech callbacks are not required to run on the main thread. Keep synthesis state
+     * and AudioTrack ownership serialized with pause/stop/speak commands. */
+    private fun postSynthesisCallback(callback: () -> Unit) {
+        mainHandler.post {
+            runCatching(callback).onFailure { error ->
+                val id = activeUtteranceId ?: return@onFailure
+                failLocalSynthesis(id, SystemTtsException.Playback(cause = error))
+            }
+        }
+    }
+
+    private fun beginLocalPlayback(
+        utteranceId: String,
+        sampleRate: Int,
+        encoding: Int,
+        channels: Int
+    ): Boolean {
+        if (utteranceId != activeUtteranceId) return false
+        val started = localAudioPlayer.begin(sampleRate, encoding, channels)
+        if (!started) return false
+        activeLocalStarted = true
+        if (activePaused) localAudioPlayer.pause()
+        notifyLocalStart(utteranceId)
+        pendingAudioChunks.forEach(localAudioPlayer::append)
+        pendingAudioChunks.clear()
+        pendingRanges.forEach { (start, end, frame) ->
+            localAudioPlayer.scheduleRange(frame.toLong()) {
+                playbackListener?.onRangeStart(utteranceId, start, end)
+            }
+        }
+        pendingRanges.clear()
+        return true
+    }
+
+    private fun notifyLocalStart(utteranceId: String) {
+        val callback = playbackListener ?: return
+        if (!activeLocalStarted || utteranceId != activeUtteranceId) return
+        callback.onStart(utteranceId)
+    }
+
+    private var playbackListener: TtsPlaybackListener? = null
+
+    private fun playSynthesizedFile(utteranceId: String) {
+        if (utteranceId != activeUtteranceId) return
+        val file = activeSynthesisFile ?: throw IOException("TTS synthesis did not produce a file")
+        val decoded = SystemTtsAudioDecoder.decode(
+            bytes = file.readBytes(),
+            fallbackSampleRate = synthesisSampleRate,
+            fallbackEncoding = synthesisAudioFormat,
+            fallbackChannels = synthesisChannels
+        )
+        if (decoded.pcm.isEmpty() || !beginLocalPlayback(
+                utteranceId,
+                decoded.sampleRate,
+                decoded.encoding,
+                decoded.channels
+            )
+        ) {
+            throw IOException("Unable to initialize Lumi AudioTrack")
+        }
+        localAudioPlayer.append(decoded.pcm)
+        localAudioPlayer.finish()
+        activeAudioReceived = true
+    }
+
+    private fun failLocalSynthesis(utteranceId: String, error: Throwable) {
+        if (utteranceId != activeUtteranceId) return
+        val callback = playbackListener
+        stopLocalSynthesis()
+        callback?.onError(utteranceId, error)
+    }
+
+    private fun stopLocalSynthesis(stopEngine: Boolean = true) {
+        activeSynthesisGeneration++
+        activeUtteranceId = null
+        localAudioPlayer.stop()
+        activeSynthesisFile?.delete()
+        activeSynthesisFile = null
+        activeAudioReceived = false
+        activeSynthesisFinished = false
+        activeLocalStarted = false
+        activePaused = false
+        pendingAudioChunks.clear()
+        pendingRanges.clear()
+        synthesisSampleRate = 0
+        synthesisAudioFormat = 0
+        synthesisChannels = 0
+        if (stopEngine) engine?.stop()
+    }
+
     private fun shutdownEngine() {
+        stopLocalSynthesis()
         engine?.shutdown()
         engine = null
         enginePackageName = null

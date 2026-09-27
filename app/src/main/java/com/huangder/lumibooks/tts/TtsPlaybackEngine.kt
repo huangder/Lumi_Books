@@ -7,6 +7,10 @@ package com.huangder.lumibooks.tts
 interface TtsPlaybackEngine {
     val isExternal: Boolean
 
+    /** True when pause/resume keeps the current utterance and its playback position. */
+    val canResumeWithoutRestart: Boolean
+        get() = false
+
     suspend fun initialize(): Result<Unit>
 
     suspend fun speak(text: String, utteranceId: String): Result<Unit>

@@ -373,7 +373,7 @@ class TtsController(
             }
             logTtsCommand("PAUSE", accepted = true)
             val engine = activeEngine
-            if (!engine.isExternal) activeUtteranceId = null
+            if (!engine.canResumeWithoutRestart) activeUtteranceId = null
             engine.pause()
             _playbackState.value = TtsPlaybackState.PAUSED
             logTtsEvent("state_changed", state = TtsPlaybackState.PAUSED)

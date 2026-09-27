@@ -41,6 +41,32 @@ class TtsControllerTest {
     }
 
     @Test
+    fun resumableAndroidEngineKeepsItsUtteranceAcrossPause() = runTest {
+        val main = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(main)
+        val engine = FakePlaybackEngine(canResumeWithoutRestart = true)
+        val controller = controller(engine)
+        try {
+            controller.start("book", FakePageSource(page(0, "第一句。第二句。")), 0, 0)
+            val utteranceId = engine.lastUtteranceId
+
+            controller.pause()
+            runCurrent()
+            assertEquals(TtsPlaybackState.PAUSED, controller.playbackState.value)
+            assertEquals(utteranceId, engine.lastUtteranceId)
+
+            controller.resume()
+            runCurrent()
+            assertEquals(TtsPlaybackState.PLAYING, controller.playbackState.value)
+            assertEquals(listOf("第一句。"), engine.spokenTexts)
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun repeatedSentenceTextStillPublishesANewUtterance() = runTest {
         val main = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(main)
@@ -879,7 +905,8 @@ class TtsControllerTest {
     }
 
     private class FakePlaybackEngine(
-        override val isExternal: Boolean = false
+        override val isExternal: Boolean = false,
+        override val canResumeWithoutRestart: Boolean = false
     ) : AndroidTtsPlaybackEngine {
         private lateinit var listener: TtsPlaybackListener
         val spokenTexts = mutableListOf<String>()
@@ -920,7 +947,7 @@ class TtsControllerTest {
         fun interrupt() = listener.onPlaybackInterrupted()
 
         override suspend fun pause() = Unit
-        override suspend fun resume(): Boolean = false
+        override suspend fun resume(): Boolean = canResumeWithoutRestart
         override suspend fun stop() = Unit
         override suspend fun setSpeechRate(rate: Float) = Unit
         override suspend fun setPitch(pitch: Float) = Unit

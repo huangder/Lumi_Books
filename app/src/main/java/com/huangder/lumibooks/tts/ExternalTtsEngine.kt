@@ -40,6 +40,7 @@ class ExternalTtsEngine @Inject constructor(
     private val audioCache: ExternalTtsAudioCache
 ) : TtsPlaybackEngine {
     override val isExternal = true
+    override val canResumeWithoutRestart: Boolean = true
 
     private val httpClient = ExternalTtsHttpClient(tokenStore)
 
