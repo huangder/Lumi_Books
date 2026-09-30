@@ -58,7 +58,11 @@ object EpubDocumentTransformer {
         document.body().attr("data-lumi-layout", layout.name.lowercase())
         // 整页只有图片的页面（封面、卷首图、插图页、固定版式的整页图）在阅读器里应当满屏，
         // 不该被页边距缩进去一圈。reflowable 沿用封面样式，固定版式只打标记、不动设计盒。
-        markMediaOnlyPage(document, allowCoverStyling = layout == EpubRenditionLayout.REFLOWABLE)
+        markMediaOnlyPage(
+            document,
+            allowCoverStyling = layout == EpubRenditionLayout.REFLOWABLE,
+            isCoverCandidate = isCoverCandidate
+        )
         markFullBleedMedia(document, layout, cssIndex)
         // 必须以 DataNode 注入：文档以 XML 语法序列化，appendText 会把脚本里的
         // '<'、'>'、'&' 转义成 &lt; &gt; &amp;，浏览器在 <script> 内不会反转义，
@@ -76,7 +80,11 @@ object EpubDocumentTransformer {
      * reflowable 额外套用封面样式（满屏 contain），固定版式只用 [MEDIA_ONLY_ATTR] 让脚本
      * 忽略页边距，避免破坏出版方的设计盒。
      */
-    private fun markMediaOnlyPage(document: Document, allowCoverStyling: Boolean) {
+    private fun markMediaOnlyPage(
+        document: Document,
+        allowCoverStyling: Boolean,
+        isCoverCandidate: Boolean
+    ) {
         val body = document.body()
         if (!isMediaOnlyDocument(document)) return
         val media = topLevelMedia(body)
@@ -84,6 +92,8 @@ object EpubDocumentTransformer {
         body.attr(MEDIA_ONLY_ATTR, "true")
         if (!allowCoverStyling) return
         body.attr("data-lumi-cover", "true")
+        // 整页图共用封面分页样式，但只有书籍首个封面候选页在滚动时居中占屏。
+        if (isCoverCandidate) body.attr("data-lumi-cover-candidate", "true")
         val coverMedia = media.single().attr("data-lumi-cover-media", "true")
         var ancestor = coverMedia.parent()
         while (ancestor != null && ancestor !== body) {
@@ -389,9 +399,14 @@ html.lumi-scrolled body[data-lumi-media-only="true"] {
   min-height: 0 !important;
   max-height: none !important;
 }
-/* Keep an EPUB cover centered when continuous scrolling is enabled. The cover
-   still grows naturally when it is taller than the viewport. */
-html.lumi-scrolled body[data-lumi-media-only="true"][data-lumi-cover="true"] {
+html.lumi-scrolled body[data-lumi-media-only="true"] [data-lumi-cover-container="true"] {
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+/* Only the book's cover candidate stays centered and fills at least one screen.
+   Interior image pages share cover styling for pagination, not this scroll spacing. */
+html.lumi-scrolled body[data-lumi-media-only="true"][data-lumi-cover-candidate="true"] {
   display: flex !important;
   flex-direction: column !important;
   justify-content: center !important;
@@ -399,7 +414,7 @@ html.lumi-scrolled body[data-lumi-media-only="true"][data-lumi-cover="true"] {
   min-height: var(--lumi-page-height, 100vh) !important;
   max-height: none !important;
 }
-html.lumi-scrolled body[data-lumi-media-only="true"][data-lumi-cover="true"] [data-lumi-cover-container="true"] {
+html.lumi-scrolled body[data-lumi-media-only="true"][data-lumi-cover-candidate="true"] [data-lumi-cover-container="true"] {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -562,6 +577,13 @@ a[href*="#ref-footnotebookmark-end-"] img {
   position: absolute;
   overflow: visible;
   pointer-events: none;
+  /* Overlay SVGs are not book illustrations: media caps shrink long vertical lines. */
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  filter: none !important;
 }
 .lumi-search-highlight-block {
   animation: lumi-search-highlight-pulse 2000ms linear forwards;
@@ -788,7 +810,36 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     };
   }
 
+  function comicImageElement(position) {
+    if (!position) return null;
+    var images = document.querySelectorAll('[data-lumi-comic-image]');
+    for (var i = 0; i < images.length; i++) {
+      try {
+        var item = JSON.parse(images[i].getAttribute('data-lumi-comic-image'));
+        if (item.document === position.document && item.image === position.image && item.occurrence === position.occurrence) return images[i];
+      } catch (_) {}
+    }
+    return null;
+  }
+
   function currentLocator() {
+    var result = currentTextLocator();
+    var images = document.querySelectorAll('[data-lumi-comic-image]');
+    for (var imageIndex = 0; imageIndex < images.length; imageIndex++) {
+      var imageRect = images[imageIndex].getBoundingClientRect();
+      if (imageRect.width <= 0 || imageRect.height <= 0 || imageRect.bottom <= 0 || imageRect.top >= viewportHeight() ||
+          imageRect.right <= 0 || imageRect.left >= viewportWidth()) continue;
+      try {
+        var position = JSON.parse(images[imageIndex].getAttribute('data-lumi-comic-image'));
+        position.scroll = state.flow === 'scrolled' ? Math.max(0, Math.min(1, -imageRect.top / imageRect.height)) : 0;
+        result.comicImage = position;
+        return result;
+      } catch (_) {}
+    }
+    return result;
+  }
+
+  function currentTextLocator() {
     var index = textIndex();
     for (var i = 0; i < index.nodes.length; i++) {
       var info = index.nodes[i];
@@ -2143,9 +2194,17 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     if (fontUrl) {
       rules += '@font-face{font-family:"Lumi Reader Override";src:url(' + JSON.stringify(fontUrl) + ');font-style:normal;font-weight:100 900;font-display:swap;}';
     }
+    if (config.fontItalicUrl) {
+      rules += '@font-face{font-family:"Lumi Reader Override";src:url(' + JSON.stringify(String(config.fontItalicUrl)) + ');font-style:italic;font-weight:100 900;font-display:swap;}';
+    }
     var textSelector = 'body,p,div,section,article,aside,header,footer,nav,h1,h2,h3,h4,h5,h6,' +
       'span,a,li,dt,dd,td,th,blockquote,figcaption,label';
-    if (family) rules += textSelector + '{font-family:' + JSON.stringify(family) + ' !important;}';
+    if (family) {
+      var fontStack = config.fontSystemSerifFallback
+        ? (fontUrl ? JSON.stringify(family) + ', serif' : 'serif')
+        : JSON.stringify(family);
+      rules += textSelector + '{font-family:' + fontStack + ' !important;}';
+    }
     if (hasLetterSpacing) {
       letterSpacingDp = Math.max(-8, Math.min(16, letterSpacingDp));
       rules += textSelector + '{letter-spacing:' + letterSpacingDp.toFixed(3) + 'px !important;}';
@@ -2391,6 +2450,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
   /** 文字锚点换算成页号；锚点不可用时返回 null。 */
   function pageFromLocator(target) {
     if (!target) return null;
+    var image = comicImageElement(target.comicImage);
+    if (image && !target.exact) return pageForRange(image);
     var range = null;
     if (Number(target.version || 1) >= 2 && target.exact) range = quoteRange(target);
     var node = !range ? nodeAtPath(target.domPath || []) : null;
@@ -2420,7 +2481,16 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     var page = pageFromLocator(target);
     if (page == null) return false;
     moveToPage(page, true);
+    restoreComicImageScroll(target);
     return true;
+  }
+
+  function restoreComicImageScroll(target) {
+    if (state.flow !== 'scrolled' || state.fixed) return;
+    var image = comicImageElement(target && target.comicImage);
+    if (!image) return;
+    var rect = image.getBoundingClientRect();
+    window.scrollTo(0, window.scrollY + rect.top + rect.height * Math.max(0, Math.min(1, Number(target.comicImage.scroll) || 0)));
   }
 
   /** 分页完成后应用早于分页到达的恢复锚点（不额外发页通知，由 ready 载荷带回最终页）。 */
@@ -2431,6 +2501,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     var page = pageFromLocator(pending);
     if (page == null) return;
     moveToPage(page, false);
+    restoreComicImageScroll(pending);
   }
 
   function goToProgression(fraction) {
@@ -2731,7 +2802,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     post('chapterTurn', { direction: direction < 0 ? 1 : -1, animated: true });
   }
 
-  function appendUnderlineRange(layer, range, color) {
+  function appendUnderlineRange(layer, range, color, mode) {
     if (!range) return 0;
     var layerRect = layer.getBoundingClientRect();
     var scaleX = layer.offsetWidth > 0 ? layerRect.width / layer.offsetWidth : 1;
@@ -2751,8 +2822,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       svg.setAttribute('class', 'lumi-underline-block');
       svg.style.left = ((rect.left - layerRect.left) / scaleX) + 'px';
       svg.style.top = ((rect.top - layerRect.top) / scaleY) + 'px';
-      var svgWidth = vertical ? 5 : width;
-      var svgHeight = vertical ? height : 5;
+      var svgWidth = vertical ? 8 : width;
+      var svgHeight = vertical ? height : 8;
       svg.setAttribute('width', svgWidth);
       svg.setAttribute('height', svgHeight);
       svg.setAttribute('viewBox', '0 0 ' + svgWidth + ' ' + svgHeight);
@@ -2760,23 +2831,33 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       svg.style.height = svgHeight + 'px';
       var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       var d = '';
-      if (vertical) {
-        for (var y = 0; y <= height; y += 1) {
-          var x = 1.75 + Math.sin(y / 5.5 * Math.PI * 2) * 1.1;
-          d += (y === 0 ? 'M' : 'L') + x.toFixed(2) + ' ' + y.toFixed(2) + ' ';
-        }
-        svg.style.left = (((rect.left - layerRect.left) / scaleX) - 4) + 'px';
+      var center = 4;
+      var length = vertical ? height : width;
+      function point(along, across) {
+        return vertical ? across.toFixed(2) + ' ' + along.toFixed(2) : along.toFixed(2) + ' ' + across.toFixed(2);
+      }
+      if (Number(mode) === 1 || Number(mode) === 2 || Number(mode) === 4) {
+        var first = Number(mode) === 2 ? center - 1.25 : center;
+        d = 'M' + point(0, first) + ' L' + point(length, first);
+        if (Number(mode) === 2) d += ' M' + point(0, center + 1.25) + ' L' + point(length, center + 1.25);
+        if (Number(mode) === 4) path.setAttribute('stroke-dasharray', '4 3');
       } else {
-        for (var x = 0; x <= width; x += 1) {
-          var y = 1.75 + Math.sin(x / 5.5 * Math.PI * 2) * 1.1;
-          d += (x === 0 ? 'M' : 'L') + x.toFixed(2) + ' ' + y.toFixed(2) + ' ';
+        for (var along = 0; along < length; along += 1) {
+          var across = center + Math.sin(along / 11 * Math.PI * 2) * 0.7;
+          d += (along === 0 ? 'M' : 'L') + point(along, across) + ' ';
         }
-        svg.style.top = (((rect.bottom - layerRect.top) / scaleY) - 3) + 'px';
+        d += ' L' + point(length, center);
+      }
+      if (vertical) {
+        // Keep both strokes inside the glyph column, including the page-edge column.
+        svg.style.left = (((rect.left - layerRect.left) / scaleX) - 2) + 'px';
+      } else {
+        svg.style.top = (((rect.bottom - layerRect.top) / scaleY) - 6) + 'px';
       }
       path.setAttribute('d', d);
       path.setAttribute('fill', 'none');
       path.setAttribute('stroke', color);
-      path.setAttribute('stroke-width', '1.5');
+      path.setAttribute('stroke-width', '1');
       path.setAttribute('stroke-linecap', 'round');
       svg.appendChild(path);
       layer.appendChild(svg);
@@ -2834,9 +2915,10 @@ private const val READER_SCRIPT_PART_3 = """
 
   function applyRuleInlineStyle(range, style, includePaint) {
     var hasColor = /^#[0-9a-f]{6,8}$/i.test(style.textColor || '');
-    var underline = Number(style.underlineMode) === 1 || Number(style.underlineMode) === 3;
+    var hasFontFamily = typeof style.fontFamily === 'string' && style.fontFamily.length > 0;
     var needsInline = Number(style.fontWeight) >= 600 || style.italic === true ||
-      (includePaint && (hasColor || underline));
+      hasFontFamily ||
+      (includePaint && hasColor);
     if (!needsInline) return;
     var root = range.commonAncestorContainer;
     var walkerRoot = root.nodeType === Node.TEXT_NODE ? root.parentNode : root;
@@ -2862,12 +2944,8 @@ private const val READER_SCRIPT_PART_3 = """
       span.setAttribute('data-lumi-rule-style', 'true');
       if (Number(style.fontWeight) >= 600) span.style.fontWeight = '700';
       if (style.italic === true) span.style.fontStyle = 'italic';
+      if (hasFontFamily) span.style.fontFamily = '"' + style.fontFamily + '"';
       if (includePaint && hasColor) span.style.color = style.textColor;
-      if (includePaint && underline) {
-        span.style.textDecorationLine = 'underline';
-        span.style.textDecorationStyle = Number(style.underlineMode) === 3 ? 'wavy' : 'solid';
-        if (hasColor) span.style.textDecorationColor = style.textColor;
-      }
       target.parentNode.insertBefore(span, target);
       span.appendChild(target);
     });
@@ -2881,6 +2959,22 @@ private const val READER_SCRIPT_PART_3 = """
     if (!ruleStylesDirty || !document.body) return;
     ruleStylesDirty = false;
     try {
+      var oldRuleFonts = document.getElementById('lumi-rule-fonts');
+      if (oldRuleFonts) oldRuleFonts.remove();
+      var fontCss = [];
+      (state.highlightItems || []).forEach(function (item) {
+        var style = item && item.ruleStyle;
+        if (!style || !style.fontFamily || !style.fontUrl) return;
+        var family = String(style.fontFamily).replace(/[^a-zA-Z0-9_-]/g, '_');
+        var url = String(style.fontUrl).replace(/['\\]/g, '');
+        fontCss.push('@font-face{font-family:"' + family + '";src:url("' + url + '");font-display:swap;}');
+      });
+      if (fontCss.length) {
+        var fontStyleElement = document.createElement('style');
+        fontStyleElement.id = 'lumi-rule-fonts';
+        fontStyleElement.textContent = fontCss.join('\n');
+        (document.head || document.documentElement).appendChild(fontStyleElement);
+      }
       clearRuleInlineStyles();
       (state.highlightItems || []).forEach(function (item) {
         try {
@@ -2932,20 +3026,19 @@ private const val READER_SCRIPT_PART_3 = """
           var name = 'lumi-rule-' + itemIndex;
           var declarations = [];
           if (hasRuleColor) declarations.push('color:' + ruleColor);
-          if (Number(style.underlineMode) === 1 || Number(style.underlineMode) === 3) {
-            declarations.push('text-decoration-line:underline');
-            declarations.push('text-decoration-style:' + (Number(style.underlineMode) === 3 ? 'wavy' : 'solid'));
-            if (hasRuleColor) declarations.push('text-decoration-color:' + ruleColor);
-          }
+          if (item.type === 'underline') appendUnderlineRange(underlineLayer, range, ruleColor, style.underlineMode);
           if (declarations.length) {
             CSS.highlights.set(name, new Highlight(range));
             ruleCss.push('::highlight(' + name + '){' + declarations.join(';') + '}');
           }
         }
+        if (item.type === 'underline' && !(window.CSS && CSS.highlights && window.Highlight)) {
+          appendUnderlineRange(underlineLayer, range, ruleColor, style.underlineMode);
+        }
         return;
       }
       if (item.type === 'underline') {
-        appendUnderlineRange(underlineLayer, range, color);
+        appendUnderlineRange(underlineLayer, range, color, 3);
       } else {
         appendHighlightRange(layer, range, color);
       }
@@ -2989,7 +3082,11 @@ private const val READER_SCRIPT_PART_3 = """
     if (key === highlightItemsKey) return true;
     var locator = state.ready ? currentLocator() : null;
     var nextLayoutKey = JSON.stringify(items.filter(function (item) {
-      return item && item.ruleStyle && (Number(item.ruleStyle.fontWeight) >= 600 || item.ruleStyle.italic === true);
+      return item && item.ruleStyle && (
+        Number(item.ruleStyle.fontWeight) >= 600 ||
+        item.ruleStyle.italic === true ||
+        !!item.ruleStyle.fontFamily
+      );
     }));
     var layoutChanged = ruleLayoutKey !== nextLayoutKey;
     ruleLayoutKey = nextLayoutKey;
@@ -3002,6 +3099,63 @@ private const val READER_SCRIPT_PART_3 = """
       return true;
     }
     return rebuildHighlightLayer();
+  }
+
+  // Highlight layers are pointer-transparent. Resolve a short tap back to the
+  // saved annotation range so the native reader can open its annotation menu.
+  function annotationAtPoint(x, y) {
+    var items = state.highlightItems || [];
+    if (!items.length) return null;
+    var index = textIndex();
+    var caret = document.caretRangeFromPoint ? document.caretRangeFromPoint(x, y) : null;
+    var position = caret ? textOffsetForBoundary(index, caret.startContainer, caret.startOffset) : -1;
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      if (!item || !item.exact) continue;
+      var start = item.start && Number(item.start.textPosition);
+      var end = item.end && Number(item.end.textPosition);
+      if (isFinite(position) && isFinite(start) && isFinite(end) &&
+          position >= start && position < end) return item;
+      var range = rangeFromLocators(item.start, item.end, item.exact) ||
+        quoteRange(Object.assign({}, item.start || {}, { exact: item.exact }));
+      if (!range) continue;
+      var rects = range.getClientRects();
+      for (var r = 0; r < rects.length; r++) {
+        var rect = rects[r];
+        if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) return item;
+      }
+    }
+    return null;
+  }
+
+  function postAnnotationSelection(item, x, y) {
+    var range = rangeFromLocators(item.start, item.end, item.exact) ||
+      quoteRange(Object.assign({}, item.start || {}, { exact: item.exact }));
+    if (!range) return false;
+    var rects = Array.prototype.slice.call(range.getClientRects()).filter(function (rect) {
+      return rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.left < viewportWidth() &&
+        rect.bottom > 0 && rect.top < viewportHeight();
+    });
+    var bounds = rects.length ? {
+      left: Math.min.apply(null, rects.map(function (rect) { return rect.left; })),
+      right: Math.max.apply(null, rects.map(function (rect) { return rect.right; })),
+      top: Math.min.apply(null, rects.map(function (rect) { return rect.top; })),
+      bottom: Math.max.apply(null, rects.map(function (rect) { return rect.bottom; }))
+    } : { left: x - 1, right: x + 1, top: y - 1, bottom: y + 1 };
+    post('selection', {
+      text: item.exact,
+      start: item.start || {},
+      end: item.end || {},
+      x: (bounds.left + bounds.right) / 2,
+      y: (bounds.top + bounds.bottom) / 2,
+      left: bounds.left,
+      right: bounds.right,
+      top: bounds.top,
+      bottom: bounds.bottom,
+      annotationOnly: true,
+      pixelRatio: Math.max(1, window.devicePixelRatio || 1)
+    });
+    return true;
   }
 
   function setTtsHighlight(start, end, color) {
@@ -3659,6 +3813,18 @@ private const val READER_SCRIPT_PART_3 = """
 
     if (state.flow === 'scrolled' && !state.fixed) {
       pageStageDurationOverride = 0;
+      var scrolledTapSelection = window.getSelection && window.getSelection();
+      var scrolledTap = !scrollChapterDragDirection && !touchPaging && elapsed < 520 &&
+        Math.abs(dx) < 12 && Math.abs(dy) < 12 &&
+        (!scrolledTapSelection || scrolledTapSelection.isCollapsed);
+      if (scrolledTap) {
+        var scrolledAnnotation = annotationAtPoint(touch.clientX, touch.clientY);
+        if (scrolledAnnotation && postAnnotationSelection(scrolledAnnotation, touch.clientX, touch.clientY)) {
+          event.preventDefault();
+          state.suppressClickUntil = Date.now() + 450;
+          return;
+        }
+      }
       if (scrollChapterDragDirection) {
         event.preventDefault();
         var chapterSwipe = Math.abs(scrollChapterDragOffset) >= 52 &&
@@ -3721,6 +3887,14 @@ private const val READER_SCRIPT_PART_3 = """
       return;
     }
     if (!state.fixed && wasPaging && state.transition !== 'fade' && state.transition !== 'none') snapBackPage();
+    if (isTap && (!window.getSelection || window.getSelection().isCollapsed)) {
+      var annotation = annotationAtPoint(touch.clientX, touch.clientY);
+      if (annotation && postAnnotationSelection(annotation, touch.clientX, touch.clientY)) {
+        pageStageDurationOverride = 0;
+        state.suppressClickUntil = Date.now() + 450;
+        return;
+      }
+    }
     if (isTap && (!window.getSelection || window.getSelection().isCollapsed)) {
       var ratio = tapRatio;
       if (ratio < 0.3) {
@@ -3795,6 +3969,13 @@ private const val READER_SCRIPT_PART_3 = """
       clearDocumentSelection();
       post('selectionCleared', {});
       event.preventDefault();
+      return;
+    }
+    var annotation = annotationAtPoint(event.clientX, event.clientY);
+    if (annotation && postAnnotationSelection(annotation, event.clientX, event.clientY)) {
+      event.preventDefault();
+      event.stopPropagation();
+      state.suppressClickUntil = Date.now() + 450;
       return;
     }
     var ratio = event.clientX / viewportWidth();

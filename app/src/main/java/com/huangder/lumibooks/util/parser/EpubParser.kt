@@ -18,6 +18,8 @@ import com.huangder.lumibooks.R
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
+import java.io.ByteArrayInputStream
+import java.io.InputStreamReader
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import java.util.zip.ZipEntry
@@ -25,9 +27,13 @@ import java.util.zip.ZipException
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import java.util.zip.GZIPInputStream
+import java.util.zip.GZIPOutputStream
 import kotlin.text.RegexOption
 import com.huangder.lumibooks.util.BookFileAccess
 import com.huangder.lumibooks.util.SeekableBookSource
+import com.huangder.lumibooks.util.cache.BookFingerprint
+import com.huangder.lumibooks.util.cache.ReaderCacheStore
 import com.huangder.lumibooks.util.epub.EpubPackage
 import com.huangder.lumibooks.util.epub.EpubPackageReader
 import com.huangder.lumibooks.util.epub.EpubPathResolver
@@ -62,6 +68,9 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         private const val MAX_VECTOR_BITMAP_HEIGHT = 4096
         private const val JPEG_HEADER_READ_LIMIT = 256 * 1024
         private const val SIMPLE_IMAGE_HEADER_READ_LIMIT = 64
+        private const val CONTINUOUS_PREVIEW_CHARS = 6_000
+        private const val PERSISTED_CHAPTER_CACHE_VERSION = 3
+        private const val PERSISTED_CHAPTER_CACHE_MAX_CHARS = 2_000_000
         private val hrefRegex = Regex("""href\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
         private val IMAGE_RESOURCE_EXTENSIONS =
             setOf("jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "svg")
@@ -636,6 +645,10 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
     private var bookAuthor: String = ""
     private var basePath: String = ""
     private var epubFilePath: String = ""
+    /** Original URI/path used for the stable ReaderCacheStore fingerprint. */
+    private var sourceLocation: String = ""
+    @Volatile
+    private var lastPersistedChapterCacheHit: Boolean? = null
     private var parsedPackage: EpubPackage? = null
     private var sourceLease: SeekableBookSource? = null
     private var sessionZipFile: ZipFile? = null
@@ -668,7 +681,15 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         val chapterIndex: Int,
         val optimizeLayout: Boolean
     )
-    private data class ContentLoadKey(val revision: Long, val chapterIndex: Int, val width: Int, val height: Int)
+    private data class ContentLoadKey(
+        val revision: Long,
+        val chapterIndex: Int,
+        val width: Int,
+        val height: Int,
+        /** 0 is the complete chapter; positive values identify a preview cache entry. */
+        val maxChars: Int = 0
+    )
+    data class ChapterContentPreview(val text: CharSequence, val isComplete: Boolean)
     private data class AnchoredChapter(
         val text: SpannableStringBuilder,
         val offsets: Map<String, Int>
@@ -679,6 +700,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
     private val contentCache = WeightedLruCache<ContentLoadKey, CharSequence>(16L * 1024L * 1024L) {
         it.length.toLong() * Char.SIZE_BYTES
     }
+    private val previewCompleteness = ConcurrentHashMap<ContentLoadKey, Boolean>()
     /** Keep only a small set of decoded images; individual spans reload on demand after eviction. */
     private val imageBitmapCache = WeightedLruCache<String, Bitmap>(IMAGE_BITMAP_CACHE_BYTES) {
         it.allocationByteCount.toLong().coerceAtLeast(0L)
@@ -697,6 +719,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
 
     override fun parse(filePath: String): BookContent {
         close()
+        sourceLocation = filePath
         android.util.Log.i("EpubParser", "parse: start path=$filePath")
         val lease = context?.let { BookFileAccess.openSeekable(it, filePath) }
         sourceLease = lease
@@ -1368,6 +1391,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
      * @param optimizeLayout true=使用优化排版（包裹自定义CSS），false=保留EPUB自带排版
      */
     override fun getChapterHtml(chapterIndex: Int, optimizeLayout: Boolean): String {
+        lastPersistedChapterCacheHit = false
         val revision = contentRevision.get()
         val cacheKey = HtmlCacheKey(revision, chapterIndex, optimizeLayout)
         htmlCache[cacheKey]?.let { return it }
@@ -1376,16 +1400,24 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         val source = chapterSources.getOrNull(chapterIndex) ?: return ""
         val path = source.path
         return try {
-            val sourcePath = synchronized(zipLock) {
-                if (sessionZipFile == null || contentRevision.get() != revision) return ""
-                epubFilePath
+            readPersistedChapterHtml(chapterIndex, processed = true, optimizeLayout = optimizeLayout)?.let { cached ->
+                if (contentRevision.get() == revision) htmlCache.put(cacheKey, cached)
+                return cached
             }
-            val processed = ZipFile(sourcePath).use { zipFile ->
-                val zipEntry = findEntry(zipFile, path) ?: return ""
-                val rawHtml = zipFile.getInputStream(zipEntry).bufferedReader().use { it.readText() }
-                    .let { sliceLogicalChapterHtml(it, source) }
-                processHtml(zipFile, rawHtml, optimizeLayout, chapterPath = path)
-            }
+            val activeZip = synchronized(zipLock) {
+                if (contentRevision.get() != revision) return ""
+                sessionZipFile
+            } ?: return ""
+            val rawHtml = readPersistedChapterHtml(chapterIndex, processed = false, optimizeLayout = false)
+                ?: synchronized(zipLock) {
+                    if (contentRevision.get() != revision || sessionZipFile !== activeZip) return@synchronized null
+                    val zipEntry = findEntry(activeZip, path) ?: return@synchronized null
+                    activeZip.getInputStream(zipEntry).bufferedReader().use { it.readText() }
+                        .let { sliceLogicalChapterHtml(it, source) }
+                }?.also { writePersistedChapterHtml(chapterIndex, processed = false, optimizeLayout = false, html = it) }
+                ?: return ""
+            val processed = processHtml(activeZip, rawHtml, optimizeLayout, chapterPath = path)
+            writePersistedChapterHtml(chapterIndex, processed = true, optimizeLayout = optimizeLayout, html = processed)
             if (contentRevision.get() == revision) {
                 processed.also {
                     htmlCache.put(cacheKey, it)
@@ -1400,49 +1432,187 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
     }
 
     /**
+     * Persist the expensive chapter preparation result between reader sessions. The cache uses
+     * compressed text rather than Android spans because drawables and parser spans are tied to
+     * the current EPUB session and must be rebuilt against the current ZipFile.
+     */
+    private fun persistedChapterNamespace(chapterIndex: Int, processed: Boolean, optimizeLayout: Boolean): String {
+        val layoutToken = if (!processed) {
+            "source"
+        } else {
+            // Processed HTML embeds CSS/background decisions, while source HTML is layout-neutral.
+            listOf(
+                if (optimizeLayout) 1 else 0,
+                if (useEpubCss) 1 else 0,
+                if (preserveEpubBackground) 1 else 0,
+                paragraphSpacingDp,
+                firstLineIndentChars,
+                contentWidth.coerceAtLeast(0)
+            ).joinToString("_")
+        }
+        return "epub_chapter_v${PERSISTED_CHAPTER_CACHE_VERSION}_${chapterIndex}_$layoutToken"
+    }
+
+    private fun readPersistedChapterHtml(
+        chapterIndex: Int,
+        processed: Boolean,
+        optimizeLayout: Boolean
+    ): String? {
+        val ctx = context ?: return null
+        if (sourceLocation.isBlank()) return null
+        val fingerprint = BookFingerprint.resolve(ctx, sourceLocation)
+        if (!fingerprint.reliable) return null
+        val namespace = persistedChapterNamespace(chapterIndex, processed, optimizeLayout)
+        val store = ReaderCacheStore.get(ctx)
+        val payload = store.readMetadata(namespace, fingerprint) ?: return null
+        if (payload.optInt("formatVersion") != PERSISTED_CHAPTER_CACHE_VERSION) {
+            store.deleteMetadata(namespace, fingerprint)
+            return null
+        }
+        val encoded = payload.optString("gzipBase64").takeIf { it.isNotBlank() } ?: return null
+        val decoded = runCatching {
+            val compressed = Base64.decode(encoded, Base64.DEFAULT)
+            GZIPInputStream(ByteArrayInputStream(compressed)).use { input ->
+                InputStreamReader(input, Charsets.UTF_8).use { reader -> reader.readText() }
+            }
+        }.getOrNull()
+        val valid = decoded?.takeIf {
+            it.isNotEmpty() && it.length <= PERSISTED_CHAPTER_CACHE_MAX_CHARS &&
+                payload.optInt("charCount", it.length) == it.length
+        }
+        if (valid != null) lastPersistedChapterCacheHit = true
+        if (valid == null) store.deleteMetadata(namespace, fingerprint)
+        return valid
+    }
+
+    private fun writePersistedChapterHtml(
+        chapterIndex: Int,
+        processed: Boolean,
+        optimizeLayout: Boolean,
+        html: String
+    ) {
+        val ctx = context ?: return
+        if (sourceLocation.isBlank() || html.isEmpty() || html.length > PERSISTED_CHAPTER_CACHE_MAX_CHARS) return
+        val fingerprint = BookFingerprint.resolve(ctx, sourceLocation)
+        if (!fingerprint.reliable) return
+        runCatching {
+            val compressed = ByteArrayOutputStream(html.length.coerceAtMost(64 * 1024)).use { output ->
+                GZIPOutputStream(output).use { gzip -> gzip.write(html.toByteArray(Charsets.UTF_8)) }
+                output.toByteArray()
+            }
+            val payload = org.json.JSONObject()
+                .put("formatVersion", PERSISTED_CHAPTER_CACHE_VERSION)
+                .put("processed", processed)
+                .put("optimizeLayout", optimizeLayout)
+                .put("charCount", html.length)
+                .put("gzipBase64", Base64.encodeToString(compressed, Base64.NO_WRAP))
+            ReaderCacheStore.get(ctx).writeMetadata(
+                persistedChapterNamespace(chapterIndex, processed, optimizeLayout), fingerprint, payload
+            )
+        }
+    }
+
+    /** Returns and clears the result of the most recent persistent chapter lookup. */
+    internal fun consumeLastPersistedChapterCacheHit(): Boolean? =
+        lastPersistedChapterCacheHit.also { lastPersistedChapterCacheHit = null }
+
+    /**
      * 按需加载单个章节的 Spanned，带缓存
      */
     override fun getChapterContent(chapterIndex: Int): CharSequence =
         getChapterContent(chapterIndex, contentWidth, contentHeight)
 
     /** Request-local geometry: preview/paged/continuous layouts must not resize one another. */
-    fun getChapterContent(chapterIndex: Int, width: Int, height: Int): CharSequence {
+    fun getChapterContent(chapterIndex: Int, width: Int, height: Int): CharSequence =
+        getChapterContentPreview(chapterIndex, width, height, 0).text
+
+    /**
+     * Decode only the first part of a long chapter for continuous scrolling. The returned
+     * preview has its own cache key and never replaces the complete chapter cache.
+     */
+    fun getChapterContentPreview(
+        chapterIndex: Int,
+        width: Int,
+        height: Int,
+        maxChars: Int = CONTINUOUS_PREVIEW_CHARS
+    ): ChapterContentPreview = getChapterContentPreviewInternal(
+        chapterIndex,
+        width,
+        height,
+        maxChars.coerceAtLeast(0)
+    )
+
+    private fun getChapterContentPreviewInternal(
+        chapterIndex: Int,
+        width: Int,
+        height: Int,
+        maxChars: Int
+    ): ChapterContentPreview {
+        lastPersistedChapterCacheHit = false
         if (chapterIndex !in chapterPaths.indices) {
             android.util.Log.w("EpubParser", "getChapterContent: idx=$chapterIndex out of range (chapterPaths.size=${chapterPaths.size})")
-            return ""
+            return ChapterContentPreview("", true)
         }
 
         val revision = contentRevision.get()
-        val loadKey = ContentLoadKey(revision, chapterIndex, width, height)
+        val loadKey = ContentLoadKey(revision, chapterIndex, width, height, maxChars)
         contentCache[loadKey]?.let {
             android.util.Log.d("EpubParser", "getChapterContent: idx=$chapterIndex from cache, length=${it.length}")
-            return it
+            return ChapterContentPreview(it, maxChars <= 0 || previewCompleteness[loadKey] == true)
         }
         val loadLock = contentLoadLocks.getOrPut(loadKey) { Any() }
         try {
             return synchronized(loadLock) chapterLoad@{
                 contentCache[loadKey]?.let {
-                    if (contentRevision.get() == revision) return@chapterLoad it
+                    if (contentRevision.get() == revision) {
+                        return@chapterLoad ChapterContentPreview(
+                            it,
+                            maxChars <= 0 || previewCompleteness[loadKey] == true
+                        )
+                    }
                 }
 
-                val source = chapterSources.getOrNull(chapterIndex) ?: return@chapterLoad ""
+                val source = chapterSources.getOrNull(chapterIndex)
+                    ?: return@chapterLoad ChapterContentPreview("", true)
                 val path = source.path
                 android.util.Log.d("EpubParser", "getChapterContent: idx=$chapterIndex path=$path")
-                val chapterSource = synchronized(zipLock) sourceRead@{
-                    if (contentRevision.get() != revision) return@sourceRead null
-                    val activeZip = sessionZipFile ?: return@sourceRead null
-                    val zipEntry = findEntry(activeZip, path) ?: return@sourceRead null
-                    activeZip to activeZip.getInputStream(zipEntry).bufferedReader().use { reader ->
+                val zipFile = synchronized(zipLock) {
+                    if (contentRevision.get() != revision) null else sessionZipFile
+                } ?: return@chapterLoad ChapterContentPreview("", true)
+                val cachedRawHtml = readPersistedChapterHtml(
+                    chapterIndex,
+                    processed = false,
+                    optimizeLayout = false
+                )
+                val rawHtml = cachedRawHtml ?: synchronized(zipLock) sourceRead@{
+                    if (contentRevision.get() != revision || sessionZipFile !== zipFile) return@sourceRead null
+                    val zipEntry = findEntry(zipFile, path) ?: return@sourceRead null
+                    zipFile.getInputStream(zipEntry).bufferedReader().use { reader ->
                         sliceLogicalChapterHtml(reader.readText(), source)
                     }
-                } ?: return@chapterLoad ""
-                val (zipFile, rawHtml) = chapterSource
-                android.util.Log.d("EpubParser", "getChapterContent: idx=$chapterIndex rawHtml.length=${rawHtml.length}")
+                }?.also {
+                    writePersistedChapterHtml(
+                        chapterIndex,
+                        processed = false,
+                        optimizeLayout = false,
+                        html = it
+                    )
+                } ?: return@chapterLoad ChapterContentPreview("", true)
+                val previewHtml = if (maxChars > 0) {
+                    truncateHtmlForPreview(rawHtml, maxChars)
+                } else {
+                    HtmlPreviewSlice(rawHtml, true)
+                }
+                android.util.Log.d(
+                    "EpubParser",
+                    "getChapterContent: idx=$chapterIndex rawHtml.length=${rawHtml.length} " +
+                        "preview=${previewHtml.html.length} complete=${previewHtml.isComplete}"
+                )
 
                 val parseStartedAt = android.os.SystemClock.elapsedRealtime()
-                val spanned = htmlToSpanned(chapterIndex, rawHtml, zipFile, width, height)
+                val spanned = htmlToSpanned(chapterIndex, previewHtml.html, zipFile, width, height)
                 val htmlParsedAt = android.os.SystemClock.elapsedRealtime()
-                if (!isActiveRevision(revision, zipFile)) return@chapterLoad ""
+                if (!isActiveRevision(revision, zipFile)) return@chapterLoad ChapterContentPreview("", true)
 
                 // 应用段间距和首行缩进（Canvas 引擎需要在 Spanned 层面处理）
                 val formatted = applyParagraphFormatting(
@@ -1466,24 +1636,91 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                     if (!isActiveRevisionLocked(revision, zipFile)) return@storeResult false
                     anchorOffsets[chapterIndex] = anchored.offsets
                     contentCache.put(loadKey, result)
+                    previewCompleteness[loadKey] = previewHtml.isComplete
+                    // A short chapter was already decoded in full. Publish the same result
+                    // under the complete key so the follow-up promotion is a cache hit.
+                    if (maxChars > 0 && previewHtml.isComplete) {
+                        val completeKey = ContentLoadKey(revision, chapterIndex, width, height, 0)
+                        contentCache.put(completeKey, result)
+                        previewCompleteness[completeKey] = true
+                    }
                     true
                 }
-                if (!stored) return@chapterLoad ""
+                if (!stored) return@chapterLoad ChapterContentPreview("", true)
                 android.util.Log.d(
                     "EpubParser",
                     "getChapterContent: idx=$chapterIndex result.length=${result.length} " +
                         "html=${htmlParsedAt - parseStartedAt}ms format=${formattedAt - htmlParsedAt}ms " +
                         "anchors=${anchoredAt - formattedAt}ms total=${anchoredAt - parseStartedAt}ms"
                 )
-                result
+                ChapterContentPreview(result, previewHtml.isComplete)
             }
         } catch (e: Exception) {
             android.util.Log.e("EpubParser", "getChapterContent: exception for idx=$chapterIndex", e)
             e.printStackTrace()
-            return ""
+            return ChapterContentPreview("", true)
         } finally {
             contentLoadLocks.remove(loadKey, loadLock)
         }
+    }
+
+    private data class HtmlPreviewSlice(val html: String, val isComplete: Boolean)
+
+    /**
+     * Keep the source HTML intact up to a text boundary. Reading the source is cheap compared
+     * with Html.fromHtml and image span construction, so the expensive part is bounded to the
+     * first few thousand visible characters. A block close is preferred; otherwise the cut is
+     * moved back to whitespace and the original body is closed for extractBody().
+     */
+    private fun truncateHtmlForPreview(html: String, maxChars: Int): HtmlPreviewSlice {
+        if (maxChars <= 0 || html.isEmpty()) return HtmlPreviewSlice(html, true)
+        var index = 0
+        var visibleChars = 0
+        var lastWhitespace = -1
+        var lastBlockBoundary = -1
+        var reachedTarget = false
+        var targetIndex = -1
+        val scanLimitAfterTarget = 32 * 1024
+        while (index < html.length) {
+            if (html[index] == '<') {
+                val tagEnd = html.indexOf('>', index + 1)
+                if (tagEnd < 0) break
+                val tag = html.substring(index, tagEnd + 1)
+                if (Regex("</(?:p|div|blockquote|li|dd|dt|h[1-6])\\s*>", RegexOption.IGNORE_CASE)
+                        .matches(tag)
+                ) {
+                    lastBlockBoundary = tagEnd + 1
+                }
+                index = tagEnd + 1
+            } else if (html[index] == '&') {
+                val entityEnd = html.indexOf(';', index + 1).takeIf { it in (index + 1)..(index + 16) }
+                if (entityEnd != null) {
+                    visibleChars++
+                    index = entityEnd + 1
+                } else {
+                    visibleChars++
+                    index++
+                }
+            } else {
+                if (html[index].isWhitespace()) lastWhitespace = index + 1
+                visibleChars++
+                index++
+            }
+            if (!reachedTarget && visibleChars >= maxChars) {
+                reachedTarget = true
+                targetIndex = index
+            }
+            if (reachedTarget &&
+                (lastBlockBoundary >= targetIndex || index >= targetIndex + scanLimitAfterTarget)
+            ) break
+        }
+        if (!reachedTarget || index >= html.length) return HtmlPreviewSlice(html, true)
+        val boundary = (lastBlockBoundary.takeIf { it in targetIndex..index } ?: lastWhitespace)
+            .takeIf { it > 0 }
+            ?: targetIndex.coerceIn(1, html.length)
+        val bodyClosed = Regex("<body\\b", RegexOption.IGNORE_CASE).containsMatchIn(html)
+        val suffix = if (bodyClosed) "</body></html>" else ""
+        return HtmlPreviewSlice(html.substring(0, boundary) + suffix, false)
     }
 
     private fun isActiveRevision(revision: Long, zipFile: ZipFile): Boolean = synchronized(zipLock) {
@@ -1558,6 +1795,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         contentRevision.incrementAndGet()
         htmlCache.clear()
         contentCache.clear()  // 段间距/首行缩进变更时也需要清空内容缓存
+        previewCompleteness.clear()
         clearDecodedImageCache()
         synchronized(zipLock) {
             anchorOffsets.clear()

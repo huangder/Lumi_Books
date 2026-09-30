@@ -346,7 +346,8 @@ internal data class EpubSelectionInfo(
     val left: Float,
     val top: Float,
     val right: Float,
-    val bottom: Float
+    val bottom: Float,
+    val annotationOnly: Boolean = false
 )
 
 internal data class EpubDictionarySelection(
@@ -413,6 +414,7 @@ internal fun EpubWebViewReader(
     letterSpacingDp: Float = 0f,
     fontType: String,
     fontFilePath: String?,
+    customFonts: List<com.huangder.lumibooks.domain.model.CustomFontPreset> = emptyList(),
     bodyFontWeight: Int = 400,
     textColorOverride: Int?,
     theme: String,
@@ -482,6 +484,12 @@ internal fun EpubWebViewReader(
     onRenderUnavailable: (EpubRenderFailure) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val backgroundPreparationEnabled = LocalReaderOpeningComplete.current
+    val latestBackgroundPreparationEnabled = rememberUpdatedState(backgroundPreparationEnabled)
+    val restorePreloads = remember(session) { mutableStateOf<(() -> Unit)?>(null) }
+    LaunchedEffect(backgroundPreparationEnabled, restorePreloads.value) {
+        if (backgroundPreparationEnabled) restorePreloads.value?.invoke()
+    }
     val latestImageAdjustments = rememberUpdatedState(imageAdjustments)
     val latestPageChanged = rememberUpdatedState(onPageChanged)
     val latestBookmarkPullStart = rememberUpdatedState(onBookmarkPullStart)
@@ -506,6 +514,12 @@ internal fun EpubWebViewReader(
     val latestLetterSpacingDp = rememberUpdatedState(letterSpacingDp)
     val latestFontType = rememberUpdatedState(fontType)
     val latestFontFilePath = rememberUpdatedState(fontFilePath)
+    val ruleFontUrls = remember(session, customFonts) {
+        customFonts.mapNotNull { preset ->
+            session.readerFontUrl(preset.path)?.let { preset.fontTypeKey to it }
+        }.toMap()
+    }
+    val latestRuleFontUrls = rememberUpdatedState(ruleFontUrls)
     val latestBodyFontWeight = rememberUpdatedState(bodyFontWeight)
     val latestTextColorOverride = rememberUpdatedState(textColorOverride)
     val latestTheme = rememberUpdatedState(theme)
@@ -687,7 +701,11 @@ internal fun EpubWebViewReader(
 
                     fun redraw() {
                         if (!isCurrentActivePage()) return
-                        applyHighlights(view, epubNotesForChapter(latestNotes.value, target.chapterIndex))
+                        applyHighlights(
+                            view,
+                            epubNotesForChapter(latestNotes.value, target.chapterIndex),
+                            latestRuleFontUrls.value
+                        )
                         applyCurrentTtsHighlight(view, target.chapterIndex)
                         view.postInvalidateOnAnimation()
                     }
@@ -946,6 +964,7 @@ internal fun EpubWebViewReader(
                         marginBottomDp = latestMarginBottomDp.value,
                         marginLeftDp = latestMarginLeftDp.value,
                         notes = epubNotesForChapter(latestNotes.value, target.chapterIndex),
+                        ruleFontUrls = latestRuleFontUrls.value,
                         locatorRequest = null,
                         pageRequest = EpubPageRequest(
                             token = request.generation,
@@ -1021,6 +1040,7 @@ internal fun EpubWebViewReader(
                 }
 
                 fun updateAdjacentPreloads(currentChapter: Int, currentPage: Int, pageCount: Int) {
+                    if (!latestBackgroundPreparationEnabled.value) return
                     if (pageTurnHost.released || navigationInFlight != null) return
                     val (previous, next) = epubAdjacentPreloadTargets(
                         currentChapter, currentPage, pageCount, session.chapterCount,
@@ -1498,6 +1518,7 @@ internal fun EpubWebViewReader(
                             latestNotes.value,
                             inFlight.request.targetChapterIndex
                         ),
+                        ruleFontUrls = latestRuleFontUrls.value,
                         locatorRequest = null,
                         pageRequest = null,
                         onConfigured = { configured ->
@@ -2060,7 +2081,8 @@ internal fun EpubWebViewReader(
                                     location[1] + windowCoordinate(
                                         "bottom",
                                         payload.optDouble("y", 0.0)
-                                    )
+                                    ),
+                                    payload.optBoolean("annotationOnly", false)
                                 )
                             )
                         }
@@ -2462,6 +2484,7 @@ internal fun EpubWebViewReader(
                                 marginBottomDp = latestMarginBottomDp.value,
                                 marginLeftDp = latestMarginLeftDp.value,
                                 notes = epubNotesForChapter(latestNotes.value, sourceChapter),
+                                ruleFontUrls = latestRuleFontUrls.value,
                                 locatorRequest = latestLocatorRequest.value,
                                 pageRequest = latestPageRequest.value,
                                 onConfigured = { configured ->
@@ -2627,6 +2650,7 @@ internal fun EpubWebViewReader(
                 pageTurnHost.onSlideVisualPageAdvanced = { target, pageCount ->
                     updateAdjacentPreloads(target.chapterIndex, target.pageIndex, pageCount)
                 }
+                restorePreloads.value = ::restoreAdjacentPreloads
                 pageTurnHost.onInvalidatePreloads = ::invalidateAdjacentPreloads
                 navigationStartHandler.value = ::startNavigation
                 navigationCancelHandler.value = ::cancelNavigation
@@ -2800,6 +2824,7 @@ internal fun EpubWebViewReader(
                     marginBottomDp = marginBottomDp,
                     marginLeftDp = marginLeftDp,
                     notes = epubNotesForChapter(notes, activeChapterForNotes),
+                    ruleFontUrls = ruleFontUrls,
                     locatorRequest = locatorRequest,
                     pageRequest = pageRequest
                 )
@@ -2809,7 +2834,7 @@ internal fun EpubWebViewReader(
                 pageTurnHost.allWebViews().forEach { view ->
                     val viewChapter = session.chapterIndexForUrl(view.url.orEmpty())
                     if (viewChapter != null) {
-                        applyHighlights(view, epubNotesForChapter(notes, viewChapter))
+                        applyHighlights(view, epubNotesForChapter(notes, viewChapter), latestRuleFontUrls.value)
                         applyTtsHighlight(view, viewChapter, ttsCurrentSentence, ttsHighlightColor)
                         view.postInvalidateOnAnimation()
                     }
@@ -2959,6 +2984,7 @@ internal fun EpubWebViewReader(
         }
         onDispose {
             disposed[0] = true
+            restorePreloads.value = null
             imagePreviewAnimationJob?.cancel()
             navigationCancelHandler.value?.invoke(null, false)
             navigationStartHandler.value = null
@@ -3135,6 +3161,7 @@ private fun configureReader(
     marginBottomDp: Float,
     marginLeftDp: Float,
     notes: List<Note>,
+    ruleFontUrls: Map<String, String> = emptyMap(),
     locatorRequest: EpubLocatorRequest?,
     pageRequest: EpubPageRequest?,
     preparePageRequest: Boolean = false,
@@ -3146,7 +3173,6 @@ private fun configureReader(
     }
     val readerFontUrl = when {
         fontType == "system" -> null
-        fontType == "serif" -> null
         else -> session.readerFontUrl(fontFilePath)
     }
     val fontFamily = when {
@@ -3154,7 +3180,7 @@ private fun configureReader(
         // families are mapped to CSS names so WebView does not silently fall
         // back to a document-selected family.
         fontType == "system" -> null
-        fontType == "serif" -> "serif"
+        fontType == "serif" && readerFontUrl == null -> "serif"
         fontType == "sans_serif" -> "sans-serif"
         fontType == "monospace" -> "monospace"
         readerFontUrl != null -> "Lumi Reader Override"
@@ -3183,6 +3209,10 @@ private fun configureReader(
         .put("chineseTarget", chineseMapping?.second.orEmpty())
         .putOpt("fontFamily", fontFamily)
         .putOpt("fontUrl", readerFontUrl)
+        .put("fontSystemSerifFallback", fontType == "serif")
+        .putOpt("fontItalicUrl", if (fontType == "serif" && fontFilePath != null)
+            session.readerFontUrl(java.io.File(java.io.File(fontFilePath).parentFile,
+                "source_serif4_italic_v1.ttf").path) else null)
         .put("bodyFontWeight", bodyFontWeight.coerceIn(100, 900))
         .putOpt("textColor", textColorOverride?.let { String.format("#%06X", it and 0xFFFFFF) })
         .putOpt(
@@ -3280,7 +3310,7 @@ private fun configureReader(
             }
         }
         append("window.LumiReader.setHighlights(")
-        append(highlightsJson(notes).toString())
+        append(highlightsJson(notes, ruleFontUrls).toString())
         append(");window.LumiReader.reportLayoutStatus();return 'ok';}catch(e){return 'execution_error';}})();")
     }
     view.evaluateJavascript(script) { result ->
@@ -3364,9 +3394,13 @@ private suspend fun requestPageText(
     }
 }
 
-private fun applyHighlights(view: WebView, notes: List<Note>) {
+private fun applyHighlights(
+    view: WebView,
+    notes: List<Note>,
+    ruleFontUrls: Map<String, String> = emptyMap()
+) {
     view.evaluateJavascript(
-        "window.LumiReader&&window.LumiReader.setHighlights(${highlightsJson(notes)});",
+        "window.LumiReader&&window.LumiReader.setHighlights(${highlightsJson(notes, ruleFontUrls)});",
         null
     )
 }
@@ -3387,7 +3421,10 @@ private fun applyTtsHighlight(
     view.evaluateJavascript(command, null)
 }
 
-private fun highlightsJson(notes: List<Note>): JSONArray = JSONArray().apply {
+private fun highlightsJson(
+    notes: List<Note>,
+    ruleFontUrls: Map<String, String> = emptyMap()
+): JSONArray = JSONArray().apply {
     notes.forEach { note ->
         val item = JSONObject().put("exact", note.selectedText).put("color", note.color.toCssColor()).put("type", note.type)
         RuleStyleJson.decode(note.styleSnapshotJson)?.let { style ->
@@ -3396,6 +3433,18 @@ private fun highlightsJson(notes: List<Note>): JSONArray = JSONArray().apply {
                 put("underlineMode", style.underlineMode)
                 put("fontWeight", style.fontWeight)
                 put("italic", style.italic)
+                val fontFamily = when {
+                    style.fontType == "serif" -> "serif"
+                    style.fontType == "sans_serif" -> "sans-serif"
+                    style.fontType == "monospace" -> "monospace"
+                    style.fontType == "fangsong" -> "LumiRuleFangSong"
+                    style.fontType == "kaiti" -> "LumiRuleKaiTi"
+                    style.fontType.startsWith("custom:") && ruleFontUrls[style.fontType] != null ->
+                        "LumiRule_${style.fontType.removePrefix("custom:")}"
+                    else -> null
+                }
+                fontFamily?.let { put("fontFamily", it) }
+                ruleFontUrls[style.fontType]?.let { put("fontUrl", it) }
             })
         }
         note.startLocatorJson?.let { json ->

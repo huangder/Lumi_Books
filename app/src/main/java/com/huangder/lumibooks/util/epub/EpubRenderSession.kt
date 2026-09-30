@@ -124,6 +124,7 @@ class EpubRenderSession private constructor(
         }
         val mimeType = when (canonical.extension.lowercase()) {
             "otf" -> "font/otf"
+            "ttc" -> "font/collection"
             "woff" -> "font/woff"
             "woff2" -> "font/woff2"
             else -> "font/ttf"
@@ -340,7 +341,7 @@ class EpubRenderSession private constructor(
         val spineItem = epubPackage.spine.getOrNull(chapter.spineIndex) ?: return null
         val raw = readRawChapter(chapter.path) ?: return null
         val sliced = sliceEpubLogicalChapter(
-            String(raw.bytes, Charsets.UTF_8), chapter.startAnchor, chapter.endAnchor
+            EpubComicIndexer.annotate(epubPackage, chapter.path, chapterIndex, raw.bytes), chapter.startAnchor, chapter.endAnchor
         )
         return raw.copy(
             bytes = sliced.toByteArray(Charsets.UTF_8),
@@ -462,7 +463,7 @@ class EpubRenderSession private constructor(
         private const val MAX_READER_FONT_BYTES = 64L * 1024L * 1024L
         private val LINK_TAG_REGEX = Regex("""<link\b[^>]*>""", RegexOption.IGNORE_CASE)
         private val HREF_REGEX = Regex("""href\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
-        private val READER_FONT_EXTENSIONS = setOf("ttf", "otf", "woff", "woff2")
+        private val READER_FONT_EXTENSIONS = setOf("ttf", "otf", "ttc", "woff", "woff2")
         private const val CONTENT_SECURITY_POLICY =
             "default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; " +
                 "img-src 'self' data: blob:; media-src 'self' data: blob:; " +
