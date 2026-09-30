@@ -80,10 +80,10 @@ class BookReaderTransitionTest {
     }
 
     @Test
-    fun `library fallback parameters remain subtle`() {
+    fun `library backdrop has a visible but restrained depth effect`() {
         assertTrue(BookReaderMotion.LIBRARY_DIM_ALPHA in 0.2f..0.4f)
-        assertTrue(BookReaderMotion.LIBRARY_SCALE in 0.98f..1f)
-        assertEquals(12f, BookReaderMotion.LIBRARY_BLUR_DP, 0.001f)
+        assertEquals(0.90f, BookReaderMotion.LIBRARY_SCALE, 0.001f)
+        assertEquals(18f, BookReaderMotion.LIBRARY_BLUR_DP, 0.001f)
     }
 
     @Test

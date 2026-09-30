@@ -23,7 +23,7 @@ internal object CoverFlowReaderMotion {
     }
     fun sideExit(progress: Float): Float = smooth(progress / 0.34f)
     fun coverAlpha(progress: Float): Float = 1f - smooth((progress - 0.34f) / 0.56f)
-    fun coverScale(progress: Float): Float = 1f + 0.7f * progress.coerceIn(0f, 1f)
+    fun coverScale(progress: Float): Float = 1f + 0.22f * progress.coerceIn(0f, 1f)
     fun readerAlpha(progress: Float): Float = smooth((progress - 0.34f) / 0.66f)
     fun readerScale(progress: Float): Float = 0.94f + 0.06f * readerAlpha(progress)
 }
@@ -36,6 +36,11 @@ internal fun CoverFlowReaderOverlay(transition: BookReaderTransitionState, modif
     val density = LocalDensity.current
     val bg = AppColors.WindowBg
     Box(modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().graphicsLayer {
+            val p = transition.coverFlowProgressSnapshot.value
+            alpha = CoverFlowReaderMotion.readerAlpha(p) *
+                (1f - transition.readerRevealSnapshot.value.coerceIn(0f, 1f))
+        }.background(bg))
         // A light veil blends the blurred library into the reading surface. It also keeps slow
         // imports coherent after Navigation has disposed the outgoing library destination.
         Box(Modifier.fillMaxSize().graphicsLayer {
@@ -52,9 +57,14 @@ internal fun CoverFlowReaderOverlay(transition: BookReaderTransitionState, modif
                     scaleY = scaleX
                     alpha = CoverFlowReaderMotion.coverAlpha(p)
                 })
-        if (transition.phase == BookReaderTransitionPhase.ReaderLoading && !transition.readerReady) {
-            CircularProgressIndicator(Modifier.align(Alignment.BottomCenter).padding(bottom = 80.dp).size(18.dp),
-                color = AppColors.Accent, strokeWidth = 2.dp)
+        if (rememberBookLoadingIndicatorVisible(transition)) {
+            CircularProgressIndicator(
+                Modifier.align(Alignment.Center).size(20.dp).graphicsLayer {
+                    alpha = 1f - transition.readerRevealSnapshot.value.coerceIn(0f, 1f)
+                },
+                color = AppColors.Accent,
+                strokeWidth = 2.dp
+            )
         }
     }
 }

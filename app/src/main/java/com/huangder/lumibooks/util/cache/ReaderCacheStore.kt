@@ -115,6 +115,7 @@ class ReaderCacheStore private constructor(private val context: Context) {
     init {
         val directory = ensureRoot()
         cleanupStaleMirrors(directory)
+        trimChapterMetadata()
     }
 
     /**
@@ -307,12 +308,26 @@ class ReaderCacheStore private constructor(private val context: Context) {
                 file.delete()
                 null
             } else {
-                envelope.optJSONObject("payload")
+                if (namespace.startsWith("epub_chapter_v")) {
+                    file.setLastModified(System.currentTimeMillis())
+                }
+                envelope.optJSONObject("payload")?.also { payload ->
+                    if (payload.length() == 0) file.delete()
+                } ?: run {
+                    file.delete()
+                    null
+                }
             }
         }.getOrElse {
             file.delete()
             null
         }
+    }
+
+    /** Remove a single corrupt or otherwise unusable metadata artifact. */
+    @Synchronized
+    fun deleteMetadata(namespace: String, fingerprint: BookFingerprint) {
+        runCatching { metadataFile(namespace, fingerprint).delete() }
     }
 
     @Synchronized
@@ -330,6 +345,7 @@ class ReaderCacheStore private constructor(private val context: Context) {
             val temporary = File(directory, file.name + ".tmp")
             temporary.writeText(envelope.toString())
             moveAtomically(temporary, file)
+            if (namespace.startsWith("epub_chapter_v")) trimChapterMetadata()
         }
     }
 
@@ -412,9 +428,33 @@ class ReaderCacheStore private constructor(private val context: Context) {
         }
     }
 
+    /** Keep persisted EPUB chapter artifacts bounded independently of mirrored book files. */
+    private fun trimChapterMetadata() {
+        val files = ensureRoot().listFiles { file ->
+            file.isFile && file.name.startsWith("epub_chapter_v") && file.extension == "json"
+        }.orEmpty().sortedByDescending { it.lastModified() }
+        if (files.isEmpty()) return
+
+        val perBook = HashMap<String, Long>()
+        var total = 0L
+        files.forEach { file ->
+            val fingerprintKey = file.name.removeSuffix(".json").takeLast(64)
+            val bookBytes = perBook[fingerprintKey] ?: 0L
+            val keep = bookBytes + file.length() <= MAX_EPUB_CHAPTER_BYTES_PER_BOOK &&
+                total + file.length() <= MAX_EPUB_CHAPTER_BYTES
+            if (keep) {
+                perBook[fingerprintKey] = bookBytes + file.length()
+                total += file.length()
+            } else {
+                file.delete()
+            }
+        }
+    }
+
     @Synchronized
     internal fun enforceLimitsForTesting() {
         trim(excludeKey = null)
+        trimChapterMetadata()
     }
 
     @Synchronized
@@ -450,6 +490,8 @@ class ReaderCacheStore private constructor(private val context: Context) {
     companion object {
         const val MAX_BYTES: Long = 96L * 1024L * 1024L
         const val MAX_BOOKS: Int = 3
+        private const val MAX_EPUB_CHAPTER_BYTES: Long = 96L * 1024L * 1024L
+        private const val MAX_EPUB_CHAPTER_BYTES_PER_BOOK: Long = 48L * 1024L * 1024L
         private const val MAX_SINGLE_BYTES: Long = 64L * 1024L * 1024L
         private const val MIN_FREE_AFTER_SESSION_MIRROR_BYTES: Long = 64L * 1024L * 1024L
         private const val MIRROR_PREFIX = "mirror_"

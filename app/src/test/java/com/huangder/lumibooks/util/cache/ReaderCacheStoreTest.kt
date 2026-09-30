@@ -20,6 +20,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -235,6 +236,35 @@ class ReaderCacheStoreTest {
 
         assertFalse(book.exists())
         assertFalse(metadata.exists())
+    }
+
+    @Test
+    fun `chapter metadata is deleted when its envelope is corrupt`() {
+        val source = sourceFile("chapter-cache-corrupt.epub", "epub")
+        val fingerprint = BookFingerprint.resolve(context, source.absolutePath)
+        val namespace = "epub_chapter_v3_0_source"
+        store.writeMetadata(namespace, fingerprint, JSONObject().put("value", "ok"))
+        val metadata = store.metadataFile(namespace, fingerprint)
+        metadata.writeText("not-json")
+
+        assertNull(store.readMetadata(namespace, fingerprint))
+        assertFalse(metadata.exists())
+        source.delete()
+    }
+
+    @Test
+    fun `chapter metadata is invalidated when source fingerprint changes`() {
+        val source = sourceFile("chapter-cache-version.epub", "first")
+        val first = BookFingerprint.resolve(context, source.absolutePath)
+        val namespace = "epub_chapter_v3_0_source"
+        store.writeMetadata(namespace, first, JSONObject().put("value", "first"))
+
+        source.appendText("-changed")
+        source.setLastModified(first.lastModified + 2_000L)
+        val changed = BookFingerprint.resolve(context, source.absolutePath)
+
+        assertNull(store.readMetadata(namespace, changed))
+        source.delete()
     }
 
     private fun sourceFile(name: String, content: String): File =

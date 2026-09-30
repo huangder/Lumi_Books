@@ -4,14 +4,9 @@ import android.graphics.RenderEffect
 import android.graphics.Shader
 import android.graphics.BitmapFactory
 import android.os.Build
-import androidx.compose.animation.AnimatedVisibilityScope
-import androidx.compose.animation.BoundsTransform
-import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -28,7 +23,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -42,14 +39,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.ClipOp
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -77,6 +82,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 internal enum class BookReaderTransitionPhase {
@@ -96,6 +102,7 @@ internal fun BookReaderTransitionPhase.canTransitionTo(
     this == BookReaderTransitionPhase.Library -> false
     this == BookReaderTransitionPhase.Opening ->
         next == BookReaderTransitionPhase.ReaderLoading ||
+            next == BookReaderTransitionPhase.Ready ||
             next == BookReaderTransitionPhase.Closing
     this == BookReaderTransitionPhase.ReaderLoading ->
         next == BookReaderTransitionPhase.Ready ||
@@ -141,18 +148,28 @@ internal object BookReaderMotion {
     const val SHELL_REVEAL_MS = 180
     const val CONTENT_REVEAL_MS = 160
     const val CONTROL_POINT_OFFSET_DP = 28f
-    const val LIBRARY_BLUR_DP = 12f
+    const val REVEAL_START_MS = WINDOW_DURATION_MS - SHELL_REVEAL_MS
+    const val LOADING_INDICATOR_DELAY_MS = 600L
+    const val LIBRARY_BLUR_DP = 18f
     const val LIBRARY_DIM_ALPHA = 0.28f
-    const val LIBRARY_SCALE = 0.985f
+    const val LIBRARY_SCALE = 0.90f
     const val DEFAULT_CORNER_RADIUS_DP = 14f
 
-    val PositionEasing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
-    val SizeEasing = CubicBezierEasing(0.25f, 0.90f, 0.35f, 1f)
-    val HeroBoundsTransform = BoundsTransform { _, _ ->
-        tween(durationMillis = WINDOW_DURATION_MS, easing = LinearEasing)
-    }
+    // Leave visible travel in the second half instead of reaching almost full
+    // screen halfway through and appearing to stall until the reader reveals.
+    val PositionEasing = CubicBezierEasing(0.2f, 0.45f, 0.3f, 1f)
+    val SizeEasing = CubicBezierEasing(0.2f, 0.35f, 0.3f, 1f)
 
     fun sharedKey(bookId: String): String = "book-window-$bookId"
+
+    fun windowBounds(source: Rect, target: Rect, position: Float, size: Float, offsetPx: Float): Rect {
+        val center = quadraticPoint(source.center,
+            controlPoint(source.center, target.center, target.center, offsetPx), target.center, position)
+        val width = lerp(source.width, target.width, size)
+        val height = lerp(source.height, target.height, size)
+        return Rect(center.x - width / 2f, center.y - height / 2f,
+            center.x + width / 2f, center.y + height / 2f)
+    }
 
     fun controlPoint(
         start: Offset,
@@ -258,13 +275,20 @@ internal class BookReaderTransitionState internal constructor(
     private val readerExitAlphaAnim = Animatable(1f)
     private val libraryProgressAnim = Animatable(0f)
     private val coverFlowProgressAnim = Animatable(0f)
+    private val readerRevealAnim = Animatable(0f)
     val coverFlowProgressSnapshot: State<Float> = coverFlowProgressAnim.asState()
+    val readerRevealSnapshot: State<Float> = readerRevealAnim.asState()
     var presentation by mutableStateOf(BookReaderPresentation.Window)
         private set
     private val coverAnchors = mutableMapOf<Any, BookCoverAnchor>()
     private var motionJob: Job? = null
     private var revealJob: Job? = null
     private var colorJob: Job? = null
+    private var revealAllowed = false
+    private var windowMotionComplete = false
+    private var closeSourceLocked = false
+    var sessionId by mutableStateOf(0L)
+        private set
 
     val phaseSnapshot: State<BookReaderTransitionPhase> = phaseState
     val positionSnapshot: State<Float> = positionAnim.asState()
@@ -324,7 +348,8 @@ internal class BookReaderTransitionState internal constructor(
 
     fun updateCoverFlowReturnSource(bookId: String, bounds: Rect) {
         if (presentation != BookReaderPresentation.CoverFlow || activeBookId != bookId ||
-            phase != BookReaderTransitionPhase.Closing || bounds.width <= 0f || bounds.height <= 0f) return
+            phase != BookReaderTransitionPhase.Closing || closeSourceLocked ||
+            bounds.width <= 0f || bounds.height <= 0f) return
         sourceBounds = bounds
         coverFlowReturnReady = true
     }
@@ -400,6 +425,10 @@ internal class BookReaderTransitionState internal constructor(
         motionJob?.cancel()
         revealJob?.cancel()
         colorJob?.cancel()
+        sessionId++
+        revealAllowed = false
+        windowMotionComplete = false
+        closeSourceLocked = false
         activeBookId = bookId
         closeAnchorKey = null
         coverBook = book
@@ -426,16 +455,29 @@ internal class BookReaderTransitionState internal constructor(
         readerExitAlphaAnim.snapTo(1f)
         libraryProgressAnim.snapTo(0f)
         coverFlowProgressAnim.snapTo(0f)
+        readerRevealAnim.snapTo(0f)
 
         if (presentation == BookReaderPresentation.CoverFlow) {
-            // Load behind the untouched source, then run one uninterrupted choreography.
-            // Splitting at 0.34 visibly stopped an already enlarged cover on slower books.
             setPhase(BookReaderTransitionPhase.ReaderLoading)
+            motionJob = scope.launch {
+                coverFlowProgressAnim.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(620, easing = FastOutSlowInEasing)
+                )
+                if (phase == BookReaderTransitionPhase.Ready && readerRevealAnim.value >= 0.999f) {
+                    setPhase(BookReaderTransitionPhase.Reader)
+                }
+            }
             return true
         }
 
         motionJob = scope.launch {
             coroutineScope {
+                launch {
+                    delay(BookReaderMotion.REVEAL_START_MS.toLong())
+                    revealAllowed = true
+                    if (readerReady) revealReader()
+                }
                 launch {
                     positionAnim.animateTo(
                         targetValue = 1f,
@@ -488,8 +530,13 @@ internal class BookReaderTransitionState internal constructor(
                     )
                 }
             }
-            setPhase(BookReaderTransitionPhase.ReaderLoading)
-            if (readerReady) revealReader()
+            windowMotionComplete = true
+            if (phase == BookReaderTransitionPhase.Opening) {
+                setPhase(BookReaderTransitionPhase.ReaderLoading)
+                if (readerReady) revealReader()
+            } else if (phase == BookReaderTransitionPhase.Ready && shellAlphaAnim.value == 0f) {
+                setPhase(BookReaderTransitionPhase.Reader)
+            }
         }
         colorJob = scope.launch {
             val color = withContext(Dispatchers.IO) {
@@ -502,9 +549,11 @@ internal class BookReaderTransitionState internal constructor(
         return true
     }
 
-    fun markReaderReady() {
+    fun markReaderReady(expectedSessionId: Long = sessionId) {
+        if (expectedSessionId != sessionId || phase !in setOf(
+                BookReaderTransitionPhase.Opening, BookReaderTransitionPhase.ReaderLoading)) return
         readerReady = true
-        if (phaseState.value == BookReaderTransitionPhase.ReaderLoading) {
+        if (phaseState.value == BookReaderTransitionPhase.ReaderLoading || revealAllowed) {
             revealReader()
         }
     }
@@ -513,6 +562,11 @@ internal class BookReaderTransitionState internal constructor(
         val bookId = activeBookId ?: return false
         val anchorKey = activeAnchorKey ?: return false
         if (phaseState.value == BookReaderTransitionPhase.Library) return false
+        val visibleReaderAlpha = when (phase) {
+            BookReaderTransitionPhase.Reader -> 1f
+            BookReaderTransitionPhase.Ready -> 1f - shellAlphaAnim.value
+            else -> 0f
+        }
         val anchor = coverAnchors[anchorKey]
         var targetBounds = sourceBounds ?: anchor?.bounds ?: return false
         var targetRadius = sourceCornerRadiusDp.takeIf { it > 0f }
@@ -523,17 +577,22 @@ internal class BookReaderTransitionState internal constructor(
 
         motionJob?.cancel()
         revealJob?.cancel()
+        colorJob?.cancel()
         sourceBounds = targetBounds
         sourceCornerRadiusDp = targetRadius
         closeAnchorKey = anchorKey
+        closeSourceLocked = false
         coverFlowReturnReady = false
         setPhase(BookReaderTransitionPhase.Closing)
         val currentPosition = positionAnim.value.coerceIn(0f, 1f)
         val currentSize = sizeAnim.value.coerceIn(0f, 1f)
 
         motionJob = scope.launch {
+            readerExitAlphaAnim.snapTo(visibleReaderAlpha)
             // Let the library destination scroll the target book into view and register
             // its current cover bounds before the reverse animation starts.
+            var previousCandidate: BookCoverAnchor? = null
+            var stableFrames = 0
             for (frame in 0 until 18) {
                 withFrameNanos { }
                 if (phaseState.value != BookReaderTransitionPhase.Closing) return@launch
@@ -541,10 +600,15 @@ internal class BookReaderTransitionState internal constructor(
                     if (coverFlowReturnReady) break
                     continue
                 }
-                val candidate = coverAnchors.values
-                    .filter { it.bookId == bookId }
-                    .minWithOrNull(compareBy({ it.bounds.top }, { it.bounds.left }))
-                if (candidate != null) {
+                // A destination can compose the top "continue" cover before the
+                // original recent-book cover. Give the stable launch anchor time
+                // to return before considering another copy of the same book.
+                val candidate = returnAnchor(bookId, allowFallback = frame >= 12)
+                stableFrames = if (candidate != null && candidate == previousCandidate) stableFrames + 1 else 0
+                previousCandidate = candidate
+                // A restored lazy layout can register its old position before
+                // scrollToItem/reordering is applied. Lock only after it settles.
+                if (candidate != null && stableFrames >= 2) {
                     targetBounds = candidate.bounds
                     targetRadius = candidate.cornerRadiusDp
                     coverTitleStyle = candidate.titleStyle
@@ -555,6 +619,7 @@ internal class BookReaderTransitionState internal constructor(
                     break
                 }
             }
+            closeSourceLocked = true
             if (presentation == BookReaderPresentation.CoverFlow) {
                 coverFlowProgressAnim.animateTo(0f, tween(380, easing = FastOutSlowInEasing))
                 refreshCloseSource(bookId)
@@ -670,23 +735,33 @@ internal class BookReaderTransitionState internal constructor(
     }
 
     private fun revealReader() {
-        if (phaseState.value != BookReaderTransitionPhase.ReaderLoading) return
+        if (phase != BookReaderTransitionPhase.ReaderLoading &&
+            !(phase == BookReaderTransitionPhase.Opening && revealAllowed)) return
         revealJob?.cancel()
         setPhase(BookReaderTransitionPhase.Ready)
         revealJob = scope.launch {
             if (presentation == BookReaderPresentation.CoverFlow) {
-                coverFlowProgressAnim.animateTo(1f, tween(620, easing = FastOutSlowInEasing))
-                if (phaseState.value == BookReaderTransitionPhase.Ready) setPhase(BookReaderTransitionPhase.Reader)
+                readerRevealAnim.animateTo(1f, tween(220, easing = FastOutSlowInEasing))
+                if (phaseState.value == BookReaderTransitionPhase.Ready && coverFlowProgressAnim.value >= 0.999f) {
+                    setPhase(BookReaderTransitionPhase.Reader)
+                }
                 return@launch
             }
-            shellAlphaAnim.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(
-                    durationMillis = BookReaderMotion.SHELL_REVEAL_MS,
-                    easing = FastOutSlowInEasing
-                )
-            )
-            if (phaseState.value == BookReaderTransitionPhase.Ready) {
+            coroutineScope {
+                launch {
+                    readerRevealAnim.animateTo(1f, tween(220, easing = FastOutSlowInEasing))
+                }
+                launch {
+                    shellAlphaAnim.animateTo(
+                        targetValue = 0f,
+                        animationSpec = tween(
+                            durationMillis = BookReaderMotion.SHELL_REVEAL_MS,
+                            easing = FastOutSlowInEasing
+                        )
+                    )
+                }
+            }
+            if (phaseState.value == BookReaderTransitionPhase.Ready && windowMotionComplete) {
                 setPhase(BookReaderTransitionPhase.Reader)
             }
         }
@@ -709,21 +784,28 @@ internal class BookReaderTransitionState internal constructor(
     private fun refreshCloseSource(bookId: String) {
         // CF bounds are supplied after focus restoration. A graphics-layer movement does not
         // necessarily run onGloballyPositioned, so its previously registered rectangle is stale.
-        if (presentation == BookReaderPresentation.CoverFlow) return
+        if (presentation == BookReaderPresentation.CoverFlow || closeSourceLocked) return
         if (
             phaseState.value != BookReaderTransitionPhase.Closing ||
             activeBookId != bookId
         ) {
             return
         }
-        val refreshed = coverAnchors.values
-            .filter { it.bookId == bookId }
-            .minWithOrNull(compareBy({ it.bounds.top }, { it.bounds.left }))
-            ?: return
+        val refreshed = returnAnchor(bookId, allowFallback = false) ?: return
         sourceBounds = refreshed.bounds
         sourceCornerRadiusDp = refreshed.cornerRadiusDp
         coverShowsReadingProgress = refreshed.showReadingProgress
         closeAnchorKey = refreshed.key
+    }
+
+    private fun returnAnchor(bookId: String, allowFallback: Boolean = true): BookCoverAnchor? {
+        val candidates = coverAnchors.values.filter {
+            it.bookId == bookId && it.presentation == presentation
+        }
+        return candidates.firstOrNull { it.key == activeAnchorKey }
+            ?: candidates.takeIf { allowFallback }?.minByOrNull { anchor ->
+                sourceBounds?.let { rectDistance(anchor.bounds, it) } ?: 0f
+            }
     }
 
     private fun rectDistance(first: Rect, second: Rect): Float {
@@ -746,13 +828,17 @@ internal class BookReaderTransitionState internal constructor(
 
 @Stable
 internal class BookReaderAnchorScope(
-    val sharedTransitionScope: SharedTransitionScope,
-    val animatedVisibilityScope: AnimatedVisibilityScope,
     val transitionState: BookReaderTransitionState
 )
 
 internal val LocalBookReaderAnchorScope =
     staticCompositionLocalOf<BookReaderAnchorScope?> { null }
+
+private class LibraryCoordinateSpace {
+    var coordinates: LayoutCoordinates? = null
+}
+
+private val LocalLibraryCoordinateSpace = staticCompositionLocalOf<LibraryCoordinateSpace?> { null }
 
 @Composable
 internal fun rememberBookReaderTransitionState(): BookReaderTransitionState {
@@ -760,51 +846,57 @@ internal fun rememberBookReaderTransitionState(): BookReaderTransitionState {
     return remember(scope) { BookReaderTransitionState(scope) }
 }
 
-@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 internal fun Modifier.bookCoverTransitionAnchor(
     bookId: String,
     cornerRadiusDp: Float,
+    anchorId: Any? = null,
     titleStyle: BookCoverTitleStyle? = null,
     showReadingProgress: Boolean = true,
     presentation: BookReaderPresentation = BookReaderPresentation.Window
 ): Modifier {
     val anchors = LocalBookReaderAnchorScope.current ?: return this
-    val anchorKey = remember(bookId) {
-        "${BookReaderMotion.sharedKey(bookId)}-${nextCoverAnchorId.getAndIncrement()}"
+    val librarySpace = LocalLibraryCoordinateSpace.current
+    val anchorKey = remember(bookId, anchorId) {
+        anchorId ?: "${BookReaderMotion.sharedKey(bookId)}-${nextCoverAnchorId.getAndIncrement()}"
     }
     DisposableEffect(anchorKey) {
         onDispose { anchors.transitionState.unregisterCoverAnchor(anchorKey) }
     }
-    val sharedContentState = anchors.sharedTransitionScope.rememberSharedContentState(
-        anchorKey
-    )
-    val sharedModifier = if (presentation == BookReaderPresentation.Window && anchors.transitionState.activeAnchorKey == anchorKey) {
-        with(anchors.sharedTransitionScope) {
-            Modifier.sharedBounds(
-                sharedContentState = sharedContentState,
-                animatedVisibilityScope = anchors.animatedVisibilityScope,
-                boundsTransform = BookReaderMotion.HeroBoundsTransform,
-                renderInOverlayDuringTransition = false,
-                zIndexInOverlay = 1f
-            )
-        }
-    } else {
-        Modifier
-    }
     return this
         .onGloballyPositioned { coordinates ->
+            val state = anchors.transitionState
+            val root = coordinates.findRootCoordinates()
+            // boundsInRoot clips lazy-list cells to the viewport. The return cover
+            // needs its complete rectangle, including a partially visible edge.
+            val bounds = root.localBoundingBoxOf(coordinates, clipBounds = false)
+            val rootSize = root.size
+            val scale = if (state.presentation == BookReaderPresentation.Window && state.usesHeroTransition)
+                BookReaderMotion.lerp(1f, BookReaderMotion.LIBRARY_SCALE, state.libraryProgressSnapshot.value)
+            else 1f
+            val centerX = rootSize.width / 2f
+            val centerY = rootSize.height / 2f
+            val library = librarySpace?.coordinates?.takeIf { it.isAttached }
+            val stableBounds = if (library != null) {
+                // Measure inside the transformed library, so scale changes do not
+                // alter the return anchor or depend on the previous render frame.
+                val localBounds = library.localBoundingBoxOf(coordinates, clipBounds = false)
+                val localCenter = Offset(library.size.width / 2f, library.size.height / 2f)
+                val origin = root.localPositionOf(library, localCenter) - localCenter
+                localBounds.translate(origin)
+            } else Rect(
+                centerX + (bounds.left - centerX) / scale, centerY + (bounds.top - centerY) / scale,
+                centerX + (bounds.right - centerX) / scale, centerY + (bounds.bottom - centerY) / scale)
             anchors.transitionState.registerCoverAnchor(
                 anchorKey = anchorKey,
                 bookId = bookId,
-                bounds = coordinates.boundsInRoot(),
+                bounds = stableBounds,
                 cornerRadiusDp = cornerRadiusDp,
                 titleStyle = titleStyle,
                 showReadingProgress = showReadingProgress,
                 presentation = presentation
             )
         }
-        .then(sharedModifier)
         .then(
             if (anchors.transitionState.activeBookId == bookId) {
                 Modifier.graphicsLayer {
@@ -819,25 +911,33 @@ internal fun Modifier.bookCoverTransitionAnchor(
         )
 }
 
-@OptIn(ExperimentalSharedTransitionApi::class)
+/** One full-screen coordinate space is shared by library content and the floating tab bar. */
 @Composable
-internal fun Modifier.bookReaderTargetAnchor(bookId: String): Modifier {
-    val anchors = LocalBookReaderAnchorScope.current ?: return this
-    if (anchors.transitionState.presentation == BookReaderPresentation.CoverFlow) return this
-    val anchorKey = anchors.transitionState.activeAnchorKey ?: return this
-    val sharedContentState = anchors.sharedTransitionScope.rememberSharedContentState(
-        anchorKey
-    )
-    return with(anchors.sharedTransitionScope) {
-        this@bookReaderTargetAnchor
-            .sharedBounds(
-                sharedContentState = sharedContentState,
-                animatedVisibilityScope = anchors.animatedVisibilityScope,
-                boundsTransform = BookReaderMotion.HeroBoundsTransform,
-                renderInOverlayDuringTransition = false,
-                zIndexInOverlay = 2f
-            )
-            .graphicsLayer { alpha = 0f }
+internal fun Modifier.bookReaderLibraryLayer(
+    transition: BookReaderTransitionState,
+    blurEnabled: Boolean
+): Modifier {
+    val effects = remember(transition, LocalDensity.current.density) {
+        arrayOfNulls<androidx.compose.ui.graphics.RenderEffect>(37)
+    }
+    return graphicsLayer {
+        val active = transition.phase != BookReaderTransitionPhase.Library
+        val isCoverFlow = transition.presentation == BookReaderPresentation.CoverFlow
+        val progress = if (!active) 0f else if (isCoverFlow)
+            transition.coverFlowProgressSnapshot.value.coerceIn(0f, 1f)
+        else transition.libraryProgressSnapshot.value.coerceIn(0f, 1f)
+        alpha = BookReaderMotion.lerp(1f,
+            if (isCoverFlow) 0.65f else BookReaderMotion.LIBRARY_DIM_ALPHA, progress)
+        val scale = if (isCoverFlow) 1f else BookReaderMotion.lerp(1f, BookReaderMotion.LIBRARY_SCALE, progress)
+        scaleX = scale
+        scaleY = scale
+        // Half-dp steps reuse effects in both directions instead of allocating one per frame.
+        val step = (BookReaderMotion.LIBRARY_BLUR_DP * 2f * progress).roundToInt().coerceIn(0, 36)
+        renderEffect = if (blurEnabled && step > 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            effects[step] ?: RenderEffect.createBlurEffect(
+                step * 0.5f * density, step * 0.5f * density, Shader.TileMode.CLAMP
+            ).asComposeRenderEffect().also { effects[step] = it }
+        } else null
     }
 }
 
@@ -847,51 +947,60 @@ internal fun BookReaderLibraryLayer(
     blurEnabled: Boolean,
     content: @Composable () -> Unit
 ) {
-    val layerActive = transition.phase == BookReaderTransitionPhase.Opening ||
-        transition.phase == BookReaderTransitionPhase.ReaderLoading ||
-        (transition.presentation == BookReaderPresentation.CoverFlow && transition.phase == BookReaderTransitionPhase.Ready) ||
-        transition.phase == BookReaderTransitionPhase.Closing
-    Box(
-        modifier = if (layerActive) {
-            Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    val isCoverFlow = transition.presentation == BookReaderPresentation.CoverFlow
-                    val progress = if (isCoverFlow) transition.coverFlowProgressSnapshot.value.coerceIn(0f, 1f)
-                        else transition.libraryProgressSnapshot.value.coerceIn(0f, 1f)
-                    alpha = BookReaderMotion.lerp(
-                        1f,
-                        if (isCoverFlow) 0.65f else BookReaderMotion.LIBRARY_DIM_ALPHA,
-                        progress
-                    )
-                    val scale = BookReaderMotion.lerp(
-                        1f,
-                        if (isCoverFlow) 1f else BookReaderMotion.LIBRARY_SCALE,
-                        progress
-                    )
-                    scaleX = scale
-                    scaleY = scale
-                    renderEffect = if (
-                        blurEnabled &&
-                        progress > 0.01f &&
-                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                    ) {
-                        val radius = BookReaderMotion.LIBRARY_BLUR_DP * density * progress
-                        RenderEffect.createBlurEffect(
-                            radius,
-                            radius,
-                            Shader.TileMode.CLAMP
-                        ).asComposeRenderEffect()
-                    } else {
-                        null
-                    }
-                }
-        } else {
-            Modifier.fillMaxSize()
-        }
-    ) {
-        content()
+    val coordinateSpace = remember { LibraryCoordinateSpace() }
+    CompositionLocalProvider(LocalLibraryCoordinateSpace provides coordinateSpace) {
+        Box(Modifier.fillMaxSize().bookReaderLibraryLayer(transition, blurEnabled)
+            .onPlaced { coordinateSpace.coordinates = it }) { content() }
     }
+}
+
+/** Clip the incoming full-size reader to the same moving window as its cover shell.
+ * The tab bar uses the inverse clip because its host is above Navigation's destinations.
+ */
+internal fun Modifier.bookReaderWindowClip(
+    transition: BookReaderTransitionState,
+    outside: Boolean = false
+): Modifier = drawWithCache {
+    val path = Path()
+    onDrawWithContent {
+        val source = transition.sourceBounds
+        val phase = transition.phase
+        // Navigation may retain AnimatedVisibility for a frame after Ready. Keep
+        // its outside layer occluded when the window becomes the full reader.
+        if (outside && phase == BookReaderTransitionPhase.Reader) return@onDrawWithContent
+        val active = transition.presentation == BookReaderPresentation.Window && source != null &&
+            phase != BookReaderTransitionPhase.Library && phase != BookReaderTransitionPhase.Reader &&
+            (outside || phase == BookReaderTransitionPhase.Ready)
+        if (active && source != null) {
+            val bounds = BookReaderMotion.windowBounds(source, Rect(Offset.Zero, size),
+                transition.positionSnapshot.value, transition.sizeSnapshot.value,
+                BookReaderMotion.CONTROL_POINT_OFFSET_DP.dp.toPx())
+            // The shell's corner radius is scaled with its original cover layer.
+            val radius = transition.cornerRadiusSnapshot.value.dp.toPx()
+            path.reset()
+            path.addRoundRect(RoundRect(bounds, CornerRadius(
+                radius * bounds.width / source.width, radius * bounds.height / source.height)))
+            clipPath(path, if (outside) ClipOp.Difference else ClipOp.Intersect) { this@onDrawWithContent.drawContent() }
+        } else {
+            drawContent()
+        }
+    }
+}
+
+@Composable
+internal fun rememberBookLoadingIndicatorVisible(transition: BookReaderTransitionState): Boolean {
+    val waiting = transition.phase == BookReaderTransitionPhase.ReaderLoading ||
+        (transition.phase == BookReaderTransitionPhase.Ready &&
+            transition.readerRevealSnapshot.value < 0.999f)
+    var visible by remember(transition.sessionId) { mutableStateOf(false) }
+    LaunchedEffect(transition.sessionId, waiting) {
+        visible = false
+        if (waiting) {
+            delay(250L)
+            visible = true
+        }
+    }
+    return waiting && visible
 }
 
 @Composable
@@ -1193,15 +1302,14 @@ internal fun BookHeroWindowOverlay(
             }
         }
 
-        if (
-            phase == BookReaderTransitionPhase.ReaderLoading &&
-            !transition.readerReady
-        ) {
+        if (rememberBookLoadingIndicatorVisible(transition)) {
             CircularProgressIndicator(
                 modifier = Modifier
                     .align(Alignment.Center)
                     .size(16.dp)
-                    .graphicsLayer { alpha = 0.58f },
+                    .graphicsLayer {
+                        alpha = 0.72f * (1f - transition.readerRevealSnapshot.value.coerceIn(0f, 1f))
+                    },
                 color = AppColors.Accent,
                 strokeWidth = 2.dp
             )
