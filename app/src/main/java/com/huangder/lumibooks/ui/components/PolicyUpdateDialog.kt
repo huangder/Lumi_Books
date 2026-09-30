@@ -120,8 +120,8 @@ fun PolicyUpdateDialog(
                 onClick = onDecline
             )
         },
-        // Keep the source content visible enough for the glass lens to refract it.
-        contentScrimColor = AppColors.CardBg.copy(alpha = 0.22f)
+        // Keep policy text readable over page artwork while retaining the glass lens.
+        contentScrimColor = AppColors.CardBg.copy(alpha = 0.80f)
     )
 }
 
@@ -140,7 +140,7 @@ private fun PolicyUpdateItem(
         LiquidGlassSurface(
             shape = shape,
             fallbackColor = AppColors.BgGray,
-            contentScrimColor = AppColors.CardBg.copy(alpha = 0.10f),
+            contentScrimColor = AppColors.CardBg.copy(alpha = 0.74f),
             onClick = onClick,
             modifier = Modifier.fillMaxWidth(),
             contentAlignment = Alignment.CenterStart

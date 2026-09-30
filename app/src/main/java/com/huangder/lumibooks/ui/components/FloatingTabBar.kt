@@ -1,4 +1,10 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.huangder.lumibooks.ui.components
+import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.WindowInsets
 import com.huangder.lumibooks.ui.icons.AppIcons
 import com.huangder.lumibooks.ui.icons.IconPair
 
@@ -136,7 +142,7 @@ fun Material3BottomNavigationBar(
             .semantics { testTagsAsResourceId = true },
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
         tonalElevation = NavigationBarDefaults.Elevation,
-        windowInsets = NavigationBarDefaults.windowInsets
+        windowInsets = WindowInsets.navigationBarsIgnoringVisibility
     ) {
         tabs.forEachIndexed { index, tab ->
             NavigationBarItem(
@@ -295,7 +301,7 @@ fun FloatingTabBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
+            .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
             .padding(
                 // Leave enough room for the 28dp drop shadow; otherwise the outer
                 // layout bounds clip it and create a hard horizontal seam.
@@ -600,13 +606,29 @@ fun LiquidGlassImportButton(
     liquidGlassBackdrop: Backdrop,
     modifier: Modifier = Modifier
 ) {
+    val isDark = LocalIsDarkTheme.current
+    val transparency = LocalLiquidGlassTransparency.current
+    val baseSurfaceAlpha = if (isDark) {
+        0.34f - transparency * 0.16f
+    } else {
+        0.38f - transparency * 0.20f
+    }
+    val maskAlpha = if (isDark) 0.24f else 0.30f
+    val combinedSurfaceAlpha = 1f - (1f - baseSurfaceAlpha) * (1f - maskAlpha)
+    val surfaceColor = if (isDark) {
+        Color.Black.copy(alpha = combinedSurfaceAlpha)
+    } else {
+        Color.White.copy(alpha = combinedSurfaceAlpha)
+    }
+    val contentColor = if (isDark) Color.White.copy(alpha = 0.92f) else Color(0xFF17171A)
+
     LiquidGlassSurface(
         controlEdge = true,
         shape = CircleShape,
-        fallbackColor = Color.Black,
+        fallbackColor = if (isDark) Color(0xFF121214) else Color.White,
         backdrop = liquidGlassBackdrop,
-        contentScrimColor = Color.Black.copy(alpha = 0.85f),
-        // Match the action button to the 64dp Liquid Glass tab bar.
+        contentScrimColor = surfaceColor,
+        // Match the action button to the tab bar's 64dp glass space and optical rim.
         modifier = modifier.size(LiquidTabBarHeight),
         onClick = onClick,
         contentAlignment = Alignment.Center
@@ -614,7 +636,7 @@ fun LiquidGlassImportButton(
         Icon(
             imageVector = AppIcons.Plus,
             contentDescription = stringResource(R.string.import_books),
-            tint = Color.White,
+            tint = contentColor,
             modifier = Modifier.size(LiquidImportIconSize)
         )
     }

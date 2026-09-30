@@ -129,6 +129,7 @@ internal fun Modifier.liquidGlassBackdrop(
     isDark: Boolean,
     transparency: Float,
     contentScrimColor: Color = Color.Transparent,
+    contrastScrimColor: Color = Color.Transparent,
     tintColor: Color? = null,
     pressProgress: Float = 0f,
     scaleOnPress: Boolean = true,
@@ -231,6 +232,7 @@ internal fun Modifier.liquidGlassBackdrop(
                     )
                 )
             }
+            if (contrastScrimColor.alpha > 0f) drawRect(contrastScrimColor)
         }
     )
     // Kyant's highlight shader only understands CornerBasedShape. Keep custom G2 paths on
@@ -258,10 +260,14 @@ fun Modifier.liquidGlassSheetSurface(
     val isDark = LocalIsDarkTheme.current
     val transparency = LocalLiquidGlassTransparency.current
     val activeBackdrop = backdrop ?: LocalLiquidGlassBackdrop.current
+    val contrastScrim = liquidGlassContrastScrim(LocalLiquidGlassContrastEnabled.current, fallbackColor)
 
     return if (isLiquidGlass) {
         val floatingShape = RoundedCornerShape(28.dp)
-        val sheetTransparency = (transparency - 0.10f).coerceIn(0f, 0.90f)
+        val sheetTransparency = liquidGlassContrastTransparency(
+            LocalLiquidGlassContrastEnabled.current,
+            (transparency - 0.10f).coerceIn(0f, 0.90f)
+        )
         val scrimAlpha = (0.81f - sheetTransparency * 0.25f).coerceIn(0.58f, 0.81f)
         val floatingSurface = padding(start = 14.dp, end = 14.dp, bottom = 12.dp)
             .shadow(
@@ -279,12 +285,14 @@ fun Modifier.liquidGlassSheetSurface(
                 isDark = isDark,
                 transparency = sheetTransparency,
                 contentScrimColor = fallbackColor.copy(alpha = scrimAlpha),
+                contrastScrimColor = contrastScrim,
                 scaleOnPress = false
             )
         } else {
             floatingSurface
                 .clip(floatingShape)
                 .background(fallbackColor)
+                .background(contrastScrim)
                 .border(
                     width = LiquidGlassOutlineWidth,
                     brush = liquidGlassFallbackOutlineBrush(),
@@ -311,6 +319,7 @@ fun LiquidGlassSheetContainer(
     contentModifier: Modifier = Modifier,
     backdrop: Backdrop? = null,
     forceFallback: Boolean = false,
+    surfaceVisible: Boolean = true,
     contentAlignment: Alignment = Alignment.TopStart,
     content: @Composable BoxScope.() -> Unit
 ) {
@@ -328,16 +337,22 @@ fun LiquidGlassSheetContainer(
                 modifier = Modifier
                     .matchParentSize()
                     .then(
-                        if (isLiquidGlass) Modifier.layerBackdrop(containerBackdrop) else Modifier
+                        if (isLiquidGlass && surfaceVisible) Modifier.layerBackdrop(containerBackdrop) else Modifier
                     )
-                    .liquidGlassSheetSurface(
-                         fallbackColor = fallbackColor,
-                         shape = shape,
-                         backdrop = parentBackdrop,
-                         forceFallback = forceFallback
+                    .then(
+                        if (surfaceVisible) {
+                            Modifier.liquidGlassSheetSurface(
+                                fallbackColor = fallbackColor,
+                                shape = shape,
+                                backdrop = parentBackdrop,
+                                forceFallback = forceFallback
+                            )
+                        } else {
+                            Modifier
+                        }
                      )
             )
-            ProvideLiquidGlassBackdrop(containerBackdrop.takeIf { isLiquidGlass }) {
+            ProvideLiquidGlassBackdrop(containerBackdrop.takeIf { isLiquidGlass && surfaceVisible }) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -369,6 +384,7 @@ fun LiquidGlassColumnSheetContainer(
     contentModifier: Modifier = Modifier,
     backdrop: Backdrop? = null,
     forceFallback: Boolean = false,
+    surfaceVisible: Boolean = true,
     verticalArrangement: Arrangement.Vertical = Arrangement.Top,
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -377,7 +393,8 @@ fun LiquidGlassColumnSheetContainer(
         shape = shape,
         modifier = modifier,
         backdrop = backdrop,
-        forceFallback = forceFallback
+        forceFallback = forceFallback,
+        surfaceVisible = surfaceVisible
     ) {
         Column(
             modifier = contentModifier.fillMaxWidth(),
@@ -418,8 +435,14 @@ fun LiquidGlassSurface(
     val useControlEdge = controlEdge && LocalLiquidGlassControlEdgeEnabled.current
     val forceCanvasEdge = LocalLiquidGlassControlEdgeForceCanvas.current
     val edgeColor = tintColor ?: fallbackColor
-    val transparency = (transparencyOverride ?: LocalLiquidGlassTransparency.current)
-        .coerceIn(0f, 1f)
+    val contrastScrim = liquidGlassContrastScrim(
+        LocalLiquidGlassContrastEnabled.current,
+        tintColor ?: contentScrimColor.takeIf { it.alpha > 0f } ?: fallbackColor
+    )
+    val transparency = liquidGlassContrastTransparency(
+        LocalLiquidGlassContrastEnabled.current,
+        (transparencyOverride ?: LocalLiquidGlassTransparency.current).coerceIn(0f, 1f)
+    )
     val hdrHighlightEnabled = LocalLiquidGlassHdrHighlightEnabled.current
     val motionEnabled = LocalMotionEnabled.current
     val inheritedBackdrop = LocalLiquidGlassBackdrop.current
@@ -479,6 +502,7 @@ fun LiquidGlassSurface(
         !interactive && onClick == null && tintColor == null
     ) {
         Modifier.lumiCardSurface(fallbackColor, shape, controlEdge = useControlEdge)
+            .background(contrastScrim, shape)
     } else if (isLiquidGlass && activeBackdrop != null) {
         Modifier.liquidGlassBackdrop(
             backdrop = activeBackdrop,
@@ -487,6 +511,7 @@ fun LiquidGlassSurface(
             isDark = isDark,
             transparency = transparency,
             contentScrimColor = contentScrimColor,
+            contrastScrimColor = contrastScrim,
             tintColor = tintColor,
             scaleOnPress = false,
             buttonInteractionState = interactionState,
@@ -534,6 +559,7 @@ fun LiquidGlassSurface(
                     )
                 )
             )
+            .background(contrastScrim)
             .then(
                 if (useControlEdge) Modifier.liquidGlassControlEdge(shape, edgeColor, isDark, forceCanvasEdge)
                 else Modifier.border(LiquidGlassOutlineWidth, liquidGlassFallbackOutlineBrush(), shape)

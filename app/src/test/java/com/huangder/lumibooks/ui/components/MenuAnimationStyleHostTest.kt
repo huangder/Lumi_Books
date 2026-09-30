@@ -16,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.performClick
@@ -134,6 +136,115 @@ class MenuAnimationStyleHostTest {
         compose.runOnIdle {
             assertNull(host.displayedMenu)
             assertFalse(host.ownsDrawing(sourceId))
+            assertEquals(1, selections)
+        }
+    }
+
+    @Test fun categoryPanelMorphsFromItsAnchorRegardlessOfGlobalMenuStyle() {
+        val panel = menu.copy(
+            fadeOnlyPanel = true,
+            items = listOf(LiquidGlassMenuItem("Panel action") { selections++ })
+        )
+        show()
+
+        listOf(MenuAnimationStyle.NORMAL, MenuAnimationStyle.LIQUID).forEach { animationStyle ->
+            style.value = animationStyle
+            compose.runOnIdle { host.show(panel) }
+            advance(160)
+            compose.runOnIdle {
+                assertTrue(host.isActive(panel))
+                assertTrue("The panel should begin from its trigger in $animationStyle mode", host.ownsDrawing(sourceId))
+            }
+            advance(1200)
+            compose.onNodeWithText("Panel action").performClick()
+            advance(1200)
+        }
+
+        compose.runOnIdle {
+            assertEquals(2, selections)
+            assertNull(host.displayedMenu)
+        }
+    }
+
+    @Test fun categoryPanelUsesFadeWhenMotionIsReduced() {
+        motion.value = false
+        val panel = menu.copy(
+            fadeOnlyPanel = true,
+            items = listOf(LiquidGlassMenuItem("Panel action") { selections++ })
+        )
+        show()
+
+        for (value in MenuAnimationStyle.entries) {
+            compose.runOnIdle { style.value = value; host.show(panel) }
+            advance(160)
+            compose.runOnIdle {
+                assertTrue(host.isActive(panel))
+                assertFalse(host.ownsDrawing(sourceId))
+            }
+            compose.onNodeWithText("Panel action").performClick()
+            advance(160)
+        }
+
+        compose.runOnIdle {
+            assertEquals(2, selections)
+            assertNull(host.displayedMenu)
+        }
+    }
+
+    @Test fun retainedMenuReflectsToggleChangesAcrossRepeatedOpens() {
+        show(glass = true)
+        val enabled = mutableStateOf(false)
+        val toggleMenu = menu.copy(
+            forceSolid = false,
+            items = listOf(LiquidGlassMenuItem("Bionic reading", selectedState = { enabled.value }) {
+                enabled.value = !enabled.value
+            })
+        )
+
+        repeat(3) { opening ->
+            compose.runOnIdle { host.show(toggleMenu) }
+            advance(300)
+            val item = compose.onNodeWithText("Bionic reading")
+            if (opening == 1) item.assertIsSelected() else item.assertIsNotSelected()
+            item.performClick()
+            advance(300)
+        }
+        compose.runOnIdle { assertTrue(enabled.value) }
+    }
+
+    @Test fun submenuExpandsInPlaceAndBackCollapsesBeforeDismissal() {
+        show(glass = true)
+        val sortMenu = menu.copy(
+            forceSolid = false,
+            items = listOf(
+                LiquidGlassMenuItem(
+                    label = "Sort by", subtitle = "Current: Date added",
+                    submenuItems = listOf(
+                        LiquidGlassMenuItem("Date added", selected = true) { selections++ },
+                        LiquidGlassMenuItem("Title A-Z") { selections++ }
+                    )
+                ),
+                LiquidGlassMenuItem("Import") { selections++ }
+            )
+        )
+
+        compose.runOnIdle { host.show(sortMenu) }
+        advance(300)
+        compose.onNodeWithText("Title A-Z").assertDoesNotExist()
+        compose.onNodeWithText("Sort by").performClick()
+        advance(300)
+        compose.onNodeWithText("Date added").assertIsSelected()
+        compose.runOnIdle { host.back() }
+        advance(300)
+        compose.runOnIdle { assertTrue(host.isActive(sortMenu)) }
+        compose.onNodeWithText("Title A-Z").assertDoesNotExist()
+
+        compose.onNodeWithText("Sort by").performClick()
+        advance(300)
+        compose.onNodeWithText("Title A-Z").performClick()
+        advance(300)
+        compose.runOnIdle {
+            assertNull(host.activeMenu)
             assertEquals(1, selections)
         }
     }

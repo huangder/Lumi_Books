@@ -49,10 +49,14 @@ internal fun LiquidMenuSurface(
     }
     // Like sheet containers, derive frosting from the user's transparency with
     // a readability offset. Menus use 15 percentage points (70% becomes 55%).
-    val menuTransparency = (transparency - 0.15f).coerceIn(0f, 0.85f)
+    val menuTransparency = liquidGlassContrastTransparency(
+        LocalLiquidGlassContrastEnabled.current,
+        (transparency - 0.15f).coerceIn(0f, 0.85f)
+    )
     // A light veil above the sampled backdrop softens background lettering while
     // preserving the glass tint. Foreground menu text is drawn after this layer.
     val scrim = baseColor.copy(alpha = if (isDark) 0.36f else 0.28f)
+    val contrastScrim = liquidGlassContrastScrim(LocalLiquidGlassContrastEnabled.current, baseColor)
     val surface = if (backdrop != null) {
         Modifier.drawPlainBackdrop(
             backdrop = backdrop,
@@ -64,10 +68,13 @@ internal fun LiquidMenuSurface(
                     optics?.effect(frame, padding, density, content = false)?.let { effect(it) }
                 }
             },
-            onDrawSurface = { drawRect(scrim) }
+            onDrawSurface = {
+                drawRect(scrim)
+                if (contrastScrim.alpha > 0f) drawRect(contrastScrim)
+            }
         )
     } else {
-        Modifier.background(baseColor.copy(alpha = 0.92f))
+        Modifier.background(baseColor.copy(alpha = 0.92f)).background(contrastScrim)
     }
     Box(
         modifier.shadow(

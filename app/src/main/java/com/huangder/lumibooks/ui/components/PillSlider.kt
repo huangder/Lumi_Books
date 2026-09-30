@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
@@ -88,10 +89,12 @@ fun PillSlider(
     activeColor: Color = AppColors.ControlActive,
     inactiveColor: Color = AppColors.BgGray,
     opaqueLiquidThumb: Boolean = false,
-    onDragValueChange: ((Float) -> Unit)? = null
+    forceNonGlass: Boolean = false,
+    onDragValueChange: ((Float) -> Unit)? = null,
+    onInteractionChange: ((Boolean) -> Unit)? = null
 ) {
     val rangeLength = valueRange.endInclusive - valueRange.start
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current && !forceNonGlass
     val isDark = LocalIsDarkTheme.current
     val transparency = LocalLiquidGlassTransparency.current
     val motionEnabled = LocalMotionEnabled.current
@@ -102,6 +105,7 @@ fun PillSlider(
     val latestValue by rememberUpdatedState(value)
     val latestOnValueChange by rememberUpdatedState(onValueChange)
     val latestOnDragValueChange by rememberUpdatedState(onDragValueChange)
+    val latestOnInteractionChange by rememberUpdatedState(onInteractionChange)
     var pendingCommittedValue by remember { mutableStateOf<Float?>(null) }
     val motionState = remember(
         animationScope,
@@ -172,73 +176,78 @@ fun PillSlider(
                     if (widthPx <= 0f || rangeLength <= 0f) return@awaitEachGesture
 
                     motionState.beginInteraction()
-                    val startValue = motionState.value
-                    val startX = down.position.x
-                    val startY = down.position.y
-                    var dragged = false
-                    var released = false
-                    var cancelledByScroll = false
-                    var lastDragCallbackAtMillis = 0L
+                    latestOnInteractionChange?.invoke(true)
+                    try {
+                        val startValue = motionState.value
+                        val startX = down.position.x
+                        val startY = down.position.y
+                        var dragged = false
+                        var released = false
+                        var cancelledByScroll = false
+                        var lastDragCallbackAtMillis = 0L
 
-                    while (true) {
-                        val event = awaitPointerEvent(pass = PointerEventPass.Initial)
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        if (change.changedToUpIgnoreConsumed()) {
-                            released = true
-                            break
-                        }
-                        if (!change.pressed) break
-
-                        val positionDx = change.position.x - startX
-                        val positionDy = change.position.y - startY
-                        if (!dragged) {
-                            if (change.isConsumed) {
-                                cancelledByScroll = true
+                        while (true) {
+                            val event = awaitPointerEvent(pass = PointerEventPass.Initial)
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (change.changedToUpIgnoreConsumed()) {
+                                released = true
                                 break
                             }
-                            if (abs(positionDy) >= viewConfiguration.touchSlop && abs(positionDy) > abs(positionDx)) {
-                                cancelledByScroll = true
-                                break
+                            if (!change.pressed) break
+
+                            val positionDx = change.position.x - startX
+                            val positionDy = change.position.y - startY
+                            if (!dragged) {
+                                if (change.isConsumed) {
+                                    cancelledByScroll = true
+                                    break
+                                }
+                                if (abs(positionDy) >= viewConfiguration.touchSlop && abs(positionDy) > abs(positionDx)) {
+                                    cancelledByScroll = true
+                                    break
+                                }
+                                if (abs(positionDx) < viewConfiguration.touchSlop || abs(positionDx) < abs(positionDy)) {
+                                    continue
+                                }
+                                dragged = true
                             }
-                            if (abs(positionDx) < viewConfiguration.touchSlop || abs(positionDx) < abs(positionDy)) {
-                                continue
+
+                            val direction = if (isLtr) 1f else -1f
+                            val directValue = (startValue + direction * positionDx / widthPx * rangeLength)
+                                .coerceIn(valueRange)
+                            motionState.dragTo(directValue)
+                            val now = SystemClock.uptimeMillis()
+                            if (now - lastDragCallbackAtMillis >= SliderDragCallbackIntervalMillis) {
+                                latestOnDragValueChange?.invoke(directValue)
+                                lastDragCallbackAtMillis = now
                             }
-                            dragged = true
+                            change.consume()
                         }
 
-                        val direction = if (isLtr) 1f else -1f
-                        val directValue = (startValue + direction * positionDx / widthPx * rangeLength)
-                            .coerceIn(valueRange)
-                        motionState.dragTo(directValue)
-                        val now = SystemClock.uptimeMillis()
-                        if (now - lastDragCallbackAtMillis >= SliderDragCallbackIntervalMillis) {
-                            latestOnDragValueChange?.invoke(directValue)
-                            lastDragCallbackAtMillis = now
+                        when {
+                            cancelledByScroll || !released -> {
+                                motionState.cancelInteraction(latestValue.coerceIn(valueRange))
+                            }
+                            dragged -> {
+                                val target = snapSliderValue(motionState.targetValue, valueRange, step)
+                                pendingCommittedValue = target
+                                motionState.settleTo(target)
+                                latestOnValueChange(target)
+                            }
+                            else -> {
+                                val fraction = (startX / widthPx).coerceIn(0f, 1f)
+                                val target = snapSliderValue(
+                                    sliderValueFromFraction(fraction, valueRange, isLtr),
+                                    valueRange,
+                                    step
+                                )
+                                pendingCommittedValue = target
+                                motionState.animateToValue(target)
+                                latestOnValueChange(target)
+                            }
                         }
-                        change.consume()
-                    }
-
-                    when {
-                        cancelledByScroll || !released -> {
-                            motionState.cancelInteraction(latestValue.coerceIn(valueRange))
-                        }
-                        dragged -> {
-                            val target = snapSliderValue(motionState.targetValue, valueRange, step)
-                            pendingCommittedValue = target
-                            motionState.settleTo(target)
-                            latestOnValueChange(target)
-                        }
-                        else -> {
-                            val fraction = (startX / widthPx).coerceIn(0f, 1f)
-                            val target = snapSliderValue(
-                                sliderValueFromFraction(fraction, valueRange, isLtr),
-                                valueRange,
-                                step
-                            )
-                            pendingCommittedValue = target
-                            motionState.animateToValue(target)
-                            latestOnValueChange(target)
-                        }
+                    } finally {
+                        latestOnInteractionChange?.invoke(false)
                     }
                 }
             },
@@ -267,7 +276,7 @@ fun PillSlider(
             return@BoxWithConstraints
         }
 
-        val glassActiveColor = AppColors.Accent
+        val glassActiveColor = activeColor
         val trackBackdrop = rememberLayerBackdrop()
         Box(
             modifier = Modifier
