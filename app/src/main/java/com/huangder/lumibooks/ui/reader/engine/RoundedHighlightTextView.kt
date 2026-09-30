@@ -73,7 +73,11 @@ internal class TtsSentenceHighlightSpan(val color: Int) : CharacterStyle(), Upda
     }
 }
 /** Marks a saved reader underline; rendering is owned by the reader views. */
-internal class WaveUnderlineSpan(val color: Int) : CharacterStyle(), UpdateAppearance {
+internal class WaveUnderlineSpan(
+    val color: Int,
+    val mode: Int = 3,
+    val fromSavedAnnotation: Boolean = false
+) : CharacterStyle(), UpdateAppearance {
     override fun updateDrawState(textPaint: TextPaint) = Unit
 }
 
@@ -463,6 +467,10 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
     }
 
     private val readerTextPainter = ReaderTextPainter()
+    protected open val readerImageBleed: Boolean get() = false
+
+    protected open fun readerDrawingGeometry(textLayout: Layout, spanned: Spanned): ReaderLineGeometry =
+        ReaderLineGeometry(textLayout, spanned, readerJustificationMode, readerForceLastLineJustification)
 
     override fun onDraw(canvas: Canvas) {
         updateSelectionHandleOffsets()
@@ -477,11 +485,21 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         val spanned = text as? Spanned
         val textLayout = layout
         if (spanned != null && textLayout != null) {
+            // The custom reader painter bypasses TextView.onDraw. TextView's
+            // setTextColor updates its own paint, but a DynamicLayout can retain
+            // the paint snapshot created during the previous theme. Keep the
+            // layout paint in sync before native/custom runs are captured; spans
+            // with an explicit foreground color still override this base color.
+            textLayout.paint.color = currentTextColor
+            textLayout.paint.linkColor = currentTextColor
             val saved = canvas.save()
             canvas.translate(totalPaddingLeft.toFloat() - scrollX, totalPaddingTop.toFloat() - scrollY)
-            readerTextPainter.draw(canvas, textLayout, spanned,
-                ReaderLineGeometry(textLayout, spanned, readerJustificationMode, readerForceLastLineJustification),
-                frameworkImagePlacement = true)
+            val geometry = readerDrawingGeometry(textLayout, spanned)
+            geometry.retainLines(readerVisibleLines(canvas, textLayout))
+            readerTextPainter.draw(canvas, textLayout, spanned, geometry,
+                frameworkImagePlacement = true,
+                imageBleedLeft = if (readerImageBleed) totalPaddingLeft else 0,
+                imageBleedRight = if (readerImageBleed) totalPaddingRight else 0)
             canvas.restoreToCount(saved)
         } else {
             super.onDraw(canvas)
@@ -1060,7 +1078,7 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         val density = resources.displayMetrics.density
         val wavePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = 1.8f * density
+            strokeWidth = 1.0f * density
             strokeCap = Paint.Cap.ROUND
         }
         val saveCount = canvas.save()
@@ -1068,15 +1086,20 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
             totalPaddingLeft.toFloat() - scrollX,
             totalPaddingTop.toFloat() - scrollY
         )
-        spanned.getSpans(0, spanned.length, WaveUnderlineSpan::class.java).forEach { span ->
+        val visible = readerVisibleLines(canvas, textLayout)
+        if (visible.isEmpty()) {
+            canvas.restoreToCount(saveCount)
+            return
+        }
+        val visibleStart = textLayout.getLineStart(visible.first)
+        val visibleEnd = textLayout.getLineEnd(visible.last)
+        spanned.getSpans(visibleStart, visibleEnd, WaveUnderlineSpan::class.java).forEach { span ->
             val spanStart = spanned.getSpanStart(span).coerceIn(0, spanned.length)
             val spanEnd = spanned.getSpanEnd(span).coerceIn(spanStart, spanned.length)
             if (spanStart >= spanEnd) return@forEach
             wavePaint.color = span.color
-            val amplitude = 1.6f * density
-            val wavelength = 5.5f * density
-            val visible = readerVisibleLines(canvas, textLayout)
-            if (visible.isEmpty()) return@forEach
+            val amplitude = 0.8f * density
+            val wavelength = 11f * density
             for (line in maxOf(visible.first, textLayout.getLineForOffset(spanStart))..
                 minOf(visible.last, textLayout.getLineForOffset(spanEnd - 1))) {
                 val layoutLineStart = textLayout.getLineStart(line)
@@ -1097,15 +1120,7 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
                 if (x1 <= x0) continue
                 val baseline = textLayout.getLineBaseline(line).toFloat()
                 val underlineCenter = baseline + paint.fontMetrics.descent.coerceAtLeast(1f) + 1f * density
-                val path = android.graphics.Path()
-                var x = x0
-                var first = true
-                while (x <= x1) {
-                    val y = underlineCenter + amplitude * kotlin.math.sin((x - x0) / wavelength * 2.0 * Math.PI)
-                    if (first) { path.moveTo(x, y.toFloat()); first = false } else { path.lineTo(x, y.toFloat()) }
-                    x += 1f
-                }
-                canvas.drawPath(path, wavePaint)
+                drawReaderUnderline(canvas, wavePaint, span.mode, x0, x1, underlineCenter, false, density)
             }
         }
         canvas.restoreToCount(saveCount)
@@ -1121,16 +1136,23 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
             totalPaddingLeft.toFloat() - scrollX,
             totalPaddingTop.toFloat() - scrollY
         )
-        spanned.getSpans(0, spanned.length, android.text.style.BackgroundColorSpan::class.java).forEach { span ->
+        val visible = readerVisibleLines(canvas, textLayout)
+        if (visible.isEmpty()) {
+            canvas.restoreToCount(saveCount)
+            return
+        }
+        val visibleStart = textLayout.getLineStart(visible.first)
+        val visibleEnd = textLayout.getLineEnd(visible.last)
+        spanned.getSpans(visibleStart, visibleEnd, android.text.style.BackgroundColorSpan::class.java).forEach { span ->
             drawRoundedHighlight(canvas, spanned, textLayout, span, span.backgroundColor)
         }
-        spanned.getSpans(0, spanned.length, ReaderHighlightSpan::class.java).forEach { span ->
+        spanned.getSpans(visibleStart, visibleEnd, ReaderHighlightSpan::class.java).forEach { span ->
             drawRoundedHighlight(canvas, spanned, textLayout, span, span.color)
         }
-        spanned.getSpans(0, spanned.length, ReaderSearchHighlightSpan::class.java).forEach { span ->
+        spanned.getSpans(visibleStart, visibleEnd, ReaderSearchHighlightSpan::class.java).forEach { span ->
             drawRoundedHighlight(canvas, spanned, textLayout, span, span.color)
         }
-        spanned.getSpans(0, spanned.length, TtsSentenceHighlightSpan::class.java).forEach { span ->
+        spanned.getSpans(visibleStart, visibleEnd, TtsSentenceHighlightSpan::class.java).forEach { span ->
             drawTtsSentenceHighlight(canvas, textLayout, span, span.color)
         }
         canvas.restoreToCount(saveCount)

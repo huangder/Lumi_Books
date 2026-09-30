@@ -259,11 +259,7 @@ internal class VerticalTextView(context: Context) : View(context) {
             if (start !in 0 until spannable.length || end !in 1..spannable.length) return@forEach
             val wave = spannable.getSpans(start, end, WaveUnderlineSpan::class.java).lastOrNull()
             val straight = spannable.getSpans(start, end, UnderlineSpan::class.java).lastOrNull()
-            val mode = when {
-                wave != null -> 3
-                straight != null -> 1
-                else -> return@forEach
-            }
+            val mode = wave?.mode ?: if (straight != null) 1 else return@forEach
             val color = wave?.color
                 ?: spannable.getSpans(start, end, ForegroundColorSpan::class.java)
                     .lastOrNull()?.foregroundColor
@@ -292,28 +288,14 @@ internal class VerticalTextView(context: Context) : View(context) {
         val density = resources.displayMetrics.density
         val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = 1.5f * density
+            strokeWidth = 1.0f * density
             strokeCap = Paint.Cap.ROUND
         }
         runs.forEach { run ->
             linePaint.color = run.color
-            val baseX = run.left + 1.5f * density
-            if (run.mode == 1) {
-                canvas.drawLine(baseX, run.top, baseX, run.bottom, linePaint)
-            } else {
-                val amplitude = 1.4f * density
-                val halfWave = 2.6f * density
-                val path = Path().apply { moveTo(baseX, run.top) }
-                var y = run.top
-                var direction = 1f
-                while (y < run.bottom) {
-                    val nextY = (y + halfWave).coerceAtMost(run.bottom)
-                    path.quadTo(baseX + amplitude * direction, (y + nextY) / 2f, baseX, nextY)
-                    y = nextY
-                    direction = -direction
-                }
-                canvas.drawPath(path, linePaint)
-            }
+            val baseX = (run.left + 1.5f * density).coerceIn(2f * density, page.width - 2f * density)
+            drawReaderUnderline(canvas, linePaint, run.mode, run.top.coerceAtLeast(0f),
+                run.bottom.coerceAtMost(page.height), baseX, true, density)
         }
     }
 
@@ -516,6 +498,11 @@ internal class VerticalTextView(context: Context) : View(context) {
                         paint.isFakeBoldText = true
                         paint.textSkewX = -0.25f
                     }
+                }
+                is ReaderRuleTypefaceSpan -> {
+                    paint.typeface = span.typeface
+                    if (span.bold) paint.isFakeBoldText = true
+                    if (span.italic) paint.textSkewX = -0.25f
                 }
                 is ForegroundColorSpan -> paint.color = span.foregroundColor
                 is URLSpan -> {

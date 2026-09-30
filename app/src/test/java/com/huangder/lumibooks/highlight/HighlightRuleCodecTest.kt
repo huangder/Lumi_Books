@@ -47,6 +47,15 @@ class HighlightRuleCodecTest {
     }
 
     @Test
+    fun customFontTypeRoundTripsThroughCompatibleJson() {
+        val rule = rule("fonted", "LUMI").copy(fontType = "custom:font-1")
+
+        val decoded = HighlightRuleCodec.decode(HighlightRuleCodec.encodeJson(listOf(rule))).single()
+
+        assertEquals("custom:font-1", decoded.fontType)
+    }
+
+    @Test
     fun zipUsesCompatibleEntryAndProminentLumiManifest() {
         val bytes = HighlightRuleCodec.encodeZip(listOf(rule("one", "a+")), exportedAt = 123L)
         val entries = mutableMapOf<String, String>()

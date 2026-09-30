@@ -96,7 +96,8 @@ object HighlightRuleImportPlanner {
             left.targetScope == right.targetScope && left.textColor == right.textColor &&
             left.underlineMode == right.underlineMode && left.underlineOffset == right.underlineOffset &&
             left.underlineWidth == right.underlineWidth && left.fontWeight == right.fontWeight &&
-            left.isItalic == right.isItalic && left.sampleText == right.sampleText &&
+            left.isItalic == right.isItalic && left.fontType == right.fontType &&
+            left.sampleText == right.sampleText &&
             opaqueFields(left.rawJson) == opaqueFields(right.rawJson)
 
     private fun opaqueFields(raw: String): String = runCatching {
@@ -104,7 +105,7 @@ object HighlightRuleImportPlanner {
             listOf(
                 "id", "name", "pattern", "enabled", "position", "targetScope", "textColor",
                 "underlineMode", "underlineOffset", "underlineWidth", "fontWeight", "isItalic",
-                "sampleText", "_lumi"
+                "fontType", "sampleText", "_lumi"
             ).forEach(::remove)
         }.toString()
     }.getOrDefault("{}")

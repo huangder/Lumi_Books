@@ -161,7 +161,8 @@ class HighlightRuleMaterializer @Inject constructor(
                         syncId = previous.syncId,
                         updatedAt = if (unchanged) previous.updatedAt else item.updatedAt,
                         note = previous.note,
-                        isNote = previous.isNote
+                        isNote = previous.isNote,
+                        tagsJson = previous.tagsJson
                     )
                 }
             }

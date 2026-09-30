@@ -5,6 +5,9 @@ import android.icu.text.BreakIterator
 import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.style.StyleSpan
+import android.text.style.CharacterStyle
+import android.text.style.UpdateAppearance
+import android.text.TextPaint
 import java.util.Locale
 
 /** Applies bionic-reading fixation spans without changing character offsets. */
@@ -13,9 +16,10 @@ object BionicReadingFormatter {
         if (!enabled || text.isEmpty()) return text
 
         val result = SpannableStringBuilder(text)
+        val preserveHyphenation = usesReaderEnglishHyphenation(text)
         fixationRanges(text).forEach { range ->
             result.setSpan(
-                StyleSpan(Typeface.BOLD),
+                if (preserveHyphenation) BionicFixationSpan() else StyleSpan(Typeface.BOLD),
                 range.first,
                 range.last + 1,
                 Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
@@ -181,5 +185,12 @@ object BionicReadingFormatter {
         Character.UnicodeScript.KATAKANA,
         Character.UnicodeScript.HANGUL -> true
         else -> false
+    }
+}
+
+/** Keeps Latin words intact for the platform hyphenator. */
+internal class BionicFixationSpan : CharacterStyle(), UpdateAppearance {
+    override fun updateDrawState(textPaint: TextPaint) {
+        textPaint.isFakeBoldText = true
     }
 }

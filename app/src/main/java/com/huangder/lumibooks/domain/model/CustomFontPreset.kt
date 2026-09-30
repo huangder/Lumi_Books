@@ -21,7 +21,7 @@ data class CustomFontPreset(
         val customName = name.trim()
         if (customName.isBlank()) return fallbackName
         val count = customName.codePointCount(0, customName.length)
-        return customName.substring(0, customName.offsetByCodePoints(0, count.coerceAtMost(6)))
+        return customName.substring(0, customName.offsetByCodePoints(0, count.coerceAtMost(12)))
     }
 }
 

@@ -16,6 +16,8 @@ import android.view.ViewConfiguration
 import android.os.SystemClock
 import android.widget.FrameLayout
 import com.huangder.lumibooks.domain.model.Note
+import com.huangder.lumibooks.domain.model.HighlightRule
+import com.huangder.lumibooks.highlight.RuleStyleJson
 import com.huangder.lumibooks.util.performance.ReaderPageTurnPerformance
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapAction
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
@@ -126,7 +128,11 @@ data class SelectionInfo(
     /** 章节级选区结束偏移（半开区间）。 */
     val endPosition: Int = chapterStartOffset + pageEnd,
     /** true 表示选区由 ReadView 自持（跨页），false 表示来自系统 TextView 选区。 */
-    val owned: Boolean = false
+    val owned: Boolean = false,
+    /** 普通单击命中已有标注时，仅显示该标注的颜色/删除操作。 */
+    val annotationOnly: Boolean = false,
+    /** 普通单击直接命中的完整标注，避免菜单层再次按可能已重定位的字符范围查找。 */
+    val annotation: Note? = null
 )
 
 data class ReaderTextAnchor(
@@ -197,6 +203,112 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     // ── 外部回调 ──
     private var callbacks: ReadViewCallbacks? = null
+    private var lineGuideEnabled = false
+    private var lineGuideDimLevel = 2
+    private var lineGuideAnchor: Pair<Int, Int>? = null
+    private var lineGuidePreferLast = false
+    private var lineGuidePendingDirection = 0
+    private var lineGuideDownX = 0f
+    private var lineGuideDownY = 0f
+    private var lineGuideDownTime = 0L
+
+    fun setLineGuide(enabled: Boolean, dimLevel: Int) {
+        val wasEnabled = lineGuideEnabled
+        val safeLevel = dimLevel.coerceIn(0, 3)
+        if (wasEnabled == enabled && lineGuideDimLevel == safeLevel) return
+        lineGuideEnabled = enabled
+        lineGuideDimLevel = safeLevel
+        if (!enabled) {
+            lineGuideAnchor = null
+            lineGuidePendingDirection = 0
+        } else if (!wasEnabled) {
+            clearActiveTextSelection()
+            lineGuideAnchor = null
+            lineGuidePreferLast = false
+        }
+        invalidate()
+    }
+
+    private data class GuideTarget(val chapter: Int, val line: ReaderGuideLine)
+
+    private fun guideTargets(): List<GuideTarget> {
+        val slot = slotManager.getCurSlot()
+        val views = if (curPageRightView.visibility == View.VISIBLE) {
+            listOf(curPageView, curPageRightView)
+        } else listOf(curPageView)
+        val rootLocation = IntArray(2).also(::getLocationInWindow)
+        return views.flatMap { view ->
+            val viewLocation = IntArray(2).also(view::getLocationInWindow)
+            val dx = (viewLocation[0] - rootLocation[0]).toFloat()
+            val dy = (viewLocation[1] - rootLocation[1]).toFloat()
+            val chapter = chapterIndexForSpreadView(slot, view)
+            view.guideLines().map { line ->
+                GuideTarget(chapter, line.copy(bounds = android.graphics.RectF(line.bounds).apply {
+                    offset(dx, dy)
+                }))
+            }.filter { it.line.bounds.bottom > 0f && it.line.bounds.top < height }
+        }
+    }
+
+    private fun selectedGuideIndex(lines: List<GuideTarget>): Int {
+        if (lines.isEmpty()) return -1
+        val anchor = lineGuideAnchor
+        val found = lines.indexOfFirst { it.chapter == anchor?.first && it.line.startOffset == anchor.second }
+        if (found >= 0) return found
+        if (anchor != null) {
+            val nearby = lines.indexOfLast {
+                it.chapter == anchor.first && it.line.startOffset <= anchor.second
+            }
+            if (nearby >= 0) return nearby
+        }
+        return if (lineGuidePreferLast) lines.lastIndex else 0
+    }
+
+    private fun stepLineGuide(direction: Int) {
+        val lines = guideTargets()
+        val selected = selectedGuideIndex(lines)
+        if (selected < 0) return
+        val next = readerGuideStepIndex(selected, lines.size, direction)
+        if (next != null) {
+            lineGuideAnchor = lines[next].chapter to lines[next].line.startOffset
+            invalidate()
+        } else {
+            lineGuidePendingDirection = direction
+            val accepted = if (direction > 0) turnToNextPage() else turnToPreviousPage()
+            if (accepted) lineGuidePreferLast = direction < 0
+            else lineGuidePendingDirection = 0
+        }
+    }
+
+    private fun handleLineGuideTouch(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                lineGuideDownX = event.x
+                lineGuideDownY = event.y
+                lineGuideDownTime = event.eventTime
+            }
+            MotionEvent.ACTION_UP -> {
+                val dx = event.x - lineGuideDownX
+                val dy = event.y - lineGuideDownY
+                val slop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+                if (abs(dx) > maxOf(slop * 3f, 36f * resources.displayMetrics.density) && abs(dx) > abs(dy)) {
+                    val accepted = if (dx < 0f) turnToNextPage() else turnToPreviousPage()
+                    if (accepted) {
+                        lineGuideAnchor = null
+                        lineGuidePreferLast = dx > 0f
+                    }
+                } else if (abs(dx) < slop && abs(dy) < slop && event.eventTime - lineGuideDownTime < 500L) {
+                    val lines = guideTargets()
+                    val selected = selectedGuideIndex(lines)
+                    if (selected >= 0) {
+                        val center = lines[selected].line.bounds.centerY()
+                        stepLineGuide(if (lineGuideDownY < center) -1 else 1)
+                    }
+                }
+            }
+        }
+        return true
+    }
     private var bookmarkPullEnabled = true
     private var contentProvider: (suspend (Int) -> CharSequence?)? = null
 
@@ -492,6 +604,11 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
         // 翻页后刷新高亮
         slotManager.onPageChangedCallback = { globalPage, chapterIdx, pageInChapter, chapterTotal ->
+            if (lineGuidePendingDirection != 0) {
+                lineGuideAnchor = null
+                lineGuidePreferLast = lineGuidePendingDirection < 0
+                lineGuidePendingDirection = 0
+            }
             curlPageGeneration++
             val origin = pendingPageChangeOrigin
             pendingPageChangeOrigin = TtsPageChangeOrigin.LAYOUT
@@ -517,7 +634,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     /** 构建某章的高亮列表（savedNotes → Triple(start, end, color)） */
     private fun buildHighlights(chapterIndex: Int): List<Triple<Int, Int, Int>> {
         val savedHighlights = savedNotes
-            .filter { it.chapterIndex == chapterIndex }
+            .filter { it.chapterIndex == chapterIndex && !it.isGeneratedByHighlightRule }
             .map { note ->
                 if (note.type == "underline") {
                     val color = try {
@@ -525,7 +642,16 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                     } catch (_: IllegalArgumentException) {
                         0xFF333333.toInt()
                     }
-                    Triple(note.startPosition, note.endPosition, (PageContentView.UNDERLINE_FLAG shl 24) or (color and 0x00FFFFFF))
+                    val mode = RuleStyleJson.decode(note.styleSnapshotJson)?.underlineMode
+                        ?.takeIf { it in 1..4 }
+                        ?: HighlightRule.UNDERLINE_WAVE
+                    val flag = when (mode) {
+                        HighlightRule.UNDERLINE_STRAIGHT -> PageContentView.STRAIGHT_UNDERLINE_FLAG
+                        HighlightRule.UNDERLINE_DOUBLE -> PageContentView.DOUBLE_UNDERLINE_FLAG
+                        HighlightRule.UNDERLINE_DASHED -> PageContentView.DASHED_UNDERLINE_FLAG
+                        else -> PageContentView.UNDERLINE_FLAG
+                    }
+                    Triple(note.startPosition, note.endPosition, (flag shl 24) or (color and 0x00FFFFFF))
                 } else {
                     val color = try {
                         android.graphics.Color.parseColor(note.color)
@@ -1420,6 +1546,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
      * - 长按（非卷曲模式 >500ms 或无明显移动）→ 不拦截，TextView 原生触发选词
      */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (lineGuideEnabled) return handleLineGuideTouch(ev)
         // ── 自持跨页选区：整段手势（含交接帧）直接在 ReadView 处理 ──
         // 不依赖 ViewGroup 拦截：拦截会吞掉触发帧、还要等下一帧才生效，
         // 表现为「翻页后手柄停在第一个字，必须松手再重新抓手柄」。
@@ -1828,11 +1955,17 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val hitView = pageViewAt(x, y) ?: curPageView
         val link = hitView.getLinkAt(x - hitView.left, y - hitView.top)
         val image = hitView.getImageAt(x - hitView.left, y - hitView.top)
+        val annotation = annotationSelectionAt(x, y)
         return tap@{
             // Deferred TTS single taps belong to the page and hit geometry at UP.
             if (getCurrentLocation() != location) return@tap
             if (dismissSelection || selectionMenuVisible || hasActiveTextSelection() || contentSelection != null) {
                 callbacks?.onSelectionMenuDismiss()
+                return@tap
+            }
+            if (annotation != null) {
+                clearCurrentSelection()
+                callbacks?.onReaderSelectionChanged(annotation.copy(annotationOnly = true))
                 return@tap
             }
             if (applyContentSelectionTapTarget(x, y)) return@tap
@@ -1857,6 +1990,74 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 animationController.onTapRight?.invoke()
             }
         }
+    }
+
+    /**
+     * Resolve a short tap inside a saved highlight/underline to the complete
+     * annotation range. The returned bounds are clipped to the visible page,
+     * while startPosition/endPosition retain the chapter-level full range.
+     */
+    private fun annotationSelectionAt(x: Float, y: Float): SelectionInfo? {
+        val pageView = pageViewAt(x, y) ?: return null
+        val offset = pageView.characterOffsetAt(x - pageView.left, y - pageView.top) ?: return null
+        val slot = slotManager.getSlotForView(pageView) ?: return null
+        val chapterIndex = chapterIndexForSpreadView(slot, pageView)
+        val note = savedNotes
+            .asSequence()
+            .filter { it.chapterIndex == chapterIndex && it.type == "highlight" ||
+                it.chapterIndex == chapterIndex && it.type == "underline" }
+            .filter { offset >= it.startPosition && offset < it.endPosition }
+            .minByOrNull { it.endPosition - it.startPosition }
+            ?: return null
+        val text = pageView.textView.text ?: return null
+        val localStart = (note.startPosition - pageView.chapterStartOffset).coerceIn(0, text.length)
+        val localEnd = (note.endPosition - pageView.chapterStartOffset).coerceIn(0, text.length)
+        if (localEnd <= localStart) return null
+        val layout = pageView.textView.layout ?: return null
+        if (currentWritingMode.isVertical) {
+            return SelectionInfo(
+                selectedText = note.selectedText,
+                chapterIndex = chapterIndex,
+                chapterStartOffset = pageView.chapterStartOffset,
+                pageStart = localStart,
+                pageEnd = localEnd,
+                selTopY = y - 1f,
+                selBottomY = y + 1f,
+                selStartX = x - 1f,
+                selEndX = x + 1f,
+                startPosition = note.startPosition,
+                endPosition = note.endPosition,
+                annotation = note
+            )
+        }
+        val startLine = layout.getLineForOffset(localStart)
+        val endLine = layout.getLineForOffset((localEnd - 1).coerceAtLeast(localStart))
+        val topY = (pageView.top + pageView.textView.top + pageView.textView.paddingTop +
+            layout.getLineTop(startLine)).toFloat()
+        val bottomY = (pageView.top + pageView.textView.top + pageView.textView.paddingTop +
+            layout.getLineBottom(endLine)).toFloat()
+        val startHorizontal = (pageView.textView as? RoundedHighlightTextView)
+            ?.readerHorizontalPosition(localStart) ?: layout.getPrimaryHorizontal(localStart)
+        val endHorizontal = (pageView.textView as? RoundedHighlightTextView)
+            ?.readerHorizontalPosition(localEnd, trailing = true)
+            ?: layout.getPrimaryHorizontal(localEnd.coerceAtMost(text.length - 1))
+        val viewOffsetX = pageView.left.toFloat()
+        val startX = pageView.textView.left + pageView.textView.paddingLeft + startHorizontal + viewOffsetX
+        val endX = pageView.textView.left + pageView.textView.paddingLeft + endHorizontal + viewOffsetX
+        return SelectionInfo(
+            selectedText = note.selectedText,
+            chapterIndex = chapterIndex,
+            chapterStartOffset = pageView.chapterStartOffset,
+            pageStart = localStart,
+            pageEnd = localEnd,
+            selTopY = topY,
+            selBottomY = bottomY,
+            selStartX = minOf(startX, endX),
+            selEndX = maxOf(startX, endX),
+            startPosition = note.startPosition,
+            endPosition = note.endPosition,
+            annotation = note
+        )
     }
 
     private fun scheduleReaderTap(action: () -> Unit) {
@@ -2018,6 +2219,26 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         }
         // 自持跨页选区的手柄画在所有页面内容之上
         drawContentSelectionHandles(canvas)
+        if (lineGuideEnabled) {
+            drawLineGuide(canvas)
+        }
+    }
+
+    private fun drawLineGuide(canvas: android.graphics.Canvas) {
+        val (themeBackground, _, _) = getThemeColors(currentTheme)
+        val shadeColor = readerGuideShadeColor(currentReaderBackgroundColor ?: themeBackground,
+            lineGuideDimLevel)
+        if (animationController.isRunning || animationController.isDragging) {
+            canvas.drawColor(shadeColor)
+            return
+        }
+        val lines = guideTargets()
+        val selected = selectedGuideIndex(lines)
+        if (selected < 0) return
+        val target = lines[selected]
+        lineGuideAnchor = target.chapter to target.line.startOffset
+        drawReaderGuideOverlay(canvas, width.toFloat(), height.toFloat(), target.line.bounds,
+            shadeColor, resources.displayMetrics.density)
     }
 
     // ── 生命周期 ──

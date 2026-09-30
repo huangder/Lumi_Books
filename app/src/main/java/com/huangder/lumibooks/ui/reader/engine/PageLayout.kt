@@ -11,5 +11,9 @@ data class PageLayout(
     val endLine: Int,           // exclusive
     val startCharOffset: Int,
     val endCharOffset: Int,     // exclusive
-    val verticalGeometry: VerticalPageGeometry? = null
+    val verticalGeometry: VerticalPageGeometry? = null,
+    val endHyphenEdit: Int = 0
 )
+
+/** Page-local display metadata; the source word remains unchanged across pages. */
+internal class ReaderPageEndHyphenSpan(val edit: Int)

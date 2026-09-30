@@ -3,6 +3,7 @@ package com.huangder.lumibooks.ui.reader.engine
 import android.os.Build
 import android.text.Layout
 import android.text.Spanned
+import com.huangder.lumibooks.ui.reader.usesReaderEnglishHyphenation
 import android.text.style.LeadingMarginSpan
 import com.huangder.lumibooks.ui.reader.ReaderChapterTitleSpan
 import kotlin.math.abs
@@ -57,6 +58,35 @@ internal class ReaderLineGeometry(
 
     private val metricsCache = HashMap<Int, LineMetrics>()
     private val compressedCache = HashMap<Int, ReaderLineOffsets?>()
+    private val nativeLines = HashMap<Int, ReaderNativeLine?>()
+    private val englishHyphenation = usesReaderEnglishHyphenation(text)
+
+    internal fun nativeLine(line: Int): ReaderNativeLine? {
+        if (!englishHyphenation) return null
+        // getOrPut recomputes null values. Unsupported platform runs must also
+        // be cached, otherwise every character retries Layout.draw for its row.
+        if (nativeLines.containsKey(line)) return nativeLines[line]
+        val end = layout.getLineEnd(line)
+        val edit = if (text is Spanned && end == text.length && end > 0)
+            text.getSpans(end - 1, end, ReaderPageEndHyphenSpan::class.java).lastOrNull()?.edit ?: 0 else 0
+        return ReaderNativeLine.measure(layout, line, justificationMode, forceLastLineJustification, edit)
+            .also { nativeLines[line] = it }
+    }
+    // Layout reshapes the styled line for each primary-horizontal query. Bionic
+    // text has two style boundaries per word, so measuring the same caret again
+    // for advances, bounds and drawing is especially costly. Geometry instances
+    // are scoped to a draw/query; this never survives text or style changes.
+    private val nativePositionCache = HashMap<Int, Float?>()
+
+    /** Retain only the current recording window when a scrolling view reuses geometry. */
+    fun retainLines(lines: IntRange) {
+        metricsCache.keys.retainAll { it in lines }
+        compressedCache.keys.retainAll { it in lines }
+        nativeLines.keys.retainAll { it in lines }
+        val start = if (lines.isEmpty()) 0 else layout.getLineStart(lines.first)
+        val end = if (lines.isEmpty()) 0 else layout.getLineEnd(lines.last)
+        nativePositionCache.keys.retainAll { it in start until end }
+    }
 
     private fun compressedOffsets(line: Int): ReaderLineOffsets? {
         if (compressedCache.containsKey(line)) return compressedCache[line]
@@ -69,6 +99,7 @@ internal class ReaderLineGeometry(
 
     fun horizontalRange(line: Int, start: Int, end: Int): HorizontalRange? {
         if (line !in 0 until layout.lineCount || start >= end) return null
+        nativeLine(line)?.let { return HorizontalRange(it.position(start), it.position(end)) }
         compressedOffsets(line)?.let { offsets ->
             val lineStart = layout.getLineStart(line)
             val a = (start - lineStart).coerceIn(0, offsets.lefts.size)
@@ -123,11 +154,17 @@ internal class ReaderLineGeometry(
                     layout.getLineStart(candidate) == safe
                 ) candidate - 1 else candidate
             }
+            nativeLine(line)?.let { return it.position(safe) }
             compressedOffsets(line)?.let { offsets ->
                 val local = (safe - layout.getLineStart(line)).coerceAtLeast(0)
                 return offsets.lefts.getOrNull(local) ?: offsets.right
             }
             val metrics = lineMetrics(line)
+            if (trailing && safe == metrics.contentEnd) {
+                // A discretionary hyphen belongs to this row even though the
+                // underlying character offset starts the following row.
+                return if (metrics.justified) metrics.targetEnd else nativeLineEnd(metrics, line)
+            }
             val native = nativePosition(safe)
             val corrected = if (!metrics.justified) {
                 native
@@ -142,6 +179,7 @@ internal class ReaderLineGeometry(
 
     fun lineRange(line: Int): HorizontalRange? {
         if (line !in 0 until layout.lineCount) return null
+        nativeLine(line)?.let { return HorizontalRange(it.positions.first(), it.positions.last()) }
         compressedOffsets(line)?.let { return HorizontalRange(it.lefts.first(), it.right) }
         return try {
             val metrics = lineMetrics(line)
@@ -160,6 +198,7 @@ internal class ReaderLineGeometry(
     /** Maps a touch x coordinate through the same expansion as the drawn line. */
     fun offsetForHorizontal(line: Int, x: Float): Int? {
         if (line !in 0 until layout.lineCount) return null
+        nativeLine(line)?.let { return if (x.isFinite()) it.offset(x) else null }
         compressedOffsets(line)?.let { offsets ->
             if (!x.isFinite()) return null
             for (i in offsets.lefts.indices) {
@@ -395,6 +434,15 @@ internal class ReaderLineGeometry(
         val output = FloatArray((end - start).coerceAtLeast(0))
         if (start >= end) return AdvanceMeasurement(output, null, null, false)
 
+        val bulkBounds = if (Build.VERSION.SDK_INT >= 34) {
+            runCatching {
+                FloatArray((end - start) * 4).also {
+                    layout.fillCharacterBounds(start, end, it, 0)
+                }
+            }.getOrNull()?.takeIf { it.all(Float::isFinite) }
+        } else null
+        if (bulkBounds != null) cacheBulkNativePositions(line, start, contentEnd, bulkBounds)
+
         // Bounds describe visible glyphs and may be narrower than their logical
         // advances. Use primary-horizontal deltas for line measurement and unit
         // counting; bounds are retained separately for selection painting.
@@ -407,7 +455,7 @@ internal class ReaderLineGeometry(
                 output[i] = 0f
                 continue
             }
-            val left = runCatching { layout.getPrimaryHorizontal(offset) }.getOrNull()
+            val left = nativePosition(offset)
             val right = if (offset + 1 == contentEnd && contentEnd == end && line < layout.lineCount - 1) {
                 // A wrapped line's content end is also the next line's start.
                 // Its primary horizontal is commonly 0; measure only this glyph
@@ -415,7 +463,7 @@ internal class ReaderLineGeometry(
                 runCatching { abs(layout.paint.measureText(text, offset, offset + 1)) }.getOrNull()
                     ?.let { measured -> (left ?: 0f) + measured }
             } else {
-                runCatching { layout.getPrimaryHorizontal(offset + 1) }.getOrNull()
+                nativePosition(offset + 1)
             }
             val delta = if (left != null && right != null && left.isFinite() && right.isFinite()) {
                 abs(right - left)
@@ -429,10 +477,9 @@ internal class ReaderLineGeometry(
         var boundsLeft = Float.POSITIVE_INFINITY
         var boundsRight = Float.NEGATIVE_INFINITY
         var characterBounds: FloatArray? = null
-        if (Build.VERSION.SDK_INT >= 34) {
-            val bounds = FloatArray((end - start) * 4)
+        if (bulkBounds != null) {
+            val bounds = bulkBounds
             try {
-                layout.fillCharacterBounds(start, end, bounds, 0)
                 boundsValid = bounds.all(Float::isFinite)
                 if (boundsValid) {
                     for (i in output.indices) {
@@ -499,6 +546,38 @@ internal class ReaderLineGeometry(
         // Vendor Layouts may reject custom ImageSpan/ReplacementSpan bounds. The
         // primary-horizontal values above remain the native fallback in that case.
         return AdvanceMeasurement(output, null, null, false)
+    }
+
+    /**
+     * AOSP can measure every character boundary in one TextLine pass. Calling
+     * getPrimaryHorizontal for each letter reshapes all preceding bold/plain
+     * runs each time, making dense bionic lines quadratic. Only use the bulk
+     * positions for simple LTR lines whose bounds agree with native carets;
+     * vendor-expanded bounds and complex scripts retain the existing fallback.
+     */
+    private fun cacheBulkNativePositions(line: Int, start: Int, end: Int, bounds: FloatArray) {
+        if (end <= start || layout.getParagraphDirection(line) != Layout.DIR_LEFT_TO_RIGHT ||
+            layout.getLineContainsTab(line) || layout.paint.letterSpacing != 0f) return
+        for (offset in start until end) {
+            val ch = text[offset]
+            val type = Character.getType(ch)
+            if (ch.isSurrogate() || layout.isRtlCharAt(offset) ||
+                type == Character.NON_SPACING_MARK.toInt() ||
+                type == Character.COMBINING_SPACING_MARK.toInt() ||
+                type == Character.ENCLOSING_MARK.toInt()) return
+            val i = (offset - start) * 4
+            if (bounds[i + 2] < bounds[i] ||
+                (offset + 1 < end && abs(bounds[i + 2] - bounds[i + 4]) > 0.05f)) return
+        }
+        // OEMs may return justified bounds but unexpanded native carets. Probe
+        // both ends and the middle before using one as a substitute for the other.
+        for (offset in intArrayOf(start, start + (end - start) / 2, end - 1)) {
+            val native = nativePosition(offset) ?: return
+            if (abs(native - bounds[(offset - start) * 4]) > 0.05f) return
+        }
+        for (offset in start until end) {
+            nativePositionCache[offset] = bounds[(offset - start) * 4]
+        }
     }
 
     private fun characterBoundary(metrics: LineMetrics, offset: Int): Float? {
@@ -646,9 +725,12 @@ internal class ReaderLineGeometry(
         return nativePosition(contentEnd)
     }
 
-    private fun nativePosition(offset: Int): Float? = runCatching {
-        layout.getPrimaryHorizontal(offset.coerceIn(0, text.length))
-    }.getOrNull()?.takeIf(Float::isFinite)
+    private fun nativePosition(offset: Int): Float? {
+        val safe = offset.coerceIn(0, text.length)
+        if (nativePositionCache.containsKey(safe)) return nativePositionCache[safe]
+        return runCatching { layout.getPrimaryHorizontal(safe) }
+            .getOrNull()?.takeIf(Float::isFinite).also { nativePositionCache[safe] = it }
+    }
 
     private fun safeLineRight(line: Int, fallback: Float): Float = runCatching {
         layout.getLineRight(line)

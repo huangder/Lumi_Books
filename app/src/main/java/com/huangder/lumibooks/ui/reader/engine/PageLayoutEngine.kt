@@ -9,6 +9,10 @@ import com.huangder.lumibooks.domain.model.ReaderTextAlignment
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.ui.reader.readerBreakStrategy
 import com.huangder.lumibooks.ui.reader.readerJustificationMode
+import com.huangder.lumibooks.ui.reader.readerBreakStrategyForText
+import com.huangder.lumibooks.ui.reader.readerJustificationForText
+import com.huangder.lumibooks.ui.reader.readerHyphenationFrequency
+import com.huangder.lumibooks.ui.reader.usesReaderEnglishHyphenation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -191,9 +195,9 @@ class PageLayoutEngine {
             .setAlignment(Layout.Alignment.ALIGN_NORMAL)
             .setLineSpacing(lineSpacingExtra, lineSpacingMultiplier)
             .setIncludePad(false)
-            .setBreakStrategy(input.textAlignment.readerBreakStrategy())
-            .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
-            .setJustificationMode(input.textAlignment.readerJustificationMode())
+            .setBreakStrategy(input.textAlignment.readerBreakStrategyForText(text))
+            .setHyphenationFrequency(readerHyphenationFrequency(text))
+            .setJustificationMode(input.textAlignment.readerJustificationForText(text))
             .build()
 
         if (input.writingMode.isVertical) {
@@ -295,6 +299,29 @@ class PageLayoutEngine {
                 }
             }
 
+            // HQ hyphenation optimizes a whole paragraph. A page-local TextView
+            // can choose different breaks at its new paragraph boundary, so
+            // verify the exact slice before committing the page's source range.
+            if (usesReaderEnglishHyphenation(text)) {
+                while (pageEndLine > pageStartLine + 1) {
+                    val candidateStart = sl.getLineStart(pageStartLine)
+                    val candidateEnd = if (pageEndLine < sl.lineCount) sl.getLineStart(pageEndLine) else text.length
+                    val slice = text.subSequence(candidateStart, candidateEnd)
+                    val local = StaticLayout.Builder.obtain(slice, 0, slice.length, input.textPaint, input.visibleWidth)
+                        .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                        .setLineSpacing(lineSpacingExtra, lineSpacingMultiplier)
+                        .setIncludePad(false)
+                        .setBreakStrategy(input.textAlignment.readerBreakStrategyForText(slice))
+                        .setHyphenationFrequency(readerHyphenationFrequency(slice))
+                        .setJustificationMode(input.textAlignment.readerJustificationForText(slice))
+                        .build()
+                    var last = local.lineCount - 1
+                    if (last > 0 && local.getLineStart(last) == slice.length) last--
+                    if (local.getLineBaseline(last) + local.getLineDescent(last) <= effectiveVh) break
+                    pageEndLine--
+                }
+            }
+
             val startChar = sl.getLineStart(pageStartLine)
             val endChar = if (pageEndLine < sl.lineCount) {
                 sl.getLineStart(pageEndLine)
@@ -309,7 +336,10 @@ class PageLayoutEngine {
                     startLine = pageStartLine,
                     endLine = pageEndLine,
                     startCharOffset = startChar,
-                    endCharOffset = endChar
+                    endCharOffset = endChar,
+                    endHyphenEdit = if (usesReaderEnglishHyphenation(text))
+                        ReaderNativeLine.measure(sl, pageEndLine - 1, Layout.JUSTIFICATION_MODE_NONE)?.endHyphenEdit ?: 0
+                        else 0
                 )
             )
             globalCharOffset += (endChar - startChar)

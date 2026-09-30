@@ -11,6 +11,7 @@ object RuleStyleJson {
         put("underlineWidth", style.underlineWidth.toDouble())
         put("fontWeight", style.fontWeight)
         put("italic", style.italic)
+        if (style.fontType.isNotBlank()) put("fontType", style.fontType)
     }.toString()
 
     fun decode(raw: String?): RuleStyle? = raw?.let {
@@ -24,7 +25,8 @@ object RuleStyleJson {
                 underlineOffset = json.optDouble("underlineOffset", 2.0).toFloat(),
                 underlineWidth = json.optDouble("underlineWidth", 1.0).toFloat(),
                 fontWeight = json.optInt("fontWeight", 400),
-                italic = json.optBoolean("italic")
+                italic = json.optBoolean("italic"),
+                fontType = json.optString("fontType")
             )
         }.getOrNull()
     }

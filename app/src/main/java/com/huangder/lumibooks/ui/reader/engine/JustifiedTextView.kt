@@ -299,7 +299,7 @@ class JustifiedTextView @JvmOverloads constructor(
             .setLineSpacing(lineSpacingExtra, lineSpacingMult)
             .setIncludePad(false)
             .setBreakStrategy(readerBreakStrategy)
-            .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
+            .setHyphenationFrequency(com.huangder.lumibooks.ui.reader.readerHyphenationFrequency(spannable ?: ""))
             .setJustificationMode(readerJustificationMode)
             .build()
     }
@@ -326,7 +326,7 @@ class JustifiedTextView @JvmOverloads constructor(
         val density = resources.displayMetrics.density
         val wavePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = 1.8f * density
+            strokeWidth = 1.0f * density
             strokeCap = Paint.Cap.ROUND
         }
         val save = canvas.save()
@@ -336,8 +336,8 @@ class JustifiedTextView @JvmOverloads constructor(
             val spanEnd = s.getSpanEnd(span).coerceIn(spanStart, s.length)
             if (spanStart >= spanEnd) return@forEach
             wavePaint.color = span.color
-            val amplitude = 1.6f * density
-            val wavelength = 5.5f * density
+            val amplitude = 0.8f * density
+            val wavelength = 11f * density
             val visible = readerVisibleLines(canvas, sl)
             if (visible.isEmpty()) return@forEach
             for (line in maxOf(visible.first, sl.getLineForOffset(spanStart))..
@@ -354,15 +354,7 @@ class JustifiedTextView @JvmOverloads constructor(
                 if (x1 <= x0) continue
                 val baseline = sl.getLineBaseline(line).toFloat()
                 val underlineCenter = baseline + textPaint.fontMetrics.descent.coerceAtLeast(1f) + 1f * density
-                val path = android.graphics.Path()
-                var x = x0
-                var first = true
-                while (x <= x1) {
-                    val y = underlineCenter + amplitude * kotlin.math.sin((x - x0) / wavelength * 2.0 * Math.PI)
-                    if (first) { path.moveTo(x, y.toFloat()); first = false } else { path.lineTo(x, y.toFloat()) }
-                    x += 1f
-                }
-                canvas.drawPath(path, wavePaint)
+                drawReaderUnderline(canvas, wavePaint, span.mode, x0, x1, underlineCenter, false, density)
             }
         }
         canvas.restoreToCount(save)
@@ -424,6 +416,10 @@ class JustifiedTextView @JvmOverloads constructor(
         drawWaveUnderlines(canvas)
         val sl = currentLayout() ?: return
         val s = spannable ?: return
+        // This layer also owns a custom painter, so keep the layout's base ink
+        // synchronized with the view color when the reader theme changes.
+        sl.paint.color = textPaint.color
+        sl.paint.linkColor = textPaint.color
         // The visible layer owns the glyph drawing. Calling TextView's draw
         // path here would paint the same characters once more when the
         // selectable layer is temporarily using a stale layout.

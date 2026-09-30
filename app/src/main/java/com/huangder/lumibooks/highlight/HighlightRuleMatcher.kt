@@ -15,7 +15,9 @@ object HighlightRuleMatcher {
         if (rule.underlineMode !in setOf(
                 HighlightRule.UNDERLINE_NONE,
                 HighlightRule.UNDERLINE_STRAIGHT,
-                HighlightRule.UNDERLINE_WAVE
+                HighlightRule.UNDERLINE_DOUBLE,
+                HighlightRule.UNDERLINE_WAVE,
+                HighlightRule.UNDERLINE_DASHED
             )
         ) return "暂不支持该下划线类型"
         return try {
@@ -55,7 +57,8 @@ object HighlightRuleMatcher {
                                 rule.underlineOffset,
                                 rule.underlineWidth,
                                 rule.fontWeight,
-                                rule.isItalic
+                                rule.isItalic,
+                                rule.fontType
                             ),
                             position = rule.position
                         )

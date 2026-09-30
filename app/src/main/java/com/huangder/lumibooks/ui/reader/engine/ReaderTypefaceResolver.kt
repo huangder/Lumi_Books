@@ -21,6 +21,19 @@ internal fun resolveReaderTypeface(
     weight: Int
 ): ResolvedReaderTypeface {
     val normalizedWeight = weight.coerceIn(100, 900)
+    if (fontType == "serif") return ResolvedReaderTypeface(readerSerifTypeface(context, normalizedWeight), false)
+    if (fontType.startsWith("custom") && customFontPath != null) {
+        val range = readerVariableWeightRange(context, fontType, customFontPath)
+        if (range != null) {
+            val effectiveWeight = normalizedWeight.toFloat().coerceIn(range).toInt()
+            val face = runCatching {
+                Typeface.Builder(customFontPath)
+                    .setFontVariationSettings("'wght' $effectiveWeight")
+                    .setWeight(effectiveWeight).build()
+            }.getOrNull()
+            if (face != null) return ResolvedReaderTypeface(face, false)
+        }
+    }
     val isCustomFamily = fontType == "fangsong" || fontType == "kaiti" ||
         fontType.startsWith("custom")
     val base = when {

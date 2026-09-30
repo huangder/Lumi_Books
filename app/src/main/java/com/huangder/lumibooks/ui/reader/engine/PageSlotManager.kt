@@ -62,6 +62,26 @@ class PageSlotManager(
     private var previousPrefetchJob: Job? = null
     private var nextPrefetchJob: Job? = null
     private val requestTokens = LongArray(3)
+    internal var backgroundPreparationEnabled: Boolean = true
+        set(value) {
+            if (field == value) return
+            field = value
+            if (!value) {
+                prefetchJob?.cancel()
+                previousPrefetchJob?.cancel()
+                nextPrefetchJob?.cancel()
+                slotJobs[SLOT_PREV]?.cancel()
+                slotJobs[SLOT_NEXT]?.cancel()
+            } else if (slots[SLOT_CUR].isLoaded) {
+                val (prevCh, prevPg) = resolvePrevPage()
+                if (prevCh >= 0 && prevPg >= 0) loadSlot(SLOT_PREV, prevCh, prevPg)
+                else ensurePreviousSlotLoaded()
+                val (nextCh, nextPg) = resolveNextPage()
+                if (nextCh >= 0 && nextPg >= 0) loadSlot(SLOT_NEXT, nextCh, nextPg)
+                else ensureNextSlotLoaded()
+                eagerPreloadUpcoming(currentChapterIndex)
+            }
+        }
     private var chapterCount: Int = 0
     private val chapterTextCache = object : LinkedHashMap<Int, CharSequence>(4, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, CharSequence>?): Boolean =
@@ -137,6 +157,7 @@ class PageSlotManager(
      * 加载一个槽位（单页模式加载单页，双页模式按配对规则加载跨页单元）。
      */
     fun loadSlot(slotIdx: Int, chapterIndex: Int, pageInChapter: Int) {
+        if (slotIdx != SLOT_CUR && !backgroundPreparationEnabled) return
         if (chapterIndex < 0 || chapterIndex >= chapterCount) return
         if (pageInChapter < 0) return
 
@@ -363,7 +384,8 @@ class PageSlotManager(
                 page.startCharOffset,
                 page.endCharOffset,
                 highlightProvider?.invoke(location.chapterIndex) ?: emptyList(),
-                page.verticalGeometry
+                page.verticalGeometry,
+                endHyphenEdit = page.endHyphenEdit
             )
             return true
         }
@@ -471,7 +493,8 @@ class PageSlotManager(
             pageLayout.startCharOffset,
             pageLayout.endCharOffset,
             highlights,
-            pageLayout.verticalGeometry
+            pageLayout.verticalGeometry,
+            endHyphenEdit = pageLayout.endHyphenEdit
         )
         slot.rightContentView?.clear()
         slot.rightChapterIndex = -1
@@ -504,7 +527,7 @@ class PageSlotManager(
      * 低优先级 fire-and-forget，不阻塞主流程，失败静默忽略。
      */
     private fun eagerPreloadUpcoming(currentChapter: Int) {
-        if (contentProvider == null) return
+        if (!backgroundPreparationEnabled || contentProvider == null) return
         prefetchJob?.cancel()
         prefetchJob = scope.launch {
             for (ahead in 1..2) {
@@ -533,6 +556,7 @@ class PageSlotManager(
     /** Resolve a previous spread after a direct jump when earlier page counts
      * are not cached yet. The current page remains visible while this runs. */
     private fun ensurePreviousSlotLoaded() {
+        if (!backgroundPreparationEnabled) return
         if (!spreadEnabled() || previousPrefetchJob?.isActive == true) return
         val current = slots[SLOT_CUR]
         if (!current.isLoaded || current.chapterIndex <= 0) return
@@ -565,6 +589,7 @@ class PageSlotManager(
      * chapter and retry the same target once its count is known.
      */
     private fun ensureNextSlotLoaded() {
+        if (!backgroundPreparationEnabled) return
         if (!spreadEnabled() || nextPrefetchJob?.isActive == true) return
         val current = slots[SLOT_CUR]
         if (!current.isLoaded || chapterCount <= 0) return
@@ -628,7 +653,8 @@ class PageSlotManager(
                 page.startCharOffset,
                 page.endCharOffset,
                 highlightProvider?.invoke(cur.chapterIndex) ?: emptyList(),
-                page.verticalGeometry
+                page.verticalGeometry,
+                endHyphenEdit = page.endHyphenEdit
             )
             return
         }
@@ -667,7 +693,8 @@ class PageSlotManager(
             page.startCharOffset,
             page.endCharOffset,
             highlightProvider?.invoke(location.chapterIndex) ?: emptyList(),
-            page.verticalGeometry
+            page.verticalGeometry,
+                endHyphenEdit = page.endHyphenEdit
         )
         return true
     }

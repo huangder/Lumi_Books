@@ -7,12 +7,22 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
+internal data class PreparedEpubReaderFont(
+    val fontType: String,
+    val customFontPath: String?,
+    val resolvedPath: String?
+)
+
 internal suspend fun prepareEpubReaderFontPath(
     context: Context,
     fontType: String,
     customFontPath: String?
 ): String? = withContext(Dispatchers.IO) {
     when {
+        fontType == "serif" -> {
+            copyBundledReaderFont(context, R.font.source_serif4_italic, "source_serif4_italic_v1.ttf")
+            copyBundledReaderFont(context, R.font.source_serif4_regular, "source_serif4_regular_v1.ttf")
+        }
         fontType.startsWith("custom") -> customFontPath
             ?.let(::File)
             ?.takeIf { it.isFile && it.length() > 0L }

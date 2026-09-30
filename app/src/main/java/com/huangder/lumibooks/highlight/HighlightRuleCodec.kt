@@ -45,6 +45,7 @@ object HighlightRuleCodec {
             json.put("underlineWidth", rule.underlineWidth.toDouble())
             json.put("fontWeight", rule.fontWeight)
             json.put("isItalic", rule.isItalic)
+            if (rule.fontType.isBlank()) json.remove("fontType") else json.put("fontType", rule.fontType)
             json.put("sampleText", rule.sampleText)
             json.put("_lumi", JSONObject().apply {
                 put("exportedBy", "LUMI")
@@ -94,6 +95,7 @@ object HighlightRuleCodec {
             underlineWidth = json.optDouble("underlineWidth", 1.0).toFloat(),
             fontWeight = json.optInt("fontWeight", 400),
             isItalic = json.optBoolean("isItalic", false),
+            fontType = json.optString("fontType"),
             sampleText = json.optString("sampleText"),
             rawJson = json.put("pattern", pattern).toString(),
             updatedAt = System.currentTimeMillis()

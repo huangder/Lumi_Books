@@ -10,6 +10,7 @@ import android.graphics.Typeface
 import android.text.Layout
 import android.text.Selection
 import android.text.Spannable
+import android.text.Spanned
 import android.text.SpannableStringBuilder
 import android.text.style.ClickableSpan
 import android.text.style.DynamicDrawableSpan
@@ -26,6 +27,9 @@ import android.widget.TextView
 import coil.load
 import com.huangder.lumibooks.domain.model.ReaderTextAlignment
 import com.huangder.lumibooks.ui.reader.readerCoverEdgeColor
+import com.huangder.lumibooks.ui.reader.readerBreakStrategyForText
+import com.huangder.lumibooks.ui.reader.readerJustificationForText
+import com.huangder.lumibooks.ui.reader.readerHyphenationFrequency
 import com.huangder.lumibooks.ui.reader.readerBreakStrategy
 import com.huangder.lumibooks.ui.reader.readerJustificationMode
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
@@ -77,6 +81,9 @@ class PageContentView(context: Context) : FrameLayout(context) {
         private const val SEARCH_HIGHLIGHT_RGB = 0x00FFE082
         internal const val TTS_HIGHLIGHT_RGB = 0x00FF9E80
         internal const val UNDERLINE_FLAG = 0xFE
+        internal const val STRAIGHT_UNDERLINE_FLAG = 0xFD
+        internal const val DOUBLE_UNDERLINE_FLAG = 0xFC
+        internal const val DASHED_UNDERLINE_FLAG = 0xFB
         /** buildHighlights 用 alpha 字节标记「ReadView 自持的瞬态选区」。 */
         internal const val READER_SELECTION_FLAG = 0xFD
         /** 瞬态选区固定使用的透明度（与系统选区 readerSelectionColor 一致）。 */
@@ -313,6 +320,19 @@ class PageContentView(context: Context) : FrameLayout(context) {
     private var appliedReaderSelectionColor: Int = 0
     private var justifyLastLine: Boolean = false
     private var writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL
+    private var configuredTextAlignment = ReaderTextAlignment.NATURAL
+
+    private fun configureTextBreaking(text: CharSequence) {
+        val strategy = configuredTextAlignment.readerBreakStrategyForText(text)
+        val hyphenation = readerHyphenationFrequency(text)
+        val justification = configuredTextAlignment.readerJustificationForText(text)
+        if (textView.breakStrategy != strategy) textView.breakStrategy = strategy
+        if (textView.hyphenationFrequency != hyphenation) textView.hyphenationFrequency = hyphenation
+        if (textView.justificationMode != justification) textView.justificationMode = justification
+        (textView as? RoundedHighlightTextView)?.readerJustificationMode = justification
+        justifiedView.readerBreakStrategy = strategy
+        justifiedView.readerJustificationMode = justification
+    }
     private var verticalGeometry: VerticalPageGeometry? = null
     // Vertical placement is defined solely by the configured padding. The page
     // itself may still move during a page-turn animation, but its text layers
@@ -328,7 +348,8 @@ class PageContentView(context: Context) : FrameLayout(context) {
         startChar: Int,
         endChar: Int,
         highlights: List<Triple<Int, Int, Int>> = emptyList(),
-        verticalGeometry: VerticalPageGeometry? = null
+        verticalGeometry: VerticalPageGeometry? = null,
+        endHyphenEdit: Int = 0
     ) {
         // 文本被整体重建：瞬态选区缓存失效（新 spannable 由 highlights 重新带上）
         appliedReaderSelection = null
@@ -461,10 +482,16 @@ class PageContentView(context: Context) : FrameLayout(context) {
                         Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                     )
                     ttsHighlightInfo = Triple(localStart, localEnd, ttsColor)
-                } else if (hColor ushr 24 == UNDERLINE_FLAG) {
+                } else if (hColor ushr 24 in DASHED_UNDERLINE_FLAG..UNDERLINE_FLAG) {
                     // 涓嬪垝绾匡細浣跨敤鏂囧瓧棰滆壊 + 涓嬪垝绾匡紝涓嶇敾鑳屾櫙
                     val underlineColor = 0xFF000000.toInt() or (hColor and 0x00FFFFFF)
-                    spannable.setSpan(WaveUnderlineSpan(underlineColor), localStart, localEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    val mode = when (hColor ushr 24) {
+                        STRAIGHT_UNDERLINE_FLAG -> 1
+                        DOUBLE_UNDERLINE_FLAG -> 2
+                        DASHED_UNDERLINE_FLAG -> 4
+                        else -> 3
+                    }
+                    spannable.setSpan(WaveUnderlineSpan(underlineColor, mode), localStart, localEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                 } else if (hColor ushr 24 == READER_SELECTION_FLAG) {
                     // 跨页选择：ReadView 自持的瞬态选区（不落库）
                     spannable.setSpan(
@@ -502,6 +529,11 @@ class PageContentView(context: Context) : FrameLayout(context) {
 
         // One layout now owns visible glyphs, images, highlights, and selection geometry.
         val adjusted = adjustedReaderImages(spannable, imageSettings, imageScope) { invalidateRenderers(); coverImageView.invalidate() } as Spannable
+        if (endHyphenEdit != 0 && adjusted.isNotEmpty()) {
+            adjusted.setSpan(ReaderPageEndHyphenSpan(endHyphenEdit), adjusted.length - 1, adjusted.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        configureTextBreaking(adjusted)
         textView.text = adjusted
         textView.scrollTo(0, 0)
         justifiedView.text = adjusted
@@ -747,6 +779,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         boldText: Boolean = false
     ) {
         this.writingMode = writingMode
+        configuredTextAlignment = textAlignment
         val spacingRatio = if (fontSizePx > 0) letterSpacingPx / fontSizePx else 0f
 
         // Native TextView is the visible renderer as well as the selection owner.
@@ -779,23 +812,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         // 🔥 守卫：仅在值变更时才设置，避免无条件触发 nullLayouts() + requestLayout()
         // Android 的 setBreakStrategy/setHyphenationFrequency 不检查相等性，即使值相同
         // 也会无效化已存在的 Layout，导致多余的 layout pass → 内容位移
-        val breakStrategy = textAlignment.readerBreakStrategy()
-        if (textView.breakStrategy != breakStrategy) {
-            textView.breakStrategy = breakStrategy
-        }
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-            if (textView.hyphenationFrequency != Layout.HYPHENATION_FREQUENCY_NONE) {
-                textView.hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
-            }
-        }
-        val justificationMode = textAlignment.readerJustificationMode()
-        if (textView.justificationMode != justificationMode) {
-            textView.justificationMode = justificationMode
-        }
-        (textView as? RoundedHighlightTextView)?.readerJustificationMode = justificationMode
-        justifiedView.readerJustificationMode = justificationMode
-        // 可见层在翻页槽位轮转时可能先于选择层完成排版，回退布局要跟选择层用同一条断行策略。
-        justifiedView.readerBreakStrategy = breakStrategy
+        configureTextBreaking(textView.text ?: "")
         // 🔥 守卫：仅在 padding 实际变更时调用 setPadding，避免无谓的 requestLayout()
         val ml = marginLeftPx.toInt()
         val mt = marginTopPx.toInt()
@@ -839,6 +856,20 @@ class PageContentView(context: Context) : FrameLayout(context) {
     fun getTextSpannable(): Spannable? = textView.text as? Spannable
 
     fun getVisualLineInfo(offset: Int): Pair<Int, Int>? = justifiedView.getLineInfoForOffset(offset)
+
+    fun guideLines(): List<ReaderGuideLine> {
+        if (showingCoverPage || writingMode.isVertical) return emptyList()
+        val text = textView.text ?: return emptyList()
+        val layout = textView.layout ?: return emptyList()
+        val sideInset = 8f * resources.displayMetrics.density
+        return readableGuideLines(
+            text, layout,
+            sideInset,
+            (width - sideInset).coerceAtLeast(sideInset),
+            (textView.top + textView.totalPaddingTop).toFloat(),
+            density = resources.displayMetrics.density
+        ).map { it.copy(startOffset = it.startOffset + chapterStartOffset) }
+    }
 
     /** 返回指定页面坐标处的 EPUB 链接；未命中链接时返回 null。 */
     fun getLinkAt(x: Float, y: Float): String? = if (writingMode.isVertical) {
@@ -1145,6 +1176,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         // 确保 textView 触发的 layout pass 中，justifiedView 已有正确内容供 onSizeChanged → rebuildLayout 使用
         justifiedView.text = justifiedText
             ?: (textViewText as? Spannable ?: textViewText?.let { SpannableStringBuilder(it) })
+        configureTextBreaking(textViewText ?: "")
         textView.text = textViewText
         textView.scrollTo(0, 0)
         // 如果传入了 justifiedText，同步更新 originalSpannable
