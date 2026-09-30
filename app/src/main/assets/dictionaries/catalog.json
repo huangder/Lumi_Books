@@ -87,8 +87,8 @@
     }
   ],
   "filter": {
-    "version": 1,
+    "version": 2,
     "url": "https://github.com/huangder/Lumi_Books/releases/download/dictionaries-2026.09.27.1/filter-policy.json",
-    "sha256": "50180f3c3fbab896ca33efe55808551472350fff7980e0a57308e8a9f61a0c01"
+    "sha256": "a60a0965ac36b3b4c663c7a8a295b20af3558426bf401c984013325cd5925e5e"
   }
 }

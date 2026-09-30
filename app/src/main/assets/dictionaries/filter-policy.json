@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "version": 1,
+  "version": 2,
   "charMap": {
     "臺": "台",
     "灣": "湾",
@@ -21,6 +21,16 @@
     "種": "种",
     "歧": "歧"
   },
+  "queryBlockRules": [
+    {
+      "text": "台湾",
+      "mode": "exact"
+    },
+    {
+      "text": "Taiwan",
+      "mode": "word"
+    }
+  ],
   "rules": [
     {
       "id": "regional-1",

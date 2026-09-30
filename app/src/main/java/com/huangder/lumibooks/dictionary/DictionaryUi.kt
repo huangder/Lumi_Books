@@ -61,6 +61,9 @@ fun LocalDictionarySettings(viewModel: DictionaryViewModel = hiltViewModel()) {
     var remove by remember { mutableStateOf<DictionaryCatalogItem?>(null) }
     Column(Modifier.padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(stringResource(R.string.dictionary_management_intro), fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
+        LiquidGlassTextButton(stringResource(R.string.translation_settings), {
+            com.huangder.lumibooks.translation.openTranslationSettings(context)
+        })
         LiquidGlassTextButton(stringResource(R.string.dictionary_refresh), { viewModel.action { refreshCatalog() } }, enabled = !state.refreshing)
         if (state.refreshing) LinearProgressIndicator(Modifier.fillMaxWidth())
         (error ?: state.error)?.let { Text(it, color = AppColors.TextSecondary, fontSize = AppType.BodySmall) }

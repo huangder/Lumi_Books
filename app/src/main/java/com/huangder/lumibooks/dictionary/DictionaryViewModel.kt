@@ -11,7 +11,13 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
-class DictionaryViewModel @Inject constructor(val repository: DictionaryRepository) : ViewModel() {
+class DictionaryViewModel @Inject constructor(
+    val repository: DictionaryRepository,
+    translationRepository: com.huangder.lumibooks.translation.TranslationRepository
+) : ViewModel() {
+    private val translationSession = com.huangder.lumibooks.translation.TranslationSession(viewModelScope, translationRepository)
+    val translation = translationSession.state
+    fun retryTranslation() = translationSession.retry()
     val state = repository.state
     private val _lookup = MutableStateFlow<DictionaryLookupResult?>(null)
     val lookup = _lookup.asStateFlow()
@@ -33,16 +39,21 @@ class DictionaryViewModel @Inject constructor(val repository: DictionaryReposito
     fun search(value: String) {
         query = value
         queryJob?.cancel()
+        translationSession.stop()
         _lookup.value = null
         queryJob = viewModelScope.launch {
-            try { _lookup.value = repository.lookup(value) }
+            try {
+                val next = repository.lookup(value.trim().replace(Regex("\\s+"), " "))
+                if (!next.queryBlocked) translationSession.search(value)
+                _lookup.value = next
+            }
             catch (error: Exception) {
                 if (error is CancellationException) throw error
                 _lookup.value = DictionaryLookupResult(failedDictionaries = listOf("本地词典"))
             }
         }
     }
-    fun stopSearch() { query = ""; queryJob?.cancel(); _lookup.value = null }
+    fun stopSearch() { query = ""; queryJob?.cancel(); _lookup.value = null; translationSession.stop() }
     fun action(block: suspend DictionaryRepository.() -> Unit) {
         viewModelScope.launch {
             try { _error.value = null; repository.block() }

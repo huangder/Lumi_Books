@@ -132,4 +132,5 @@ data class DictionaryState(val items: List<DictionaryCatalogItem> = emptyList(),
 data class DictionaryResult(val dictionary: DictionaryDescriptor, val entries: List<DictionaryEntry>,
     val partiallyFiltered: Boolean = entries.any { it.partiallyFiltered })
 data class DictionaryLookupResult(val results: List<DictionaryResult> = emptyList(), val filtered: Boolean = false,
-    val failedDictionaries: List<String> = emptyList(), val enabledCount: Int = 0, val filterVersion: Int = 1)
+    val failedDictionaries: List<String> = emptyList(), val enabledCount: Int = 0, val filterVersion: Int = 1,
+    val queryBlocked: Boolean = false)

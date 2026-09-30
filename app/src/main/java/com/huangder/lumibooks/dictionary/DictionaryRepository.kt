@@ -312,8 +312,15 @@ class DictionaryRepository @Inject constructor(@ApplicationContext private val c
         ready.await()
         val key = normalizeDictionaryKey(query)
         if (key.isEmpty() || key.length > 256) return@withContext DictionaryLookupResult(filterVersion = policy.version)
-        val list = mutex.withLock { installed.values.filter { it.enabled }.sortedBy { it.order } }
         val activePolicy = policy
+        val list = mutex.withLock { installed.values.filter { it.enabled }.sortedBy { it.order } }
+        if (activePolicy.isQueryBlocked(key)) {
+            return@withContext DictionaryLookupResult(
+                enabledCount = list.size,
+                filterVersion = activePolicy.version,
+                queryBlocked = true
+            )
+        }
         val results = mutableListOf<DictionaryResult>()
         val failures = mutableListOf<String>()
         var filtered = false

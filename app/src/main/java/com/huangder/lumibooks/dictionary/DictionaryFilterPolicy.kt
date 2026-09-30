@@ -1,17 +1,32 @@
 package com.huangder.lumibooks.dictionary
 
 import org.json.JSONObject
+import java.util.Locale
 
 data class DictionaryFilterException(val dictionaryId: String, val entryId: String, val senseId: String? = null)
 data class DictionaryFilterRule(val id: String, val category: String, val text: String, val mode: String,
     val fields: Set<String>, val exceptions: List<DictionaryFilterException> = emptyList())
+data class DictionaryQueryBlockRule(val text: String, val mode: String)
 data class FilteredDictionaryEntry(val entry: DictionaryEntry?, val filtered: Boolean)
 
 /** Literal-only, deterministic policy shared with tools/dictionaries/build.py. No user regular expressions. */
 class DictionaryFilterPolicy(val version: Int, private val charMap: Map<Char, Char>,
-    val rules: List<DictionaryFilterRule>) {
+    val rules: List<DictionaryFilterRule>, val queryBlockRules: List<DictionaryQueryBlockRule> = emptyList()) {
     fun normalize(text: String): String = normalizeDictionaryKey(text).map { charMap[it] ?: it }.joinToString("")
     private val normalizedRules = rules.map { it to normalize(it.text) }
+    private val normalizedQueryBlockRules = queryBlockRules.map { it to normalize(it.text).lowercase(Locale.ROOT) }
+
+    /** Returns true when the query itself is disallowed before any dictionary is opened. */
+    fun isQueryBlocked(query: String): Boolean {
+        val normalizedQuery = normalize(query).lowercase(Locale.ROOT)
+        return normalizedQueryBlockRules.any { (rule, needle) ->
+            when (rule.mode) {
+                "exact" -> normalizedQuery == needle
+                "word" -> matchesWord(normalizedQuery, needle)
+                else -> false
+            }
+        }
+    }
 
     fun matches(text: String, field: String, dictionaryId: String, entryId: String, senseId: String? = null): Boolean {
         val value = normalize(text)
@@ -22,20 +37,22 @@ class DictionaryFilterPolicy(val version: Int, private val charMap: Map<Char, Ch
             } && when (rule.mode) {
                 "exact" -> value == needle
                 "phrase" -> needle in value
-                "word" -> {
-                    var offset = value.indexOf(needle)
-                    var found = false
-                    while (offset >= 0 && !found) {
-                        val end = offset + needle.length
-                        found = (offset == 0 || !value[offset - 1].isLetterOrDigit()) &&
-                            (end == value.length || !value[end].isLetterOrDigit())
-                        if (!found) offset = value.indexOf(needle, offset + 1)
-                    }
-                    found
-                }
+                "word" -> matchesWord(value, needle)
                 else -> false
             }
         }
+    }
+
+    private fun matchesWord(value: String, needle: String): Boolean {
+        var offset = value.indexOf(needle)
+        var found = false
+        while (offset >= 0 && !found) {
+            val end = offset + needle.length
+            found = (offset == 0 || !value[offset - 1].isLetterOrDigit()) &&
+                (end == value.length || !value[end].isLetterOrDigit())
+            if (!found) offset = value.indexOf(needle, offset + 1)
+        }
+        return found
     }
 
     fun apply(dictionaryId: String, entry: DictionaryEntry): FilteredDictionaryEntry {
@@ -96,7 +113,14 @@ class DictionaryFilterPolicy(val version: Int, private val charMap: Map<Char, Ch
                 rule
             }
             require(rules.size <= 10_000 && rules.map { it.id }.distinct().size == rules.size)
-            return DictionaryFilterPolicy(version, charMap, rules)
+            val queryBlockRules = json.optJSONArray("queryBlockRules")?.objects().orEmpty().map { rule ->
+                DictionaryQueryBlockRule(rule.getString("text"), rule.getString("mode")).also {
+                    require(it.text.isNotBlank() && it.text.length <= 160)
+                    require(it.mode in setOf("exact", "word"))
+                }
+            }
+            require(queryBlockRules.size <= 256)
+            return DictionaryFilterPolicy(version, charMap, rules, queryBlockRules)
         }
     }
 }

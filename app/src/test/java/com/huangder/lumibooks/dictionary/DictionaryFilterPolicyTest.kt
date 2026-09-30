@@ -6,7 +6,10 @@ import org.junit.Test
 
 class DictionaryFilterPolicyTest {
     private fun policy(exceptions: String = "[]") = DictionaryFilterPolicy.fromJson(JSONObject("""
-        {"formatVersion":1,"version":2,"charMap":{"臺":"台","灣":"湾"},"rules":[
+        {"formatVersion":1,"version":2,"charMap":{"臺":"台","灣":"湾"},"queryBlockRules":[
+          {"text":"台湾","mode":"exact"},
+          {"text":"Taiwan","mode":"word"}
+        ],"rules":[
           {"id":"a","category":"abuse","text":"badword","mode":"word","fields":["headword","definition","example","related"],"exceptions":$exceptions},
           {"id":"b","category":"regional","text":"台湾争议短语","mode":"phrase","fields":["headword","definition","example","related"]}
         ]}
@@ -40,6 +43,16 @@ class DictionaryFilterPolicyTest {
         assertFalse(policy().matches("badwords are different", "definition", "book", "entry"))
         assertTrue(policy().matches("a (BADWORD).", "example", "book", "entry"))
         assertFalse(policy().apply("book", entry().copy(headword = "Taiwan", senses = listOf(DictionarySense("1", "medical anatomy and history")))).filtered)
+    }
+    @Test fun blockedQueriesAreRejectedWithoutFilteringDictionaryEntries() {
+        assertTrue(policy().isQueryBlocked("台湾"))
+        assertTrue(policy().isQueryBlocked("臺灣"))
+        assertTrue(policy().isQueryBlocked("Taiwan"))
+        assertTrue(policy().isQueryBlocked("ＴＡＩＷＡＮ"))
+        assertTrue(policy().isQueryBlocked("TAIWAN"))
+        assertTrue(policy().isQueryBlocked("tAiWaN"))
+        assertFalse(policy().isQueryBlocked("Taiwanese"))
+        assertFalse(policy().apply("book", entry().copy(headword = "Taiwan")).filtered)
     }
     @Test fun exceptionsAreRestrictedToDictionaryEntryAndSense() {
         val p = policy("""[{"dictionaryId":"book","entryId":"entry","senseId":"1"}]""")
