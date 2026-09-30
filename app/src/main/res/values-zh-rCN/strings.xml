@@ -125,7 +125,6 @@
     <string name="title_about">关于应用</string>
     <string name="official_qq_group">官方QQ群</string>
     <string name="github_discussions">GitHub Discussions</string>
-    <string name="community_contact_hint">中国大陆用户可使用 QQ 群，非中国大陆用户可以在 GitHub Discussions 中讨论</string>
     <string name="github_repository">GitHub 仓库</string>
 
     <!-- 阅读设置 -->
@@ -506,6 +505,13 @@
     <string name="menu_dictionary">字典</string>
     <string name="dictionary_no_app">未找到支持查词的词典或翻译应用</string>
     <string name="note_input_placeholder">输入笔记...</string>
+    <string name="bookmark_remark_title">书签备注</string>
+    <string name="bookmark_remark_placeholder">输入书签备注...</string>
+    <string name="bookmark_remark_setting_hint">如无需该功能，可在主题-详细设置中关闭。</string>
+    <string name="bookmark_remark_prompt_setting">添加书签时填写备注</string>
+    <string name="bookmark_remark_prompt_setting_hint">新建书签后打开备注输入</string>
+    <string name="bookmark_remark_edit">编辑书签备注</string>
+    <string name="bookmark_remark_export">备注</string>
     <string name="highlights_notes_title">高亮与笔记</string>
     <string name="tab_highlight">高亮</string>
     <string name="tab_underline">划线</string>
@@ -539,6 +545,7 @@
     <string name="reader_theme_mode_dark">深色</string>
     <string name="reader_theme_mode_settings">%1$s模式设置</string>
     <string name="reader_theme_suite_apply_to_book">只应用到本书</string>
+    <string name="reader_increase_button_contrast">增加按钮对比度</string>
     <string name="page_turn_module_label">翻页</string>
     <string name="display_module_label">显示</string>
     <string name="display_mode_day">日间模式</string>
@@ -590,6 +597,7 @@
     <string name="reader_settings_font_summary">字体选择与自定义字体</string>
     <string name="reader_image_adjustment">图片调整</string>
     <string name="reader_image_adjustment_entry">调节</string>
+    <string name="reader_raster_horizontal_crop">智能裁切左右白边</string>
     <string name="reader_image_adjustment_hint">对比度、亮度和锐化</string>
     <string name="reader_image_brightness">图片亮度</string>
     <string name="reader_image_contrast">图片对比度</string>
@@ -610,8 +618,8 @@
     <string name="font_custom">自定义</string>
     <string name="font_import">导入</string>
     <string name="font_import_name_title">自定义字体名称</string>
-    <string name="font_import_name_hint">输入名称（最多 6 个字）</string>
-    <string name="font_import_name_count">%1$d/6</string>
+    <string name="font_import_name_hint">输入名称（最多 12 个字）</string>
+    <string name="font_import_name_count">%1$d/12</string>
     <string name="font_import_default_name">自定义字体</string>
 
     <!-- 欢迎页 -->
@@ -1395,7 +1403,7 @@
     <string name="background_add_photo">添加照片</string>
     <string name="background_custom_color_title">自定义背景颜色</string>
     <string name="background_reset_white">恢复白色</string>
-    <string name="font_serif">宋体</string>
+    <string name="font_serif">Serif</string>
     <string name="reader_unit_character">字</string>
     <string name="page_turn_speed">翻页速度</string>
     <string name="page_animation_slide_short">滑动</string>
@@ -1478,6 +1486,10 @@
     <string name="tts_timer_decimal_hours">%1$.1f 小时</string>
     <string name="tts_timer_cancel">取消定时</string>
     <string name="tts_timer_label">定时</string>
+    <string name="tts_return_to_progress">回到进度处</string>
+    <string name="tts_return_to_reading_page">回到读的那一页</string>
+    <string name="tts_from_this_page">从此页</string>
+    <string name="tts_pitch_label">音调</string>
     <string name="default_avatar">默认头像</string>
     <string name="book_title_original_hint">显示原始书名</string>
     <string name="book_author_original_hint">显示原始作者</string>
@@ -1554,4 +1566,12 @@
     <string name="epub_script_missing_kept">当前章节未能启动原排版阅读脚本。</string>
     <string name="epub_script_error_kept">原排版脚本执行失败，可重试加载当前页。</string>
     <string name="epub_document_error_kept">当前章节加载失败，未更改排版模式。</string>
+    <string name="epub_comic_switch">切换到漫画阅读器</string>
+    <string name="epub_comic_switch_back">切换回 EPUB 阅读器</string>
+    <string name="epub_comic_preparing">正在准备漫画图片…</string>
+    <string name="epub_comic_images_only">漫画阅读器仅显示图片，文字、背景图和矢量绘图将不显示。你可以随时切回 EPUB 阅读器。</string>
+    <string name="epub_comic_continue">继续切换</string>
+    <string name="epub_comic_open_failed">无法打开漫画图片，或书中没有可读取的图片。已保留 EPUB 阅读方式。</string>
+    <string name="epub_comic_page_retry">第 %1$d 页加载失败，点击重试</string>
+    <string name="epub_comic_switch_failed">无法切换阅读器，请重试。</string>
 </resources>

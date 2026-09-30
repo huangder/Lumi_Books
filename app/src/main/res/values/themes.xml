@@ -22,4 +22,13 @@
     <style name="Theme.EBookReader.NoPreview" parent="Theme.EBookReader">
         <item name="android:windowDisablePreview">true</item>
     </style>
+
+    <!-- WebView uses this theme's isLightTheme value for prefers-color-scheme. -->
+    <style name="Theme.EBookReader.WebView.Light" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:isLightTheme">true</item>
+    </style>
+
+    <style name="Theme.EBookReader.WebView.Dark" parent="android:Theme.Material.NoActionBar">
+        <item name="android:isLightTheme">false</item>
+    </style>
 </resources>

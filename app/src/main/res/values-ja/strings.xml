@@ -124,7 +124,6 @@
     <string name="title_about">アプリについて</string>
     <string name="official_qq_group">公式QQグループ</string>
     <string name="github_discussions">GitHub Discussions</string>
-    <string name="community_contact_hint">中国本土のユーザーはQQグループを、その他の地域のユーザーはGitHub Discussionsをご利用ください</string>
     <string name="github_repository">GitHub リポジトリ</string>
 
     <!-- 読書設定 -->
@@ -429,6 +428,13 @@
     <string name="volume_key_page_turn">音量キーでページ送り</string>
     <string name="volume_key_page_turn_hint">音量を上げるキーで前へ、下げるキーで次へ</string>
     <string name="bionic_reading">バイオニックリーディング</string>
+    <string name="line_guide">行ごとの読書ガイド</string>
+    <string name="line_guide_dim">背景の暗さ</string>
+    <string name="line_guide_dim_none">なし</string>
+    <string name="line_guide_dim_low">弱</string>
+    <string name="line_guide_dim_medium">中</string>
+    <string name="line_guide_dim_high">強</string>
+    <string name="line_guide_close">読書ガイドをオフ</string>
     <string name="bionic_reading_hint">単語の前半を太字にして、視線の移動と集中を助けます</string>
     <string name="reader_edge_tap_page_turn">画面両端のタップでページ送り</string>
     <string name="reader_edge_tap_page_turn_hint">左右の端をタップしたときの動作を選択</string>
@@ -461,6 +467,13 @@
     <string name="menu_dictionary">辞書</string>
     <string name="dictionary_no_app">辞書または翻訳アプリが見つかりません</string>
     <string name="note_input_placeholder">メモを入力...</string>
+    <string name="bookmark_remark_title">しおりのメモ</string>
+    <string name="bookmark_remark_placeholder">しおりのメモを入力...</string>
+    <string name="bookmark_remark_setting_hint">不要な場合はテーマ - 詳細設定で無効にできます。</string>
+    <string name="bookmark_remark_prompt_setting">しおり追加時にメモを入力</string>
+    <string name="bookmark_remark_prompt_setting_hint">しおりを追加した後にメモ画面を開く</string>
+    <string name="bookmark_remark_edit">しおりのメモを編集</string>
+    <string name="bookmark_remark_export">メモ</string>
     <string name="highlights_notes_title">ハイライトとメモ</string>
     <string name="tab_highlight">ハイライト</string>
     <string name="tab_underline">下線</string>
@@ -480,6 +493,7 @@
     <string name="reading_background">読書背景</string>
     <string name="reader_theme_suites">テーマセット</string>
     <string name="reader_theme_suite_apply_to_book">この本にのみ適用</string>
+    <string name="reader_increase_button_contrast">ボタンのコントラストを上げる</string>
     <string name="theme_suite_preview_text">文字</string>
     <string name="add_theme_suite">テーマセットを追加</string>
     <string name="new_theme_suite_title">新しいテーマセット</string>
@@ -1299,7 +1313,7 @@
     <string name="background_add_photo">写真を追加</string>
     <string name="background_custom_color_title">背景色をカスタマイズ</string>
     <string name="background_reset_white">白に戻す</string>
-    <string name="font_serif">明朝体</string>
+    <string name="font_serif">Serif</string>
     <string name="reader_unit_character">字</string>
     <string name="page_turn_speed">ページめくり速度</string>
     <string name="page_animation_slide_short">スライド</string>
@@ -1330,8 +1344,8 @@
     <string name="use_epub_css">本の CSS スタイルを使用</string>
     <string name="use_epub_css_hint">本に含まれるレイアウトスタイルを読み込みます。装丁された本に適しています</string>
     <string name="font_import_name_title">カスタムフォント名</string>
-    <string name="font_import_name_hint">名前を入力（最大6文字）</string>
-    <string name="font_import_name_count">%1$d/6</string>
+    <string name="font_import_name_hint">名前を入力（最大12文字）</string>
+    <string name="font_import_name_count">%1$d/12</string>
     <string name="font_import_default_name">カスタムフォント</string>
     <string name="page_transition_label">ページめくり効果</string>
     <string name="welcome_brand_name">Lumi Books</string>
@@ -1453,4 +1467,12 @@
     <string name="menu_animation_style_normal">標準</string>
     <string name="menu_animation_style_liquid">リキッド</string>
     <string name="menu_animation_style_hint">標準は軽快に動作します。リキッドはガラステーマで水滴の変形と屈折を表現します。</string>
+    <string name="epub_comic_switch">コミックリーダーに切り替え</string>
+    <string name="epub_comic_switch_back">EPUB リーダーに戻る</string>
+    <string name="epub_comic_preparing">コミック画像を準備中…</string>
+    <string name="epub_comic_images_only">コミックリーダーでは画像のみ表示されます。テキスト、背景画像、ベクター画像は表示されません。いつでも EPUB リーダーに戻せます。</string>
+    <string name="epub_comic_continue">切り替える</string>
+    <string name="epub_comic_open_failed">画像を開けないか、表示できる画像がありません。EPUB リーダーで引き続き読めます。</string>
+    <string name="epub_comic_page_retry">%1$d ページを読み込めませんでした。タップして再試行。</string>
+    <string name="epub_comic_switch_failed">リーダーを切り替えられませんでした。もう一度お試しください。</string>
 </resources>

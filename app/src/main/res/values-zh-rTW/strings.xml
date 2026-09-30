@@ -124,7 +124,6 @@
     <string name="title_about">關於應用程式</string>
     <string name="official_qq_group">官方QQ群</string>
     <string name="github_discussions">GitHub Discussions</string>
-    <string name="community_contact_hint">中國大陸使用者可使用 QQ 群，非中國大陸使用者可以在 GitHub Discussions 中討論</string>
     <string name="github_repository">GitHub 儲存庫</string>
 
     <!-- 閱讀設定 -->
@@ -429,6 +428,13 @@
     <string name="volume_key_page_turn">音量鍵翻頁</string>
     <string name="volume_key_page_turn_hint">音量增加鍵上一頁，音量減少鍵下一頁</string>
     <string name="bionic_reading">仿生閱讀</string>
+    <string name="line_guide">逐行導讀</string>
+    <string name="line_guide_dim">背景調暗</string>
+    <string name="line_guide_dim_none">無</string>
+    <string name="line_guide_dim_low">低</string>
+    <string name="line_guide_dim_medium">中</string>
+    <string name="line_guide_dim_high">高</string>
+    <string name="line_guide_close">關閉逐行導讀</string>
     <string name="bionic_reading_hint">加粗詞語的前半部分，幫助視線快速定位並提升閱讀專注度</string>
     <string name="reader_edge_tap_page_turn">點擊螢幕兩側翻頁</string>
     <string name="reader_edge_tap_page_turn_hint">設定點擊左、右兩側時的翻頁方向</string>
@@ -461,6 +467,13 @@
     <string name="menu_dictionary">字典</string>
     <string name="dictionary_no_app">未找到支援查詞的字典或翻譯應用程式</string>
     <string name="note_input_placeholder">輸入筆記...</string>
+    <string name="bookmark_remark_title">書籤備註</string>
+    <string name="bookmark_remark_placeholder">輸入書籤備註...</string>
+    <string name="bookmark_remark_setting_hint">如無需該功能，可在主題-詳細設定中關閉。</string>
+    <string name="bookmark_remark_prompt_setting">新增書籤時填寫備註</string>
+    <string name="bookmark_remark_prompt_setting_hint">新增書籤後開啟備註輸入</string>
+    <string name="bookmark_remark_edit">編輯書籤備註</string>
+    <string name="bookmark_remark_export">備註</string>
     <string name="highlights_notes_title">高亮與筆記</string>
     <string name="tab_highlight">高亮</string>
     <string name="tab_underline">劃線</string>
@@ -480,6 +493,7 @@
     <string name="reading_background">閱讀背景</string>
     <string name="reader_theme_suites">主題套裝</string>
     <string name="reader_theme_suite_apply_to_book">只套用到本書</string>
+    <string name="reader_increase_button_contrast">增加按鈕對比度</string>
     <string name="theme_suite_preview_text">文字</string>
     <string name="add_theme_suite">新增主題套裝</string>
     <string name="new_theme_suite_title">新增主題套裝</string>
@@ -1298,7 +1312,7 @@
     <string name="background_add_photo">新增相片</string>
     <string name="background_custom_color_title">自訂背景色彩</string>
     <string name="background_reset_white">恢復白色</string>
-    <string name="font_serif">宋體</string>
+    <string name="font_serif">Serif</string>
     <string name="reader_unit_character">字</string>
     <string name="page_turn_speed">翻頁速度</string>
     <string name="page_animation_slide_short">滑動</string>
@@ -1329,8 +1343,8 @@
     <string name="use_epub_css">使用書籍 CSS 樣式</string>
     <string name="use_epub_css_hint">載入書籍內建的排版樣式，編排精美的書籍效果更佳</string>
     <string name="font_import_name_title">自訂字型名稱</string>
-    <string name="font_import_name_hint">輸入名稱（最多 6 個字）</string>
-    <string name="font_import_name_count">%1$d/6</string>
+    <string name="font_import_name_hint">輸入名稱（最多 12 個字）</string>
+    <string name="font_import_name_count">%1$d/12</string>
     <string name="font_import_default_name">自訂字型</string>
     <string name="page_transition_label">翻頁效果</string>
     <string name="welcome_brand_name">Lumi Books</string>
@@ -1452,4 +1466,12 @@
     <string name="menu_animation_style_normal">普通</string>
     <string name="menu_animation_style_liquid">液態</string>
     <string name="menu_animation_style_hint">普通更輕快；液態在玻璃主題下呈現水滴形變與折射。</string>
+    <string name="epub_comic_switch">切換到漫畫閱讀器</string>
+    <string name="epub_comic_switch_back">切換回 EPUB 閱讀器</string>
+    <string name="epub_comic_preparing">正在準備漫畫圖片…</string>
+    <string name="epub_comic_images_only">漫畫閱讀器僅顯示圖片，文字、背景圖和向量繪圖將不顯示。你可以隨時切回 EPUB 閱讀器。</string>
+    <string name="epub_comic_continue">繼續切換</string>
+    <string name="epub_comic_open_failed">無法開啟漫畫圖片，或書中沒有可讀取的圖片。已保留 EPUB 閱讀方式。</string>
+    <string name="epub_comic_page_retry">第 %1$d 頁載入失敗，點擊重試</string>
+    <string name="epub_comic_switch_failed">無法切換閱讀器，請重試。</string>
 </resources>

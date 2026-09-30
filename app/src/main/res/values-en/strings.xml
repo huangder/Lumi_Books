@@ -1,5 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="annotation_tags">Reading mark tags</string>
+    <string name="annotation_tag_manage">Manage tags</string>
+    <string name="annotation_tag_global_hint">Renaming or deleting applies immediately to reading marks in every book. Book tags are unaffected.</string>
+    <string name="annotation_tag_delete_title">Delete tag “%1$s”?</string>
+    <string name="annotation_tag_add">Add tag</string>
+    <string name="annotation_tag_new">New tag name</string>
+    <string name="annotation_tag_rename">Rename</string>
+    <string name="annotation_tag_filter">Filter</string>
+    <string name="annotation_tag_all">All tags</string>
+    <string name="annotation_tag_none">Untagged</string>
+    <string name="annotation_tag_color">Color</string>
+    <string name="annotation_tag_all_colors">All colors</string>
+    <string name="annotation_tag_all_lines">All line styles</string>
+    <string name="annotation_tag_color_number">Color %1$d</string>
+    <string name="annotation_tag_line">Line style</string>
     <string name="label_predictive_back">Predictive back</string>
     <string name="label_entrance_animations">Motion Pro (Beta)</string>
     <string name="entrance_animations_description">Adds element animations to selected pages\nand may affect performance</string>
@@ -131,7 +146,6 @@
     <string name="title_about">About</string>
     <string name="official_qq_group">Official QQ Group</string>
     <string name="github_discussions">GitHub Discussions</string>
-    <string name="community_contact_hint">Users in mainland China can use the QQ group; users elsewhere can discuss in GitHub Discussions</string>
     <string name="github_repository">GitHub Repository</string>
 
     <!-- Reading Settings -->
@@ -356,6 +370,14 @@
     <string name="section_previously_read">Previously Read</string>
     <string name="section_recently_read">Recently Read</string>
     <string name="import_books">Import</string>
+    <string name="bookshelf_import_book">Import books</string>
+    <string name="bookshelf_sort_group">Sort by</string>
+    <string name="bookshelf_sort_last_read">Recently read</string>
+    <string name="bookshelf_sort_date_added">Date added</string>
+    <string name="bookshelf_sort_title">Title A-Z</string>
+    <string name="bookshelf_sort_author">Author A-Z</string>
+    <string name="book_pin">Pin</string>
+    <string name="book_unpin">Unpin</string>
     <string name="home_page">Home</string>
     <string name="avatar">Avatar</string>
     <string name="home_manage_hint">Manage your local PDF and EPUB books here</string>
@@ -549,6 +571,13 @@
     <string name="volume_key_page_turn">Turn pages with volume keys</string>
     <string name="volume_key_page_turn_hint">Volume up for previous, volume down for next</string>
     <string name="bionic_reading">Bionic reading</string>
+    <string name="line_guide">Line guide</string>
+    <string name="line_guide_dim">Background dimming</string>
+    <string name="line_guide_dim_none">None</string>
+    <string name="line_guide_dim_low">Low</string>
+    <string name="line_guide_dim_medium">Medium</string>
+    <string name="line_guide_dim_high">High</string>
+    <string name="line_guide_close">Turn off line guide</string>
     <string name="bionic_reading_hint">Bold the first part of each word to guide your eyes and improve focus</string>
     <string name="reader_edge_tap_page_turn">Turn pages by tapping the edges</string>
     <string name="reader_edge_tap_page_turn_hint">Choose what left and right edge taps do</string>
@@ -593,6 +622,13 @@
     <string name="reader_selection_hint_switch_page">Drag to a page corner to switch pages</string>
     <string name="reader_selection_hint_tap_target">Tap the target end to finish the selection</string>
     <string name="note_input_placeholder">Enter note...</string>
+    <string name="bookmark_remark_title">Bookmark note</string>
+    <string name="bookmark_remark_placeholder">Add a note to this bookmark...</string>
+    <string name="bookmark_remark_setting_hint">You can turn this off in Theme - Detailed settings.</string>
+    <string name="bookmark_remark_prompt_setting">Prompt for bookmark notes</string>
+    <string name="bookmark_remark_prompt_setting_hint">Open the note editor after adding a bookmark</string>
+    <string name="bookmark_remark_edit">Edit bookmark note</string>
+    <string name="bookmark_remark_export">Note</string>
     <string name="highlights_notes_title">Highlights &amp; Notes</string>
     <string name="tab_highlight">Highlight</string>
     <string name="tab_underline">Underline</string>
@@ -629,6 +665,7 @@
     <string name="reader_theme_mode_dark">Dark</string>
     <string name="reader_theme_mode_settings">%1$s mode settings</string>
     <string name="reader_theme_suite_apply_to_book">Apply to this book only</string>
+    <string name="reader_increase_button_contrast">Increase button contrast</string>
     <string name="page_turn_module_label">Page turn</string>
     <string name="display_module_label">Display</string>
     <string name="display_mode_day">Day mode</string>
@@ -680,6 +717,12 @@
     <string name="reader_settings_font_summary">Font selection and custom fonts</string>
     <string name="reader_image_adjustment">Image adjustments</string>
     <string name="reader_image_adjustment_entry">Adjust</string>
+    <string name="reader_raster_horizontal_crop">Auto-crop side margins</string>
+    <string name="reader_crop_off">Off</string>
+    <string name="reader_crop_auto">Auto</string>
+    <string name="reader_crop_manual">Manual</string>
+    <string name="reader_crop_left_px">Left pixels</string>
+    <string name="reader_crop_right_px">Right pixels</string>
     <string name="reader_image_adjustment_hint">Contrast, brightness, and sharpening</string>
     <string name="reader_image_brightness">Image brightness</string>
     <string name="reader_image_contrast">Image contrast</string>
@@ -701,8 +744,8 @@
     <string name="font_custom">Custom</string>
     <string name="font_import">Import</string>
     <string name="font_import_name_title">Custom font name</string>
-    <string name="font_import_name_hint">Enter a name (up to 6 characters)</string>
-    <string name="font_import_name_count">%1$d/6</string>
+    <string name="font_import_name_hint">Enter a name (up to 12 characters)</string>
+    <string name="font_import_name_count">%1$d/12</string>
     <string name="font_import_default_name">Custom font</string>
 
     <!-- Welcome Page -->
@@ -1497,6 +1540,10 @@
     <string name="tts_timer_decimal_hours">%1$.1f hr</string>
     <string name="tts_timer_cancel">Cancel timer</string>
     <string name="tts_timer_label">Timer</string>
+    <string name="tts_return_to_progress">Return to progress</string>
+    <string name="tts_return_to_reading_page">Return to reading page</string>
+    <string name="tts_from_this_page">From this page</string>
+    <string name="tts_pitch_label">Pitch</string>
     <string name="tts_follow_engine">Follow speech engine</string>
     <string name="tts_follow_engine_short">Follow</string>
     <string name="tts_pitch_short">Pitch %1$s</string>
@@ -1586,6 +1633,10 @@
     <string name="highlight_rule_pattern">RE2 regular expression</string>
     <string name="highlight_rule_sample">Sample text</string>
     <string name="highlight_rule_text_color">Text color</string>
+    <string name="highlight_rule_font">Highlight font</string>
+    <string name="highlight_rule_font_body">Body font</string>
+    <string name="highlight_rule_font_import">+ Import font</string>
+    <string name="highlight_rule_font_unavailable">Font unavailable</string>
     <string name="highlight_rule_no_color">Use body color</string>
     <string name="highlight_rule_custom_color">Custom color</string>
     <string name="highlight_rule_custom_color_invalid">Enter a valid color, for example #FF1976D2</string>
@@ -1593,6 +1644,8 @@
     <string name="highlight_rule_underline_none">None</string>
     <string name="highlight_rule_underline_straight">Straight</string>
     <string name="highlight_rule_underline_wave">Wave</string>
+    <string name="highlight_rule_underline_double">Double</string>
+    <string name="highlight_rule_underline_dashed">Dashed</string>
     <string name="highlight_rule_bold">Bold</string>
     <string name="highlight_rule_italic">Italic</string>
     <string name="highlight_rule_preview">Live preview</string>
@@ -1632,4 +1685,12 @@
     <string name="epub_script_missing_kept">This chapter could not start the original-layout reader.</string>
     <string name="epub_script_error_kept">The original-layout script failed. You can retry this page.</string>
     <string name="epub_document_error_kept">This chapter could not be loaded. Your reading mode has not changed.</string>
+    <string name="epub_comic_switch">Switch to comic reader</string>
+    <string name="epub_comic_switch_back">Switch back to EPUB reader</string>
+    <string name="epub_comic_preparing">Preparing comic images…</string>
+    <string name="epub_comic_images_only">The comic reader shows images only. Text, backgrounds and vector artwork will not be displayed. You can switch back to the EPUB reader at any time.</string>
+    <string name="epub_comic_continue">Continue</string>
+    <string name="epub_comic_open_failed">Could not open comic images, or no readable images were found. EPUB reading is still available.</string>
+    <string name="epub_comic_page_retry">Page %1$d failed to load. Tap to retry.</string>
+    <string name="epub_comic_switch_failed">Could not switch readers. Please try again.</string>
 </resources>

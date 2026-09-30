@@ -35,6 +35,7 @@ local.properties
 
 # Dev logs
 devlog/
+build-*.log
 /test/
 tools/dictionaries/__pycache__/
 
