@@ -78,11 +78,14 @@ class ContinuousScrollReaderTest {
         revision: androidx.compose.runtime.State<Long> = mutableStateOf(0L),
         fontSize: androidx.compose.runtime.State<Float> = mutableStateOf(18f),
         lineHeight: Float = 1.5f,
+        lineGuide: Boolean = false,
+        bionic: Boolean = false,
         verticalMargin: Float = 20f,
         mirrorProgress: Boolean = false,
         onSelectionChanging: () -> Unit = {},
         onSelection: (Int, ContinuousTextSelection) -> Unit = { _, _ -> },
         onSelectionCleared: () -> Unit = {},
+        onMenuToggle: () -> Unit = {},
         onChapterVisible: (Int, Float) -> Unit = { _, _ -> }
     ) {
         val reported = mutableStateOf(currentChapter to 0f)
@@ -100,12 +103,14 @@ class ContinuousScrollReaderTest {
                     textColor = Color.BLACK, backgroundColor = background.value,
                     backgroundImagePath = null, backgroundImageOpacity = 0f, backgroundImageBlurDp = 0f,
                     marginLeft = leftMargin.value, marginRight = 16f, marginTop = verticalMargin, marginBottom = verticalMargin,
-                    paragraphSpacing = 0f, firstLineIndent = 0f, bionicReadingEnabled = false,
+                    paragraphSpacing = 0f, firstLineIndent = 0f, bionicReadingEnabled = bionic,
+                    lineGuideEnabled = lineGuide,
                     contentRevision = revision.value,
                     loadChapterText = { index, width -> loadChapter(index, width) },
                     onContentSizeChanged = { _, _ -> },
                     notes = emptyList(), searchHighlight = null, scrollRequests = requests,
-                    onSearchHighlightFinished = {}, onMenuToggle = {}, onLinkClick = { _, _, _, _ -> },
+                    onSearchHighlightFinished = {}, onMenuToggle = onMenuToggle,
+                    onLinkClick = { _, _, _, _ -> },
                     onImageLongPress = { _, _ -> }, selectionController = selectionController,
                     onSelectionChanging = onSelectionChanging, onSelection = onSelection,
                     onSelectionCleared = onSelectionCleared,
@@ -118,6 +123,66 @@ class ContinuousScrollReaderTest {
                     imageAdjustments = imageAdjustments.value
                 )
             }
+        }
+    }
+
+    @Test fun lineGuideTapScrollsOneLineWithoutOpeningMenuOrSelectingText() {
+        currentChapter = 0
+        chapterCount = 1
+        var menuTaps = 0
+        show(lineGuide = true, onMenuToggle = { menuTaps++ })
+        compose.waitUntil(15_000) { restored }
+        val before = list.firstVisibleItemScrollOffset
+        var tap = Offset.Zero
+        compose.runOnIdle {
+            tap = Offset(composeRoot.width / 2f, composeRoot.height * 0.72f)
+        }
+
+        compose.onRoot().performTouchInput {
+            down(tap)
+            up()
+        }
+        compose.waitUntil(5_000) { list.firstVisibleItemScrollOffset > before }
+        compose.runOnIdle {
+            assertEquals(0, menuTaps)
+            assertTrue(visibleTextView().lineGuideMode)
+            assertNull(selectionController.currentSelection())
+        }
+    }
+
+    @Test fun bionicChapterKeepsVisibleTextAndSelectionAfterScrollingToTheMiddle() {
+        currentChapter = 0
+        chapterCount = 1
+        show(bionic = true)
+        // Chapter formatting now completes on a worker. A bounded position
+        // restore may finish first; wait for its published text before selecting.
+        compose.waitUntil(15_000) {
+            restored && descendants(composeRoot.rootView)
+                .filterIsInstance<ContinuousSelectableTextView>()
+                .any { it.isAttachedToWindow && it.text.isNotEmpty() }
+        }
+        val liveText = compose.runOnIdle { visibleTextView().text }
+        compose.runOnIdle {
+            requests.tryEmit(ContinuousScrollRequest(0, characterOffset = targetOffset))
+        }
+        compose.waitUntil(15_000) { requests.value == null && list.firstVisibleItemScrollOffset > 1000 }
+        compose.runOnIdle {
+            val view = visibleTextView()
+            assertSame("Scrolling must reuse the formatted chapter", liveText, view.text)
+            val bitmap = Bitmap.createBitmap(composeRoot.width, composeRoot.height, Bitmap.Config.ARGB_8888)
+            composeRoot.draw(Canvas(bitmap))
+            assertTrue("The newly exposed viewport must contain text",
+                (bitmap.height / 3 until bitmap.height * 2 / 3).any { y ->
+                    (bitmap.width / 4 until bitmap.width * 3 / 4).any { x ->
+                        val pixel = bitmap.getPixel(x, y)
+                        Color.alpha(pixel) > 128 && Color.red(pixel) < 100
+                    }
+                })
+            bitmap.recycle()
+            view.requestFocus()
+            Selection.setSelection(view.text as Spannable, targetOffset, targetOffset + 9)
+            assertEquals(targetOffset, Selection.getSelectionStart(view.text))
+            assertEquals("Paragraph", view.text.subSequence(targetOffset, targetOffset + 9).toString())
         }
     }
 
@@ -718,6 +783,58 @@ class ContinuousScrollReaderTest {
         compose.runOnIdle {
             assertEquals("pure image chapter restores the full-height viewport", composeRoot.height,
                 list.layoutInfo.viewportSize.height)
+        }
+    }
+
+    @Test fun mixedComicImagesReachScreenEdgesWhileTextKeepsItsColumn() {
+        currentChapter = 0
+        chapterCount = 1
+        val source = SpannableStringBuilder("Title and preface\n").append(imageChapter(120, 120))
+            .append("Caption stays selectable.\n")
+        loadChapter = { _, _ -> source }
+        show(comicMode = mutableStateOf(true))
+        compose.waitUntil(15_000) { restored }
+        compose.runOnIdle {
+            val reader = visibleTextView()
+            val margin = with(compose.density) { 16.dp.roundToPx() }
+            assertEquals(list.layoutInfo.viewportSize.width, reader.width)
+            assertEquals(margin, reader.totalPaddingLeft)
+            assertEquals(margin, reader.totalPaddingRight)
+            assertEquals(reader.width - 2 * margin, reader.layout.width)
+            assertEquals(source.toString(), reader.text.toString())
+            val text = reader.text as Spanned
+            val images = text.getSpans(0, text.length, ImageSpan::class.java)
+            val rects = images.map { continuousImageBounds(reader.layout, it, reader.readerJustificationMode)!! }
+            assertEquals(0f, rects.first().left + reader.totalPaddingLeft, 0.1f)
+            assertEquals(reader.width.toFloat(), rects.first().right + reader.totalPaddingLeft, 0.1f)
+            assertEquals(rects[0].bottom, rects[1].top, 0.1f)
+            val pixels = Bitmap.createBitmap(composeRoot.width, composeRoot.height, Bitmap.Config.ARGB_8888)
+            composeRoot.draw(Canvas(pixels))
+            val location = IntArray(2).also(reader::getLocationInWindow)
+            val origin = IntArray(2).also(composeRoot::getLocationInWindow)
+            val y = (location[1] - origin[1] + rects[0].centerY()).toInt()
+            assertTrue(y in 0 until pixels.height)
+            for (x in listOf(0, pixels.width / 2, pixels.width - 1)) {
+                assertEquals("composed comic reaches x=$x", Color.RED, pixels.getPixel(x, y))
+            }
+            pixels.recycle()
+        }
+    }
+
+    @Test fun interiorSingleImageChaptersDoNotEachReserveAnEntireScreen() {
+        currentChapter = 1
+        chapterCount = 3
+        loadChapter = { _, _ -> SpannableStringBuilder(imageChapter(60)).apply {
+            setSpan(EpubParser.CoverPageSpan(), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        } }
+        show()
+        compose.waitUntil(15_000) { restored }
+        compose.runOnIdle {
+            val items = list.layoutInfo.visibleItemsInfo
+            val first = items.first { it.index == 1 }
+            val next = items.first { it.index == 2 }
+            assertEquals(list.layoutInfo.viewportSize.width / 4, first.size)
+            assertEquals(first.offset + first.size, next.offset)
         }
     }
 

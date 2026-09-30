@@ -271,6 +271,11 @@ fun ThirdPartyServicesDetail(viewModel: SettingsViewModel) {
         com.huangder.lumibooks.dictionary.openDictionarySettings(context)
     }
     Spacer(Modifier.height(AppSpace.sm))
+    CategoryItem(icon = AppIcons.Globe, label = stringResource(R.string.translation_title),
+        supportingText = stringResource(R.string.translation_description)) {
+        com.huangder.lumibooks.translation.openTranslationSettings(context)
+    }
+    Spacer(Modifier.height(AppSpace.sm))
 
     CategoryItem(
         icon = AppIcons.Cloud,

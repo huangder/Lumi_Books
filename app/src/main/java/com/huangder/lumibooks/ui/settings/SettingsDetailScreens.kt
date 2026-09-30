@@ -2930,6 +2930,7 @@ fun AboutDetail(viewModel: SettingsViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val update = uiState.updateCheck
+    val sectionHorizontalPadding = AppSpace.md
 
     fun openDoc(title: String, file: String) {
         context.startActivity(
@@ -3000,7 +3001,7 @@ fun AboutDetail(viewModel: SettingsViewModel) {
 
     Spacer(Modifier.height(AppSpace.md))
 
-    DetailCard {
+    DetailCard(horizontalPadding = sectionHorizontalPadding) {
         ActionRow(AppIcons.ArrowCircleDown, stringResource(R.string.title_changelog)) {
             context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "changelog"))
         }
@@ -3008,7 +3009,7 @@ fun AboutDetail(viewModel: SettingsViewModel) {
 
     Spacer(Modifier.height(AppSpace.md))
 
-    DetailCard {
+    DetailCard(horizontalPadding = sectionHorizontalPadding) {
         ActionRow(AppIcons.UsersThree, stringResource(R.string.official_qq_group)) {
             val opened = runCatching {
                 context.startActivity(
@@ -3032,18 +3033,9 @@ fun AboutDetail(viewModel: SettingsViewModel) {
         }
     }
 
-    Text(
-        text = stringResource(R.string.community_contact_hint),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = AppSpace.md, vertical = AppSpace.sm),
-        fontSize = AppType.Caption,
-        color = AppColors.TextSecondary
-    )
-
     Spacer(Modifier.height(AppSpace.md))
 
-    DetailCard {
+    DetailCard(horizontalPadding = sectionHorizontalPadding) {
         ActionRow(AppIcons.Code, stringResource(R.string.github_repository)) {
             val opened = runCatching {
                 context.startActivity(
@@ -3059,7 +3051,7 @@ fun AboutDetail(viewModel: SettingsViewModel) {
     Spacer(Modifier.height(AppSpace.lg))
 
     // ── 法律条款 Card ──
-    DetailCard {
+    DetailCard(horizontalPadding = sectionHorizontalPadding) {
         ActionRow(AppIcons.MoonStars, stringResource(R.string.privacy_policy)) {
             openDoc(context.getString(R.string.privacy_policy), "privacy.html")
         }

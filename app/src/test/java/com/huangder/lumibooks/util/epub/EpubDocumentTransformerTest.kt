@@ -24,7 +24,8 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("data-lumi-rule-style"))
         assertTrue(output.contains("clearRuleInlineStyles"))
         assertTrue(output.contains("CSS.highlights.set"))
-        assertTrue(output.contains("textDecorationStyle"))
+        assertTrue(output.contains("appendUnderlineRange(underlineLayer, range, ruleColor, style.underlineMode)"))
+        assertTrue(output.contains("stroke-dasharray"))
     }
 
     @Test
@@ -41,6 +42,7 @@ class EpubDocumentTransformerTest {
         val document = Jsoup.parse(output, "", Parser.xmlParser())
 
         assertEquals("true", document.body().attr("data-lumi-cover"))
+        assertEquals("true", document.body().attr("data-lumi-cover-candidate"))
         assertEquals("true", document.selectFirst("img")!!.attr("data-lumi-cover-media"))
         assertEquals("true", document.selectFirst("div")!!.attr("data-lumi-cover-container"))
         assertTrue(output.contains("object-fit: contain !important"))
@@ -78,6 +80,7 @@ class EpubDocumentTransformerTest {
         val document = Jsoup.parse(output, "", Parser.xmlParser())
 
         assertFalse(document.body().hasAttr("data-lumi-cover"))
+        assertFalse(document.body().hasAttr("data-lumi-cover-candidate"))
         assertFalse(document.selectFirst("img")!!.hasAttr("data-lumi-cover-media"))
         assertFalse(document.body().hasAttr("data-lumi-media-only"))
     }
@@ -97,6 +100,7 @@ class EpubDocumentTransformerTest {
 
         assertEquals("true", document.body().attr("data-lumi-media-only"))
         assertEquals("true", document.body().attr("data-lumi-cover"))
+        assertFalse(document.body().hasAttr("data-lumi-cover-candidate"))
         assertEquals("true", document.selectFirst("img")!!.attr("data-lumi-cover-media"))
         assertTrue(document.body().attr("data-lumi-layout") == "reflowable")
     }
@@ -348,6 +352,8 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("targetLength = fixation ? 2 : 3"))
         assertFalse(output.contains("cjkIndex += 2"))
         assertTrue(output.contains("@font-face"))
+        assertTrue(output.contains("config.fontUrl ? String(config.fontUrl) : ''"))
+        assertTrue(output.contains("Lumi Reader Override"))
         assertTrue(output.contains("config.textColor"))
         assertTrue(output.contains("config.textAlignment"))
         assertTrue(output.contains("config.letterSpacingDp"))

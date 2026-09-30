@@ -68,6 +68,7 @@ object AppIcons {
     val TrashSimple = PhosphorIcons.Regular.TrashSimple
     val Heart = IconPair(PhosphorIcons.Regular.Heart, PhosphorIcons.Fill.Heart)
     val Bookmark = IconPair(PhosphorIcons.Regular.Bookmark, PhosphorIcons.Fill.Bookmark)
+    val PushPin = PhosphorIcons.Regular.PushPin
     val MagnifyingGlass = PhosphorIcons.Regular.MagnifyingGlass
     val Gear = PhosphorIcons.Regular.Gear
     val Info = PhosphorIcons.Regular.Info

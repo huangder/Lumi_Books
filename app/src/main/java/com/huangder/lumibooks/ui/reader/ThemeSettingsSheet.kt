@@ -198,6 +198,10 @@ fun ThemeSettingsSheet(
     visible: Boolean,
     requestClose: Boolean = false,
     currentFontSize: Float,
+    currentFontType: String = "system",
+    currentCustomFontPath: String? = null,
+    currentBodyFontWeight: Int = 400,
+    onBodyFontWeightChange: (Int) -> Unit = {},
     currentTheme: String,
     currentBackgroundSelection: String = currentTheme,
     customBackgrounds: List<ReaderBackgroundPreset> = emptyList(),
@@ -205,6 +209,7 @@ fun ThemeSettingsSheet(
     activeReaderThemeSuiteId: String = ReaderThemeSuites.DAY_ID,
     isAppDark: Boolean = LocalIsDarkTheme.current,
     readerThemeSuiteBookScoped: Boolean = false,
+    readerButtonContrastEnabled: Boolean = false,
     customFonts: List<CustomFontPreset> = emptyList(),
     currentPreserveEpubBackground: Boolean = true,
     currentBrightness: Float = -1f,
@@ -234,6 +239,7 @@ fun ThemeSettingsSheet(
     onThemeSuiteDelete: (String) -> Unit = {},
     onThemeSuitesReorder: (List<String>) -> Unit = {},
     onThemeSuiteBookScopedChange: (Boolean) -> Unit = {},
+    onReaderButtonContrastChange: (Boolean) -> Unit = {},
     onPreserveEpubBackgroundChange: (Boolean) -> Unit = {},
     onBrightnessChange: (Float) -> Unit = {},
     onOptimizeLayoutChange: (Boolean) -> Unit = {},
@@ -247,6 +253,17 @@ fun ThemeSettingsSheet(
     onDismiss: () -> Unit
 ) {
     if (!visible) return
+
+    val fontContext = LocalContext.current
+    val variableWeightRange by androidx.compose.runtime.produceState<ClosedFloatingPointRange<Float>?>(
+        null, currentFontType, currentCustomFontPath
+    ) {
+        value = null
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.huangder.lumibooks.ui.reader.engine.readerVariableWeightRange(
+                fontContext, currentFontType, currentCustomFontPath)
+        }
+    }
 
     val sheetOffset = remember { Animatable(1f) }
 
@@ -409,6 +426,31 @@ fun ThemeSettingsSheet(
             }
 
             Spacer(Modifier.height(16.dp))
+
+            variableWeightRange?.let { range ->
+                var previewWeight by remember(currentFontType, currentCustomFontPath,
+                    currentBodyFontWeight) { mutableIntStateOf(currentBodyFontWeight) }
+                Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.body_font_weight), fontSize = 14.sp, color = LightTextSecondary)
+                    Spacer(Modifier.weight(1f))
+                    Text(previewWeight.toFloat().coerceIn(range).toInt().toString(),
+                        fontSize = 14.sp, color = LightTextSecondary)
+                }
+                Spacer(Modifier.height(4.dp))
+                com.huangder.lumibooks.ui.components.PillSlider(
+                    value = currentBodyFontWeight.toFloat().coerceIn(range),
+                    onValueChange = {
+                        previewWeight = it.toInt()
+                        onBodyFontWeightChange(previewWeight)
+                    },
+                    onDragValueChange = { previewWeight = it.toInt() },
+                    valueRange = range,
+                    step = 1f,
+                    modifier = Modifier.padding(horizontal = 24.dp)
+                )
+                Spacer(Modifier.height(16.dp))
+            }
 
             // 亮度区域
             Row(
@@ -619,6 +661,24 @@ fun ThemeSettingsSheet(
                     LiquidGlassSwitch(
                         checked = readerThemeSuiteBookScoped,
                         onCheckedChange = onThemeSuiteBookScopedChange
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.reader_increase_button_contrast),
+                        fontSize = 14.sp,
+                        color = AppColors.TextPrimary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    LiquidGlassSwitch(
+                        checked = readerButtonContrastEnabled,
+                        onCheckedChange = onReaderButtonContrastChange
                     )
                 }
             }
@@ -1408,9 +1468,10 @@ private fun rememberSuiteFontFamily(
     val fontType = settings.fontType
     val customPath = customFonts.firstOrNull { fontType == "custom:${it.id}" }?.path
     val fangSongFamilyValue = fangSongFamily()
-    return remember(fontType, customPath, fangSongFamilyValue) {
+    val serifFamily = rememberReaderSerifFontFamily(settings.bodyFontWeight)
+    return remember(fontType, customPath, fangSongFamilyValue, serifFamily) {
         when {
-            fontType == "serif" -> FontFamily.Serif
+            fontType == "serif" -> serifFamily
             fontType == "fangsong" -> fangSongFamilyValue
             fontType == "kaiti" -> KaiTi
             customPath != null -> runCatching {
@@ -1896,6 +1957,25 @@ private fun ModeButton(
 /** 页边距滑块当前调节的对象：正文，还是四角信息区（页眉/页脚）。 */
 private enum class ReaderMarginTarget { BODY, CORNER }
 
+private enum class ReaderMarginControl {
+    BODY_TOP,
+    BODY_BOTTOM,
+    BODY_LEFT,
+    BODY_RIGHT,
+    CORNER_TOP,
+    CORNER_BOTTOM,
+    CORNER_LEFT,
+    CORNER_RIGHT
+}
+
+private data class ReaderMarginPreview(
+    val control: ReaderMarginControl,
+    val bounds: Rect,
+    val value: Float,
+    val range: ClosedFloatingPointRange<Float>,
+    val step: Float
+)
+
 /**
  * 页边距区域左上角的选择 tag：一个胶囊里并排两段，切换下面四个滑块调的是正文还是页眉/页脚。
  *
@@ -2323,7 +2403,12 @@ fun AdvancedSettingsSheet(
     onMarginRightChange: (Float) -> Unit,
     onMarginTopChange: (Float) -> Unit,
     onMarginBottomChange: (Float) -> Unit,
+    onMarginLeftPreview: (Float) -> Unit = onMarginLeftChange,
+    onMarginRightPreview: (Float) -> Unit = onMarginRightChange,
+    onMarginTopPreview: (Float) -> Unit = onMarginTopChange,
+    onMarginBottomPreview: (Float) -> Unit = onMarginBottomChange,
     onCornerMarginsChange: (ReaderCornerMargins) -> Unit = {},
+    onCornerMarginsPreview: (ReaderCornerMargins) -> Unit = onCornerMarginsChange,
     currentParagraphSpacing: Float = 0f,
     currentFirstLineIndent: Float = 0f,
     onParagraphSpacingChange: (Float) -> Unit = {},
@@ -2333,12 +2418,14 @@ fun AdvancedSettingsSheet(
     readerBottomLeftContent: ReaderCornerContent,
     readerBottomRightContent: ReaderCornerContent,
     volumeKeyPageTurnEnabled: Boolean = false,
+    bookmarkRemarkPromptEnabled: Boolean = true,
     bionicReadingEnabled: Boolean = false,
     comicModeEnabled: Boolean = false,
     screenSleepTimeoutSeconds: Int = DataStoreManager.DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS,
     readerEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT,
     onReaderCornerContentChange: (ReaderPageCorner, ReaderCornerContent) -> Unit,
     onVolumeKeyPageTurnEnabledChange: (Boolean) -> Unit = {},
+    onBookmarkRemarkPromptEnabledChange: (Boolean) -> Unit = {},
     onBionicReadingEnabledChange: (Boolean) -> Unit = {},
     onComicModeChange: (Boolean) -> Unit = {},
     onScreenSleepTimeoutChange: (Int) -> Unit = {},
@@ -2351,6 +2438,7 @@ fun AdvancedSettingsSheet(
 
     val sheetOffset = remember { Animatable(1f) }
     val settingsScrollState = rememberScrollState()
+    var marginPreview by remember { mutableStateOf<ReaderMarginPreview?>(null) }
     val expandedGroups = remember { mutableStateMapOf<String, Boolean>() }
     fun isGroupExpanded(key: String, defaultExpanded: Boolean = false): Boolean =
         expandedGroups[key] ?: defaultExpanded
@@ -2391,7 +2479,7 @@ fun AdvancedSettingsSheet(
         } else FontFamily.Default
     }
     val previewFont = when {
-        currentFontType == "serif" -> androidx.compose.ui.text.font.FontFamily.Serif
+        currentFontType == "serif" -> rememberReaderSerifFontFamily()
         currentFontType == "fangsong" -> fangSongFamily()
         currentFontType == "kaiti" -> KaiTi
         currentFontType.startsWith("custom") -> customPreviewFontFamily
@@ -2427,7 +2515,11 @@ fun AdvancedSettingsSheet(
             Modifier.fillMaxSize()
                 .background(
                     AppColors.Scrim.copy(
-                        alpha = 0.20f * (1f - sheetOffset.value.coerceIn(0f, 1f))
+                        alpha = if (marginPreview == null) {
+                            0.20f * (1f - sheetOffset.value.coerceIn(0f, 1f))
+                        } else {
+                            0f
+                        }
                     )
                 )
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
@@ -2444,9 +2536,11 @@ fun AdvancedSettingsSheet(
                 .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress),
             contentModifier = Modifier
                 .fillMaxSize()
-                .navigationBarsPadding(),
+                .navigationBarsPadding()
+                .graphicsLayer { alpha = if (marginPreview == null) 1f else 0f },
             fallbackColor = LightCardBg,
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            surfaceVisible = marginPreview == null
         ) {
             // 顶部预览区域：背景直接铺到容器顶部，操作按钮悬浮在预览之上。
             Box(
@@ -2755,6 +2849,15 @@ fun AdvancedSettingsSheet(
                         forceSolidMenu = eInkModeEnabled || preservePublisherLayout,
                         onSelected = onTextAlignmentChange
                     )
+                    if (!eInkModeEnabled) {
+                        Spacer(Modifier.height(16.dp))
+                        AdvancedToggleRow(
+                            title = stringResource(R.string.bionic_reading),
+                            hint = stringResource(R.string.bionic_reading_hint),
+                            checked = bionicReadingEnabled,
+                            onCheckedChange = onBionicReadingEnabledChange
+                        )
+                    }
                 }
                 Spacer(Modifier.height(12.dp))
 
@@ -2810,79 +2913,111 @@ fun AdvancedSettingsSheet(
                     )
                     Spacer(Modifier.height(12.dp))
                     if (marginTarget == ReaderMarginTarget.BODY) {
-                        SettingSlider(
+                        MarginSettingSlider(
+                            control = ReaderMarginControl.BODY_TOP,
                             stringResource(R.string.label_margin_top),
                             currentMarginTop,
                             ReaderThemeSettings.VERTICAL_MARGIN_RANGE,
                             2f,
                             { "${it.toInt()} dp" },
-                            onMarginTopChange
+                            onMarginTopChange,
+                            onMarginTopPreview,
+                            marginPreview,
+                            { marginPreview = it }
                         )
                         Spacer(Modifier.height(12.dp))
-                        SettingSlider(
+                        MarginSettingSlider(
+                            control = ReaderMarginControl.BODY_BOTTOM,
                             stringResource(R.string.label_margin_bottom),
                             currentMarginBottom,
                             ReaderThemeSettings.VERTICAL_MARGIN_RANGE,
                             2f,
                             { "${it.toInt()} dp" },
-                            onMarginBottomChange
+                            onMarginBottomChange,
+                            onMarginBottomPreview,
+                            marginPreview,
+                            { marginPreview = it }
                         )
                         Spacer(Modifier.height(12.dp))
-                        SettingSlider(
+                        MarginSettingSlider(
+                            control = ReaderMarginControl.BODY_LEFT,
                             stringResource(R.string.label_margin_left),
                             currentMarginLeft,
                             ReaderThemeSettings.HORIZONTAL_MARGIN_RANGE,
                             2f,
                             { "${it.toInt()} dp" },
-                            onMarginLeftChange
+                            onMarginLeftChange,
+                            onMarginLeftPreview,
+                            marginPreview,
+                            { marginPreview = it }
                         )
                         Spacer(Modifier.height(12.dp))
-                        SettingSlider(
+                        MarginSettingSlider(
+                            control = ReaderMarginControl.BODY_RIGHT,
                             stringResource(R.string.label_margin_right),
                             currentMarginRight,
                             ReaderThemeSettings.HORIZONTAL_MARGIN_RANGE,
                             2f,
                             { "${it.toInt()} dp" },
-                            onMarginRightChange
+                            onMarginRightChange,
+                            onMarginRightPreview,
+                            marginPreview,
+                            { marginPreview = it }
                         )
                     } else {
                         // 页眉/页脚：未单独设置过的边沿用正文边距 / 旧版默认位置。
                         val cornerMarginRange = ReaderCornerMargins.VERTICAL_RANGE
                         val cornerHorizontalRange = ReaderCornerMargins.HORIZONTAL_RANGE
-                        SettingSlider(
+                        MarginSettingSlider(
+                            control = ReaderMarginControl.CORNER_TOP,
                             stringResource(R.string.label_margin_top),
                             currentCornerMargins.resolvedTopDp(),
                             cornerMarginRange,
                             2f,
                             { "${it.toInt()} dp" },
-                            { value -> onCornerMarginsChange(currentCornerMargins.copy(topDp = value)) }
+                            { value -> onCornerMarginsChange(currentCornerMargins.copy(topDp = value)) },
+                            { value -> onCornerMarginsPreview(currentCornerMargins.copy(topDp = value)) },
+                            marginPreview,
+                            { marginPreview = it }
                         )
                         Spacer(Modifier.height(12.dp))
-                        SettingSlider(
+                        MarginSettingSlider(
+                            control = ReaderMarginControl.CORNER_BOTTOM,
                             stringResource(R.string.label_margin_bottom),
                             currentCornerMargins.resolvedBottomDp(),
                             cornerMarginRange,
                             2f,
                             { "${it.toInt()} dp" },
-                            { value -> onCornerMarginsChange(currentCornerMargins.copy(bottomDp = value)) }
+                            { value -> onCornerMarginsChange(currentCornerMargins.copy(bottomDp = value)) },
+                            { value -> onCornerMarginsPreview(currentCornerMargins.copy(bottomDp = value)) },
+                            marginPreview,
+                            { marginPreview = it }
                         )
                         Spacer(Modifier.height(12.dp))
-                        SettingSlider(
+                        MarginSettingSlider(
+                            control = ReaderMarginControl.CORNER_LEFT,
                             stringResource(R.string.label_margin_left),
                             currentCornerMargins.resolvedLeftDp(currentMarginLeft),
                             cornerHorizontalRange,
                             2f,
                             { "${it.toInt()} dp" },
-                            { value -> onCornerMarginsChange(currentCornerMargins.copy(leftDp = value)) }
+                            { value -> onCornerMarginsChange(currentCornerMargins.copy(leftDp = value)) },
+                            { value -> onCornerMarginsPreview(currentCornerMargins.copy(leftDp = value)) },
+                            marginPreview,
+                            { marginPreview = it }
                         )
                         Spacer(Modifier.height(12.dp))
-                        SettingSlider(
+                        MarginSettingSlider(
+                            control = ReaderMarginControl.CORNER_RIGHT,
                             stringResource(R.string.label_margin_right),
                             currentCornerMargins.resolvedRightDp(currentMarginRight),
                             cornerHorizontalRange,
                             2f,
                             { "${it.toInt()} dp" },
-                            { value -> onCornerMarginsChange(currentCornerMargins.copy(rightDp = value)) }
+                            { value -> onCornerMarginsChange(currentCornerMargins.copy(rightDp = value)) },
+                            { value -> onCornerMarginsPreview(currentCornerMargins.copy(rightDp = value)) },
+                            marginPreview,
+                            { marginPreview = it }
                         )
                     }
                 }
@@ -2923,6 +3058,13 @@ fun AdvancedSettingsSheet(
                         hint = stringResource(R.string.volume_key_page_turn_hint),
                         checked = volumeKeyPageTurnEnabled,
                         onCheckedChange = onVolumeKeyPageTurnEnabledChange
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    AdvancedToggleRow(
+                        title = stringResource(R.string.bookmark_remark_prompt_setting),
+                        hint = stringResource(R.string.bookmark_remark_prompt_setting_hint),
+                        checked = bookmarkRemarkPromptEnabled,
+                        onCheckedChange = onBookmarkRemarkPromptEnabledChange
                     )
                 }
                 Spacer(Modifier.height(12.dp))
@@ -2972,7 +3114,66 @@ fun AdvancedSettingsSheet(
                 Spacer(Modifier.height(8.dp))
             }
         }
+
+        marginPreview?.let { preview ->
+            val density = LocalDensity.current
+            com.huangder.lumibooks.ui.components.PillSlider(
+                value = preview.value,
+                onValueChange = {},
+                valueRange = preview.range,
+                step = preview.step,
+                modifier = Modifier
+                    .width(with(density) { preview.bounds.width.toDp() })
+                    .offset {
+                        androidx.compose.ui.unit.IntOffset(
+                            preview.bounds.left.toInt(),
+                            preview.bounds.top.toInt()
+                        )
+                    }
+            )
+        }
     }
+}
+
+@Composable
+private fun MarginSettingSlider(
+    control: ReaderMarginControl,
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    step: Float,
+    format: (Float) -> String,
+    onChange: (Float) -> Unit,
+    onPreview: (Float) -> Unit,
+    activePreview: ReaderMarginPreview?,
+    onActivePreviewChange: (ReaderMarginPreview?) -> Unit
+) {
+    var bounds by remember { mutableStateOf<Rect?>(null) }
+    SettingSlider(
+        label = label,
+        value = value,
+        range = range,
+        step = step,
+        format = format,
+        onChange = { changed ->
+            onActivePreviewChange(activePreview?.takeIf { it.control == control }?.copy(value = changed))
+            onChange(changed)
+        },
+        onPreview = { changed ->
+            onActivePreviewChange(activePreview?.takeIf { it.control == control }?.copy(value = changed))
+            onPreview(changed)
+        },
+        sliderModifier = Modifier.onGloballyPositioned { bounds = it.boundsInRoot() },
+        onInteractionChange = { active ->
+            if (active) {
+                bounds?.let {
+                    onActivePreviewChange(ReaderMarginPreview(control, it, value, range, step))
+                }
+            } else if (activePreview?.control == control) {
+                onActivePreviewChange(null)
+            }
+        }
+    )
 }
 
 @Composable
@@ -4141,7 +4342,12 @@ internal fun SettingSlider(
     step: Float,
     format: (Float) -> String,
     onChange: (Float) -> Unit,
-    onPreview: ((Float) -> Unit)? = null
+    onPreview: ((Float) -> Unit)? = null,
+    sliderActiveColor: Color = AppColors.ControlActive,
+    sliderInactiveColor: Color = AppColors.BgGray,
+    forceNonGlass: Boolean = false,
+    sliderModifier: Modifier = Modifier,
+    onInteractionChange: ((Boolean) -> Unit)? = null
 ) {
     var sliderValue by remember(value) { mutableFloatStateOf(value) }
     var showInputDialog by remember { mutableStateOf(false) }
@@ -4173,7 +4379,12 @@ internal fun SettingSlider(
         onValueChange = { sliderValue = it; onChange(it) },
         valueRange = range,
         step = step,
-        onDragValueChange = { sliderValue = it; onPreview?.invoke(it) }
+        activeColor = sliderActiveColor,
+        inactiveColor = sliderInactiveColor,
+        forceNonGlass = forceNonGlass,
+        onDragValueChange = { sliderValue = it; onPreview?.invoke(it) },
+        onInteractionChange = onInteractionChange,
+        modifier = sliderModifier
     )
 
     if (showInputDialog) {
@@ -4226,17 +4437,19 @@ private fun FontSelector(
     var deleteArmedId by remember { mutableStateOf<String?>(null) }
 
     val sysLabel = stringResource(if (usePublisherFontLabel) R.string.font_publisher else R.string.font_system)
+    val serifLabel = stringResource(R.string.font_serif)
     val fangLabel = stringResource(R.string.font_fangsong)
     val kaiLabel  = stringResource(R.string.font_kaiti)
     val addLabel  = stringResource(R.string.font_import)
     val downloadingLabel = stringResource(R.string.font_downloading)
     val failedLabel = stringResource(R.string.font_download_failed)
     val fangSongFamilyValue = fangSongFamily()
+    val serifFamily = rememberReaderSerifFontFamily()
 
-    val items = remember(customFonts, sysLabel, fangLabel, kaiLabel, fangSongFamilyValue) {
+    val items = remember(customFonts, sysLabel, serifLabel, fangLabel, kaiLabel, fangSongFamilyValue, serifFamily) {
         buildList<FontSelectorItem> {
             add(FontSelectorItem.Fixed("system",   sysLabel,  FontFamily.Default))
-            add(FontSelectorItem.Fixed("serif",    "Serif",   FontFamily.Serif))
+            add(FontSelectorItem.Fixed("serif",    serifLabel, serifFamily))
             add(FontSelectorItem.Fixed("fangsong", fangLabel, fangSongFamilyValue))
             add(FontSelectorItem.Fixed("kaiti",    kaiLabel,  KaiTi))
             customFonts.forEachIndexed { i, p -> add(FontSelectorItem.Custom(p, i)) }
@@ -4245,7 +4458,7 @@ private fun FontSelector(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        items.chunked(3).forEach { rowItems ->
+        items.chunked(2).forEach { rowItems ->
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -4342,8 +4555,8 @@ private fun FontSelector(
                         }
                     }
                 }
-                // 如果这行不足 3 个，补 Spacer 占位
-                repeat(3 - rowItems.size) { Spacer(Modifier.weight(1f)) }
+                // 如果这行不足 2 个，补 Spacer 占位
+                repeat(2 - rowItems.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
@@ -4371,7 +4584,7 @@ private fun importedFontName(context: android.content.Context, uri: android.net.
     val withoutExtension = rawName?.substringBeforeLast('.', rawName)?.trim().orEmpty()
     val source = withoutExtension.ifBlank { context.getString(R.string.font_import_default_name) }
     val count = source.codePointCount(0, source.length)
-    return source.substring(0, source.offsetByCodePoints(0, count.coerceAtMost(6)))
+    return source.substring(0, source.offsetByCodePoints(0, count.coerceAtMost(12)))
 }
 
 @Composable
@@ -4387,7 +4600,7 @@ private fun FontImportNameDialog(
     val count = normalized.codePointCount(0, normalized.length)
     val confirm = {
         if (normalized.isNotEmpty()) {
-            val end = normalized.offsetByCodePoints(0, count.coerceAtMost(6))
+            val end = normalized.offsetByCodePoints(0, count.coerceAtMost(12))
             onConfirm(normalized.substring(0, end))
         }
     }
@@ -4409,7 +4622,7 @@ private fun FontImportNameDialog(
                 )
                 Spacer(Modifier.weight(1f))
                 Text(
-                    stringResource(R.string.font_import_name_count, count.coerceAtMost(6)),
+                    stringResource(R.string.font_import_name_count, count.coerceAtMost(12)),
                     fontSize = 12.sp,
                     color = LightTextSecondary
                 )
@@ -4429,7 +4642,7 @@ private fun FontImportNameDialog(
                         val trimmed = value.trimStart()
                         val end = trimmed.offsetByCodePoints(
                             0,
-                            trimmed.codePointCount(0, trimmed.length).coerceAtMost(6)
+                            trimmed.codePointCount(0, trimmed.length).coerceAtMost(12)
                         )
                         name = trimmed.substring(0, end)
                     },

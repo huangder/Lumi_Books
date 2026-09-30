@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.reader
 
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -36,6 +37,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,12 +54,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,6 +71,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.HighlightRule
+import com.huangder.lumibooks.domain.model.CustomFontPreset
 import com.huangder.lumibooks.highlight.HighlightRuleCodec
 import com.huangder.lumibooks.highlight.HighlightRuleMatcher
 import com.huangder.lumibooks.highlight.HighlightRuleImportPlanner
@@ -77,6 +85,10 @@ import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.LiquidGlassSegmentedControl
 import com.huangder.lumibooks.ui.components.LiquidGlassSwitch
 import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
+import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
+import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
 import com.huangder.lumibooks.ui.components.animateBottomSheetIn
 import com.huangder.lumibooks.ui.components.animateBottomSheetOut
 import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
@@ -122,6 +134,7 @@ fun HighlightRulesSheet(
     visible: Boolean,
     requestClose: Boolean = false,
     rules: List<HighlightRule>,
+    customFonts: List<CustomFontPreset> = emptyList(),
     materializeNotes: Boolean,
     scanState: HighlightRuleScanState,
     eInkModeEnabled: Boolean,
@@ -134,6 +147,7 @@ fun HighlightRulesSheet(
     onMoveRule: (String, Int) -> Unit,
     onImportRules: suspend (ByteArray, Boolean) -> HighlightRuleImportResult,
     onExportRules: (Boolean) -> ByteArray,
+    onImportFont: (Uri, String) -> Unit = { _, _ -> },
     onCancelScan: () -> Unit,
     onRebuild: () -> Unit,
     onDismiss: () -> Unit
@@ -422,6 +436,8 @@ fun HighlightRulesSheet(
             rule = rule,
             forceFallback = eInkModeEnabled,
             backdrop = backdrop,
+            customFonts = customFonts,
+            onImportFont = onImportFont,
             onDismiss = {
                 scope.launch {
                     sheetOffset.snapTo(1f)
@@ -736,6 +752,8 @@ private fun HighlightRuleEditorSheet(
     rule: HighlightRule,
     forceFallback: Boolean = false,
     backdrop: Backdrop? = null,
+    customFonts: List<CustomFontPreset> = emptyList(),
+    onImportFont: (Uri, String) -> Unit = { _, _ -> },
     onDismiss: () -> Unit,
     onSave: (HighlightRule) -> Unit
 ) {
@@ -750,12 +768,15 @@ private fun HighlightRuleEditorSheet(
             rule.underlineMode.takeIf {
                 it == HighlightRule.UNDERLINE_NONE ||
                     it == HighlightRule.UNDERLINE_STRAIGHT ||
-                    it == HighlightRule.UNDERLINE_WAVE
+                    it == HighlightRule.UNDERLINE_DOUBLE ||
+                    it == HighlightRule.UNDERLINE_WAVE ||
+                    it == HighlightRule.UNDERLINE_DASHED
             } ?: HighlightRule.UNDERLINE_NONE
         )
     }
     var bold by remember(rule.id) { mutableStateOf(rule.fontWeight >= 600) }
     var italic by remember(rule.id) { mutableStateOf(rule.isItalic) }
+    var fontType by remember(rule.id) { mutableStateOf(rule.fontType) }
     var showCustomColorDialog by remember(rule.id) { mutableStateOf(false) }
     val parsedColor = remember(colorText) { parseRuleColor(colorText) }
     val colorInvalid = colorText.isNotBlank() && parsedColor == null
@@ -767,21 +788,36 @@ private fun HighlightRuleEditorSheet(
         underlineMode = underlineMode,
         fontWeight = if (bold) 700 else 400,
         isItalic = italic,
+        fontType = fontType,
         sampleText = sample
     )
     val requiredError = name.isBlank() || pattern.isBlank()
     val regexError = if (pattern.isBlank()) null else HighlightRuleMatcher.validationError(draft)
     val canSave = !requiredError && !colorInvalid && regexError == null
-    val preview = remember(draft, sample) { previewText(draft.copy(enabled = true), sample) }
+    val previewFontFamily = when {
+        fontType.isBlank() || fontType == "system" -> null
+        fontType == "serif" -> FontFamily.Serif
+        fontType == "sans_serif" -> FontFamily.SansSerif
+        fontType == "monospace" -> FontFamily.Monospace
+        else -> customFonts.firstOrNull { it.fontTypeKey == fontType }
+            ?.let { rememberRuleFontFamily(it.path) }
+    }
+    val preview = remember(draft, sample, previewFontFamily) {
+        previewText(draft.copy(enabled = true), sample, previewFontFamily)
+    }
     val underlineLabels = listOf(
         stringResource(R.string.highlight_rule_underline_none),
         stringResource(R.string.highlight_rule_underline_straight),
-        stringResource(R.string.highlight_rule_underline_wave)
+        stringResource(R.string.highlight_rule_underline_double),
+        stringResource(R.string.highlight_rule_underline_wave),
+        stringResource(R.string.highlight_rule_underline_dashed)
     )
     val underlineValues = listOf(
         HighlightRule.UNDERLINE_NONE,
         HighlightRule.UNDERLINE_STRAIGHT,
-        HighlightRule.UNDERLINE_WAVE
+        HighlightRule.UNDERLINE_DOUBLE,
+        HighlightRule.UNDERLINE_WAVE,
+        HighlightRule.UNDERLINE_DASHED
     )
 
     val sheetOffset = remember { Animatable(1f) }
@@ -950,6 +986,13 @@ private fun HighlightRuleEditorSheet(
                         placeholder = "#FF1976D2",
                         isError = colorInvalid,
                         singleLine = true
+                    )
+                    RuleFontSelector(
+                        currentFontType = fontType,
+                        customFonts = customFonts,
+                        forceSolidMenu = forceFallback,
+                        onFontChange = { fontType = it },
+                        onImportFont = onImportFont
                     )
                     Text(
                         stringResource(R.string.highlight_rule_underline),
@@ -1270,6 +1313,196 @@ private fun HighlightRuleColorDialog(
     }
 }
 
+private data class RuleFontOption(
+    val key: String,
+    val label: String,
+    val family: FontFamily,
+    val isImport: Boolean = false
+)
+
+@Composable
+private fun RuleFontSelector(
+    currentFontType: String,
+    customFonts: List<CustomFontPreset>,
+    forceSolidMenu: Boolean,
+    onFontChange: (String) -> Unit,
+    onImportFont: (Uri, String) -> Unit
+) {
+    val context = LocalContext.current
+    var expanded by remember { mutableStateOf(false) }
+    var anchorBounds by remember { mutableStateOf(Rect.Zero) }
+    val menuHost = LocalLiquidGlassMenuHost.current
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        onImportFont(uri, importedFontDisplayName(context, uri))
+    }
+    val bodyLabel = stringResource(R.string.highlight_rule_font_body)
+    val importLabel = stringResource(R.string.highlight_rule_font_import)
+    val unavailableLabel = stringResource(R.string.highlight_rule_font_unavailable)
+    val fontMenuSurfaceColor = AppColors.CardBg
+    val fontMenuContentColor = AppColors.TextPrimary
+    // Older imported rules used `system`; keep that value visually equivalent to
+    // the new blank value used for "follow body".
+    val effectiveCurrentFontType = currentFontType.takeUnless { it == "system" }.orEmpty()
+    val customOptions = customFonts.mapIndexed { index, preset ->
+        RuleFontOption(
+            key = preset.fontTypeKey,
+            label = preset.displayName(
+                context.getString(R.string.custom_font_numbered_name, index + 1)
+            ),
+            family = rememberRuleFontFamily(preset.path)
+        )
+    }
+    val options = listOf(RuleFontOption("", bodyLabel, FontFamily.Default)) +
+        customOptions + RuleFontOption("__import__", importLabel, FontFamily.Default, isImport = true)
+    val selected = options.firstOrNull { it.key == effectiveCurrentFontType }
+        ?: RuleFontOption(effectiveCurrentFontType, unavailableLabel, FontFamily.Default)
+    val selectOption: (RuleFontOption) -> Unit = { option ->
+        if (option.isImport) {
+            importLauncher.launch(arrayOf("font/ttf", "font/otf", "font/*", "application/octet-stream"))
+        } else {
+            onFontChange(option.key)
+        }
+    }
+
+    Text(
+        stringResource(R.string.highlight_rule_font),
+        fontSize = AppType.BodySmall,
+        color = AppColors.TextSecondary,
+        modifier = Modifier.padding(top = 4.dp)
+    )
+    Box(Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .liquidGlassMenuAnchor(cornerRadius = 14.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(AppColors.BgGray)
+                .onGloballyPositioned { anchorBounds = it.boundsInRoot() }
+                .clickable {
+                    if (menuHost != null && anchorBounds != Rect.Zero) {
+                        val spec = LiquidGlassMenuSpec(
+                            anchorBounds = anchorBounds,
+                            width = 248.dp,
+                            anchorCornerRadius = 14.dp,
+                            forceSolid = forceSolidMenu,
+                            surfaceColor = fontMenuSurfaceColor,
+                            contentColor = fontMenuContentColor,
+                            items = options.filterNot(RuleFontOption::isImport).map { option ->
+                                LiquidGlassMenuItem(
+                                    label = option.label,
+                                     selected = option.key == effectiveCurrentFontType,
+                                    onClick = { onFontChange(option.key) }
+                                )
+                            } + LiquidGlassMenuItem(
+                                label = importLabel,
+                                onClick = { selectOption(options.last()) }
+                            ),
+                            content = { enabled, select ->
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    options.forEach { option ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .heightIn(min = 44.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .clickable(enabled = enabled) {
+                                                    select { selectOption(option) }
+                                                }
+                                                .padding(horizontal = 12.dp, vertical = 9.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                option.label,
+                                                 color = if (option.key == effectiveCurrentFontType) AppColors.Accent else AppColors.TextPrimary,
+                                                fontFamily = option.family,
+                                                fontSize = AppType.BodySmall,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        )
+                        menuHost.toggle(spec)
+                    } else {
+                        expanded = true
+                    }
+                }
+                .padding(horizontal = 14.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Text(
+                selected.label,
+                 color = if (effectiveCurrentFontType.isBlank()) AppColors.TextSecondary else AppColors.TextPrimary,
+                fontFamily = selected.family,
+                fontSize = AppType.BodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(end = 28.dp)
+            )
+            Icon(
+                imageVector = AppIcons.CaretDown,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.align(Alignment.CenterEnd).size(18.dp)
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            shape = RoundedCornerShape(18.dp),
+            containerColor = AppColors.CardBg,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            option.label,
+                             color = if (option.key == effectiveCurrentFontType) AppColors.Accent else AppColors.TextPrimary,
+                            fontFamily = option.family,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    onClick = {
+                        expanded = false
+                        selectOption(option)
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun rememberRuleFontFamily(path: String): FontFamily {
+    return remember(path) {
+        runCatching {
+            val file = java.io.File(path)
+            if (file.isFile) FontFamily(android.graphics.Typeface.createFromFile(file))
+            else FontFamily.Default
+        }.getOrDefault(FontFamily.Default)
+    }
+}
+
+private fun importedFontDisplayName(context: android.content.Context, uri: Uri): String {
+    val queried = runCatching {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+    }.getOrNull()
+    return (queried ?: uri.lastPathSegment ?: "custom-font")
+        .substringAfterLast('/')
+        .substringBeforeLast('.', missingDelimiterValue = "custom-font")
+        .ifBlank { "custom-font" }
+}
+
 @Composable
 private fun HighlightRuleColorSlider(
     label: String,
@@ -1291,7 +1524,11 @@ private fun HighlightRuleColorSlider(
     )
 }
 
-private fun previewText(rule: HighlightRule, sample: String): AnnotatedString {
+private fun previewText(
+    rule: HighlightRule,
+    sample: String,
+    fontFamily: FontFamily? = null
+): AnnotatedString {
     if (sample.isEmpty()) return AnnotatedString("")
     val builder = AnnotatedString.Builder(sample)
     HighlightRuleMatcher.match(sample, 0, listOf(rule)).forEach { match ->
@@ -1300,6 +1537,7 @@ private fun previewText(rule: HighlightRule, sample: String): AnnotatedString {
                 color = match.style.textColor?.let(::Color) ?: Color.Unspecified,
                 fontWeight = if (match.style.fontWeight >= 600) FontWeight.Bold else FontWeight.Normal,
                 fontStyle = if (match.style.italic) FontStyle.Italic else FontStyle.Normal,
+                fontFamily = fontFamily,
                 textDecoration = if (match.style.underlineMode == HighlightRule.UNDERLINE_NONE) {
                     TextDecoration.None
                 } else {

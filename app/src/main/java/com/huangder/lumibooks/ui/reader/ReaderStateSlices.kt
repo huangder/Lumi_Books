@@ -35,7 +35,8 @@ data class ReaderDocumentState(
     val optimizeLayout: Boolean = true,
     val useEpubCss: Boolean = false,
     val renderMode: EpubRenderMode = EpubRenderMode.READER_LAYOUT,
-    val contentRevision: Long = 0L
+    val contentRevision: Long = 0L,
+    val epubComicReader: Boolean = false
 )
 
 data class ReaderRenderSettingsState(
@@ -132,7 +133,8 @@ internal fun ReaderUiState.toDocumentState() = ReaderDocumentState(
     optimizeLayout = optimizeLayout,
     useEpubCss = useEpubCss,
     renderMode = renderMode,
-    contentRevision = contentRevision
+    contentRevision = contentRevision,
+    epubComicReader = epubComicReader
 )
 
 internal fun ReaderUiState.toRenderSettingsState() = ReaderRenderSettingsState(

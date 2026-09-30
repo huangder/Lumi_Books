@@ -120,6 +120,7 @@ data class ReaderPreferencesSnapshot(
     val pageTransition: String,
     val readerThemeSuiteState: ReaderThemeSuiteState,
     val readerThemeSuiteBookScoped: Boolean,
+    val readerButtonContrastEnabled: Boolean = false,
     val readerThemeSuiteBookActiveId: String?,
     val readerThemeSuiteBookActiveBookLayoutId: String?,
     val pdfPageMode: String,
@@ -129,8 +130,11 @@ data class ReaderPreferencesSnapshot(
     val showReaderPageNumber: Boolean,
     val showReaderBattery: Boolean,
     val volumeKeyPageTurnEnabled: Boolean,
+    val bookmarkRemarkPromptEnabled: Boolean,
     val bionicReadingEnabled: Boolean,
     val comicModeEnabled: Boolean,
+    val lineGuideEnabled: Boolean,
+    val lineGuideDimLevel: Int,
     val bodyFontWeight: Int,
     val eInkModeEnabled: Boolean,
     val twoPageSpreadEnabled: Boolean,
@@ -164,9 +168,13 @@ data class ReaderPreferencesSnapshot(
     val readerWritingMode: ReaderWritingMode,
     val imageAdjustments: com.huangder.lumibooks.domain.model.ReaderImageAdjustments =
         com.huangder.lumibooks.domain.model.ReaderImageAdjustments(),
+    val rasterHorizontalCropEnabled: Boolean = false,
+    val rasterManualCropEnabled: Boolean = false,
+    val rasterManualCrop: com.huangder.lumibooks.ui.reader.RasterManualCrop = com.huangder.lumibooks.ui.reader.RasterManualCrop(),
     /** PDF / CBZ 的按书锁定缩放比例。 */
     val rasterZoomLocked: Boolean = false,
-    val rasterZoomScale: Float = 1f
+    val rasterZoomScale: Float = 1f,
+    val epubComicReader: Boolean = false
 )
 
 @Singleton
@@ -197,6 +205,16 @@ class DataStoreManager @Inject constructor(
 
     suspend fun saveReaderImageAdjustments(bookId: String, settings: com.huangder.lumibooks.domain.model.ReaderImageAdjustments) {
         context.dataStore.edit { it[stringPreferencesKey("reader_image_adjustments_$bookId")] = settings.encode() }
+    }
+    suspend fun saveRasterHorizontalCropEnabled(bookId: String, enabled: Boolean) {
+        context.dataStore.edit { it[booleanPreferencesKey("raster_horizontal_crop_$bookId")] = enabled }
+    }
+    suspend fun saveRasterManualCrop(bookId: String, enabled: Boolean,
+        crop: com.huangder.lumibooks.ui.reader.RasterManualCrop) {
+        context.dataStore.edit {
+            it[booleanPreferencesKey("raster_manual_crop_enabled_$bookId")] = enabled
+            it[stringPreferencesKey("raster_manual_crop_$bookId")] = crop.normalized().encode()
+        }
     }
     private val readerMigrationMutex = Mutex()
     @Volatile private var readerMigrationsComplete = false
@@ -248,6 +266,7 @@ class DataStoreManager @Inject constructor(
         private val PAGE_IMAGE_CROP = booleanPreferencesKey("page_image_crop")
         private val READER_TEXT_COLOR = intPreferencesKey("reader_text_color")
         private val READER_THEME_SUITES = stringPreferencesKey("reader_theme_suites")
+        private val READER_BUTTON_CONTRAST_ENABLED = booleanPreferencesKey("reader_button_contrast_enabled")
         private val ACTIVE_READER_THEME_SUITE_ID = stringPreferencesKey("active_reader_theme_suite_id")
         private val ACTIVE_BOOK_LAYOUT_THEME_SUITE_ID =
             stringPreferencesKey("active_book_layout_theme_suite_id")
@@ -286,6 +305,7 @@ class DataStoreManager @Inject constructor(
         private val SHOW_READER_PAGE_NUMBER = booleanPreferencesKey("show_reader_page_number")
         private val SHOW_READER_BATTERY = booleanPreferencesKey("show_reader_battery")
         private val VOLUME_KEY_PAGE_TURN = booleanPreferencesKey("volume_key_page_turn")
+        private val BOOKMARK_REMARK_PROMPT_ENABLED = booleanPreferencesKey("bookmark_remark_prompt_enabled")
         private val BIONIC_READING_ENABLED = booleanPreferencesKey("bionic_reading_enabled")
         private val COMIC_MODE = booleanPreferencesKey("comic_mode")
         private val SCREEN_SLEEP_TIMEOUT_SECONDS = intPreferencesKey("screen_sleep_timeout_seconds")
@@ -352,6 +372,7 @@ class DataStoreManager @Inject constructor(
         private val MINERU_CONSENT_ACCEPTED_AT = longPreferencesKey("mineru_consent_accepted_at")
 
         // 外部 TTS 听书设置
+        private val AI_TRANSLATION_SETTINGS = stringPreferencesKey("ai_translation_settings")
         private val EXTERNAL_TTS_ENABLED = booleanPreferencesKey("external_tts_enabled")
         private val EXTERNAL_TTS_PROTOCOL = stringPreferencesKey("external_tts_protocol")
         private val EXTERNAL_TTS_BASE_URL = stringPreferencesKey("external_tts_base_url")
@@ -497,20 +518,29 @@ class DataStoreManager @Inject constructor(
                 pageTransition = ReaderPageTransition.normalizeKey(preferences[PAGE_TRANSITION]),
                 readerThemeSuiteState = suiteState,
                 readerThemeSuiteBookScoped = preferences[themeSuiteBookScopedKey] ?: false,
+                readerButtonContrastEnabled = preferences[READER_BUTTON_CONTRAST_ENABLED] ?: false,
                 readerThemeSuiteBookActiveId = preferences[themeSuiteBookActiveKey],
                 readerThemeSuiteBookActiveBookLayoutId =
                     preferences[themeSuiteBookActiveBookLayoutKey],
                 pdfPageMode = PdfPageMode.normalizeKey(preferences[PDF_PAGE_MODE]),
                 cbzReadingDirection = preferences[stringPreferencesKey("cbz_reading_direction_$bookId")],
+                epubComicReader = preferences[booleanPreferencesKey("epub_comic_reader_$bookId")] ?: false,
                 showReaderChapterProgress = preferences[SHOW_READER_CHAPTER_PROGRESS] ?: true,
                 showReaderPageNumber = preferences[SHOW_READER_PAGE_NUMBER] ?: true,
                 showReaderBattery = preferences[SHOW_READER_BATTERY] ?: true,
                 volumeKeyPageTurnEnabled = preferences[VOLUME_KEY_PAGE_TURN] ?: false,
+                bookmarkRemarkPromptEnabled = preferences[BOOKMARK_REMARK_PROMPT_ENABLED] ?: true,
                 bionicReadingEnabled = preferences[BIONIC_READING_ENABLED] ?: false,
                 comicModeEnabled = preferences[COMIC_MODE] ?: false,
+                lineGuideEnabled = preferences[booleanPreferencesKey("line_guide_enabled_$bookId")] ?: false,
+                lineGuideDimLevel = (preferences[intPreferencesKey("line_guide_dim_$bookId")] ?: 2).coerceIn(0, 3),
                 imageAdjustments = com.huangder.lumibooks.domain.model.ReaderImageAdjustments.decode(
                     preferences[stringPreferencesKey("reader_image_adjustments_$bookId")]
                 ),
+                rasterHorizontalCropEnabled = preferences[booleanPreferencesKey("raster_horizontal_crop_$bookId")] ?: false,
+                rasterManualCropEnabled = preferences[booleanPreferencesKey("raster_manual_crop_enabled_$bookId")] ?: false,
+                rasterManualCrop = com.huangder.lumibooks.ui.reader.RasterManualCrop.decode(
+                    preferences[stringPreferencesKey("raster_manual_crop_$bookId")]),
                 bodyFontWeight = preferences[BODY_FONT_WEIGHT] ?: 400,
                 eInkModeEnabled = preferences[E_INK_MODE_ENABLED] ?: false,
                 twoPageSpreadEnabled = preferences[TWO_PAGE_SPREAD_ENABLED] ?: true,
@@ -810,6 +840,10 @@ class DataStoreManager @Inject constructor(
         preferences[VOLUME_KEY_PAGE_TURN] ?: false
     }
 
+    val bookmarkRemarkPromptEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[BOOKMARK_REMARK_PROMPT_ENABLED] ?: true
+    }
+
     val bionicReadingEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[BIONIC_READING_ENABLED] ?: false
     }
@@ -1049,6 +1083,14 @@ class DataStoreManager @Inject constructor(
     }
 
     // 外部 TTS 听书设置
+    val translationSettings: Flow<com.huangder.lumibooks.translation.TranslationSettings> = context.dataStore.data
+        .map { com.huangder.lumibooks.translation.TranslationSettings.fromJson(it[AI_TRANSLATION_SETTINGS]) }
+        .distinctUntilChanged()
+
+    suspend fun saveTranslationSettings(settings: com.huangder.lumibooks.translation.TranslationSettings) {
+        context.dataStore.edit { it[AI_TRANSLATION_SETTINGS] = settings.toJson() }
+    }
+
     override val externalTtsSettings: Flow<ExternalTtsSettings> = context.dataStore.data.map { preferences ->
         ExternalTtsSettings(
             enabled = preferences[EXTERNAL_TTS_ENABLED] ?: false,
@@ -1472,6 +1514,10 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    suspend fun saveBookmarkRemarkPromptEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[BOOKMARK_REMARK_PROMPT_ENABLED] = enabled }
+    }
+
     suspend fun saveBionicReadingEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[BIONIC_READING_ENABLED] = enabled
@@ -1482,6 +1528,14 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { preferences ->
             preferences[COMIC_MODE] = enabled
         }
+    }
+
+    suspend fun saveLineGuideEnabled(bookId: String, enabled: Boolean) {
+        context.dataStore.edit { it[booleanPreferencesKey("line_guide_enabled_$bookId")] = enabled }
+    }
+
+    suspend fun saveLineGuideDimLevel(bookId: String, level: Int) {
+        context.dataStore.edit { it[intPreferencesKey("line_guide_dim_$bookId")] = level.coerceIn(0, 3) }
     }
 
     suspend fun saveScreenSleepTimeoutSeconds(seconds: Int) {
@@ -1585,6 +1639,7 @@ class DataStoreManager @Inject constructor(
             preferences[SHOW_READER_PAGE_NUMBER] = true
             preferences[SHOW_READER_BATTERY] = true
             preferences[VOLUME_KEY_PAGE_TURN] = false
+            preferences[BOOKMARK_REMARK_PROMPT_ENABLED] = true
             preferences[BIONIC_READING_ENABLED] = false
             preferences[SCREEN_SLEEP_TIMEOUT_SECONDS] = DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS
             preferences[READER_EDGE_TAP_MODE] = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT.key
@@ -1854,6 +1909,10 @@ class DataStoreManager @Inject constructor(
     fun readerThemeSuiteBookScoped(bookId: String): Flow<Boolean> =
         context.dataStore.data.map { it[booleanPreferencesKey("reader_theme_suite_book_scoped_$bookId")] ?: false }
 
+    suspend fun saveReaderButtonContrastEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[READER_BUTTON_CONTRAST_ENABLED] = enabled }
+    }
+
     suspend fun setReaderThemeSuiteBookScoped(
         bookId: String,
         enabled: Boolean,
@@ -1973,6 +2032,10 @@ class DataStoreManager @Inject constructor(
     }
 
     /** Per-book CBZ reading direction; absent until the user picks one. */
+    suspend fun saveEpubComicReader(bookId: String, enabled: Boolean) {
+        context.dataStore.edit { it[booleanPreferencesKey("epub_comic_reader_$bookId")] = enabled }
+    }
+
     fun cbzReadingDirection(bookId: String): Flow<String?> {
         val key = stringPreferencesKey("cbz_reading_direction_$bookId")
         return context.dataStore.data.map { preferences -> preferences[key] }

@@ -49,9 +49,11 @@ fun LocalDictionarySheet(query: String?, glassBackdrop: Backdrop?, forceSolid: B
     viewModel: DictionaryViewModel = hiltViewModel()) {
     if (query == null) return
     val result by viewModel.lookup.collectAsState()
+    val translation by viewModel.translation.collectAsState()
     LaunchedEffect(query) { viewModel.search(query) }
     DisposableEffect(Unit) { onDispose { viewModel.stopSearch() } }
-    LocalDictionarySheetContent(query, result, glassBackdrop, forceSolid, onDismiss, onExternal, onWebSearch) { descriptors, popupBackdrop, dismiss ->
+    LocalDictionarySheetContent(query, result, glassBackdrop, forceSolid, onDismiss, onExternal, onWebSearch,
+        translation = translation, onRetryTranslation = viewModel::retryTranslation) { descriptors, popupBackdrop, dismiss ->
         DictionarySourceDialog(descriptors, viewModel.repository, backdrop = popupBackdrop ?: glassBackdrop, onDismiss = dismiss)
     }
 }
@@ -59,6 +61,8 @@ fun LocalDictionarySheet(query: String?, glassBackdrop: Backdrop?, forceSolid: B
 @Composable
 internal fun LocalDictionarySheetContent(query: String, result: DictionaryLookupResult?, glassBackdrop: Backdrop?, forceSolid: Boolean,
     onDismiss: () -> Unit, onExternal: () -> Unit, onWebSearch: () -> Unit,
+    translation: com.huangder.lumibooks.translation.TranslationState = com.huangder.lumibooks.translation.TranslationState.Hidden,
+    onRetryTranslation: () -> Unit = {},
     sourceDialog: @Composable (List<DictionaryDescriptor>, Backdrop?, () -> Unit) -> Unit) {
     val context = LocalContext.current
     var detailId by remember(query) { mutableStateOf<String?>(null) }
@@ -68,6 +72,9 @@ internal fun LocalDictionarySheetContent(query: String, result: DictionaryLookup
     val motion = LocalMotionEnabled.current && !LocalEInkMode.current
     val listState = rememberLazyListState()
     val detailState = rememberLazyListState()
+    // The AI item can appear before local lookup finishes. Do not let LazyColumn
+    // anchor to that item when dictionary hits are subsequently inserted above it.
+    LaunchedEffect(query, result) { listState.scrollToItem(0) }
     val popupBackdrop = rememberLayerBackdrop()
     val capturePopupBackdrop = LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current
     LaunchedEffect(query) { if (motion) offset.animateBottomSheetIn() else offset.snapTo(0f) }
@@ -145,6 +152,9 @@ internal fun LocalDictionarySheetContent(query: String, result: DictionaryLookup
                             }
                             if (result?.failedDictionaries?.isNotEmpty() == true) item {
                                 Text(stringResource(R.string.dictionary_lookup_failed), color = AppColors.TextSecondary, fontSize = AppType.BodySmall)
+                            }
+                            if (translation != com.huangder.lumibooks.translation.TranslationState.Hidden) item(key = "ai-translation") {
+                                com.huangder.lumibooks.translation.TranslationResultCard(translation, onRetryTranslation)
                             }
                             item { DictionaryDisclaimerFooter { showSource = true } }
                         }
