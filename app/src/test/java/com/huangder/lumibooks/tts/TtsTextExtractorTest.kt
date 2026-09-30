@@ -49,6 +49,30 @@ class TtsTextExtractorTest {
     }
 
     @Test
+    fun splitIntoSegments_keepsClosingPunctuationAndFollowingTerminatorTogether() {
+        val result = extractor.splitIntoSegments("（会有怎样的浪漫？）。下一句。")
+
+        assertEquals(listOf("（会有怎样的浪漫？）。", "下一句。"), result.map { it.text })
+    }
+
+    @Test
+    fun splitIntoSegments_keepsRepeatedTerminatorsWithTheirSentence() {
+        val result = extractor.splitIntoSegments("真的吗？！他说：\"好！\"下一句。")
+
+        assertEquals(
+            listOf("真的吗？！", "他说：\"好！\"", "下一句。"),
+            result.map { it.text }
+        )
+    }
+
+    @Test
+    fun playbackText_stripsOnlyStandaloneSingleGraphemeFullStop() {
+        assertEquals("1", extractor.playbackText("1."))
+        assertEquals("1", extractor.playbackText("1。"))
+        assertEquals("正文。", extractor.playbackText("正文。"))
+    }
+
+    @Test
     fun splitIntoSegments_marksLengthBoundAsNonContinuable() {
         val result = extractor.splitIntoSegments("x".repeat(200))
 

@@ -571,8 +571,10 @@ class TtsEngine(
             onDone = {
                 val id = activeUtteranceId ?: return@setCallbacks
                 if (activeSynthesisFinished) {
+                    // The controller can start the next utterance synchronously from onDone.
+                    // Cleaning up here would then stop that new AudioTrack. The next speak()
+                    // or final stop() owns cleanup of this completed utterance.
                     listener.onDone(id)
-                    stopLocalSynthesis(stopEngine = false)
                 }
             },
             onError = { error ->

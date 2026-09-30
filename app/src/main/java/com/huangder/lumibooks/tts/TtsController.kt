@@ -238,15 +238,19 @@ class TtsController(
         source: TtsPageSource,
         startChapter: Int,
         startPage: Int,
-        startCharacterOffset: Int? = null
+        startCharacterOffset: Int? = null,
+        restoreSavedPosition: Boolean = true
     ): Result<Unit> = withContext(Dispatchers.Main.immediate) {
         commandMutex.withLock {
-        stopInternal()
+        // Replacing a live session must not publish IDLE: the foreground service treats IDLE as
+        // final and may destroy itself before this new session reaches INITIALIZING.
+        stopInternal(publishIdle = false)
         val generation = ++sessionGeneration
         val selection = dataStoreManager.ttsProviderSelection.first()
         val selectedEngine = selectPlaybackEngine(selection)
         if (selectedEngine.isFailure) {
             source.close()
+            stopInternal()
             return@withContext Result.failure(checkNotNull(selectedEngine.exceptionOrNull()))
         }
         sessionEngine = selectedEngine.getOrThrow()
@@ -298,7 +302,7 @@ class TtsController(
             return@withContext initializeResult
         }
 
-        val storedResume = if (engine.isExternal) {
+        val storedResume = if (engine.isExternal && restoreSavedPosition) {
             dataStoreManager.externalTtsResumePosition(bookId).first()
         } else {
             null
@@ -883,7 +887,7 @@ class TtsController(
                 text = page.text,
                 baseCharacterOffset = page.startCharacterOffset,
                 startCharacterOffset = startCharacterOffset.takeIf { page.location == location }
-            )
+            ).filter { segment -> textExtractor.hasSpeakableContent(segment.text) }
             if (pageSegments.isNotEmpty()) {
                 selectedPage = page
                 selectedSegments = pageSegments
@@ -1039,8 +1043,13 @@ class TtsController(
                 it.clauseIndex == clauseIndex
         }
         pendingResume = null
+        val spokenText = if (activeEngine.isExternal) {
+            segment.text
+        } else {
+            textExtractor.playbackText(segment.text)
+        }
         val result = activeEngine.speak(
-            text = segment.text,
+            text = spokenText,
             utteranceId = utteranceId,
             cacheKey = resume?.cacheKey,
             startFrame = resume?.pcmFrameOffset ?: 0L
@@ -1219,7 +1228,10 @@ class TtsController(
         _sleepTimerRemainingMs.value = null
     }
 
-    private suspend fun stopInternal(clearExternalResume: Boolean = false) {
+    private suspend fun stopInternal(
+        clearExternalResume: Boolean = false,
+        publishIdle: Boolean = true
+    ) {
         val activeBookId = _activeBookId.value
         persistCurrentExternalProgress()
         cancelSleepTimer()
@@ -1245,8 +1257,10 @@ class TtsController(
         _activeBookId.value = null
         sessionEngine = null
         pendingResume = null
-        _playbackState.value = TtsPlaybackState.IDLE
-        logTtsEvent("state_changed", state = TtsPlaybackState.IDLE)
+        if (publishIdle) {
+            _playbackState.value = TtsPlaybackState.IDLE
+            logTtsEvent("state_changed", state = TtsPlaybackState.IDLE)
+        }
         if (clearExternalResume && activeBookId != null) {
             dataStoreManager.clearExternalTtsResumePosition(activeBookId)
         }

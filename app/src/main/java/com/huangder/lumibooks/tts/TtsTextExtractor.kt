@@ -11,6 +11,7 @@ class TtsTextExtractor {
         internal val CLOSING_PUNCTUATION = setOf('”', '’', '"', '\'', '》', '】', '）', ')')
         private val SOFT_BREAKS = setOf('，', ',', '、', '：', ':')
         private val CLAUSE_BREAKS = TERMINATORS + SOFT_BREAKS + setOf('…', '\n')
+        private val SINGLE_MARKER_TERMINATORS = setOf('.', '。')
     }
 
     fun extractPageText(
@@ -35,7 +36,8 @@ class TtsTextExtractor {
             buffer.append(char)
 
             if (char in TERMINATORS) {
-                while (index + 1 < normalized.length && normalized[index + 1] in CLOSING_PUNCTUATION) {
+                val end = consumeSentenceEnd(normalized, index)
+                while (index + 1 < end) {
                     index++
                     buffer.append(normalized[index])
                 }
@@ -77,7 +79,7 @@ class TtsTextExtractor {
             if (char in TERMINATORS || paragraphBreak || reachedLimit) {
                 var end = index + 1
                 if (char in TERMINATORS) {
-                    while (end < text.length && text[end] in CLOSING_PUNCTUATION) end++
+                    end = consumeSentenceEnd(text, index)
                 } else if (reachedLimit) {
                     val softBreak = text.substring(start, end).indexOfLast { it in SOFT_BREAKS }
                     if (softBreak >= MAX_SENTENCE_LENGTH / 2) end = start + softBreak + 1
@@ -108,6 +110,24 @@ class TtsTextExtractor {
         if (segments.isEmpty()) return -1
         val index = segments.indexOfFirst { characterOffset < it.endCharacterOffset }
         return if (index >= 0) index else segments.lastIndex
+    }
+
+    /**
+     * Returns the text to send to a speech engine while keeping the original segment unchanged
+     * for highlighting and source-offset mapping. Android engines may produce no audible output
+     * for a standalone list marker such as "1." or "1。"; the number itself is speakable.
+     */
+    fun playbackText(text: String): String {
+        val trimmed = text.trim()
+        if (trimmed.length < 2 || trimmed.last() !in SINGLE_MARKER_TERMINATORS) return text
+        val marker = trimmed.dropLast(1).trim()
+        if (marker.isEmpty() || !isSingleGrapheme(marker)) return text
+        return marker
+    }
+
+    /** True when a segment contains at least one non-whitespace, non-punctuation character. */
+    fun hasSpeakableContent(text: String): Boolean = text.any { char ->
+        !char.isWhitespace() && !char.isPunctuation()
     }
 
     /**
@@ -199,13 +219,12 @@ class TtsTextExtractor {
                     merged.append(char)
                     rawIndex++
                     if (char in TERMINATORS) {
-                        while (
-                            rawIndex < raw.length &&
-                            merged.length < maxTotalLength &&
-                            raw[rawIndex] in CLOSING_PUNCTUATION
-                        ) {
-                            merged.append(raw[rawIndex])
-                            rawIndex++
+                        val sentenceEnd = consumeSentenceEnd(raw, rawIndex - 1)
+                        val available = maxTotalLength - merged.length
+                        val appendEnd = minOf(sentenceEnd, rawIndex + available)
+                        if (appendEnd > rawIndex) {
+                            merged.append(raw, rawIndex, appendEnd)
+                            rawIndex = appendEnd
                         }
                         break
                     }
@@ -320,6 +339,38 @@ class TtsTextExtractor {
             .replace(Regex("[\\t\\u00A0 ]+"), " ")
             .replace(Regex(" *\\n *"), "\n")
             .trim()
+    }
+
+    /**
+     * Consumes a terminator run, its closing quotes/brackets, and any terminators immediately
+     * following those closers. This keeps strings such as "？）。" and "？！" in one segment.
+     */
+    private fun consumeSentenceEnd(text: String, terminatorIndex: Int): Int {
+        var end = (terminatorIndex + 1).coerceAtMost(text.length)
+        while (end < text.length) {
+            val before = end
+            while (end < text.length && text[end] in CLOSING_PUNCTUATION) end++
+            while (end < text.length && text[end] in TERMINATORS) end++
+            if (end == before) break
+        }
+        return end
+    }
+
+    private fun isSingleGrapheme(text: String): Boolean {
+        val iterator = BreakIterator.getCharacterInstance(Locale.ROOT)
+        iterator.setText(text)
+        return iterator.first() == 0 && iterator.next() == text.length
+    }
+
+    private fun Char.isPunctuation(): Boolean = when (Character.getType(this)) {
+        Character.CONNECTOR_PUNCTUATION.toInt(),
+        Character.DASH_PUNCTUATION.toInt(),
+        Character.START_PUNCTUATION.toInt(),
+        Character.END_PUNCTUATION.toInt(),
+        Character.INITIAL_QUOTE_PUNCTUATION.toInt(),
+        Character.FINAL_QUOTE_PUNCTUATION.toInt(),
+        Character.OTHER_PUNCTUATION.toInt() -> true
+        else -> false
     }
 
     private fun flushLongBuffer(buffer: StringBuilder, output: MutableList<String>) {

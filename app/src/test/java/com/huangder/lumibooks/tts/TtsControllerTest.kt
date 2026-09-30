@@ -2,9 +2,11 @@ package com.huangder.lumibooks.tts
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -33,6 +35,82 @@ class TtsControllerTest {
             assertEquals(null, controller.currentSentence.value)
             assertEquals(null, controller.currentUtterance.value)
             assertEquals(listOf("第一小句，第二小句，句子结束。"), engine.spokenTexts)
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun parenthesizedQuestionAdvancesToTheFollowingSentence() = runTest {
+        val main = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(main)
+        val engine = FakePlaybackEngine()
+        val controller = controller(engine)
+        try {
+            controller.start(
+                "book",
+                FakePageSource(page(0, "（会有怎样的浪漫？）。下一句。")),
+                0,
+                0
+            )
+
+            assertEquals(listOf("（会有怎样的浪漫？）。"), engine.spokenTexts)
+            engine.complete(engine.lastUtteranceId)
+            runCurrent()
+
+            assertEquals(listOf("（会有怎样的浪漫？）。", "下一句。"), engine.spokenTexts)
+            assertEquals(TtsPlaybackState.PLAYING, controller.playbackState.value)
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun standaloneNumberMarkerUsesSpeakableTextAndThenContinues() = runTest {
+        val main = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(main)
+        val engine = FakePlaybackEngine()
+        val controller = controller(engine)
+        try {
+            controller.start("book", FakePageSource(page(0, "1。下一句。")), 0, 0)
+
+            assertEquals("1", engine.spokenTexts.single())
+            assertEquals("1。", controller.currentSentence.value?.text)
+            engine.complete(engine.lastUtteranceId)
+            runCurrent()
+
+            assertEquals(listOf("1", "下一句。"), engine.spokenTexts)
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun punctuationOnlyPageIsSkippedWithoutStallingPlayback() = runTest {
+        val main = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(main)
+        val engine = FakePlaybackEngine()
+        val controller = controller(engine)
+        try {
+            controller.start(
+                "book",
+                FakePageSource(
+                    page(0, "？！", next = TtsPageLocation(0, 1)),
+                    page(1, "下一句。", previous = TtsPageLocation(0, 0))
+                ),
+                0,
+                0
+            )
+
+            assertEquals(listOf("下一句。"), engine.spokenTexts)
+            assertEquals(TtsPageLocation(0, 1), controller.currentPage.value?.location)
+            assertEquals(TtsPlaybackState.PLAYING, controller.playbackState.value)
         } finally {
             controller.shutdown()
             runCurrent()
@@ -168,6 +246,70 @@ class TtsControllerTest {
             assertEquals(listOf("第一小句，第二小句，句子结束。"), externalEngine.spokenTexts)
             assertEquals(listOf("saved-cache"), externalEngine.suppliedCacheKeys)
             assertEquals(listOf(42L), externalEngine.suppliedStartFrames)
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun replacingSessionFromCurrentPageIgnoresSavedPositionAndNeverPublishesIdle() = runTest {
+        val main = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(main)
+        val oldPage = page(
+            index = 0,
+            text = "Old position.",
+            next = TtsPageLocation(0, 1)
+        )
+        val currentPage = page(
+            index = 1,
+            text = "Current page.",
+            previous = TtsPageLocation(0, 0)
+        )
+        val settingsStore = FakeSettingsStore(TtsProviderSelection.AiModel).apply {
+            seedResume(
+                ExternalTtsResumePosition(
+                    bookId = "book",
+                    chapterIndex = 0,
+                    pageIndex = 0,
+                    characterOffset = 0,
+                    clauseIndex = 0,
+                    cacheKey = "saved-cache",
+                    pageFingerprint = oldPage.resumeFingerprint,
+                    pcmFrameOffset = 42L
+                )
+            )
+        }
+        val externalEngine = FakePlaybackEngine(isExternal = true)
+        val controller = controller(
+            systemEngine = FakePlaybackEngine(),
+            externalEngine = externalEngine,
+            settingsStore = settingsStore
+        )
+        val observedStates = mutableListOf<TtsPlaybackState>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            controller.playbackState.collect(observedStates::add)
+        }
+        try {
+            controller.start("book", FakePageSource(oldPage, currentPage), 0, 0)
+            observedStates.clear()
+
+            assertTrue(
+                controller.start(
+                    bookId = "book",
+                    source = FakePageSource(oldPage, currentPage),
+                    startChapter = 0,
+                    startPage = 1,
+                    restoreSavedPosition = false
+                ).isSuccess
+            )
+            runCurrent()
+
+            assertEquals(TtsPageLocation(0, 1), controller.currentPage.value?.location)
+            assertEquals("Current page.", externalEngine.spokenTexts.last())
+            assertEquals(TtsPlaybackState.PLAYING, controller.playbackState.value)
+            assertTrue(TtsPlaybackState.IDLE !in observedStates)
         } finally {
             controller.shutdown()
             runCurrent()
