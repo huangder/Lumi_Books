@@ -150,10 +150,6 @@ data class HomeUiState(
     val isBookDeleteInProgress: Boolean = false
 )
 
-enum class SortBy {
-    LAST_READ, TITLE, AUTHOR, DATE_ADDED
-}
-
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val bookRepository: BookRepository,
@@ -537,14 +533,8 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch { dataStoreManager.saveBookshelfSortMode(sortBy.name) }
     }
 
-    private fun sortBooks(books: List<Book>, sortBy: SortBy): List<Book> {
-        return when (sortBy) {
-            SortBy.LAST_READ -> books.sortedByDescending { it.lastReadTime }
-            SortBy.TITLE -> books.sortedBy { it.title.lowercase() }
-            SortBy.AUTHOR -> books.sortedBy { it.author.lowercase() }
-            SortBy.DATE_ADDED -> books.sortedWith(compareByDescending<Book> { it.createdAt }.thenBy { it.id })
-        }
-    }
+    private fun sortBooks(books: List<Book>, sortBy: SortBy): List<Book> =
+        sortBooksForLibrary(books, sortBy)
 
     fun insertBook(book: Book) {
         viewModelScope.launch {

@@ -7,6 +7,15 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BookNotesExportFormatterTest {
+    @Test fun exportsTagsForAllFourMarkKinds() {
+        val notes = listOf("highlight", "underline", "note").map {
+            note("正文", if (it == "note") "笔记" else "", 0).copy(type = it, tags = listOf("人物", "复习"))
+        }
+        val bookmark = Bookmark(bookId = "book", chapterIndex = 0, position = 0f, title = "书签", createdAt = 0, tags = listOf("人物"))
+        val text = BookNotesExportFormatter.format("书", notes, listOf(BookmarkExportItem(bookmark, "一", "正文")), emptyMap(), labels)
+        assertEquals(4, Regex("【标签】").findAll(text).count())
+        assertTrue(text.contains("【标签】人物、复习"))
+    }
 
     @Test
     fun formatsHighlightsNotesAndBookmarksInSeparateSections() {
@@ -18,6 +27,7 @@ class BookNotesExportFormatterTest {
             chapterIndex = 2,
             position = 3f,
             title = "第3章 第4页",
+            remark = "回看这里",
             createdAt = 3L
         )
 
@@ -43,6 +53,7 @@ class BookNotesExportFormatterTest {
         assertTrue(text.contains("【用户所写笔记内容】我的笔记"))
         assertTrue(text.contains("【书签：】"))
         assertTrue(text.contains("【书签页内容】一二三四五…八九十甲乙"))
+        assertTrue(text.contains("【备注】回看这里"))
         assertTrue(text.contains("【所在章节】第三章"))
         assertTrue(text.contains("【书籍名】测试书"))
     }
@@ -100,6 +111,7 @@ class BookNotesExportFormatterTest {
         userNote = "用户所写笔记内容",
         bookmarkSection = "书签",
         bookmarkPage = "书签页内容",
+        bookmarkRemark = "备注",
         pageUnavailable = "（无法提取页面文字）",
         fileSuffix = "书签与笔记",
         chapterNumber = { "第${it}章" }

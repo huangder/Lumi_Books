@@ -59,6 +59,8 @@ class BookNotesExportBuilder @Inject constructor(
             bookmarkSection = context.getString(R.string.export_bookmark_section),
             bookmarkPage = context.getString(R.string.export_bookmark_page),
             pageUnavailable = context.getString(R.string.export_page_unavailable),
+            bookmarkRemark = context.getString(R.string.bookmark_remark_export),
+            tags = context.getString(R.string.annotation_tags),
             fileSuffix = context.getString(R.string.export_file_suffix),
             chapterNumber = { context.getString(R.string.chapter_number, it) }
         )
@@ -284,7 +286,7 @@ class BookNotesExportBuilder @Inject constructor(
 
     private fun resolveTypeface(fontType: String, customFontPath: String?): Typeface {
         return when (fontType) {
-            "serif" -> Typeface.SERIF
+            "serif" -> com.huangder.lumibooks.ui.reader.engine.readerSerifTypeface(context)
             "fangsong" -> DownloadedFonts.typeface(context, "fangsong")
                 ?: Typeface.DEFAULT
             "kaiti" -> runCatching { ResourcesCompat.getFont(context, R.font.lxgw_wenkai) }

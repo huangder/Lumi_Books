@@ -9,6 +9,20 @@ internal fun directChildFolders(
     parentId: String?
 ): List<LibraryFolder> = folders.filter { it.parentId == parentId }
 
+internal fun foldersWithMatchingBooks(
+    folders: List<LibraryFolder>,
+    parentId: String?,
+    folderBookCounts: Map<String, Int>,
+    filterActive: Boolean
+): List<LibraryFolder> {
+    val children = directChildFolders(folders, parentId)
+    return if (filterActive) {
+        children.filter { (folderBookCounts[it.id] ?: 0) > 0 }
+    } else {
+        children
+    }
+}
+
 internal fun booksAtFolderLevel(
     books: List<Book>,
     links: List<BookFolderLink>,
@@ -61,10 +75,13 @@ internal fun descendantFolderIds(
 
 internal fun folderBookCounts(
     folders: List<LibraryFolder>,
-    links: List<BookFolderLink>
+    links: List<BookFolderLink>,
+    includedBookIds: Set<String>? = null
 ): Map<String, Int> = folders.associate { folder ->
     val subtree = descendantFolderIds(folders, folder.id)
-    folder.id to links.count { it.folderId in subtree }
+    folder.id to links.count { link ->
+        link.folderId in subtree && (includedBookIds == null || link.bookId in includedBookIds)
+    }
 }
 
 internal fun booksInFolderTree(

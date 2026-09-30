@@ -1,5 +1,10 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.huangder.lumibooks.ui.home
 
+import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
+import androidx.compose.foundation.layout.windowInsetsPadding
 import com.huangder.lumibooks.ui.components.lumiCardSurface
 import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
 import com.huangder.lumibooks.ui.icons.AppIcons
@@ -135,11 +140,11 @@ fun HomeScreen(
     val isMaterial3 = LocalUseMaterial3Theme.current
     val useWideLayout = currentAdaptiveWindowInfo().isMediumWidthOrLarger
     val topBlurBackdrop = rememberLayerBackdrop()
-    val statusBarTopPadding = WindowInsets.statusBars
+    val statusBarTopPadding = WindowInsets.statusBarsIgnoringVisibility
         .asPaddingValues()
         .calculateTopPadding()
     val bottomContentPadding = if (isMaterial3) {
-        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 96.dp
+        WindowInsets.navigationBarsIgnoringVisibility.asPaddingValues().calculateBottomPadding() + 96.dp
     } else {
         120.dp
     }
@@ -262,10 +267,7 @@ fun HomeScreen(
                             readingTime = uiState.todayReadingTime,
                             dailyGoal = uiState.dailyGoal,
                             weeklyData = uiState.weeklyData,
-                            onCardClick = { setShowGoalSheet(true) },
-                            onContinueClick = {
-                                lastReadBook?.let { onNavigateToReader(it, null) }
-                            }
+                            onCardClick = { setShowGoalSheet(true) }
                         )
                     }
                     Spacer(Modifier.height(AppSpace.lg))
@@ -310,7 +312,7 @@ fun HomeScreen(
                     .then(
                         if (isMaterial3) {
                             Modifier
-                                .navigationBarsPadding()
+                                .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
                                 .padding(end = 24.dp, bottom = 96.dp)
                         } else {
                             Modifier.padding(end = 24.dp, bottom = 100.dp)
@@ -527,6 +529,7 @@ private fun ContinueReadingCard(
                 .onGloballyPositioned { coverBounds.set(it.boundsInRoot()) }
                 .bookCoverTransitionAnchor(
                     bookId = book.id,
+                    anchorId = "home-continue-${book.id}",
                     cornerRadiusDp = AppRadius.sm.value,
                     titleStyle = BookCoverTitleStyle(
                         fontSizeSp = AppType.Caption.value,
@@ -835,8 +838,7 @@ private fun ReadingGoalCard(
     readingTime: Long,
     dailyGoal: Int,
     weeklyData: List<DailyReading> = emptyList(),
-    onCardClick: () -> Unit,
-    onContinueClick: () -> Unit
+    onCardClick: () -> Unit
 ) {
     val hasGoal = dailyGoal > 0
     val goalMs = if (hasGoal) dailyGoal * 60 * 1000L else 0L
@@ -904,26 +906,6 @@ private fun ReadingGoalCard(
                 ),
                 fontSize = AppType.Caption,
                 color = AppColors.TextSecondary
-            )
-        }
-
-        Spacer(Modifier.height(AppSpace.lg))
-
-        // 继续阅读按钮
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-                .clip(RoundedCornerShape(AppRadius.capsule))
-                .background(Color.Black)
-                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onContinueClick),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = stringResource(R.string.continue_reading),
-                fontSize = AppType.Body,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.White
             )
         }
 
@@ -1067,6 +1049,7 @@ private fun BooksReadGrid(
                     .aspectRatio(0.75f)
                     .bookCoverTransitionAnchor(
                         bookId = book.id,
+                        anchorId = "home-recent-${book.id}",
                         cornerRadiusDp = coverRadiusDp,
                         titleStyle = BookCoverTitleStyle(
                             fontSizeSp = AppType.BodySmall.value,

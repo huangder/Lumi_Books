@@ -36,6 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Text
+import com.huangder.lumibooks.ui.reader.resolveReaderHighlightColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -53,6 +54,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -61,16 +63,23 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.Bookmark
 import com.huangder.lumibooks.domain.model.Note
+import com.huangder.lumibooks.ui.components.AnnotationTagSheet
+import androidx.compose.foundation.border
 import com.huangder.lumibooks.ui.theme.AppColors
 import androidx.compose.ui.res.stringResource
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
+import com.huangder.lumibooks.ui.components.AnnotationListFilters
+import com.huangder.lumibooks.ui.components.AnnotationTagChips
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuHost
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.LiquidGlassSegmentedControl
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
+import com.huangder.lumibooks.ui.components.SwipeRevealItem
+import com.huangder.lumibooks.ui.reader.NoteInputSheet
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
@@ -103,6 +112,23 @@ fun BookNotesScreen(
         mutableIntStateOf(initialTab.coerceIn(0, 3))
     }
     var pendingExportText by remember { mutableStateOf<String?>(null) }
+    var editingBookmarkRemark by remember { mutableStateOf<Bookmark?>(null) }
+    var bookmarkRemarkText by remember { mutableStateOf("") }
+    var bookmarkRemarkTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var editingNoteTags by remember { mutableStateOf<Note?>(null) }
+    var editingBookmarkTags by remember { mutableStateOf<Bookmark?>(null) }
+    var selectedTag by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedColor by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedLine by rememberSaveable { mutableStateOf<Int?>(null) }
+    var managingTags by remember { mutableStateOf(false) }
+    val renameTag: (String, String) -> Unit = { old, new ->
+        if (selectedTag == old) selectedTag = new.trim()
+        viewModel.renameTag(old, new)
+    }
+    val deleteTag: (String) -> Unit = { tag ->
+        if (selectedTag == tag) selectedTag = null
+        viewModel.deleteTag(tag)
+    }
 
     val createDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/plain")
@@ -137,7 +163,10 @@ fun BookNotesScreen(
         stringResource(R.string.tab_bookmarks)
     )
 
-    Box(
+    LiquidGlassMenuHost(
+        // Controls sample only the background; the host captures the completed page
+        // separately for menus. Sampling glassBackdrop here would capture themselves.
+        backdrop = segmentedControlBackdrop.takeIf { isLiquidGlass },
         modifier = Modifier
             .fillMaxSize()
             .background(AppColors.PageBg)
@@ -186,7 +215,16 @@ fun BookNotesScreen(
                     fontSize = AppType.Section,
                     fontWeight = FontWeight.Bold,
                     fontFamily = resolveAppFontFamily(KaiTi),
-                    color = AppColors.TextPrimary
+                    color = AppColors.TextPrimary,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                LiquidGlassIconButton(
+                    imageVector = AppIcons.Tag,
+                    contentDescription = stringResource(R.string.annotation_tag_manage),
+                    onClick = { managingTags = true }, size = 44.dp, iconSize = 20.dp,
+                    normalContainerColor = AppColors.BgGray
                 )
             }
 
@@ -196,7 +234,7 @@ fun BookNotesScreen(
             SegmentedTabBar(
                 selectedTab = selectedTab,
                 tabs = tabs,
-                onTabSelected = { selectedTab = it },
+                onTabSelected = { selectedTab = it; selectedColor = null; selectedLine = null },
                 modifier = Modifier.padding(horizontal = AppSpace.lg),
                 backdrop = segmentedControlBackdrop.takeIf { isLiquidGlass }
             )
@@ -204,24 +242,46 @@ fun BookNotesScreen(
             Spacer(Modifier.height(AppSpace.md))
 
             // ── 内容列表 ──
+            AnnotationListFilters(
+                tags = (uiState.notes.flatMap { it.tags } + uiState.bookmarks.flatMap { it.tags }).distinct().sorted(),
+                selectedTag = selectedTag,
+                onTagSelected = { selectedTag = it },
+                colors = if (selectedTab < 2) uiState.notes.filter { !it.isNoteEntry && (selectedTab == 1) == (it.type == "underline") }.map { it.color }.distinct() else emptyList(),
+                selectedColor = selectedColor,
+                onColorSelected = { selectedColor = it },
+                selectedLine = selectedLine,
+                onLineSelected = { selectedLine = it },
+                showLines = selectedTab == 1,
+                modifier = Modifier.padding(horizontal = AppSpace.lg)
+            )
+            val filter = ReadingMarkFilter(selectedTag, selectedColor, selectedLine)
             when (selectedTab) {
                 0 -> NoteList(
-                    notes = uiState.highlights,
+                    notes = uiState.highlights.filter(filter::matches),
                     targetNoteId = targetNoteId,
+                    onEditTags = { editingNoteTags = it },
                     onDelete = { viewModel.deleteNote(it) }
                 )
                 1 -> NoteList(
-                    notes = uiState.underlines,
+                    notes = uiState.underlines.filter(filter::matches),
                     targetNoteId = targetNoteId,
+                    onEditTags = { editingNoteTags = it },
                     onDelete = { viewModel.deleteNote(it) }
                 )
                 2 -> NoteList(
-                    notes = uiState.noteItems,
+                    notes = uiState.noteItems.filter(filter::matches),
                     targetNoteId = targetNoteId,
+                    onEditTags = { editingNoteTags = it },
                     onDelete = { viewModel.deleteNote(it) }
                 )
                 3 -> BookmarkList(
-                    bookmarks = uiState.bookmarks,
+                    bookmarks = uiState.bookmarks.filter(filter::matches),
+                    onEditTags = { editingBookmarkTags = it },
+                    onEditRemark = { bookmark ->
+                        editingBookmarkRemark = bookmark
+                        bookmarkRemarkText = bookmark.remark
+                        bookmarkRemarkTags = bookmark.tags
+                    },
                     onDelete = { viewModel.deleteBookmark(it) }
                 )
             }
@@ -264,6 +324,56 @@ fun BookNotesScreen(
                     .padding(end = AppSpace.lg, bottom = AppSpace.lg)
             )
         }
+        NoteInputSheet(
+            visible = editingBookmarkRemark != null,
+            glassBackdrop = glassBackdrop.takeIf { isLiquidGlass },
+            initialText = bookmarkRemarkText,
+            onTextChange = { bookmarkRemarkText = it },
+            tags = bookmarkRemarkTags,
+            availableTags = uiState.availableTags,
+            onTagsChange = { bookmarkRemarkTags = it },
+            onConfirm = {
+                editingBookmarkRemark?.let {
+                    viewModel.updateBookmarkRemarkAndTags(it, bookmarkRemarkText, bookmarkRemarkTags)
+                }
+            },
+            onDismiss = { editingBookmarkRemark = null; bookmarkRemarkText = "" },
+            title = stringResource(R.string.bookmark_remark_title),
+            placeholder = stringResource(R.string.bookmark_remark_placeholder),
+            footer = stringResource(R.string.bookmark_remark_setting_hint)
+        )
+        editingNoteTags?.let { note ->
+            AnnotationTagSheet(
+                backdrop = glassBackdrop.takeIf { isLiquidGlass },
+                selected = uiState.notes.firstOrNull { it.id == note.id }?.tags ?: note.tags,
+                available = uiState.availableTags,
+                onSave = { viewModel.updateNoteTags(note, it); editingNoteTags = null },
+                onDismiss = { editingNoteTags = null },
+                onRename = renameTag,
+                onDelete = deleteTag
+            )
+        }
+        editingBookmarkTags?.let { bookmark ->
+            AnnotationTagSheet(
+                backdrop = glassBackdrop.takeIf { isLiquidGlass },
+                selected = uiState.bookmarks.firstOrNull { it.id == bookmark.id }?.tags ?: bookmark.tags,
+                available = uiState.availableTags,
+                onSave = { viewModel.updateBookmarkTags(bookmark, it); editingBookmarkTags = null },
+                onDismiss = { editingBookmarkTags = null },
+                onRename = renameTag,
+                onDelete = deleteTag
+            )
+        }
+        if (managingTags) AnnotationTagSheet(
+            backdrop = glassBackdrop.takeIf { isLiquidGlass },
+            selected = emptyList(),
+            available = uiState.availableTags,
+            onSave = { managingTags = false },
+            onDismiss = { managingTags = false },
+            onRename = renameTag,
+            onDelete = deleteTag,
+            managementOnly = true
+        )
     }
 }
 
@@ -277,13 +387,14 @@ private fun SegmentedTabBar(
     modifier: Modifier = Modifier,
     backdrop: Backdrop? = null
 ) {
+    val tabHeight = (40f * LocalDensity.current.fontScale.coerceIn(1f, 1.6f)).dp
     if (LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current) {
         LiquidGlassSegmentedControl(
             itemCount = tabs.size,
             selectedIndex = selectedTab,
             onSelected = onTabSelected,
             modifier = modifier.fillMaxWidth(),
-            trackHeight = 40.dp,
+            trackHeight = tabHeight,
             trackPadding = 2.dp,
             backdrop = backdrop
         ) { index, isSelected ->
@@ -301,7 +412,7 @@ private fun SegmentedTabBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(40.dp)
+            .height(tabHeight)
             .clip(RoundedCornerShape(20.dp))
             .background(AppColors.BgGray)
             .padding(2.dp)
@@ -360,6 +471,7 @@ private fun SegmentedTabBar(
 private fun NoteList(
     notes: List<Note>,
     targetNoteId: Long? = null,
+    onEditTags: (Note) -> Unit,
     onDelete: (Note) -> Unit
 ) {
     if (notes.isEmpty()) {
@@ -402,6 +514,7 @@ private fun NoteList(
             ) { note ->
                 HighlightNoteItem(
                     note = note,
+                    onEditTags = { onEditTags(note) },
                     onDelete = { onDelete(note) }
                 )
             }
@@ -412,6 +525,8 @@ private fun NoteList(
 @Composable
 private fun BookmarkList(
     bookmarks: List<Bookmark>,
+    onEditRemark: (Bookmark) -> Unit,
+    onEditTags: (Bookmark) -> Unit,
     onDelete: (Bookmark) -> Unit
 ) {
     if (bookmarks.isEmpty()) {
@@ -439,6 +554,8 @@ private fun BookmarkList(
             items(bookmarks) { bookmark ->
                 BookmarkItem(
                     bookmark = bookmark,
+                    onEditTags = { onEditTags(bookmark) },
+                    onEditRemark = { onEditRemark(bookmark) },
                     onDelete = { onDelete(bookmark) }
                 )
             }
@@ -451,74 +568,71 @@ private fun BookmarkList(
 @Composable
 private fun HighlightNoteItem(
     note: Note,
+    onEditTags: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFFFFFBF0))
-            .padding(16.dp)
+    SwipeRevealItem(
+        onEditTags = onEditTags,
+        onDelete = onDelete
     ) {
-        // 高亮色条 + 文字
-        Row(verticalAlignment = Alignment.Top) {
-            Box(
-                modifier = Modifier
-                    .width(4.dp)
-                    .height(20.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(parseColor(note.color))
-            )
-            Spacer(Modifier.width(12.dp))
-            Text(
-                text = note.selectedText.replace('\n', ' '),
-                fontSize = 14.sp,
-                color = AppColors.TextPrimary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        // 笔记内容（如果有）
-        if (note.note.isNotBlank()) {
-            Spacer(Modifier.height(AppSpace.sm))
-            Text(
-                text = note.note,
-                fontSize = AppType.Caption,
-                color = AppColors.TextSecondary,
-                maxLines = 5,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-
-        Spacer(Modifier.height(AppSpace.sm))
-
-        // 底部：章节 + 日期 + 删除
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .lumiCardSurface(shape = RoundedCornerShape(12.dp))
+                .border(1.dp, AppColors.TextSecondary.copy(alpha = 0.24f), RoundedCornerShape(12.dp))
+                .padding(16.dp)
         ) {
-            Text(
-                text = stringResource(R.string.chapter_number, note.chapterIndex + 1),
-                fontSize = 12.sp,
-                color = AppColors.Accent
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // 高亮色条 + 文字
+            Row(verticalAlignment = Alignment.Top) {
+                Box(
+                    modifier = Modifier
+                        .width(4.dp)
+                        .height(20.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(parseColor(note.color))
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = note.selectedText.replace('\n', ' '),
+                    fontSize = 14.sp,
+                    color = AppColors.TextPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            // 笔记内容（如果有）
+            if (note.note.isNotBlank()) {
+                Spacer(Modifier.height(AppSpace.sm))
+                Text(
+                    text = note.note,
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary,
+                    maxLines = 5,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            AnnotationTagChips(note.tags, modifier = Modifier.padding(top = 6.dp))
+
+            Spacer(Modifier.height(AppSpace.sm))
+
+            // 底部：章节 + 日期
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.chapter_number, note.chapterIndex + 1),
+                    fontSize = 12.sp,
+                    color = AppColors.Accent
+                )
                 Text(
                     text = formatDate(note.createdAt),
                     fontSize = 12.sp,
                     color = AppColors.Accent
-                )
-                Spacer(Modifier.width(AppSpace.sm))
-                Icon(
-                    imageVector = AppIcons.Trash,
-                    contentDescription = stringResource(R.string.delete),
-                    tint = AppColors.TextSecondary,
-                    modifier = Modifier
-                        .size(16.dp)
-                        .clickable(onClick = onDelete)
                 )
             }
         }
@@ -530,47 +644,53 @@ private fun HighlightNoteItem(
 @Composable
 private fun BookmarkItem(
     bookmark: Bookmark,
+    onEditRemark: () -> Unit,
+    onEditTags: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.sm))
-            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.sm))
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
+    SwipeRevealItem(
+        onEdit = onEditRemark,
+        onEditTags = onEditTags,
+        onDelete = onDelete
     ) {
-        Icon(
-            imageVector = AppIcons.Bookmark.regular,
-            contentDescription = null,
-            tint = AppColors.Accent,
-            modifier = Modifier.size(20.dp)
-        )
-        Spacer(Modifier.width(AppSpace.md))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = bookmark.title.ifBlank { stringResource(R.string.chapter_number, bookmark.chapterIndex + 1) },
-                fontSize = AppType.BodySmall,
-                fontWeight = FontWeight.SemiBold,
-                color = AppColors.TextPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = formatDate(bookmark.createdAt),
-                fontSize = AppType.Caption,
-                color = AppColors.TextSecondary
-            )
-        }
-        Icon(
-            imageVector = AppIcons.Trash,
-            contentDescription = stringResource(R.string.delete),
-            tint = AppColors.TextSecondary,
+        Row(
             modifier = Modifier
-                .size(18.dp)
-                .clickable(onClick = onDelete)
-        )
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .lumiCardSurface(shape = RoundedCornerShape(12.dp))
+                .border(1.dp, AppColors.TextSecondary.copy(alpha = 0.24f), RoundedCornerShape(12.dp))
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = AppIcons.Bookmark.regular,
+                contentDescription = null,
+                tint = AppColors.Accent,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(Modifier.width(AppSpace.md))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = bookmark.title.ifBlank { stringResource(R.string.chapter_number, bookmark.chapterIndex + 1) },
+                    fontSize = AppType.BodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = AppColors.TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = formatDate(bookmark.createdAt),
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary
+                )
+                if (bookmark.remark.isNotBlank()) {
+                    Text(bookmark.remark, fontSize = AppType.Caption,
+                        color = AppColors.TextSecondary)
+                }
+                AnnotationTagChips(bookmark.tags, modifier = Modifier.padding(top = 6.dp))
+            }
+        }
     }
 }
 
@@ -652,7 +772,7 @@ private fun ExportBookmarksButton(
 
 private fun parseColor(hex: String): Color {
     return try {
-        Color(android.graphics.Color.parseColor(hex))
+        Color(android.graphics.Color.parseColor(resolveReaderHighlightColor(hex)))
     } catch (_: Exception) {
         Color(0xFFE85D5D)
     }

@@ -20,6 +20,7 @@ data class BookNotesUiState(
     val book: Book? = null,
     val bookmarks: List<Bookmark> = emptyList(),
     val notes: List<Note> = emptyList(),  // 包含高亮和笔记
+    val availableTags: List<String> = emptyList(),
     val isLoading: Boolean = true,
     val isExporting: Boolean = false
 ) {
@@ -45,6 +46,11 @@ class BookNotesViewModel @Inject constructor(
         loadBook()
         loadBookmarks()
         loadNotes()
+        viewModelScope.launch {
+            readingRepository.observeAnnotationTags().collectLatest { tags ->
+                _uiState.value = _uiState.value.copy(availableTags = tags)
+            }
+        }
     }
 
     private fun loadBook() {
@@ -76,10 +82,37 @@ class BookNotesViewModel @Inject constructor(
         }
     }
 
+    fun updateBookmarkRemark(bookmark: Bookmark, remark: String) {
+        updateBookmarkRemarkAndTags(bookmark, remark, bookmark.tags)
+    }
+
+    fun updateBookmarkRemarkAndTags(bookmark: Bookmark, remark: String, tags: List<String>) {
+        viewModelScope.launch {
+            val current = _uiState.value.bookmarks.firstOrNull { it.syncId == bookmark.syncId } ?: bookmark
+            readingRepository.updateBookmark(current.copy(remark = remark.trim(), tags = tags))
+        }
+    }
+
     fun deleteNote(note: Note) {
         viewModelScope.launch {
             readingRepository.deleteNote(note)
         }
+    }
+
+    fun updateNoteTags(note: Note, tags: List<String>) {
+        viewModelScope.launch { readingRepository.updateNoteTags(note, tags) }
+    }
+
+    fun updateBookmarkTags(bookmark: Bookmark, tags: List<String>) {
+        viewModelScope.launch { readingRepository.updateBookmarkTags(bookmark, tags) }
+    }
+
+    fun renameTag(old: String, new: String) {
+        viewModelScope.launch { readingRepository.renameAnnotationTag(old, new) }
+    }
+
+    fun deleteTag(name: String) {
+        viewModelScope.launch { readingRepository.deleteAnnotationTag(name) }
     }
 
     fun prepareExport(onComplete: (Result<BookNotesExportDocument>) -> Unit) {

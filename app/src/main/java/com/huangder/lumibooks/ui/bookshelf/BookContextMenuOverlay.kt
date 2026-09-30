@@ -65,6 +65,7 @@ sealed class ContextMenuAction {
     data object MoveToFolder : ContextMenuAction()
     data object Delete : ContextMenuAction()
     data object Favorite : ContextMenuAction()
+    data object Pin : ContextMenuAction()
     data object CustomCover : ContextMenuAction()
     data object RemoveCustomCover : ContextMenuAction()
     data object BookmarksNotes : ContextMenuAction()
@@ -86,6 +87,7 @@ fun BookContextMenuOverlay(
     state: BookContextMenuState,
     onDelete: (Book) -> Unit = {},
     onFavorite: (Book) -> Unit = {},
+    onPin: (Book) -> Unit = {},
     onCustomCover: (Book) -> Unit = {},
     onRemoveCustomCover: (Book) -> Unit = {},
     onBookmarksNotes: (Book) -> Unit = {},
@@ -144,6 +146,7 @@ fun BookContextMenuOverlay(
                         is ContextMenuAction.MoveToFolder -> onMoveToFolder(book)
                         is ContextMenuAction.Delete -> onDelete(book)
                         is ContextMenuAction.Favorite -> onFavorite(book)
+                        is ContextMenuAction.Pin -> onPin(book)
                         is ContextMenuAction.CustomCover -> onCustomCover(book)
                         is ContextMenuAction.RemoveCustomCover -> onRemoveCustomCover(book)
                         is ContextMenuAction.BookmarksNotes -> onBookmarksNotes(book)
@@ -312,6 +315,7 @@ private fun ContextMenuLayout(
             actionsAlpha = actionsAlpha,
             compact = useCompactMiddlePanel,
             isFavorite = book.isFavorite,
+            isPinned = book.isPinned,
             hasCustomCover = com.huangder.lumibooks.util.FileUtils.isCustomCover(book.coverPath),
             onAction = onAction
         )
@@ -412,6 +416,7 @@ private fun MenuActionsPanel(
     actionsAlpha: Float,
     compact: Boolean = false,
     isFavorite: Boolean = false,
+    isPinned: Boolean = false,
     hasCustomCover: Boolean = false,
     onAction: (ContextMenuAction) -> Unit
 ) {
@@ -421,10 +426,12 @@ private fun MenuActionsPanel(
     val motionProgress = actionsAlpha.coerceIn(-0.08f, 1.08f)
     val favoriteIcon = AppIcons.Heart.resolve(isFavorite)
     val favoriteLabel = if (isFavorite) stringResource(R.string.remove_favorite_short) else stringResource(R.string.favorite)
+    val pinLabel = if (isPinned) stringResource(R.string.book_unpin) else stringResource(R.string.book_pin)
     data class MenuItem(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val action: ContextMenuAction)
     val menuItems = buildList {
         add(MenuItem(stringResource(R.string.book_details), AppIcons.Info, ContextMenuAction.BookDetails))
         add(MenuItem(favoriteLabel, favoriteIcon, ContextMenuAction.Favorite))
+        add(MenuItem(pinLabel, AppIcons.PushPin, ContextMenuAction.Pin))
         add(MenuItem(stringResource(R.string.add_tag), AppIcons.Tag, ContextMenuAction.Tags))
         add(MenuItem(stringResource(R.string.move_to_folder), AppIcons.FolderSimple, ContextMenuAction.MoveToFolder))
         add(MenuItem(stringResource(R.string.bookmarks_notes), AppIcons.Bookmark.regular, ContextMenuAction.BookmarksNotes))

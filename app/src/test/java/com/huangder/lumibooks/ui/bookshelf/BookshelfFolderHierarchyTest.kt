@@ -72,6 +72,49 @@ class BookshelfFolderHierarchyTest {
     }
 
     @Test
+    fun countsOnlyIncludedBooksAcrossAllDescendantFolders() {
+        val links = listOf(
+            BookFolderLink("matching-direct", rootA.id),
+            BookFolderLink("excluded-child", childA.id),
+            BookFolderLink("matching-descendant", grandchildA.id),
+            BookFolderLink("excluded-other-root", rootB.id)
+        )
+
+        assertEquals(
+            mapOf(rootA.id to 2, childA.id to 1, grandchildA.id to 1, rootB.id to 0),
+            folderBookCounts(
+                folders = folders,
+                links = links,
+                includedBookIds = setOf("matching-direct", "matching-descendant")
+            )
+        )
+    }
+
+    @Test
+    fun hidesFoldersWithoutMatchingBooksButKeepsMatchingAncestors() {
+        val counts = mapOf(rootA.id to 2, childA.id to 1, grandchildA.id to 1, rootB.id to 0)
+
+        assertEquals(
+            listOf(rootA),
+            foldersWithMatchingBooks(folders, parentId = null, folderBookCounts = counts, filterActive = true)
+        )
+        assertEquals(
+            listOf(childA),
+            foldersWithMatchingBooks(folders, parentId = rootA.id, folderBookCounts = counts, filterActive = true)
+        )
+    }
+
+    @Test
+    fun keepsEmptyFoldersWhenNoFilterIsActive() {
+        val counts = mapOf(rootA.id to 0, rootB.id to 0)
+
+        assertEquals(
+            listOf(rootA, rootB),
+            foldersWithMatchingBooks(folders, parentId = null, folderBookCounts = counts, filterActive = false)
+        )
+    }
+
+    @Test
     fun folderCategoryCollectsBooksFromTheWholeSubtree() {
         val directBook = book("direct")
         val childBook = book("child")

@@ -770,11 +770,11 @@ private fun TagSelectionChip(
     LiquidGlassSurface(
         controlEdge = true,
         shape = shape,
-        fallbackColor = if (selected) AppColors.Accent.copy(alpha = 0.18f) else AppColors.BgGray,
+        fallbackColor = if (selected) AppColors.Accent.copy(alpha = 0.28f) else AppColors.BgGray.copy(alpha = 0.88f),
         contentScrimColor = if (selected) {
-            AppColors.Accent.copy(alpha = 0.34f)
+            AppColors.Accent.copy(alpha = 0.52f)
         } else {
-            AppColors.CardBg.copy(alpha = 0.24f)
+            AppColors.CardBg.copy(alpha = 0.68f)
         },
         interactive = false,
         modifier = Modifier

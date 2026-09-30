@@ -150,6 +150,7 @@ internal fun CoverFlowFolderNavigation(
                 LiquidGlassSurface(
                     shape = RoundedCornerShape(16.dp), fallbackColor = AppColors.CardBg,
                     interactive = true,
+                    controlEdge = true,
                     enabled = enabled,
                     contentScrimColor = AppColors.CardBg.copy(alpha = 0.24f),
                     modifier = Modifier.coverFlowEntranceItem(3 + folders.indexOf(folder).coerceAtMost(3))

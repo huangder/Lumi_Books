@@ -19,6 +19,8 @@ internal data class BookNotesExportLabels(
     val userNote: String,
     val bookmarkSection: String,
     val bookmarkPage: String,
+    val bookmarkRemark: String,
+    val tags: String = "标签",
     val pageUnavailable: String,
     val fileSuffix: String,
     val chapterNumber: (Int) -> String
@@ -37,6 +39,7 @@ internal object BookNotesExportFormatter {
         notes.filter { !it.isNoteEntry }.forEach { note ->
             appendLine()
             appendLine("【${labels.highlightContent}】${note.selectedText.trim()}")
+            appendTags(note.tags, labels.tags)
             appendLine("【${labels.chapter}】${chapterTitle(note.chapterIndex, chapterTitles, labels)}")
             appendLine("【${labels.book}】$bookTitle")
         }
@@ -47,6 +50,7 @@ internal object BookNotesExportFormatter {
             appendLine()
             appendLine("【${labels.noteSource}】${note.selectedText.trim()}")
             appendLine("【${labels.userNote}】${note.note.trim()}")
+            appendTags(note.tags, labels.tags)
             appendLine("【${labels.chapter}】${chapterTitle(note.chapterIndex, chapterTitles, labels)}")
             appendLine("【${labels.book}】$bookTitle")
         }
@@ -58,10 +62,18 @@ internal object BookNotesExportFormatter {
             appendLine(
                 "【${labels.bookmarkPage}】${pageExcerpt(item.pageText, item.bookmark.title, labels.pageUnavailable)}"
             )
+            item.bookmark.remark.trim().takeIf(String::isNotEmpty)?.let { remark ->
+                appendLine("【${labels.bookmarkRemark}】$remark")
+            }
+            appendTags(item.bookmark.tags, labels.tags)
             appendLine("【${labels.chapter}】${item.chapterTitle}")
             appendLine("【${labels.book}】$bookTitle")
         }
     }.trimEnd() + "\n"
+
+    private fun StringBuilder.appendTags(tags: List<String>, label: String) {
+        if (tags.isNotEmpty()) appendLine("【$label】${tags.joinToString("、")}")
+    }
 
     fun pageExcerpt(pageText: String?, fallback: String, pageUnavailable: String): String {
         val normalizedPage = pageText

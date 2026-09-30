@@ -35,6 +35,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -231,14 +232,16 @@ private fun BookshelfCategoriesScreen(
     onTargetSelected: (BookshelfCategoryTarget) -> Unit,
     onFolderSelected: (LibraryFolder) -> Unit,
     onBack: () -> Unit,
+    compactPanel: Boolean = false,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val uiState by viewModel.uiState.collectAsState()
-    val tagIdsByBook = remember(uiState.bookTagLinks) {
+    val tagsById = remember(uiState.tags) { uiState.tags.associateBy { it.id } }
+    val tagIdsByBook = remember(uiState.bookTagLinks, tagsById) {
         uiState.bookTagLinks.groupBy { it.bookId }
-            .mapValues { (_, links) -> links.mapTo(mutableSetOf()) { it.tagId } }
+            .mapValues { (_, links) -> links.flatMapTo(mutableSetOf()) { it.effectiveTagIds(tagsById) } }
     }
     var managedFolder by remember { mutableStateOf<LibraryFolder?>(null) }
     var renameFolder by remember { mutableStateOf<LibraryFolder?>(null) }
@@ -284,6 +287,7 @@ private fun BookshelfCategoriesScreen(
         onBack = onBack,
         onTargetSelected = onTargetSelected,
         onFolderSelected = onFolderSelected,
+        compactPanel = compactPanel,
         onFolderLongClick = {
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
             managedFolder = it
@@ -385,6 +389,22 @@ private fun BookshelfCategoriesScreen(
 }
 
 @Composable
+internal fun BookshelfCategoriesMenuContent(
+    viewModel: HomeViewModel,
+    onDismiss: () -> Unit,
+    onTargetSelected: (BookshelfCategoryTarget) -> Unit,
+    onFolderSelected: (LibraryFolder) -> Unit
+) {
+    BookshelfCategoriesScreen(
+        onTargetSelected = onTargetSelected,
+        onFolderSelected = onFolderSelected,
+        onBack = onDismiss,
+        compactPanel = true,
+        viewModel = viewModel
+    )
+}
+
+@Composable
 internal fun BookshelfCategoryBooksRoute(
     selectedTarget: BookshelfCategoryTarget,
     onBack: () -> Unit,
@@ -393,9 +413,10 @@ internal fun BookshelfCategoryBooksRoute(
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
-    val tagIdsByBook = remember(uiState.bookTagLinks) {
+    val tagsById = remember(uiState.tags) { uiState.tags.associateBy { it.id } }
+    val tagIdsByBook = remember(uiState.bookTagLinks, tagsById) {
         uiState.bookTagLinks.groupBy { it.bookId }
-            .mapValues { (_, links) -> links.mapTo(mutableSetOf()) { it.tagId } }
+            .mapValues { (_, links) -> links.flatMapTo(mutableSetOf()) { it.effectiveTagIds(tagsById) } }
     }
     val tagNamesByBook = remember(uiState.tags, uiState.bookTagLinks) {
         val names = uiState.tags.associate { it.id to it.name }
@@ -458,7 +479,8 @@ private fun CategoryListPage(
     onBack: () -> Unit,
     onTargetSelected: (BookshelfCategoryTarget) -> Unit,
     onFolderSelected: (LibraryFolder) -> Unit,
-    onFolderLongClick: (LibraryFolder) -> Unit
+    onFolderLongClick: (LibraryFolder) -> Unit,
+    compactPanel: Boolean = false
 ) {
     var collapsedFolderIds by rememberSaveable { mutableStateOf(emptyList<String>()) }
     val folderRows = remember(folders, collapsedFolderIds) {
@@ -475,17 +497,73 @@ private fun CategoryListPage(
         modifier = Modifier
             .fillMaxSize()
             .background(AppColors.PageBg)
-            .statusBarsPadding()
+            .then(if (compactPanel) Modifier else Modifier.statusBarsPadding())
     ) {
         CategoriesPageHeader(
             title = stringResource(R.string.bookshelf_categories_title),
-            onBack = onBack
+            onBack = onBack,
+            closeButton = compactPanel,
+            compactPanel = compactPanel
         )
         LazyColumn(
             contentPadding = PaddingValues(horizontal = AppSpace.lg, vertical = AppSpace.md),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxSize()
         ) {
+            if (compactPanel) {
+                item {
+                    CategoryGroup(stringResource(R.string.bookshelf_builtin_categories)) {
+                        categories.forEachIndexed { index, row ->
+                            if (index > 0) CategoryRowDivider()
+                            CategoryRow(row.target.title, row.count, row.icon, compact = true,
+                                onClick = { onTargetSelected(row.target) })
+                        }
+                    }
+                }
+                item {
+                    CategoryGroup(stringResource(R.string.bookshelf_custom_categories)) {
+                        if (folderRows.isEmpty()) {
+                            Text(stringResource(R.string.no_custom_categories), color = AppColors.TextSecondary,
+                                fontSize = AppType.BodySmall, modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp))
+                        } else folderRows.forEachIndexed { index, row ->
+                            if (index > 0) CategoryRowDivider()
+                            CategoryRow(
+                                title = row.folder.name,
+                                count = folderBookCounts[row.folder.id] ?: 0,
+                                icon = AppIcons.Folder,
+                                linked = row.folder.storageDocumentUri != null,
+                                startIndent = (row.depth * 16).dp,
+                                disclosure = if (row.hasChildren) CategoryDisclosure(
+                                    expanded = row.folder.id !in collapsedFolderIds,
+                                    onToggle = { toggleFolderCollapse(row.folder) }
+                                ) else null,
+                                reserveDisclosureSpace = true,
+                                compact = true,
+                                modifier = Modifier.animateItem(),
+                                onClick = { onFolderSelected(row.folder) },
+                                onLongClick = { onFolderLongClick(row.folder) }
+                            )
+                        }
+                    }
+                }
+                item {
+                    CategoryGroup(stringResource(R.string.bookshelf_user_tags)) {
+                        if (tags.isEmpty()) {
+                            Text(stringResource(R.string.no_tags), color = AppColors.TextSecondary,
+                                fontSize = AppType.BodySmall, modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp))
+                        } else tags.forEachIndexed { index, tag ->
+                            if (index > 0) CategoryRowDivider()
+                            CategoryRow(
+                                tag.name,
+                                tagIdsByBook.values.count { tag.id in it },
+                                AppIcons.Tag,
+                                compact = true,
+                                onClick = { onTargetSelected(BookshelfCategoryTarget.Tag(tag.id, tag.name)) }
+                            )
+                        }
+                    }
+                }
+            } else {
             item {
                 CategorySectionTitle(stringResource(R.string.bookshelf_builtin_categories))
             }
@@ -562,23 +640,32 @@ private fun CategoryListPage(
                     )
                 }
             }
+            }
         }
     }
 }
 
 @Composable
-private fun CategoriesPageHeader(title: String, onBack: () -> Unit) {
+private fun CategoriesPageHeader(
+    title: String,
+    onBack: () -> Unit,
+    closeButton: Boolean = false,
+    compactPanel: Boolean = false
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = AppSpace.lg, vertical = 12.dp),
+            .padding(
+                horizontal = if (compactPanel) 24.dp else AppSpace.lg,
+                vertical = if (compactPanel) 24.dp else 12.dp
+            ),
         verticalAlignment = Alignment.CenterVertically
     ) {
         LiquidGlassIconButton(
-            imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
-            contentDescription = stringResource(R.string.back),
+            imageVector = if (closeButton) AppIcons.X else directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
+            contentDescription = stringResource(if (closeButton) R.string.close else R.string.back),
             onClick = onBack,
-            settingsBackButton = true
+            settingsBackButton = !compactPanel
         )
         Spacer(Modifier.width(20.dp))
         Text(
@@ -605,6 +692,27 @@ private fun CategorySectionTitle(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
+private fun CategoryGroup(title: String, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(AppColors.CardBg)
+    ) {
+        CategorySectionTitle(title, Modifier.padding(start = 14.dp, end = 14.dp, top = 10.dp))
+        content()
+    }
+}
+
+@Composable
+private fun CategoryRowDivider() {
+    androidx.compose.material3.HorizontalDivider(
+        modifier = Modifier.padding(start = 48.dp, end = 12.dp),
+        thickness = 0.5.dp,
+        color = AppColors.TextSecondary.copy(alpha = 0.18f)
+    )
+}
+
+@Composable
 private fun CategoryRow(
     title: String,
     count: Int,
@@ -615,34 +723,56 @@ private fun CategoryRow(
     startIndent: Dp = 0.dp,
     disclosure: CategoryDisclosure? = null,
     reserveDisclosureSpace: Boolean = false,
+    compact: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    com.huangder.lumibooks.ui.components.LiquidGlassSurface(
+    val compactRowHeight = maxOf(46f, 42f * androidx.compose.ui.platform.LocalDensity.current.fontScale).dp
+    val rowModifier = modifier
+        .padding(start = startIndent)
+        .fillMaxWidth()
+        .height(if (compact) compactRowHeight else 64.dp)
+        .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+    if (compact) {
+        CategoryRowContent(title, count, icon, linked, disclosure, reserveDisclosureSpace, rowModifier, compact)
+    } else com.huangder.lumibooks.ui.components.LiquidGlassSurface(
         shape = RoundedCornerShape(22.dp),
         fallbackColor = AppColors.CardBg,
-        modifier = modifier
-            .padding(start = startIndent)
-            .fillMaxWidth()
-            .height(64.dp)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+        modifier = rowModifier
     ) {
+        CategoryRowContent(title, count, icon, linked, disclosure, reserveDisclosureSpace, Modifier.fillMaxSize(), compact)
+    }
+}
+
+@Composable
+private fun CategoryRowContent(
+    title: String,
+    count: Int,
+    icon: ImageVector,
+    linked: Boolean,
+    disclosure: CategoryDisclosure?,
+    reserveDisclosureSpace: Boolean,
+    modifier: Modifier,
+    compact: Boolean
+) {
         Row(
-            modifier = Modifier
+            modifier = modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = if (compact) 12.dp else 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             when {
                 disclosure != null -> CategoryDisclosureButton(disclosure)
                 reserveDisclosureSpace -> Spacer(Modifier.width(CategoryDisclosureSlot))
             }
-            Icon(icon, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
-            Spacer(Modifier.width(14.dp))
+            Icon(icon, null, tint = AppColors.TextSecondary, modifier = Modifier.size(if (compact) 18.dp else 22.dp))
+            Spacer(Modifier.width(if (compact) 10.dp else 14.dp))
             Text(
                 text = title,
                 color = AppColors.TextPrimary,
-                fontSize = AppType.Body,
+                fontSize = if (compact) AppType.BodySmall else AppType.Body,
                 fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
             if (linked) {
@@ -657,17 +787,17 @@ private fun CategoryRow(
             Text(
                 text = stringResource(R.string.bookshelf_category_book_count, count),
                 color = AppColors.TextSecondary,
-                fontSize = AppType.Caption
+                fontSize = AppType.Caption,
+                maxLines = 1
             )
             Spacer(Modifier.width(6.dp))
             Icon(
                 directionalIcon(AppIcons.CaretRight, AppIcons.CaretLeft),
                 null,
                 tint = AppColors.TextSecondary,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(if (compact) 17.dp else 20.dp)
             )
         }
-    }
 }
 
 /** 自定义分类里父文件夹的折叠开关状态。 */
@@ -891,6 +1021,7 @@ private fun CategoryBooksPage(
                     showDeleteConfirm = true
                 },
                 onFavorite = { viewModel.updateBook(it.copy(isFavorite = !it.isFavorite)) },
+                onPin = { viewModel.updateBook(it.copy(isPinned = !it.isPinned)) },
                 onCustomCover = { coverSourceBook = it },
                 onRemoveCustomCover = viewModel::removeCustomCover,
                 onBookmarksNotes = {
