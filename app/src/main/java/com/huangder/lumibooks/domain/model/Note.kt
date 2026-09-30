@@ -19,7 +19,8 @@ data class Note(
     val origin: String = ORIGIN_MANUAL,
     val sourceRuleId: String? = null,
     val sourceMatchKey: String? = null,
-    val styleSnapshotJson: String? = null
+    val styleSnapshotJson: String? = null,
+    val tags: List<String> = emptyList()
 ) {
     /** The annotation style (highlight/underline) is independent of note intent. */
     val isNoteEntry: Boolean get() = isNote || note.isNotBlank() || type == "note"

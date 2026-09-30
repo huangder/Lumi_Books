@@ -47,7 +47,8 @@ class SyncManifestTest {
                 format = "EPUB",
                 createdAt = 100,
                 isFavorite = true,
-                updatedAt = 900
+                updatedAt = 900,
+                isPinned = true
             ),
             cover = cover
         )
@@ -64,6 +65,7 @@ class SyncManifestTest {
         assertEquals(SyncManifest.CURRENT_VERSION, decoded.version)
         assertEquals(original, decoded)
         assertTrue(decoded.books.getValue("book-1").metadata!!.isFavorite)
+        assertTrue(decoded.books.getValue("book-1").metadata!!.isPinned)
         assertEquals("book-1.jpg", decoded.books.getValue("book-1").cover!!.fileName)
     }
 

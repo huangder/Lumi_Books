@@ -43,7 +43,8 @@ data class PortableBook(
     val remoteLibraryKey: String?,
     val remoteFileName: String?,
     val remoteFileSize: Long,
-    val remoteFileSha256: String?
+    val remoteFileSha256: String?,
+    val isPinned: Boolean = false
 )
 
 data class PortableSnapshot(
@@ -136,6 +137,7 @@ private fun bookToJson(book: PortableBook) = JSONObject().apply {
     putNullable("remoteFileName", book.remoteFileName)
     put("remoteFileSize", book.remoteFileSize)
     putNullable("remoteFileSha256", book.remoteFileSha256)
+    put("isPinned", book.isPinned)
 }
 
 private fun bookFromJson(json: JSONObject) = PortableBook(
@@ -155,7 +157,8 @@ private fun bookFromJson(json: JSONObject) = PortableBook(
     remoteLibraryKey = json.nullableString("remoteLibraryKey"),
     remoteFileName = json.nullableString("remoteFileName"),
     remoteFileSize = json.optLong("remoteFileSize"),
-    remoteFileSha256 = json.nullableString("remoteFileSha256")
+    remoteFileSha256 = json.nullableString("remoteFileSha256"),
+    isPinned = json.optBoolean("isPinned", false)
 )
 
 private fun folderToJson(item: FolderEntity) = JSONObject().apply {
@@ -215,14 +218,17 @@ private fun readingRecordFromJson(json: JSONObject) = ReadingRecordEntity(
 private fun bookmarkToJson(item: BookmarkEntity) = JSONObject().apply {
     put("bookId", item.bookId); put("chapterIndex", item.chapterIndex); put("position", item.position.toDouble())
     putNullable("locatorJson", item.locatorJson); put("title", item.title); put("createdAt", item.createdAt)
-    put("syncId", item.syncId); put("updatedAt", item.updatedAt)
+    put("syncId", item.syncId); put("updatedAt", item.updatedAt); put("remark", item.remark)
+    put("tagsJson", item.tagsJson)
 }
 
 private fun bookmarkFromJson(json: JSONObject) = BookmarkEntity(
     bookId = json.getString("bookId"), chapterIndex = json.optInt("chapterIndex"),
     position = json.optDouble("position").toFloat(), locatorJson = json.nullableString("locatorJson"),
     title = json.optString("title"), createdAt = json.optLong("createdAt"), syncId = json.optString("syncId"),
-    updatedAt = json.optLong("updatedAt", json.optLong("createdAt"))
+    updatedAt = json.optLong("updatedAt", json.optLong("createdAt")),
+    remark = json.optString("remark"),
+    tagsJson = json.optString("tagsJson", "[]")
 )
 
 private fun noteToJson(item: NoteEntity) = JSONObject().apply {
@@ -237,6 +243,7 @@ private fun noteToJson(item: NoteEntity) = JSONObject().apply {
     putNullable("sourceRuleId", item.sourceRuleId)
     putNullable("sourceMatchKey", item.sourceMatchKey)
     putNullable("styleSnapshotJson", item.styleSnapshotJson)
+    put("tagsJson", item.tagsJson)
 }
 
 private fun noteFromJson(json: JSONObject) = NoteEntity(
@@ -251,7 +258,8 @@ private fun noteFromJson(json: JSONObject) = NoteEntity(
     origin = json.optString("origin", "manual"),
     sourceRuleId = json.nullableString("sourceRuleId"),
     sourceMatchKey = json.nullableString("sourceMatchKey"),
-    styleSnapshotJson = json.nullableString("styleSnapshotJson")
+    styleSnapshotJson = json.nullableString("styleSnapshotJson"),
+    tagsJson = json.optString("tagsJson", "[]")
 )
 
 private fun highlightRuleToJson(item: HighlightRuleEntity) = JSONObject().apply {
@@ -259,7 +267,7 @@ private fun highlightRuleToJson(item: HighlightRuleEntity) = JSONObject().apply 
     put("position", item.position); put("targetScope", item.targetScope); putNullableInt("textColor", item.textColor)
     put("underlineMode", item.underlineMode); put("underlineOffset", item.underlineOffset.toDouble())
     put("underlineWidth", item.underlineWidth.toDouble()); put("fontWeight", item.fontWeight)
-    put("isItalic", item.isItalic); put("sampleText", item.sampleText); put("rawJson", item.rawJson)
+    put("isItalic", item.isItalic); put("fontType", item.fontType); put("sampleText", item.sampleText); put("rawJson", item.rawJson)
     put("updatedAt", item.updatedAt)
 }
 
@@ -270,7 +278,7 @@ private fun highlightRuleFromJson(json: JSONObject) = HighlightRuleEntity(
     textColor = if (json.has("textColor") && !json.isNull("textColor")) json.optInt("textColor") else null,
     underlineMode = json.optInt("underlineMode"), underlineOffset = json.optDouble("underlineOffset", 2.0).toFloat(),
     underlineWidth = json.optDouble("underlineWidth", 1.0).toFloat(), fontWeight = json.optInt("fontWeight", 400),
-    isItalic = json.optBoolean("isItalic"), sampleText = json.optString("sampleText"),
+    isItalic = json.optBoolean("isItalic"), fontType = json.optString("fontType"), sampleText = json.optString("sampleText"),
     rawJson = json.optString("rawJson", "{}"), updatedAt = json.optLong("updatedAt")
 )
 

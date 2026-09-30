@@ -9,7 +9,9 @@ data class Bookmark(
     val title: String,
     val createdAt: Long,
     val syncId: String = "",
-    val updatedAt: Long = createdAt
+    val updatedAt: Long = createdAt,
+    val remark: String = "",
+    val tags: List<String> = emptyList()
 ) {
     /** New bookmarks encode a chapter character offset as a negative position. */
     val characterOffset: Int?

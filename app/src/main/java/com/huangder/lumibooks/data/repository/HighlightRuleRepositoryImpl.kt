@@ -158,12 +158,12 @@ class HighlightRuleRepositoryImpl @Inject constructor(
 
     private fun HighlightRuleEntity.toDomain() = HighlightRule(
         id, name, pattern, enabled, position, targetScope, textColor, underlineMode,
-        underlineOffset, underlineWidth, fontWeight, isItalic, sampleText, rawJson, updatedAt
+        underlineOffset, underlineWidth, fontWeight, isItalic, fontType, sampleText, rawJson, updatedAt
     )
 
     private fun HighlightRule.toEntity() = HighlightRuleEntity(
         id, name, pattern, enabled, position, targetScope, textColor, underlineMode,
-        underlineOffset, underlineWidth, fontWeight, isItalic, sampleText, rawJson, updatedAt
+        underlineOffset, underlineWidth, fontWeight, isItalic, fontType, sampleText, rawJson, updatedAt
     )
 
     private fun BookHighlightSettingsEntity.toDomain() =

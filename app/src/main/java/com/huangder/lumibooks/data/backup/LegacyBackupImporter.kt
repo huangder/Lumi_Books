@@ -66,6 +66,7 @@ class LegacyBackupImporter @Inject constructor(
                     locatorJson = cursor.nullableString("locatorJson"),
                     createdAt = cursor.long("createdAt"),
                     isFavorite = cursor.boolean("isFavorite"),
+                    isPinned = cursor.boolean("isPinned"),
                     isCloudOnly = cursor.boolean("isCloudOnly") && bodyId == null,
                     metadataUpdatedAt = cursor.long("metadataUpdatedAt", cursor.long("createdAt")),
                     bodyAssetId = bodyId,

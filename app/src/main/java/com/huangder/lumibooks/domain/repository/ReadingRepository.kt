@@ -19,11 +19,16 @@ interface ReadingRepository {
     fun getBookmarksByBookId(bookId: String): Flow<List<Bookmark>>
     suspend fun insertBookmark(bookmark: Bookmark)
     suspend fun updateBookmark(bookmark: Bookmark)
+    suspend fun updateBookmarkTags(bookmark: Bookmark, tags: List<String>)
     suspend fun deleteBookmark(bookmark: Bookmark)
     suspend fun deleteAllBookmarksByBookId(bookId: String)
     fun getNotesByBookId(bookId: String): Flow<List<Note>>
     suspend fun insertNote(note: Note)
     suspend fun updateNote(note: Note)
+    suspend fun updateNoteTags(note: Note, tags: List<String>)
+    fun observeAnnotationTags(): Flow<List<String>>
+    suspend fun renameAnnotationTag(old: String, new: String)
+    suspend fun deleteAnnotationTag(name: String)
     suspend fun deleteNote(note: Note)
     suspend fun applyAnnotationEdit(plan: AnnotationEditPlan)
     suspend fun applyTxtResegmentation(

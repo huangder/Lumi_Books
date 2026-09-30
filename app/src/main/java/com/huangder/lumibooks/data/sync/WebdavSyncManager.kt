@@ -901,7 +901,8 @@ class WebdavSyncManager @Inject constructor(
         format = format.name,
         createdAt = createdAt,
         isFavorite = isFavorite,
-        updatedAt = metadataUpdatedAt
+        updatedAt = metadataUpdatedAt,
+        isPinned = isPinned
     )
 
     private fun mergeRemoteBook(
@@ -934,6 +935,7 @@ class WebdavSyncManager @Inject constructor(
             readingProgress = 0f,
             createdAt = metadata?.createdAt ?: remoteEntry.lastModified,
             isFavorite = metadata?.isFavorite ?: false,
+            isPinned = metadata?.isPinned ?: false,
             isCloudOnly = true,
             metadataUpdatedAt = metadata?.updatedAt ?: 0L
         )
@@ -948,6 +950,7 @@ class WebdavSyncManager @Inject constructor(
             format = if (remoteMetadataWins) metadata?.format?.toBookFormatOrNull() ?: base.format else base.format,
             createdAt = if (remoteMetadataWins) metadata?.createdAt ?: base.createdAt else base.createdAt,
             isFavorite = if (remoteMetadataWins) metadata?.isFavorite ?: base.isFavorite else base.isFavorite,
+            isPinned = if (remoteMetadataWins) metadata?.isPinned ?: base.isPinned else base.isPinned,
             metadataUpdatedAt = if (remoteMetadataWins) metadata?.updatedAt ?: base.metadataUpdatedAt else base.metadataUpdatedAt,
             remoteLibraryKey = libraryKey,
             remoteFileName = remoteEntry.fileName,
@@ -1395,6 +1398,8 @@ class WebdavSyncManager @Inject constructor(
                             put("position", b.position.toDouble())
                             b.locatorJson?.let { put("locatorJson", it) }
                             put("title", b.title)
+                            put("remark", b.remark)
+                            put("tags", JSONArray(b.tags))
                             put("createdAt", b.createdAt)
                             put("syncId", b.syncId)
                             put("updatedAt", b.updatedAt)
@@ -1421,6 +1426,7 @@ class WebdavSyncManager @Inject constructor(
                             put("syncId", n.syncId)
                             put("updatedAt", n.updatedAt)
                             put("origin", n.origin)
+                            put("tags", JSONArray(n.tags))
                             n.sourceRuleId?.let { put("sourceRuleId", it) }
                             n.sourceMatchKey?.let { put("sourceMatchKey", it) }
                             n.styleSnapshotJson?.let { put("styleSnapshotJson", it) }
@@ -1458,6 +1464,7 @@ class WebdavSyncManager @Inject constructor(
                     format = appliedMetadata.format.toBookFormatOrNull() ?: localBook.format,
                     createdAt = appliedMetadata.createdAt.takeIf { it > 0L } ?: localBook.createdAt,
                     isFavorite = appliedMetadata.isFavorite,
+                    isPinned = appliedMetadata.isPinned,
                     metadataUpdatedAt = appliedMetadata.updatedAt
                 )
                 bookRepository.updateBook(updatedBook)
@@ -1487,6 +1494,8 @@ class WebdavSyncManager @Inject constructor(
                     position = b.getDouble("position").toFloat(),
                     locatorJson = b.optString("locatorJson", null),
                     title = b.getString("title"),
+                    remark = b.optString("remark"),
+                    tags = com.huangder.lumibooks.domain.model.AnnotationTags.decode(b.optJSONArray("tags")?.toString()),
                     createdAt = b.getLong("createdAt"),
                     syncId = b.optString("syncId").ifBlank {
                         legacyAnnotationSyncId(
@@ -1535,7 +1544,8 @@ class WebdavSyncManager @Inject constructor(
                     origin = n.optString("origin", Note.ORIGIN_MANUAL),
                     sourceRuleId = n.optString("sourceRuleId", null),
                     sourceMatchKey = n.optString("sourceMatchKey", null),
-                    styleSnapshotJson = n.optString("styleSnapshotJson", null)
+                    styleSnapshotJson = n.optString("styleSnapshotJson", null),
+                    tags = com.huangder.lumibooks.domain.model.AnnotationTags.decode(n.optJSONArray("tags")?.toString())
                 ))
             }
         }

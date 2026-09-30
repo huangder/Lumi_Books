@@ -70,7 +70,11 @@ object AppModule {
             DatabaseMigrations.MIGRATION_10_11,
             DatabaseMigrations.MIGRATION_11_12,
             DatabaseMigrations.MIGRATION_12_13,
-            DatabaseMigrations.MIGRATION_13_14
+            DatabaseMigrations.MIGRATION_13_14,
+            DatabaseMigrations.MIGRATION_14_15,
+            DatabaseMigrations.MIGRATION_15_16,
+            DatabaseMigrations.MIGRATION_16_17,
+            DatabaseMigrations.MIGRATION_17_18
         )
             .build()
     }

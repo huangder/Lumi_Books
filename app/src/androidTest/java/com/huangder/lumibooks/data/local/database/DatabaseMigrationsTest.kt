@@ -8,6 +8,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
@@ -387,6 +388,47 @@ class DatabaseMigrationsTest {
         }
     }
 
+    @Test
+    fun migration16To17KeepsBookmarksAndDefaultsRemarkToEmpty() {
+        openHelper(version = 16, createSchema = true).use { helper ->
+            helper.writableDatabase.execSQL(
+                "INSERT INTO bookmarks (bookId,chapterIndex,position,title,createdAt,syncId,updatedAt) " +
+                    "VALUES ('book-1',2,0.5,'Original title',10,'bookmark-1',10)"
+            )
+        }
+        openHelper(version = 17, createSchema = false).use { helper ->
+            helper.writableDatabase.query(
+                "SELECT title,remark FROM bookmarks WHERE syncId='bookmark-1'"
+            ).use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("Original title", cursor.getString(0))
+                assertEquals("", cursor.getString(1))
+            }
+        }
+    }
+
+    @Test
+    fun migration17To18DefaultsReadingTagsToEmpty() {
+        openHelper(version = 17, createSchema = true).use { helper ->
+            helper.writableDatabase.execSQL(
+                "INSERT INTO bookmarks (bookId,chapterIndex,position,title,createdAt,syncId,updatedAt) " +
+                    "VALUES ('book-1',2,0.5,'Original title',10,'bookmark-1',10)"
+            )
+            helper.writableDatabase.execSQL(
+                "INSERT INTO notes (bookId,chapterIndex,startPosition,endPosition,selectedText,note,color,createdAt,syncId,updatedAt) " +
+                    "VALUES ('book-1',0,0,2,'text','','#ff0000',10,'note-1',10)"
+            )
+        }
+        openHelper(version = 18, createSchema = false).use { helper ->
+            listOf("notes", "bookmarks").forEach { table ->
+                helper.writableDatabase.query("SELECT tagsJson FROM $table").use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    assertEquals("[]", cursor.getString(0))
+                }
+            }
+        }
+    }
+
     private fun openHelper(version: Int, createSchema: Boolean): SupportSQLiteOpenHelper {
         val callback = object : SupportSQLiteOpenHelper.Callback(version) {
             override fun onCreate(db: SupportSQLiteDatabase) {
@@ -403,6 +445,10 @@ class DatabaseMigrationsTest {
                     if (version >= 12) DatabaseMigrations.MIGRATION_11_12.migrate(db)
                     if (version >= 13) DatabaseMigrations.MIGRATION_12_13.migrate(db)
                     if (version >= 14) DatabaseMigrations.MIGRATION_13_14.migrate(db)
+                    if (version >= 15) DatabaseMigrations.MIGRATION_14_15.migrate(db)
+                    if (version >= 16) DatabaseMigrations.MIGRATION_15_16.migrate(db)
+                    if (version >= 17) DatabaseMigrations.MIGRATION_16_17.migrate(db)
+                    if (version >= 18) DatabaseMigrations.MIGRATION_17_18.migrate(db)
                 }
             }
 
@@ -418,6 +464,10 @@ class DatabaseMigrationsTest {
                 if (oldVersion < 12 && newVersion >= 12) DatabaseMigrations.MIGRATION_11_12.migrate(db)
                 if (oldVersion < 13 && newVersion >= 13) DatabaseMigrations.MIGRATION_12_13.migrate(db)
                 if (oldVersion < 14 && newVersion >= 14) DatabaseMigrations.MIGRATION_13_14.migrate(db)
+                if (oldVersion < 15 && newVersion >= 15) DatabaseMigrations.MIGRATION_14_15.migrate(db)
+                if (oldVersion < 16 && newVersion >= 16) DatabaseMigrations.MIGRATION_15_16.migrate(db)
+                if (oldVersion < 17 && newVersion >= 17) DatabaseMigrations.MIGRATION_16_17.migrate(db)
+                if (oldVersion < 18 && newVersion >= 18) DatabaseMigrations.MIGRATION_17_18.migrate(db)
             }
         }
         val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)

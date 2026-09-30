@@ -9,6 +9,7 @@ import com.huangder.lumibooks.data.local.entity.BookmarkEntity
 import com.huangder.lumibooks.data.local.entity.NoteEntity
 import com.huangder.lumibooks.data.local.entity.ReadingRecordEntity
 import com.huangder.lumibooks.domain.model.AnnotationEditPlan
+import com.huangder.lumibooks.domain.model.AnnotationTags
 import com.huangder.lumibooks.domain.model.Bookmark
 import com.huangder.lumibooks.domain.model.DailyTotal
 import com.huangder.lumibooks.domain.model.Note
@@ -16,6 +17,7 @@ import com.huangder.lumibooks.domain.model.ReadingRecord
 import com.huangder.lumibooks.domain.repository.ReadingRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import androidx.room.withTransaction
 import javax.inject.Inject
 import java.util.UUID
@@ -89,6 +91,10 @@ class ReadingRepositoryImpl @Inject constructor(
         bookmarkDao.updateBookmark(bookmark.copy(updatedAt = System.currentTimeMillis()).toEntity())
     }
 
+    override suspend fun updateBookmarkTags(bookmark: Bookmark, tags: List<String>) {
+        if (bookmark.id > 0L) bookmarkDao.updateTags(bookmark.id, AnnotationTags.encode(tags), System.currentTimeMillis())
+    }
+
     override suspend fun deleteBookmark(bookmark: Bookmark) {
         val syncId = bookmark.syncId.ifBlank { "legacy-bookmark-${bookmark.id}" }
         syncStateDao.upsertTombstones(
@@ -119,6 +125,49 @@ class ReadingRepositoryImpl @Inject constructor(
 
     override suspend fun updateNote(note: Note) {
         noteDao.updateNote(note.copy(updatedAt = System.currentTimeMillis()).toEntity())
+    }
+
+    override suspend fun updateNoteTags(note: Note, tags: List<String>) {
+        if (note.id > 0L) noteDao.updateTags(note.id, AnnotationTags.encode(tags), System.currentTimeMillis())
+    }
+
+    override fun observeAnnotationTags(): Flow<List<String>> = combine(
+        noteDao.observeTagLists(), bookmarkDao.observeTagLists()
+    ) { notes, bookmarks ->
+        (notes + bookmarks).flatMap(AnnotationTags::decode).distinct().sorted()
+    }
+
+    override suspend fun renameAnnotationTag(old: String, new: String) {
+        val from = old.trim()
+        val to = new.trim()
+        if (from.isEmpty() || to.isEmpty() || from == to) return
+        database.withTransaction {
+            val now = System.currentTimeMillis()
+            noteDao.getAllNotes().forEach { item ->
+                val tags = AnnotationTags.decode(item.tagsJson)
+                if (from in tags) noteDao.updateTags(item.id, AnnotationTags.encode(AnnotationTags.rename(tags, from, to)), now)
+            }
+            bookmarkDao.getAllBookmarks().forEach { item ->
+                val tags = AnnotationTags.decode(item.tagsJson)
+                if (from in tags) bookmarkDao.updateTags(item.id, AnnotationTags.encode(AnnotationTags.rename(tags, from, to)), now)
+            }
+        }
+    }
+
+    override suspend fun deleteAnnotationTag(name: String) {
+        val target = name.trim()
+        if (target.isEmpty()) return
+        database.withTransaction {
+            val now = System.currentTimeMillis()
+            noteDao.getAllNotes().forEach { item ->
+                val tags = AnnotationTags.decode(item.tagsJson)
+                if (target in tags) noteDao.updateTags(item.id, AnnotationTags.encode(tags - target), now)
+            }
+            bookmarkDao.getAllBookmarks().forEach { item ->
+                val tags = AnnotationTags.decode(item.tagsJson)
+                if (target in tags) bookmarkDao.updateTags(item.id, AnnotationTags.encode(tags - target), now)
+            }
+        }
     }
 
     override suspend fun deleteNote(note: Note) {
@@ -231,7 +280,9 @@ class ReadingRepositoryImpl @Inject constructor(
             title = title,
             createdAt = createdAt,
             syncId = syncId,
-            updatedAt = updatedAt
+            updatedAt = updatedAt,
+            remark = remark,
+            tags = AnnotationTags.decode(tagsJson)
         )
     }
 
@@ -245,7 +296,9 @@ class ReadingRepositoryImpl @Inject constructor(
             title = title,
             createdAt = createdAt,
             syncId = syncId,
-            updatedAt = updatedAt
+            updatedAt = updatedAt,
+            remark = remark,
+            tagsJson = AnnotationTags.encode(tags)
         )
     }
 
@@ -269,7 +322,8 @@ class ReadingRepositoryImpl @Inject constructor(
             origin = origin,
             sourceRuleId = sourceRuleId,
             sourceMatchKey = sourceMatchKey,
-            styleSnapshotJson = styleSnapshotJson
+            styleSnapshotJson = styleSnapshotJson,
+            tags = AnnotationTags.decode(tagsJson)
         )
     }
 
@@ -293,7 +347,8 @@ class ReadingRepositoryImpl @Inject constructor(
             origin = origin,
             sourceRuleId = sourceRuleId,
             sourceMatchKey = sourceMatchKey,
-            styleSnapshotJson = styleSnapshotJson
+            styleSnapshotJson = styleSnapshotJson,
+            tagsJson = AnnotationTags.encode(tags)
         )
     }
 }

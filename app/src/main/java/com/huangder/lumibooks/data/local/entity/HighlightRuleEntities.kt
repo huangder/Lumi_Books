@@ -17,6 +17,7 @@ data class HighlightRuleEntity(
     val underlineWidth: Float,
     val fontWeight: Int,
     val isItalic: Boolean,
+    val fontType: String = "",
     val sampleText: String,
     val rawJson: String,
     val updatedAt: Long

@@ -4,12 +4,14 @@
         <exclude domain="external" path="dictionary-downloads/" />
         <exclude domain="sharedpref" path="mineru_secure.xml" />
         <exclude domain="sharedpref" path="external_tts_secure.xml" />
+        <exclude domain="sharedpref" path="translation_secure.xml" />
         <exclude domain="sharedpref" path="webdav_secure.xml" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="external" path="dictionary-downloads/" />
         <exclude domain="sharedpref" path="mineru_secure.xml" />
         <exclude domain="sharedpref" path="external_tts_secure.xml" />
+        <exclude domain="sharedpref" path="translation_secure.xml" />
         <exclude domain="sharedpref" path="webdav_secure.xml" />
     </device-transfer>
 </data-extraction-rules>

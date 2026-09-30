@@ -10,9 +10,29 @@ import com.huangder.lumibooks.data.local.entity.HighlightRuleEntity
 import com.huangder.lumibooks.data.local.entity.HighlightRuleExclusionEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.json.JSONObject
 
 class PortableSnapshotTest {
+    @Test
+    fun readingTagsRoundTripAndOldBackupsHaveEmptyTags() {
+        val tagJson = "[\"人物\",\"复习\"]"
+        val original = snapshot(deviceId = "device-a",
+            notes = listOf(note("n1").copy(tagsJson = tagJson)),
+            bookmarks = listOf(bookmark("b1").copy(tagsJson = tagJson)))
+        val restored = PortableSnapshot.fromJson(original.toJson())
+        assertEquals(tagJson, restored.notes.single().tagsJson)
+        assertEquals(tagJson, restored.bookmarks.single().tagsJson)
+        val legacy = JSONObject(original.toJson()).apply {
+            getJSONArray("notes").getJSONObject(0).remove("tagsJson")
+            getJSONArray("bookmarks").getJSONObject(0).remove("tagsJson")
+        }
+        val old = PortableSnapshot.fromJson(legacy.toString())
+        assertEquals("[]", old.notes.single().tagsJson)
+        assertEquals("[]", old.bookmarks.single().tagsJson)
+    }
+
     @Test
     fun emptyNoteIdentitySurvivesBackupRoundTrip() {
         val emptyNote = note("empty").copy(note = "", isNote = true)
@@ -34,6 +54,20 @@ class PortableSnapshotTest {
     }
 
     @Test
+    fun bookmarkRemarkRoundTripsAndLegacyBackupDefaultsToEmpty() {
+        val original = snapshot(
+            deviceId = "device-a",
+            bookmarks = listOf(bookmark("bookmark-a").copy(remark = "Review this page"))
+        )
+        assertEquals("Review this page", PortableSnapshot.fromJson(original.toJson()).bookmarks.single().remark)
+
+        val legacy = JSONObject(original.toJson()).apply {
+            getJSONArray("bookmarks").getJSONObject(0).remove("remark")
+        }
+        assertEquals("", PortableSnapshot.fromJson(legacy.toString()).bookmarks.single().remark)
+    }
+
+    @Test
     fun fullBackupRoundTripPreservesRuleLibraryAndGeneratedNoteSource() {
         val generated = note("generated").copy(
             origin = "highlight_rule",
@@ -45,7 +79,7 @@ class PortableSnapshotTest {
             highlightRules = listOf(
                 HighlightRuleEntity(
                     "r1", "Rule", "a+", true, 0, 0, null, 3, 2f, 1f, 700,
-                    true, "aaa", "{\"unknown\":true}", 100
+                    true, sampleText = "aaa", rawJson = "{\"unknown\":true}", updatedAt = 100
                 )
             ),
             bookHighlightRuleStates = listOf(BookHighlightRuleStateEntity("book-a", "r1", true, 0)),
@@ -65,6 +99,17 @@ class PortableSnapshotTest {
         val restored = PortableSnapshot.fromJson(snapshot.toJson())
 
         assertEquals("CBZ", restored.books.single().format)
+    }
+
+    @Test
+    fun pinnedBookSurvivesJsonRoundTripAndLegacyJsonDefaultsToFalse() {
+        val pinned = snapshot(deviceId = "device-a", isPinned = true)
+        assertTrue(PortableSnapshot.fromJson(pinned.toJson()).books.single().isPinned)
+
+        val legacyJson = JSONObject(pinned.toJson()).apply {
+            getJSONArray("books").getJSONObject(0).remove("isPinned")
+        }
+        assertFalse(PortableSnapshot.fromJson(legacyJson.toString()).books.single().isPinned)
     }
 
     @Test
@@ -120,7 +165,8 @@ class PortableSnapshotTest {
         records: List<ReadingRecordEntity> = emptyList(),
         bookmarks: List<BookmarkEntity> = emptyList(),
         notes: List<NoteEntity> = emptyList(),
-        tombstones: List<SyncTombstoneEntity> = emptyList()
+        tombstones: List<SyncTombstoneEntity> = emptyList(),
+        isPinned: Boolean = false
     ) = PortableSnapshot(
         createdAt = 100,
         sourceDeviceId = deviceId,
@@ -136,6 +182,7 @@ class PortableSnapshotTest {
                 locatorJson = null,
                 createdAt = 1,
                 isFavorite = false,
+                isPinned = isPinned,
                 isCloudOnly = true,
                 metadataUpdatedAt = 1,
                 bodyAssetId = null,

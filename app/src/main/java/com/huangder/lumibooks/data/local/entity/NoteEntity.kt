@@ -33,5 +33,7 @@ data class NoteEntity(
     val origin: String = "manual",
     val sourceRuleId: String? = null,
     val sourceMatchKey: String? = null,
-    val styleSnapshotJson: String? = null
+    val styleSnapshotJson: String? = null,
+    @androidx.room.ColumnInfo(defaultValue = "'[]'")
+    val tagsJson: String = "[]"
 )

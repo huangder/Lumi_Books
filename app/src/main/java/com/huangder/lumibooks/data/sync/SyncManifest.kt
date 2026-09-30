@@ -38,7 +38,8 @@ data class SyncBookMetadata(
     val format: String,
     val createdAt: Long,
     val isFavorite: Boolean,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val isPinned: Boolean = false
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("title", title)
@@ -47,6 +48,7 @@ data class SyncBookMetadata(
         put("createdAt", createdAt)
         put("isFavorite", isFavorite)
         put("updatedAt", updatedAt)
+        put("isPinned", isPinned)
     }
 
     companion object {
@@ -56,7 +58,8 @@ data class SyncBookMetadata(
             format = json.optString("format", "TXT"),
             createdAt = json.optLong("createdAt"),
             isFavorite = json.optBoolean("isFavorite"),
-            updatedAt = json.optLong("updatedAt", json.optLong("createdAt"))
+            updatedAt = json.optLong("updatedAt", json.optLong("createdAt")),
+            isPinned = json.optBoolean("isPinned", false)
         )
     }
 }

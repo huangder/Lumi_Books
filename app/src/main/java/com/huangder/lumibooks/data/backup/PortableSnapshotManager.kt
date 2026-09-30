@@ -13,6 +13,7 @@ import com.huangder.lumibooks.util.FileUtils
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -39,7 +40,8 @@ class PortableSnapshotManager @Inject constructor(
     private val dataStoreManager: DataStoreManager,
     private val syncIdentityStore: SyncIdentityStore,
     private val mineruTokenStore: MineruTokenStore,
-    private val externalTtsTokenStore: ExternalTtsTokenStore
+    private val externalTtsTokenStore: ExternalTtsTokenStore,
+    private val translationTokenStore: com.huangder.lumibooks.translation.TranslationTokenStore
 ) {
     suspend fun capture(includeBookFiles: Boolean = true): PortableSnapshotBundle = withContext(Dispatchers.IO) {
         val deviceId = syncIdentityStore.deviceId()
@@ -166,6 +168,10 @@ class PortableSnapshotManager @Inject constructor(
             else dataStoreManager.applyPortablePreferences(preferences)
             if (!mineruTokenStore.hasToken()) dataStoreManager.saveMineruMode("disabled")
             if (!externalTtsTokenStore.hasToken()) dataStoreManager.disableExternalTts()
+            val translationSettings = dataStoreManager.translationSettings.first()
+            if (!translationTokenStore.hasToken(translationSettings.credentialScope)) {
+                dataStoreManager.saveTranslationSettings(translationSettings.copy(enabled = false))
+            }
 
             database.withTransaction {
                 val bookDao = database.bookDao()
@@ -518,7 +524,7 @@ class PortableSnapshotManager @Inject constructor(
     private fun BookEntity.toPortable(bodyAssetId: String?, coverAssetId: String?) = PortableBook(
         id, title, author, format, lastReadTime, readingProgress, locatorJson, createdAt, isFavorite,
         isCloudOnly, metadataUpdatedAt, bodyAssetId, coverAssetId, remoteLibraryKey, remoteFileName,
-        remoteFileSize, remoteFileSha256
+        remoteFileSize, remoteFileSha256, isPinned
     )
 
 }
@@ -535,7 +541,7 @@ internal fun PortableBook.toEntity(
         ?: (bodyAssetId == null && (isCloudOnly || filePath.isBlank())),
     remoteLibraryKey = remoteLibraryKey, remoteFileName = remoteFileName,
     remoteFileSize = remoteFileSize, remoteFileSha256 = remoteFileSha256,
-    metadataUpdatedAt = metadataUpdatedAt
+    metadataUpdatedAt = metadataUpdatedAt, isPinned = isPinned
 )
 
 private fun stableSuffix(value: String): String = MessageDigest.getInstance("SHA-256")

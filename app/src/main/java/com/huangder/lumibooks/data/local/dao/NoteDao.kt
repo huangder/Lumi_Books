@@ -16,6 +16,15 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE bookId = :bookId ORDER BY createdAt DESC")
     fun getNotesByBookId(bookId: String): Flow<List<NoteEntity>>
 
+    @Query("SELECT * FROM notes")
+    suspend fun getAllNotes(): List<NoteEntity>
+
+    @Query("SELECT tagsJson FROM notes")
+    fun observeTagLists(): Flow<List<String>>
+
+    @Query("UPDATE notes SET tagsJson = :tagsJson, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateTags(id: Long, tagsJson: String, updatedAt: Long)
+
     @Query(
         "SELECT notes.id AS noteId, notes.bookId AS bookId, " +
             "notes.selectedText AS selectedText, notes.note AS noteText, " +

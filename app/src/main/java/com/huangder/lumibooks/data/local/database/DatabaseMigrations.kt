@@ -238,4 +238,29 @@ object DatabaseMigrations {
             )
         }
     }
+
+    val MIGRATION_14_15 = object : Migration(14, 15) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE books ADD COLUMN isPinned INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
+    val MIGRATION_15_16 = object : Migration(15, 16) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE highlight_rules ADD COLUMN fontType TEXT NOT NULL DEFAULT ''")
+        }
+    }
+
+    val MIGRATION_16_17 = object : Migration(16, 17) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE bookmarks ADD COLUMN remark TEXT NOT NULL DEFAULT ''")
+        }
+    }
+
+    val MIGRATION_17_18 = object : Migration(17, 18) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE notes ADD COLUMN tagsJson TEXT NOT NULL DEFAULT '[]'")
+            db.execSQL("ALTER TABLE bookmarks ADD COLUMN tagsJson TEXT NOT NULL DEFAULT '[]'")
+        }
+    }
 }

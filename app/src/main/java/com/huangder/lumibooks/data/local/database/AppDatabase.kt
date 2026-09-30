@@ -42,7 +42,7 @@ import com.huangder.lumibooks.data.local.dao.HighlightRuleDao
         BookHighlightSettingsEntity::class,
         HighlightRuleExclusionEntity::class
     ],
-    version = 14,
+    version = 18,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

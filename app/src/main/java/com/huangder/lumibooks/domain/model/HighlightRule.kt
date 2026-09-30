@@ -13,6 +13,8 @@ data class HighlightRule(
     val underlineWidth: Float = 1f,
     val fontWeight: Int = 400,
     val isItalic: Boolean = false,
+    /** Optional reader font override. Blank means inherit the book's body font. */
+    val fontType: String = "",
     val sampleText: String = "",
     /** Original object used to preserve fields that LUMI does not execute. */
     val rawJson: String = "{}",
@@ -22,7 +24,9 @@ data class HighlightRule(
         const val TARGET_BODY = 0
         const val UNDERLINE_NONE = 0
         const val UNDERLINE_STRAIGHT = 1
+        const val UNDERLINE_DOUBLE = 2
         const val UNDERLINE_WAVE = 3
+        const val UNDERLINE_DASHED = 4
     }
 }
 
@@ -45,7 +49,9 @@ data class RuleStyle(
     val underlineOffset: Float,
     val underlineWidth: Float,
     val fontWeight: Int,
-    val italic: Boolean
+    val italic: Boolean,
+    /** Optional reader font override. Blank means inherit the book's body font. */
+    val fontType: String = ""
 )
 
 data class RuleMatch(
