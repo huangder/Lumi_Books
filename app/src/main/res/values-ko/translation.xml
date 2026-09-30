@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="translation_title">AI 번역</string>
+    <string name="translation_description">사전 결과 아래에 선택한 텍스트의 번역과 간단한 뜻을 표시합니다. 자동 번역을 꺼도 수동으로 번역할 수 있습니다.</string>
+    <string name="translation_loading">번역 중…</string>
+    <string name="translation_copy">번역 복사</string>
+    <string name="translation_retry">번역 재시도</string>
+    <string name="translation_settings">번역 설정</string>
+    <string name="translation_provider">제공업체</string>
+    <string name="translation_custom">사용자 지정</string>
+    <string name="translation_url_hint">API 기본 URL(예: /v1로 끝나는 주소)을 입력하세요. /chat/completions는 제외합니다.</string>
+    <string name="translation_auth">인증 방식</string>
+    <string name="translation_key_saved">이 주소의 키가 저장되어 있습니다. 비워 두면 기존 키를 사용합니다.</string>
+    <string name="translation_key_hint">API 키를 입력하세요. 이 기기에만 암호화하여 저장됩니다.</string>
+    <string name="translation_model">모델 이름</string>
+    <string name="translation_language">대상 언어</string>
+    <string name="translation_allow_http">HTTP 허용(암호화되지 않음, 신뢰할 수 있는 자체 서비스용)</string>
+    <string name="translation_consent">번역 시 선택한 텍스트를 설정한 서비스로 전송합니다. 자동 모드에서는 사전을 열 때 요청하며, 꺼져 있으면 번역 버튼을 누를 때 요청합니다. 사용 요금은 해당 서비스 계정에 청구됩니다.</string>
+    <string name="translation_enable">자동 번역 활성화</string>
+    <string name="translation_save">설정 저장</string>
+    <string name="translation_test">연결 테스트 및 예문 번역</string>
+    <string name="translation_saved">설정이 저장되었습니다</string>
+    <string name="translation_error_configuration">기본 URL, 모델 이름, 대상 언어를 확인하세요. HTTP는 명시적으로 허용해야 합니다.</string>
+    <string name="translation_error_key">이 주소의 API 키를 입력하세요.</string>
+    <string name="translation_error_auth">인증에 실패했습니다. API 키와 권한을 확인하세요.</string>
+    <string name="translation_error_limit">요청 한도 또는 할당량을 초과했습니다. 나중에 시도하거나 계정을 확인하세요.</string>
+    <string name="translation_error_model">모델 또는 API를 사용할 수 없습니다. 모델 이름과 기본 URL을 확인하세요.</string>
+    <string name="translation_error_empty">유효한 번역이 반환되지 않았습니다. 재시도하거나 모델을 변경하세요.</string>
+    <string name="translation_error_network">연결에 실패했습니다. 네트워크를 확인하고 다시 시도하세요.</string>
+    <string name="translation_error_timeout">번역 요청 시간이 초과되었습니다. 다시 시도하세요.</string>
+    <string name="translation_error_service">번역 서비스를 사용할 수 없습니다. 나중에 다시 시도하세요.</string>
+    <string name="translation_error_storage">설정을 저장하거나 키를 읽을 수 없습니다. 다시 시도하세요.</string>
+    <string name="translation_fetch_models">모델 이름 가져오기</string>
+    <string name="translation_fetching_models">모델 가져오는 중…</string>
+    <string name="translation_choose_model">모델 선택</string>
+    <string name="translation_models_manual">이 API는 모델 목록을 지원하지 않을 수 있습니다. 모델 이름을 직접 입력할 수 있습니다。</string>
+    <string name="translation_translate">번역</string>
+</resources>

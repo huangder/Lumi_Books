@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="translation_title">AI 翻訳</string>
+    <string name="translation_description">辞書の末尾に選択した文章の翻訳や単語の簡潔な意味を表示します。自動翻訳をオフにしても手動で翻訳できます。</string>
+    <string name="translation_loading">翻訳中…</string>
+    <string name="translation_copy">訳文をコピー</string>
+    <string name="translation_retry">再試行</string>
+    <string name="translation_settings">翻訳設定</string>
+    <string name="translation_provider">サービス</string>
+    <string name="translation_custom">カスタム</string>
+    <string name="translation_url_hint">API のベース URL（例：末尾が /v1）を入力します。/chat/completions は不要です。</string>
+    <string name="translation_auth">認証方式</string>
+    <string name="translation_key_saved">この接続先のキーは保存済みです。空欄のままで再利用できます。</string>
+    <string name="translation_key_hint">API キーを入力してください。この端末にのみ暗号化して保存します。</string>
+    <string name="translation_model">モデル名</string>
+    <string name="translation_language">翻訳先の言語</string>
+    <string name="translation_allow_http">HTTP を許可（暗号化なし。信頼できる自前のサービス向け）</string>
+    <string name="translation_consent">翻訳時に選択した文章を設定先のサービスへ送信します。自動翻訳では辞書を開くと送信し、オフの場合は翻訳ボタンを押すと送信します。利用料金はサービスのアカウントに請求されます。</string>
+    <string name="translation_enable">自動翻訳を有効にする</string>
+    <string name="translation_save">設定を保存</string>
+    <string name="translation_test">接続テスト・サンプル翻訳</string>
+    <string name="translation_saved">設定を保存しました</string>
+    <string name="translation_error_configuration">ベース URL、モデル名、翻訳先の言語を確認してください。HTTP は明示的な許可が必要です。</string>
+    <string name="translation_error_key">この接続先の API キーを入力してください。</string>
+    <string name="translation_error_auth">認証に失敗しました。API キーと権限を確認してください。</string>
+    <string name="translation_error_limit">利用制限または残高不足です。時間をおくか、アカウントを確認してください。</string>
+    <string name="translation_error_model">モデルまたは接続先を利用できません。モデル名とベース URL を確認してください。</string>
+    <string name="translation_error_empty">有効な訳文が返されませんでした。再試行するかモデルを変更してください。</string>
+    <string name="translation_error_network">接続に失敗しました。ネットワークを確認して再試行してください。</string>
+    <string name="translation_error_timeout">翻訳がタイムアウトしました。再試行してください。</string>
+    <string name="translation_error_service">翻訳サービスを利用できません。しばらくしてから再試行してください。</string>
+    <string name="translation_error_storage">設定の保存またはキーの読み取りに失敗しました。再試行してください。</string>
+    <string name="translation_fetch_models">モデル名を取得</string>
+    <string name="translation_fetching_models">モデルを取得中…</string>
+    <string name="translation_choose_model">モデルを選択</string>
+    <string name="translation_models_manual">この接続先はモデル一覧に対応していない場合があります。モデル名は手入力できます。</string>
+    <string name="translation_translate">翻訳</string>
+</resources>

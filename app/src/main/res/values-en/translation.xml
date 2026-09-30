@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="translation_title">AI translation</string>
+    <string name="translation_description">Translate selected text and add brief definitions below dictionary results. Manual translation remains available when automatic translation is off.</string>
+    <string name="translation_loading">Translating…</string>
+    <string name="translation_copy">Copy translation</string>
+    <string name="translation_retry">Retry translation</string>
+    <string name="translation_settings">Translation settings</string>
+    <string name="translation_provider">Provider</string>
+    <string name="translation_custom">Custom</string>
+    <string name="translation_url_hint">Enter the API base URL (for example, ending in /v1), without /chat/completions.</string>
+    <string name="translation_auth">Authentication</string>
+    <string name="translation_key_saved">A key is saved for this endpoint. Leave blank to keep it.</string>
+    <string name="translation_key_hint">Enter your API key. It is encrypted and stored only on this device.</string>
+    <string name="translation_model">Model name</string>
+    <string name="translation_language">Target language</string>
+    <string name="translation_allow_http">Allow HTTP (unencrypted; for trusted self-hosted services)</string>
+    <string name="translation_consent">Translation sends selected text to your configured service. Automatic mode requests a translation when you open the dictionary; otherwise, tap Translate. Usage is charged to that service account.</string>
+    <string name="translation_enable">Enable automatic translation</string>
+    <string name="translation_save">Save settings</string>
+    <string name="translation_test">Test connection and translate a sample</string>
+    <string name="translation_saved">Settings saved</string>
+    <string name="translation_error_configuration">Check the base URL, model name and target language. HTTP must be explicitly allowed.</string>
+    <string name="translation_error_key">Enter an API key for this endpoint.</string>
+    <string name="translation_error_auth">Authentication failed. Check the API key and its permissions.</string>
+    <string name="translation_error_limit">Rate or quota limit reached. Try later or check your account.</string>
+    <string name="translation_error_model">Model or endpoint unavailable. Check the model name and base URL.</string>
+    <string name="translation_error_empty">No valid translation was returned. Retry or choose another model.</string>
+    <string name="translation_error_network">Connection failed. Check your network and retry.</string>
+    <string name="translation_error_timeout">Translation timed out. Please retry.</string>
+    <string name="translation_error_service">Translation service unavailable. Try again later.</string>
+    <string name="translation_error_storage">Unable to save settings or read the key. Please retry.</string>
+    <string name="translation_fetch_models">Fetch model names</string>
+    <string name="translation_fetching_models">Fetching models…</string>
+    <string name="translation_choose_model">Choose model</string>
+    <string name="translation_models_manual">This endpoint may not support listing models. You can still enter a model name manually.</string>
+    <string name="translation_translate">Translate</string>
+</resources>

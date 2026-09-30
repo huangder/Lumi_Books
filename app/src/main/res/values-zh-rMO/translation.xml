@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="translation_title">AI 翻譯</string>
+    <string name="translation_description">在字典結果末尾翻譯選文，並為詞語補充簡短釋義。關閉自動翻譯後仍可手動翻譯。</string>
+    <string name="translation_loading">正在翻譯…</string>
+    <string name="translation_copy">複製譯文</string>
+    <string name="translation_retry">重試翻譯</string>
+    <string name="translation_settings">翻譯設定</string>
+    <string name="translation_provider">服務供應商</string>
+    <string name="translation_custom">自訂</string>
+    <string name="translation_url_hint">填寫 API 基礎網址（例如以 /v1 結尾），無需填寫 /chat/completions。</string>
+    <string name="translation_auth">驗證方式</string>
+    <string name="translation_key_saved">已儲存此 API 的金鑰；留空可繼續使用。</string>
+    <string name="translation_key_hint">填寫此服務的 API Key，僅加密儲存於本機。</string>
+    <string name="translation_model">模型名稱</string>
+    <string name="translation_language">目標語言</string>
+    <string name="translation_allow_http">允許 HTTP（未加密，僅用於可信的自建服務）</string>
+    <string name="translation_consent">翻譯時會將所選文字傳送至你設定的服務。開啟自動翻譯後，點擊字典即發起請求；關閉後可手動點擊翻譯。呼叫費用由對應服務帳戶承擔。</string>
+    <string name="translation_enable">啟用自動翻譯</string>
+    <string name="translation_save">儲存設定</string>
+    <string name="translation_test">測試連線並翻譯範例</string>
+    <string name="translation_saved">設定已儲存</string>
+    <string name="translation_error_configuration">請檢查基礎網址、模型名稱及目標語言；HTTP 須明確允許。</string>
+    <string name="translation_error_key">請填寫此 API 的金鑰。</string>
+    <string name="translation_error_auth">驗證失敗，請檢查 API Key 及其權限。</string>
+    <string name="translation_error_limit">服務限流或額度不足，請稍後重試或檢查帳戶。</string>
+    <string name="translation_error_model">模型或 API 無法使用，請檢查模型名稱及基礎網址。</string>
+    <string name="translation_error_empty">服務未傳回有效譯文，請重試或更換模型。</string>
+    <string name="translation_error_network">網路連線失敗，請檢查網路後重試。</string>
+    <string name="translation_error_timeout">翻譯請求逾時，請重試。</string>
+    <string name="translation_error_service">翻譯服務暫時無法使用，請稍後重試。</string>
+    <string name="translation_error_storage">無法儲存設定或讀取金鑰，請重試。</string>
+    <string name="translation_fetch_models">取得模型名稱</string>
+    <string name="translation_fetching_models">正在取得模型…</string>
+    <string name="translation_choose_model">選擇模型</string>
+    <string name="translation_models_manual">此 API 可能不支援取得模型清單，仍可手動輸入模型名稱。</string>
+    <string name="translation_translate">翻譯</string>
+</resources>
