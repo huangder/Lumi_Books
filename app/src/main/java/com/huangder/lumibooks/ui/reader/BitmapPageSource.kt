@@ -32,24 +32,30 @@ internal interface BitmapPageSource : Closeable {
     fun pageDrawn(pageIndex: Int, finalQuality: Boolean)
     suspend fun tiledPage(pageIndex: Int): RasterTileSource?
     suspend fun pageAspectRatio(pageIndex: Int, background: Boolean = false): Float?
+    suspend fun pageWidth(pageIndex: Int): Int?
+    suspend fun horizontalCrop(pageIndex: Int): RasterHorizontalCrop
     suspend fun renderPreview(pageIndex: Int, targetWidthPx: Int): Bitmap?
     suspend fun renderPage(pageIndex: Int, targetWidthPx: Int, mode: PageRenderMode = PageRenderMode.NORMAL): Bitmap?
     suspend fun renderThumbnail(pageIndex: Int, targetWidthPx: Int): Bitmap?
 }
 
 internal object BitmapPageSourceFactory {
-    suspend fun create(context: Context, filePath: String, format: BookFormat): BitmapPageSource? {
+    suspend fun create(context: Context, filePath: String, format: BookFormat,
+        epubComicIndex: com.huangder.lumibooks.util.epub.EpubComicIndex? = null): BitmapPageSource? {
         var owned: BitmapPageSource? = null
         try {
             return withContext(Dispatchers.IO) {
                 val decoder = when (format) {
                     BookFormat.PDF -> openPdf(context, filePath)
                     BookFormat.CBZ -> CbzPageDecoder(CbzArchiveOpener.open(context, filePath))
+                    BookFormat.EPUB -> CbzPageDecoder(com.huangder.lumibooks.util.epub.EpubComicArchive.open(
+                        context, filePath, epubComicIndex ?: return@withContext null))
                     else -> return@withContext null
                 }
                 try {
                     val disk = runCatching {
-                        RasterResumeCache(context, BookFingerprint.resolve(context, filePath))
+                        RasterResumeCache(context, BookFingerprint.resolve(context, filePath),
+                            namespace = if (epubComicIndex != null) "raster_epub_comic_v${com.huangder.lumibooks.util.epub.EpubComicIndex.VERSION}" else "raster")
                     }.getOrNull()
                     RasterRenderSession(decoder, disk).also { owned = it }
                 } catch (error: Throwable) {

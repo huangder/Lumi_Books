@@ -19,12 +19,13 @@ internal class RasterResumeCache(
     private val fingerprint: BookFingerprint,
     private val maxBookBytes: Long = 64L * 1024 * 1024,
     private val maxTotalBytes: Long = 192L * 1024 * 1024,
-    private val maxBooks: Int = 3
+    private val maxBooks: Int = 3,
+    namespace: String = "raster"
 ) {
     private val store = ReaderCacheStore.get(context)
     private val generation = store.currentGeneration()
     private val root = File(context.cacheDir, "reader_cache")
-    private val directory = File(root, "raster_${fingerprint.key}")
+    private val directory = File(root, "${namespace}_${fingerprint.key}")
     private val lease = UUID.randomUUID().toString()
     private val leaseKey = directory.absolutePath
     private var revision = 0L

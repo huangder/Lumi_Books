@@ -1383,11 +1383,12 @@ public open class SubsamplingScaleImageView @JvmOverloads constructor(
 	}
 
 	private fun loadBitmap(source: Uri, preview: Boolean) {
+		val requestedDownSampling = downSampling
 		coroutineScope.launch {
 			try {
 				val bitmap = async {
 					runInterruptible(backgroundDispatcher) {
-						bitmapDecoderFactory.make().decode(context, source, downSampling)
+						bitmapDecoderFactory.make().decode(context, source, requestedDownSampling)
 					}
 				}
 				val orientation = async {
@@ -1395,10 +1396,16 @@ public open class SubsamplingScaleImageView @JvmOverloads constructor(
 						getExifOrientation(context, source)
 					}
 				}
+				val decoded = bitmap.await()
+				val decodedOrientation = orientation.await()
+				if (requestedDownSampling != downSampling || (!preview && uri != source)) {
+					decoded.recycle()
+					return@launch
+				}
 				if (preview) {
-					onPreviewLoaded(bitmap.await())
+					onPreviewLoaded(decoded)
 				} else {
-					onImageLoaded(bitmap.await(), orientation.await(), false)
+					onImageLoaded(decoded, decodedOrientation, false)
 				}
 			} catch (e: CancellationException) {
 				throw e
@@ -1447,6 +1454,8 @@ public open class SubsamplingScaleImageView @JvmOverloads constructor(
 
 	private fun loadTile(decoder: ImageRegionDecoder, tile: Tile) {
 		tile.isLoading = true
+		val requestedDownSampling = downSampling
+		val requestedSampleSize = tile.sampleSize * requestedDownSampling
 		coroutineScope.launch {
 			try {
 				val bitmap = if (decoder.isReady && tile.isVisible) {
@@ -1459,7 +1468,7 @@ public open class SubsamplingScaleImageView @JvmOverloads constructor(
 								sRegion?.let {
 									tile.fileSRect.offset(it.left, it.top)
 								}
-								decoder.decodeRegion(tile.fileSRect, tile.sampleSize * downSampling)
+								decoder.decodeRegion(tile.fileSRect, requestedSampleSize)
 							} else {
 								tile.isLoading = false
 								null
@@ -1472,12 +1481,22 @@ public open class SubsamplingScaleImageView @JvmOverloads constructor(
 					tile.isLoading = false
 					null
 				}
-				tile.bitmap = bitmap
 				tile.isLoading = false
+				// Visibility can promote a preloaded 1/4-resolution tile while its codec
+				// is still running. Never mark that late result valid for full quality.
+				if (requestedDownSampling != downSampling || this@SubsamplingScaleImageView.decoder !== decoder) {
+					bitmap?.recycle()
+					tile.isValid = false
+					refreshRequiredTiles(load = true)
+					return@launch
+				}
+				tile.bitmap = bitmap
 				onTileLoaded()
 			} catch (e: CancellationException) {
+				tile.isLoading = false
 				throw e
 			} catch (error: Throwable) {
+				tile.isLoading = false
 				onImageEventListeners.onTileLoadError(error)
 			}
 		}

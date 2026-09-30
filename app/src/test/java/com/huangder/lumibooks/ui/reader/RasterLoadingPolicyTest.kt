@@ -4,6 +4,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RasterLoadingPolicyTest {
+    @Test fun `opening reserves decoding for visible pages until the handoff completes`() {
+        val opening = RasterViewport(setOf(10), 10, backgroundPreparationEnabled = false)
+        assertTrue(rasterPrefetchWindow(opening, 1, 100).isEmpty())
+        assertEquals(listOf(11, 12, 9),
+            rasterPrefetchWindow(opening.copy(backgroundPreparationEnabled = true), 1, 100))
+    }
+
     @Test fun `resume window keeps current and nearest pages first`() {
         assertEquals(listOf(7, 8, 6, 9, 5), rasterResumeWindow(7, 30, false))
         assertEquals(listOf(0, 1, 2), rasterResumeWindow(0, 30, false))

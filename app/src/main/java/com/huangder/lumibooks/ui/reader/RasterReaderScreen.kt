@@ -33,6 +33,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroidSize
@@ -69,6 +70,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.VerticalPager
@@ -78,6 +80,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -131,6 +134,7 @@ import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
 import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
+import com.huangder.lumibooks.ui.components.SwipeRevealItem
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.components.animateBottomSheetIn
 import com.huangder.lumibooks.ui.components.animateBottomSheetOut
@@ -178,6 +182,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.ui.text.font.FontFamily
 import java.io.File
@@ -185,6 +190,7 @@ import java.io.Closeable
 import java.util.LinkedHashMap
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.Backdrop
 
 internal enum class PdfMultiTouchMode {
     UNDECIDED,
@@ -256,9 +262,14 @@ internal fun resolvePdfTransformMode(
     panMotion: Float,
     zoomMotion: Float,
     touchSlop: Float,
-    preferPan: Boolean
+    preferPan: Boolean,
+    zoomLocked: Boolean = false
 ): PdfMultiTouchMode {
     val boundedSlop = touchSlop.coerceAtLeast(0f)
+    // Ignore changes in finger spacing while locked, but keep panning and page turns.
+    if (zoomLocked) {
+        return if (panMotion >= boundedSlop) PdfMultiTouchMode.PAN else PdfMultiTouchMode.UNDECIDED
+    }
     if (preferPan) {
         return when {
             panMotion >= boundedSlop &&
@@ -351,6 +362,27 @@ internal fun pdfPageForEdgeDrag(
     return target.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
 }
 
+internal fun pdfPageForEdgeTap(
+    pageMode: PdfPageMode,
+    currentIndex: Int,
+    pageCount: Int,
+    position: Offset,
+    viewport: IntSize,
+    edgeSizePx: Float,
+    isRightToLeft: Boolean = false
+): Int? {
+    if (pageCount <= 0 || viewport.width <= 0 || viewport.height <= 0) return null
+    if (pageMode == PdfPageMode.VERTICAL_SCROLL) return null
+    val edge = edgeSizePx.coerceAtMost(viewport.width / 4f)
+    val reverse = pageMode == PdfPageMode.HORIZONTAL_PAGING && isRightToLeft
+    val delta = when {
+        position.x <= edge -> if (reverse) 1 else -1
+        position.x >= viewport.width - edge -> if (reverse) -1 else 1
+        else -> return null
+    }
+    return (currentIndex + delta).coerceIn(0, pageCount - 1)
+}
+
 private const val PDF_MIN_FLING_VELOCITY = 80f
 
 /** Continues a zoomed page pan after release until velocity decays or an edge is reached. */
@@ -417,11 +449,22 @@ fun RasterReaderScreen(
     bookId: String,
     onNavigateBack: () -> Unit,
     onOpenBook: (String) -> Unit,
+    onFirstContentDrawn: () -> Unit = {},
+    readerActive: Boolean = true,
     viewModel: ReaderViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val ttsState by viewModel.ttsState.collectAsState()
-    val bookmarks by viewModel.bookmarks.collectAsState()
+    val ttsCurrentPage by viewModel.ttsCurrentPage.collectAsState()
+    val storedBookmarks by viewModel.bookmarks.collectAsState()
+    val bookmarks = remember(storedBookmarks, uiState.epubComicIndex) {
+        val index = uiState.epubComicIndex
+        if (index == null) storedBookmarks else storedBookmarks.mapNotNull { bookmark ->
+            val position = com.huangder.lumibooks.util.epub.EpubComicPosition.decode(bookmark.locatorJson)
+                ?: return@mapNotNull null
+            index.find(position)?.let { bookmark.copy(chapterIndex = it) }
+        }
+    }
     val notes by viewModel.notes.collectAsState()
     val conversionState by viewModel.pdfConversionState.collectAsState()
     val mineruMode by viewModel.mineruMode.collectAsState()
@@ -431,13 +474,26 @@ fun RasterReaderScreen(
 
     val book = uiState.book
     val filePath = book?.filePath
-    val pageCount = uiState.chapterCount
+    val comicIndex = uiState.epubComicIndex
+    val pageCount = comicIndex?.pages?.size ?: uiState.chapterCount
     val bookmarkedPages = remember(bookmarks) {
         bookmarks.mapTo(mutableSetOf()) { it.chapterIndex }
     }
     var showMenu by remember { mutableStateOf(false) }
     var showPdfToc by remember { mutableStateOf(false) }
     var showPdfBookmarks by remember { mutableStateOf(false) }
+    var pendingBookmarkRemarkId by remember(bookId) { mutableStateOf<String?>(null) }
+    var bookmarkRemarkTags by remember(bookId) { mutableStateOf<List<String>>(emptyList()) }
+    val availableAnnotationTags by viewModel.annotationTags.collectAsState(initial = emptyList())
+    var quickTagTarget by remember(bookId) { mutableStateOf<Pair<String, Boolean>?>(null) }
+    var tagEditorTarget by remember(bookId) { mutableStateOf<Pair<String, Boolean>?>(null) }
+    LaunchedEffect(quickTagTarget) {
+        if (quickTagTarget != null) {
+            kotlinx.coroutines.delay(5_000L)
+            quickTagTarget = null
+        }
+    }
+    var bookmarkRemarkText by remember(bookId) { mutableStateOf("") }
     var showImageAdjustments by remember { mutableStateOf(false) }
     var annotationMode by remember(bookId) { mutableStateOf(false) }
     var selectedInkTool by remember(bookId) { mutableStateOf(PdfInkTool.PEN) }
@@ -446,13 +502,16 @@ fun RasterReaderScreen(
     var conversionSheet by remember { mutableStateOf<PdfConversionSheet?>(null) }
     val exitReader: () -> Unit = {
         viewModel.stopTts()
-        onNavigateBack()
+        if (uiState.epubComicReader) scope.launch {
+            viewModel.flushEpubComicProgress()
+            onNavigateBack()
+        } else onNavigateBack()
     }
     val openBookFromReader: (String) -> Unit = { targetBookId ->
         viewModel.stopTts()
         onOpenBook(targetBookId)
     }
-    val isAnySheetOpen = showPdfToc || showPdfBookmarks || conversionSheet != null || showImageAdjustments
+    val isAnySheetOpen = tagEditorTarget != null || showPdfToc || showPdfBookmarks || pendingBookmarkRemarkId != null || conversionSheet != null || showImageAdjustments
     // 返回手势只负责触发退出：不走"内容跟随手指"的预见式动画，避免与阅读页既有的退出动画叠加。
     ConfigurableBackHandler(
         enabled = !isAnySheetOpen,
@@ -464,10 +523,14 @@ fun RasterReaderScreen(
     var pendingModePage by remember { mutableStateOf<Int?>(null) }
     val eInkMode = LocalEInkMode.current || uiState.eInkModeEnabled
     val rasterBackgroundColor = if (eInkMode) Color.White else AppColors.WindowBg
-    ReaderSystemBarStyle(
-        backgroundColor = rasterBackgroundColor,
-        useDarkIcons = eInkMode || !LocalIsDarkTheme.current
-    )
+    // NavHost keeps the outgoing reader composed during pop animations; it must not
+    // overwrite the home screen's system-bar style after navigation has switched.
+    if (readerActive) {
+        ReaderSystemBarStyle(
+            backgroundColor = rasterBackgroundColor,
+            useDarkIcons = eInkMode || !LocalIsDarkTheme.current
+        )
+    }
     val motionEnabled = LocalMotionEnabled.current
     val effectivePdfPageMode = if (eInkMode) "horizontal" else uiState.pdfPageMode
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkMode
@@ -564,7 +627,7 @@ fun RasterReaderScreen(
         pageSourceFailed = false
         pageSource = null
         val source = bookFormat?.let { format ->
-            BitmapPageSourceFactory.create(context, filePath, format)
+            BitmapPageSourceFactory.create(context, filePath, format, comicIndex)
         }
         if (source == null) pageSourceFailed = true else pageSource = source
     }
@@ -579,24 +642,31 @@ fun RasterReaderScreen(
     // 若等到可见后再异步测量，项目高度会从兜底值跳到真实值，
     // 快速滑动（尤其是往回滑）时列表会被这种高度变化打断，表现为"卡在几页之间"。
     val pageAspectRatios = remember(pageSource) { mutableStateMapOf<Int, Float>() }
+    val pageHorizontalCrops = remember(pageSource) { mutableStateMapOf<Int, RasterHorizontalCrop>() }
+    val pageOriginalWidths = remember(pageSource) { mutableStateMapOf<Int, Int>() }
 
     // The raster experiment intentionally owns PDF annotations. Remove legacy text
     // annotations once while preserving any strokes created by this branch.
     LaunchedEffect(bookId) {
-        viewModel.clearLegacyPdfAnnotations(bookId)
+        if (book?.format == BookFormat.PDF) viewModel.clearLegacyPdfAnnotations(bookId)
     }
-    val inkStrokes = remember(notes) {
+    val inkStrokes = remember(notes, comicIndex) {
         val decoded = notes.asSequence()
-            .filter { it.type == PdfInkPenType || it.type == PdfInkHighlighterType }
+            .filter { if (comicIndex != null) isEpubComicInk(it.type) else it.type == PdfInkPenType || it.type == PdfInkHighlighterType }
             .mapNotNull { note ->
+                val imagePage = if (comicIndex != null) {
+                    val position = comicPositionFromLocator(note.startLocatorJson) ?: return@mapNotNull null
+                    comicIndex.find(position) ?: return@mapNotNull null
+                } else note.chapterIndex
                 PdfInkStrokeLocatorV1.decode(
                     encoded = note.startLocatorJson,
                     id = note.id,
                     fallbackPage = note.chapterIndex,
                     fallbackColor = note.color
                 )?.copy(
+                    page = imagePage,
                     createdAt = note.createdAt,
-                    tool = if (note.type == PdfInkHighlighterType) PdfInkTool.HIGHLIGHTER else PdfInkTool.PEN,
+                    tool = if (note.type == PdfInkHighlighterType || note.type == EpubComicInkHighlighterType) PdfInkTool.HIGHLIGHTER else PdfInkTool.PEN,
                     color = note.color
                 )
             }
@@ -605,17 +675,29 @@ fun RasterReaderScreen(
     }
 
     val startPage = remember(bookId, pageCount) {
-        restoredRasterPageIndex(book.readingProgress, pageCount)
+        comicIndex?.let { index -> uiState.epubComicPosition?.let(index::restore) }
+            ?: restoredRasterPageIndex(book.readingProgress, pageCount)
     }
     val pageMode = PdfPageMode.fromKey(effectivePdfPageMode)
     // 解码清晰度档位（正常 / 高清 / 原图）：跟随全局设置，在顶部栏直接切换。
     val renderMode = PageRenderMode.fromKey(uiState.pageRenderMode)
     val imageAdjustments = uiState.imageAdjustments.forDisplay(eInkMode)
+    val manualCropEnabled = uiState.rasterManualCropEnabled
+    val manualCrop = uiState.rasterManualCrop
+    val horizontalCropEnabled = uiState.rasterHorizontalCropEnabled || manualCropEnabled
+    LaunchedEffect(pageSource, horizontalCropEnabled, manualCropEnabled, manualCrop) {
+        pageHorizontalCrops.clear()
+        if (manualCropEnabled) {
+            pageOriginalWidths.forEach { (page, width) ->
+                pageHorizontalCrops[page] = manualCrop.forWidth(width)
+            }
+        }
+    }
     val isHorizontal = pageMode == PdfPageMode.HORIZONTAL_PAGING
     val isVerticalPaging = pageMode == PdfPageMode.VERTICAL_PAGING
 
     // 漫画：翻页方向只影响横向翻页；双页对开仅在大屏/横屏的横向翻页下生效。
-    val isComic = book?.format == BookFormat.CBZ
+    val isComic = book?.format == BookFormat.CBZ || uiState.epubComicReader
     val readingDirection = CbzReadingDirection.fromKey(uiState.cbzReadingDirection)
         ?: CbzReadingDirection.LEFT_TO_RIGHT
     val isRightToLeft = isComic && readingDirection.isRightToLeft
@@ -646,6 +728,24 @@ fun RasterReaderScreen(
     }
 
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = startPage)
+    val openingPages = remember(startPage, spreadEnabled, pageCount) {
+        if (spreadEnabled) {
+            val spread = CbzSpreadPlanner.spreadFor(
+                readingIndexForPage(startPage), pageCount, COVER_ALONE_FIRST_PAGE)
+            listOfNotNull(spread?.firstPage, spread?.secondPage).toSet()
+        } else setOf(startPage)
+    }
+    val openingReadiness = remember(bookId, openingPages) { RasterOpeningReadiness(openingPages) }
+    val currentFirstContentCallback by rememberUpdatedState(onFirstContentDrawn)
+    val reportPagePrepared: (Int) -> Unit = remember(openingReadiness) {
+        { page -> if (openingReadiness.pagePrepared(page)) currentFirstContentCallback() }
+    }
+    LaunchedEffect(pageSourceFailed) {
+        if (pageSourceFailed) {
+            androidx.compose.runtime.withFrameNanos { }
+            currentFirstContentCallback()
+        }
+    }
     val pagerState = rememberPagerState(initialPage = readingIndexForPage(startPage)) { displayCount }
     val verticalPagerState = rememberPagerState(initialPage = startPage) { pageCount }
     val verticalPage by remember {
@@ -670,10 +770,50 @@ fun RasterReaderScreen(
             }
         }
     }
+    val initialComicFraction = remember(bookId, contentRevision) { uiState.epubComicPosition?.scrollFraction ?: 0f }
+    var comicScrollRestored by remember(bookId, contentRevision) { mutableStateOf(initialComicFraction == 0f) }
+    LaunchedEffect(pageSource, pageMode) {
+        if (!comicScrollRestored && pageMode == PdfPageMode.VERTICAL_SCROLL) {
+            val source = pageSource ?: return@LaunchedEffect
+            source.pageAspectRatio(startPage)?.let { pageAspectRatios[startPage] = it }
+            androidx.compose.runtime.snapshotFlow { listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == startPage }?.size ?: 0 }
+                .first { it > 0 }.let { size -> listState.scrollToItem(startPage, (size * initialComicFraction).toInt()) }
+        }
+        if (pageSource != null) comicScrollRestored = true
+    }
     val currentPage = when (pageMode) {
         PdfPageMode.HORIZONTAL_PAGING -> pageForReadingIndex(pagerState.currentPage)
         PdfPageMode.VERTICAL_PAGING -> verticalPagerState.currentPage
         PdfPageMode.VERTICAL_SCROLL -> verticalPage
+    }
+    LaunchedEffect(comicIndex, pageMode, comicScrollRestored, spreadEnabled) {
+        if (comicIndex == null || !comicScrollRestored) return@LaunchedEffect
+        androidx.compose.runtime.snapshotFlow {
+            if (pageMode == PdfPageMode.VERTICAL_SCROLL) {
+                val info = listState.layoutInfo
+                val first = info.visibleItemsInfo.firstOrNull { it.offset + it.size > info.viewportStartOffset }
+                (first?.index ?: startPage) to (first?.let { ((info.viewportStartOffset - it.offset).toFloat() / it.size.coerceAtLeast(1)).coerceIn(0f, 1f) } ?: 0f)
+            } else (if (pageMode == PdfPageMode.HORIZONTAL_PAGING) pageForReadingIndex(pagerState.currentPage) else verticalPagerState.currentPage) to 0f
+        }.distinctUntilChanged().collect { (page, fraction) ->
+            viewModel.onEpubComicPageVisible(page, fraction, contentRevision, pageMode != PdfPageMode.VERTICAL_SCROLL)
+        }
+    }
+    LaunchedEffect(pageSource, horizontalCropEnabled, manualCropEnabled, manualCrop, currentPage, pageCount) {
+        val source = pageSource ?: return@LaunchedEffect
+        if (!horizontalCropEnabled) return@LaunchedEffect
+        coroutineScope {
+            (currentPage - 2..currentPage + 2).filter { it in 0 until pageCount }.forEach { page ->
+                if (page !in pageHorizontalCrops) launch {
+                    val crop = if (manualCropEnabled) {
+                        val width = pageOriginalWidths[page] ?: source.pageWidth(page)?.also {
+                            pageOriginalWidths[page] = it
+                        } ?: 0
+                        manualCrop.forWidth(width)
+                    } else source.horizontalCrop(page)
+                    pageHorizontalCrops[page] = crop
+                }
+            }
+        }
     }
     val lifecycleOwner = LocalLifecycleOwner.current
     val latestCurrentPage by rememberUpdatedState(currentPage)
@@ -826,7 +966,8 @@ fun RasterReaderScreen(
     val zoomPanDecayJob = remember { mutableStateOf<Job?>(null) }
     val rasterDisplayWidth = (LocalConfiguration.current.screenWidthDp * LocalDensity.current.density *
         if (spreadEnabled) 0.5f else 1f).toInt().coerceAtLeast(PAGE_RENDER_MIN_WIDTH_PX)
-    LaunchedEffect(pageSource, pageMode, spreadEnabled, rasterDisplayWidth) {
+    val openingComplete = LocalReaderOpeningComplete.current
+    LaunchedEffect(pageSource, pageMode, spreadEnabled, rasterDisplayWidth, openingComplete) {
         val source = pageSource ?: return@LaunchedEffect
         androidx.compose.runtime.snapshotFlow {
             val visible = when (pageMode) {
@@ -855,7 +996,8 @@ fun RasterReaderScreen(
                 PdfPageMode.VERTICAL_PAGING -> verticalPagerState.currentPage
             }
             RasterViewport(visible.toSet().ifEmpty { setOf(anchor) }, anchor, rasterDisplayWidth,
-                spreadEnabled, scrolling, positions + listOf(scale, offsetX, offsetY))
+                spreadEnabled, scrolling, positions + listOf(scale, offsetX, offsetY),
+                backgroundPreparationEnabled = openingComplete)
         }.collect(source::updateViewport)
     }
     // 缩放回到 1 时位移必须归零。否则残留的平移会把内容推离屏幕边缘，
@@ -939,7 +1081,9 @@ fun RasterReaderScreen(
     var scrollViewportHeightPx by remember(bookId) { mutableStateOf(0) }
 
     val pdfGlassBackdrop = rememberLayerBackdrop()
-    ProvideLiquidGlassBackdrop(pdfGlassBackdrop.takeIf { isLiquidGlass }) {
+    val capturePdfBackdrop = isLiquidGlass && openingComplete
+    androidx.compose.runtime.CompositionLocalProvider(LocalRasterPagePrepared provides reportPagePrepared) {
+    ProvideLiquidGlassBackdrop(pdfGlassBackdrop.takeIf { capturePdfBackdrop }) {
     Box(
         Modifier
             .fillMaxSize()
@@ -951,17 +1095,33 @@ fun RasterReaderScreen(
                 .fillMaxSize()
                 .onSizeChanged { scrollViewportHeightPx = it.height }
                 .then(
-                    if (isLiquidGlass) Modifier.layerBackdrop(pdfGlassBackdrop)
+                    if (capturePdfBackdrop) Modifier.layerBackdrop(pdfGlassBackdrop)
                     else Modifier
                 )
-                .clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() }
-                ) {
-                    if (annotationMode && inkColorExpanded) {
-                        inkColorExpanded = false
-                    } else {
-                        showMenu = !showMenu
+                .pointerInput(pageMode, annotationMode, scale, isRightToLeft, spreadEnabled, pageCount, currentPage, showMenu, inkColorExpanded) {
+                    detectTapGestures { position ->
+                        val currentIndex = if (isHorizontal) pagerState.currentPage else verticalPagerState.currentPage
+                        val targetIndex = if (!annotationMode && scale <= PDF_ZOOM_EPSILON) {
+                            pdfPageForEdgeTap(
+                                pageMode = pageMode,
+                                currentIndex = currentIndex,
+                                pageCount = if (isHorizontal) displayCount else pageCount,
+                                position = position,
+                                viewport = size,
+                                edgeSizePx = 72.dp.toPx(),
+                                isRightToLeft = isRightToLeft
+                            )
+                        } else null
+                        if (targetIndex != null) {
+                            if (targetIndex != currentIndex) {
+                                val targetPage = if (isHorizontal) pageForReadingIndex(targetIndex) else targetIndex
+                                scope.launch { scrollToPdfPage(targetPage) }
+                            }
+                        } else if (annotationMode && inkColorExpanded) {
+                            inkColorExpanded = false
+                        } else {
+                            showMenu = !showMenu
+                        }
                     }
                 }
         ) {
@@ -1003,6 +1163,8 @@ fun RasterReaderScreen(
                                 isRightToLeft = isRightToLeft,
                                 pageSource = pageSource,
                                 aspectRatios = pageAspectRatios,
+                                horizontalCrops = pageHorizontalCrops,
+                                horizontalCropEnabled = horizontalCropEnabled,
                                 renderMode = renderMode,
                                 imageAdjustments = imageAdjustments,
                                 annotationMode = annotationMode,
@@ -1023,9 +1185,12 @@ fun RasterReaderScreen(
                                 scope = scope,
                                 pageSource = pageSource,
                                 aspectRatios = pageAspectRatios,
+                                horizontalCrops = pageHorizontalCrops,
+                                horizontalCropEnabled = horizontalCropEnabled,
                                 renderMode = renderMode,
                                 imageAdjustments = imageAdjustments,
                                 scale = scale,
+                                isZoomLocked = uiState.rasterZoomLocked,
                                 offsetX = offsetX,
                                 offsetY = offsetY,
                                 onScaleChange = { scale = it },
@@ -1056,9 +1221,12 @@ fun RasterReaderScreen(
                             scope = scope,
                             pageSource = pageSource,
                             aspectRatios = pageAspectRatios,
+                            horizontalCrops = pageHorizontalCrops,
+                            horizontalCropEnabled = horizontalCropEnabled,
                             renderMode = renderMode,
                             imageAdjustments = imageAdjustments,
                             scale = scale,
+                            isZoomLocked = uiState.rasterZoomLocked,
                             offsetX = offsetX,
                             offsetY = offsetY,
                             onScaleChange = { scale = it },
@@ -1077,7 +1245,7 @@ fun RasterReaderScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .pointerInput(pageMode, annotationMode) {
+                        .pointerInput(pageMode, annotationMode, uiState.rasterZoomLocked) {
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
                                 // Let the previous fling run while idle; only a real new touch stops it.
@@ -1124,7 +1292,8 @@ fun RasterReaderScreen(
                                                 panMotion = pendingPan.getDistance(),
                                                 zoomMotion = zoomMotion,
                                                 touchSlop = viewConfiguration.touchSlop,
-                                                preferPan = annotationMode && transformGesture
+                                                preferPan = annotationMode && transformGesture,
+                                                zoomLocked = uiState.rasterZoomLocked
                                             )
                                         }
                                         if (gestureMode == PdfMultiTouchMode.ZOOM) {
@@ -1257,6 +1426,8 @@ fun RasterReaderScreen(
                                 PdfPageItem(
                                     pageSource = pageSource,
                                     aspectRatios = pageAspectRatios,
+                                    horizontalCrops = pageHorizontalCrops,
+                                    horizontalCropEnabled = horizontalCropEnabled,
                                     pageIndex = it,
                                     fitToViewport = false,
                                     zoomScale = scale,
@@ -1279,6 +1450,8 @@ fun RasterReaderScreen(
                         PdfDocumentInkCanvas(
                             pageCount = pageCount,
                             listState = listState,
+                            horizontalCrops = pageHorizontalCrops,
+                            horizontalCropEnabled = horizontalCropEnabled,
                             activeTool = selectedInkTool,
                             activeColor = ReaderHighlightPalette.getOrNull(selectedInkColorSlot)?.first
                                 ?: DefaultReaderHighlightColor,
@@ -1360,7 +1533,13 @@ fun RasterReaderScreen(
                         bookmarks.firstOrNull { it.chapterIndex == currentPage }
                             ?.let { viewModel.deleteBookmark(it) }
                     } else {
-                        viewModel.addPdfBookmark(currentPage, book?.title ?: "")
+                        val addedId = viewModel.addPdfBookmark(currentPage, book?.title ?: "")
+                        if (addedId != null) quickTagTarget = addedId to true
+                        if (uiState.bookmarkRemarkPromptEnabled) {
+                            pendingBookmarkRemarkId = addedId
+                            bookmarkRemarkText = ""
+                            bookmarkRemarkTags = emptyList()
+                        }
                     }
                 }
             )
@@ -1405,7 +1584,8 @@ fun RasterReaderScreen(
                 PdfBottomMenu(
                     onImageAdjustmentsClick = { showMenu = false; showImageAdjustments = true },
                     chapterTitle = if (isComic) {
-                        uiState.chapterTitles.getOrNull(currentPage) ?: (book?.title ?: "")
+                        comicIndex?.pages?.getOrNull(currentPage)?.let { comicIndex.chapterTitles.getOrNull(it.chapterIndex) }
+                            ?: uiState.chapterTitles.getOrNull(currentPage) ?: (book?.title ?: "")
                     } else {
                         book?.title ?: ""
                     },
@@ -1419,6 +1599,7 @@ fun RasterReaderScreen(
                     conversionState = conversionState,
                     glassContentScrimColor = pdfGlassContentScrim,
                     isComic = isComic,
+                    onSwitchBackToEpub = if (uiState.epubComicReader) ({ viewModel.switchBackFromEpubComicReader() }) else null,
                     readingDirection = readingDirection,
                     // 只有当前窗口真正能双页对开时才高亮，避免竖屏下开关看起来"开了但没效果"。
                     twoPageSpreadEnabled = spreadEnabled,
@@ -1484,14 +1665,41 @@ fun RasterReaderScreen(
             }
         }
         if (showImageAdjustments) {
+            var adjustmentPageWidth by remember(pageSource, currentPage) { mutableStateOf<Int?>(null) }
+            LaunchedEffect(pageSource, currentPage) {
+                adjustmentPageWidth = pageOriginalWidths[currentPage]
+                    ?: pageSource?.pageWidth(currentPage)?.also { pageOriginalWidths[currentPage] = it }
+            }
             RasterImageAdjustmentSheet(
                 settings = uiState.imageAdjustments,
                 eInk = eInkMode,
+                cropMode = if (manualCropEnabled) 2 else if (uiState.rasterHorizontalCropEnabled) 1 else 0,
+                manualCrop = manualCrop,
+                pageWidth = adjustmentPageWidth,
+                onCropModeChange = { mode ->
+                    when (mode) {
+                        0 -> {
+                            viewModel.saveRasterHorizontalCropEnabled(false)
+                            viewModel.saveRasterManualCrop(false)
+                        }
+                        1 -> viewModel.saveRasterHorizontalCropEnabled(true)
+                        2 -> viewModel.saveRasterManualCrop(true)
+                    }
+                },
+                onManualCropChange = { viewModel.saveRasterManualCrop(true, it) },
+                onManualCropPreview = viewModel::previewRasterManualCrop,
                 onBrightness = viewModel::saveImageBrightness,
                 onContrast = viewModel::saveImageContrast,
                 onSharpen = viewModel::saveImageSharpen,
-                onReset = { viewModel.saveImageAdjustments(com.huangder.lumibooks.domain.model.ReaderImageAdjustments()) },
-                onDismiss = { showImageAdjustments = false }
+                onReset = {
+                    viewModel.saveImageAdjustments(com.huangder.lumibooks.domain.model.ReaderImageAdjustments())
+                    viewModel.saveRasterHorizontalCropEnabled(false)
+                    viewModel.saveRasterManualCrop(false, RasterManualCrop())
+                },
+                onDismiss = {
+                    if (viewModel.uiState.value.rasterManualCropEnabled) viewModel.saveRasterManualCrop(true)
+                    showImageAdjustments = false
+                }
             )
         }
         val annotationBottomPadding by animateDpAsState(
@@ -1552,6 +1760,9 @@ fun RasterReaderScreen(
                 .padding(bottom = ttsBottomPadding)
         ) {
             TtsPlayerPanel(
+                chapterTitle = comicIndex?.pages?.getOrNull(currentPage)?.let { page ->
+                    comicIndex.chapterTitles.getOrNull(page.chapterIndex)
+                } ?: uiState.chapterTitles.getOrNull(currentPage) ?: (book?.title ?: ""),
                 playbackState = ttsState.playbackState,
                 speechRate = ttsState.speechRate,
                 speechRateMode = ttsState.speechRateMode,
@@ -1569,7 +1780,24 @@ fun RasterReaderScreen(
                 onPitchModeChange = viewModel::setTtsPitchMode,
                 onSetSleepTimer = viewModel::setSleepTimer,
                 onCancelSleepTimer = viewModel::cancelSleepTimer,
-                readerBackgroundColor = AppColors.WindowBg,
+                onReturnToProgress = {
+                    ttsCurrentPage?.location?.chapterIndex?.let { targetPage ->
+                        scope.launch { scrollToPdfPage(targetPage) }
+                    }
+                },
+                onStartFromCurrentPage = {
+                    filePath?.let { path ->
+                        viewModel.startPdfTts(
+                            path,
+                            currentPage,
+                            pageCount,
+                            restoreSavedPosition = false
+                        )
+                    }
+                },
+                canReturnToProgress = ttsCurrentPage?.location?.chapterIndex != currentPage,
+                readerMenuVisible = showMenu,
+                readerBackgroundColor = rasterBackgroundColor,
                 readerContentColor = AppColors.TextPrimary
             )
         }
@@ -1581,7 +1809,11 @@ fun RasterReaderScreen(
             pageCount = pageCount,
             currentPage = currentPage,
             bookmarkedPages = bookmarkedPages,
-            chapterGroups = uiState.comicChapterEntries.map { entry ->
+            chapterGroups = (comicIndex?.let { index ->
+                index.pages.map { it.chapterIndex }.distinct().map { chapter ->
+                    com.huangder.lumibooks.util.parser.TocEntry(index.chapterTitles.getOrNull(chapter).orEmpty(), 1, index.pageForChapter(chapter))
+                }
+            } ?: uiState.comicChapterEntries).map { entry ->
                 entry.title to entry.chapterIndex
             },
             onPageSelected = { page ->
@@ -1591,22 +1823,49 @@ fun RasterReaderScreen(
                 showPdfToc = false
             },
             onDismiss = { showPdfToc = false },
+            motionEnabled = motionEnabled,
             eInkModeEnabled = eInkMode
         )
 
         PdfBookmarksSheet(
             visible = showPdfBookmarks,
+            glassBackdrop = pdfGlassBackdrop.takeIf { capturePdfBackdrop },
             bookmarks = bookmarks,
             currentPage = currentPage,
+            bookmarkRemarkPromptEnabled = uiState.bookmarkRemarkPromptEnabled,
+            onBookmarkRemarkPromptEnabledChange = viewModel::saveBookmarkRemarkPromptEnabled,
             onPageSelected = { page ->
-                scope.launch {
-                    scrollToPdfPage(page)
-                }
+                scope.launch { scrollToPdfPage(page) }
                 showPdfBookmarks = false
             },
             onDelete = viewModel::deleteBookmark,
+            availableTags = availableAnnotationTags,
+            onEditRemark = { bookmark, remark, tags -> viewModel.updateBookmarkRemarkAndTags(bookmark.syncId, remark, tags) },
+            onEditTags = { tagEditorTarget = it.syncId to true },
             onDismiss = { showPdfBookmarks = false },
             eInkModeEnabled = eInkMode
+        )
+
+        ReaderBookmarkRemarkSheet(
+            bookmarkId = pendingBookmarkRemarkId,
+            text = bookmarkRemarkText,
+            onTextChange = { bookmarkRemarkText = it },
+            tags = bookmarkRemarkTags,
+            availableTags = availableAnnotationTags,
+            onTagsChange = { bookmarkRemarkTags = it },
+            onConfirm = { id, remark -> viewModel.updateBookmarkRemarkAndTags(id, remark, bookmarkRemarkTags); quickTagTarget = null },
+            onDismiss = { pendingBookmarkRemarkId = null; bookmarkRemarkText = "" }
+        )
+        ReaderAnnotationTagControls(
+            backdrop = pdfGlassBackdrop.takeIf { capturePdfBackdrop },
+            quickTarget = quickTagTarget.takeIf { pendingBookmarkRemarkId == null },
+            editingTarget = tagEditorTarget,
+            bookmarks = bookmarks,
+            notes = notes,
+            availableTags = availableAnnotationTags,
+            viewModel = viewModel,
+            onQuickClick = { tagEditorTarget = it; quickTagTarget = null },
+            onEditorDismiss = { tagEditorTarget = null }
         )
 
         conversionSheet?.let { sheet ->
@@ -1685,6 +1944,8 @@ fun RasterReaderScreen(
 }
 }
 
+}
+
 @Composable
 private fun PdfPagerPage(
     pageIndex: Int,
@@ -1694,9 +1955,12 @@ private fun PdfPagerPage(
     scope: kotlinx.coroutines.CoroutineScope,
     pageSource: BitmapPageSource?,
     aspectRatios: androidx.compose.runtime.snapshots.SnapshotStateMap<Int, Float>,
+    horizontalCrops: androidx.compose.runtime.snapshots.SnapshotStateMap<Int, RasterHorizontalCrop>,
+    horizontalCropEnabled: Boolean,
     renderMode: PageRenderMode,
     imageAdjustments: com.huangder.lumibooks.domain.model.ReaderImageAdjustments,
     scale: Float,
+    isZoomLocked: Boolean,
     offsetX: Float,
     offsetY: Float,
     onScaleChange: (Float) -> Unit,
@@ -1715,7 +1979,7 @@ private fun PdfPagerPage(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(pageIndex, axis) {
+            .pointerInput(pageIndex, axis, annotationMode, isZoomLocked) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     // Let the previous fling run while idle; only a real new touch stops it.
@@ -1761,7 +2025,8 @@ private fun PdfPagerPage(
                                     panMotion = pendingPan.getDistance(),
                                     zoomMotion = zoomMotion,
                                     touchSlop = viewConfiguration.touchSlop,
-                                    preferPan = annotationMode && transformGesture
+                                    preferPan = annotationMode && transformGesture,
+                                    zoomLocked = isZoomLocked
                                 )
                             }
                             if (gestureMode == PdfMultiTouchMode.PAN) {
@@ -1913,6 +2178,8 @@ private fun PdfPagerPage(
         PdfPageItem(
             pageSource = pageSource,
             aspectRatios = aspectRatios,
+            horizontalCrops = horizontalCrops,
+            horizontalCropEnabled = horizontalCropEnabled,
             pageIndex = pageIndex,
             fitToViewport = true,
             // Pager 会预组合相邻页；只给当前页补缩放分辨率，避免同时分配三张大图。
@@ -1942,6 +2209,8 @@ private fun PdfSpreadPage(
     isRightToLeft: Boolean,
     pageSource: BitmapPageSource?,
     aspectRatios: androidx.compose.runtime.snapshots.SnapshotStateMap<Int, Float>,
+    horizontalCrops: androidx.compose.runtime.snapshots.SnapshotStateMap<Int, RasterHorizontalCrop>,
+    horizontalCropEnabled: Boolean,
     renderMode: PageRenderMode,
     imageAdjustments: com.huangder.lumibooks.domain.model.ReaderImageAdjustments,
     annotationMode: Boolean,
@@ -1958,6 +2227,8 @@ private fun PdfSpreadPage(
             pageIndex = leftPage,
             pageSource = pageSource,
             aspectRatios = aspectRatios,
+            horizontalCrops = horizontalCrops,
+            horizontalCropEnabled = horizontalCropEnabled,
             renderMode = renderMode,
             imageAdjustments = imageAdjustments,
             annotationMode = annotationMode,
@@ -1972,6 +2243,8 @@ private fun PdfSpreadPage(
             pageIndex = rightPage,
             pageSource = pageSource,
             aspectRatios = aspectRatios,
+            horizontalCrops = horizontalCrops,
+            horizontalCropEnabled = horizontalCropEnabled,
             renderMode = renderMode,
             imageAdjustments = imageAdjustments,
             annotationMode = annotationMode,
@@ -1990,6 +2263,8 @@ private fun PdfSpreadSlot(
     pageIndex: Int?,
     pageSource: BitmapPageSource?,
     aspectRatios: androidx.compose.runtime.snapshots.SnapshotStateMap<Int, Float>,
+    horizontalCrops: androidx.compose.runtime.snapshots.SnapshotStateMap<Int, RasterHorizontalCrop>,
+    horizontalCropEnabled: Boolean,
     renderMode: PageRenderMode,
     imageAdjustments: com.huangder.lumibooks.domain.model.ReaderImageAdjustments,
     annotationMode: Boolean,
@@ -2005,6 +2280,8 @@ private fun PdfSpreadSlot(
         PdfPageItem(
             pageSource = pageSource,
             aspectRatios = aspectRatios,
+            horizontalCrops = horizontalCrops,
+            horizontalCropEnabled = horizontalCropEnabled,
             pageIndex = pageIndex,
             fitToViewport = true,
             displayWidthFactor = 0.5f,
@@ -2048,7 +2325,10 @@ private fun PdfTopBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(180.dp)
+            // The right rail contains four 36 dp controls (plus spacing). Keep
+            // enough measured height for the full rail so the last button is
+            // not constrained into a flattened sliver by the top bar.
+            .height(240.dp)
             .then(
                 if (isLiquidGlass) {
                     Modifier
@@ -2281,6 +2561,7 @@ private fun PdfBottomMenu(
     conversionState: PdfConversionState,
     glassContentScrimColor: Color,
     isComic: Boolean = false,
+    onSwitchBackToEpub: (() -> Unit)? = null,
     readingDirection: CbzReadingDirection = CbzReadingDirection.LEFT_TO_RIGHT,
     twoPageSpreadEnabled: Boolean = false,
     /** 双页对开只在横向翻页下有意义，其他页模式隐藏该开关。 */
@@ -2303,6 +2584,11 @@ private fun PdfBottomMenu(
             .padding(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        if (onSwitchBackToEpub != null) {
+            androidx.compose.material3.TextButton(onClick = onSwitchBackToEpub) {
+                Text(stringResource(R.string.epub_comic_switch_back))
+            }
+        }
         if (isComic) {
             // 漫画没有可重排文本，这里换成阅读方向与双页对开两个开关。
             Row(
@@ -3320,6 +3606,8 @@ private fun PdfPageItem(
     pageSource: BitmapPageSource?,
     /** 全文档共用的页面宽高比缓存，避免同一页重复测量、也避免首帧兜底高度跳变。 */
     aspectRatios: androidx.compose.runtime.snapshots.SnapshotStateMap<Int, Float>,
+    horizontalCrops: androidx.compose.runtime.snapshots.SnapshotStateMap<Int, RasterHorizontalCrop>,
+    horizontalCropEnabled: Boolean,
     pageIndex: Int,
     fitToViewport: Boolean,
     /** 这一页在屏幕上的显示宽度占屏幕宽度的比例；双页对开的半屏页传 0.5f。 */
@@ -3345,10 +3633,15 @@ private fun PdfPageItem(
     val baseDisplayWidthPx = (screenWidthPx * displayWidthFactor)
         .toInt()
         .coerceAtLeast(PAGE_RENDER_MIN_WIDTH_PX)
+    val crop = if (horizontalCropEnabled) horizontalCrops[pageIndex] ?: RasterHorizontalCrop.FULL
+        else RasterHorizontalCrop.FULL
     // 缩放时按半倍档补高分辨率图，不在手势每一帧重新分配 Bitmap。
     val zoomRenderBucket = pdfZoomRenderBucket(zoomScale)
-    val renderTargetWidthPx = (baseDisplayWidthPx * zoomRenderBucket).toInt()
-    val effectiveRenderMode = if (requestSelectedQuality) renderMode else PageRenderMode.NORMAL
+    val renderTargetWidthPx = (baseDisplayWidthPx * zoomRenderBucket / crop.width).toInt()
+    val effectiveRenderMode = if (requestSelectedQuality && LocalReaderOpeningComplete.current)
+        renderMode else PageRenderMode.NORMAL
+    var retryGeneration by remember(pageSource, pageIndex) { mutableStateOf(0) }
+    var decodeFailed by remember(pageSource, pageIndex) { mutableStateOf(false) }
     var bitmap by remember(pageSource, pageIndex) { mutableStateOf(pageSource?.cachedReadablePage(pageIndex)) }
     var bitmapTargetWidthPx by remember(pageSource, pageIndex) { mutableStateOf(0) }
     var bitmapRenderMode by remember(pageSource, pageIndex) { mutableStateOf(PageRenderMode.NORMAL) }
@@ -3368,12 +3661,12 @@ private fun PdfPageItem(
     // 快速滚动时列表不会因为页面变高/变矮而反复回弹。
     val pageAspectRatio = aspectRatios[pageIndex] ?: pageSource?.cachedAspectRatio(pageIndex)
     // The page source owns decoded bitmaps (they are cached, never recycled by callers).
-    LaunchedEffect(pageSource, pageIndex) {
+    LaunchedEffect(pageSource, pageIndex, retryGeneration) {
         if (aspectRatios[pageIndex] == null) {
             pageSource?.pageAspectRatio(pageIndex)?.let { ratio -> aspectRatios[pageIndex] = ratio }
         }
     }
-    LaunchedEffect(pageSource, pageIndex) {
+    LaunchedEffect(pageSource, pageIndex, retryGeneration) {
         tileSourceResolved = false
         tileLoaded = false
         tileFailed = false
@@ -3383,7 +3676,7 @@ private fun PdfPageItem(
     }
     // 预览和清晰图并行请求：快速移动时先给出旧版的低清首帧，停留后由
     // PDF NORMAL、CBZ 分块图或普通位图覆盖。迟到的预览不会覆盖已到达的清晰图。
-    LaunchedEffect(pageSource, pageIndex) {
+    LaunchedEffect(pageSource, pageIndex, retryGeneration) {
         val source = pageSource ?: return@LaunchedEffect
         val preview = source.renderPreview(pageIndex, PREVIEW_RENDER_WIDTH_PX) ?: return@LaunchedEffect
         if (bitmap == null && baseBitmap == null && !tileLoaded) {
@@ -3395,12 +3688,14 @@ private fun PdfPageItem(
     // behind a fast fling or a tiled source fails. Visible PDF pages can then refine to the selected
     // quality; CBZ tiles provide their own high-detail refinement above this bitmap.
     val bitmapRequestMode = if (visible && activeTileSource == null) effectiveRenderMode else PageRenderMode.NORMAL
-    val bitmapRequestWidthPx = if (visible && activeTileSource == null) renderTargetWidthPx else baseDisplayWidthPx
+    val bitmapRequestWidthPx = if (visible && activeTileSource == null) renderTargetWidthPx
+        else (baseDisplayWidthPx / crop.width).toInt()
     LaunchedEffect(
         pageSource,
         pageIndex,
         bitmapRequestWidthPx,
         bitmapRequestMode,
+        retryGeneration,
         tileSourceResolved,
         activeTileSource,
         tileLoaded,
@@ -3408,6 +3703,7 @@ private fun PdfPageItem(
     ) {
         val source = pageSource ?: return@LaunchedEffect
         if (!tileSourceResolved) return@LaunchedEffect
+        decodeFailed = false
         if (activeTileSource != null) {
             val readableFallback = bitmap ?: baseBitmap
             if (readableFallback != null || tileLoaded || !visible) return@LaunchedEffect
@@ -3443,15 +3739,27 @@ private fun PdfPageItem(
             attempt++
             delay(PAGE_RENDER_RETRY_DELAY_MS * attempt)
         }
+        decodeFailed = true
         android.util.Log.w(
             "RasterReader",
             "Page $pageIndex rendered no bitmap after $attempt attempt(s) in $bitmapRequestMode"
         )
     }
 
-    val stableRatio = pageAspectRatio ?: activeTileSource?.dimensions?.ratio
+    val fullRatio = pageAspectRatio ?: activeTileSource?.dimensions?.ratio
         ?: (bitmap ?: baseBitmap)?.let { it.width.toFloat() / it.height }
+    val stableRatio = fullRatio?.times(crop.width)
     val loadingBackground = if (LocalEInkMode.current) Color.White else AppColors.WindowBg
+    val reportPagePrepared = LocalRasterPagePrepared.current
+    val prepared = bitmap != null || baseBitmap != null || previewBitmap != null || tileLoaded || decodeFailed
+    LaunchedEffect(pageSource, pageIndex, prepared, reportPagePrepared) {
+        if (prepared) {
+            // The ready image (or error/retry surface) must reach layout before
+            // navigation uncovers it; precomposed neighboring pages are filtered.
+            androidx.compose.runtime.withFrameNanos { }
+            reportPagePrepared(pageIndex)
+        }
+    }
     Box(
         modifier = (if (fitToViewport) Modifier.fillMaxSize() else Modifier.fillMaxWidth().then(
             if (stableRatio != null) Modifier.aspectRatio(stableRatio) else Modifier.height(600.dp)
@@ -3466,6 +3774,8 @@ private fun PdfPageItem(
                 zoomScale = zoomScale,
                 foreground = visible,
                 fallback = renderedPage,
+                crop = crop,
+                fitToViewport = fitToViewport,
                 adjustments = imageAdjustments,
                 modifier = Modifier.fillMaxSize(),
                 onImageLoaded = {
@@ -3475,22 +3785,22 @@ private fun PdfPageItem(
                 onError = { tileFailed = true }
             )
         } else if (renderedPage != null) {
-            Image(
-                bitmap = renderedPage.asImageBitmap(),
-                contentDescription = stringResource(R.string.pdf_page_desc, pageIndex + 1),
-                modifier = Modifier.fillMaxSize().drawWithContent {
-                    drawContent()
+            RasterCroppedBitmap(
+                bitmap = renderedPage,
+                crop = crop,
+                fitToViewport = fitToViewport,
+                modifier = Modifier.fillMaxSize(),
+                onDrawn = {
                     pageSource?.pageDrawn(pageIndex, bitmap != null && bitmapTargetWidthPx >= renderTargetWidthPx)
                 },
-                contentScale = if (fitToViewport) ContentScale.Fit else ContentScale.FillWidth
-                , colorFilter = ColorFilter.colorMatrix(ColorMatrix(imageAdjustments.colorMatrixValues()))
+                colorFilter = ColorFilter.colorMatrix(ColorMatrix(imageAdjustments.colorMatrixValues()))
             )
         } else {
             Box(
                 modifier = if (fitToViewport) {
                     Modifier.fillMaxSize()
                 } else {
-                    val ratio = pageAspectRatio
+                    val ratio = stableRatio
                     Modifier
                         .fillMaxWidth()
                         .then(
@@ -3500,7 +3810,11 @@ private fun PdfPageItem(
                 },
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(
+                if (decodeFailed) {
+                    androidx.compose.material3.TextButton(onClick = { retryGeneration++ }) {
+                        Text(stringResource(R.string.epub_comic_page_retry, pageIndex + 1))
+                    }
+                } else CircularProgressIndicator(
                     Modifier.size(20.dp),
                     strokeWidth = 2.dp,
                     color = AppColors.TextSecondary.copy(alpha = 0.4f)
@@ -3510,6 +3824,9 @@ private fun PdfPageItem(
         if (annotationEnabled) {
             PdfPageInkCanvas(
                 pageIndex = pageIndex,
+                crop = crop,
+                fullRatio = fullRatio ?: 1f,
+                fitToViewport = fitToViewport,
                 activeTool = activeInkTool,
                 activeColor = activeInkColor,
                 strokes = existingStrokes,
@@ -3524,6 +3841,9 @@ private fun PdfPageItem(
 @Composable
 private fun BoxScope.PdfPageInkCanvas(
     pageIndex: Int,
+    crop: RasterHorizontalCrop,
+    fullRatio: Float,
+    fitToViewport: Boolean,
     activeTool: PdfInkTool,
     activeColor: String,
     strokes: List<PdfInkStroke>,
@@ -3534,18 +3854,20 @@ private fun BoxScope.PdfPageInkCanvas(
     var canvasSize by remember(pageIndex) { mutableStateOf(IntSize.Zero) }
     var livePoints by remember(pageIndex) { mutableStateOf<List<PdfInkPoint>>(emptyList()) }
     val pageStrokes = remember(strokes, pageIndex) { strokes.filter { it.page == pageIndex } }
+    val inkTransform = RasterInkTransform(crop, fullRatio, canvasSize.width.toFloat().coerceAtLeast(1f),
+        canvasSize.height.toFloat().coerceAtLeast(1f), fitToViewport)
 
     fun normalize(position: Offset): PdfInkPoint {
         val width = canvasSize.width.coerceAtLeast(1)
         val height = canvasSize.height.coerceAtLeast(1)
-        return PdfInkPoint(
+        return inkTransform.toOriginal(PdfInkPoint(
             (position.x / width).coerceIn(0f, 1f),
             (position.y / height).coerceIn(0f, 1f)
-        )
+        )).let { PdfInkPoint(it.x.coerceIn(0f, 1f), it.y.coerceIn(0f, 1f)) }
     }
 
     val gestureModifier = if (interactive) {
-        Modifier.pointerInput(pageIndex, activeTool, activeColor, canvasSize) {
+        Modifier.pointerInput(pageIndex, activeTool, activeColor, canvasSize, crop, fullRatio) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val points = ArrayList<PdfInkPoint>(32)
@@ -3615,12 +3937,14 @@ private fun BoxScope.PdfPageInkCanvas(
             .onSizeChanged { canvasSize = it }
             .then(gestureModifier)
     ) {
-        pageStrokes.forEach(::drawInkStroke)
+        pageStrokes.forEach { stroke ->
+            drawInkStroke(stroke.copy(points = stroke.points.map(inkTransform::toDisplay)))
+        }
         if (livePoints.size >= 2 && activeTool != PdfInkTool.ERASER) {
             drawInkStroke(
                 PdfInkStroke(
                     page = pageIndex,
-                    points = livePoints,
+                    points = livePoints.map(inkTransform::toDisplay),
                     tool = activeTool,
                     color = activeColor,
                     width = if (activeTool == PdfInkTool.HIGHLIGHTER) 0.018f else 0.006f
@@ -3639,6 +3963,8 @@ private fun BoxScope.PdfPageInkCanvas(
 private fun BoxScope.PdfDocumentInkCanvas(
     pageCount: Int,
     listState: androidx.compose.foundation.lazy.LazyListState,
+    horizontalCrops: androidx.compose.runtime.snapshots.SnapshotStateMap<Int, RasterHorizontalCrop>,
+    horizontalCropEnabled: Boolean,
     activeTool: PdfInkTool,
     activeColor: String,
     strokes: List<PdfInkStroke>,
@@ -3647,6 +3973,20 @@ private fun BoxScope.PdfDocumentInkCanvas(
 ) {
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     var liveSegments by remember { mutableStateOf<Map<Int, List<PdfInkPoint>>>(emptyMap()) }
+
+    fun pageCrop(page: Int): RasterHorizontalCrop =
+        if (horizontalCropEnabled) horizontalCrops[page] ?: RasterHorizontalCrop.FULL
+        else RasterHorizontalCrop.FULL
+
+    fun displayX(page: Int, x: Float): Float {
+        val crop = pageCrop(page)
+        return (x - crop.left) / crop.width
+    }
+
+    fun originalX(page: Int, x: Float): Float {
+        val crop = pageCrop(page)
+        return (crop.left + x * crop.width).coerceIn(0f, 1f)
+    }
 
     fun locate(position: Offset): Pair<Int, PdfInkPoint>? {
         val visibleItems = listState.layoutInfo.visibleItemsInfo
@@ -3657,8 +3997,9 @@ private fun BoxScope.PdfDocumentInkCanvas(
         } ?: return null
         val width = canvasSize.width.coerceAtLeast(1)
         val height = item.size.coerceAtLeast(1)
-        return item.index.coerceIn(0, pageCount - 1) to PdfInkPoint(
-            (position.x / width).coerceIn(0f, 1f),
+        val page = item.index.coerceIn(0, pageCount - 1)
+        return page to PdfInkPoint(
+            originalX(page, (position.x / width).coerceIn(0f, 1f)),
             ((position.y - item.offset) / height).coerceIn(0f, 1f)
         )
     }
@@ -3667,7 +4008,7 @@ private fun BoxScope.PdfDocumentInkCanvas(
         modifier = Modifier
             .matchParentSize()
             .onSizeChanged { canvasSize = it }
-            .pointerInput(pageCount, activeTool, activeColor, canvasSize) {
+            .pointerInput(pageCount, activeTool, activeColor, canvasSize, horizontalCropEnabled) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val segments = linkedMapOf<Int, MutableList<PdfInkPoint>>()
@@ -3681,29 +4022,30 @@ private fun BoxScope.PdfDocumentInkCanvas(
                         val (page, point) = located
                         previousLocated?.let { (previousPage, previousPoint) ->
                             if (previousPage != page) {
-                                val boundaryX = ((previousPoint.x + point.x) / 2f).coerceIn(0f, 1f)
+                                val boundaryX = ((displayX(previousPage, previousPoint.x) +
+                                    displayX(page, point.x)) / 2f).coerceIn(0f, 1f)
                                 if (previousPage < page) {
                                     segments.getOrPut(previousPage) { mutableListOf() }
-                                        .add(PdfInkPoint(boundaryX, 1f))
+                                        .add(PdfInkPoint(originalX(previousPage, boundaryX), 1f))
                                     for (bridgePage in previousPage + 1 until page) {
                                         segments.getOrPut(bridgePage) { mutableListOf() }.apply {
-                                            add(PdfInkPoint(boundaryX, 0f))
-                                            add(PdfInkPoint(boundaryX, 1f))
+                                            add(PdfInkPoint(originalX(bridgePage, boundaryX), 0f))
+                                            add(PdfInkPoint(originalX(bridgePage, boundaryX), 1f))
                                         }
                                     }
                                     segments.getOrPut(page) { mutableListOf() }
-                                        .add(PdfInkPoint(boundaryX, 0f))
+                                        .add(PdfInkPoint(originalX(page, boundaryX), 0f))
                                 } else {
                                     segments.getOrPut(previousPage) { mutableListOf() }
-                                        .add(PdfInkPoint(boundaryX, 0f))
+                                        .add(PdfInkPoint(originalX(previousPage, boundaryX), 0f))
                                     for (bridgePage in previousPage - 1 downTo page + 1) {
                                         segments.getOrPut(bridgePage) { mutableListOf() }.apply {
-                                            add(PdfInkPoint(boundaryX, 1f))
-                                            add(PdfInkPoint(boundaryX, 0f))
+                                            add(PdfInkPoint(originalX(bridgePage, boundaryX), 1f))
+                                            add(PdfInkPoint(originalX(bridgePage, boundaryX), 0f))
                                         }
                                     }
                                     segments.getOrPut(page) { mutableListOf() }
-                                        .add(PdfInkPoint(boundaryX, 1f))
+                                        .add(PdfInkPoint(originalX(page, boundaryX), 1f))
                                 }
                             }
                         }
@@ -3789,7 +4131,8 @@ private fun BoxScope.PdfDocumentInkCanvas(
                         color = activeColor,
                         width = if (activeTool == PdfInkTool.HIGHLIGHTER) 0.018f else 0.006f
                     ),
-                    listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == page }
+                    listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == page },
+                    pageCrop(page)
                 )
             }
         }
@@ -3798,12 +4141,13 @@ private fun BoxScope.PdfDocumentInkCanvas(
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawDocumentInkStroke(
     stroke: PdfInkStroke,
-    item: androidx.compose.foundation.lazy.LazyListItemInfo?
+    item: androidx.compose.foundation.lazy.LazyListItemInfo?,
+    crop: RasterHorizontalCrop
 ) {
     if (item == null || stroke.points.isEmpty()) return
     val path = Path()
     stroke.points.forEachIndexed { index, point ->
-        val x = point.x * size.width
+        val x = (point.x - crop.left) / crop.width * size.width
         val y = item.offset + point.y * item.size
         if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
     }
@@ -3941,6 +4285,7 @@ private fun PdfTocSheet(
     chapterGroups: List<Pair<String, Int>> = emptyList(),
     onPageSelected: (Int) -> Unit,
     onDismiss: () -> Unit,
+    motionEnabled: Boolean = true,
     eInkModeEnabled: Boolean = false
 ) {
     if (!visible || pageCount <= 0) return
@@ -3949,7 +4294,42 @@ private fun PdfTocSheet(
     val sheetOffset = remember { Animatable(1f) }
     var isClosing by remember { mutableStateOf(false) }
     var pendingPage by remember { mutableStateOf<Int?>(null) }
+    val gridState = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
     val predictiveBackProgress = ConfigurableBottomSheetBackHandler { isClosing = true }
+
+    val gridEntries = remember(pageCount, chapterGroups) {
+        buildList {
+            val groupLabelsByPage = chapterGroups
+                .filter { (_, firstPage) -> firstPage in 0 until pageCount }
+                .associate { (label, firstPage) -> firstPage to label }
+            (0 until pageCount).forEach { pageIndex ->
+                groupLabelsByPage[pageIndex]?.let { label ->
+                    add(PdfTocGridEntry.ChapterHeader(label, pageIndex))
+                }
+                add(PdfTocGridEntry.Page(pageIndex))
+            }
+        }
+    }
+    val currentGridIndex = remember(gridEntries, currentPage) {
+        gridEntries.indexOfFirst { it is PdfTocGridEntry.Page && it.pageIndex == currentPage }
+    }
+
+    LaunchedEffect(visible, currentGridIndex) {
+        if (!visible || currentGridIndex < 0) return@LaunchedEffect
+        androidx.compose.runtime.snapshotFlow { gridState.layoutInfo.viewportSize.height }
+            .first { it > 0 }
+        gridState.scrollToItem(currentGridIndex)
+        androidx.compose.runtime.withFrameNanos { }
+        val currentItem = gridState.layoutInfo.visibleItemsInfo
+            .firstOrNull { it.index == currentGridIndex }
+        if (currentItem != null) {
+            val layoutInfo = gridState.layoutInfo
+            val centeredItemOffset = layoutInfo.viewportStartOffset +
+                (layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset - currentItem.size.height) / 2
+            gridState.scrollBy((currentItem.offset.y - centeredItemOffset).toFloat())
+        }
+    }
 
     LaunchedEffect(visible) {
         if (visible) {
@@ -4020,56 +4400,60 @@ private fun PdfTocSheet(
             Spacer(Modifier.height(16.dp))
 
             // 缩略图网格（3 列）
-            val gridEntries = remember(pageCount, chapterGroups) {
-                buildList {
-                    val groupLabelsByPage = chapterGroups
-                        .filter { (_, firstPage) -> firstPage in 0 until pageCount }
-                        .associate { (label, firstPage) -> firstPage to label }
-                    (0 until pageCount).forEach { pageIndex ->
-                        groupLabelsByPage[pageIndex]?.let { label ->
-                            add(PdfTocGridEntry.ChapterHeader(label, pageIndex))
-                        }
-                        add(PdfTocGridEntry.Page(pageIndex))
-                    }
-                }
-            }
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(bottom = 24.dp)
-            ) {
-                items(
-                    count = gridEntries.size,
-                    key = { index ->
-                        when (val entry = gridEntries[index]) {
-                            is PdfTocGridEntry.ChapterHeader -> "header_${entry.firstPageIndex}"
-                            is PdfTocGridEntry.Page -> "page_${entry.pageIndex}"
-                        }
-                    },
-                    span = { index ->
-                        if (gridEntries[index] is PdfTocGridEntry.ChapterHeader) {
-                            GridItemSpan(maxLineSpan)
-                        } else {
-                            GridItemSpan(1)
-                        }
-                    }
-                ) { index ->
-                    when (val entry = gridEntries[index]) {
-                        is PdfTocGridEntry.ChapterHeader -> ChapterHeaderLabel(entry.label)
-                        is PdfTocGridEntry.Page -> PdfThumbnailItem(
-                            pageSource = pageSource,
-                            pageIndex = entry.pageIndex,
-                            isCurrentPage = entry.pageIndex == currentPage,
-                            isBookmarked = entry.pageIndex in bookmarkedPages,
-                            onClick = {
-                                pendingPage = entry.pageIndex
-                                isClosing = true
+            Box(Modifier.fillMaxWidth().weight(1f)) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    state = gridState,
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 24.dp)
+                ) {
+                    items(
+                        count = gridEntries.size,
+                        key = { index ->
+                            when (val entry = gridEntries[index]) {
+                                is PdfTocGridEntry.ChapterHeader -> "header_${entry.firstPageIndex}"
+                                is PdfTocGridEntry.Page -> "page_${entry.pageIndex}"
                             }
-                        )
+                        },
+                        span = { index ->
+                            if (gridEntries[index] is PdfTocGridEntry.ChapterHeader) {
+                                GridItemSpan(maxLineSpan)
+                            } else {
+                                GridItemSpan(1)
+                            }
+                        }
+                    ) { index ->
+                        when (val entry = gridEntries[index]) {
+                            is PdfTocGridEntry.ChapterHeader -> ChapterHeaderLabel(entry.label)
+                            is PdfTocGridEntry.Page -> PdfThumbnailItem(
+                                pageSource = pageSource,
+                                pageIndex = entry.pageIndex,
+                                isCurrentPage = entry.pageIndex == currentPage,
+                                isBookmarked = entry.pageIndex in bookmarkedPages,
+                                onClick = {
+                                    pendingPage = entry.pageIndex
+                                    isClosing = true
+                                }
+                            )
+                        }
                     }
                 }
+
+                val currentPageVisible = gridState.layoutInfo.visibleItemsInfo.any { it.index == currentGridIndex }
+                TocReturnToCurrentButton(
+                    visible = currentGridIndex >= 0 && !currentPageVisible,
+                    motionEnabled = motionEnabled,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 8.dp, bottom = 16.dp),
+                    onClick = {
+                        if (currentGridIndex >= 0) {
+                            scope.launch { gridState.animateScrollToItem(currentGridIndex) }
+                        }
+                    }
+                )
             }
         }
     }
@@ -4094,10 +4478,16 @@ private fun ChapterHeaderLabel(label: String) {
 @Composable
 private fun PdfBookmarksSheet(
     visible: Boolean,
+    glassBackdrop: Backdrop? = null,
     bookmarks: List<Bookmark>,
     currentPage: Int,
+    bookmarkRemarkPromptEnabled: Boolean,
+    onBookmarkRemarkPromptEnabledChange: (Boolean) -> Unit,
     onPageSelected: (Int) -> Unit,
     onDelete: (Bookmark) -> Unit,
+    availableTags: List<String>,
+    onEditRemark: (Bookmark, String, List<String>) -> Unit,
+    onEditTags: (Bookmark) -> Unit,
     onDismiss: () -> Unit,
     eInkModeEnabled: Boolean = false
 ) {
@@ -4105,6 +4495,9 @@ private fun PdfBookmarksSheet(
     val eInkMode = eInkModeEnabled || LocalEInkMode.current
     val sheetOffset = remember { Animatable(1f) }
     var closing by remember { mutableStateOf(false) }
+    var editingRemark by remember { mutableStateOf<Bookmark?>(null) }
+    var remarkText by remember { mutableStateOf("") }
+    var remarkTags by remember { mutableStateOf<List<String>>(emptyList()) }
     val predictiveBackProgress = ConfigurableBottomSheetBackHandler { closing = true }
 
     LaunchedEffect(visible) {
@@ -4119,50 +4512,87 @@ private fun PdfBookmarksSheet(
     }
 
     Box(Modifier.fillMaxSize()) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(AppColors.Scrim.copy(alpha = 0.24f * (1f - sheetOffset.value)))
-                .clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() }
-                ) { closing = true }
-        )
+        Box(Modifier.fillMaxSize()
+            .background(AppColors.Scrim.copy(alpha = 0.24f * (1f - sheetOffset.value)))
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                closing = true
+            })
         LiquidGlassColumnSheetContainer(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .fillMaxHeight(0.62f)
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                .fillMaxHeight(0.8f)
                 .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress),
-            contentModifier = Modifier
-                .fillMaxSize()
-                .navigationBarsPadding()
+            contentModifier = Modifier.fillMaxSize().navigationBarsPadding()
                 .padding(horizontal = 24.dp, vertical = 24.dp),
             fallbackColor = AppColors.CardBg,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(R.string.reader_bookmark),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = resolveAppFontFamily(KaiTi),
-                    color = AppColors.TextPrimary
-                )
+                Text(stringResource(R.string.reader_bookmark), fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(KaiTi),
+                    color = AppColors.TextPrimary)
                 Spacer(Modifier.weight(1f))
                 LiquidGlassIconButton(
                     imageVector = AppIcons.X,
                     contentDescription = stringResource(R.string.pdf_close),
-                    onClick = { closing = true },
-                    size = 44.dp,
-                    iconSize = 20.dp,
+                    onClick = { closing = true }, size = 44.dp, iconSize = 20.dp,
                     contentColor = AppColors.TextPrimary,
                     normalContainerColor = AppColors.BgGray
                 )
             }
             Spacer(Modifier.height(14.dp))
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 52.dp)
+                    .clip(RoundedCornerShape(8.dp)).background(AppColors.BgGray)
+                    .clickable { onBookmarkRemarkPromptEnabledChange(!bookmarkRemarkPromptEnabled) }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(stringResource(R.string.bookmark_remark_prompt_setting),
+                    modifier = Modifier.weight(1f), fontSize = 14.sp,
+                    color = AppColors.TextPrimary)
+                Switch(checked = bookmarkRemarkPromptEnabled,
+                    onCheckedChange = onBookmarkRemarkPromptEnabledChange)
+            }
+            Spacer(Modifier.height(10.dp))
+            PdfBookmarkEntries(
+                bookmarks = bookmarks,
+                currentPage = currentPage,
+                onPageSelected = { page -> onPageSelected(page); closing = true },
+                onDelete = onDelete,
+                onEditRemark = { bookmark -> editingRemark = bookmark; remarkText = bookmark.remark; remarkTags = bookmark.tags },
+                onEditTags = onEditTags,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+    NoteInputSheet(
+        visible = editingRemark != null,
+        glassBackdrop = glassBackdrop,
+        initialText = remarkText,
+        onTextChange = { remarkText = it },
+        tags = remarkTags,
+        availableTags = availableTags,
+        onTagsChange = { remarkTags = it },
+        onConfirm = { editingRemark?.let { onEditRemark(it, remarkText, remarkTags) } },
+        onDismiss = { editingRemark = null; remarkText = "" },
+        title = stringResource(R.string.bookmark_remark_title),
+        placeholder = stringResource(R.string.bookmark_remark_placeholder),
+        footer = stringResource(R.string.bookmark_remark_setting_hint)
+    )
+}
+
+@Composable
+private fun PdfBookmarkEntries(
+    bookmarks: List<Bookmark>,
+    currentPage: Int,
+    onPageSelected: (Int) -> Unit,
+    onDelete: (Bookmark) -> Unit,
+    onEditRemark: (Bookmark) -> Unit,
+    onEditTags: (Bookmark) -> Unit,
+    modifier: Modifier = Modifier
+) {
             if (bookmarks.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Text(
                         stringResource(R.string.no_bookmarks),
                         color = AppColors.TextSecondary,
@@ -4171,59 +4601,59 @@ private fun PdfBookmarksSheet(
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    modifier = modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
                     items(bookmarks, key = { it.id }) { bookmark ->
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 64.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(
-                                    if (bookmark.chapterIndex == currentPage) AppColors.Accent.copy(alpha = 0.12f)
-                                    else AppColors.BgGray
-                                )
-                                .clickable {
-                                    onPageSelected(bookmark.chapterIndex)
-                                    closing = true
-                                }
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        SwipeRevealItem(
+                            onEdit = { onEditRemark(bookmark) },
+                            onEditTags = { onEditTags(bookmark) },
+                            onDelete = { onDelete(bookmark) },
+                            onClick = { onPageSelected(bookmark.chapterIndex) }
                         ) {
-                            Icon(AppIcons.Bookmark.filled, null, tint = AppColors.Accent, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    bookmark.title.ifBlank { stringResource(R.string.reader_bookmark) },
-                                    fontSize = 14.sp,
-                                    color = AppColors.TextPrimary,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(Modifier.height(2.dp))
-                                Text(
-                                    stringResource(R.string.pdf_page_desc, bookmark.chapterIndex + 1),
-                                    fontSize = 12.sp,
-                                    color = AppColors.TextSecondary
-                                )
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 64.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .border(1.dp, AppColors.TextSecondary.copy(alpha = 0.24f), RoundedCornerShape(16.dp))
+                                    .background(
+                                        if (bookmark.chapterIndex == currentPage) AppColors.Accent.copy(alpha = 0.12f)
+                                        else AppColors.BgGray
+                                    )
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(AppIcons.Bookmark.filled, null, tint = AppColors.Accent, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        bookmark.title.ifBlank { stringResource(R.string.reader_bookmark) },
+                                        fontSize = 14.sp,
+                                        color = AppColors.TextPrimary,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        stringResource(R.string.pdf_page_desc, bookmark.chapterIndex + 1),
+                                        fontSize = 12.sp,
+                                        color = AppColors.TextSecondary
+                                    )
+                                    if (bookmark.remark.isNotBlank()) {
+                                        Text(bookmark.remark, fontSize = 12.sp,
+                                            color = AppColors.TextSecondary)
+                                    }
+                                    com.huangder.lumibooks.ui.components.AnnotationTagChips(
+                                        bookmark.tags, modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                }
                             }
-                            LiquidGlassIconButton(
-                                imageVector = AppIcons.X,
-                                contentDescription = stringResource(R.string.delete),
-                                onClick = { onDelete(bookmark) },
-                                size = 36.dp,
-                                iconSize = 17.dp,
-                                contentColor = Color(0xFFE85D5D),
-                                normalContainerColor = Color.Transparent
-                            )
                         }
                     }
                 }
             }
-        }
-    }
 }
 
 @Composable

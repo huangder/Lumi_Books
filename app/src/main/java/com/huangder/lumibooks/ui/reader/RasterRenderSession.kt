@@ -32,6 +32,7 @@ internal class RasterRenderSession(
     override val pageCount = decoder.pageCount
     private val scheduler = RasterWorkScheduler(scope, decoder.parallelism, ::log)
     private val dimensions = ConcurrentHashMap<Int, RasterDimensions>()
+    private val horizontalCrops = ConcurrentHashMap<Int, RasterHorizontalCrop>()
     private val pageCache = bitmapCache(PAGE_BYTES)
     private val previewCache = bitmapCache(PREVIEW_BYTES)
     private val thumbnailCache = bitmapCache(THUMBNAIL_BYTES)
@@ -92,6 +93,16 @@ internal class RasterRenderSession(
     override suspend fun pageAspectRatio(pageIndex: Int, background: Boolean): Float? {
         if (background) motion.first { !it }
         return geometry(pageIndex, if (background) 5 else 0, background)?.ratio
+    }
+
+    override suspend fun pageWidth(pageIndex: Int): Int? = geometry(pageIndex, 0, false)?.width
+
+    override suspend fun horizontalCrop(pageIndex: Int): RasterHorizontalCrop {
+        if (pageIndex !in 0 until pageCount) return RasterHorizontalCrop.FULL
+        horizontalCrops[pageIndex]?.let { return it }
+        val crop = detectPageHorizontalCrop(pageIndex)
+        horizontalCrops.putIfAbsent(pageIndex, crop)
+        return horizontalCrops[pageIndex] ?: crop
     }
 
     private suspend fun restore(page: Int, priority: Int, background: Boolean) {
@@ -193,6 +204,7 @@ internal class RasterRenderSession(
             synchronized(this@RasterRenderSession) {
                 if (closed || paused || viewport != this@RasterRenderSession.viewport || viewport.scrolling) return@launch
                 motion.value = false
+                if (!viewport.backgroundPreparationEnabled) return@launch
                 persistJob = scope.launch {
                     delay(RASTER_PERSIST_MS - RASTER_SETTLE_MS)
                     persistWindow(viewport, decodeMissing = true)

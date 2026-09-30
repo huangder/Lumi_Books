@@ -19,10 +19,14 @@ internal fun ImageAdjustmentControls(
     onBrightness: (Float) -> Unit,
     onContrast: (Float) -> Unit,
     onSharpen: (Float) -> Unit,
-    onReset: () -> Unit
+    onReset: () -> Unit,
+    additionalResetEnabled: Boolean = false,
+    showSavedHint: Boolean = true
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(stringResource(R.string.reader_image_adjustment_saved_hint), fontSize = 12.sp, color = AppColors.TextSecondary)
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        if (showSavedHint) {
+            Text(stringResource(R.string.reader_image_adjustment_saved_hint), fontSize = 12.sp, color = AppColors.TextSecondary)
+        }
         SettingSlider(stringResource(R.string.reader_image_brightness), settings.brightness, -1f..1f, 0.05f,
             { String.format("%+.2f", it) }, onBrightness, onBrightness)
         SettingSlider(stringResource(R.string.reader_image_contrast), settings.contrast, 0.5f..2f, 0.05f,
@@ -40,7 +44,7 @@ internal fun ImageAdjustmentControls(
             LiquidGlassTextButton(
                 text = stringResource(R.string.reader_image_adjustment_reset),
                 onClick = onReset,
-                enabled = !settings.isNeutral,
+                enabled = !settings.isNeutral || additionalResetEnabled,
                 modifier = Modifier.height(40.dp)
             )
         }

@@ -12,7 +12,8 @@ internal data class RasterViewport(
     val spread: Boolean = false,
     val scrolling: Boolean = false,
     // Includes raw-delta scrolling and graphics-layer pan/zoom, which don't set isScrollInProgress.
-    val positions: List<Float> = emptyList()
+    val positions: List<Float> = emptyList(),
+    val backgroundPreparationEnabled: Boolean = true
 )
 
 internal fun rasterCompleteSpreads(pages: Iterable<Int>, pageCount: Int, spread: Boolean): List<Int> =
@@ -28,6 +29,7 @@ internal fun rasterResumeWindow(anchor: Int, pageCount: Int, spread: Boolean): L
     rasterCompleteSpreads(listOf(anchor, anchor + 1, anchor - 1, anchor + 2, anchor - 2), pageCount, spread)
 
 internal fun rasterPrefetchWindow(viewport: RasterViewport, direction: Int, pageCount: Int): List<Int> {
+    if (!viewport.backgroundPreparationEnabled) return emptyList()
     val visible = viewport.visiblePages.ifEmpty { setOf(viewport.anchor) }
     val forward = if (direction >= 0) visible.max() else visible.min()
     val backward = if (direction >= 0) visible.min() else visible.max()

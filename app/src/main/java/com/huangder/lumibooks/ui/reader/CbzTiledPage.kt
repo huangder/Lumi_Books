@@ -48,6 +48,8 @@ internal fun CbzTiledPage(
     zoomScale: Float,
     foreground: Boolean,
     fallback: Bitmap?,
+    crop: RasterHorizontalCrop = RasterHorizontalCrop.FULL,
+    fitToViewport: Boolean = true,
     adjustments: ReaderImageAdjustments = ReaderImageAdjustments(),
     modifier: Modifier = Modifier,
     onImageLoaded: () -> Unit = {},
@@ -55,10 +57,10 @@ internal fun CbzTiledPage(
 ) {
     Box(modifier = modifier) {
         if (fallback != null) {
-            Image(
-                bitmap = fallback.asImageBitmap(),
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
+            RasterCroppedBitmap(
+                bitmap = fallback,
+                crop = crop,
+                fitToViewport = fitToViewport,
                 modifier = Modifier.fillMaxSize()
                 , colorFilter = ColorFilter.colorMatrix(ColorMatrix(adjustments.colorMatrixValues()))
             )
@@ -94,7 +96,7 @@ internal fun CbzTiledPage(
                 view.tileBackgroundColor = android.graphics.Color.TRANSPARENT
                 view.downSampling = if (foreground) 1 else 4
                 view.externalScale = pdfZoomRenderBucket(zoomScale)
-                val key = source.uri to adjustments.sharpen
+                val key = Triple(source.uri, adjustments.sharpen, crop)
                 if (view.tag != key) {
                     val strength = adjustments.sharpen
                     val lowRam = (view.context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager).isLowRamDevice
@@ -128,7 +130,9 @@ internal fun CbzTiledPage(
                             onError(e)
                         }
                     })
-                    view.setImage(ImageSource.uri(source.uri))
+                    view.setImage(ImageSource.uri(source.uri).region(
+                        crop.sourceRect(source.dimensions.width, source.dimensions.height)
+                    ))
                 }
             },
             onRelease = { it.recycle() }

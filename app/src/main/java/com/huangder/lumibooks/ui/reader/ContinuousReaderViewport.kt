@@ -58,7 +58,7 @@ internal fun captureContinuousViewportAnchor(
     imageWidth: Int, imageGap: Int, viewportHeight: Int
 ): ContinuousViewportAnchor? {
     val y = (-itemOffset).coerceAtLeast(0)
-    val images = imagePositions(text, imageWidth, imageGap, viewportHeight)
+    val images = imagePositions(text, imageWidth, imageGap, if (chapter == 0) viewportHeight else 0)
     if (images.isNotEmpty()) {
         val index = images.indexOfLast { it.top <= y }.coerceAtLeast(0)
         val image = images[index]
@@ -84,7 +84,7 @@ internal fun continuousViewportAnchorOffset(
     anchor: ContinuousViewportAnchor, text: CharSequence, layout: Layout?,
     imageWidth: Int, imageGap: Int, viewportHeight: Int
 ): Int? {
-    val images = imagePositions(text, imageWidth, imageGap, viewportHeight)
+    val images = imagePositions(text, imageWidth, imageGap, if (anchor.chapter == 0) viewportHeight else 0)
     anchor.imageIndex?.let { index ->
         images.getOrNull(index)?.let { image ->
             return if (anchor.imageFraction != null) image.top + (image.height * anchor.imageFraction).roundToInt()
