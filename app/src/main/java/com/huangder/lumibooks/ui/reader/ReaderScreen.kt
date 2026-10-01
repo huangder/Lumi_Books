@@ -95,7 +95,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
+import com.huangder.lumibooks.ui.theme.drawAppShape
 import androidx.compose.ui.draw.blur
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -169,7 +170,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.layout
@@ -242,6 +242,8 @@ import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassDialog
 import com.huangder.lumibooks.ui.components.EditInputDialog
+import com.huangder.lumibooks.ui.excerpt.ExcerptRequest
+import com.huangder.lumibooks.ui.excerpt.ExcerptSheet
 import com.huangder.lumibooks.ui.components.SwipeRevealItem
 import com.huangder.lumibooks.ui.components.lumiCardSurface
 import com.huangder.lumibooks.ui.components.LiquidGlassButton
@@ -1921,6 +1923,7 @@ fun ReaderScreen(
     var showTxtTocDialog by remember(bookId) { mutableStateOf(false) }
 
     // 搜索状态
+    var excerptRequest by remember(bookId) { mutableStateOf<ExcerptRequest?>(null) }
     var showSearch by remember(bookId) { mutableStateOf(false) }
     var showWebSearch by remember(bookId) { mutableStateOf(false) }
     // 请求关闭状态（用于触发退出动画）
@@ -1933,7 +1936,7 @@ fun ReaderScreen(
     var requestCloseSearch by remember { mutableStateOf(false) }
 
     // 处理返回键：触发退出动画，而不是直接关闭
-    val isAnySheetOpen = localDictionaryQuery != null || annotationTagState.editingTarget != null || showNotesList || showNoteInput || pendingBookmarkRemarkId != null || showToc || showThemeSheet || showHighlightRules ||
+    val isAnySheetOpen = excerptRequest != null || localDictionaryQuery != null || annotationTagState.editingTarget != null || showNotesList || showNoteInput || pendingBookmarkRemarkId != null || showToc || showThemeSheet || showHighlightRules ||
         showAdvancedSheet || showSearch || showWebSearch || showTxtEncodingDialog || showTxtTocDialog || showReplaceInput
     val bookmarkPullSupported = (isBookLayout && !isBookLayoutContinuousScroll) ||
         (uiState.useNewEngine && !renderedContinuousScrollMode && !isVerticalWriting)
@@ -2416,6 +2419,16 @@ fun ReaderScreen(
 
     // 主题背景色
     val composeBgColor = Color(customBackgroundThemeColorInt)
+    fun showExcerpt(text: String, note: String, chapterIndex: Int) {
+        val book = uiState.book ?: return
+        showNotesList = false
+        requestCloseNotesList = false
+        showToc = false
+        requestCloseToc = false
+        excerptRequest = ExcerptRequest(book.title, book.author,
+            uiState.chapterTitles.getOrNull(chapterIndex).orEmpty(), text, note, book.coverPath,
+            customBackgroundThemeColorInt, readerTextColorInt)
+    }
     val coverEdgeColor by produceState<Int?>(
         initialValue = null,
         uiState.book?.coverPath
@@ -2655,6 +2668,14 @@ fun ReaderScreen(
                     onPageTextProviderReady = { epubPageTextProvider = it },
                     onPageTurnHandlerReady = { epubPageTurnHandler = it },
                     onPageChanged = { chapterIndex, pageIndex, pageCount, locatorJson ->
+                        // A page turn invalidates both the custom menu and the
+                        // WebView's native selection. Clear them at commit time so
+                        // a menu from the previous page cannot linger over the new one.
+                        if (selectionState != null || isSelectionDragging || epubDictionarySelection != null) {
+                            dismissSelectionMenu()
+                        } else {
+                            clearActiveTextSelection()
+                        }
                         if (viewModel.ttsPageChangeOriginFor(chapterIndex, pageIndex) == TtsPageChangeOrigin.USER) {
                             rememberTtsReturnLocation(chapterIndex, pageIndex)
                         } else {
@@ -2696,6 +2717,11 @@ fun ReaderScreen(
                     },
                     onImagePreviewOpen = viewModel::hideMenu,
                     onChapterTurn = { direction ->
+                        if (selectionState != null || isSelectionDragging || epubDictionarySelection != null) {
+                            dismissSelectionMenu()
+                        } else {
+                            clearActiveTextSelection()
+                        }
                         epubSearchRequest = null
                         epubLocatorRequest = null
                         epubPageRequest = null
@@ -2745,7 +2771,17 @@ fun ReaderScreen(
                                 selectedText = selection.text,
                                 startLocatorJson = selection.startLocatorJson,
                                 endLocatorJson = selection.endLocatorJson
-                            ) ?: return@EpubWebViewReader
+                            ) ?: if (selection.annotationOnly &&
+                                selection.endPosition > selection.startPosition
+                            ) {
+                                // Tapping a saved mark should still open its menu
+                                // when the publisher changed whitespace or DOM paths
+                                // and the quote resolver cannot reconstruct the range.
+                                ResolvedHighlightRange(
+                                    selection.startPosition,
+                                    selection.endPosition
+                                )
+                            } else return@EpubWebViewReader
                             val overlapping = viewModel.findOverlappingReaderNotes(
                                 chapterIndex = uiState.currentChapterIndex,
                                 startPosition = selection.startPosition,
@@ -4020,6 +4056,7 @@ fun ReaderScreen(
                     showToc = false
                     requestCloseToc = false
                 },
+                onShareBookmark = { bm -> showExcerpt(bm.title, bm.remark, bm.chapterIndex) },
                 onDeleteBookmark = { bm -> viewModel.deleteBookmark(bm) },
                 availableTags = availableAnnotationTags,
                 onEditBookmarkTags = annotationTagState::editBookmark,
@@ -4396,7 +4433,9 @@ fun ReaderScreen(
         }
 
         epubNavigationRequest?.takeIf {
-            it.operationId == visibleEpubNavigationId && (it.showLoadingPage || isBookLayoutContinuousScroll)
+            it.operationId == visibleEpubNavigationId &&
+                epubNavigationStage != EpubNavigationStage.ANIMATING &&
+                (it.showLoadingPage || isBookLayoutContinuousScroll)
         }?.let { request ->
             EpubNavigationLoadingOverlay(
                 chapterTitle = uiState.chapterTitles
@@ -4506,6 +4545,7 @@ fun ReaderScreen(
             requestCloseNotesList = false
         },
         onEditTags = annotationTagState::edit,
+        onShareNote = { note -> showExcerpt(note.selectedText, note.note, note.chapterIndex) },
         onDeleteNote = { note -> viewModel.deleteNote(note) },
         onDismiss = { showNotesList = false; requestCloseNotesList = false }
     )
@@ -4624,6 +4664,15 @@ fun ReaderScreen(
             }
             selectionState = null
             clearActiveTextSelection()
+        },
+        onExcerpt = {
+            selectionForAction()?.let { selection ->
+                val fresh = if (selection.annotationOnly || isBookLayout || isContinuousScrollMode) null
+                    else readViewRef.value?.getSelectionInfo()
+                showExcerpt(fresh?.selectedText ?: selection.selectedText,
+                    selection.existingNote?.note.orEmpty(), fresh?.chapterIndex ?: selection.chapterIndex)
+            }
+            dismissSelectionMenu()
         },
         onSearch = {
             val query = if (isBookLayout || isContinuousScrollMode) {
@@ -4768,6 +4817,10 @@ fun ReaderScreen(
     )
 
     // ── 浮动菜单设置 Dialog ──
+    excerptRequest?.let { request ->
+        ExcerptSheet(request, onClose = { excerptRequest = null }, glassBackdrop = activeReaderGlassBackdrop)
+    }
+
     SelectionMenuSettingsDialog(
         visible = showMenuSettings,
         currentItems = uiState.selectionMenuItems,
@@ -5205,34 +5258,36 @@ private fun HorizontalBatteryIcon(
     color: Color,
     modifier: Modifier = Modifier
 ) {
+    val bodyShape = AppRoundedCornerShape(3.dp)
+    val fillShape = AppRoundedCornerShape(1.5.dp)
+    val terminalShape = AppRoundedCornerShape(0.75.dp)
     Canvas(modifier = modifier.width(21.dp).height(11.dp)) {
         val strokeWidth = 1.dp.toPx()
         val terminalWidth = 1.5.dp.toPx()
         val terminalGap = 0.75.dp.toPx()
         val bodyWidth = size.width - terminalWidth - terminalGap
-        val radius = 3.dp.toPx()
-        drawRoundRect(
+        drawAppShape(
+            shape = bodyShape,
             color = color.copy(alpha = 0.62f),
             size = Size(bodyWidth, size.height),
-            cornerRadius = CornerRadius(radius, radius),
             style = Stroke(width = strokeWidth)
         )
         val innerPadding = 1.75.dp.toPx()
         val fillWidth = ((bodyWidth - innerPadding * 2f) *
             (batteryPercent.coerceIn(0, 100) / 100f)).coerceAtLeast(0f)
         if (fillWidth > 0f) {
-            drawRoundRect(
+            drawAppShape(
+                shape = fillShape,
                 color = if (batteryPercent <= 20) Color(0xFFFF453A) else color,
                 topLeft = Offset(innerPadding, innerPadding),
-                size = Size(fillWidth, (size.height - innerPadding * 2f).coerceAtLeast(0f)),
-                cornerRadius = CornerRadius(1.5.dp.toPx(), 1.5.dp.toPx())
+                size = Size(fillWidth, (size.height - innerPadding * 2f).coerceAtLeast(0f))
             )
         }
-        drawRoundRect(
+        drawAppShape(
+            shape = terminalShape,
             color = color.copy(alpha = 0.62f),
             topLeft = Offset(bodyWidth + terminalGap, size.height * 0.32f),
-            size = Size(terminalWidth, size.height * 0.4f),
-            cornerRadius = CornerRadius(terminalWidth / 2f, terminalWidth / 2f)
+            size = Size(terminalWidth, size.height * 0.4f)
         )
     }
 }
@@ -5434,7 +5489,7 @@ private fun LinkReturnButton(
 ) {
     LiquidGlassSurface(
         controlEdge = true,
-        shape = RoundedCornerShape(AppRadius.capsule),
+        shape = AppRoundedCornerShape(AppRadius.capsule),
         fallbackColor = backgroundColor,
         contentScrimColor = glassContentScrimColor,
         forceFallback = forceSolid,
@@ -5641,7 +5696,7 @@ private fun TxtEncodingCapsule(
 
     LiquidGlassSurface(
         controlEdge = true,
-        shape = RoundedCornerShape(50),
+        shape = AppRoundedCornerShape(50),
         fallbackColor = backgroundColor,
         contentScrimColor = backgroundColor.copy(alpha = if (selected) 0.86f else 0.52f),
         transparencyOverride = if (selected) 0.12f else 0.34f,
@@ -5866,7 +5921,7 @@ private fun ReaderMoreMenu(
 ) {
     LiquidGlassSurface(
         controlEdge = true,
-        shape = RoundedCornerShape(16.dp),
+        shape = AppRoundedCornerShape(16.dp),
         fallbackColor = backgroundColor,
         contentScrimColor = glassContentScrimColor,
         forceFallback = forceSolid,
@@ -6166,7 +6221,7 @@ private fun ReaderMenuStatus(
 ) {
     LiquidGlassSurface(
         controlEdge = true,
-        shape = RoundedCornerShape(18.dp),
+        shape = AppRoundedCornerShape(18.dp),
         fallbackColor = backgroundColor,
         contentScrimColor = glassContentScrimColor,
         forceFallback = forceSolid,
@@ -6290,7 +6345,7 @@ private fun CatalogCapsule(
         ) {
             LiquidGlassSurface(
                 controlEdge = true,
-                shape = RoundedCornerShape(18.dp),
+                shape = AppRoundedCornerShape(18.dp),
                 fallbackColor = bgColor,
                 contentScrimColor = glassContentScrimColor,
                 forceFallback = !isLiquidGlass,
@@ -6313,7 +6368,7 @@ private fun CatalogCapsule(
 
         LiquidGlassSurface(
             controlEdge = true,
-            shape = RoundedCornerShape(24.dp),
+            shape = AppRoundedCornerShape(24.dp),
             fallbackColor = bgColor,
             contentScrimColor = glassContentScrimColor,
             forceFallback = forceSolid,
@@ -6349,13 +6404,13 @@ private fun CatalogCapsule(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .clip(RoundedCornerShape(24.dp))
+                        .clip(AppRoundedCornerShape(24.dp))
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxHeight()
                             .fillMaxWidth((displayProgress / 100f).coerceIn(0f, 1f))
-                            .clip(RoundedCornerShape(24.dp))
+                            .clip(AppRoundedCornerShape(24.dp))
                             .background(progressColor)
                     )
                 }
@@ -6533,7 +6588,7 @@ private fun ActionCapsule(
 ) {
     LiquidGlassSurface(
         controlEdge = true,
-        shape = RoundedCornerShape(22.dp),
+        shape = AppRoundedCornerShape(22.dp),
         fallbackColor = bgColor,
         contentScrimColor = glassContentScrimColor,
         forceFallback = forceSolid,
@@ -7802,6 +7857,7 @@ private fun TocSheet(
     glassBackdrop: Backdrop? = null,
     onChapterSelected: (com.huangder.lumibooks.util.parser.TocEntry) -> Unit,
     onBookmarkClick: (com.huangder.lumibooks.domain.model.Bookmark) -> Unit = {},
+    onShareBookmark: (com.huangder.lumibooks.domain.model.Bookmark) -> Unit = {},
     onDeleteBookmark: (com.huangder.lumibooks.domain.model.Bookmark) -> Unit = {},
     availableTags: List<String> = emptyList(),
     onEditBookmarkRemark: (com.huangder.lumibooks.domain.model.Bookmark, String, List<String>) -> Unit = { _, _, _ -> },
@@ -7948,7 +8004,7 @@ private fun TocSheet(
                 .navigationBarsPadding()
                 .padding(start = 24.dp, top = 24.dp, end = 24.dp),
             fallbackColor = AppColors.CardBg,
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
         ) {
             // 标题栏
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -8078,7 +8134,7 @@ private fun TocSheet(
                                             placementSpec = tween(220, easing = FastOutSlowInEasing),
                                             fadeOutSpec = tween(140)
                                         )
-                                        .clip(RoundedCornerShape(8.dp))
+                                        .clip(AppRoundedCornerShape(8.dp))
                                         .then(
                                             if (entry.chapterIndex >= 0 || isFoldable) {
                                                 Modifier.clickable(
@@ -8142,7 +8198,7 @@ private fun TocSheet(
                                             fadeOutSpec = tween(140)
                                         )
                                         .padding(start = indent, top = 2.dp, bottom = 2.dp, end = 4.dp)
-                                        .clip(RoundedCornerShape(12.dp))
+                                        .clip(AppRoundedCornerShape(12.dp))
                                         .background(if (isCurrent) AccentColor.copy(alpha = 0.1f) else LightBgGray)
                                         .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                                             if (entry.chapterIndex >= 0) {
@@ -8251,6 +8307,7 @@ private fun TocSheet(
                                         remarkText = bm.remark
                                         remarkTags = bm.tags
                                     },
+                                    onShare = { onShareBookmark(bm) },
                                     onDelete = { onDeleteBookmark(bm) }
                                 )
                                 if (idx < sortedBookmarks.size - 1) {
@@ -8576,7 +8633,7 @@ private fun TxtTocRuleOption(
         AppColors.TextSecondary.copy(alpha = if (enabled) 1f else 0.48f)
     }
     LiquidGlassSurface(
-        shape = RoundedCornerShape(14.dp),
+        shape = AppRoundedCornerShape(14.dp),
         fallbackColor = if (selected) accent else AppColors.BgGray,
         contentScrimColor = if (selected) accent.copy(alpha = 0.86f) else AppColors.CardBg.copy(alpha = 0.54f),
         tintColor = accent.takeIf { selected },
@@ -8588,7 +8645,7 @@ private fun TxtTocRuleOption(
             .heightIn(min = 64.dp)
             .then(
                 if (selected) {
-                    Modifier.border(1.dp, Color.White.copy(alpha = 0.72f), RoundedCornerShape(14.dp))
+                    Modifier.border(1.dp, Color.White.copy(alpha = 0.72f), AppRoundedCornerShape(14.dp))
                 } else {
                     Modifier
                 }
@@ -8634,7 +8691,7 @@ private fun TxtTocRuleExample() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .clip(AppRoundedCornerShape(8.dp))
             .background(LightBgGray)
             .padding(horizontal = 10.dp, vertical = 9.dp)
     ) {
@@ -8701,7 +8758,7 @@ private fun TocRuleInput(label: String, value: String, onValueChange: (String) -
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
-            modifier = Modifier.fillMaxWidth().background(LightBgGray, RoundedCornerShape(8.dp)).padding(10.dp),
+            modifier = Modifier.fillMaxWidth().background(LightBgGray, AppRoundedCornerShape(8.dp)).padding(10.dp),
             textStyle = TextStyle(color = AppColors.TextPrimary, fontSize = 14.sp),
             singleLine = true
         )
@@ -8713,12 +8770,14 @@ private fun TocBookmarkItem(
     bookmark: com.huangder.lumibooks.domain.model.Bookmark,
     chapterTitle: String,
     onClick: () -> Unit,
+    onShare: () -> Unit,
     onEditRemark: () -> Unit,
     onEditTags: () -> Unit,
     onDelete: () -> Unit
 ) {
     val chapterNumber = stringResource(R.string.chapter_number, bookmark.chapterIndex + 1)
     SwipeRevealItem(
+        onShare = onShare,
         onEdit = onEditRemark,
         onEditTags = onEditTags,
         onDelete = onDelete,
@@ -8727,9 +8786,9 @@ private fun TocBookmarkItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
+                .clip(AppRoundedCornerShape(12.dp))
                 .background(LightBgGray)
-                .border(1.dp, AppColors.TextSecondary.copy(alpha = 0.24f), RoundedCornerShape(12.dp))
+                .border(1.dp, AppColors.TextSecondary.copy(alpha = 0.24f), AppRoundedCornerShape(12.dp))
                 .padding(start = 16.dp, top = 10.dp, bottom = 10.dp, end = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -8873,19 +8932,19 @@ private fun DraggableScrollbar(
                 }
         ) {
             if (thumbHeightPx < trackHeightPx) {
+                val thumbShape = AppRoundedCornerShape(50)
                 Canvas(
                     modifier = Modifier
                         .align(Alignment.Center)
                         .width(5.dp)
                         .fillMaxHeight()
                 ) {
-                    val radius = size.width / 2f
                     val top = displayFraction.coerceIn(0f, 1f) * (size.height - thumbHeightPx)
-                    drawRoundRect(
+                    drawAppShape(
+                        shape = thumbShape,
                         color = thumbColor,
                         topLeft = Offset(0f, top),
-                        size = Size(size.width, thumbHeightPx),
-                        cornerRadius = CornerRadius(radius)
+                        size = Size(size.width, thumbHeightPx)
                     )
                 }
             }
@@ -8898,8 +8957,8 @@ private fun DraggableScrollbar(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(top = 10.dp)
-                    .shadow(4.dp, RoundedCornerShape(20.dp))
-                    .clip(RoundedCornerShape(20.dp))
+                    .shadow(4.dp, AppRoundedCornerShape(20.dp))
+                    .clip(AppRoundedCornerShape(20.dp))
                     .background(AppColors.CardBg.copy(alpha = 0.96f))
                     .padding(horizontal = 14.dp, vertical = 6.dp)
             ) {
@@ -8982,7 +9041,7 @@ private fun SearchSheet(
                 .navigationBarsPadding()
                 .padding(24.dp),
             fallbackColor = AppColors.CardBg,
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
         ) {
             Column {
                 // 标题栏
@@ -9015,7 +9074,7 @@ private fun SearchSheet(
                         modifier = Modifier
                             .weight(1f)
                             .height(52.dp)
-                            .clip(RoundedCornerShape(26.dp))
+                            .clip(AppRoundedCornerShape(26.dp))
                             .background(LightBgGray)
                             .padding(horizontal = 16.dp),
                         contentAlignment = Alignment.CenterStart
@@ -9039,7 +9098,7 @@ private fun SearchSheet(
                     Box(
                         modifier = Modifier
                             .height(48.dp)
-                            .clip(RoundedCornerShape(24.dp))
+                            .clip(AppRoundedCornerShape(24.dp))
                             .background(if (query.isNotBlank()) AccentColor else LightBgGray)
                             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { if (query.isNotBlank()) onSearch() }
                             .padding(horizontal = 20.dp),
@@ -9075,7 +9134,7 @@ private fun SearchSheet(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 4.dp)
-                                    .clip(RoundedCornerShape(12.dp))
+                                    .clip(AppRoundedCornerShape(12.dp))
                                     .background(LightBgGray)
                                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                                         onResultClick(r)
@@ -9223,7 +9282,7 @@ private fun NetworkSearchSheet(
         if (visible) goBackOrDismiss()
     }
 
-    val panelShape = RoundedCornerShape(28.dp)
+    val panelShape = AppRoundedCornerShape(28.dp)
     val enterOffsetPx = with(LocalDensity.current) { 24.dp.toPx() }
     val engineLabels = mapOf(
         CoverSearchEngine.BING to stringResource(R.string.cover_search_engine_bing),
@@ -9288,7 +9347,7 @@ private fun NetworkSearchSheet(
                             modifier = Modifier
                                 .weight(1f)
                                 .heightIn(min = 44.dp)
-                                .clip(RoundedCornerShape(24.dp))
+                                .clip(AppRoundedCornerShape(24.dp))
                                 .background(AppColors.BgGray)
                                 .padding(horizontal = 14.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -9324,9 +9383,9 @@ private fun NetworkSearchSheet(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(18.dp))
+                            .clip(AppRoundedCornerShape(18.dp))
                             .background(AppColors.BgGray)
-                            .border(1.dp, AppColors.Divider.copy(alpha = 0.65f), RoundedCornerShape(18.dp))
+                            .border(1.dp, AppColors.Divider.copy(alpha = 0.65f), AppRoundedCornerShape(18.dp))
                     ) {
                         AndroidView(factory = { webView }, modifier = Modifier.fillMaxSize())
                         if (isLoading) {
@@ -9346,7 +9405,7 @@ private fun NetworkSearchSheet(
                     ) {
                         CoverSearchEngine.entries.forEach { engine ->
                             val selected = selectedEngine == engine
-                            val shape = RoundedCornerShape(50)
+                            val shape = AppRoundedCornerShape(50)
                             LiquidGlassSurface(
                                 shape = shape,
                                 fallbackColor = if (selected) AppColors.Accent else AppColors.BgGray,
@@ -9809,6 +9868,7 @@ private fun SelectionMenuOverlay(
     onHighlight: () -> Unit,
     onUnderline: () -> Unit = {},
     onNote: () -> Unit,
+    onExcerpt: () -> Unit,
     onSearch: () -> Unit,
     onWebSearch: () -> Unit,
     onDictionary: () -> Unit,
@@ -9865,6 +9925,7 @@ private fun SelectionMenuOverlay(
             if (!state.hasUnderline && isMenuEnabled(selectionMenuItems, MENU_KEY_UNDERLINE)) add(stringResource(R.string.menu_underline))
             if (isMenuEnabled(selectionMenuItems, MENU_KEY_NOTE)) add(stringResource(if (state.hasNote) R.string.menu_view_note else R.string.menu_note))
             if (isMenuEnabled(selectionMenuItems, MENU_KEY_DICTIONARY)) add(stringResource(R.string.menu_dictionary))
+            add(stringResource(R.string.excerpt_title))
             if (isMenuEnabled(selectionMenuItems, MENU_KEY_SEARCH)) add(stringResource(R.string.menu_search))
             if (isMenuEnabled(selectionMenuItems, MENU_KEY_WEB_SEARCH)) add(stringResource(R.string.menu_web_search))
             if (isMenuEnabled(selectionMenuItems, MENU_KEY_COPY)) add(stringResource(R.string.menu_copy))
@@ -9908,7 +9969,7 @@ private fun SelectionMenuOverlay(
     val annotationPillWidth = if (annotationRemoveLabels.isEmpty()) 0.dp else {
         val maxRemoveChipWidth = annotationRemoveLabels.maxOf { measuredLabelWidth(it) + actionChipHorizontalPadding * 2 }
         val stylePickerWidth = if (state.hasUnderline) 78.dp else 0.dp
-        (182.dp + stylePickerWidth + 12.5.dp + 20.dp + maxRemoveChipWidth + measuredLabelWidth(stringResource(R.string.annotation_tags)) + 24.dp).coerceAtMost(maxMenuWidth)
+        (182.dp + stylePickerWidth + 12.5.dp + 20.dp + maxRemoveChipWidth + measuredLabelWidth(stringResource(R.string.excerpt_title)) + actionChipHorizontalPadding * 2 + 0.5.dp + measuredLabelWidth(stringResource(R.string.annotation_tags)) + 24.dp).coerceAtMost(maxMenuWidth)
     }
     // 菜单行高跟随系统字体缩放：固定 52dp 会把大字体下的 chip 文字裁掉下半截
     val menuChipLabels = buildList {
@@ -10122,6 +10183,7 @@ private fun SelectionMenuOverlay(
                                         menuText = menuText,
                                         dividerColor = dividerColor,
                                         onColorChange = onChangeHighlightColor,
+                                        onExcerpt = onExcerpt,
                                         onRemove = onDeleteHighlight
                                     )
                                     MenuChip(stringResource(R.string.annotation_tags), menuText, onEditHighlightTags)
@@ -10153,6 +10215,7 @@ private fun SelectionMenuOverlay(
                                         dividerColor = dividerColor,
                                         onColorChange = onChangeUnderlineColor,
                                         onUnderlineStyleChange = onChangeUnderlineStyle,
+                                        onExcerpt = onExcerpt,
                                         onRemove = onDeleteUnderline
                                     )
                                     MenuChip(stringResource(R.string.annotation_tags), menuText, onEditUnderlineTags)
@@ -10171,6 +10234,7 @@ private fun SelectionMenuOverlay(
                                     ))
                                 }
                                 if (isMenuEnabled(selectionMenuItems, MENU_KEY_DICTIONARY)) add(Pair(stringResource(R.string.menu_dictionary), onDictionary))
+                                add(Pair(stringResource(R.string.excerpt_title), onExcerpt))
                                 if (isMenuEnabled(selectionMenuItems, MENU_KEY_SEARCH)) add(Pair(stringResource(R.string.menu_search), onSearch))
                                 if (isMenuEnabled(selectionMenuItems, MENU_KEY_WEB_SEARCH)) add(Pair(stringResource(R.string.menu_web_search), onWebSearch))
                                 if (isMenuEnabled(selectionMenuItems, MENU_KEY_COPY)) add(Pair(stringResource(R.string.menu_copy), onCopy))
@@ -10407,7 +10471,7 @@ private fun ReplaceInputSheet(
                 .navigationBarsPadding()
                 .padding(24.dp),
             fallbackColor = AppColors.CardBg,
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             backdrop = glassBackdrop
         ) {
             val replaceAccent = Color(0xFFFF6268)
@@ -10472,7 +10536,7 @@ private fun ReplaceInputSheet(
                     )
                     LiquidGlassSurface(
                         controlEdge = true,
-                        shape = RoundedCornerShape(26.dp),
+                        shape = AppRoundedCornerShape(26.dp),
                         fallbackColor = AppColors.BgGray,
                         contentScrimColor = AppColors.BgGray.copy(alpha = 0.22f),
                         transparencyOverride = 0.78f,
@@ -10528,7 +10592,7 @@ private fun ReplaceInputSheet(
                         modifier = Modifier
                             .weight(1f)
                             .height(52.dp),
-                        shape = RoundedCornerShape(26.dp),
+                        shape = AppRoundedCornerShape(26.dp),
                         tintedColor = Color.White,
                         prominentShadow = true,
                         contentColor = replaceAllTextColor
@@ -10549,7 +10613,7 @@ private fun ReplaceInputSheet(
                         modifier = Modifier
                             .weight(1f)
                             .height(52.dp),
-                        shape = RoundedCornerShape(26.dp),
+                        shape = AppRoundedCornerShape(26.dp),
                         tintedColor = AppColors.Accent,
                         prominentShadow = true,
                         contentColor = AppColors.OnAccent,
@@ -10587,7 +10651,7 @@ private fun MenuChip(label: String, textColor: Color, onClick: () -> Unit) {
         fontSize = SELECTION_MENU_CHIP_FONT_SIZE_SP.sp,
         color = textColor,
         modifier = Modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(AppRoundedCornerShape(16.dp))
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
             .padding(horizontal = horizontalPadding, vertical = SELECTION_MENU_CHIP_VERTICAL_PADDING_DP.dp)
     )
@@ -10611,6 +10675,7 @@ private fun SelectionMenuPill(
     val enterScale = remember(reappearKey) { Animatable(0.75f) }
     // Float upward from 12dp below the final position.
     val enterTranslateY = remember(reappearKey) { Animatable(12f) }
+    val pillShape = AppRoundedCornerShape(22.dp)
     LaunchedEffect(reappearKey) {
         if (enterDelayMillis > 0) delay(enterDelayMillis)
         launch { enterAlpha.animateTo(1f, tween(250)) }
@@ -10618,7 +10683,7 @@ private fun SelectionMenuPill(
         launch { enterTranslateY.animateTo(0f, tween(220, easing = FastOutSlowInEasing)) }
     }
     LiquidGlassSurface(
-        shape = RoundedCornerShape(22.dp),
+        shape = pillShape,
         fallbackColor = menuBg,
         backdrop = glassBackdrop,
         contentScrimColor = menuBg.copy(alpha = 0.18f),
@@ -10632,7 +10697,7 @@ private fun SelectionMenuPill(
                 scaleY = enterScale.value
                 translationY = enterTranslateY.value
                 alpha = enterAlpha.value
-                shape = RoundedCornerShape(22.dp)
+                shape = pillShape
                 shadowElevation = with(density) { 20.dp.toPx() }
                 ambientShadowColor = Color.Black.copy(alpha = 0.08f)
                 spotShadowColor = Color.Black.copy(alpha = 0.13f)
@@ -10647,7 +10712,7 @@ private fun SelectionMenuPill(
 
 /** 标注行：改色色点 + 移除高亮/划线文字按钮 */
 @Composable
-private fun SelectionAnnotationRow(
+internal fun SelectionAnnotationRow(
     currentColor: String?,
     underlineMode: Int? = null,
     removeLabel: String,
@@ -10655,6 +10720,7 @@ private fun SelectionAnnotationRow(
     dividerColor: Color,
     onColorChange: (Int) -> Unit,
     onUnderlineStyleChange: (Int) -> Unit = {},
+    onExcerpt: () -> Unit,
     onRemove: () -> Unit
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -10685,6 +10751,8 @@ private fun SelectionAnnotationRow(
         Spacer(Modifier.width(6.dp))
         MenuDivider(dividerColor)
         Spacer(Modifier.width(6.dp))
+        MenuChip(stringResource(R.string.excerpt_title), menuText, onExcerpt)
+        MenuDivider(dividerColor)
         MenuChip(removeLabel, menuText, onRemove)
     }
 }
@@ -10699,8 +10767,8 @@ private fun UnderlineStyleButton(
     Box(
         modifier = Modifier
             .size(26.dp)
-            .then(if (selected) Modifier.border(1.5.dp, color, RoundedCornerShape(6.dp)) else Modifier)
-            .clip(RoundedCornerShape(6.dp))
+            .then(if (selected) Modifier.border(1.5.dp, color, AppRoundedCornerShape(6.dp)) else Modifier)
+            .clip(AppRoundedCornerShape(6.dp))
             .semantics {
                 contentDescription = when (mode) {
                     HighlightRule.UNDERLINE_STRAIGHT -> "Straight underline"
@@ -10899,7 +10967,7 @@ internal fun NoteInputSheet(
                 .navigationBarsPadding()
                 .padding(AppSpace.lg),
             fallbackColor = AppColors.CardBg,
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             backdrop = glassBackdrop
         ) {
             Column(Modifier.fillMaxSize().padding(top = 2.dp)) {
@@ -10943,7 +11011,7 @@ internal fun NoteInputSheet(
                             inner()
                         } },
                         modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 200.dp)
-                            .clip(RoundedCornerShape(12.dp)).background(AppColors.BgGray)
+                            .clip(AppRoundedCornerShape(12.dp)).background(AppColors.BgGray)
                             .padding(14.dp).focusRequester(focusRequester),
                         maxLines = 10
                     )
@@ -10984,6 +11052,7 @@ internal fun NotesListSheet(
     glassBackdrop: Backdrop? = null,
     notes: List<com.huangder.lumibooks.domain.model.Note>,
     onNoteClick: (com.huangder.lumibooks.domain.model.Note) -> Unit,
+    onShareNote: (com.huangder.lumibooks.domain.model.Note) -> Unit,
     onEditTags: (com.huangder.lumibooks.domain.model.Note) -> Unit,
     onDeleteNote: (com.huangder.lumibooks.domain.model.Note) -> Unit,
     onDismiss: () -> Unit
@@ -11058,7 +11127,7 @@ internal fun NotesListSheet(
                 .navigationBarsPadding()
                 .padding(start = 20.dp, top = if (compactHeight) 12.dp else 20.dp, end = 20.dp),
             fallbackColor = LightCardBg,
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             backdrop = glassBackdrop
         ) {
             // 标题栏
@@ -11136,6 +11205,7 @@ internal fun NotesListSheet(
                                 pendingJumpNote = item
                                 isClosing = true
                             },
+                            onShare = { onShareNote(item) },
                             onDelete = { onDeleteNote(item) },
                             onEditTags = { onEditTags(item) },
                             resetRevealedKey = resetRevealedKey,
@@ -11199,7 +11269,7 @@ private fun HighlightNoteTabSwitcher(
         modifier = Modifier
             .fillMaxWidth()
             .height(height)
-            .clip(RoundedCornerShape(20.dp))
+            .clip(AppRoundedCornerShape(20.dp))
             .background(LightBgGray)
             .padding(2.dp)
     ) {
@@ -11213,7 +11283,7 @@ private fun HighlightNoteTabSwitcher(
                 .fillMaxHeight()
                 .width(tabWidth)
                 .offset(x = indicatorOffset)
-                .clip(RoundedCornerShape(18.dp))
+                .clip(AppRoundedCornerShape(18.dp))
                 .background(AppColors.CardBg)
         )
 
@@ -11242,6 +11312,7 @@ private fun HighlightNoteTabSwitcher(
 @Composable
 internal fun HighlightNoteItem(
     item: com.huangder.lumibooks.domain.model.Note,
+    onShare: () -> Unit,
     onClick: () -> Unit,
     onDelete: () -> Unit,
     onEditTags: () -> Unit,
@@ -11259,6 +11330,7 @@ internal fun HighlightNoteItem(
         }
     }
     SwipeRevealItem(
+        onShare = onShare,
         onEditTags = onEditTags,
         onDelete = onDelete,
         onClick = onClick,
@@ -11268,9 +11340,9 @@ internal fun HighlightNoteItem(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .lumiCardSurface(shape = RoundedCornerShape(12.dp))
-                .border(1.dp, AppColors.TextSecondary.copy(alpha = 0.24f), RoundedCornerShape(12.dp))
+                .clip(AppRoundedCornerShape(12.dp))
+                .lumiCardSurface(shape = AppRoundedCornerShape(12.dp))
+                .border(1.dp, AppColors.TextSecondary.copy(alpha = 0.24f), AppRoundedCornerShape(12.dp))
                 .padding(16.dp)
         ) {
             // 左侧高亮色竖条
@@ -11278,7 +11350,7 @@ internal fun HighlightNoteItem(
                 modifier = Modifier
                     .width(4.dp)
                     .height(20.dp)
-                    .clip(RoundedCornerShape(2.dp))
+                    .clip(AppRoundedCornerShape(2.dp))
                     .background(highlightColor)
             )
 
@@ -11414,7 +11486,7 @@ private fun ReaderFootnoteBubbleOverlay(
     val maxHeightPx = (rootSize.height * 0.4f).toInt().coerceAtLeast(200)
     val maxWidthDp = with(density) { maxWidthPx.toDp() }
     val maxHeightDp = with(density) { maxHeightPx.toDp() }
-    val bubbleShape = RoundedCornerShape(16.dp)
+    val bubbleShape = AppRoundedCornerShape(16.dp)
 
     val bubbleWidth = bubbleSize.width.coerceIn(200, maxWidthPx)
     val left = (anchorX - bubbleWidth / 2f)

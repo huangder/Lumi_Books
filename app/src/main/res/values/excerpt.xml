@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="excerpt_title">摘录</string>
+    <string name="excerpt_style">换样式</string>
+    <string name="excerpt_save">保存图片</string>
+    <string name="excerpt_share">分享摘录</string>
+    <string name="excerpt_saved">已保存图片</string>
+    <string name="excerpt_failed">图片生成失败，请重试</string>
+    <string name="excerpt_save_failed">保存失败，请检查存储空间和权限</string>
+    <string name="excerpt_share_failed">分享失败，请重试</string>
+</resources>

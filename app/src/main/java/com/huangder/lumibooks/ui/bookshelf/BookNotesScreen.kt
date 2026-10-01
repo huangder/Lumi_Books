@@ -1,4 +1,7 @@
 package com.huangder.lumibooks.ui.bookshelf
+
+import com.huangder.lumibooks.ui.excerpt.ExcerptLauncher
+import com.huangder.lumibooks.ui.excerpt.ExcerptRequest
 import com.huangder.lumibooks.ui.icons.directionalIcon
 import com.huangder.lumibooks.ui.icons.AppIcons
 
@@ -30,7 +33,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -104,6 +107,7 @@ fun BookNotesScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val excerptDark = LocalIsDarkTheme.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val glassBackdrop = rememberLayerBackdrop()
@@ -156,6 +160,26 @@ fun BookNotesScreen(
         }
     }
 
+    val shareNote: (Note) -> Unit = { note ->
+        uiState.book?.let { book ->
+            scope.launch {
+                runCatching {
+                    ExcerptLauncher.open(context, viewModel.excerptTheme(ExcerptRequest.fromNote(book, note,
+                        context.getString(R.string.chapter_number, note.chapterIndex + 1)), excerptDark))
+                }.onFailure { Toast.makeText(context, R.string.excerpt_failed, Toast.LENGTH_SHORT).show() }
+            }
+        }
+    }
+    val shareBookmark: (Bookmark) -> Unit = { bookmark ->
+        uiState.book?.let { book ->
+            scope.launch {
+                runCatching {
+                    ExcerptLauncher.open(context, viewModel.excerptTheme(ExcerptRequest.fromBookmark(book, bookmark,
+                        context.getString(R.string.chapter_number, bookmark.chapterIndex + 1)), excerptDark))
+                }.onFailure { Toast.makeText(context, R.string.excerpt_failed, Toast.LENGTH_SHORT).show() }
+            }
+        }
+    }
     val tabs = listOf(
         stringResource(R.string.tab_highlights),
         stringResource(R.string.tab_underline),
@@ -257,24 +281,28 @@ fun BookNotesScreen(
             val filter = ReadingMarkFilter(selectedTag, selectedColor, selectedLine)
             when (selectedTab) {
                 0 -> NoteList(
+                    onShare = shareNote,
                     notes = uiState.highlights.filter(filter::matches),
                     targetNoteId = targetNoteId,
                     onEditTags = { editingNoteTags = it },
                     onDelete = { viewModel.deleteNote(it) }
                 )
                 1 -> NoteList(
+                    onShare = shareNote,
                     notes = uiState.underlines.filter(filter::matches),
                     targetNoteId = targetNoteId,
                     onEditTags = { editingNoteTags = it },
                     onDelete = { viewModel.deleteNote(it) }
                 )
                 2 -> NoteList(
+                    onShare = shareNote,
                     notes = uiState.noteItems.filter(filter::matches),
                     targetNoteId = targetNoteId,
                     onEditTags = { editingNoteTags = it },
                     onDelete = { viewModel.deleteNote(it) }
                 )
                 3 -> BookmarkList(
+                    onShare = shareBookmark,
                     bookmarks = uiState.bookmarks.filter(filter::matches),
                     onEditTags = { editingBookmarkTags = it },
                     onEditRemark = { bookmark ->
@@ -413,7 +441,7 @@ private fun SegmentedTabBar(
         modifier = modifier
             .fillMaxWidth()
             .height(tabHeight)
-            .clip(RoundedCornerShape(20.dp))
+            .clip(AppRoundedCornerShape(20.dp))
             .background(AppColors.BgGray)
             .padding(2.dp)
     ) {
@@ -432,8 +460,8 @@ private fun SegmentedTabBar(
                 .graphicsLayer {
                     translationX = indicatorOffset * size.width
                 }
-                .clip(RoundedCornerShape(18.dp))
-                .shadow(2.dp, RoundedCornerShape(18.dp))
+                .clip(AppRoundedCornerShape(18.dp))
+                .shadow(2.dp, AppRoundedCornerShape(18.dp))
                 .background(if (isDark) AppColors.CardBg else Color.White)
         )
 
@@ -470,6 +498,7 @@ private fun SegmentedTabBar(
 @Composable
 private fun NoteList(
     notes: List<Note>,
+    onShare: (Note) -> Unit,
     targetNoteId: Long? = null,
     onEditTags: (Note) -> Unit,
     onDelete: (Note) -> Unit
@@ -514,6 +543,7 @@ private fun NoteList(
             ) { note ->
                 HighlightNoteItem(
                     note = note,
+                    onShare = { onShare(note) },
                     onEditTags = { onEditTags(note) },
                     onDelete = { onDelete(note) }
                 )
@@ -525,6 +555,7 @@ private fun NoteList(
 @Composable
 private fun BookmarkList(
     bookmarks: List<Bookmark>,
+    onShare: (Bookmark) -> Unit,
     onEditRemark: (Bookmark) -> Unit,
     onEditTags: (Bookmark) -> Unit,
     onDelete: (Bookmark) -> Unit
@@ -554,6 +585,7 @@ private fun BookmarkList(
             items(bookmarks) { bookmark ->
                 BookmarkItem(
                     bookmark = bookmark,
+                    onShare = { onShare(bookmark) },
                     onEditTags = { onEditTags(bookmark) },
                     onEditRemark = { onEditRemark(bookmark) },
                     onDelete = { onDelete(bookmark) }
@@ -568,19 +600,21 @@ private fun BookmarkList(
 @Composable
 private fun HighlightNoteItem(
     note: Note,
+    onShare: () -> Unit,
     onEditTags: () -> Unit,
     onDelete: () -> Unit
 ) {
     SwipeRevealItem(
+        onShare = onShare,
         onEditTags = onEditTags,
         onDelete = onDelete
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .lumiCardSurface(shape = RoundedCornerShape(12.dp))
-                .border(1.dp, AppColors.TextSecondary.copy(alpha = 0.24f), RoundedCornerShape(12.dp))
+                .clip(AppRoundedCornerShape(12.dp))
+                .lumiCardSurface(shape = AppRoundedCornerShape(12.dp))
+                .border(1.dp, AppColors.TextSecondary.copy(alpha = 0.24f), AppRoundedCornerShape(12.dp))
                 .padding(16.dp)
         ) {
             // 高亮色条 + 文字
@@ -589,7 +623,7 @@ private fun HighlightNoteItem(
                     modifier = Modifier
                         .width(4.dp)
                         .height(20.dp)
-                        .clip(RoundedCornerShape(2.dp))
+                        .clip(AppRoundedCornerShape(2.dp))
                         .background(parseColor(note.color))
                 )
                 Spacer(Modifier.width(12.dp))
@@ -644,11 +678,13 @@ private fun HighlightNoteItem(
 @Composable
 private fun BookmarkItem(
     bookmark: Bookmark,
+    onShare: () -> Unit,
     onEditRemark: () -> Unit,
     onEditTags: () -> Unit,
     onDelete: () -> Unit
 ) {
     SwipeRevealItem(
+        onShare = onShare,
         onEdit = onEditRemark,
         onEditTags = onEditTags,
         onDelete = onDelete
@@ -656,9 +692,9 @@ private fun BookmarkItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .lumiCardSurface(shape = RoundedCornerShape(12.dp))
-                .border(1.dp, AppColors.TextSecondary.copy(alpha = 0.24f), RoundedCornerShape(12.dp))
+                .clip(AppRoundedCornerShape(12.dp))
+                .lumiCardSurface(shape = AppRoundedCornerShape(12.dp))
+                .border(1.dp, AppColors.TextSecondary.copy(alpha = 0.24f), AppRoundedCornerShape(12.dp))
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

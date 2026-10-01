@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="excerpt_title">Excerpt</string>
+    <string name="excerpt_style">Change style</string>
+    <string name="excerpt_save">Save image</string>
+    <string name="excerpt_share">Share excerpt</string>
+    <string name="excerpt_saved">Image saved</string>
+    <string name="excerpt_failed">Could not generate image. Please retry.</string>
+    <string name="excerpt_save_failed">Could not save. Check storage and permissions.</string>
+    <string name="excerpt_share_failed">Could not share. Please retry.</string>
+</resources>

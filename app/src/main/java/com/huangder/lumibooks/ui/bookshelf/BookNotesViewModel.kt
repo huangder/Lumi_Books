@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.bookshelf
 
+import com.huangder.lumibooks.ui.excerpt.withReaderTheme
+import kotlinx.coroutines.flow.first
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -34,13 +36,17 @@ class BookNotesViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val bookRepository: BookRepository,
     private val readingRepository: ReadingRepository,
-    private val exportBuilder: BookNotesExportBuilder
+    private val exportBuilder: BookNotesExportBuilder,
+    private val dataStoreManager: com.huangder.lumibooks.data.local.DataStoreManager
 ) : ViewModel() {
 
     private val bookId: String = savedStateHandle.get<String>("bookId") ?: ""
 
     private val _uiState = MutableStateFlow(BookNotesUiState())
     val uiState: StateFlow<BookNotesUiState> = _uiState.asStateFlow()
+
+    suspend fun excerptTheme(request: com.huangder.lumibooks.ui.excerpt.ExcerptRequest, dark: Boolean): com.huangder.lumibooks.ui.excerpt.ExcerptRequest =
+        request.withReaderTheme(dataStoreManager.readerPreferences(bookId).first(), dark)
 
     init {
         loadBook()
