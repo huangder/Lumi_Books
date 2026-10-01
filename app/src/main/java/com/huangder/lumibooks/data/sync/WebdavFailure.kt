@@ -5,6 +5,9 @@ package com.huangder.lumibooks.data.sync
  * explain what actually went wrong instead of falling back to a generic "request failed".
  */
 enum class WebdavErrorKind {
+    /** Android 17 local-network runtime permission has not been granted. */
+    LOCAL_NETWORK_PERMISSION,
+
     /** 401 — credentials rejected. */
     AUTH,
 
@@ -22,6 +25,9 @@ enum class WebdavErrorKind {
 
     /** 5xx — the server itself failed. */
     SERVER_ERROR,
+
+    /** 503 — the WebDAV service or its reverse proxy is temporarily unavailable. */
+    SERVICE_UNAVAILABLE,
 
     /** DNS, refused connection, dropped connection, ... */
     NETWORK,
@@ -46,12 +52,14 @@ enum class WebdavErrorKind {
 
 /** User-facing bucket derived from a [WebdavErrorKind] plus an optional HTTP status code. */
 enum class WebdavFailureCategory {
+    LOCAL_NETWORK_PERMISSION,
     AUTH,
     FORBIDDEN,
     NOT_FOUND,
     CONFLICT,
     NOT_SUPPORTED,
     SERVER_ERROR,
+    SERVICE_UNAVAILABLE,
     NETWORK,
     TIMEOUT,
     TLS,
@@ -80,6 +88,7 @@ object WebdavFailureClassifier {
         403 -> WebdavErrorKind.FORBIDDEN
         404 -> WebdavErrorKind.NOT_FOUND
         405, 501 -> WebdavErrorKind.NOT_SUPPORTED
+        503 -> WebdavErrorKind.SERVICE_UNAVAILABLE
         in 500..599 -> WebdavErrorKind.SERVER_ERROR
         else -> WebdavErrorKind.UNKNOWN
     }
@@ -91,12 +100,14 @@ object WebdavFailureClassifier {
     ): WebdavFailureCategory {
         if (serverCode == QUOTA_SERVER_CODE) return WebdavFailureCategory.QUOTA
         return when (kind) {
+            WebdavErrorKind.LOCAL_NETWORK_PERMISSION -> WebdavFailureCategory.LOCAL_NETWORK_PERMISSION
             WebdavErrorKind.AUTH -> WebdavFailureCategory.AUTH
             WebdavErrorKind.FORBIDDEN -> WebdavFailureCategory.FORBIDDEN
             WebdavErrorKind.NOT_FOUND -> WebdavFailureCategory.NOT_FOUND
             WebdavErrorKind.CONFLICT -> WebdavFailureCategory.CONFLICT
             WebdavErrorKind.NOT_SUPPORTED -> WebdavFailureCategory.NOT_SUPPORTED
             WebdavErrorKind.SERVER_ERROR -> WebdavFailureCategory.SERVER_ERROR
+            WebdavErrorKind.SERVICE_UNAVAILABLE -> WebdavFailureCategory.SERVICE_UNAVAILABLE
             WebdavErrorKind.NETWORK -> WebdavFailureCategory.NETWORK
             WebdavErrorKind.TIMEOUT -> WebdavFailureCategory.TIMEOUT
             WebdavErrorKind.TLS -> WebdavFailureCategory.TLS

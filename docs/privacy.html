@@ -115,6 +115,7 @@
     <tr><td>READ_EXTERNAL_STORAGE（Android 12 及以下）</td><td>读取您选择的 EPUB、TXT、PDF 等电子书文件</td><td>基础阅读需要</td></tr>
     <tr><td>READ_MEDIA_IMAGES（Android 13 及以上）</td><td>读取电子书封面、导出图片或您选择的图片资源</td><td>按系统版本需要</td></tr>
     <tr><td>INTERNET</td><td>检查更新、公告和条款/政策版本；按需下载本地词典和远程字体；连接您配置的 WebDAV 服务器；连接 MinerU、第三方 TTS 服务；加载您主动使用的封面搜索和外部链接页面</td><td>网络功能需要</td></tr>
+    <tr><td>ACCESS_LOCAL_NETWORK</td><td>仅在您配置的 WebDAV 地址指向 NAS、路由器或其他局域网服务器时，用于发现并连接该服务器；公网 WebDAV 不需要此权限</td><td>Android 17 及以上按需申请</td></tr>
     <tr><td>ACCESS_NETWORK_STATE</td><td>判断网络状态，以便执行更新检查、同步、云解析或第三方 TTS 请求</td><td>网络功能需要</td></tr>
     <tr><td>WRITE_SETTINGS</td><td>当您启用自定义亮屏时间时，修改系统屏幕关闭时间</td><td>仅启用时需要</td></tr>
     <tr><td>FOREGROUND_SERVICE / FOREGROUND_SERVICE_MEDIA_PLAYBACK</td><td>支持 TTS 后台播放和播放状态通知</td><td>听书功能需要</td></tr>
@@ -154,7 +155,7 @@
     <h3>3.2 会发生网络传输的场景</h3>
     <ul>
     <li>更新、公告、条款/政策版本检查：应用可能访问项目发布页或文档地址，并在您选择仿宋字体时从 GitHub Raw 或 jsDelivr 按需下载字体文件。</li>
-    <li>WebDAV 同步：当您配置并手动或自动同步时，应用会连接您填写的 WebDAV 服务器，上传/下载书籍文件、书籍清单（如文件名、哈希、大小、修改时间）以及阅读进度、书签、笔记和笔记对应的选中文本。</li>
+    <li>WebDAV 同步：当您配置并手动或自动同步时，应用会连接您填写的 WebDAV 服务器，上传/下载书籍文件、书籍清单（如文件名、哈希、大小、修改时间）以及阅读进度、书签、笔记和笔记对应的选中文本。若该地址是 NAS 或其他局域网地址，Android 17 及以上会先说明用途并申请本地网络权限；该权限不会用于扫描无关设备，公网 WebDAV 不会触发申请。</li>
     <li>MinerU 云端解析：当您主动选择云端解析 PDF 时，所选 PDF、随机化文件名、网络 IP、解析参数、任务标识以及精准解析所需的个人 Token 会发送至 MinerU/OpenDataLab 相关服务，并下载解析结果。</li>
     <li>第三方 TTS：当您选择 OpenAI TTS、Xiaomi MiMo 或自定义兼容服务时，当前朗读文本段、模型/音色、风格提示和必要鉴权信息会发送至您配置的第三方服务，服务端如何处理数据取决于该服务的条款和政策。若您开启 HTTP 连接，API Key 和朗读文本可能未经加密传输并被窃听。</li>
     <li>封面搜索：当您进入网络封面搜索或提交搜索时，当前书名和搜索关键词会通过 WebView 发送至您选择的 Bing、百度或 Google 等搜索服务；这些服务也可能记录 IP、请求时间和浏览器网络信息。</li>
@@ -209,7 +210,7 @@
 
     <h2>九、适用范围</h2>
     <p>本隐私政策仅适用于 Lumi 应用（com.huangder.lumibooks）在 Android 平台上的功能，不适用于第三方服务自身的数据处理活动。</p>
-    <p class="endnote">本隐私政策最后更新于 2026年8月30日。</p>
+    <p class="endnote">本隐私政策最后更新于 2026年9月30日。</p>
 </div>
 
 <div class="doc-footer">

@@ -18,7 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,6 +46,7 @@ import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.WebdavConfig
 import com.huangder.lumibooks.domain.model.WebdavSyncContent
 import com.huangder.lumibooks.ui.components.LiquidGlassButton
+import com.huangder.lumibooks.ui.components.RequestLocalNetworkPermission
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
@@ -59,6 +60,7 @@ import java.util.Locale
 @Composable
 fun WebdavSettingsDetail(
     viewModel: SettingsViewModel,
+    requestLocalNetworkPermission: RequestLocalNetworkPermission,
     onConfigure: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -112,7 +114,13 @@ fun WebdavSettingsDetail(
                 ),
                 icon = AppIcons.Pulse,
                 enabled = !uiState.webdavTesting,
-                onClick = viewModel::testWebdavConnection
+                onClick = {
+                    requestLocalNetworkPermission(
+                        config.serverUrl,
+                        viewModel::testWebdavConnection,
+                        viewModel::showWebdavTestLocalNetworkPermissionRequired
+                    )
+                }
             )
             if (uiState.webdavTestResult.isNotBlank()) {
                 Text(
@@ -126,7 +134,15 @@ fun WebdavSettingsDetail(
             WebdavSecondaryButton(
                 label = stringResource(R.string.webdav_sync_now),
                 icon = AppIcons.ArrowsClockwise,
-                onClick = { if (!uiState.isWebdavSyncing) viewModel.syncWebdavNow() }
+                onClick = {
+                    if (!uiState.isWebdavSyncing) {
+                        requestLocalNetworkPermission(
+                            config.serverUrl,
+                            viewModel::syncWebdavNow,
+                            viewModel::showWebdavSyncLocalNetworkPermissionRequired
+                        )
+                    }
+                }
             )
             if (uiState.webdavSyncResult.isNotBlank()) {
                 Text(
@@ -162,6 +178,7 @@ fun WebdavSettingsDetail(
 @Composable
 fun WebdavConfigurationDetail(
     viewModel: SettingsViewModel,
+    requestLocalNetworkPermission: RequestLocalNetworkPermission,
     onSaved: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -208,7 +225,11 @@ fun WebdavConfigurationDetail(
         }
         if (!valid) return
 
-        saveConfiguration()
+        requestLocalNetworkPermission(
+            draftServerUrl,
+            { saveConfiguration() },
+            viewModel::showWebdavLocalNetworkPermissionRequired
+        )
     }
 
     Column(
@@ -226,7 +247,7 @@ fun WebdavConfigurationDetail(
             supportingText = { Text(stringResource(R.string.webdav_server_url_help)) },
             isError = serverUrlError,
             singleLine = true,
-            shape = RoundedCornerShape(12.dp),
+            shape = AppRoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -237,7 +258,7 @@ fun WebdavConfigurationDetail(
             label = { Text(stringResource(R.string.webdav_username_label)) },
             isError = usernameError,
             singleLine = true,
-            shape = RoundedCornerShape(12.dp),
+            shape = AppRoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -264,7 +285,7 @@ fun WebdavConfigurationDetail(
                 { Text(stringResource(R.string.webdav_token_saved)) }
             } else null,
             singleLine = true,
-            shape = RoundedCornerShape(12.dp),
+            shape = AppRoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -274,7 +295,7 @@ fun WebdavConfigurationDetail(
             onValueChange = { draftSyncPath = it },
             label = { Text(stringResource(R.string.webdav_sync_path_hint)) },
             singleLine = true,
-            shape = RoundedCornerShape(12.dp),
+            shape = AppRoundedCornerShape(12.dp),
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -307,8 +328,8 @@ private fun WebdavStatusCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.md))
-            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
+            .clip(AppRoundedCornerShape(AppRadius.md))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
             .padding(AppSpace.md)
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
@@ -367,7 +388,7 @@ private fun WebdavPrimaryButton(
         onClick = onClick,
         enabled = enabled,
         tintedColor = AppColors.Accent,
-        shape = RoundedCornerShape(25.dp),
+        shape = AppRoundedCornerShape(25.dp),
         modifier = Modifier
             .fillMaxWidth()
             .height(50.dp)
@@ -397,8 +418,8 @@ private fun WebdavSecondaryButton(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.md))
-            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
+            .clip(AppRoundedCornerShape(AppRadius.md))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
             .clickable(
                 enabled = enabled,
                 interactionSource = remember { MutableInteractionSource() },
@@ -428,7 +449,7 @@ private fun WebdavDisclosureCard() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.md))
+            .clip(AppRoundedCornerShape(AppRadius.md))
             .background(AppColors.BgGray)
             .padding(AppSpace.md),
         verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
@@ -461,8 +482,8 @@ private fun WebdavSyncModeSelector(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.md))
-            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
+            .clip(AppRoundedCornerShape(AppRadius.md))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
             .padding(AppSpace.md)
     ) {
         Text(
@@ -499,8 +520,8 @@ private fun WebdavSyncContentSelector(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.md))
-            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
+            .clip(AppRoundedCornerShape(AppRadius.md))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
             .padding(vertical = AppSpace.sm)
     ) {
         Text(
@@ -620,7 +641,7 @@ private fun WebdavModePill(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(25.dp))
+            .clip(AppRoundedCornerShape(25.dp))
             .background(
                 if (selected) AppColors.Accent else AppColors.BgGray
             )

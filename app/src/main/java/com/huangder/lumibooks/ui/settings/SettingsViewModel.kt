@@ -72,6 +72,7 @@ class SettingsViewModel @Inject constructor(
     private val externalTtsAudioCache: ExternalTtsAudioCache,
     private val webdavSyncManager: com.huangder.lumibooks.data.sync.WebdavSyncManager,
     private val webdavTokenStore: com.huangder.lumibooks.data.local.WebdavTokenStore,
+    private val webdavAutoSyncScheduler: com.huangder.lumibooks.data.sync.WebdavAutoSyncScheduler,
     private val floatingSubtitleOverlayController: FloatingSubtitleOverlayController,
     private val backupArchiveManager: BackupArchiveManager,
     private val dictionaryRepository: com.huangder.lumibooks.dictionary.DictionaryRepository,
@@ -1266,6 +1267,7 @@ class SettingsViewModel @Inject constructor(
                 webdavTokenStore.save(password)
             }
             dataStoreManager.saveWebdavConfig(config.copy(enabled = true))
+            webdavAutoSyncScheduler.scheduleImmediate()
         }
     }
 
@@ -1336,6 +1338,34 @@ class SettingsViewModel @Inject constructor(
                 Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
             }
         }
+    }
+
+    fun showWebdavTestLocalNetworkPermissionRequired() {
+        val message = context.getString(R.string.webdav_error_local_network_permission)
+        _uiState.update {
+            it.copy(
+                webdavTesting = false,
+                webdavTestResult = message,
+                webdavTestSucceeded = false
+            )
+        }
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+    }
+
+    fun showWebdavSyncLocalNetworkPermissionRequired() {
+        val message = context.getString(R.string.webdav_error_local_network_permission)
+        _uiState.update {
+            it.copy(webdavSyncResult = message, webdavSyncSucceeded = false)
+        }
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+    }
+
+    fun showWebdavLocalNetworkPermissionRequired() {
+        Toast.makeText(
+            context,
+            R.string.webdav_error_local_network_permission,
+            Toast.LENGTH_LONG
+        ).show()
     }
 
     fun saveWebdavSyncMode(mode: String) {

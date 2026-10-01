@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- User-configured WebDAV, TTS and translation endpoints may explicitly use HTTP. -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

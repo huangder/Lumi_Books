@@ -564,7 +564,7 @@
     <string name="welcome_liquid_glass_reader_description">리퀴드 글래스 · 새로워진 경험</string>
     <string name="welcome_mineru_preview_description">내장 MinerU 분석</string>
     <string name="welcome_bookshelf_preview_description">서재 기능 개선</string>
-    <string name="welcome_privacy_summary">Lumi는 로컬 우선 도서 리더입니다. 읽기 데이터는 기본적으로 기기에 저장되며 업데이트 확인, 기여자 페이지, 표지 검색, 원격 글꼴, WebDAV, MinerU, 외부 TTS는 사용할 때만 관련 서비스에 연결됩니다. Lumi는 분석 또는 광고 추적을 사용하지 않습니다. 계속을 누르면 다음에 동의한 것으로 간주됩니다:</string>
+    <string name="welcome_privacy_summary">Lumi는 로컬 우선 도서 리더입니다. 읽기 데이터는 기본적으로 기기에 저장되며 업데이트 확인, 기여자 페이지, 표지 검색, 원격 글꼴, WebDAV, MinerU, 외부 TTS는 사용할 때만 관련 서비스에 연결됩니다. NAS 또는 LAN WebDAV에서는 로컬 네트워크 권한을 설정한 서버에만 사용하며 공개 WebDAV에는 필요하지 않습니다. Lumi는 분석 또는 광고 추적을 사용하지 않습니다. 계속을 누르면 다음에 동의한 것으로 간주됩니다:</string>
     <string name="welcome_policy_punctuation"></string>
     <string name="welcome_app_icon_description">Lumi 앱 아이콘</string>
     <string name="welcome_privacy_content">Lumi 개인정보 처리방침\n시행일: 2026년 6월 29일\n최종 업데이트: 2026년 8월 30일\n앱 이름: Lumi\n패키지명: com.huangder.lumibooks\n개발자: huangder\n연락처: huangder0104@126.com\n1. 기본 원칙\nLumi는 오픈 소스 로컬 우선 전자책 리더입니다. 서재, 읽기 진행률, 책갈피, 메모와 대부분의 설정은 기본적으로 기기에 저장됩니다. 표지 검색, 기여자와 아바타 표시, 원격 글꼴 다운로드, 업데이트 확인, 또는 사용자가 설정하거나 사용하는 WebDAV, MinerU, 외부 TTS, 외부 링크 기능에서는 네트워크 통신이 발생합니다.\n2. 권한\n- READ_EXTERNAL_STORAGE(Android 12 이하): 선택한 EPUB, TXT, PDF 등의 파일을 읽습니다.\n- READ_MEDIA_IMAGES(Android 13 이상): 표지, 내보낸 이미지 또는 선택한 이미지를 읽습니다.\n- INTERNET / ACCESS_NETWORK_STATE: 업데이트 및 정책 확인, 원격 글꼴, WebDAV, MinerU, 외부 TTS, 표지 검색과 외부 페이지에 사용합니다.\n- WRITE_SETTINGS: 사용자 지정 화면 꺼짐 시간을 켠 경우에만 변경합니다.\n- 포그라운드 서비스 및 알림 권한: TTS 재생과 분석·동기화 진행 알림에 사용합니다.\n- WAKE_LOCK: 백그라운드 TTS 재생 중 기기가 절전 모드로 전환되지 않도록 합니다.\n- SYSTEM_ALERT_WINDOW: 플로팅 자막을 켠 경우에만 다른 앱 위에 자막을 표시합니다.\n현재 최소 지원 Android는 11이며 지원 기기에서는 Android 9 이하의 이전 쓰기 저장소 권한을 사용하지 않습니다. 위치, 카메라/마이크, 연락처, 전화 상태, SMS, 캘린더 권한은 요청하지 않습니다.\n3. 기기에 저장되는 데이터\n도서 파일, 읽기 진행률, 책갈피, 메모와 선택 텍스트, 읽기 시간, 설정, 파일·폴더 URI, 편집한 TXT, MinerU·WebDAV·외부 TTS 설정과 TTS 오디오 캐시가 기기에 저장될 수 있습니다. MinerU Token, WebDAV 비밀번호, 외부 TTS API Key는 Android Keystore로 암호화하고 시스템 백업 및 기기 이전에서 제외합니다.\n4. 데이터가 전송되는 경우\n- 업데이트·공지·약관 및 정책 확인을 위해 프로젝트 릴리스 또는 문서 URL에 접속할 수 있습니다.\n- 仿宋 글꼴을 선택하거나 복원하면 GitHub Raw 또는 jsDelivr에서 글꼴을 다운로드하며 책 내용은 전송하지 않습니다.\n- WebDAV 동기화는 도서, 매니페스트, 진행률, 책갈피, 메모 및 선택 텍스트를 설정한 서버와 주고받습니다.\n- MinerU 클라우드 분석은 선택한 PDF, 분석 매개변수, 작업 식별자와 필요한 개인 Token을 OpenDataLab/MinerU로 전송합니다.\n- 외부 TTS는 현재 텍스트, 모델/음성, 스타일 지시와 인증 정보를 선택한 서비스로 전송합니다. HTTP를 켜면 API Key와 낭독 텍스트가 암호화되지 않아 도청될 수 있습니다.\n- 표지 검색은 앱 내 WebView를 통해 책 제목과 검색어를 Bing, 바이두, Google 등에 전송합니다. 해당 서비스는 IP, 요청 시간, 브라우저 및 네트워크 정보를 기록할 수 있습니다.\n- 기여자 페이지를 열면 GitHub contributors API에 접속하고 GitHub 아바타를 불러옵니다.\n- 외부 링크는 사용자가 탭한 경우에만 엽니다.\n5. Lumi가 하지 않는 일\n이름, 전화번호, 연락처, 정확한 위치 또는 기기 식별자를 추적 목적으로 수집하지 않습니다. 분석, 광고, 프로파일링, 타사 푸시, 충돌 보고 SDK, Lumi 계정 또는 개발자 운영 클라우드 서재를 제공하지 않습니다. 위에 설명한 네트워크 기능 외에는 책이나 읽기 내용을 능동적으로 업로드하지 않습니다.\n6. 제3자 서비스\nOpenDataLab/MinerU, WebDAV 서비스, 외부 TTS, GitHub와 CDN, Bing, 바이두, Google은 Lumi와 독립적으로 운영됩니다. 로그, 이용 가능성, 요금, 보관, 삭제 및 준수 규칙은 각 서비스의 약관과 개인정보 처리방침을 따릅니다.\n7. 데이터 관리 및 아동 개인정보\n기록, 캐시와 설정을 삭제하거나 언제든지 앱을 제거할 수 있습니다. 제거하면 앱 전용 데이터는 삭제되지만 원본 파일, WebDAV 사본 또는 제3자가 이미 처리한 데이터는 삭제되지 않습니다. Lumi는 13세 미만 아동을 대상으로 하지 않으며 아동의 개인정보를 고의로 수집하지 않습니다.\n8. 변경 및 연락처\n기능, 법률 또는 제3자 서비스 변경에 따라 이 방침을 업데이트할 수 있습니다. 중요한 변경은 앱 내 버전 알림으로 다시 읽고 확인하도록 요청합니다. 문의는 huangder(huangder0104@126.com)에게 보내 주세요.\n9. 적용 범위\n이 방침은 Android용 Lumi(com.huangder.lumibooks)에 적용되며 제3자 서비스 자체의 데이터 처리에는 적용되지 않습니다.\n이 개인정보 처리방침은 2026년 8월 30일에 최종 업데이트되었습니다.</string>
@@ -821,6 +821,7 @@
     <string name="webdav_error_not_found">주소를 찾을 수 없습니다(HTTP 404): 서버 주소와 동기화 폴더를 확인하세요. Nextcloud는 보통 https://호스트/remote.php/dav/files/사용자이름/ 형식입니다</string>
     <string name="webdav_error_conflict">서버에 동기화 폴더를 만들 수 없습니다(HTTP 409): 서버 주소가 기존 WebDAV 폴더를 가리키는지 확인하세요</string>
     <string name="webdav_error_not_supported">사용할 수 있는 WebDAV 폴더가 아닙니다(HTTP %1$d): 서버가 PROPFIND/MKCOL을 지원하지 않습니다. 주소를 확인하세요</string>
+    <string name="webdav_error_service_unavailable">WebDAV 서비스를 일시적으로 사용할 수 없습니다(HTTP 503). 유지 보수, 과부하 또는 역방향 프록시 차단일 수 있습니다. 잠시 후 다시 시도하고 서버 상태를 확인하세요</string>
     <string name="webdav_error_network">네트워크 요청 실패: 네트워크 연결, 서버 주소와 포트를 확인하세요</string>
     <string name="webdav_error_timeout">연결 시간 초과: 네트워크, 서버 상태 또는 주소를 확인하세요</string>
     <string name="webdav_error_tls">인증서 검증 실패: 서버 인증서가 유효하지 않거나 자체 서명입니다. 신뢰할 수 있는 HTTPS 인증서를 사용하세요</string>
@@ -843,7 +844,7 @@
     <string name="webdav_sync_path_hint">동기화 디렉터리(선택 사항, 기본값 LumiBooks)</string>
     <string name="webdav_required_fields">서버 주소와 사용자 이름을 입력하세요</string>
     <string name="webdav_third_party_title">WebDAV 동기화 정보</string>
-    <string name="webdav_third_party_notice">WebDAV 동기화는 사용자 자신의 WebDAV 서버를 사용합니다. 선택한 도서 파일과 독서 데이터가 해당 서버에 업로드됩니다. LumiBooks는 자체 서버로 데이터를 전송하지 않으며, 타사 서버의 가용성이나 보안을 통제하지 않습니다.</string>
+    <string name="webdav_third_party_notice">WebDAV 동기화는 사용자 자신의 WebDAV 서버를 사용합니다. 선택한 도서 파일과 독서 데이터가 해당 서버에 업로드됩니다. NAS 또는 LAN 서버의 경우 로컬 네트워크 권한은 해당 주소에 연결할 때만 사용되며 공개 WebDAV에는 필요하지 않습니다. LumiBooks는 자체 서버로 데이터를 전송하지 않으며, 타사 서버의 가용성이나 보안을 통제하지 않습니다.</string>
     <string name="epub_render_mode">EPUB 레이아웃</string>
     <string name="epub_book_layout">책 원본 레이아웃</string>
     <string name="epub_reader_layout">리더 레이아웃</string>
@@ -1475,4 +1476,9 @@
     <string name="epub_comic_open_failed">이미지를 열 수 없거나 읽을 수 있는 이미지가 없습니다. EPUB 리더를 계속 사용할 수 있습니다.</string>
     <string name="epub_comic_page_retry">%1$d페이지를 불러오지 못했습니다. 눌러서 다시 시도하세요.</string>
     <string name="epub_comic_switch_failed">리더를 전환하지 못했습니다. 다시 시도하세요.</string>
+    <string name="local_network_permission_title">로컬 네트워크 액세스 허용</string>
+    <string name="local_network_permission_message">설정한 NAS 또는 LAN WebDAV 서버에 연결하려면 로컬 네트워크 권한이 필요합니다. Lumi는 해당 서버에 연결할 때만 이 권한을 사용하며 공개 WebDAV 서버에는 필요하지 않습니다.</string>
+    <string name="local_network_permission_continue">계속</string>
+    <string name="local_network_permission_not_now">나중에</string>
+    <string name="webdav_error_local_network_permission">로컬 네트워크 권한이 없습니다. 설정한 NAS 또는 LAN WebDAV 서버에 대한 액세스를 허용하세요.</string>
 </resources>

@@ -39,10 +39,10 @@ class WebdavSyncWorker @AssistedInject constructor(
         val config = dataStoreManager.webdavConfig.first()
         if (!config.enabled || config.syncMode != "auto") return Result.success()
         val result = syncManager.fullSync()
-        return when {
-            result.success -> Result.success()
-            runAttemptCount < MAX_RETRIES -> Result.retry()
-            else -> Result.failure()
+        return when (webdavWorkerDecision(result, runAttemptCount, MAX_RETRIES)) {
+            WebdavWorkerDecision.SUCCESS -> Result.success()
+            WebdavWorkerDecision.RETRY -> Result.retry()
+            WebdavWorkerDecision.FAILURE -> Result.failure()
         }
     }
 
@@ -56,7 +56,8 @@ class WebdavSyncWorker @AssistedInject constructor(
 class WebdavAutoSyncScheduler @Inject constructor(
     @ApplicationContext context: Context,
     private val database: AppDatabase,
-    private val dataStoreManager: DataStoreManager
+    private val dataStoreManager: DataStoreManager,
+    private val localNetworkAccessManager: LocalNetworkAccessManager
 ) {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -87,9 +88,20 @@ class WebdavAutoSyncScheduler @Inject constructor(
         scope.launch { enqueue(immediate = true) }
     }
 
+    fun onLocalNetworkPermissionGranted() {
+        scheduleImmediate()
+    }
+
+    fun scheduleImmediate() {
+        scope.launch { enqueue(immediate = true) }
+    }
+
     private suspend fun enqueue(immediate: Boolean) {
         val config = dataStoreManager.webdavConfig.first()
         if (!config.enabled || config.syncMode != "auto") return
+        if (localNetworkAccessManager.stateFor(config.serverUrl) ==
+            LocalNetworkAccessState.PERMISSION_REQUIRED
+        ) return
         val request = OneTimeWorkRequestBuilder<WebdavSyncWorker>()
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
@@ -107,3 +119,30 @@ class WebdavAutoSyncScheduler @Inject constructor(
         private const val CHANGE_DEBOUNCE_MS = 5_000L
     }
 }
+
+internal enum class WebdavWorkerDecision { SUCCESS, RETRY, FAILURE }
+
+internal fun webdavWorkerDecision(
+    result: SyncResult,
+    runAttemptCount: Int,
+    maxRetries: Int
+): WebdavWorkerDecision = when {
+    result.success || result.failureCategory == WebdavFailureCategory.LOCAL_NETWORK_PERMISSION ->
+        WebdavWorkerDecision.SUCCESS
+    result.failureCategory in NON_RETRYABLE_FAILURES -> WebdavWorkerDecision.FAILURE
+    runAttemptCount < maxRetries -> WebdavWorkerDecision.RETRY
+    else -> WebdavWorkerDecision.FAILURE
+}
+
+private val NON_RETRYABLE_FAILURES = setOf(
+    WebdavFailureCategory.AUTH,
+    WebdavFailureCategory.FORBIDDEN,
+    WebdavFailureCategory.NOT_FOUND,
+    WebdavFailureCategory.CONFLICT,
+    WebdavFailureCategory.NOT_SUPPORTED,
+    WebdavFailureCategory.TLS,
+    WebdavFailureCategory.QUOTA,
+    WebdavFailureCategory.INVALID_URL,
+    WebdavFailureCategory.REDIRECT,
+    WebdavFailureCategory.INVALID_RESPONSE
+)

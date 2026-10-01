@@ -564,7 +564,7 @@
     <string name="welcome_liquid_glass_reader_description">液態玻璃主題 · 全面煥新</string>
     <string name="welcome_mineru_preview_description">內置 MinerU 解析介面</string>
     <string name="welcome_bookshelf_preview_description">書庫功能升級</string>
-    <string name="welcome_privacy_summary">Lumi 是一款本地優先的圖書閱讀器。閱讀資料預設保存在您的裝置中；更新檢查、貢獻者頁、網路封面搜尋、遠端字型、WebDAV、MinerU、第三方 TTS 等功能僅在使用時連接相應服務。Lumi 不使用分析或廣告追蹤。點擊「繼續」，即表示您已閱讀並同意</string>
+    <string name="welcome_privacy_summary">Lumi 是一款本地優先的圖書閱讀器。閱讀資料預設保存在您的裝置中；更新檢查、貢獻者頁、網路封面搜尋、遠端字型、WebDAV、MinerU、第三方 TTS 等功能僅在使用時連接相應服務。連接 NAS 或局域網 WebDAV 時，本地網絡權限只用於存取你設定的伺服器，公網 WebDAV 不需要此權限。Lumi 不使用分析或廣告追蹤。點擊「繼續」，即表示您已閱讀並同意</string>
     <string name="welcome_policy_punctuation">。</string>
     <string name="welcome_app_icon_description">Lumi 應用程式圖示</string>
     <string name="welcome_privacy_content">Lumi 隱私政策\n生效日期：2026年6月29日\n最近更新：2026年8月30日\n應用程式名稱：Lumi\n套件名稱：com.huangder.lumibooks\n開發者：huangder\n聯絡電郵：huangder0104@126.com\n一、核心原則\nLumi 是開源、本地優先的電子書閱讀器。閱讀、書架、進度、書籤、筆記和大部分設定預設保存在本機。網路封面搜尋、貢獻者/頭像展示、遠端字型下載、更新檢查，以及您主動設定或啟用的 WebDAV 同步、MinerU 云端解析、第三方 TTS 或外部連結会产生相应網路請求。\n二、權限用途\n• READ_EXTERNAL_STORAGE（Android 12 及以下）：讀取您選擇的 EPUB、TXT、PDF 等電子書檔案。\n• READ_MEDIA_IMAGES（Android 13 及以上）：讀取電子書封面、匯出圖片或您選擇的圖片资源。\n• INTERNET / ACCESS_NETWORK_STATE：用于更新和政策版本檢查、遠端字型下載、WebDAV、MinerU、第三方 TTS、網路封面搜尋和外部页面存取。\n• WRITE_SETTINGS：僅在您啟用自定义亮屏时间时修改系統屏幕关闭时间。\n• 前景服務和通知權限：用于 TTS 背景播放、PDF/MinerU 解析或 WebDAV 同步進度通知。\n• WAKE_LOCK：在 TTS 背景播放期间保持裝置喚醒，避免播放意外中断。\n• SYSTEM_ALERT_WINDOW：僅在您啟用悬浮窗字幕时顯示跨應用程式懸浮字幕窗口。\n本應用程式目前最低支援 Android 11，不會在受支援裝置上請求 Android 9 及以下的舊式寫入儲存權限；不申请位置、相机/麦克风、通讯录、电话状态、短信、日历等與閱讀无关的敏感權限。\n三、本機保存的資料\n電子書檔案、閱讀進度、書籤、筆記及選取文字、閱讀時間、閱讀偏好、檔案/檔案夾授權 URI、TXT 編輯內容、MinerU 設定、WebDAV 設定、第三方 TTS 設定和本地 TTS 音訊快取可能保存在本地。MinerU Token、WebDAV 密码、第三方 TTS API Key 使用 Android Keystore 加密保存，並排除系統备份/裝置迁移。\n四、會傳輸資料的場景\n• 更新、公告和條款/政策版本檢查：应用可能存取專案發佈頁或檔案地址。\n• 遠端字型：当您選擇或恢复仿宋字型时，应用会从 GitHub Raw 或 jsDelivr 按需下載字型檔案，不上傳書籍內容。\n• WebDAV 同步：向您設定的伺服器上傳/下載書籍檔案、書籍清單、閱讀進度、書籤、筆記和選取文字。\n• MinerU 云端解析：向 OpenDataLab/MinerU 傳送您選定的 PDF、解析参数、工作識別碼；精準解析还会使用您的個人 Token。\n• 第三方 TTS：向您選擇的服务傳送目前朗读文字段、模型/音色、風格提示和必要認證資訊。若开启 HTTP 连接，API Key 和朗读文字可能未經加密傳輸並被竊聽。\n• 網路封面搜尋：向您選擇的 Bing、百度或 Google 等搜尋服務傳送书名和搜尋關鍵字；這些服務可能記錄 IP、請求時間和瀏覽器網路資訊。\n• 贊助頁貢獻者：開啟貢獻者页面时，应用會請求 GitHub contributors API 並載入 GitHub 頭像，GitHub 及其 CDN 会接收網路請求中繼資料。\n• 外部連結：僅在您主動點擊 GitHub、反馈、下載或第三方协议链接时存取對應網站。\n五、我們不會做什麼\n本應用程式不收集姓名、手機號碼、通讯录、精确位置或裝置識別碼用于追蹤；不整合分析、广告、使用者畫像、第三方推送或崩潰回報 SDK；不提供 Lumi 帳號系統或開發者營運的雲端書庫。除上述由您主動設定、啟用、进入或点击的網路功能外，不主動上傳您的書籍和閱讀內容。\n六、第三方服务\nOpenDataLab/MinerU、WebDAV 服務商、第三方 TTS、GitHub 及其 CDN、Bing、百度和 Google 等服务均獨立於 Lumi 營運。其網路日誌、可用性、計費、資料保存、刪除和合規要求由对应服务條款和隱私政策决定。\n七、資料管理\n您可以在應用程式內清除閱讀历史、快取和相關設定，或随时解除安裝应用。解除安裝会刪除应用私有資料，但不會自动刪除您自行管理的原始電子書檔案、WebDAV 伺服器副本或第三方服务已處理的資料。\n八、兒童私隱\n本應用程式不针对 13 岁以下儿童，不會故意收集儿童個人資料。监护人如发现儿童可能透過可選第三方服务提交了個人資料，请联系我们並同时联系相应服务方。\n九、政策變更、联系我们與适用范围\n我們可能因功能、法律法規或第三方服务变化更新本政策。重大變更会透過應用程式內版本提示要求您重新閱讀並確認。若您对本政策或資料处理有疑问，请联系開發者 huangder（huangder0104@126.com）。本政策僅適用於 Lumi 应用（com.huangder.lumibooks）在 Android 平台的功能，不適用於第三方服务自身的資料处理活动。\n本隱私政策最後更新于 2026年8月30日。</string>
@@ -821,6 +821,7 @@
     <string name="webdav_error_not_found">位址不存在（HTTP 404）：請檢查伺服器位址與同步資料夾。Nextcloud 一般形如 https://主機/remote.php/dav/files/使用者名稱/</string>
     <string name="webdav_error_conflict">無法在伺服器上建立同步資料夾（HTTP 409）：請確認伺服器位址指向已存在的 WebDAV 資料夾</string>
     <string name="webdav_error_not_supported">該位址不是可用的 WebDAV 資料夾（HTTP %1$d）：伺服器不支援 PROPFIND/MKCOL，請確認位址是否正確</string>
+    <string name="webdav_error_service_unavailable">WebDAV 服務暫時無法使用（HTTP 503）：可能正在維護、負載過高或被反向代理攔截，請稍後重試並檢查伺服器狀態</string>
     <string name="webdav_error_network">網路請求失敗：請檢查網路連線、伺服器位址與連接埠</string>
     <string name="webdav_error_timeout">連線逾時：請檢查網路、伺服器狀態或位址是否正確</string>
     <string name="webdav_error_tls">憑證驗證失敗：伺服器憑證無效或為自簽憑證，請改用受信任的 HTTPS 憑證</string>
@@ -843,7 +844,7 @@
     <string name="webdav_sync_path_hint">同步目錄（可選，預設為 LumiBooks）</string>
     <string name="webdav_required_fields">請填寫伺服器位址和使用者名稱</string>
     <string name="webdav_third_party_title">關於 WebDAV 同步</string>
-    <string name="webdav_third_party_notice">WebDAV 同步使用您自行設定的 WebDAV 伺服器。您選擇的書籍檔案和閱讀資料將上傳至該伺服器。LumiBooks 不傳輸資料至自身伺服器，也不管控第三方伺服器的可用性與安全性。</string>
+    <string name="webdav_third_party_notice">WebDAV 同步使用您自行設定的 WebDAV 伺服器。您選擇的書籍檔案和閱讀資料將上傳至該伺服器。連接 NAS 或局域網伺服器時，本地網絡權限只用於存取該地址；公網 WebDAV 不需要此權限。LumiBooks 不傳輸資料至自身伺服器，也不管控第三方伺服器的可用性與安全性。</string>
     <string name="epub_render_mode">EPUB 排版模式</string>
     <string name="epub_book_layout">書籍原排版</string>
     <string name="epub_reader_layout">閱讀器排版</string>
@@ -1474,4 +1475,9 @@
     <string name="epub_comic_open_failed">無法開啟漫畫圖片，或書中沒有可讀取的圖片。已保留 EPUB 閱讀方式。</string>
     <string name="epub_comic_page_retry">第 %1$d 頁載入失敗，點擊重試</string>
     <string name="epub_comic_switch_failed">無法切換閱讀器，請重試。</string>
+    <string name="local_network_permission_title">允許存取本地網絡</string>
+    <string name="local_network_permission_message">連接你設定的 NAS 或局域網 WebDAV 伺服器需要本地網絡權限。Lumi 只會在存取該伺服器時使用此權限，公網 WebDAV 不需要此權限。</string>
+    <string name="local_network_permission_continue">繼續</string>
+    <string name="local_network_permission_not_now">暫不</string>
+    <string name="webdav_error_local_network_permission">缺少本地網絡權限：請允許 Lumi 存取你設定的 NAS 或局域網 WebDAV 伺服器</string>
 </resources>

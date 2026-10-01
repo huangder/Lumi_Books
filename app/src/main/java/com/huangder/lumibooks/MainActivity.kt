@@ -41,6 +41,8 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.huangder.lumibooks.data.local.DataStoreManager
+import com.huangder.lumibooks.data.sync.LocalNetworkAccessManager
+import com.huangder.lumibooks.data.sync.WebdavAutoSyncScheduler
 import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.BookFormat
@@ -58,6 +60,7 @@ import com.huangder.lumibooks.ui.components.AppUpdateDialog
 import com.huangder.lumibooks.ui.components.ExternalImportChoiceDialog
 import com.huangder.lumibooks.ui.components.ExternalImportFolder
 import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
+import com.huangder.lumibooks.ui.components.rememberLocalNetworkPermissionGate
 import com.huangder.lumibooks.ui.components.PolicyUpdateDialog
 import com.huangder.lumibooks.ui.components.RemoteNoticeDialog
 import com.huangder.lumibooks.ui.settings.WebViewActivity
@@ -192,6 +195,12 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var authorizedFolderSnapshotStore: AuthorizedFolderSnapshotStore
+
+    @Inject
+    lateinit var localNetworkAccessManager: LocalNetworkAccessManager
+
+    @Inject
+    lateinit var webdavAutoSyncScheduler: WebdavAutoSyncScheduler
 
     /**
      * 当 ReaderScreen 处于前台时置为 true，
@@ -774,6 +783,26 @@ class MainActivity : ComponentActivity() {
                 globalFontMode = globalFontMode,
                 motionPreference = MotionPreference.fromStoredValue(motionPreferenceValue)
             ) {
+                val requestLocalNetworkPermission = rememberLocalNetworkPermissionGate(
+                    accessManager = localNetworkAccessManager,
+                    onPermissionGranted = webdavAutoSyncScheduler::onLocalNetworkPermissionGranted
+                )
+                LaunchedEffect(Unit) {
+                    val config = dataStoreManager.webdavConfig.first()
+                    if (config.enabled && config.serverUrl.isNotBlank()) {
+                        requestLocalNetworkPermission(
+                            config.serverUrl,
+                            {},
+                            {
+                                Toast.makeText(
+                                    this@MainActivity,
+                                    R.string.webdav_error_local_network_permission,
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        )
+                    }
+                }
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

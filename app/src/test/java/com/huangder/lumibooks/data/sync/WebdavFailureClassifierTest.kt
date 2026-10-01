@@ -14,12 +14,16 @@ class WebdavFailureClassifierTest {
         assertEquals(WebdavErrorKind.NOT_FOUND, WebdavFailureClassifier.kindForStatus(404))
         assertEquals(WebdavErrorKind.NOT_SUPPORTED, WebdavFailureClassifier.kindForStatus(405))
         assertEquals(WebdavErrorKind.NOT_SUPPORTED, WebdavFailureClassifier.kindForStatus(501))
-        assertEquals(WebdavErrorKind.SERVER_ERROR, WebdavFailureClassifier.kindForStatus(503))
+        assertEquals(WebdavErrorKind.SERVICE_UNAVAILABLE, WebdavFailureClassifier.kindForStatus(503))
         assertEquals(WebdavErrorKind.UNKNOWN, WebdavFailureClassifier.kindForStatus(409))
     }
 
     @Test
     fun `each kind maps to its own user-facing bucket`() {
+        assertEquals(
+            WebdavFailureCategory.LOCAL_NETWORK_PERMISSION,
+            WebdavFailureClassifier.classify(WebdavErrorKind.LOCAL_NETWORK_PERMISSION, null)
+        )
         assertEquals(
             WebdavFailureCategory.AUTH,
             WebdavFailureClassifier.classify(WebdavErrorKind.AUTH, 401)
@@ -43,6 +47,10 @@ class WebdavFailureClassifierTest {
         assertEquals(
             WebdavFailureCategory.SERVER_ERROR,
             WebdavFailureClassifier.classify(WebdavErrorKind.SERVER_ERROR, 500)
+        )
+        assertEquals(
+            WebdavFailureCategory.SERVICE_UNAVAILABLE,
+            WebdavFailureClassifier.classify(WebdavErrorKind.SERVICE_UNAVAILABLE, 503)
         )
         assertEquals(
             WebdavFailureCategory.NETWORK,
@@ -110,5 +118,25 @@ class WebdavFailureClassifierTest {
         assertFalse(WebdavFailureClassifier.isSuccessStatus(301))
         assertFalse(WebdavFailureClassifier.isSuccessStatus(404))
         assertFalse(WebdavFailureClassifier.isSuccessStatus(500))
+    }
+
+    @Test
+    fun `probe preserves known http failures before inspecting html`() {
+        assertEquals(
+            WebdavErrorKind.SERVICE_UNAVAILABLE,
+            webdavProbeErrorKind(statusCode = 503, htmlResponse = true)
+        )
+        assertEquals(
+            WebdavErrorKind.INVALID_RESPONSE,
+            webdavProbeErrorKind(statusCode = 200, htmlResponse = true)
+        )
+        assertEquals(
+            WebdavErrorKind.UNKNOWN,
+            webdavProbeErrorKind(statusCode = 409, htmlResponse = false)
+        )
+        assertEquals(
+            WebdavErrorKind.UNKNOWN,
+            webdavProbeErrorKind(statusCode = 409, htmlResponse = true)
+        )
     }
 }

@@ -44,6 +44,19 @@ import java.nio.file.StandardCopyOption
 import javax.inject.Inject
 import javax.inject.Singleton
 
+internal fun webdavProbeErrorKind(
+    statusCode: Int,
+    htmlResponse: Boolean
+): WebdavErrorKind {
+    val statusKind = WebdavFailureClassifier.kindForStatus(statusCode)
+    return when {
+        statusKind != WebdavErrorKind.UNKNOWN -> statusKind
+        WebdavFailureClassifier.isSuccessStatus(statusCode) && htmlResponse ->
+            WebdavErrorKind.INVALID_RESPONSE
+        else -> WebdavErrorKind.UNKNOWN
+    }
+}
+
 @Singleton
 class WebdavSyncManager @Inject constructor(
     private val bookRepository: BookRepository,
@@ -52,6 +65,7 @@ class WebdavSyncManager @Inject constructor(
     private val tokenStore: WebdavTokenStore,
     private val dataStoreManager: DataStoreManager,
     private val portableStateSync: WebdavPortableStateSync,
+    private val localNetworkAccessManager: LocalNetworkAccessManager,
     @ApplicationContext private val context: Context
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -92,6 +106,7 @@ class WebdavSyncManager @Inject constructor(
         if (!normalized.hasSelectedContent) {
             return SyncResult(context.getString(R.string.webdav_select_content_required), false)
         }
+        localNetworkPermissionFailure(normalized.serverUrl)?.let { return it }
         val serverUrl = normalized.serverUrl
         val username = normalized.username
         val syncPath = normalized.syncPath
@@ -208,9 +223,15 @@ class WebdavSyncManager @Inject constructor(
                                 continue
                             }
                         } catch (error: Exception) {
+                            if (error is CancellationException) throw error
                             Log.e("WebDAV", "Upload failed book=${book.id} file=${book.filePath}: ${error.message}", error)
                             if (error is WebdavException && error.serverCode == "TrafficRateExhausted") {
                                 quotaError = error
+                            } else if (error is WebdavException) {
+                                // Transport and HTTP failures affect the whole endpoint. Stop this
+                                // batch so we do not keep issuing requests or publish an incomplete
+                                // manifest after a 503, disconnect, authentication failure, etc.
+                                throw error
                             }
                             booksFailed++
                             failedBookTitles.add(book.title)
@@ -238,6 +259,10 @@ class WebdavSyncManager @Inject constructor(
                             )
                         }.onFailure { error ->
                             Log.w("WebDAV", "Cover upload failed book=${book.id}: ${error.message}")
+                        }
+                        coverUpload.exceptionOrNull()?.let { error ->
+                            if (error is CancellationException) throw error
+                            if (error is WebdavException) throw error
                         }
                         when {
                             coverUpload.isFailure -> manifestEntry?.cover
@@ -296,6 +321,8 @@ class WebdavSyncManager @Inject constructor(
                             dataSynced++
                         }
                     } catch (error: Exception) {
+                        if (error is CancellationException) throw error
+                        if (error is WebdavException) throw error
                         dataFailed++
                         Log.e("WebDAV", "Reading data sync failed book=${book.id}: ${error.message}", error)
                     }
@@ -380,14 +407,18 @@ class WebdavSyncManager @Inject constructor(
             val quotaHint = quotaError?.let { "\n" + userFacingWebdavError(it) }.orEmpty()
             SyncResult(
                 message = summaries.joinToString("\n") + quotaHint,
-                success = booksFailed == 0 && dataFailed == 0
+                success = booksFailed == 0 && dataFailed == 0,
+                failureCategory = quotaError?.let { WebdavFailureCategory.QUOTA }
             )
         } catch (error: WebdavException) {
             logWebdavFailure("FULL_SYNC", normalized.serverUrl, error)
             SyncResult(
                 message = context.getString(R.string.webdav_sync_failed_detail, userFacingWebdavError(error)),
-                success = false
+                success = false,
+                failureCategory = webdavFailureCategory(error)
             )
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             SyncResult(
                 message = context.getString(R.string.webdav_sync_failed_detail, error.message.orEmpty()),
@@ -405,6 +436,9 @@ class WebdavSyncManager @Inject constructor(
             delay(5_000) // 5 second debounce
             val config = dataStoreManager.webdavConfig.first()
             if (!config.enabled || config.syncMode != "auto" || !config.syncsBookData) return@launch
+            if (localNetworkAccessManager.stateFor(config.serverUrl) ==
+                LocalNetworkAccessState.PERMISSION_REQUIRED
+            ) return@launch
             val password = tokenStore.read() ?: return@launch
             if (!syncMutex.tryLock()) return@launch
             val n = config.normalized()
@@ -476,6 +510,11 @@ class WebdavSyncManager @Inject constructor(
 
         val config = dataStoreManager.webdavConfig.first().normalized()
         if (!config.enabled) return downloadFailure(bookId, context.getString(R.string.webdav_disabled))
+        if (localNetworkAccessManager.stateFor(config.serverUrl) ==
+            LocalNetworkAccessState.PERMISSION_REQUIRED
+        ) {
+            return downloadFailure(bookId, context.getString(R.string.webdav_error_local_network_permission))
+        }
         val password = tokenStore.read()
             ?: return downloadFailure(bookId, context.getString(R.string.webdav_password_missing))
         val libraryKey = remoteLibraryKey(config)
@@ -552,6 +591,8 @@ class WebdavSyncManager @Inject constructor(
                 }
             }
             CloudBookDownloadResult(updated, context.getString(R.string.book_download_completed), true)
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             FileUtils.getBooksDirectory(context).listFiles()
                 ?.filter { it.name.startsWith("$bookId.") && it.name.endsWith(".part") }
@@ -562,7 +603,13 @@ class WebdavSyncManager @Inject constructor(
                     ?.filter { it.name.startsWith("$bookId.") && !it.name.endsWith(".part") }
                     ?.forEach { it.delete() }
             }
-            downloadFailure(bookId, error.message ?: context.getString(R.string.book_download_failed))
+            val message = if (error is WebdavException) {
+                logWebdavFailure("DOWNLOAD_BOOK", config.serverUrl, error)
+                userFacingWebdavError(error)
+            } else {
+                error.message ?: context.getString(R.string.book_download_failed)
+            }
+            downloadFailure(bookId, message)
         }
     }
 
@@ -583,8 +630,11 @@ class WebdavSyncManager @Inject constructor(
             logWebdavFailure("DELETE_BOOKS", null, error)
             SyncResult(
                 context.getString(R.string.webdav_delete_failed, userFacingWebdavError(error)),
-                false
+                false,
+                webdavFailureCategory(error)
             )
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             SyncResult(
                 context.getString(R.string.webdav_delete_failed, error.message.orEmpty()),
@@ -603,6 +653,7 @@ class WebdavSyncManager @Inject constructor(
         cleanupStalePartialDownloads()
         val config = dataStoreManager.webdavConfig.first().normalized()
         if (!config.enabled) return SyncResult(context.getString(R.string.webdav_disabled), false)
+        localNetworkPermissionFailure(config.serverUrl)?.let { return it }
         val password = tokenStore.read()
             ?: return SyncResult(context.getString(R.string.webdav_password_missing), false)
         return try {
@@ -666,7 +717,8 @@ class WebdavSyncManager @Inject constructor(
             logWebdavFailure("DELETE_BOOKS", null, error)
             SyncResult(
                 context.getString(R.string.webdav_delete_failed, userFacingWebdavError(error)),
-                false
+                false,
+                webdavFailureCategory(error)
             )
         } catch (error: Exception) {
             SyncResult(
@@ -714,6 +766,7 @@ class WebdavSyncManager @Inject constructor(
         password: String,
         syncPath: String
     ): SyncResult {
+        localNetworkPermissionFailure(serverUrl)?.let { return it }
         return try {
             val rootProbe = webdavClient.probeCollection(serverUrl, username, password)
             val syncDirUrl = WebdavUrl.append(serverUrl, syncPath)
@@ -743,7 +796,8 @@ class WebdavSyncManager @Inject constructor(
                             R.string.webdav_test_failed_detail,
                             userFacingWebdavError(error)
                         ),
-                        success = false
+                        success = false,
+                        failureCategory = webdavFailureCategory(error)
                     )
                 }
             }
@@ -754,7 +808,8 @@ class WebdavSyncManager @Inject constructor(
                     R.string.webdav_test_failed_detail,
                     userFacingWebdavError(error)
                 ),
-                success = false
+                success = false,
+                failureCategory = webdavFailureCategory(error)
             )
         } catch (error: CancellationException) {
             throw error
@@ -779,10 +834,7 @@ class WebdavSyncManager @Inject constructor(
         WebdavFailureClassifier.isSuccessStatus(probe.statusCode) && !probe.htmlResponse
 
     private fun probeFailure(operation: String, probe: WebdavProbeResult): WebdavException {
-        val kind = when {
-            probe.htmlResponse -> WebdavErrorKind.INVALID_RESPONSE
-            else -> WebdavFailureClassifier.kindForStatus(probe.statusCode)
-        }
+        val kind = webdavProbeErrorKind(probe.statusCode, probe.htmlResponse)
         return WebdavException(
             message = "$operation failed — HTTP ${probe.statusCode}",
             statusCode = probe.statusCode,
@@ -802,13 +854,24 @@ class WebdavSyncManager @Inject constructor(
 
     // ── Private helpers ─────────────────────────────────────────────
 
-    private fun userFacingWebdavError(error: WebdavException): String {
-        val category = WebdavFailureClassifier.classify(
-            kind = error.kind,
-            statusCode = error.statusCode,
-            serverCode = error.serverCode
+    private suspend fun localNetworkPermissionFailure(serverUrl: String): SyncResult? {
+        if (localNetworkAccessManager.stateFor(serverUrl) !=
+            LocalNetworkAccessState.PERMISSION_REQUIRED
+        ) {
+            return null
+        }
+        return SyncResult(
+            message = context.getString(R.string.webdav_error_local_network_permission),
+            success = false,
+            failureCategory = WebdavFailureCategory.LOCAL_NETWORK_PERMISSION
         )
+    }
+
+    private fun userFacingWebdavError(error: WebdavException): String {
+        val category = webdavFailureCategory(error)
         return when (category) {
+            WebdavFailureCategory.LOCAL_NETWORK_PERMISSION ->
+                context.getString(R.string.webdav_error_local_network_permission)
             WebdavFailureCategory.QUOTA -> {
                 val unknown = context.getString(R.string.webdav_unknown_value)
                 val remaining = error.availableBytes?.let(::formatBytes) ?: unknown
@@ -823,6 +886,8 @@ class WebdavSyncManager @Inject constructor(
                 R.string.webdav_error_not_supported,
                 error.statusCode ?: 0
             )
+            WebdavFailureCategory.SERVICE_UNAVAILABLE ->
+                context.getString(R.string.webdav_error_service_unavailable)
             WebdavFailureCategory.NETWORK -> context.getString(R.string.webdav_error_network)
             WebdavFailureCategory.TIMEOUT -> context.getString(R.string.webdav_error_timeout)
             WebdavFailureCategory.TLS -> context.getString(R.string.webdav_error_tls)
@@ -844,6 +909,13 @@ class WebdavSyncManager @Inject constructor(
             } ?: context.getString(R.string.webdav_request_failed)
         }
     }
+
+    private fun webdavFailureCategory(error: WebdavException): WebdavFailureCategory =
+        WebdavFailureClassifier.classify(
+            kind = error.kind,
+            statusCode = error.statusCode,
+            serverCode = error.serverCode
+        )
 
     /** Records a WebDAV failure for the exportable diagnostic package.
      *  Only the host is kept — never the username, password or full URL. */
@@ -1069,6 +1141,12 @@ class WebdavSyncManager @Inject constructor(
                 ?.filter { it.name.startsWith("cloud_${bookId}_") && it != destination }
                 ?.forEach { it.delete() }
             destination.absolutePath
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: WebdavException) {
+            if (error.statusCode != 404) throw error
+            Log.w("WebDAV", "Cover is missing for book=$bookId")
+            null
         } catch (error: Exception) {
             Log.w("WebDAV", "Cover download failed book=$bookId: ${error.message}")
             null
@@ -1705,7 +1783,8 @@ class WebdavSyncManager @Inject constructor(
 
 data class SyncResult(
     val message: String,
-    val success: Boolean
+    val success: Boolean,
+    val failureCategory: WebdavFailureCategory? = null
 )
 
 sealed interface BookDownloadState {

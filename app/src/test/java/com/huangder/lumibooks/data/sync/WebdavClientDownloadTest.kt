@@ -3,6 +3,7 @@ package com.huangder.lumibooks.data.sync
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.SocketPolicy
 import okio.Buffer
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -119,6 +120,55 @@ class WebdavClientDownloadTest {
             )
 
             assertEquals("*", server.takeRequest().getHeader("If-None-Match"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun serviceUnavailableWithImmediateRetryHeaderIsNotReplayed() = runTest {
+        val server = MockWebServer()
+        server.enqueue(MockResponse().setResponseCode(503).setHeader("Retry-After", "0"))
+        server.enqueue(MockResponse().setResponseCode(200).setBody("must not be requested"))
+        server.start()
+        try {
+            val error = runCatching {
+                WebdavClient().download(
+                    server.url("/books/book.epub").toString(),
+                    "user",
+                    "password"
+                )
+            }.exceptionOrNull() as WebdavException
+
+            assertEquals(503, error.statusCode)
+            assertEquals(WebdavErrorKind.SERVICE_UNAVAILABLE, error.kind)
+            assertEquals(1, server.requestCount)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun responseBodyDisconnectRemainsAClassifiedNetworkFailure() = runTest {
+        val server = MockWebServer()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("incomplete response body")
+                .setSocketPolicy(SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY)
+        )
+        server.start()
+        try {
+            val error = runCatching {
+                WebdavClient().download(
+                    server.url("/books/book.epub").toString(),
+                    "user",
+                    "password"
+                )
+            }.exceptionOrNull() as WebdavException
+
+            assertEquals(WebdavErrorKind.NETWORK, error.kind)
+            assertEquals(null, error.statusCode)
         } finally {
             server.shutdown()
         }

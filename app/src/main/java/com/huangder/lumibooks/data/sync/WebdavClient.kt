@@ -42,6 +42,17 @@ class WebdavClient @Inject constructor() {
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(120, TimeUnit.SECONDS)  // long write for book files
         .followRedirects(true)
+        .addNetworkInterceptor { chain ->
+            val response = chain.proceed(chain.request())
+            // OkHttp treats `503 + Retry-After: 0` as permission to replay the request once.
+            // A WebDAV PUT may be large and is not guaranteed to be safe to replay, so let the
+            // sync worker own the retry policy instead of duplicating the request immediately.
+            if (response.code == 503) {
+                response.newBuilder().removeHeader("Retry-After").build()
+            } else {
+                response
+            }
+        }
         .build()
 
     /** Probe requests must not let OkHttp turn a redirected PROPFIND into a GET. */
@@ -88,13 +99,15 @@ class WebdavClient @Inject constructor() {
             if (call.isCanceled()) {
                 throw CancellationException("WebDAV request cancelled")
             }
-            throw WebdavException(
-                message = "Network error — ${error.javaClass.simpleName}: ${error.message.orEmpty()}",
-                kind = classifyTransportError(error),
-                cause = error
-            )
+            throw transportException("Request", error)
         }
     }
+
+    private fun transportException(operation: String, error: IOException) = WebdavException(
+        message = "$operation network error — ${error.javaClass.simpleName}: ${error.message.orEmpty()}",
+        kind = classifyTransportError(error),
+        cause = error
+    )
 
     private fun classifyTransportError(error: IOException): WebdavErrorKind = when (error) {
         is SocketTimeoutException -> WebdavErrorKind.TIMEOUT
@@ -261,7 +274,12 @@ class WebdavClient @Inject constructor() {
     }
 
     private fun responseBody(response: okhttp3.Response): ProbeResponseBody {
-        val body = runCatching { response.body?.string().orEmpty() }.getOrDefault("")
+        val body = try {
+            response.body?.string().orEmpty()
+        } catch (error: IOException) {
+            response.close()
+            throw transportException("PROPFIND", error)
+        }
         val summary = body
             .replace(Regex("<[^>]*>"), " ")
             .replace(Regex("\\s+"), " ")
@@ -321,7 +339,12 @@ class WebdavClient @Inject constructor() {
             throw httpException("PROPFIND", code)
         }
 
-        val xml = response.body?.string() ?: ""
+        val xml = try {
+            response.body?.string().orEmpty()
+        } catch (error: IOException) {
+            response.close()
+            throw transportException("PROPFIND", error)
+        }
         response.close()
         parsePropfindResponse(xml, url)
     }
@@ -344,7 +367,12 @@ class WebdavClient @Inject constructor() {
             response.close()
             throw httpException("Download", code)
         }
-        val bytes = response.body?.bytes() ?: ByteArray(0)
+        val bytes = try {
+            response.body?.bytes() ?: ByteArray(0)
+        } catch (error: IOException) {
+            response.close()
+            throw transportException("Download", error)
+        }
         response.close()
         bytes
     }
@@ -362,8 +390,13 @@ class WebdavClient @Inject constructor() {
             if (!response.isSuccessful) {
                 throw httpException("Download", response.code)
             }
+            val data = try {
+                response.body?.bytes() ?: ByteArray(0)
+            } catch (error: IOException) {
+                throw transportException("Download", error)
+            }
             WebdavVersionedData(
-                data = response.body?.bytes() ?: ByteArray(0),
+                data = data,
                 etag = response.header("ETag")
             )
         }
@@ -387,7 +420,12 @@ class WebdavClient @Inject constructor() {
             throw httpException("Download", code)
         }
         // Wrap in a closeable that also closes the response
-        val bytes = response.body?.bytes() ?: ByteArray(0)
+        val bytes = try {
+            response.body?.bytes() ?: ByteArray(0)
+        } catch (error: IOException) {
+            response.close()
+            throw transportException("Download", error)
+        }
         response.close()
         ByteArrayInputStream(bytes)
     }
@@ -420,7 +458,11 @@ class WebdavClient @Inject constructor() {
                 FileOutputStream(destination).buffered().use { output ->
                     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                     while (true) {
-                        val count = input.read(buffer)
+                        val count = try {
+                            input.read(buffer)
+                        } catch (error: IOException) {
+                            throw transportException("Download", error)
+                        }
                         if (count == -1) break
                         output.write(buffer, 0, count)
                         digest.update(buffer, 0, count)
