@@ -219,6 +219,7 @@ fun EBookReaderTheme(
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,
+            shapes = AppShapes.material(AppShapes.usesContinuousCorners(effectiveAppTheme)),
         ) {
             if (lumiBackgroundScene != null) {
                 LumiBackgroundHost(scene = lumiBackgroundScene, modifier = androidx.compose.ui.Modifier.fillMaxSize()) { content() }
