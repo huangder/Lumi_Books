@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="welcome_excerpt_title">마음에 남는 문장 공유</string>
+    <string name="welcome_excerpt_subtitle">선택한 문장을 아름다운 발췌 카드로 만들어 보세요.\n스타일을 바꾸고, 이미지로 저장하거나 공유하세요.</string>
+    <string name="welcome_excerpt_description">스타일 변경, 이미지 저장, 공유 기능이 있는 발췌 카드 미리 보기</string>
+    <string name="welcome_g2_title">G2 곡선 · 자연스러운 모서리</string>
+    <string name="welcome_g2_subtitle">카드와 패널의 모서리가 매끄럽게 이어집니다.\n독서의 순간마다 섬세한 편안함을 더합니다.</string>
+    <string name="welcome_g2_description">카드, 패널, 컨트롤의 연속 곡선 모서리를 보여 주는 독서 설정 미리 보기</string>
+    <string name="welcome_dictionary_title">사전 · 읽으면서 바로 찾기</string>
+    <string name="welcome_dictionary_subtitle">모르는 단어를 선택하면 뜻을 확인할 수 있어요.\n필요한 사전을 내려받으면 오프라인에서도 사용할 수 있어요.</string>
+    <string name="welcome_dictionary_description">뜻풀이, AI 번역, 사전 관리 기능이 있는 단어 검색 패널 미리 보기</string>
+</resources>

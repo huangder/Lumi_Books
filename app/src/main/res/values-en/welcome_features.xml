@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="welcome_excerpt_title">Excerpts worth sharing</string>
+    <string name="welcome_excerpt_subtitle">Turn selected text into a beautiful quote card.\nChoose a style, save it, or share a favorite passage.</string>
+    <string name="welcome_excerpt_description">Excerpt card with style, save image, and share actions</string>
+    <string name="welcome_g2_title">G2 curves · Softer details</string>
+    <string name="welcome_g2_subtitle">Smooth corners bring cards and panels together.\nA little more care in every reading moment.</string>
+    <string name="welcome_g2_description">Reader settings preview showing continuous corners on cards, panels, and controls</string>
+    <string name="welcome_dictionary_title">Look up as you read</string>
+    <string name="welcome_dictionary_subtitle">Select an unfamiliar word to see its meaning.\nDownload dictionaries when needed, then look up offline.</string>
+    <string name="welcome_dictionary_description">Word lookup preview with definitions, AI translation, and dictionary management</string>
+</resources>

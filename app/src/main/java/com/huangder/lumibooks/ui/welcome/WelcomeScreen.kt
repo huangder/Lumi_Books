@@ -30,6 +30,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -39,13 +40,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -131,17 +133,37 @@ private val DarkBackground = Color(0xFF000000)
 private val DarkCardBg = Color(0xFF1C1C1E)
 private val WelcomeContentMaxWidth = 560.dp
 
-private enum class WelcomePage {
+internal enum class WelcomePage {
     LANGUAGE_SETUP,
     INTRODUCTION,
     LIQUID_GLASS_PREVIEW,
+    EXCERPT_PREVIEW,
+    G2_PREVIEW,
+    DICTIONARY_PREVIEW,
     SUPPORT
 }
 
 private enum class UpdatePreview {
     MINERU,
     LIQUID_GLASS,
-    BOOKSHELF
+    BOOKSHELF,
+    EXCERPT,
+    G2,
+    DICTIONARY
+}
+
+internal fun welcomePages(
+    shouldShowLanguageSetup: Boolean,
+    isNewInstallation: Boolean,
+    isEInkMode: Boolean
+): List<WelcomePage> = buildList {
+    if (shouldShowLanguageSetup) add(WelcomePage.LANGUAGE_SETUP)
+    add(WelcomePage.INTRODUCTION)
+    if (isNewInstallation && !isEInkMode) add(WelcomePage.LIQUID_GLASS_PREVIEW)
+    add(WelcomePage.EXCERPT_PREVIEW)
+    add(WelcomePage.G2_PREVIEW)
+    add(WelcomePage.DICTIONARY_PREVIEW)
+    add(WelcomePage.SUPPORT)
 }
 
 private data class WelcomeLanguageOption(
@@ -193,12 +215,7 @@ fun WelcomeScreen(
 ) {
     val motionEnabled = LocalMotionEnabled.current
     val pages = remember(shouldShowLanguageSetup, isNewInstallation, isEInkMode) {
-        buildList {
-            if (shouldShowLanguageSetup) add(WelcomePage.LANGUAGE_SETUP)
-            add(WelcomePage.INTRODUCTION)
-            if (isNewInstallation && !isEInkMode) add(WelcomePage.LIQUID_GLASS_PREVIEW)
-            add(WelcomePage.SUPPORT)
-        }
+        welcomePages(shouldShowLanguageSetup, isNewInstallation, isEInkMode)
     }
     var currentPage by rememberSaveable {
         mutableStateOf(
@@ -225,7 +242,7 @@ fun WelcomeScreen(
         targetState = currentPage,
         modifier = Modifier
             .fillMaxSize()
-            .background(if (isDark) DarkBackground else LightBackground)
+            .background(AppColors.WindowBg)
             .graphicsLayer {
                 if (!isEInkMode && motionEnabled) {
                     translationX = predictiveBackProgress * size.width * 0.12f
@@ -273,13 +290,20 @@ fun WelcomeScreen(
                 onContinue = { currentPage = pages[(pages.indexOf(WelcomePage.INTRODUCTION) + 1).coerceAtMost(pages.lastIndex)] }
             )
 
-            WelcomePage.LIQUID_GLASS_PREVIEW -> UpdatePreviewPage(
-                preview = UpdatePreview.LIQUID_GLASS,
-                isDark = isDark,
+            WelcomePage.LIQUID_GLASS_PREVIEW,
+            WelcomePage.EXCERPT_PREVIEW,
+            WelcomePage.G2_PREVIEW,
+            WelcomePage.DICTIONARY_PREVIEW -> UpdatePreviewPage(
+                preview = when (page) {
+                    WelcomePage.LIQUID_GLASS_PREVIEW -> UpdatePreview.LIQUID_GLASS
+                    WelcomePage.EXCERPT_PREVIEW -> UpdatePreview.EXCERPT
+                    WelcomePage.G2_PREVIEW -> UpdatePreview.G2
+                    else -> UpdatePreview.DICTIONARY
+                },
                 isEInkMode = isEInkMode,
                 isLiquidGlass = isLiquidGlass,
-                onBack = { currentPage = pages[(pages.indexOf(WelcomePage.LIQUID_GLASS_PREVIEW) - 1).coerceAtLeast(0)] },
-                onNext = { currentPage = WelcomePage.SUPPORT },
+                onBack = { currentPage = pages[(pages.indexOf(page) - 1).coerceAtLeast(0)] },
+                onNext = { currentPage = pages[(pages.indexOf(page) + 1).coerceAtMost(pages.lastIndex)] },
                 onEnableLiquidGlass = onEnableLiquidGlass
             )
 
@@ -296,20 +320,19 @@ fun WelcomeScreen(
 @Composable
 private fun UpdatePreviewPage(
     preview: UpdatePreview,
-    isDark: Boolean,
     isEInkMode: Boolean,
     isLiquidGlass: Boolean,
     onBack: () -> Unit,
     onNext: () -> Unit,
-    onEnableLiquidGlass: () -> Unit,
-    startOnIntroduction: Boolean = false
+    onEnableLiquidGlass: () -> Unit
 ) {
-    var hasEntered by remember(preview) { mutableStateOf(false) }
+    val animateEntrance = LocalMotionEnabled.current && !isEInkMode
+    var hasEntered by remember(preview) { mutableStateOf(!animateEntrance) }
     var liquidGlassSelected by rememberSaveable { mutableStateOf(isLiquidGlass) }
     var themeSwitchStage by rememberSaveable { mutableIntStateOf(0) }
 
     LaunchedEffect(preview, isEInkMode) {
-        if (!isEInkMode) delay(40)
+        if (animateEntrance) delay(40)
         hasEntered = true
     }
     LaunchedEffect(isLiquidGlass) {
@@ -320,31 +343,37 @@ private fun UpdatePreviewPage(
         UpdatePreview.MINERU -> stringResource(R.string.welcome_mineru_preview_title)
         UpdatePreview.LIQUID_GLASS -> stringResource(R.string.welcome_liquid_glass_title)
         UpdatePreview.BOOKSHELF -> stringResource(R.string.welcome_bookshelf_preview_title)
+        UpdatePreview.EXCERPT -> stringResource(R.string.welcome_excerpt_title)
+        UpdatePreview.G2 -> stringResource(R.string.welcome_g2_title)
+        UpdatePreview.DICTIONARY -> stringResource(R.string.welcome_dictionary_title)
     }
     val subtitle = when (preview) {
         UpdatePreview.MINERU -> stringResource(R.string.welcome_mineru_preview_subtitle)
         UpdatePreview.LIQUID_GLASS -> stringResource(R.string.welcome_liquid_glass_subtitle)
         UpdatePreview.BOOKSHELF -> stringResource(R.string.welcome_bookshelf_preview_subtitle)
+        UpdatePreview.EXCERPT -> stringResource(R.string.welcome_excerpt_subtitle)
+        UpdatePreview.G2 -> stringResource(R.string.welcome_g2_subtitle)
+        UpdatePreview.DICTIONARY -> stringResource(R.string.welcome_dictionary_subtitle)
     }
-    val textPrimary = if (isDark) Color.White else Color.Black
-    val textSecondary = if (isDark) DarkTextSecondary else LightTextSecondary
-    val frameColor = if (isDark) Color(0xFF242426) else Color(0xFFF2F2F3)
+    val textPrimary = AppColors.TextPrimary
+    val textSecondary = AppColors.TextSecondary
+    val frameColor = AppColors.BgGray
     val titleProgress by animateFloatAsState(
         targetValue = if (hasEntered) 1f else 0f,
-        animationSpec = if (isEInkMode) snap() else tween(360, easing = AppEasing.Decelerate),
+        animationSpec = if (!animateEntrance) snap() else tween(360, easing = AppEasing.Decelerate),
         label = "previewTitleProgress"
     )
     val artworkProgress by animateFloatAsState(
         targetValue = if (hasEntered) 1f else 0f,
-        animationSpec = if (isEInkMode) snap() else spring(dampingRatio = 0.72f, stiffness = 330f),
+        animationSpec = if (!animateEntrance) snap() else spring(dampingRatio = 0.72f, stiffness = 330f),
         label = "previewArtworkProgress"
     )
     val buttonsProgress by animateFloatAsState(
         targetValue = if (hasEntered) 1f else 0f,
-        animationSpec = if (isEInkMode) snap() else tween(360, delayMillis = 110, easing = AppEasing.Decelerate),
+        animationSpec = if (!animateEntrance) snap() else tween(360, delayMillis = 110, easing = AppEasing.Decelerate),
         label = "previewButtonsProgress"
     )
-    val useLiquidGlassButtons = isLiquidGlass || liquidGlassSelected
+    val useLiquidGlassButtons = (isLiquidGlass || liquidGlassSelected) && !isEInkMode
     val contentBlurRadius by animateDpAsState(
         targetValue = when (themeSwitchStage) {
             1, 2, 3, 4 -> 14.dp
@@ -357,131 +386,144 @@ private fun UpdatePreviewPage(
         label = "themeSwitchContentBlur"
     )
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (isDark) DarkBackground else LightBackground)
+            .background(AppColors.WindowBg)
+            .safeDrawingPadding()
     ) {
+        val compact = maxHeight < 600.dp
+        val artworkHeight = (maxHeight - if (preview == UpdatePreview.LIQUID_GLASS) 340.dp else 274.dp)
+            .coerceIn(200.dp, 720.dp)
         Column(
             modifier = Modifier
                 .widthIn(max = WelcomeContentMaxWidth)
                 .fillMaxWidth()
                 .fillMaxHeight()
                 .align(Alignment.TopCenter)
-                .blur(contentBlurRadius)
-                .navigationBarsPadding(),
+                .blur(contentBlurRadius),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-        Spacer(modifier = Modifier.height(76.dp))
+            Column(
+                modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Spacer(modifier = Modifier.height(if (compact) 16.dp else 36.dp))
 
-        Column(
-            modifier = Modifier.graphicsLayer {
-                alpha = titleProgress
-                translationX = (1f - titleProgress) * 28.dp.toPx()
-            },
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = title,
-                modifier = Modifier.padding(horizontal = 24.dp),
-                fontSize = 29.sp,
-                lineHeight = 36.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                color = AccentColor
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = subtitle,
-                modifier = Modifier.padding(horizontal = 28.dp),
-                fontSize = 16.sp,
-                lineHeight = 23.sp,
-                fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Center,
-                color = textSecondary
-            )
-        }
-
-        Spacer(modifier = Modifier.height(28.dp))
-
-        UpdatePreviewArtwork(
-            preview = preview,
-            frameColor = frameColor,
-            textSecondary = textSecondary,
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .padding(horizontal = 32.dp)
-                .graphicsLayer {
-                    alpha = artworkProgress
-                    scaleX = 0.90f + artworkProgress * 0.10f
-                    scaleY = 0.90f + artworkProgress * 0.10f
-                    translationX = (1f - artworkProgress) * 36.dp.toPx()
+                Column(
+                    modifier = Modifier.graphicsLayer {
+                        alpha = titleProgress
+                        translationX = (1f - titleProgress) * 28.dp.toPx()
+                    },
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = title,
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                        fontSize = 29.sp,
+                        lineHeight = 36.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        color = AccentColor
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = subtitle,
+                        modifier = Modifier.padding(horizontal = 28.dp),
+                        fontSize = 16.sp,
+                        lineHeight = 23.sp,
+                        fontWeight = FontWeight.Medium,
+                        textAlign = TextAlign.Center,
+                        color = textSecondary
+                    )
                 }
-        )
 
-        Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(28.dp))
 
-        if (preview == UpdatePreview.LIQUID_GLASS) {
-            WelcomeActionButton(
-                text = if (liquidGlassSelected) stringResource(R.string.welcome_liquid_glass_enabled) else stringResource(R.string.welcome_enable_liquid_glass),
-                onClick = {
-                    if (!liquidGlassSelected && themeSwitchStage == 0) {
-                        themeSwitchStage = 1
-                    }
-                },
-                primary = true,
-                forceLiquidGlass = useLiquidGlassButtons,
-                textPrimary = textPrimary,
-                enabled = !liquidGlassSelected && themeSwitchStage == 0,
+                UpdatePreviewArtwork(
+                    preview = preview,
+                    frameColor = frameColor,
+                    textSecondary = textSecondary,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(artworkHeight)
+                        .padding(horizontal = 32.dp)
+                        .graphicsLayer {
+                            alpha = artworkProgress
+                            scaleX = 0.90f + artworkProgress * 0.10f
+                            scaleY = 0.90f + artworkProgress * 0.10f
+                            translationX = (1f - artworkProgress) * 36.dp.toPx()
+                        }
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+            }
+
+            if (preview == UpdatePreview.LIQUID_GLASS) {
+                WelcomeActionButton(
+                    text = if (liquidGlassSelected) stringResource(R.string.welcome_liquid_glass_enabled) else stringResource(R.string.welcome_enable_liquid_glass),
+                    onClick = {
+                        if (!liquidGlassSelected && themeSwitchStage == 0) {
+                            if (animateEntrance) {
+                                themeSwitchStage = 1
+                            } else {
+                                liquidGlassSelected = true
+                                onEnableLiquidGlass()
+                            }
+                        }
+                    },
+                    primary = true,
+                    forceLiquidGlass = useLiquidGlassButtons,
+                    textPrimary = textPrimary,
+                    enabled = !liquidGlassSelected && themeSwitchStage == 0,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 32.dp)
+                        .heightIn(min = 52.dp)
+                        .graphicsLayer {
+                            alpha = buttonsProgress
+                            translationX = (1f - buttonsProgress) * 24.dp.toPx()
+                        }
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+            }
+
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 32.dp)
-                    .height(52.dp)
                     .graphicsLayer {
                         alpha = buttonsProgress
                         translationX = (1f - buttonsProgress) * 24.dp.toPx()
-                    }
-            )
-            Spacer(modifier = Modifier.height(14.dp))
-        }
+                    },
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                WelcomeActionButton(
+                    text = stringResource(R.string.welcome_previous),
+                    onClick = onBack,
+                    primary = false,
+                    forceLiquidGlass = useLiquidGlassButtons,
+                    textPrimary = textPrimary,
+                    secondaryContainerColor = AppColors.BgGray,
+                    enabled = themeSwitchStage == 0,
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 52.dp)
+                )
+                WelcomeActionButton(
+                    text = stringResource(R.string.welcome_next),
+                    onClick = onNext,
+                    primary = true,
+                    forceLiquidGlass = useLiquidGlassButtons,
+                    textPrimary = textPrimary,
+                    enabled = themeSwitchStage == 0,
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 52.dp)
+                )
+            }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 32.dp)
-                .graphicsLayer {
-                    alpha = buttonsProgress
-                    translationX = (1f - buttonsProgress) * 24.dp.toPx()
-                },
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            WelcomeActionButton(
-                text = stringResource(R.string.welcome_previous),
-                onClick = onBack,
-                primary = false,
-                forceLiquidGlass = useLiquidGlassButtons,
-                textPrimary = textPrimary,
-                secondaryContainerColor = if (isDark) DarkBgGray else LightBgGray,
-                enabled = themeSwitchStage == 0,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(52.dp)
-            )
-            WelcomeActionButton(
-                text = stringResource(R.string.welcome_next),
-                onClick = onNext,
-                primary = true,
-                forceLiquidGlass = useLiquidGlassButtons,
-                textPrimary = textPrimary,
-                enabled = themeSwitchStage == 0,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(52.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(if (compact) 12.dp else 24.dp))
         }
 
         if (themeSwitchStage != 0) {
@@ -520,6 +562,27 @@ private fun UpdatePreviewArtwork(
             modifier = modifier
         )
 
+        UpdatePreview.EXCERPT -> PhonePreviewFrame(
+            imageRes = R.drawable.welcome_excerpt_preview,
+            description = stringResource(R.string.welcome_excerpt_description),
+            frameColor = frameColor,
+            modifier = modifier
+        )
+
+        UpdatePreview.G2 -> PhonePreviewFrame(
+            imageRes = R.drawable.welcome_g2_preview,
+            description = stringResource(R.string.welcome_g2_description),
+            frameColor = frameColor,
+            modifier = modifier
+        )
+
+        UpdatePreview.DICTIONARY -> PhonePreviewFrame(
+            imageRes = R.drawable.welcome_dictionary_preview,
+            description = stringResource(R.string.welcome_dictionary_description),
+            frameColor = frameColor,
+            modifier = modifier
+        )
+
         UpdatePreview.LIQUID_GLASS -> LiquidGlassPreviewFrame(
             frameColor = frameColor,
             textSecondary = textSecondary,
@@ -537,7 +600,7 @@ private fun PhonePreviewFrame(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(36.dp))
+            .clip(AppRoundedCornerShape(36.dp))
             .background(frameColor),
         contentAlignment = Alignment.Center
     ) {
@@ -560,7 +623,7 @@ private fun LiquidGlassPreviewFrame(
 ) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(36.dp))
+            .clip(AppRoundedCornerShape(36.dp))
             .background(frameColor)
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -604,7 +667,7 @@ private fun LiquidGlassPreviewTile(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
+            .clip(AppRoundedCornerShape(24.dp))
             .background(Color.White),
         contentAlignment = Alignment.Center
     ) {
@@ -728,7 +791,7 @@ private fun ThemeSwitchOverlay(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer { alpha = solidCapsuleAlpha }
-                    .clip(RoundedCornerShape(28.dp))
+                    .clip(AppRoundedCornerShape(28.dp))
                     .background(Color.White)
             )
             CompositionLocalProvider(
@@ -737,7 +800,7 @@ private fun ThemeSwitchOverlay(
             ) {
                 LiquidGlassSurface(
                     controlEdge = true,
-                    shape = RoundedCornerShape(28.dp),
+                    shape = AppRoundedCornerShape(28.dp),
                     fallbackColor = Color.White,
                     contentScrimColor = Color.White.copy(alpha = 0.38f),
                     modifier = Modifier
@@ -766,13 +829,12 @@ private fun WelcomeActionButton(
     enabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    val shape = RoundedCornerShape(28.dp)
+    val shape = AppRoundedCornerShape(28.dp)
     val contentColor = if (primary) AppColors.OnAccent else textPrimary
 
     if (forceLiquidGlass) {
         CompositionLocalProvider(
-            LocalAppTheme provides "liquid_glass",
-            LocalLiquidGlassTransparency provides 0.65f
+            LocalAppTheme provides "liquid_glass"
         ) {
             if (enabled) {
                 LiquidGlassButton(
@@ -891,7 +953,7 @@ private fun LanguageAndEInkPage(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(28.dp))
+                        .clip(AppRoundedCornerShape(28.dp))
                         .background(panelColor)
                         .padding(12.dp)
                 ) {
@@ -900,7 +962,7 @@ private fun LanguageAndEInkPage(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(48.dp)
-                                .clip(RoundedCornerShape(14.dp))
+                                .clip(AppRoundedCornerShape(14.dp))
                                 .background(if (option.languageTag == selectedLanguage) selectedRowColor else Color.Transparent)
                                 .pointerInput(option.languageTag) {
                                     detectTapGestures { selectedLanguage = option.languageTag }
@@ -1295,7 +1357,7 @@ private fun SupportWelcomeButton(
         return
     }
 
-    val shape = RoundedCornerShape(28.dp)
+    val shape = AppRoundedCornerShape(28.dp)
     val glassColor = when {
         primary -> AccentColor
         isDark -> Color(0xFF2D2D31)
@@ -1547,7 +1609,7 @@ private fun WelcomeStartButton(
         },
         label = "welcomeStartButtonScale"
     )
-    val shape = RoundedCornerShape(26.dp)
+    val shape = AppRoundedCornerShape(26.dp)
     val containerColor = when {
         isEInkMode -> Color.White
         isDark -> Color(
@@ -1653,9 +1715,9 @@ private fun PolicyBottomSheet(
                 .materialBottomSheetMotion(containerOffsetY.value, predictiveBackProgress)
                 .shadow(
                     elevation = 24.dp,
-                    shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
+                    shape = AppRoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
                 )
-                .background(cardBg, RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
+                .background(cardBg, AppRoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
                 .padding(top = 24.dp, start = 24.dp, end = 24.dp)
         ) {
             // 标题栏
@@ -1773,7 +1835,7 @@ private fun FormattedPolicyContent(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(AppRoundedCornerShape(14.dp))
                         .background(AccentColor.copy(alpha = 0.11f))
                         .padding(horizontal = 14.dp, vertical = 12.dp)
                 ) {
@@ -1819,7 +1881,7 @@ private fun PolicyMetadataBlock(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(AppRoundedCornerShape(16.dp))
             .background(secondaryColor.copy(alpha = 0.10f))
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp)

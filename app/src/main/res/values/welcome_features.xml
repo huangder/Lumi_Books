@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="welcome_excerpt_title">摘录分享 · 留住心动</string>
+    <string name="welcome_excerpt_subtitle">长按选中文字，生成精美摘录卡片。\n换个样式，保存或分享阅读中的好句。</string>
+    <string name="welcome_excerpt_description">摘录卡片预览，可切换样式、保存图片或分享摘录</string>
+    <string name="welcome_g2_title">G2 连续曲线 · 自然圆润</string>
+    <string name="welcome_g2_subtitle">从卡片到弹窗，转角衔接更加平滑。\n让每一次阅读，都多一分细腻。</string>
+    <string name="welcome_g2_description">阅读设置面板预览，展示卡片、弹窗与控件的连续曲线圆角</string>
+    <string name="welcome_dictionary_title">字典 · 随读随查</string>
+    <string name="welcome_dictionary_subtitle">选中生词，即可查看释义。\n按需下载词库，离线也能轻松查阅。</string>
+    <string name="welcome_dictionary_description">选词查词面板预览，展示释义、AI 翻译和词典管理入口</string>
+</resources>

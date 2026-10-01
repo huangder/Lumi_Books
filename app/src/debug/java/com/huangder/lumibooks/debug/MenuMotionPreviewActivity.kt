@@ -11,7 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalDensity
@@ -74,7 +74,7 @@ private fun SurfaceSamples() {
         Column(Modifier.fillMaxSize().statusBarsPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             listOf("Default", "No shadow", "No scrim").forEachIndexed { index, label ->
                 LiquidGlassSurface(
-                    shape = RoundedCornerShape(24.dp), fallbackColor = AppColors.CardBg, backdrop = backdrop,
+                    shape = AppRoundedCornerShape(24.dp), fallbackColor = AppColors.CardBg, backdrop = backdrop,
                     contentScrimColor = if (index == 2) Color.Transparent else AppColors.CardBg.copy(alpha = 0.62f),
                     decorationModifier = if (index == 1) Modifier else null,
                     modifier = Modifier.fillMaxWidth().height(128.dp)
@@ -102,7 +102,7 @@ private fun PreviewMenus(solid: Boolean, transparentBackdrop: Boolean, demo: Boo
             Box(Modifier.align(Alignment.TopEnd).padding(top = 180.dp, end = 20.dp)
                 .size(240.dp, 360.dp).background(
                     Brush.verticalGradient(listOf(Color(0xFFD72544), Color(0xFF743CA6))),
-                    RoundedCornerShape(16.dp)
+                    AppRoundedCornerShape(16.dp)
                 ))
             Column(Modifier.fillMaxSize().statusBarsPadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                 Text("Menu motion QA", color = AppColors.TextPrimary)

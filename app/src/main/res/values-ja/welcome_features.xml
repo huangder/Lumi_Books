@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="welcome_excerpt_title">心に残る一節をシェア</string>
+    <string name="welcome_excerpt_subtitle">選択した文章を、美しい摘録カードに。\nデザインを選んで、保存や共有ができます。</string>
+    <string name="welcome_excerpt_description">デザイン切り替え、画像保存、共有ができる摘録カードのプレビュー</string>
+    <string name="welcome_g2_title">G2 曲線 · 自然な丸み</string>
+    <string name="welcome_g2_subtitle">カードやパネルの角が、なめらかにつながる。\n読書のひとときに、細部まで心地よさを。</string>
+    <string name="welcome_g2_description">カード、パネル、操作部品の連続曲線の角を示す読書設定のプレビュー</string>
+    <string name="welcome_dictionary_title">辞書 · 読みながら調べる</string>
+    <string name="welcome_dictionary_subtitle">わからない言葉を選択して、意味を確認。\n必要な辞書をダウンロードすれば、オフラインでも使えます。</string>
+    <string name="welcome_dictionary_description">語義、AI 翻訳、辞書管理への入口を備えた辞書パネルのプレビュー</string>
+</resources>
