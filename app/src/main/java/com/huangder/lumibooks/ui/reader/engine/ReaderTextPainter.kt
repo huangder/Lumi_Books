@@ -204,18 +204,25 @@ internal class ReaderTextPainter {
     private fun drawImage(canvas: Canvas, layout: Layout, line: Int, span: ImageSpan,
                           left: Float, textSize: Float) {
         val drawable = span.drawable
+        val isInlineFootnoteMarker =
+            (drawable as? InlineFootnoteMarkerDrawable)?.isInlineFootnoteMarker == true
         val savedBounds = Rect(drawable.bounds)
         val width = savedBounds.width().toFloat()
         val height = savedBounds.height().toFloat()
         val top = layout.getLineTop(line).toFloat()
         val bottom = layout.getLineBottom(line).toFloat()
-        val slotTop = when (span.verticalAlignment) {
+        val slotTop = if (isInlineFootnoteMarker) {
+            // Footnote icons are text-like inline marks. ALIGN_BOTTOM uses the whole
+            // line box (including descent/line spacing), which makes them look like
+            // subscripts; pin their bottom edge to the text baseline instead.
+            layout.getLineBaseline(line) - height
+        } else when (span.verticalAlignment) {
             DynamicDrawableSpan.ALIGN_BASELINE -> layout.getLineBaseline(line) - height
             DynamicDrawableSpan.ALIGN_CENTER -> top + (bottom - top - height) / 2f
             else -> bottom - height
         }
         val rect = ReaderImageSizing.drawRect(left, slotTop, width, height,
-            (drawable as? InlineFootnoteMarkerDrawable)?.isInlineFootnoteMarker == true,
+            isInlineFootnoteMarker,
             textSize * ReaderImageSizing.INLINE_MARKER_EM)
         drawable.setBounds(rect.left.toInt(), rect.top.toInt(),
             (rect.left + rect.width).toInt(), (rect.top + rect.height).toInt())

@@ -167,7 +167,8 @@ class EpubFootnoteAnchorTest {
             <p><a title="footnote 3" href="#fn3">&nbsp;<sup>[ 3 ]</sup>&#160;</a></p>
         """.trimIndent()
 
-        val (protectedHtml, images) = EpubParser.protectInlineFootnoteImages(html)
+        val normalizedHtml = EpubParser.normalizeFootnoteMarkerBaseline(html)
+        val (protectedHtml, images) = EpubParser.protectInlineFootnoteImages(normalizedHtml)
 
         assertEquals(1, images.size)
         assertTrue(
@@ -176,9 +177,24 @@ class EpubFootnoteAnchorTest {
                 """<a epub:type="noteref" href="#footnote-11-23">${EpubParser.inlineImagePlaceholder(0)}</a>"""
             )
         )
-        assertTrue("实体空白也应被去掉: $protectedHtml", protectedHtml.contains("""href="#fn3"><sup>[ 3 ]</sup></a>"""))
+        assertTrue("实体空白也应被去掉: $protectedHtml", protectedHtml.contains("""href="#fn3">[ 3 ]</a>"""))
         assertTrue(protectedHtml.contains("内阻力就像是《大白鲨》"))
         assertTrue(protectedHtml.contains("里的那条鲨鱼。"))
+    }
+
+    @Test
+    fun `footnote marker superscript is flattened without changing regular superscript`() {
+        val html = """
+            <p>正文<sup><a epub:type="noteref" href="#fn1">[1]</a></sup>继续</p>
+            <p>普通公式 x<sup>2</sup> 仍保留</p>
+            <p><a title="footnote 2" href="#fn2"><sub>〔2〕</sub></a></p>
+        """.trimIndent()
+
+        val normalized = EpubParser.normalizeFootnoteMarkerBaseline(html)
+
+        assertTrue(normalized.contains("""href="#fn1">[1]</a>"""))
+        assertTrue(normalized.contains("普通公式 x<sup>2</sup> 仍保留"))
+        assertTrue(normalized.contains("""href="#fn2">〔2〕</a>"""))
     }
 
     @Test

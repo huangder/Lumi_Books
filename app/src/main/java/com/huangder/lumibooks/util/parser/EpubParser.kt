@@ -220,6 +220,14 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             """^(?:[\s\u00A0]|&nbsp;|&#160;|&#xa0;)+|(?:[\s\u00A0]|&nbsp;|&#160;|&#xa0;)+$""",
             RegexOption.IGNORE_CASE
         )
+        private val FOOTNOTE_SUP_SUB_TAG_REGEX = Regex(
+            """</?\s*(?:sup|sub)\b[^>]*>""",
+            RegexOption.IGNORE_CASE
+        )
+        private val FOOTNOTE_SUP_SUB_WRAPPER_REGEX = Regex(
+            """<\s*(sup|sub)\b[^>]*>\s*(<a\b[^>]*>.*?</a>)\s*</\s*\1\s*>""",
+            setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
+        )
 
         internal fun inlineImagePlaceholder(index: Int): String =
             INLINE_IMAGE_PLACEHOLDER_PREFIX + index + INLINE_IMAGE_PLACEHOLDER_SUFFIX
@@ -227,6 +235,86 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         /** 去掉注释引用锚点两端的空白，标记本身保持原有顺序与行内形态。 */
         internal fun trimFootnoteMarkerPadding(innerHtml: String): String =
             innerHtml.replace(FOOTNOTE_MARKER_PADDING_REGEX, "")
+
+        /**
+         * 注释编号有时被出版方包在 `<sup>`/`<sub>` 中。阅读器排版把 HTML
+         * 转成 Spanned 后会真的应用上下标基线偏移，导致编号和正文不在同一水平线；
+         * 注释符号应作为行内标记与正文对齐。只处理已识别的注释引用锚点，保留正文上下标。
+         */
+        internal fun normalizeFootnoteMarkerBaseline(html: String): String {
+            var result = html
+            // 先去掉锚点内部的上下标，再多轮处理外层包裹，兼容 sup/sub 嵌套。
+            repeat(4) {
+                val before = result
+                result = ANCHOR_TAG_REGEX.replace(result) { match ->
+                    val anchor = match.value
+                    val openTagEnd = anchor.indexOf('>')
+                    val closeTagStart = anchor.length - "</a>".length
+                    if (openTagEnd < 0 || closeTagStart <= openTagEnd) return@replace anchor
+                    val openTag = anchor.substring(0, openTagEnd + 1)
+                    val innerHtml = anchor.substring(openTagEnd + 1, closeTagStart)
+                    if (!isFootnoteAnchorTag(openTag, innerHtml)) return@replace anchor
+                    openTag + FOOTNOTE_SUP_SUB_TAG_REGEX.replace(innerHtml, "") + "</a>"
+                }
+                result = FOOTNOTE_SUP_SUB_WRAPPER_REGEX.replace(result) { match ->
+                    val anchor = match.groupValues[2]
+                    val openTagEnd = anchor.indexOf('>')
+                    val closeTagStart = anchor.length - "</a>".length
+                    if (openTagEnd < 0 || closeTagStart <= openTagEnd) return@replace match.value
+                    val openTag = anchor.substring(0, openTagEnd + 1)
+                    val innerHtml = anchor.substring(openTagEnd + 1, closeTagStart)
+                    if (isFootnoteAnchorTag(openTag, innerHtml)) anchor else match.value
+                }
+                if (result == before) return result
+            }
+            return result
+        }
+
+        /**
+         * HTML.fromHtml may still produce SuperscriptSpan/SubscriptSpan around a reference,
+         * and always creates inline images with ALIGN_BOTTOM. Normalize the final Spanned
+         * representation as the source of truth so publisher markup variations cannot leave
+         * a footnote marker below the surrounding text.
+         */
+        internal fun normalizeFootnoteReferenceSpans(
+            text: Spannable,
+            footnoteHrefs: Set<String>
+        ) {
+            if (text.isEmpty() || footnoteHrefs.isEmpty()) return
+            val normalizedHrefs = footnoteHrefs.mapTo(mutableSetOf()) { it.trim() }
+            text.getSpans(0, text.length, android.text.style.URLSpan::class.java)
+                .filter { it.url.trim() in normalizedHrefs }
+                .forEach { link ->
+                    val start = text.getSpanStart(link).coerceAtLeast(0)
+                    val end = text.getSpanEnd(link).coerceAtLeast(start)
+                    text.getSpans(start, end, android.text.style.SuperscriptSpan::class.java)
+                        .forEach(text::removeSpan)
+                    text.getSpans(start, end, android.text.style.SubscriptSpan::class.java)
+                        .forEach(text::removeSpan)
+                    text.getSpans(start, end, android.text.style.ImageSpan::class.java)
+                        .filter { image ->
+                            (image.drawable as? InlineFootnoteMarkerDrawable)
+                                ?.isInlineFootnoteMarker == true &&
+                                image.verticalAlignment != android.text.style.DynamicDrawableSpan.ALIGN_BASELINE
+                        }
+                        .forEach { image ->
+                            val imageStart = text.getSpanStart(image)
+                            val imageEnd = text.getSpanEnd(image)
+                            val flags = text.getSpanFlags(image)
+                            text.removeSpan(image)
+                            text.setSpan(
+                                android.text.style.ImageSpan(
+                                    image.drawable,
+                                    image.source.orEmpty(),
+                                    android.text.style.DynamicDrawableSpan.ALIGN_BASELINE
+                                ),
+                                imageStart,
+                                imageEnd,
+                                flags
+                            )
+                        }
+                }
+        }
 
         /**
          * 注释引用图标（注释链接内的 `<img>`，如多看/掌阅导出的"注"字小图）是行内标记，
@@ -2654,7 +2742,8 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         val withoutFootnoteBodies = stripReferencedFootnoteBodies(chapterIndex, alignment.html)
 
         // 注释引用图标（注释链接里的 <img>）是行内标记，必须保持行内。
-        val (inlineProtected, inlineImages) = protectInlineFootnoteImages(withoutFootnoteBodies)
+        val baselineNormalized = normalizeFootnoteMarkerBaseline(withoutFootnoteBodies)
+        val (inlineProtected, inlineImages) = protectInlineFootnoteImages(baselineNormalized)
 
         // Html.fromHtml 会丢弃 id/name。先插入不可见占位，转成 Spanned 后再移除并记录偏移。
         val withAnchorMarkers = insertAnchorMarkers(inlineProtected)
@@ -2698,6 +2787,10 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             parsed
         }
         val fullPage = android.text.SpannableStringBuilder(pageContent)
+        normalizeFootnoteReferenceSpans(
+            fullPage,
+            synchronized(zipLock) { footnoteHrefs[chapterIndex].orEmpty().toSet() }
+        )
         val images = fullPage.getSpans(0, fullPage.length, android.text.style.ImageSpan::class.java)
         val hasVisibleText = fullPage.any { character ->
             !character.isWhitespace() && character != '\uFFFC'

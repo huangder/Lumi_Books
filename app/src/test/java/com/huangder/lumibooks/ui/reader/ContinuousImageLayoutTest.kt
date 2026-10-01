@@ -9,6 +9,12 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.style.ImageSpan
 import android.text.style.LineHeightSpan
+import android.text.style.DynamicDrawableSpan
+import android.text.style.SubscriptSpan
+import android.text.style.SuperscriptSpan
+import android.text.style.URLSpan
+import com.huangder.lumibooks.util.parser.EpubParser
+import com.huangder.lumibooks.util.parser.InlineFootnoteMarkerDrawable
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -20,6 +26,10 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], application = Application::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ContinuousImageLayoutTest {
+    private class FootnoteMarkerDrawable : ColorDrawable(Color.RED), InlineFootnoteMarkerDrawable {
+        override val isInlineFootnoteMarker: Boolean = true
+    }
+
     private fun image(text: SpannableStringBuilder, height: Int, source: String? = null) {
         val start = text.length
         text.append("\uFFFC\n")
@@ -120,6 +130,29 @@ class ContinuousImageLayoutTest {
             assertEquals("alignment=$alignment bottom", bounds.bottom.toInt() - 1, rows.last())
             bitmap.recycle()
         }
+    }
+
+    @Test fun footnoteImageAndLabelAreMovedToTheTextBaseline() {
+        val text = SpannableStringBuilder("A\uFFFC[1] x2")
+        val marker = ImageSpan(
+            FootnoteMarkerDrawable().apply { setBounds(0, 0, 20, 20) },
+            "note.png",
+            DynamicDrawableSpan.ALIGN_BOTTOM
+        )
+        text.setSpan(marker, 1, 2, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        text.setSpan(URLSpan("#fn1"), 1, 5, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        text.setSpan(SubscriptSpan(), 1, 2, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        text.setSpan(SuperscriptSpan(), 2, 5, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        val regularSuperscript = SuperscriptSpan()
+        text.setSpan(regularSuperscript, 7, 8, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+
+        EpubParser.normalizeFootnoteReferenceSpans(text, setOf("#fn1"))
+
+        val alignedMarker = text.getSpans(1, 2, ImageSpan::class.java).single()
+        assertEquals(DynamicDrawableSpan.ALIGN_BASELINE, alignedMarker.verticalAlignment)
+        assertTrue(text.getSpans(1, 5, SubscriptSpan::class.java).isEmpty())
+        assertTrue(text.getSpans(1, 5, SuperscriptSpan::class.java).isEmpty())
+        assertTrue(text.getSpans(7, 8, SuperscriptSpan::class.java).single() === regularSuperscript)
     }
 
     @Test fun wrappedParagraphDoesNotAccumulateLineSpacingAcrossLines() {
