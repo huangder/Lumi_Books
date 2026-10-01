@@ -4,8 +4,8 @@
   "latest_version": "2.1.9",
   "latest_version_code": 15,
   "release_url": "https://github.com/huangder/Lumi_Books/releases/tag/2.1.9",
-  "terms_version": 1,
-  "privacy_version": 2,
+  "terms_version": 2,
+  "privacy_version": 3,
   "update": {
     "latest_version_code": 15,
     "latest_version_name": "2.1.9",

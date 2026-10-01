@@ -33,7 +33,7 @@ a { color:var(--accent); }
 </head>
 <body>
 <h1>用户协议</h1>
-<p class="meta">生效日期：2026年6月29日 · 最近更新：2026年8月30日</p>
+<p class="meta">生效日期：2026年6月29日 · 最近更新：2026年10月1日</p>
 
 <h2>一、协议的接受</h2>
 <p>欢迎使用 Lumi（以下简称“本应用”）。下载、安装、打开或使用本应用，即表示您已阅读、理解并同意受本用户协议约束；如不同意，请停止使用本应用。</p>
@@ -48,14 +48,18 @@ a { color:var(--accent); }
 <li>提供系统 TTS 听书；也可由您主动配置 OpenAI TTS、Xiaomi MiMo 或自定义兼容第三方 TTS 服务。</li>
 <li>在您主动启用后，通过 MinerU/OpenDataLab 云端服务解析 PDF。</li>
 <li>在您主动配置后，通过 WebDAV 同步书籍、阅读进度、书签和笔记。</li>
+<li>在您主动配置并启用或手动触发后，通过 Xiaomi MiMo、DeepSeek、OpenAI 或自定义兼容服务翻译选中的文本。</li>
+<li>在“设置 → 服务 → 本地词典”中按需下载词库；安装后离线查询，不会自动下载或更新。</li>
+<li>将选中文字、笔记或书签制作成摘录卡片，并由您选择保存到系统图片库或分享给其他应用。</li>
 <li>在您主动使用时，通过 Bing、百度或 Google 等搜索服务查找网络封面；在您选择仿宋字体时按需下载远程字体。</li>
 </ul>
 
 <h3>2.2 应用性质</h3>
 <ul>
 <li>本地阅读、本地解析和系统 TTS 默认不上传书籍内容。</li>
-<li>WebDAV、MinerU 云端解析和第三方 TTS 均为可选网络功能，需您主动配置、启用或确认。</li>
+<li>WebDAV、MinerU 云端解析、第三方 TTS 和 AI 翻译均为可选网络功能，需您主动配置、启用或确认。</li>
 <li>本应用不提供 Lumi 账号注册、登录或开发者运营的云端书库。</li>
+<li>本地词典查询在设备上完成，不上传查询词、书籍正文或过滤命中记录。</li>
 <li>Lumi 原创代码以 GNU GPLv3 许可证发布，第三方组件及改编代码遵循各自许可证。</li>
 </ul>
 
@@ -63,7 +67,7 @@ a { color:var(--accent); }
 <h3>您的权利</h3>
 <ul>
 <li>免费使用本应用的可用功能，自主管理阅读数据、缓存和配置。</li>
-<li>随时停用 WebDAV、MinerU、第三方 TTS 等可选网络功能，并清除相关 Token、密码或 API Key。</li>
+<li>随时停用 WebDAV、MinerU、第三方 TTS、AI 翻译等可选网络功能，并清除相关 Token、密码或 API Key。</li>
 <li>随时卸载本应用；卸载会删除应用私有数据，但不会自动删除您自行管理的原始电子书文件。</li>
 <li>在遵守开源许可证的前提下查看、修改和分发本应用源代码。</li>
 </ul>
@@ -71,7 +75,7 @@ a { color:var(--accent); }
 <ul>
 <li>确保您阅读、导入、编辑、解析或同步的电子书及内容不侵犯他人知识产权或其他合法权益。</li>
 <li>仅上传、同步或发送您有权处理的文件和文本，不上传受 DRM 保护、含有他人敏感个人信息、商业秘密或依法不得传输的内容。</li>
-<li>自行选择并保管 WebDAV 服务器地址、用户名、密码、MinerU Token 和第三方 TTS API Key，并承担因账号泄露、配置错误或第三方服务政策变化产生的风险。</li>
+<li>自行选择并保管 WebDAV 服务器地址、用户名、密码、MinerU Token、第三方 TTS 和 AI 翻译 API Key，并承担因账号泄露、配置错误或第三方服务政策变化产生的风险。</li>
 <li>使用 MinerU、WebDAV 服务商、OpenAI、Xiaomi MiMo 或其他自定义服务时，遵守对应服务协议、隐私政策、费用和限额规则。</li>
 <li>使用 TXT 编辑器保存前自行确认内容并备份重要文件，避免误改或覆盖。</li>
 <li>不得利用本应用从事任何违法、侵权或破坏网络服务安全的活动。</li>
@@ -88,20 +92,24 @@ a { color:var(--accent); }
 <li>WebDAV 服务由您选择的服务商或自建环境提供，本应用不保证其可用性、传输速度、存储安全、冲突处理、数据完整性、删除效果或政策稳定性。</li>
 <li>MinerU/OpenDataLab 由第三方独立运营，本应用不保证其持续可用、解析准确、处理时效、数据保存期限、费用或服务政策不发生变化。</li>
 <li>第三方 TTS 的合成质量、响应速度、可用性、计费、限额、数据留存和合规要求由相应服务方决定，本应用不承担第三方服务责任。</li>
+<li>AI 翻译的准确性、响应速度、可用性、计费、限额、内容处理和数据留存由相应服务方决定，翻译结果仅供参考。</li>
+<li>摘录卡片由您主动保存或分享；分享后，接收应用对图片及其中内容的处理由其自身条款和隐私政策约束。</li>
 <li>TXT 编辑会改变您授权保存的文件内容；如保存错误、编码不兼容或覆盖原文件，请以您的备份为准恢复。</li>
 </ul>
 
 <h2>六、隐私保护</h2>
-<p>本应用重视隐私保护。阅读数据默认保存在本机；网络封面搜索、贡献者/头像展示、远程字体下载、更新检查，以及您主动配置或启用的 WebDAV 同步、MinerU 云端解析、第三方 TTS 或外部链接访问会产生相应网络请求。具体请见<a href="privacy.html">隐私政策</a>。</p>
+<p>本应用重视隐私保护。阅读数据默认保存在本机；网络封面搜索、贡献者/头像展示、远程字体下载、词典包下载、更新检查，以及您主动配置或启用的 WebDAV 同步、MinerU 云端解析、第三方 TTS、AI 翻译或外部链接访问会产生相应网络请求。已安装词典的查询和摘录卡片生成在本机完成；只有当您主动分享卡片时，图片才会交给所选接收应用。具体请见<a href="privacy.html">隐私政策</a>。</p>
 
 <h2>七、第三方服务与用户自选服务</h2>
 <ul>
 <li><strong>MinerU/OpenDataLab：</strong>用于云端 PDF 解析。首次启用前，您需要阅读并同意 OpenDataLab 的<a href="https://webpub.shlab.tech/dps/opendatalab-web/odl_v5.1690/service.html">服务协议</a>和<a href="https://webpub.shlab.tech/dps/opendatalab-web/odl_v5.1690/privacy.html">个人信息保护政策</a>，并确认文件上传。</li>
 <li><strong>WebDAV：</strong>由您填写服务器信息并决定手动或自动同步。同步数据可能包括电子书文件、书籍清单、阅读进度、书签、笔记和选中文本。</li>
 <li><strong>第三方 TTS：</strong>由您选择服务、填写 Base URL/API Key 并确认风险。朗读文本段和风格提示会发送到相应服务。</li>
+<li><strong>AI 翻译：</strong>由您选择服务、填写 Base URL/API Key 并启用或手动触发。当前选中文本、目标语言和模型参数会发送到相应服务；开启 HTTP 时可能发生明文传输。</li>
 <li><strong>GitHub 及其 CDN：</strong>用于更新、贡献者列表、头像和远程字体下载；其网络日志和数据处理遵循 GitHub 及 CDN 自身政策。</li>
 <li><strong>封面搜索服务：</strong>仅在您主动使用网络封面搜索时接收书名或搜索关键词，具体处理遵循 Bing、百度或 Google 等服务的政策。</li>
 <li><strong>赞助/贡献者页面：</strong>打开页面时会请求 GitHub contributors API 并加载头像，GitHub 及其 CDN 会接收正常网络请求元数据。</li>
+<li><strong>词典下载：</strong>只有您在设置中确认下载或更新时，应用才会从配置的 GitHub Release 下载词库包；安装后的查询不调用在线词典服务。</li>
 </ul>
 
 <h2>八、协议的变更</h2>
@@ -123,7 +131,7 @@ a { color:var(--accent); }
 <li>邮箱：<a href="mailto:huangder0104@126.com">huangder0104@126.com</a></li>
 <li>GitHub Issues：欢迎在项目仓库提交问题反馈</li>
 </ul>
-<p style="font-size:13px; color:var(--text2); margin-top:28px;">本用户协议最后更新于 2026年8月30日。</p>
+<p style="font-size:13px; color:var(--text2); margin-top:28px;">本用户协议最后更新于 2026年10月1日。</p>
 <p class="note">本页面为应用内参考版本，完整用户协议请访问 <a href="https://huangder.top/terms.html">huangder.top/terms.html</a></p>
 </body>
 </html>

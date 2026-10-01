@@ -98,12 +98,12 @@
 
 <div class="glass-card doc">
     <h1>隐私政策</h1>
-    <p class="meta">生效日期：2026年6月29日 · 最近更新：2026年8月30日</p>
+    <p class="meta">生效日期：2026年6月29日 · 最近更新：2026年10月1日</p>
 
     <h2>一、引言</h2>
     <p>Lumi（以下简称“本应用”）是一款开源、本地优先的电子书阅读器。我们深知隐私对您的重要性，本隐私政策说明本应用如何处理数据，以及哪些可选功能会把数据发送到您选择或确认的网络服务。</p>
     <p>本应用不提供任何书籍内容，也不提供、内置、导入或分享在线书源与订阅源，不进行在线搜索或内容下载。TXT 目录规则（包括可选的第三方兼容规则）仅用于解析您本地或已授权的 TXT 文件，规则中可能携带的脚本净化代码不会被执行。</p>
-    <p><strong>核心原则：阅读、书架、进度、笔记和大多数设置默认保存在本机。只有在您主动配置或启用 WebDAV 同步、MinerU 云端解析、第三方 TTS 合成等网络功能时，相应的书籍文件、阅读数据或朗读文本才会发送到对应服务。按需下载的本地词典安装后离线查询；查询词、书籍正文和过滤命中记录不会上传。</strong></p>
+    <p><strong>核心原则：阅读、书架、进度、笔记和大多数设置默认保存在本机。只有在您主动配置或启用 WebDAV 同步、MinerU 云端解析、第三方 TTS、AI 翻译等网络功能时，相应的书籍文件、阅读数据或选中文本才会发送到对应服务。按需下载的本地词典安装后离线查询；查询词、书籍正文和过滤命中记录不会上传。</strong></p>
     <p>本地词典正文不内置在 APK 中。您可以在设置中查看目录后，主动确认并下载 chinese-xinhua、Open English WordNet、维基汉语或维基英汉等词库；下载包会校验版本和 SHA-256，安装后保存在应用专用目录中，不进入系统备份或 WebDAV 同步。</p>
     <p><strong>开源透明：</strong>Lumi 原创代码以 GNU GPLv3 许可证发布，第三方组件遵循各自许可证，完整源代码公开可审查。</p>
 
@@ -114,9 +114,9 @@
     <tr><th>权限</th><th>用途</th><th>是否必要</th></tr>
     <tr><td>READ_EXTERNAL_STORAGE（Android 12 及以下）</td><td>读取您选择的 EPUB、TXT、PDF 等电子书文件</td><td>基础阅读需要</td></tr>
     <tr><td>READ_MEDIA_IMAGES（Android 13 及以上）</td><td>读取电子书封面、导出图片或您选择的图片资源</td><td>按系统版本需要</td></tr>
-    <tr><td>INTERNET</td><td>检查更新、公告和条款/政策版本；按需下载本地词典和远程字体；连接您配置的 WebDAV 服务器；连接 MinerU、第三方 TTS 服务；加载您主动使用的封面搜索和外部链接页面</td><td>网络功能需要</td></tr>
+    <tr><td>INTERNET</td><td>检查更新、公告和条款/政策版本；按需下载本地词典和远程字体；连接您配置的 WebDAV 服务器；连接 MinerU、第三方 TTS、AI 翻译服务；加载您主动使用的封面搜索和外部链接页面</td><td>网络功能需要</td></tr>
     <tr><td>ACCESS_LOCAL_NETWORK</td><td>仅在您配置的 WebDAV 地址指向 NAS、路由器或其他局域网服务器时，用于发现并连接该服务器；公网 WebDAV 不需要此权限</td><td>Android 17 及以上按需申请</td></tr>
-    <tr><td>ACCESS_NETWORK_STATE</td><td>判断网络状态，以便执行更新检查、同步、云解析或第三方 TTS 请求</td><td>网络功能需要</td></tr>
+    <tr><td>ACCESS_NETWORK_STATE</td><td>判断网络状态，以便执行更新检查、同步、云解析、第三方 TTS 或 AI 翻译请求</td><td>网络功能需要</td></tr>
     <tr><td>WRITE_SETTINGS</td><td>当您启用自定义亮屏时间时，修改系统屏幕关闭时间</td><td>仅启用时需要</td></tr>
     <tr><td>FOREGROUND_SERVICE / FOREGROUND_SERVICE_MEDIA_PLAYBACK</td><td>支持 TTS 后台播放和播放状态通知</td><td>听书功能需要</td></tr>
     <tr><td>FOREGROUND_SERVICE_DATA_SYNC</td><td>显示 PDF/MinerU 解析或 WebDAV 同步等长任务进度</td><td>对应任务需要</td></tr>
@@ -148,7 +148,9 @@
     <tr><td>MinerU 设置</td><td>解析模式、同意版本和时间；个人 Token 使用 Android Keystore 加密</td><td>DataStore / 加密存储</td></tr>
     <tr><td>WebDAV 设置</td><td>服务器 URL、用户名、同步路径、同步模式、最近同步时间；密码使用 Android Keystore 加密</td><td>DataStore / 加密存储</td></tr>
     <tr><td>第三方 TTS 设置</td><td>服务类型、Base URL、模型、音色、风格提示、同意时间；API Key 使用 Android Keystore 加密</td><td>DataStore / 加密存储</td></tr>
+    <tr><td>AI 翻译设置</td><td>服务类型、Base URL、鉴权方式、模型、目标语言和 HTTP 开关；API Key 使用 Android Keystore 加密</td><td>DataStore / 加密存储</td></tr>
     <tr><td>TTS 音频缓存</td><td>第三方 TTS 返回的音频片段会缓存在本地以减少重复请求，可自动清理或由您清除</td><td>应用缓存目录</td></tr>
+    <tr><td>摘录卡片</td><td>生成卡片时使用书名、作者、章节、选中文本、笔记和封面；临时文件保存在应用缓存中，保存的图片写入系统图片库</td><td>应用缓存目录 / 系统图片库</td></tr>
     </table>
     </div>
 
@@ -158,10 +160,12 @@
     <li>WebDAV 同步：当您配置并手动或自动同步时，应用会连接您填写的 WebDAV 服务器，上传/下载书籍文件、书籍清单（如文件名、哈希、大小、修改时间）以及阅读进度、书签、笔记和笔记对应的选中文本。若该地址是 NAS 或其他局域网地址，Android 17 及以上会先说明用途并申请本地网络权限；该权限不会用于扫描无关设备，公网 WebDAV 不会触发申请。</li>
     <li>MinerU 云端解析：当您主动选择云端解析 PDF 时，所选 PDF、随机化文件名、网络 IP、解析参数、任务标识以及精准解析所需的个人 Token 会发送至 MinerU/OpenDataLab 相关服务，并下载解析结果。</li>
     <li>第三方 TTS：当您选择 OpenAI TTS、Xiaomi MiMo 或自定义兼容服务时，当前朗读文本段、模型/音色、风格提示和必要鉴权信息会发送至您配置的第三方服务，服务端如何处理数据取决于该服务的条款和政策。若您开启 HTTP 连接，API Key 和朗读文本可能未经加密传输并被窃听。</li>
+    <li>AI 翻译：当您启用或手动触发 AI 翻译时，当前选中的文本、目标语言、模型参数和必要鉴权信息会发送至您选择的 Xiaomi MiMo、DeepSeek、OpenAI 或自定义兼容服务。服务端如何处理数据取决于该服务的条款和政策；若您主动允许 HTTP 连接，API Key 和选中文本可能未经加密传输并被窃听。</li>
     <li>封面搜索：当您进入网络封面搜索或提交搜索时，当前书名和搜索关键词会通过 WebView 发送至您选择的 Bing、百度或 Google 等搜索服务；这些服务也可能记录 IP、请求时间和浏览器网络信息。</li>
     <li>赞助页贡献者：当您打开赞助/贡献者页面，应用会请求 GitHub contributors API 并加载 GitHub 头像。GitHub 及其 CDN 会按自身政策接收网络请求元数据。</li>
     <li>外部链接：当您主动点击 GitHub、反馈、下载、第三方协议等链接时，会跳转到对应网站。</li>
     <li>本地词典下载：当您在设置中确认下载或更新时，应用从目录中给出的固定 Release 地址下载词库包和内容规则，并校验后安装。查词过程使用已安装的 SQLite 数据库，不向词典服务器发送查询词、书籍正文或过滤命中记录。</li>
+    <li>摘录卡片分享：卡片在设备本地生成。只有当您点击分享并选择接收应用后，生成的图片才会交给该应用；后续处理受接收应用的条款和隐私政策约束。</li>
     </ul>
 
     <h3>3.3 本应用不处理的数据</h3>
@@ -176,7 +180,7 @@
     <h2>四、数据存储与安全</h2>
     <ul>
     <li>阅读数据库和设置存储在应用私有沙盒中，受 Android 应用隔离机制保护。</li>
-    <li>MinerU Token、WebDAV 密码、第三方 TTS API Key 使用 Android Keystore 加密保存，并已从系统备份/设备迁移规则中排除。</li>
+    <li>MinerU Token、WebDAV 密码、第三方 TTS 和 AI 翻译 API Key 使用 Android Keystore 加密保存，并已从系统备份/设备迁移规则中排除。</li>
     <li>EPUB 阅读 WebView 会阻止外部网络资源加载，出版方 CSS 仅用于本地排版展示。</li>
     <li>临时上传、下载和解析缓存会在任务结束或缓存清理时删除；第三方 TTS 音频缓存可自动淘汰。</li>
     <li>您可以在应用内清除阅读历史、书签、缓存和相关配置；卸载应用会删除应用私有数据，但不会自动删除您设备上自行管理的原始电子书文件。</li>
@@ -188,11 +192,12 @@
     <li><strong>OpenDataLab / MinerU：</strong>用于云端 PDF 解析，独立于 Lumi 运营，使用前请阅读其<a href="https://webpub.shlab.tech/dps/opendatalab-web/odl_v5.1690/service.html">服务协议</a>和<a href="https://webpub.shlab.tech/dps/opendatalab-web/odl_v5.1690/privacy.html">个人信息保护政策</a>。</li>
     <li><strong>WebDAV 服务商或自建服务器：</strong>用于同步书籍和阅读数据。服务器地址、可用性、安全性、数据保存和删除由您选择的服务方或自建环境决定。</li>
     <li><strong>第三方 TTS 服务：</strong>包括 OpenAI TTS、Xiaomi MiMo 或您配置的兼容接口。朗读文本、风格提示、API Key 使用和费用规则受对应服务条款约束。</li>
+    <li><strong>AI 翻译服务：</strong>包括 Xiaomi MiMo、DeepSeek、OpenAI 或您配置的兼容接口。选中文本、目标语言、模型参数、API Key 使用和费用规则受对应服务条款约束。</li>
     <li><strong>GitHub 及其 CDN：</strong>用于更新、贡献者列表、头像和远程字体下载。GitHub 及 CDN 的网络日志、保存和删除规则由其自身政策决定。</li>
     <li><strong>Bing、百度、Google 等搜索服务：</strong>仅在您主动使用网络封面搜索时接收书名或搜索关键词，具体处理由对应服务政策决定。</li>
     <li><strong>词典发布地址：</strong>词库 Release 和目录托管在项目配置的 GitHub 地址；GitHub 的网络日志和数据处理遵循其自身政策。下载完成后，词典正文和查询不依赖网络。</li>
     </ul>
-    <p>如不希望书籍或文本离开设备，请不要启用 WebDAV 同步、MinerU 云端解析、第三方 TTS 或网络封面搜索，并使用本地阅读、本地解析和系统 TTS。</p>
+    <p>如不希望书籍或文本离开设备，请不要启用 WebDAV 同步、MinerU 云端解析、第三方 TTS、AI 翻译或网络封面搜索，并使用本地阅读、本地解析、系统 TTS 和本地词典。</p>
 
     <h2>六、儿童隐私</h2>
     <p>本应用不针对 13 岁以下儿童，不会故意收集儿童个人信息。监护人如发现儿童可能通过可选第三方服务提交了个人信息，请联系我们并同时联系相应服务方。</p>
@@ -210,7 +215,7 @@
 
     <h2>九、适用范围</h2>
     <p>本隐私政策仅适用于 Lumi 应用（com.huangder.lumibooks）在 Android 平台上的功能，不适用于第三方服务自身的数据处理活动。</p>
-    <p class="endnote">本隐私政策最后更新于 2026年9月30日。</p>
+    <p class="endnote">本隐私政策最后更新于 2026年10月1日。</p>
 </div>
 
 <div class="doc-footer">
