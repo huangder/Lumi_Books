@@ -51,6 +51,10 @@ class QuoteWidgetProvider : AppWidgetProvider() {
             val manager = AppWidgetManager.getInstance(appContext)
             val density = appContext.resources.displayMetrics.density
             val scaledDensity = appContext.resources.displayMetrics.scaledDensity
+            val maxBitmapPixels = WidgetBitmapBudget.maxBitmapPixels(
+                appContext.resources.displayMetrics.widthPixels,
+                appContext.resources.displayMetrics.heightPixels
+            )
             val typeface = ResourcesCompat.getFont(
                 appContext,
                 R.font.gen_ryu_min2_light
@@ -90,6 +94,13 @@ class QuoteWidgetProvider : AppWidgetProvider() {
                     views.setViewVisibility(R.id.widget_quote_empty, View.GONE)
                     val horizontalPaddingDp = if (isWide) 44 else 36
                     val reservedVerticalSpaceDp = if (isWide) 68 else 70
+                    val requestedBitmap = WidgetBitmapBudget.constrain(
+                        width = ((widthDp - horizontalPaddingDp).coerceAtLeast(32) * density)
+                            .roundToInt(),
+                        height = ((heightDp - reservedVerticalSpaceDp).coerceAtLeast(24) * density)
+                            .roundToInt(),
+                        maxPixels = maxBitmapPixels
+                    )
                     val renderedQuote = QuoteExcerptFormatter.render(
                         text = quote.selectedText,
                         typeface = typeface,
@@ -98,10 +109,8 @@ class QuoteWidgetProvider : AppWidgetProvider() {
                             localizedContext,
                             R.color.widget_text_primary
                         ),
-                        widthPx = ((widthDp - horizontalPaddingDp).coerceAtLeast(32) * density)
-                            .roundToInt(),
-                        heightPx = ((heightDp - reservedVerticalSpaceDp).coerceAtLeast(24) * density)
-                            .roundToInt(),
+                        widthPx = requestedBitmap.width,
+                        heightPx = requestedBitmap.height,
                         maxLines = if (isWide) WIDE_MAX_LINES else SQUARE_MAX_LINES,
                         lineSpacingMultiplier = QUOTE_LINE_SPACING_MULTIPLIER
                     )

@@ -124,10 +124,19 @@ internal fun decodeWidgetCover(path: String?, targetSizePx: Int): Bitmap? {
     ) {
         sampleSize *= 2
     }
-    return BitmapFactory.decodeFile(
+    val decoded = BitmapFactory.decodeFile(
         file.absolutePath,
         BitmapFactory.Options().apply { inSampleSize = sampleSize }
+    ) ?: return null
+    val dimensions = WidgetBitmapBudget.constrain(
+        width = decoded.width,
+        height = decoded.height,
+        maxPixels = targetSizePx.toLong() * targetSizePx
     )
+    if (dimensions.width == decoded.width && dimensions.height == decoded.height) return decoded
+    return Bitmap.createScaledBitmap(decoded, dimensions.width, dimensions.height, true).also {
+        if (it !== decoded) decoded.recycle()
+    }
 }
 
 private const val CONTINUE_REQUEST_CODE_BASE = 10_000
