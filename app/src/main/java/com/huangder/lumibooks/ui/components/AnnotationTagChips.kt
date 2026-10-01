@@ -3,7 +3,7 @@ package com.huangder.lumibooks.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,7 +24,7 @@ import com.huangder.lumibooks.ui.theme.LocalAppTheme
 @Composable
 fun AnnotationTagChips(tags: List<String>, onEdit: (() -> Unit)? = null, modifier: Modifier = Modifier) {
     if (tags.isEmpty() && onEdit == null) return
-    val shape = RoundedCornerShape(12.dp)
+    val shape = AppRoundedCornerShape(12.dp)
     val glass = LocalAppTheme.current == "liquid_glass"
     FlowRow(
         modifier = modifier.fillMaxWidth(),

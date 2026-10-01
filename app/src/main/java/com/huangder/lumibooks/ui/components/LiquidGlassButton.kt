@@ -1,12 +1,13 @@
 package com.huangder.lumibooks.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
@@ -32,12 +33,14 @@ fun LiquidGlassButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    shape: Shape = RoundedCornerShape(50),
+    shape: Shape = AppRoundedCornerShape(50),
     tintedColor: Color? = null,
     prominentShadow: Boolean = false,
     contentColor: Color = if (tintedColor != null) AppColors.OnAccent else AppColors.TextPrimary,
     /** Optional elevation decoration for controls that share a local surface treatment. */
     decorationModifier: Modifier? = null,
+    /** Smaller visual capsule for dense filter rows; other buttons keep their default size. */
+    compact: Boolean = false,
     content: @Composable RowScope.() -> Unit
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
@@ -46,7 +49,10 @@ fun LiquidGlassButton(
         TextButton(
             onClick = onClick,
             enabled = enabled,
-            modifier = modifier.heightIn(min = 44.dp).widthIn(min = 72.dp),
+            modifier = modifier.heightIn(min = if (compact) 32.dp else 44.dp)
+                .widthIn(min = if (compact) 0.dp else 72.dp),
+            contentPadding = if (compact) PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                else ButtonDefaults.TextButtonContentPadding,
             shape = shape,
             colors = ButtonDefaults.textButtonColors(
                 containerColor = tintedColor ?: Color.Transparent,
@@ -92,15 +98,16 @@ fun LiquidGlassButton(
         onClick = onClick,
         decorationModifier = decorationModifier ?: shadowDecoration,
         modifier = modifier
-            .heightIn(min = 44.dp)
-            .widthIn(min = 72.dp)
+            .heightIn(min = if (compact) 32.dp else 44.dp)
+            .widthIn(min = if (compact) 0.dp else 72.dp)
             .alpha(if (enabled) 1f else 0.48f)
     ) {
         CompositionLocalProvider(LocalContentColor provides contentColor) {
             Row(
                 modifier = Modifier
-                    .heightIn(min = 40.dp)
-                    .padding(horizontal = 16.dp),
+                    .heightIn(min = if (compact) 32.dp else 40.dp)
+                    .padding(horizontal = if (compact) 10.dp else 16.dp,
+                        vertical = if (compact) 4.dp else 0.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
                 content = content

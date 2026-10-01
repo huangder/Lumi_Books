@@ -1,18 +1,20 @@
 package com.huangder.lumibooks.ui.components
 
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
+import com.huangder.lumibooks.ui.theme.AppShapes
+import com.huangder.lumibooks.ui.theme.toAppPath
 import androidx.compose.ui.util.lerp
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.ceil
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
@@ -87,7 +89,22 @@ internal data class LiquidMenuFrame(
         )
     }
 
-    fun outlinePoints(): List<Offset> {
+    fun outlinePoints(continuous: Boolean = false): List<Offset> {
+        if (continuous) {
+            val outline = AppShapes.rounded(radius).createOutline(bounds.size, LayoutDirection.Ltr, Density(1f))
+            // PathMeasure's default flattening can shift a corner by ~0.2px at
+            // the final handoff. Use an explicit subpixel error, and subdivide
+            // straight edges too because the neck warp is nonlinear in y.
+            val samples = outline.toAppPath().asAndroidPath().approximate(0.01f)
+            val points = ArrayList<Offset>()
+            for (i in 3 until samples.size step 3) {
+                val a = Offset(samples[i - 2], samples[i - 1])
+                val b = Offset(samples[i + 1], samples[i + 2])
+                val steps = ceil((b - a).getDistance() / 2f).toInt().coerceAtLeast(1)
+                repeat(steps) { step -> points.add(warp(a + (b - a) * (step.toFloat() / steps))) }
+            }
+            return points
+        }
         val w = bounds.width
         val h = bounds.height
         val r = radius
@@ -116,18 +133,20 @@ internal data class LiquidMenuFrame(
     }
 }
 
-/** Cubic interpolation of the same warped rounded rectangle sampled by the optical shader. */
-internal class LiquidMenuShape(private val frame: LiquidMenuFrame) : Shape {
+/** The panel outline with the reversible neck warp also used by the optical shader. */
+internal class LiquidMenuShape(
+    private val frame: LiquidMenuFrame,
+    private val continuous: Boolean = true
+) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
         val scaleX = size.width / frame.bounds.width
         val scaleY = size.height / frame.bounds.height
-        // Without a neck the menu is a rounded rectangle. Expose that outline so
-        // the shared glass rim uses its exact lighting and fast shader path.
+        // The resting outline is exactly the same shape used by cards and panels.
         if (frame.neck == 0f) {
             val radius = (frame.radius * min(scaleX, scaleY)).coerceIn(0f, size.minDimension / 2f)
-            return Outline.Rounded(RoundRect(0f, 0f, size.width, size.height, CornerRadius(radius)))
+            return AppShapes.rounded(radius, continuous).createOutline(size, layoutDirection, Density(1f))
         }
-        val points = frame.outlinePoints()
+        val points = frame.outlinePoints(continuous)
         fun point(i: Int): Offset {
             val p = points[(i + points.size) % points.size]
             return Offset(p.x * scaleX, p.y * scaleY)
@@ -135,6 +154,14 @@ internal class LiquidMenuShape(private val frame: LiquidMenuFrame) : Shape {
         return Outline.Generic(Path().apply {
             val start = point(0)
             moveTo(start.x, start.y)
+            if (continuous) {
+                for (i in 1 until points.size) {
+                    val p = point(i)
+                    lineTo(p.x, p.y)
+                }
+                close()
+                return@apply
+            }
             for (i in points.indices) {
                 val a = point(i)
                 val b = point(i + 1)

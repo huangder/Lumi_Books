@@ -74,7 +74,8 @@ internal enum class EpubNavigationStage {
     STARTING,
     LOADING_DOCUMENT,
     CONFIGURING,
-    WAITING_FOR_FRAME
+    WAITING_FOR_FRAME,
+    ANIMATING
 }
 
 internal enum class EpubNavigationFailureReason {

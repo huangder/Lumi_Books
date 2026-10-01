@@ -76,7 +76,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -2371,7 +2371,7 @@ private fun PdfTopBar(
                 // 页码徽章：与返回键等高的胶囊，左侧控件保持同一视觉高度
                 LiquidGlassSurface(
                     controlEdge = true,
-                    shape = RoundedCornerShape(18.dp),
+                    shape = AppRoundedCornerShape(18.dp),
                     fallbackColor = Color.Black.copy(alpha = 0.35f),
                     contentScrimColor = glassContentScrimColor,
                     modifier = Modifier
@@ -2397,7 +2397,7 @@ private fun PdfTopBar(
                     )
                     LiquidGlassSurface(
                         controlEdge = true,
-                        shape = RoundedCornerShape(18.dp),
+                        shape = AppRoundedCornerShape(18.dp),
                         fallbackColor = if (renderMode == PageRenderMode.NORMAL) {
                             AppColors.BgGray.copy(alpha = 0.8f)
                         } else {
@@ -2668,7 +2668,7 @@ private fun PdfConversionCapsule(
     val running = conversionState as? PdfConversionState.Running
     LiquidGlassSurface(
         controlEdge = true,
-        shape = RoundedCornerShape(24.dp),
+        shape = AppRoundedCornerShape(24.dp),
         fallbackColor = AppColors.BgGray,
         contentScrimColor = glassContentScrimColor,
         modifier = Modifier
@@ -2792,14 +2792,14 @@ private fun PdfConversionBottomSheet(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 24.dp),
             fallbackColor = AppColors.CardBg,
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterHorizontally)
                     .size(width = 36.dp, height = 4.dp)
-                    .clip(RoundedCornerShape(2.dp))
+                    .clip(AppRoundedCornerShape(2.dp))
                     .background(AppColors.TextSecondary.copy(alpha = 0.25f))
             )
             Spacer(Modifier.height(4.dp))
@@ -3031,7 +3031,7 @@ private fun PdfConversionMethodButton(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .clip(AppRoundedCornerShape(8.dp))
             .background(AppColors.BgGray)
             .clickable(
                 indication = null,
@@ -3164,7 +3164,7 @@ private fun PdfSheetButton(
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp)
-            .clip(RoundedCornerShape(24.dp))
+            .clip(AppRoundedCornerShape(24.dp))
             .background(background)
             .cardPressEffect()
             .clickable(
@@ -3261,7 +3261,7 @@ private fun PdfCatalogCapsule(
     ) {
         if (isDragging) {
             LiquidGlassSurface(
-                shape = RoundedCornerShape(16.dp),
+                shape = AppRoundedCornerShape(16.dp),
                 fallbackColor = AppColors.CardBg,
                 contentScrimColor = glassContentScrimColor.copy(alpha = if (isLiquidGlass) 0.28f else 0.12f),
                 modifier = Modifier
@@ -3273,7 +3273,7 @@ private fun PdfCatalogCapsule(
                     // to its children; required* keeps this preview from being flattened.
                     .requiredWidth(previewWidth)
                     .requiredHeight(previewHeight)
-                    .shadow(16.dp, RoundedCornerShape(20.dp)),
+                    .shadow(16.dp, AppRoundedCornerShape(20.dp)),
                 onClick = null,
                 interactive = false,
                 contentAlignment = Alignment.Center
@@ -3286,7 +3286,7 @@ private fun PdfCatalogCapsule(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(2.dp)
-                            .clip(RoundedCornerShape(14.dp)),
+                            .clip(AppRoundedCornerShape(14.dp)),
                         contentScale = ContentScale.Fit
                     )
                 } else {
@@ -3303,7 +3303,7 @@ private fun PdfCatalogCapsule(
                         .background(
                             if (isLiquidGlass) AppColors.WindowBg.copy(alpha = 0.65f)
                             else AppColors.CardBg.copy(alpha = 0.90f),
-                            RoundedCornerShape(8.dp)
+                            AppRoundedCornerShape(8.dp)
                         )
                         .padding(horizontal = 10.dp, vertical = 4.dp),
                     fontSize = 14.sp,
@@ -3314,7 +3314,7 @@ private fun PdfCatalogCapsule(
         }
         LiquidGlassSurface(
             controlEdge = true,
-            shape = RoundedCornerShape(24.dp),
+            shape = AppRoundedCornerShape(24.dp),
             fallbackColor = AppColors.BgGray,
             contentScrimColor = glassContentScrimColor,
             modifier = Modifier.fillMaxSize(),
@@ -3345,7 +3345,7 @@ private fun PdfCatalogCapsule(
                     modifier = Modifier
                         .fillMaxHeight()
                         .fillMaxWidth((displayProgress / 100f).coerceIn(0f, 1f))
-                        .clip(RoundedCornerShape(24.dp))
+                        .clip(AppRoundedCornerShape(24.dp))
                         .background(AppColors.Accent.copy(alpha = 0.8f))
                 )
             }
@@ -3448,7 +3448,7 @@ private fun PdfActionCapsule(
     val contentColor = if (active) AppColors.Accent else AppColors.TextPrimary
     LiquidGlassSurface(
         controlEdge = true,
-        shape = RoundedCornerShape(22.dp),
+        shape = AppRoundedCornerShape(22.dp),
         fallbackColor = if (active) AppColors.Accent.copy(alpha = 0.14f) else AppColors.BgGray,
         contentScrimColor = AppColors.WindowBg.copy(alpha = 0.18f),
         modifier = modifier
@@ -3482,7 +3482,7 @@ private fun PdfAnnotationToolCapsule(
     )
     LiquidGlassSurface(
         controlEdge = true,
-        shape = RoundedCornerShape(24.dp),
+        shape = AppRoundedCornerShape(24.dp),
         fallbackColor = AppColors.BgGray,
         contentScrimColor = AppColors.WindowBg.copy(alpha = 0.18f),
         modifier = Modifier
@@ -4374,7 +4374,7 @@ private fun PdfTocSheet(
                 .navigationBarsPadding()
                 .padding(start = 24.dp, top = 24.dp, end = 24.dp),
             fallbackColor = AppColors.CardBg,
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
         ) {
             // 标题栏
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -4524,7 +4524,7 @@ private fun PdfBookmarksSheet(
             contentModifier = Modifier.fillMaxSize().navigationBarsPadding()
                 .padding(horizontal = 24.dp, vertical = 24.dp),
             fallbackColor = AppColors.CardBg,
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.reader_bookmark), fontSize = 20.sp,
@@ -4542,7 +4542,7 @@ private fun PdfBookmarksSheet(
             Spacer(Modifier.height(14.dp))
             Row(
                 Modifier.fillMaxWidth().heightIn(min = 52.dp)
-                    .clip(RoundedCornerShape(8.dp)).background(AppColors.BgGray)
+                    .clip(AppRoundedCornerShape(8.dp)).background(AppColors.BgGray)
                     .clickable { onBookmarkRemarkPromptEnabledChange(!bookmarkRemarkPromptEnabled) }
                     .padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -4616,8 +4616,8 @@ private fun PdfBookmarkEntries(
                                 Modifier
                                     .fillMaxWidth()
                                     .heightIn(min = 64.dp)
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .border(1.dp, AppColors.TextSecondary.copy(alpha = 0.24f), RoundedCornerShape(16.dp))
+                                    .clip(AppRoundedCornerShape(16.dp))
+                                    .border(1.dp, AppColors.TextSecondary.copy(alpha = 0.24f), AppRoundedCornerShape(16.dp))
                                     .background(
                                         if (bookmark.chapterIndex == currentPage) AppColors.Accent.copy(alpha = 0.12f)
                                         else AppColors.BgGray
@@ -4677,9 +4677,9 @@ private fun PdfThumbnailItem(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(0.75f)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(AppRoundedCornerShape(8.dp))
                 .then(
-                    if (isCurrentPage) Modifier.border(3.dp, accentColor, RoundedCornerShape(8.dp))
+                    if (isCurrentPage) Modifier.border(3.dp, accentColor, AppRoundedCornerShape(8.dp))
                     else Modifier
                 )
                 .background(AppColors.BgGray)

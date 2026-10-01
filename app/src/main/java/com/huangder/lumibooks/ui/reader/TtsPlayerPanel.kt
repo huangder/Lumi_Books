@@ -39,7 +39,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.semantics.Role
@@ -285,7 +285,7 @@ fun TtsPlayerPanel(
 
                 LiquidGlassSurface(
                     controlEdge = true,
-                    shape = RoundedCornerShape(36.dp),
+                    shape = AppRoundedCornerShape(36.dp),
                     fallbackColor = panelFallbackColor,
                     contentScrimColor = glassScrim,
                     forceFallback = forceSolidSurface,
@@ -362,7 +362,7 @@ private fun TtsActionPill(
 ) {
     LiquidGlassSurface(
         controlEdge = true,
-        shape = RoundedCornerShape(28.dp),
+        shape = AppRoundedCornerShape(28.dp),
         fallbackColor = backgroundColor,
         contentScrimColor = glassScrim,
         forceFallback = forceSolid,
@@ -403,7 +403,7 @@ private fun TtsIconPill(
 ) {
     LiquidGlassSurface(
         controlEdge = true,
-        shape = RoundedCornerShape(28.dp),
+        shape = AppRoundedCornerShape(28.dp),
         fallbackColor = backgroundColor,
         contentScrimColor = glassScrim,
         forceFallback = forceSolid,
@@ -458,7 +458,7 @@ private fun TtsChoice(
     modifier: Modifier
 ) {
     Box(
-        modifier.heightIn(min = 44.dp).clip(RoundedCornerShape(10.dp))
+        modifier.heightIn(min = 44.dp).clip(AppRoundedCornerShape(10.dp))
             .then(if (choice.selected) Modifier.background(AppColors.Accent.copy(alpha = 0.14f)) else Modifier)
             .clickable(enabled = enabled, indication = null, interactionSource = remember { MutableInteractionSource() }) {
                 select(choice.action)

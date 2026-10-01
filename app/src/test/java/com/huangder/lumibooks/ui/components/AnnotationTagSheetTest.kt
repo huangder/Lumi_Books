@@ -14,6 +14,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.R
 import org.junit.Assert.*
 import org.junit.Rule
@@ -30,6 +31,25 @@ import org.robolectric.annotation.GraphicsMode
 class AnnotationTagSheetTest {
     @get:Rule val compose = createComposeRule()
     private fun label(id: Int) = RuntimeEnvironment.getApplication().getString(id)
+
+    @Test
+    @Config(qualifiers = "en-w360dp-h800dp-mdpi")
+    fun shortTagListWrapsContentAndUsesCompactMoreButtons() {
+        compose.setContent {
+            EBookReaderTheme(appTheme = "liquid_glass", darkTheme = false) {
+                CompositionLocalProvider(LocalAppTheme provides "liquid_glass",
+                    LocalMotionEnabled provides false) {
+                    AnnotationTagSheet(emptyList(), listOf("Alpha", "Beta"), {}, {}, onRename = { _, _ -> })
+                }
+            }
+        }
+        val top = compose.onNodeWithText(label(R.string.annotation_tags)).getUnclippedBoundsInRoot().top
+        // Two labels should occupy their content height, not the old 82% viewport.
+        assertTrue("A short sheet should leave the upper half of this screen free: $top", top > 400.dp)
+        compose.onAllNodesWithContentDescription(label(R.string.annotation_tag_manage))
+            .onFirst().assertHeightIsEqualTo(24.dp)
+        compose.onNodeWithText(label(R.string.confirm)).assertIsDisplayed()
+    }
 
     @Test fun narrowLargeFontAllowsScrollingAndSavesTypedNewTag() {
         var saved: List<String>? = null

@@ -14,7 +14,8 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * A continuous corner whose curvature reaches zero where it joins each edge.
+ * Legacy superellipse retained only for unchanged Material 3 surfaces and custom
+ * shape compatibility tests. Lumi surfaces use AppShapes and Kyant Shapes instead.
  */
 class G2ContinuousCornerShape(internal val cornerRadius: Float) : Shape {
     override fun createOutline(

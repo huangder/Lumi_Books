@@ -69,7 +69,7 @@ class ReaderAnnotationPanelTest {
                 ) {
                     view = LocalView.current
                     NotesListSheet(true, notes = entries, onNoteClick = { jumped = true },
-                        onEditTags = { edited = it }, onDeleteNote = {}, onDismiss = {})
+                        onShareNote = {}, onEditTags = { edited = it }, onDeleteNote = {}, onDismiss = {})
                 }
             }
         }
@@ -115,7 +115,7 @@ class ReaderAnnotationPanelTest {
             EBookReaderTheme(appTheme = "lumi", darkTheme = true) {
                 CompositionLocalProvider(LocalDensity provides Density(1f, 1.5f), LocalMotionEnabled provides false) {
                     view = LocalView.current
-                    NotesListSheet(true, notes = entries, onNoteClick = {}, onEditTags = {}, onDeleteNote = {}, onDismiss = {})
+                    NotesListSheet(true, notes = entries, onNoteClick = {}, onShareNote = {}, onEditTags = {}, onDeleteNote = {}, onDismiss = {})
                 }
             }
         }

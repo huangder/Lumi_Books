@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.material3.HorizontalDivider
@@ -96,7 +96,7 @@ internal fun LocalDictionarySheetContent(query: String, result: DictionaryLookup
             modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.7f)
                 .materialBottomSheetMotion(offset.value, if (detailId == null) backProgress else 0f),
             contentModifier = Modifier.fillMaxSize().navigationBarsPadding().padding(horizontal = 24.dp, vertical = 16.dp),
-            fallbackColor = AppColors.CardBg, shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            fallbackColor = AppColors.CardBg, shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             backdrop = glassBackdrop, forceFallback = forceSolid || LocalEInkMode.current
         ) {
             Row(Modifier.fillMaxWidth().height(44.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -129,7 +129,7 @@ internal fun LocalDictionarySheetContent(query: String, result: DictionaryLookup
                             items(result?.results.orEmpty(), key = { it.dictionary.id }) { hit ->
                                 val interaction = remember { MutableInteractionSource() }
                                 val pressed by interaction.collectIsPressedAsState()
-                                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+                                Column(Modifier.fillMaxWidth().clip(AppRoundedCornerShape(8.dp))
                                     .background(AppColors.TextPrimary.copy(alpha = if (pressed) 0.08f else 0f))
                                     .clickable(interactionSource = interaction, indication = null) { detailId = hit.dictionary.id }
                                     .padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

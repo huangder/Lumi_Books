@@ -56,7 +56,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -704,8 +704,8 @@ private fun ThemeSuiteRow(
 ) {
     val threshold = with(LocalDensity.current) { 54.dp.toPx() }
     var dragDistance by remember { mutableFloatStateOf(0f) }
-    val shape = RoundedCornerShape(AppRadius.lg)
-    val previewShape = RoundedCornerShape(AppRadius.md)
+    val shape = AppRoundedCornerShape(AppRadius.lg)
+    val previewShape = AppRoundedCornerShape(AppRadius.md)
     val density = LocalDensity.current
     val revealPx = with(density) { 112.dp.toPx() }
     val offset = remember(suite.id) { Animatable(0f) }
@@ -878,7 +878,7 @@ private fun ThemeSuiteRow(
 private fun ThemeSuiteThumbnail(
     suite: ReaderThemeSuite,
     backgrounds: List<ReaderBackgroundPreset>,
-    shape: RoundedCornerShape
+    shape: androidx.compose.ui.graphics.Shape
 ) {
     Box(
         modifier = Modifier
@@ -969,7 +969,7 @@ private fun NameDialog(
     var value by remember(initial) { mutableStateOf(initial) }
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(24.dp),
+        shape = AppRoundedCornerShape(24.dp),
         transparencyOverride = (LocalLiquidGlassTransparency.current - 0.10f).coerceIn(0f, 0.90f),
         backgroundBlurRadius = 12.dp
     ) {
@@ -984,9 +984,9 @@ private fun NameDialog(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(AppRadius.md))
+                    .clip(AppRoundedCornerShape(AppRadius.md))
                     .background(AppColors.BgGray)
-                    .border(1.dp, AppColors.Divider, RoundedCornerShape(AppRadius.md))
+                    .border(1.dp, AppColors.Divider, AppRoundedCornerShape(AppRadius.md))
                     .padding(horizontal = 16.dp, vertical = 14.dp)
             ) {
                 BasicTextField(
@@ -1239,7 +1239,7 @@ private fun ReaderFloatingPanel(
 ) {
     LiquidGlassSurface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(AppRadius.xl),
+        shape = AppRoundedCornerShape(AppRadius.xl),
         fallbackColor = AppColors.CardBg,
         contentScrimColor = AppColors.CardBg.copy(alpha = 0.84f),
         contentAlignment = Alignment.TopStart
@@ -1882,7 +1882,7 @@ private fun ReaderControlCapsule(
     LiquidGlassSurface(
         controlEdge = true,
         modifier = modifier.heightIn(min = 42.dp),
-        shape = RoundedCornerShape(AppRadius.full),
+        shape = AppRoundedCornerShape(AppRadius.full),
         fallbackColor = animatedContainer,
         contentScrimColor = animatedContainer.copy(alpha = 0.86f),
         tintColor = tintColor,
@@ -1924,7 +1924,7 @@ private fun CommandCapsuleButton(
 
 @Composable
 private fun ColorSwatch(color: Color, selected: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(AppRadius.md)
+    val shape = AppRoundedCornerShape(AppRadius.md)
     Box(
         Modifier.size(40.dp).background(color, shape)
             .border(
@@ -2000,7 +2000,7 @@ private fun SettingSlider(
 private fun ClickableSliderValue(text: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(AppRoundedCornerShape(10.dp))
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },
@@ -2045,7 +2045,7 @@ private fun SliderValueInputDialog(
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(28.dp),
+        shape = AppRoundedCornerShape(28.dp),
         transparencyOverride = dialogTransparency
     ) {
         Column(Modifier.padding(horizontal = 24.dp, vertical = 20.dp)) {
@@ -2064,7 +2064,7 @@ private fun SliderValueInputDialog(
                 )
             }
             Spacer(Modifier.height(18.dp))
-            val fieldShape = RoundedCornerShape(14.dp)
+            val fieldShape = AppRoundedCornerShape(14.dp)
             val fieldBorder = when {
                 fieldValue.text.isBlank() -> AppColors.Divider
                 canConfirm -> AppColors.TextPrimary.copy(alpha = 0.38f)

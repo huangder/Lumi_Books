@@ -38,7 +38,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 import androidx.compose.material3.DropdownMenu
@@ -413,7 +413,7 @@ private fun ImportHint(onImportClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
-            .clip(RoundedCornerShape(AppRadius.md))
+            .clip(AppRoundedCornerShape(AppRadius.md))
             .background(AppColors.BgGray)
             .clickable(onClick = onImportClick)
             .padding(horizontal = AppSpace.lg, vertical = AppSpace.xl),
@@ -492,10 +492,10 @@ private fun ContinueReadingCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
-            .cardOutline(RoundedCornerShape(AppRadius.lg))
-            .clip(RoundedCornerShape(AppRadius.lg))
-            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.lg))
+            .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
+            .cardOutline(AppRoundedCornerShape(AppRadius.lg))
+            .clip(AppRoundedCornerShape(AppRadius.lg))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
             .cardPressEffect()
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                 onClick(coverBounds.get().takeUnless { it == Rect.Zero })
@@ -541,7 +541,7 @@ private fun ContinueReadingCard(
                     ),
                     showReadingProgress = false
                 )
-                .clip(RoundedCornerShape(AppRadius.sm))
+                .clip(AppRoundedCornerShape(AppRadius.sm))
                 .background(AppColors.BgGray)
         ) {
             if (book.coverPath == null) {
@@ -668,7 +668,7 @@ private fun ContinueReadingCard(
                 expanded = menuExpanded,
                 onDismissRequest = { menuExpanded = false },
                 modifier = Modifier.width(116.dp),
-                shape = RoundedCornerShape(AppRadius.xl),
+                shape = AppRoundedCornerShape(AppRadius.xl),
                 containerColor = AppColors.WindowBg,
                 border = BorderStroke(1.dp, AppColors.Divider),
                 shadowElevation = 0.dp,
@@ -678,7 +678,7 @@ private fun ContinueReadingCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(40.dp)
-                        .clip(RoundedCornerShape(AppRadius.lg))
+                        .clip(AppRoundedCornerShape(AppRadius.lg))
                         .clickable {
                         menuExpanded = false
                         onToggleFavorite()
@@ -698,7 +698,7 @@ private fun ContinueReadingCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(40.dp)
-                        .clip(RoundedCornerShape(AppRadius.lg))
+                        .clip(AppRoundedCornerShape(AppRadius.lg))
                         .clickable {
                         menuExpanded = false
                         showDeleteConfirm = true
@@ -755,10 +755,10 @@ private fun RecentBookCard(
     Row(
         modifier = modifier
             .then(if (fixedWidth) Modifier.width(260.dp) else Modifier)
-            .shadow(10.dp, RoundedCornerShape(AppRadius.md), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
-            .cardOutline(RoundedCornerShape(AppRadius.md))
-            .clip(RoundedCornerShape(AppRadius.md))
-            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
+            .shadow(10.dp, AppRoundedCornerShape(AppRadius.md), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
+            .cardOutline(AppRoundedCornerShape(AppRadius.md))
+            .clip(AppRoundedCornerShape(AppRadius.md))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
             .cardPressEffect()
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onClick)
             .padding(AppSpace.sm),
@@ -779,7 +779,7 @@ private fun RecentBookCard(
                         textAlignCenter = true
                     )
                 )
-                .clip(RoundedCornerShape(6.dp))
+                .clip(AppRoundedCornerShape(6.dp))
                 .background(AppColors.BgGray),
             contentAlignment = Alignment.Center
         ) {
@@ -853,10 +853,10 @@ private fun ReadingGoalCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
-            .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
-            .cardOutline(RoundedCornerShape(AppRadius.lg))
-            .clip(RoundedCornerShape(AppRadius.lg))
-            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.lg))
+            .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
+            .cardOutline(AppRoundedCornerShape(AppRadius.lg))
+            .clip(AppRoundedCornerShape(AppRadius.lg))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
             .cardPressEffect()
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onCardClick)
             .padding(AppSpace.lg),
@@ -1026,7 +1026,7 @@ private fun BooksReadGrid(
     useWideLayout: Boolean = false,
     onBookClick: (Book, Rect?) -> Unit
 ) {
-    val coverShape = RoundedCornerShape(
+    val coverShape = AppRoundedCornerShape(
         if (LocalAppTheme.current == "liquid_glass") 16.dp else AppRadius.md
     )
     val coverRadiusDp = if (LocalAppTheme.current == "liquid_glass") {

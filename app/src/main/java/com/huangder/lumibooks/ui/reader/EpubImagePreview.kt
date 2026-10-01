@@ -23,7 +23,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -195,9 +195,9 @@ internal fun EpubImagePreviewOverlay(
                     alpha = p.coerceIn(0.08f, 1f)
                 }
                 .size(imageWidth, imageHeight)
-                .clip(RoundedCornerShape(14.dp))
+                .clip(AppRoundedCornerShape(14.dp))
                 .background(Color(0xFFDFDFDF))
-                .border(0.5.dp, Color.White.copy(alpha = 0.34f), RoundedCornerShape(14.dp))
+                .border(0.5.dp, Color.White.copy(alpha = 0.34f), AppRoundedCornerShape(14.dp))
                 .pointerInput(request.source) {
                     detectTransformGestures { _, pan, zoom, _ ->
                         val nextScale = (userScale * zoom).coerceIn(1f, 4f)

@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -50,7 +50,7 @@ fun RemoteNoticeDialog(
                         .heightIn(max = 260.dp)
                         .background(
                             color = AppColors.BgGray.copy(alpha = if (isLiquidGlass) 0.48f else 0.92f),
-                            shape = RoundedCornerShape(18.dp)
+                            shape = AppRoundedCornerShape(18.dp)
                         )
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 14.dp, vertical = 12.dp),

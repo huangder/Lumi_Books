@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -47,7 +47,7 @@ fun ExternalImportChoiceDialog(
         modifier = Modifier
             .fillMaxWidth()
             .widthIn(max = 460.dp),
-        shape = RoundedCornerShape(32.dp),
+        shape = AppRoundedCornerShape(32.dp),
         // Keep the backdrop visible through the surface so the dialog reads as real glass.
         contentScrimColor = AppColors.CardBg.copy(alpha = 0.70f)
     ) {
@@ -141,7 +141,7 @@ private fun ExternalImportOption(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp),
-        shape = RoundedCornerShape(16.dp),
+        shape = AppRoundedCornerShape(16.dp),
         tintedColor = if (primary) AppColors.Accent else AppColors.BgGray,
         prominentShadow = primary,
         contentColor = if (primary) AppColors.OnAccent else AppColors.TextPrimary

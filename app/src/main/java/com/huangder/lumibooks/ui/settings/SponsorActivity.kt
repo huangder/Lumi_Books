@@ -26,7 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.material3.Icon
@@ -182,9 +182,9 @@ private fun SponsorPage(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = AppSpace.lg)
-                .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
-                .clip(RoundedCornerShape(AppRadius.lg))
-                .lumiCardSurface(shape = RoundedCornerShape(AppRadius.lg))
+                .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+                .clip(AppRoundedCornerShape(AppRadius.lg))
+                .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
                 .padding(AppSpace.lg),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -206,7 +206,7 @@ private fun SponsorPage(
                 ),
                 modifier = Modifier
                     .size(220.dp)
-                    .clip(RoundedCornerShape(AppRadius.md)),
+                    .clip(AppRoundedCornerShape(AppRadius.md)),
                 contentScale = ContentScale.Fit
             )
 
@@ -234,7 +234,7 @@ private fun SponsorPage(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp)
-                    .clip(RoundedCornerShape(AppRadius.capsule))
+                    .clip(AppRoundedCornerShape(AppRadius.capsule))
                     .background(Color(0xFFD4A542))
                     .clickable(
                         indication = null,
@@ -323,7 +323,7 @@ private fun SponsorPaymentTagSwitcher(
         modifier = modifier
             .fillMaxWidth()
             .height(40.dp)
-            .clip(RoundedCornerShape(20.dp))
+            .clip(AppRoundedCornerShape(20.dp))
             .background(AppColors.BgGray)
             .padding(2.dp)
     ) {
@@ -334,8 +334,8 @@ private fun SponsorPaymentTagSwitcher(
                 .graphicsLayer {
                     translationX = indicatorProgress * size.width
                 }
-                .clip(RoundedCornerShape(18.dp))
-                .shadow(2.dp, RoundedCornerShape(18.dp))
+                .clip(AppRoundedCornerShape(18.dp))
+                .shadow(2.dp, AppRoundedCornerShape(18.dp))
                 .background(if (isDark) AppColors.CardBg else Color.White)
         )
         Row(Modifier.fillMaxSize()) {
@@ -398,9 +398,9 @@ private fun DeveloperCard(contributor: Contributor, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(6.dp, RoundedCornerShape(AppRadius.md), ambientColor = Color(0x04000000), spotColor = Color(0x04000000))
-            .clip(RoundedCornerShape(AppRadius.md))
-            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
+            .shadow(6.dp, AppRoundedCornerShape(AppRadius.md), ambientColor = Color(0x04000000), spotColor = Color(0x04000000))
+            .clip(AppRoundedCornerShape(AppRadius.md))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
             .clickable(onClick = onClick)
             .padding(AppSpace.md),
         verticalAlignment = Alignment.CenterVertically
@@ -501,9 +501,9 @@ private fun CreditSection(title: String, names: List<String>) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .shadow(6.dp, RoundedCornerShape(AppRadius.md), ambientColor = Color(0x04000000), spotColor = Color(0x04000000))
-                .clip(RoundedCornerShape(AppRadius.md))
-                .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
+                .shadow(6.dp, AppRoundedCornerShape(AppRadius.md), ambientColor = Color(0x04000000), spotColor = Color(0x04000000))
+                .clip(AppRoundedCornerShape(AppRadius.md))
+                .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
                 .padding(AppSpace.md)
         ) {
             names.forEachIndexed { index, name ->

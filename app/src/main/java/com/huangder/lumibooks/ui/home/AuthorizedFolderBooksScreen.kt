@@ -40,7 +40,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items as lazyListItems
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -624,7 +624,7 @@ private fun FolderBooksHeader(
                 LiquidGlassButton(
                     onClick = onSelectAll,
                     modifier = Modifier.height(44.dp),
-                    shape = RoundedCornerShape(AppRadius.capsule),
+                    shape = AppRoundedCornerShape(AppRadius.capsule),
                     tintedColor = AppColors.Accent,
                     prominentShadow = false,
                     contentColor = AppColors.OnAccent
@@ -851,7 +851,7 @@ private fun FolderBooksSortButton(
                 expanded = sortExpanded,
                 onDismissRequest = { sortExpanded = false },
                 modifier = Modifier.width(196.dp),
-                shape = RoundedCornerShape(AppRadius.md),
+                shape = AppRoundedCornerShape(AppRadius.md),
                 containerColor = AppColors.WindowBg,
                 tonalElevation = 0.dp,
                 shadowElevation = 0.dp
@@ -1046,8 +1046,8 @@ private fun FolderBooksFolderRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.md))
-            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
+            .clip(AppRoundedCornerShape(AppRadius.md))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() }
@@ -1099,10 +1099,10 @@ private fun FolderBooksBookRow(
             .border(
                 width = 1.5.dp,
                 color = AppColors.Accent.copy(alpha = if (isSelected) 1f else 0f),
-                shape = RoundedCornerShape(AppRadius.md)
+                shape = AppRoundedCornerShape(AppRadius.md)
             )
-            .clip(RoundedCornerShape(AppRadius.md))
-            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
+            .clip(AppRoundedCornerShape(AppRadius.md))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },
@@ -1113,7 +1113,7 @@ private fun FolderBooksBookRow(
     ) {
         ImportBookCoverArt(
             book = file.toSelectedImportBook(),
-            shape = RoundedCornerShape(AppRadius.sm),
+            shape = AppRoundedCornerShape(AppRadius.sm),
             placeholderFontSize = AppType.Caption,
             coverPathOverride = coverPath,
             modifier = Modifier
@@ -1169,7 +1169,7 @@ private fun FolderBooksFolderTile(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.lg))
+            .clip(AppRoundedCornerShape(AppRadius.lg))
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() }
@@ -1216,9 +1216,9 @@ private fun FolderBooksBookTile(
             .border(
                 width = 1.5.dp,
                 color = AppColors.Accent.copy(alpha = if (isSelected) 1f else 0f),
-                shape = RoundedCornerShape(AppRadius.lg)
+                shape = AppRoundedCornerShape(AppRadius.lg)
             )
-            .clip(RoundedCornerShape(AppRadius.lg))
+            .clip(AppRoundedCornerShape(AppRadius.lg))
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },
@@ -1228,7 +1228,7 @@ private fun FolderBooksBookTile(
     ) {
         ImportBookCoverArt(
             book = file.toSelectedImportBook(),
-            shape = RoundedCornerShape(AppRadius.md),
+            shape = AppRoundedCornerShape(AppRadius.md),
             placeholderFontSize = if (compact) AppType.Caption else AppType.BodySmall,
             coverPathOverride = coverPath,
             modifier = Modifier
@@ -1277,7 +1277,7 @@ private fun FolderThumb(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(AppRadius.sm))
+            .clip(AppRoundedCornerShape(AppRadius.sm))
             .background(AppColors.BgGray),
         contentAlignment = Alignment.Center
     ) {
@@ -1325,7 +1325,7 @@ private fun SelectionIndicator(isSelected: Boolean) {
 private fun ImportedBadge() {
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(AppRadius.full))
+            .clip(AppRoundedCornerShape(AppRadius.full))
             .background(AppColors.Accent.copy(alpha = 0.14f))
             .padding(horizontal = 5.dp, vertical = 1.dp)
     ) {
@@ -1344,7 +1344,7 @@ private fun FolderBooksConfirmButton(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    val shape = RoundedCornerShape(AppRadius.lg)
+    val shape = AppRoundedCornerShape(AppRadius.lg)
     LiquidGlassButton(
         onClick = onClick,
         enabled = enabled,

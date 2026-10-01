@@ -47,7 +47,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -599,7 +599,7 @@ private fun BookshelfSearchResultCard(
     val context = LocalContext.current
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val favoritePink = if (LocalIsDarkTheme.current) Color(0xFFFF8A80) else Color(0xFFE85D5D)
-    val shape = RoundedCornerShape(if (isLiquidGlass) 24.dp else 16.dp)
+    val shape = AppRoundedCornerShape(if (isLiquidGlass) 24.dp else 16.dp)
     LiquidGlassSurface(
         shape = shape,
         fallbackColor = AppColors.CardBg,
@@ -646,7 +646,7 @@ private fun BookshelfSearchResultCard(
                             takeCharacters = 6
                         )
                     )
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(AppRoundedCornerShape(14.dp))
                     .background(AppColors.BgGray),
                 contentAlignment = Alignment.Center
             ) {
@@ -958,7 +958,7 @@ internal fun SearchActionButton(
     val eInkMode = LocalEInkMode.current
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkMode
     val isDark = LocalIsDarkTheme.current
-    val shape = if (label == null) CircleShape else RoundedCornerShape(50)
+    val shape = if (label == null) CircleShape else AppRoundedCornerShape(50)
     val effectiveTintedColor = tintedColor?.let { if (eInkMode) Color.Black else it }
     val effectiveContentColor = if (eInkMode && tintedColor != null) Color.White else contentColor
     val fallback = effectiveTintedColor ?: AppColors.CardBg

@@ -33,7 +33,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -154,8 +154,8 @@ private fun FeedbackOverviewPage(onBack: () -> Unit) {
             onClick = { context.startActivity(Intent(context, DiagnosticActivity::class.java)) }
         )
         Spacer(Modifier.height(AppSpace.lg))
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpace.lg).shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000)).clip(RoundedCornerShape(AppRadius.lg)).lumiCardSurface(shape = RoundedCornerShape(AppRadius.lg)).padding(AppSpace.lg), horizontalAlignment = Alignment.CenterHorizontally) {
-            Image(painterResource(R.drawable.feedback_qr), stringResource(R.string.feedback_qr_desc), Modifier.size(220.dp).clip(RoundedCornerShape(AppRadius.md)), contentScale = ContentScale.Fit)
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpace.lg).shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000)).clip(AppRoundedCornerShape(AppRadius.lg)).lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg)).padding(AppSpace.lg), horizontalAlignment = Alignment.CenterHorizontally) {
+            Image(painterResource(R.drawable.feedback_qr), stringResource(R.string.feedback_qr_desc), Modifier.size(220.dp).clip(AppRoundedCornerShape(AppRadius.md)), contentScale = ContentScale.Fit)
             Spacer(Modifier.height(AppSpace.md))
             Text(stringResource(R.string.feedback_thanks), fontSize = AppType.Body, fontWeight = FontWeight.Medium, color = AppColors.TextPrimary, textAlign = TextAlign.Center)
         }
@@ -387,7 +387,7 @@ fun DiagnosticPage(
                         },
                         tintedColor = AppColors.Accent,
                         contentColor = Color.White,
-                        shape = RoundedCornerShape(AppRadius.capsule),
+                        shape = AppRoundedCornerShape(AppRadius.capsule),
                         modifier = Modifier.height(52.dp)
                     ) {
                         Text(stringResource(R.string.diagnostic_consent_agree), color = Color.White)
@@ -397,7 +397,7 @@ fun DiagnosticPage(
                     LiquidGlassButton(
                         onClick = { showConsent = false },
                         contentColor = AppColors.TextPrimary,
-                        shape = RoundedCornerShape(AppRadius.capsule),
+                        shape = AppRoundedCornerShape(AppRadius.capsule),
                         modifier = Modifier.height(52.dp)
                     ) {
                         Text(stringResource(R.string.diagnostic_consent_decline), color = AppColors.TextPrimary)
@@ -450,8 +450,8 @@ private fun DiagnosticComposer(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(22.dp))
-                .lumiCardSurface(shape = RoundedCornerShape(22.dp))
+                .clip(AppRoundedCornerShape(22.dp))
+                .lumiCardSurface(shape = AppRoundedCornerShape(22.dp))
                 .padding(AppSpace.md),
             verticalArrangement = Arrangement.spacedBy(AppSpace.md)
         ) {
@@ -498,7 +498,7 @@ private fun DiagnosticComposer(
             minLines = 3,
             maxLines = 6,
             singleLine = false,
-            shape = RoundedCornerShape(26.dp),
+            shape = AppRoundedCornerShape(26.dp),
             colors = TextFieldDefaults.colors(
                 focusedTextColor = AppColors.TextPrimary,
                 unfocusedTextColor = AppColors.TextPrimary,
@@ -523,7 +523,7 @@ private fun DiagnosticComposer(
             enabled = screenshotCount < 3 && !isGenerating,
             tintedColor = AppColors.BgGray,
             contentColor = AppColors.TextPrimary,
-            shape = RoundedCornerShape(AppRadius.capsule),
+            shape = AppRoundedCornerShape(AppRadius.capsule),
             modifier = Modifier.fillMaxWidth().height(52.dp)
         ) {
             Icon(AppIcons.ImageSquare, contentDescription = null)
@@ -544,7 +544,7 @@ private fun DiagnosticComposer(
                     enabled = description.trim().isNotEmpty() && !isGenerating,
                     tintedColor = AppColors.Accent,
                     contentColor = Color.White,
-                    shape = RoundedCornerShape(AppRadius.capsule),
+                    shape = AppRoundedCornerShape(AppRadius.capsule),
                     prominentShadow = true,
                     modifier = Modifier.fillMaxWidth().height(52.dp)
                 ) {
@@ -558,7 +558,7 @@ private fun DiagnosticComposer(
                     enabled = !isGenerating,
                     tintedColor = AppColors.Accent,
                     contentColor = Color.White,
-                    shape = RoundedCornerShape(AppRadius.capsule),
+                    shape = AppRoundedCornerShape(AppRadius.capsule),
                     prominentShadow = true,
                     modifier = Modifier.fillMaxWidth().height(52.dp)
                 ) {
@@ -573,7 +573,7 @@ private fun DiagnosticComposer(
                     enabled = !isGenerating,
                     tintedColor = AppColors.BgGray,
                     contentColor = AppColors.TextPrimary,
-                    shape = RoundedCornerShape(AppRadius.capsule),
+                    shape = AppRoundedCornerShape(AppRadius.capsule),
                     modifier = Modifier.fillMaxWidth().height(52.dp)
                 ) { Text(stringResource(R.string.diagnostic_previous_crash)) }
             }
@@ -583,7 +583,7 @@ private fun DiagnosticComposer(
             enabled = !isGenerating,
             tintedColor = AppColors.BgGray,
             contentColor = AppColors.TextPrimary,
-            shape = RoundedCornerShape(AppRadius.capsule),
+            shape = AppRoundedCornerShape(AppRadius.capsule),
             modifier = Modifier.fillMaxWidth().height(52.dp)
         ) {
             Text(stringResource(R.string.diagnostic_export_recent))
@@ -599,7 +599,7 @@ private fun DiagnosticComposer(
                     modifier = Modifier.weight(1f).height(52.dp),
                     tintedColor = AppColors.BgGray,
                     contentColor = AppColors.TextPrimary,
-                    shape = RoundedCornerShape(AppRadius.capsule)
+                    shape = AppRoundedCornerShape(AppRadius.capsule)
                 ) {
                     Icon(AppIcons.ShareNetwork, contentDescription = null)
                     Spacer(Modifier.width(AppSpace.xs))
@@ -610,7 +610,7 @@ private fun DiagnosticComposer(
                     modifier = Modifier.weight(1f).height(52.dp),
                     tintedColor = AppColors.BgGray,
                     contentColor = AppColors.TextPrimary,
-                    shape = RoundedCornerShape(AppRadius.capsule)
+                    shape = AppRoundedCornerShape(AppRadius.capsule)
                 ) {
                     Icon(AppIcons.DownloadSimple, contentDescription = null)
                     Spacer(Modifier.width(AppSpace.xs))
@@ -628,7 +628,7 @@ private fun DiagnosticIssueChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = AppRoundedCornerShape(16.dp)
     Box(
         modifier = modifier
             .heightIn(min = 48.dp)
@@ -668,15 +668,15 @@ private fun DiagnosticScreenshotPreview(uri: Uri) {
         Image(
             painter = BitmapPainter(bitmap),
             contentDescription = stringResource(R.string.diagnostic_screenshot_preview),
-            modifier = Modifier.size(72.dp).clip(RoundedCornerShape(AppRadius.sm)),
+            modifier = Modifier.size(72.dp).clip(AppRoundedCornerShape(AppRadius.sm)),
             contentScale = ContentScale.Crop
         )
     } else {
         Spacer(
             Modifier
                 .size(72.dp)
-                .clip(RoundedCornerShape(AppRadius.sm))
-                .lumiCardSurface(shape = RoundedCornerShape(AppRadius.sm))
+                .clip(AppRoundedCornerShape(AppRadius.sm))
+                .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.sm))
         )
     }
 }
@@ -717,9 +717,9 @@ private fun FeedbackLinkSection(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .shadow(6.dp, RoundedCornerShape(AppRadius.md), ambientColor = Color(0x04000000), spotColor = Color(0x04000000))
-                .clip(RoundedCornerShape(AppRadius.md))
-                .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
+                .shadow(6.dp, AppRoundedCornerShape(AppRadius.md), ambientColor = Color(0x04000000), spotColor = Color(0x04000000))
+                .clip(AppRoundedCornerShape(AppRadius.md))
+                .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
                 .clickable(onClick = onClick)
                 .padding(AppSpace.md),
             verticalAlignment = Alignment.CenterVertically

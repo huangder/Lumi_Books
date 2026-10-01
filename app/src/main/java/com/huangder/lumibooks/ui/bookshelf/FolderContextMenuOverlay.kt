@@ -18,7 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -225,7 +225,7 @@ private fun FolderInfoPanel(
     compact: Boolean,
     onRename: () -> Unit
 ) {
-    val shape = RoundedCornerShape(if (LocalAppTheme.current == "liquid_glass") 24.dp else AppRadius.md)
+    val shape = AppRoundedCornerShape(if (LocalAppTheme.current == "liquid_glass") 24.dp else AppRadius.md)
     val progress = alpha.coerceIn(-0.08f, 1.08f)
     LiquidGlassSurface(
         shape = shape,
@@ -263,7 +263,7 @@ private fun FolderInfoPanel(
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(AppRadius.sm))
+                    .clip(AppRoundedCornerShape(AppRadius.sm))
                     .clickable(onClick = onRename)
                     .padding(vertical = 4.dp)
             ) {
@@ -286,7 +286,7 @@ private fun FolderActionsPanel(
     compact: Boolean,
     onAction: (FolderContextAction) -> Unit
 ) {
-    val shape = RoundedCornerShape(if (LocalAppTheme.current == "liquid_glass") 24.dp else AppRadius.md)
+    val shape = AppRoundedCornerShape(if (LocalAppTheme.current == "liquid_glass") 24.dp else AppRadius.md)
     val progress = alpha.coerceIn(-0.08f, 1.08f)
     LiquidGlassSurface(
         shape = shape,
@@ -349,7 +349,7 @@ private fun FolderContextActionItem(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.sm))
+            .clip(AppRoundedCornerShape(AppRadius.sm))
             .clickable(onClick = onClick)
             .padding(horizontal = if (compact) 6.dp else 10.dp, vertical = if (compact) 8.dp else 10.dp)
     ) {

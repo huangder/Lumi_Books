@@ -26,7 +26,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -299,7 +299,7 @@ fun LiquidGlassDialog(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
     backdrop: Backdrop? = null,
-    shape: Shape = RoundedCornerShape(28.dp),
+    shape: Shape = AppRoundedCornerShape(28.dp),
     alignment: Alignment = Alignment.Center,
     contentScrimColor: Color = AppColors.CardBg.copy(alpha = 0.78f),
     backgroundScrimColor: Color = Color.Black.copy(alpha = 0.20f),
@@ -404,7 +404,7 @@ fun LiquidGlassAlertDialog(
         onDismissRequest = onDismissRequest,
         modifier = modifier,
         backdrop = backdrop,
-        shape = RoundedCornerShape(32.dp),
+        shape = AppRoundedCornerShape(32.dp),
         properties = properties,
         contentScrimColor = contentScrimColor,
         backgroundScrimColor = backgroundScrimColor,

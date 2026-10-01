@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -63,7 +63,7 @@ internal fun FolderCover(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(cornerRadius))
+            .clip(AppRoundedCornerShape(cornerRadius))
             .background(AppColors.CardBg),
         contentAlignment = Alignment.Center
     ) {
@@ -77,7 +77,7 @@ internal fun FolderCover(
                 modifier = Modifier
                     .fillMaxWidth(0.62f)
                     .aspectRatio(1f)
-                    .clip(RoundedCornerShape(20.dp))
+                    .clip(AppRoundedCornerShape(20.dp))
                     .background(AppColors.Accent.copy(alpha = 0.14f)),
                 contentAlignment = Alignment.Center
             ) {
@@ -160,7 +160,7 @@ private fun FolderBookPreview(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
-                            .clip(RoundedCornerShape(20.dp))
+                            .clip(AppRoundedCornerShape(20.dp))
                             .background(slotBackground),
                         contentAlignment = Alignment.Center
                     ) {

@@ -58,17 +58,18 @@ class LiquidGlassControlEdgeRenderTest {
         File(output, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
-    private fun verifyRim(forceCanvas: Boolean) {
+    private fun verifyRim(forceCanvas: Boolean, continuous: Boolean = false) {
+        val shape = if (continuous) AppShapes.rounded(24.dp) else CircleShape
         compose.setContent {
             view = LocalView.current
             Box(Modifier.background(Color.White).padding(12.dp)) {
                 Box(Modifier.size(160.dp, 48.dp).testTag("edge")
-                    .liquidGlassControlEdge(CircleShape, Color.White, false, forceCanvas)
-                    .background(Color(0xFFE8E8E8), CircleShape))
+                    .liquidGlassControlEdge(shape, Color.White, false, forceCanvas)
+                    .background(Color(0xFFE8E8E8), shape))
             }
         }
         val bitmap = control()
-        save(bitmap, if (forceCanvas) "canvas" else "software-snapshot")
+        save(bitmap, if (continuous) "continuous-rim" else if (forceCanvas) "canvas" else "software-snapshot")
         fun luminance(x: Int, y: Int) = android.graphics.Color.red(bitmap.getPixel(x, y))
         val cx = bitmap.width / 2
         val cy = bitmap.height / 2
@@ -85,6 +86,7 @@ class LiquidGlassControlEdgeRenderTest {
     @Test fun softwareSnapshotFallsBackEvenWhenRuntimeShaderIsAvailable() = verifyRim(false)
     @Test @Config(sdk = [31]) fun android12CanvasRendersTheSameOpticalLayers() = verifyRim(false)
     @Test fun canvasFallbackCanBeExercisedOnModernAndroid() = verifyRim(true)
+    @Test fun continuousPathRetainsDarkRimAndInnerLight() = verifyRim(true, continuous = true)
 
     @Test fun optInHonorsFallbackThemeCapabilityAndLayerLimit() {
         val optedIn = mutableStateOf(false)

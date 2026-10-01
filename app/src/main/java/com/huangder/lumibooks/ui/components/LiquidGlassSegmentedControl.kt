@@ -18,7 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -315,8 +315,8 @@ fun LiquidGlassSegmentedControl(
     val indicatorWidthPx = segmentMetricAtValue(geometry.widthsPx, visualValue)
     val indicatorHeight = (trackHeight - trackPadding * 2).coerceAtLeast(1.dp)
     val controlHeight = maxOf(trackHeight, SegmentMinimumTouchHeight)
-    val trackShape = RoundedCornerShape(trackHeight / 2)
-    val indicatorShape = RoundedCornerShape(indicatorHeight / 2)
+    val trackShape = AppRoundedCornerShape(trackHeight / 2)
+    val indicatorShape = AppRoundedCornerShape(indicatorHeight / 2)
     // Export the already-composited track surface for the moving segment. The
     // indicator must sample this container surface instead of the page backdrop;
     // otherwise the page shows through the selected label and softens its edge.

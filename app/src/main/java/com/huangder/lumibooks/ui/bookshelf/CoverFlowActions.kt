@@ -8,7 +8,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -70,7 +70,7 @@ internal fun CoverFlowActionBar(
     fun run(action: (Book) -> Unit) { onDismiss(); action(book) }
     LiquidGlassSurface(
         controlEdge = true,
-        shape = RoundedCornerShape(22.dp),
+        shape = AppRoundedCornerShape(22.dp),
         fallbackColor = AppColors.CardBg,
         contentScrimColor = AppColors.CardBg.copy(alpha = 0.68f),
         modifier = modifier.widthIn(max = 264.dp).fillMaxWidth(),
@@ -148,7 +148,7 @@ internal fun CoverFlowFolderNavigation(
             items(folders, key = { it.id }) { folder ->
                 var bounds by remember { mutableStateOf(Rect.Zero) }
                 LiquidGlassSurface(
-                    shape = RoundedCornerShape(16.dp), fallbackColor = AppColors.CardBg,
+                    shape = AppRoundedCornerShape(16.dp), fallbackColor = AppColors.CardBg,
                     interactive = true,
                     controlEdge = true,
                     enabled = enabled,

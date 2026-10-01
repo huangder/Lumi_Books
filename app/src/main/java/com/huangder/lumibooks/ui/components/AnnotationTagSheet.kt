@@ -8,7 +8,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
@@ -51,7 +52,8 @@ fun AnnotationTagSheet(
     var renameText by remember { mutableStateOf("") }
     var deleting by remember { mutableStateOf<String?>(null) }
     val names = (available + chosen).distinct().sorted()
-    val compactHeight = LocalConfiguration.current.screenHeightDp < 480
+    val screenHeight = LocalConfiguration.current.screenHeightDp
+    val compactHeight = screenHeight < 480
     val sheetOffset = remember { Animatable(1f) }
     var isClosing by remember { mutableStateOf(false) }
     var pendingSave by remember { mutableStateOf<List<String>?>(null) }
@@ -73,12 +75,12 @@ fun AnnotationTagSheet(
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = dismiss))
         LiquidGlassColumnSheetContainer(
             modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                .fillMaxHeight(if (compactHeight) 0.94f else 0.82f)
+                .heightIn(max = screenHeight.dp * if (compactHeight) 0.94f else 0.82f)
                 .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress),
-            contentModifier = Modifier.fillMaxSize().navigationBarsPadding()
+            contentModifier = Modifier.fillMaxWidth().navigationBarsPadding()
                 .padding(horizontal = 20.dp, vertical = if (compactHeight) 10.dp else 20.dp),
             fallbackColor = AppColors.CardBg,
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             backdrop = backdrop
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -98,7 +100,7 @@ fun AnnotationTagSheet(
                     size = 44.dp, iconSize = 20.dp, normalContainerColor = AppColors.BgGray)
             }
                 Spacer(Modifier.height(12.dp))
-                Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     when {
                         secondary -> {
@@ -167,19 +169,20 @@ private fun AnnotationTagChoice(
     var bounds by remember { mutableStateOf(Rect.Zero) }
     val renameLabel = stringResource(R.string.annotation_tag_rename)
     val deleteLabel = stringResource(R.string.delete)
+    val moreSize = (24f * LocalDensity.current.fontScale.coerceIn(1f, 1.5f)).dp
     val menuWidth = annotationMenuWidth(buildList {
         if (onRename != null) add(renameLabel)
         if (onDelete != null) add(deleteLabel)
     }, extraWidth = 66.dp)
     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-        Row(Modifier.weight(1f).heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp))
+        Row(Modifier.weight(1f).heightIn(min = 48.dp).clip(AppRoundedCornerShape(12.dp))
             .then(if (managementOnly) Modifier else Modifier.toggleable(checked, role = Role.Checkbox, onValueChange = onChecked))
             .padding(vertical = 8.dp, horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (!managementOnly) Box(
-                Modifier.size(22.dp).clip(RoundedCornerShape(7.dp))
+                Modifier.size(22.dp).clip(AppRoundedCornerShape(7.dp))
                     .background(if (checked) AppColors.Accent else AppColors.BgGray)
-                    .border(1.dp, if (checked) AppColors.Accent else AppColors.TextSecondary.copy(alpha = 0.35f), RoundedCornerShape(7.dp)),
+                    .border(1.dp, if (checked) AppColors.Accent else AppColors.TextSecondary.copy(alpha = 0.35f), AppRoundedCornerShape(7.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 if (checked) Icon(AppIcons.Check, null, tint = AppColors.OnAccent, modifier = Modifier.size(15.dp))
@@ -189,7 +192,7 @@ private fun AnnotationTagChoice(
         }
         if (onRename != null || onDelete != null) LiquidGlassIconButton(
             imageVector = AppIcons.DotsThreeVertical,
-            contentDescription = stringResource(R.string.annotation_tag_manage), size = 44.dp, iconSize = 18.dp,
+            contentDescription = stringResource(R.string.annotation_tag_manage), size = moreSize, iconSize = 16.dp,
             modifier = Modifier.liquidGlassMenuAnchor(sourceId).onGloballyPositioned { bounds = it.boundsInRoot() },
             onClick = { host?.toggle(LiquidGlassMenuSpec(bounds, menuWidth, sourceId = sourceId, keepTriggerInteractive = false,
                 items = buildList {
@@ -206,7 +209,7 @@ private fun AnnotationTagNameField(value: String, onChange: (String) -> Unit, hi
         value = value, onValueChange = onChange, singleLine = true,
         textStyle = TextStyle(fontSize = AppType.Body, color = AppColors.TextPrimary),
         cursorBrush = SolidColor(AppColors.Accent),
-        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(14.dp))
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(AppRoundedCornerShape(14.dp))
             .background(AppColors.BgGray).padding(horizontal = 14.dp, vertical = 12.dp),
         decorationBox = { inner -> Box {
             if (value.isEmpty()) Text(hint, color = AppColors.TextSecondary, fontSize = AppType.Body)

@@ -34,7 +34,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -350,7 +350,7 @@ fun BookDetailsScreen(
 
 @Composable private fun BookHero(book: Book, folder: String, onCover: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(104.dp, 148.dp).clip(RoundedCornerShape(AppRadius.md)).clickable(onClick = onCover)) {
+        Box(Modifier.size(104.dp, 148.dp).clip(AppRoundedCornerShape(AppRadius.md)).clickable(onClick = onCover)) {
             if (book.coverPath != null) AsyncImage(ImageRequest.Builder(LocalContext.current).data(book.coverPath).build(), book.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             else Box(Modifier.fillMaxSize().background(AppColors.BgGray), Alignment.Center) { Text(book.title.take(6), color = AppColors.TextSecondary, modifier = Modifier.padding(8.dp)) }
         }
@@ -359,7 +359,7 @@ fun BookDetailsScreen(
             Text(book.title, fontSize = 24.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold, color = AppColors.TextPrimary, maxLines = 3, overflow = TextOverflow.Ellipsis)
             Text("${book.format.name} · ${book.author}", fontSize = AppType.Body, color = AppColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(folder, fontSize = AppType.Caption, color = AppColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            LinearProgressIndicator(progress = { book.readingProgress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)), color = AppColors.Accent, trackColor = AppColors.Divider)
+            LinearProgressIndicator(progress = { book.readingProgress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().height(6.dp).clip(AppRoundedCornerShape(3.dp)), color = AppColors.Accent, trackColor = AppColors.Divider)
             Text("${(book.readingProgress * 100).toInt()}%", fontSize = AppType.Caption, color = AppColors.Accent)
         }
     }
@@ -375,14 +375,14 @@ fun BookDetailsScreen(
         stringResource(R.string.book_detail_active_days) to AnnotatedString(days.toString()),
         stringResource(R.string.book_detail_file_size) to AnnotatedString(remember(book.filePath, book.remoteFileSize) { fileSize(context, book) })
     )
-    LiquidGlassSurface(RoundedCornerShape(AppRadius.lg), AppColors.CardBg, Modifier.fillMaxWidth(), contentScrimColor = Color.Transparent) {
+    LiquidGlassSurface(AppRoundedCornerShape(AppRadius.lg), AppColors.CardBg, Modifier.fillMaxWidth(), contentScrimColor = Color.Transparent) {
         Column(Modifier.padding(AppSpace.sm)) { metrics.chunked(3).forEach { row -> Row(Modifier.fillMaxWidth()) { row.forEach { (label, value) -> Column(Modifier.weight(1f).padding(AppSpace.sm), horizontalAlignment = Alignment.CenterHorizontally) { Text(value, fontSize = AppType.Section, fontWeight = FontWeight.Bold, color = AppColors.TextPrimary); Text(label, fontSize = AppType.Caption, color = AppColors.TextSecondary) } } } } }
     }
 }
 
 @Composable private fun InfoCard(book: Book, folder: String, tags: String, onEdit: () -> Unit, onTags: () -> Unit, onMove: () -> Unit) {
     val context = LocalContext.current
-    LiquidGlassSurface(RoundedCornerShape(AppRadius.lg), AppColors.CardBg, Modifier.fillMaxWidth(), contentScrimColor = Color.Transparent) {
+    LiquidGlassSurface(AppRoundedCornerShape(AppRadius.lg), AppColors.CardBg, Modifier.fillMaxWidth(), contentScrimColor = Color.Transparent) {
         Column {
             DetailRow(
                 stringResource(R.string.book_detail_file_name),
@@ -498,7 +498,7 @@ internal fun shouldStackDetailRow(
 
 @Composable private fun FloatingDetailTag(modifier: Modifier, onDelete: () -> Unit, onEdit: () -> Unit, onMove: () -> Unit, onNotes: () -> Unit, onRead: () -> Unit) {
     val isDark = LocalIsDarkTheme.current
-    val shape = RoundedCornerShape(32.dp)
+    val shape = AppRoundedCornerShape(32.dp)
     LiquidGlassSurface(
         shape,
         AppColors.CardBg,
@@ -544,7 +544,7 @@ internal fun shouldStackDetailRow(
     val isDark = LocalIsDarkTheme.current
     LiquidGlassSurface(
         controlEdge = true,
-        shape = RoundedCornerShape(23.dp),
+        shape = AppRoundedCornerShape(23.dp),
         fallbackColor = if (isDark) Color(0xFF202023) else Color(0xFFF6F6F8),
         contentScrimColor = if (isDark) Color.Black.copy(alpha = .34f) else Color.White.copy(alpha = .62f),
         onClick = onClick,

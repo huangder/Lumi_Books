@@ -18,6 +18,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.kyant.shapes.RoundedRectangularShape
+import com.huangder.lumibooks.ui.theme.ContinuousCornerBasedShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -146,7 +149,7 @@ internal fun Modifier.liquidGlassBackdrop(
     controlEdgeForceCanvas: Boolean = false
 ): Modifier {
     val lensSupported = supportsLiquidGlassLens(lensShape)
-    val nativeOutlineSupported = supportsLiquidGlassLens(shape)
+    val nativeOutlineSupported = supportsLiquidGlassHighlight(shape)
     val surfaceColor = if (isDark) {
         Color(0xFF101012).copy(alpha = 0.34f - transparency * 0.24f)
     } else {
@@ -247,7 +250,12 @@ internal fun Modifier.liquidGlassBackdrop(
 }
 
 internal fun supportsLiquidGlassLens(shape: Shape): Boolean =
-    shape is CornerBasedShape
+    shape is CornerBasedShape || shape is RoundedRectangularShape
+
+// Backdrop's highlight lighting assumes circular corners. Continuous masks use
+// the cached path rim instead; the lens still reads their radius as an SDF proxy.
+internal fun supportsLiquidGlassHighlight(shape: Shape): Boolean =
+    shape is CornerBasedShape && shape !is ContinuousCornerBasedShape
 
 @Composable
 fun Modifier.liquidGlassSheetSurface(
@@ -263,7 +271,7 @@ fun Modifier.liquidGlassSheetSurface(
     val contrastScrim = liquidGlassContrastScrim(LocalLiquidGlassContrastEnabled.current, fallbackColor)
 
     return if (isLiquidGlass) {
-        val floatingShape = RoundedCornerShape(28.dp)
+        val floatingShape = AppRoundedCornerShape(28.dp)
         val sheetTransparency = liquidGlassContrastTransparency(
             LocalLiquidGlassContrastEnabled.current,
             (transparency - 0.10f).coerceIn(0f, 0.90f)
@@ -326,7 +334,7 @@ fun LiquidGlassSheetContainer(
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val parentBackdrop = backdrop ?: LocalLiquidGlassBackdrop.current
     val containerBackdrop = rememberLayerBackdrop()
-    val contentShape = if (isLiquidGlass) RoundedCornerShape(28.dp) else shape
+    val contentShape = if (isLiquidGlass) AppRoundedCornerShape(28.dp) else shape
 
     // 弹层保持手机端宽度（平板不拉长，避免内容排版被拉伸）。
     // widthIn 必须位于调用方 fillMaxWidth 之前（外层）才能生效，

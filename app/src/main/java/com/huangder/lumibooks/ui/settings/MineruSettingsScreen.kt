@@ -25,7 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
@@ -172,7 +172,7 @@ fun MineruSettingsDetail(viewModel: SettingsViewModel) {
                 },
                 isError = tokenError,
                 singleLine = true,
-                shape = RoundedCornerShape(AppRadius.md),
+                shape = AppRoundedCornerShape(AppRadius.md),
                 visualTransformation = if (tokenVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
                     IconButton(onClick = { tokenVisible = !tokenVisible }) {
@@ -271,9 +271,9 @@ private fun MineruManualSection(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.md))
-            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
-            .border(1.dp, AppColors.Divider, RoundedCornerShape(AppRadius.md))
+            .clip(AppRoundedCornerShape(AppRadius.md))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
+            .border(1.dp, AppColors.Divider, AppRoundedCornerShape(AppRadius.md))
             .padding(AppSpace.md),
         verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
     ) {
@@ -309,8 +309,8 @@ private fun MineruStatusCard(mode: MineruMode) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.md))
-            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
+            .clip(AppRoundedCornerShape(AppRadius.md))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
             .padding(AppSpace.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -358,12 +358,12 @@ private fun MineruModeCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.md))
-            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
+            .clip(AppRoundedCornerShape(AppRadius.md))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
             .border(
                 width = if (selected) 1.5.dp else 1.dp,
                 color = if (selected) AppColors.Accent else AppColors.Divider,
-                shape = RoundedCornerShape(AppRadius.md)
+                shape = AppRoundedCornerShape(AppRadius.md)
             )
             .clickable(
                 indication = null,
@@ -393,7 +393,7 @@ private fun MineruDisclosureCard() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.md))
+            .clip(AppRoundedCornerShape(AppRadius.md))
             .background(AppColors.BgGray)
             .padding(AppSpace.md),
         verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
@@ -429,7 +429,7 @@ private fun MineruExternalLink(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.sm))
+            .clip(AppRoundedCornerShape(AppRadius.sm))
             .clickable {
                 runCatching {
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
@@ -458,7 +458,7 @@ private fun MineruPrimaryButton(
         onClick = onClick,
         enabled = enabled,
         tintedColor = AppColors.Accent,
-        shape = RoundedCornerShape(25.dp),
+        shape = AppRoundedCornerShape(25.dp),
         modifier = Modifier
             .fillMaxWidth()
             .height(50.dp)
@@ -488,12 +488,12 @@ private fun MineruSecondaryButton(
     LiquidGlassButton(
         onClick = onClick,
         enabled = enabled,
-        shape = RoundedCornerShape(AppRadius.md),
+        shape = AppRoundedCornerShape(AppRadius.md),
         contentColor = color,
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp)
-            .border(1.dp, AppColors.Divider, RoundedCornerShape(AppRadius.md))
+            .border(1.dp, AppColors.Divider, AppRoundedCornerShape(AppRadius.md))
     ) {
         Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
         Spacer(Modifier.size(AppSpace.sm))
@@ -555,7 +555,7 @@ private fun MineruConsentSheet(onDismiss: () -> Unit, onAccept: () -> Unit) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(AppRadius.md))
+                    .clip(AppRoundedCornerShape(AppRadius.md))
                     .background(AppColors.BgGray)
                     .padding(horizontal = 12.dp, vertical = 2.dp)
             ) {
@@ -596,7 +596,7 @@ private fun MineruConsentSheet(onDismiss: () -> Unit, onAccept: () -> Unit) {
             Spacer(Modifier.height(10.dp))
             LiquidGlassButton(
                 onClick = onDismiss,
-                shape = RoundedCornerShape(25.dp),
+                shape = AppRoundedCornerShape(25.dp),
                 tintedColor = if (isLiquidGlass) null else AppColors.BgGray,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -616,7 +616,7 @@ private fun MineruConsentSheet(onDismiss: () -> Unit, onAccept: () -> Unit) {
         LiquidGlassDialog(
             onDismissRequest = onDismiss,
             alignment = Alignment.BottomCenter,
-            shape = RoundedCornerShape(28.dp),
+            shape = AppRoundedCornerShape(28.dp),
             contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
             backgroundScrimColor = Color.Black.copy(alpha = 0.12f)
         ) {
@@ -630,13 +630,13 @@ private fun MineruConsentSheet(onDismiss: () -> Unit, onAccept: () -> Unit) {
             containerColor = AppColors.CardBg,
             contentColor = AppColors.TextPrimary,
             scrimColor = Color.Black.copy(alpha = 0.12f),
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             dragHandle = {
                 Box(
                     Modifier
                         .padding(top = 12.dp)
                         .size(width = 36.dp, height = 4.dp)
-                        .background(AppColors.TextSecondary.copy(alpha = 0.25f), RoundedCornerShape(2.dp))
+                        .background(AppColors.TextSecondary.copy(alpha = 0.25f), AppRoundedCornerShape(2.dp))
                 )
             }
         ) {

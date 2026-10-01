@@ -24,7 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
@@ -140,7 +140,7 @@ internal fun FolderNameDialog(
                         modifier = Modifier.padding(start = AppSpace.xs, bottom = 2.dp)
                     )
                     LiquidGlassSurface(
-                        shape = RoundedCornerShape(14.dp),
+                        shape = AppRoundedCornerShape(14.dp),
                         fallbackColor = AppColors.BgGray,
                         contentScrimColor = AppColors.CardBg.copy(alpha = 0.42f),
                         modifier = Modifier.fillMaxWidth()
@@ -273,7 +273,7 @@ internal fun FolderActionsSheet(
         LiquidGlassDialog(
             onDismissRequest = onDismiss,
             alignment = Alignment.BottomCenter,
-            shape = RoundedCornerShape(28.dp),
+            shape = AppRoundedCornerShape(28.dp),
             contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
             backgroundScrimColor = Color.Black.copy(alpha = 0.12f)
         ) { content() }
@@ -285,7 +285,7 @@ internal fun FolderActionsSheet(
             containerColor = AppColors.CardBg,
             contentColor = AppColors.TextPrimary,
             scrimColor = Color.Black.copy(alpha = 0.12f),
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+            shape = AppRoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
         ) { content() }
     }
 }
@@ -298,7 +298,7 @@ private fun FolderActionRow(
     onClick: () -> Unit
 ) {
     LiquidGlassSurface(
-        shape = RoundedCornerShape(14.dp),
+        shape = AppRoundedCornerShape(14.dp),
         fallbackColor = AppColors.BgGray,
         contentScrimColor = AppColors.CardBg.copy(alpha = 0.42f),
         onClick = onClick,
@@ -386,7 +386,7 @@ internal fun FolderMoveSheet(
             Spacer(Modifier.height(AppSpace.md))
 
             LiquidGlassSurface(
-                shape = RoundedCornerShape(16.dp),
+                shape = AppRoundedCornerShape(16.dp),
                 fallbackColor = AppColors.BgGray,
                 contentScrimColor = AppColors.CardBg.copy(alpha = 0.4f),
                 onClick = { showCreateDialog = true },
@@ -461,7 +461,7 @@ internal fun FolderMoveSheet(
         LiquidGlassDialog(
             onDismissRequest = onDismiss,
             alignment = Alignment.BottomCenter,
-            shape = RoundedCornerShape(28.dp),
+            shape = AppRoundedCornerShape(28.dp),
             contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
             backgroundScrimColor = Color.Black.copy(alpha = 0.12f)
         ) { content() }
@@ -473,7 +473,7 @@ internal fun FolderMoveSheet(
             containerColor = AppColors.CardBg,
             contentColor = AppColors.TextPrimary,
             scrimColor = Color.Black.copy(alpha = 0.12f),
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+            shape = AppRoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
         ) { content() }
     }
 
@@ -561,7 +561,7 @@ internal fun FolderRelocationSheet(
             Spacer(Modifier.height(AppSpace.md))
 
             LiquidGlassSurface(
-                shape = RoundedCornerShape(16.dp),
+                shape = AppRoundedCornerShape(16.dp),
                 fallbackColor = AppColors.BgGray,
                 contentScrimColor = AppColors.CardBg.copy(alpha = 0.4f),
                 onClick = { showCreateDialog = true },
@@ -636,7 +636,7 @@ internal fun FolderRelocationSheet(
         LiquidGlassDialog(
             onDismissRequest = onDismiss,
             alignment = Alignment.BottomCenter,
-            shape = RoundedCornerShape(28.dp),
+            shape = AppRoundedCornerShape(28.dp),
             contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
             backgroundScrimColor = Color.Black.copy(alpha = 0.12f)
         ) { content() }
@@ -648,7 +648,7 @@ internal fun FolderRelocationSheet(
             containerColor = AppColors.CardBg,
             contentColor = AppColors.TextPrimary,
             scrimColor = Color.Black.copy(alpha = 0.12f),
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+            shape = AppRoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
         ) { content() }
     }
 
@@ -730,7 +730,7 @@ internal fun FolderBreadcrumb(
 @Composable
 private fun FolderDestinationRow(folder: LibraryFolder, onClick: () -> Unit) {
     LiquidGlassSurface(
-        shape = RoundedCornerShape(16.dp),
+        shape = AppRoundedCornerShape(16.dp),
         fallbackColor = AppColors.CardBg,
         contentScrimColor = AppColors.CardBg.copy(alpha = 0.5f),
         onClick = onClick,

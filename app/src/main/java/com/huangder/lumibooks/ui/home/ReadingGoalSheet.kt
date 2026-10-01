@@ -28,7 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -229,7 +229,7 @@ private fun ReadingGoalContainer(
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     LiquidGlassColumnSheetContainer(
         fallbackColor = AppColors.CardBg,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         modifier = modifier
             .fillMaxWidth()
             .heightIn(max = maxSheetHeight)
@@ -337,7 +337,7 @@ private fun TodayReadingContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(6.dp)
-                .clip(RoundedCornerShape(3.dp)),
+                .clip(AppRoundedCornerShape(3.dp)),
             color = AppColors.Accent,
             trackColor = bgGray
         )
@@ -388,7 +388,7 @@ private fun TodayReadingContent(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
+                .clip(AppRoundedCornerShape(16.dp))
                 .background(bgGray)
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -424,7 +424,7 @@ private fun TodayReadingContent(
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp),
-        shape = RoundedCornerShape(28.dp),
+        shape = AppRoundedCornerShape(28.dp),
         tintedColor = bgGray.takeUnless { isLiquidGlass },
         contentColor = textPrimary
     ) {
@@ -549,7 +549,7 @@ private fun GoalPicker(
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp),
-        shape = RoundedCornerShape(28.dp),
+        shape = AppRoundedCornerShape(28.dp),
         tintedColor = bgGray.takeUnless { LocalAppTheme.current == "liquid_glass" },
         contentColor = textSecondary
     ) {
@@ -568,7 +568,7 @@ private fun CustomGoalInputPanel(
     val textPrimary = AppColors.TextPrimary
     val textSecondary = AppColors.TextSecondary
     val bgGray = AppColors.BgGray
-    val shape = RoundedCornerShape(18.dp)
+    val shape = AppRoundedCornerShape(18.dp)
     val panelContent: @Composable ColumnScope.() -> Unit = {
         Text(
             text = stringResource(R.string.goal_custom_target),
@@ -622,7 +622,7 @@ private fun CustomGoalInputPanel(
                 onClick = onConfirm,
                 enabled = isValid,
                 modifier = Modifier.height(36.dp),
-                shape = RoundedCornerShape(18.dp),
+                shape = AppRoundedCornerShape(18.dp),
                 tintedColor = if (isValid) AppColors.Accent else bgGray,
                 contentColor = if (isValid) AppColors.OnAccent else textSecondary
             ) {
@@ -682,7 +682,7 @@ private fun GoalOptionButton(
     val bgGray = AppColors.BgGray
     val dividerColor = AppColors.Divider
 
-    val shape = RoundedCornerShape(18.dp)
+    val shape = AppRoundedCornerShape(18.dp)
     val content: @Composable () -> Unit = {
         Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
             Text(

@@ -33,7 +33,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
@@ -324,7 +324,7 @@ fun ExternalTtsConfigurationDetail(
             },
             isError = baseUrlError,
             singleLine = true,
-            shape = RoundedCornerShape(AppRadius.md)
+            shape = AppRoundedCornerShape(AppRadius.md)
         )
 
         OutlinedTextField(
@@ -344,7 +344,7 @@ fun ExternalTtsConfigurationDetail(
                 )
             },
             singleLine = true,
-            shape = RoundedCornerShape(AppRadius.md)
+            shape = AppRoundedCornerShape(AppRadius.md)
         )
 
         ExternalTtsVoiceSelection(
@@ -367,7 +367,7 @@ fun ExternalTtsConfigurationDetail(
             placeholder = { Text(stringResource(R.string.external_tts_style_placeholder)) },
             supportingText = { Text(stringResource(R.string.external_tts_style_description)) },
             singleLine = true,
-            shape = RoundedCornerShape(AppRadius.md)
+            shape = AppRoundedCornerShape(AppRadius.md)
         )
 
         OutlinedTextField(
@@ -398,7 +398,7 @@ fun ExternalTtsConfigurationDetail(
             },
             isError = tokenError,
             singleLine = true,
-            shape = RoundedCornerShape(AppRadius.md),
+            shape = AppRoundedCornerShape(AppRadius.md),
             visualTransformation = if (tokenVisible) VisualTransformation.None else PasswordVisualTransformation(),
             trailingIcon = {
                 IconButton(onClick = { tokenVisible = !tokenVisible }) {
@@ -415,8 +415,8 @@ fun ExternalTtsConfigurationDetail(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(AppRadius.md))
-                .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
+                .clip(AppRoundedCornerShape(AppRadius.md))
+                .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
@@ -541,9 +541,9 @@ private fun ExternalTtsVoiceSelection(
                         .fillMaxWidth()
                         .height(48.dp)
                         .liquidGlassMenuAnchor(cornerRadius = 14.dp)
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(AppRoundedCornerShape(14.dp))
                         .background(AppColors.WindowBg)
-                        .border(1.dp, AppColors.Divider, RoundedCornerShape(14.dp))
+                        .border(1.dp, AppColors.Divider, AppRoundedCornerShape(14.dp))
                         .onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
                         .clickable(
                             role = Role.Button,
@@ -599,7 +599,7 @@ private fun ExternalTtsVoiceSelection(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false },
                     modifier = Modifier.width(selectorMenuWidth),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = AppRoundedCornerShape(16.dp),
                     containerColor = AppColors.WindowBg,
                     border = BorderStroke(1.dp, AppColors.Divider),
                     shadowElevation = 0.dp,
@@ -665,7 +665,7 @@ private fun ExternalTtsVoiceSelection(
                     .padding(top = AppSpace.xs),
                 label = { Text(stringResource(R.string.external_tts_voice_custom_label)) },
                 singleLine = true,
-                shape = RoundedCornerShape(AppRadius.md)
+                shape = AppRoundedCornerShape(AppRadius.md)
             )
         }
     }
@@ -683,8 +683,8 @@ private fun ExternalTtsStatusCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.md))
-            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
+            .clip(AppRoundedCornerShape(AppRadius.md))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
             .clickable(
                 role = Role.Button,
                 onClickLabel = stringResource(R.string.external_tts_configure),
@@ -752,12 +752,12 @@ private fun ExternalTtsProtocolCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.md))
-            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.md))
+            .clip(AppRoundedCornerShape(AppRadius.md))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
             .border(
                 width = if (selected) 1.5.dp else 1.dp,
                 color = if (selected) AppColors.Accent else AppColors.Divider,
-                shape = RoundedCornerShape(AppRadius.md)
+                shape = AppRoundedCornerShape(AppRadius.md)
             )
             .clickable(
                 indication = null,
@@ -794,7 +794,7 @@ private fun ExternalTtsDisclosureCard() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.md))
+            .clip(AppRoundedCornerShape(AppRadius.md))
             .background(AppColors.BgGray)
             .padding(AppSpace.md),
         verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
@@ -830,7 +830,7 @@ private fun ExternalTtsPrimaryButton(
         onClick = onClick,
         enabled = enabled,
         tintedColor = AppColors.Accent,
-        shape = RoundedCornerShape(25.dp),
+        shape = AppRoundedCornerShape(25.dp),
         modifier = Modifier
             .fillMaxWidth()
             .height(50.dp)
@@ -860,12 +860,12 @@ private fun ExternalTtsSecondaryButton(
     LiquidGlassButton(
         onClick = onClick,
         enabled = enabled,
-        shape = RoundedCornerShape(AppRadius.md),
+        shape = AppRoundedCornerShape(AppRadius.md),
         contentColor = color,
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp)
-            .border(1.dp, AppColors.Divider, RoundedCornerShape(AppRadius.md))
+            .border(1.dp, AppColors.Divider, AppRoundedCornerShape(AppRadius.md))
     ) {
         Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
         Spacer(Modifier.size(AppSpace.sm))
@@ -933,7 +933,7 @@ private fun ExternalTtsConsentSheet(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(AppRadius.md))
+                    .clip(AppRoundedCornerShape(AppRadius.md))
                     .background(AppColors.BgGray)
                     .padding(horizontal = 12.dp, vertical = 2.dp)
             ) {
@@ -956,7 +956,7 @@ private fun ExternalTtsConsentSheet(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(AppRadius.md))
+                        .clip(AppRoundedCornerShape(AppRadius.md))
                         .background(MaterialTheme.colorScheme.error.copy(alpha = 0.08f))
                         .padding(AppSpace.md),
                     verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
@@ -1017,7 +1017,7 @@ private fun ExternalTtsConsentSheet(
             Spacer(Modifier.height(10.dp))
             LiquidGlassButton(
                 onClick = onDismiss,
-                shape = RoundedCornerShape(25.dp),
+                shape = AppRoundedCornerShape(25.dp),
                 tintedColor = if (isLiquidGlass) null else AppColors.BgGray,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1037,7 +1037,7 @@ private fun ExternalTtsConsentSheet(
         LiquidGlassDialog(
             onDismissRequest = onDismiss,
             alignment = Alignment.BottomCenter,
-            shape = RoundedCornerShape(28.dp),
+            shape = AppRoundedCornerShape(28.dp),
             contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
             backgroundScrimColor = Color.Black.copy(alpha = 0.12f)
         ) {
@@ -1051,13 +1051,13 @@ private fun ExternalTtsConsentSheet(
             containerColor = AppColors.CardBg,
             contentColor = AppColors.TextPrimary,
             scrimColor = Color.Black.copy(alpha = 0.12f),
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             dragHandle = {
                 Box(
                     Modifier
                         .padding(top = 12.dp)
                         .size(width = 36.dp, height = 4.dp)
-                        .background(AppColors.TextSecondary.copy(alpha = 0.25f), RoundedCornerShape(2.dp))
+                        .background(AppColors.TextSecondary.copy(alpha = 0.25f), AppRoundedCornerShape(2.dp))
                 )
             }
         ) {
@@ -1129,7 +1129,7 @@ private fun ExternalTtsHttpWarningSheet(
             Spacer(Modifier.height(10.dp))
             LiquidGlassButton(
                 onClick = onDismiss,
-                shape = RoundedCornerShape(25.dp),
+                shape = AppRoundedCornerShape(25.dp),
                 tintedColor = if (isLiquidGlass) null else AppColors.BgGray,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1149,7 +1149,7 @@ private fun ExternalTtsHttpWarningSheet(
         LiquidGlassDialog(
             onDismissRequest = onDismiss,
             alignment = Alignment.BottomCenter,
-            shape = RoundedCornerShape(28.dp),
+            shape = AppRoundedCornerShape(28.dp),
             contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
             backgroundScrimColor = Color.Black.copy(alpha = 0.12f)
         ) {
@@ -1163,13 +1163,13 @@ private fun ExternalTtsHttpWarningSheet(
             containerColor = AppColors.CardBg,
             contentColor = AppColors.TextPrimary,
             scrimColor = Color.Black.copy(alpha = 0.12f),
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             dragHandle = {
                 Box(
                     Modifier
                         .padding(top = 12.dp)
                         .size(width = 36.dp, height = 4.dp)
-                        .background(AppColors.TextSecondary.copy(alpha = 0.25f), RoundedCornerShape(2.dp))
+                        .background(AppColors.TextSecondary.copy(alpha = 0.25f), AppRoundedCornerShape(2.dp))
                 )
             }
         ) {

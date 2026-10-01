@@ -45,7 +45,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActionScope
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -593,7 +593,7 @@ fun TxtEditorScreen(
                     OutlinedButton(
                         onClick = { showReplaceAllDialog = false },
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(50),
+                        shape = AppRoundedCornerShape(50),
                         border = BorderStroke(1.dp, AppColors.Divider)
                     ) {
                         Text(stringResource(R.string.cancel))
@@ -604,7 +604,7 @@ fun TxtEditorScreen(
                             viewModel.replaceAll(textFieldValue.text, currentCursor())
                         },
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(50),
+                        shape = AppRoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(containerColor = AppColors.Accent)
                     ) {
                         Text(stringResource(R.string.confirm), color = Color.White)
@@ -636,7 +636,7 @@ fun TxtEditorScreen(
                     OutlinedButton(
                         onClick = { showDiscardDialog = false },
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(50),
+                        shape = AppRoundedCornerShape(50),
                         border = BorderStroke(1.dp, AppColors.Divider)
                     ) {
                         Text(stringResource(R.string.cancel))
@@ -644,7 +644,7 @@ fun TxtEditorScreen(
                     Button(
                         onClick = { showDiscardDialog = false; onNavigateBack(false) },
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(50),
+                        shape = AppRoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(containerColor = AppColors.Accent)
                     ) {
                         Text(stringResource(R.string.confirm), color = Color.White)
@@ -721,7 +721,7 @@ private fun TxtEditorActionCapsule(
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
-    val shape = if (label == null) CircleShape else RoundedCornerShape(23.dp)
+    val shape = if (label == null) CircleShape else AppRoundedCornerShape(23.dp)
     LiquidGlassSurface(
         shape = shape,
         fallbackColor = AppColors.BgGray,
@@ -792,7 +792,7 @@ private fun TxtEditorSearchSheet(
                 .fillMaxSize()
                 .background(AppColors.Scrim.copy(alpha = 0.18f * (1f - sheetOffset.value)))
         )
-        val sheetShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+        val sheetShape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -914,7 +914,7 @@ private fun TxtEditorSearchSheet(
                         onClick = onPrevious,
                         enabled = uiState.totalMatches > 0 && !uiState.isSearching,
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(22.dp),
+                        shape = AppRoundedCornerShape(22.dp),
                         border = BorderStroke(1.dp, AppColors.Divider)
                     ) {
                         Icon(
@@ -929,7 +929,7 @@ private fun TxtEditorSearchSheet(
                         onClick = onNext,
                         enabled = uiState.totalMatches > 0 && !uiState.isSearching,
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(22.dp),
+                        shape = AppRoundedCornerShape(22.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = AppColors.Accent)
                     ) {
                         Icon(
@@ -956,7 +956,7 @@ private fun TxtEditorSearchSheet(
                             onClick = onReplaceCurrent,
                             enabled = uiState.currentMatch != null && !uiState.isSearching,
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(22.dp),
+                            shape = AppRoundedCornerShape(22.dp),
                             border = BorderStroke(1.dp, AppColors.Divider)
                         ) {
                             Text(stringResource(R.string.txt_editor_replace_current))
@@ -965,7 +965,7 @@ private fun TxtEditorSearchSheet(
                             onClick = onReplaceAll,
                             enabled = uiState.totalMatches > 0 && !uiState.isSearching,
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(22.dp),
+                            shape = AppRoundedCornerShape(22.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = AppColors.Accent)
                         ) {
                             Text(stringResource(R.string.txt_editor_replace_all), color = Color.White)
@@ -995,7 +995,7 @@ private fun TxtEditorInput(
         trailingIcon = trailing,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = onSearch),
-        shape = RoundedCornerShape(24.dp),
+        shape = AppRoundedCornerShape(24.dp),
         colors = TextFieldDefaults.colors(
             focusedContainerColor = AppColors.BgGray,
             unfocusedContainerColor = AppColors.BgGray,
@@ -1039,7 +1039,7 @@ private fun TxtScopeSelector(
     }
 
     Row(
-        modifier = modifier.clip(RoundedCornerShape(20.dp)).background(AppColors.BgGray).padding(3.dp)
+        modifier = modifier.clip(AppRoundedCornerShape(20.dp)).background(AppColors.BgGray).padding(3.dp)
     ) {
         TxtScopeOption(
             text = stringResource(R.string.txt_editor_scope_chapter),
@@ -1066,7 +1066,7 @@ private fun TxtScopeOption(
     Box(
         modifier = modifier
             .height(34.dp)
-            .clip(RoundedCornerShape(17.dp))
+            .clip(AppRoundedCornerShape(17.dp))
             .background(if (selected) AppColors.Accent else Color.Transparent)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center

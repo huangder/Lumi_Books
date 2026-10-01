@@ -7,7 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -85,8 +85,8 @@ internal fun LumiAboutHeader(
             .padding(horizontal = AppSpace.md)
             .aspectRatio(1.46f)
             .testTag("lumi_about_header")
-            .shadow(8.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
-            .clip(RoundedCornerShape(AppRadius.lg))
+            .shadow(8.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .clip(AppRoundedCornerShape(AppRadius.lg))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -146,7 +146,7 @@ internal fun LumiAboutHeader(
                     .testTag("lumi_check_update")
                     .width(120.dp)
                     .height(40.dp)
-                    .clip(RoundedCornerShape(AppRadius.capsule))
+                    .clip(AppRoundedCornerShape(AppRadius.capsule))
                     .background(if (unlocked) Color.White.copy(alpha = 0.68f) else Color.White.copy(alpha = 0.36f))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },

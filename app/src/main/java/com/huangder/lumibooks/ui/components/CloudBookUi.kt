@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -195,7 +195,7 @@ fun BookCoverProgressOverlay(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = if (compact) 5.dp else 6.dp, bottom = if (compact) 6.dp else 7.dp)
-                    .clip(RoundedCornerShape(badgeCornerRadius))
+                    .clip(AppRoundedCornerShape(badgeCornerRadius))
                     .background(Color.Black.copy(alpha = 0.64f))
                     .padding(horizontal = if (compact) 3.dp else 4.dp, vertical = 1.dp)
             ) {
@@ -238,7 +238,7 @@ fun FinishedReadingIndicator(
     val circleColor = if (showContainer) Color(0xFF8E8E93) else indicatorColor
     val contentModifier = if (showContainer) {
         modifier
-            .clip(RoundedCornerShape(containerCornerRadius))
+            .clip(AppRoundedCornerShape(containerCornerRadius))
             .background(Color.Black.copy(alpha = 0.64f))
             .padding(horizontal = if (compact) 3.dp else 4.dp, vertical = 1.dp)
     } else {

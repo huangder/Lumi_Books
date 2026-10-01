@@ -5,7 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -271,7 +271,7 @@ internal fun CoverFlowScene(
 @Composable
 internal fun CoverFlowCover(book: Book, downloadState: BookDownloadState?, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val shape = RoundedCornerShape(2.dp)
+    val shape = AppRoundedCornerShape(2.dp)
     val request = remember(book.id, book.coverPath, context) {
         ImageRequest.Builder(context).data(book.coverPath)
             .memoryCacheKey(bookCoverMemoryCacheKey(book.id, book.coverPath)).build()

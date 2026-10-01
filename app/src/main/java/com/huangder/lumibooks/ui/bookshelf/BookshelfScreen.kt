@@ -11,7 +11,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -53,7 +52,8 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
+import com.huangder.lumibooks.ui.theme.drawAppShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -2518,6 +2518,7 @@ private fun BookGridItem(
         label = "bookSelectionOutline"
     )
     val selectionColor = AppColors.Accent
+    val selectionShape = AppRoundedCornerShape(22.dp)
 
     Column(
         modifier = Modifier
@@ -2526,14 +2527,14 @@ private fun BookGridItem(
                 drawContent()
                 if (selectionAlpha > 0.001f) {
                     val gap = 7.dp.toPx()
-                    drawRoundRect(
+                    drawAppShape(
+                        shape = selectionShape,
                         color = selectionColor.copy(alpha = selectionAlpha),
                         topLeft = Offset(-gap, -gap),
                         size = Size(
                             width = size.width + gap * 2f,
                             height = size.height + gap * 2f
                         ),
-                        cornerRadius = CornerRadius(22.dp.toPx()),
                         style = Stroke(width = 2.dp.toPx())
                     )
                 }
@@ -2582,8 +2583,8 @@ private fun BookGridItem(
                     scaleX = coverScale
                     scaleY = coverScale
                 }
-                .shadow(12.dp, RoundedCornerShape(coverCorner), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
-                .clip(RoundedCornerShape(coverCorner))
+                .shadow(12.dp, AppRoundedCornerShape(coverCorner), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+                .clip(AppRoundedCornerShape(coverCorner))
                 .background(AppColors.BgGray)
         ) {
             if (book.coverPath != null) {
@@ -2704,7 +2705,7 @@ private fun FolderListItem(
     onMove: () -> Unit
 ) {
     val eInkMode = LocalEInkMode.current
-    val shape = RoundedCornerShape(if (LocalAppTheme.current == "liquid_glass") 24.dp else 16.dp)
+    val shape = AppRoundedCornerShape(if (LocalAppTheme.current == "liquid_glass") 24.dp else 16.dp)
     Column(modifier = Modifier.fillMaxWidth()) {
         LiquidGlassSurface(
             shape = shape,
@@ -2882,7 +2883,7 @@ private fun FolderGridItem(
                 }
                 .shadow(
                     10.dp,
-                    RoundedCornerShape(coverCorner),
+                    AppRoundedCornerShape(coverCorner),
                     ambientColor = Color(0x08000000),
                     spotColor = Color(0x08000000)
                 )
@@ -2926,7 +2927,7 @@ private fun FolderGridItem(
 @Composable
 private fun AddBookListItem(onClick: () -> Unit) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
-    val shape = RoundedCornerShape(if (isLiquidGlass) 24.dp else 16.dp)
+    val shape = AppRoundedCornerShape(if (isLiquidGlass) 24.dp else 16.dp)
     LiquidGlassSurface(
         shape = shape,
         fallbackColor = AppColors.CardBg,
@@ -2978,6 +2979,7 @@ private fun AddBookListItem(onClick: () -> Unit) {
 @Composable
 private fun AddBookItem(onClick: () -> Unit) {
     val coverCorner = if (LocalAppTheme.current == "liquid_glass") 16.dp else AppRadius.sm
+    val coverShape = AppRoundedCornerShape(coverCorner)
     Column(
         modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onClick)
     ) {
@@ -2985,7 +2987,7 @@ private fun AddBookItem(onClick: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(0.75f)
-                .clip(RoundedCornerShape(coverCorner))
+                .clip(coverShape)
                 .background(AppColors.PageBg),
             contentAlignment = Alignment.Center
         ) {
@@ -2993,12 +2995,11 @@ private fun AddBookItem(onClick: () -> Unit) {
             val dividerColor = AppColors.Divider
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val pw = 2.dp.toPx()
-                val r = coverCorner.toPx()
                 val dashW = 8.dp.toPx()
                 val dashGap = 6.dp.toPx()
-                drawRoundRect(
+                drawAppShape(
+                    shape = coverShape,
                     color = dividerColor,
-                    cornerRadius = CornerRadius(r),
                     style = androidx.compose.ui.graphics.drawscope.Stroke(
                         width = pw,
                         pathEffect = PathEffect.dashPathEffect(floatArrayOf(dashW, dashGap))

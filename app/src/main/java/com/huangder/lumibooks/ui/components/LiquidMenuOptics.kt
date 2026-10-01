@@ -113,8 +113,9 @@ internal class LiquidMenuOptics {
         if (frame.distortion < 0.001f) null else effect(frame, 0f, density, true).asComposeRenderEffect()
 }
 
-// Inverse of LiquidMenuFrame.warp. The distance gradient follows the droplet neck,
-// so the refraction turns with the outline instead of revealing a rectangular lens.
+// Inverse of LiquidMenuFrame.warp. Refraction uses a same-radius circular SDF proxy,
+// as Backdrop does for continuous Shapes. The surface mask and rim use the actual
+// continuous outline; the existing optical warp and timing remain unchanged.
 private const val MenuLensShader = """
 uniform shader content;
 uniform float2 size;

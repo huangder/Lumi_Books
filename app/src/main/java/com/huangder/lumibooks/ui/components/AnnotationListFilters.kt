@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.components
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -85,6 +86,17 @@ private fun <T> AnnotationFilterMenu(
     val host = LocalLiquidGlassMenuHost.current
     val sourceId = remember { Any() }
     var bounds by remember { mutableStateOf(Rect.Zero) }
+    var pendingSelection by remember { mutableStateOf<(() -> Unit)?>(null) }
+    // The menu owns a frozen image of the trigger during its return animation.
+    // Keep that trigger's label/swatch unchanged until the handoff is complete;
+    // otherwise the old image gets scaled into the new size, then jumps back.
+    LaunchedEffect(pendingSelection, host?.displayedMenu) {
+        if (host?.displayedMenu == null) {
+            pendingSelection?.invoke()
+            pendingSelection = null
+        }
+    }
+    val selectValue: (T?) -> Unit = { value -> pendingSelection = { onSelect(value) } }
     val selectedColor = colorFor?.invoke(selected)
     val textColor = AppColors.TextPrimary
     val accent = AppColors.Accent
@@ -94,13 +106,13 @@ private fun <T> AnnotationFilterMenu(
     val spec = LiquidGlassMenuSpec(
         anchorBounds = bounds, width = menuWidth, sourceId = sourceId, alignEnd = false,
         keepTriggerInteractive = false,
-        items = choices.map { (value, text) -> LiquidGlassMenuItem(text, selected = value == selected) { onSelect(value) } },
+        items = choices.map { (value, text) -> LiquidGlassMenuItem(text, selected = value == selected) { selectValue(value) } },
         content = if (colorFor == null) null else { enabled, select ->
             Column {
                 choices.forEach { (value, text) ->
                     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
                         .semantics { this.selected = value == selected }
-                        .clickable(enabled = enabled) { select { onSelect(value) } }
+                        .clickable(enabled = enabled) { select { selectValue(value) } }
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -116,15 +128,17 @@ private fun <T> AnnotationFilterMenu(
     )
     LiquidGlassButton(
         onClick = { host?.toggle(spec) },
-        modifier = Modifier.liquidGlassMenuAnchor(sourceId).onGloballyPositioned { bounds = it.boundsInRoot() },
+        modifier = Modifier.liquidGlassMenuAnchor(sourceId)
+            .onGloballyPositioned { bounds = it.boundsInRoot() }.animateContentSize(),
+        compact = true,
         tintedColor = if (selected != null) AppColors.Accent else null,
         contentColor = if (selected != null) AppColors.OnAccent else AppColors.TextPrimary
     ) {
-        selectedColor?.let { Box(Modifier.padding(end = 6.dp).size(14.dp).clip(CircleShape).background(it)) }
+        selectedColor?.let { Box(Modifier.padding(end = 4.dp).size(12.dp).clip(CircleShape).background(it)) }
         Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            fontSize = AppType.BodySmall, modifier = Modifier.widthIn(max = 150.dp))
-        Spacer(Modifier.width(6.dp))
-        Icon(AppIcons.CaretDown, null, modifier = Modifier.size(14.dp))
+            fontSize = 13.sp, modifier = Modifier.widthIn(max = 150.dp))
+        Spacer(Modifier.width(4.dp))
+        Icon(AppIcons.CaretDown, null, modifier = Modifier.size(12.dp))
     }
 }
 

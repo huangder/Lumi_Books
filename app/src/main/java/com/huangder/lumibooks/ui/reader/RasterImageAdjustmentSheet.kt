@@ -46,7 +46,7 @@ internal fun RasterImageAdjustmentSheet(
                 .materialBottomSheetMotion(offset.value, backProgress),
             contentModifier = Modifier.navigationBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
             fallbackColor = AppColors.CardBg,
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+            shape = com.huangder.lumibooks.ui.theme.AppRoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.reader_image_adjustment), Modifier.weight(1f), fontSize = 18.sp, color = AppColors.TextPrimary)

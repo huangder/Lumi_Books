@@ -45,7 +45,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -745,7 +745,7 @@ private fun TabItemView(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(AppRoundedCornerShape(16.dp))
             .semantics { testTagsAsResourceId = true }
             .testTag(tab.testTag)
             .clickable(
@@ -757,7 +757,7 @@ private fun TabItemView(
         Box(
             modifier = Modifier
                 .size(40.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(AppRoundedCornerShape(12.dp))
                 .background(
                     if (isSelected) AppColors.Accent.copy(alpha = 0.16f)
                     else Color.Transparent

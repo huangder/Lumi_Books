@@ -17,10 +17,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -34,6 +32,8 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
+import com.huangder.lumibooks.ui.theme.toAppPath
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -60,7 +60,7 @@ fun CoverCropOverlay(
     val cornerTouchRadius = with(density) { 26.dp.toPx() }
     val borderStroke = with(density) { 2.5f.dp.toPx() }
     val gridStroke = with(density) { 0.75f.dp.toPx() }
-    val frameCornerRadius = with(density) { 16.dp.toPx() }
+    val frameShape = AppRoundedCornerShape(16.dp)
 
     // 0=左上 1=右上 2=右下 3=左下；-1=整体拖动；null=未命中
     var dragMode by remember { mutableStateOf<Int?>(null) }
@@ -146,26 +146,15 @@ fun CoverCropOverlay(
 
             // 遮罩镂空：外矩形减去圆角框
             val outer = Path().apply { addRect(Rect(0f, 0f, size.width, size.height)) }
-            val hole = Path().apply {
-                addRoundRect(
-                    RoundRect(
-                        left = currentFrame.left,
-                        top = currentFrame.top,
-                        right = currentFrame.right,
-                        bottom = currentFrame.bottom,
-                        cornerRadius = CornerRadius(frameCornerRadius, frameCornerRadius)
-                    )
-                )
-            }
+            val hole = frameShape.createOutline(currentFrame.size, layoutDirection, this).toAppPath()
+                .apply { translate(currentFrame.topLeft) }
             val scrimPath = Path.combine(PathOperation.Difference, outer, hole)
             drawPath(scrimPath, color = Color.Black.copy(alpha = 0.45f))
 
             // 框边框
-            drawRoundRect(
+            drawPath(
+                path = hole,
                 color = Color.White.copy(alpha = 0.95f),
-                topLeft = Offset(currentFrame.left, currentFrame.top),
-                size = Size(currentFrame.width, currentFrame.height),
-                cornerRadius = CornerRadius(frameCornerRadius, frameCornerRadius),
                 style = Stroke(width = borderStroke)
             )
 

@@ -38,7 +38,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
+import com.huangder.lumibooks.ui.theme.drawAppShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
@@ -54,7 +55,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -265,7 +265,7 @@ private fun PeriodSegmentedControl(
     }
 
     val motionEnabled = LocalMotionEnabled.current
-    val shape = RoundedCornerShape(AppRadius.md)
+    val shape = AppRoundedCornerShape(AppRadius.md)
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
@@ -286,10 +286,10 @@ private fun PeriodSegmentedControl(
                 .offset(x = indicatorOffset)
                 .width(segmentWidth)
                 .fillMaxSize()
-                .shadow(3.dp, RoundedCornerShape(AppRadius.sm))
-                .cardOutline(RoundedCornerShape(AppRadius.sm))
-                .clip(RoundedCornerShape(AppRadius.sm))
-                .lumiCardSurface(shape = RoundedCornerShape(AppRadius.sm))
+                .shadow(3.dp, AppRoundedCornerShape(AppRadius.sm))
+                .cardOutline(AppRoundedCornerShape(AppRadius.sm))
+                .clip(AppRoundedCornerShape(AppRadius.sm))
+                .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.sm))
         )
         Row(modifier = Modifier.fillMaxSize()) {
             labels.forEachIndexed { index, label ->
@@ -297,7 +297,7 @@ private fun PeriodSegmentedControl(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxSize()
-                        .clip(RoundedCornerShape(AppRadius.sm))
+                        .clip(AppRoundedCornerShape(AppRadius.sm))
                         .clickable(
                             indication = null,
                             interactionSource = remember { MutableInteractionSource() }
@@ -397,10 +397,10 @@ private fun WeeklyOverview(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
-            .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
-            .cardOutline(RoundedCornerShape(AppRadius.lg))
-            .clip(RoundedCornerShape(AppRadius.lg))
-            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.lg))
+            .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .cardOutline(AppRoundedCornerShape(AppRadius.lg))
+            .clip(AppRoundedCornerShape(AppRadius.lg))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
             .padding(AppSpace.md)
     ) {
         // 标题 + 导航箭头
@@ -419,7 +419,7 @@ private fun WeeklyOverview(
             Box(
                 modifier = Modifier
                     .size(28.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(AppRoundedCornerShape(6.dp))
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { viewModel.previousWeek() },
                 contentAlignment = Alignment.Center
             ) {
@@ -434,7 +434,7 @@ private fun WeeklyOverview(
             Box(
                 modifier = Modifier
                     .size(28.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(AppRoundedCornerShape(6.dp))
                     .clickable(
                         enabled = !isCurrentWeek,
                         indication = null,
@@ -482,11 +482,11 @@ private fun WeeklyOverview(
         val accentArgb = android.graphics.Color.argb((accentColor.alpha * 255).toInt(), (accentColor.red * 255).toInt(), (accentColor.green * 255).toInt(), (accentColor.blue * 255).toInt())
         val textSecArgb2 = android.graphics.Color.argb((textSecColor.alpha * 255).toInt(), (textSecColor.red * 255).toInt(), (textSecColor.green * 255).toInt(), (textSecColor.blue * 255).toInt())
 
+        val barShape = AppRoundedCornerShape(4.dp)
         Canvas(modifier = Modifier.fillMaxWidth().height(128.dp)) {
             val labelHeight = labelSize.toPx() + 6.dp.toPx()
             val barAreaHeight = size.height - labelHeight
             val barWidth = size.width / (7 * 2 - 1)
-            val cornerRadius = 4.dp.toPx()
 
             // 柱体
             weeklyMinutes.forEachIndexed { index, value ->
@@ -496,11 +496,11 @@ private fun WeeklyOverview(
                 val isToday = index == todayIndex
                 val visibleHeight = if (value > 0f) maxOf(barHeight, 2.dp.toPx()) else 0f
 
-                drawRoundRect(
+                drawAppShape(
+                    shape = barShape,
                     color = if (isToday) accentColor else accentDim,
                     topLeft = Offset(x, barAreaHeight - visibleHeight),
-                    size = Size(barWidth, visibleHeight),
-                    cornerRadius = CornerRadius(cornerRadius, cornerRadius)
+                    size = Size(barWidth, visibleHeight)
                 )
             }
 
@@ -546,10 +546,10 @@ private fun MonthlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsView
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
-            .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
-            .cardOutline(RoundedCornerShape(AppRadius.lg))
-            .clip(RoundedCornerShape(AppRadius.lg))
-            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.lg))
+            .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .cardOutline(AppRoundedCornerShape(AppRadius.lg))
+            .clip(AppRoundedCornerShape(AppRadius.lg))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
             .padding(AppSpace.md)
     ) {
         // 月份标题 + 导航箭头
@@ -583,7 +583,7 @@ private fun MonthlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsView
             Box(
                 modifier = Modifier
                     .size(28.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(AppRoundedCornerShape(6.dp))
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { viewModel.previousMonth() },
                 contentAlignment = Alignment.Center
             ) {
@@ -599,7 +599,7 @@ private fun MonthlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsView
             Box(
                 modifier = Modifier
                     .size(28.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(AppRoundedCornerShape(6.dp))
                     .clickable(
                         enabled = !isCurrentMonth,
                         indication = null,
@@ -672,10 +672,10 @@ private fun MonthlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsView
                                 .weight(1f)
                                 .aspectRatio(1f)
                                 .padding(2.dp)
-                                .clip(RoundedCornerShape(4.dp))
+                                .clip(AppRoundedCornerShape(4.dp))
                                 .background(color)
                                 .then(
-                                    if (isToday) Modifier.border(1.5.dp, AppColors.Accent, RoundedCornerShape(4.dp))
+                                    if (isToday) Modifier.border(1.5.dp, AppColors.Accent, AppRoundedCornerShape(4.dp))
                                     else Modifier
                                 ),
                             contentAlignment = Alignment.Center
@@ -746,10 +746,10 @@ private fun YearlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewM
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
-            .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
-            .cardOutline(RoundedCornerShape(AppRadius.lg))
-            .clip(RoundedCornerShape(AppRadius.lg))
-            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.lg))
+            .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .cardOutline(AppRoundedCornerShape(AppRadius.lg))
+            .clip(AppRoundedCornerShape(AppRadius.lg))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
             .padding(AppSpace.md)
     ) {
         // 标题 + 导航箭头
@@ -768,7 +768,7 @@ private fun YearlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewM
             Box(
                 modifier = Modifier
                     .size(28.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(AppRoundedCornerShape(6.dp))
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { viewModel.previousYear() },
                 contentAlignment = Alignment.Center
             ) {
@@ -783,7 +783,7 @@ private fun YearlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewM
             Box(
                 modifier = Modifier
                     .size(28.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(AppRoundedCornerShape(6.dp))
                     .clickable(
                         enabled = !isCurrentYear,
                         indication = null,
@@ -827,6 +827,7 @@ private fun YearlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewM
         val gapDp = 2
         val gridWidth = (weeks * (cellSizeDp + gapDp)).dp
         val gridHeight = (14 + 7 * 12 + 2).dp
+        val cellShape = AppRoundedCornerShape(2.dp)
 
         Box(modifier = Modifier.horizontalScroll(rememberScrollState())) {
         Canvas(
@@ -837,7 +838,6 @@ private fun YearlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewM
             val cellSizePx = cellSizeDp.dp.toPx()
             val gapPx = gapDp.dp.toPx()
             val cellStepPx = cellSizePx + gapPx
-            val cornerRadius = 2.dp.toPx()
 
             // 月份标签
             var lastMonth = -1
@@ -892,11 +892,11 @@ private fun YearlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewM
                         }
                     }
 
-                    drawRoundRect(
+                    drawAppShape(
+                        shape = cellShape,
                         color = color,
                         topLeft = Offset(week * cellStepPx, gridTop + dayOfWeek * cellStepPx),
-                        size = Size(cellSizePx, cellSizePx),
-                        cornerRadius = CornerRadius(cornerRadius, cornerRadius)
+                        size = Size(cellSizePx, cellSizePx)
                     )
                 }
             }
@@ -918,7 +918,7 @@ private fun YearlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewM
                     modifier = Modifier
                         .size(10.dp)
                         .padding(1.dp)
-                        .clip(RoundedCornerShape(2.dp))
+                        .clip(AppRoundedCornerShape(2.dp))
                         .background(c)
                 )
             }
@@ -934,10 +934,10 @@ private fun MostReadBooks(books: List<MostReadBook>) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
-            .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
-            .cardOutline(RoundedCornerShape(AppRadius.lg))
-            .clip(RoundedCornerShape(AppRadius.lg))
-            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.lg))
+            .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .cardOutline(AppRoundedCornerShape(AppRadius.lg))
+            .clip(AppRoundedCornerShape(AppRadius.lg))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
             .cardPressEffect()
             .padding(AppSpace.md)
     ) {
@@ -961,7 +961,7 @@ private fun MostReadBooks(books: List<MostReadBook>) {
                         contentDescription = book.title,
                         modifier = Modifier
                             .size(40.dp, 53.dp)
-                            .clip(RoundedCornerShape(4.dp))
+                            .clip(AppRoundedCornerShape(4.dp))
                             .background(AppColors.BgGray),
                         contentScale = ContentScale.Crop
                     )
@@ -994,10 +994,10 @@ private fun CompletionProgress(uiState: StatisticsUiState) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
-            .shadow(12.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
-            .cardOutline(RoundedCornerShape(AppRadius.lg))
-            .clip(RoundedCornerShape(AppRadius.lg))
-            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.lg))
+            .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .cardOutline(AppRoundedCornerShape(AppRadius.lg))
+            .clip(AppRoundedCornerShape(AppRadius.lg))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
             .cardPressEffect()
             .padding(AppSpace.lg)
     ) {
@@ -1011,7 +1011,7 @@ private fun CompletionProgress(uiState: StatisticsUiState) {
         Spacer(Modifier.height(AppSpace.sm))
         LinearProgressIndicator(
             progress = { uiState.goalProgress },
-            modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+            modifier = Modifier.fillMaxWidth().height(6.dp).clip(AppRoundedCornerShape(3.dp)),
             color = AppColors.Accent,
             trackColor = AppColors.Divider
         )

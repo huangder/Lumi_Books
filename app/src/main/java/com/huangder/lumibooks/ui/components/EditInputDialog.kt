@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,9 +41,9 @@ import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 
 /**
- * 贝塞尔 G2 连续曲线圆角——曲率在连接处平滑过渡，比普通圆角更圆润有机
+ * Retains the original circular Bezier outline for the Material 3 theme.
  */
-private class G2ContinuousShape(private val cornerRadius: Float) : Shape {
+private class LegacyEditDialogShape(private val cornerRadius: Float) : Shape {
     override fun createOutline(size: Size, layoutDirection: androidx.compose.ui.unit.LayoutDirection, density: androidx.compose.ui.unit.Density): Outline {
         val w = size.width
         val h = size.height
@@ -97,9 +97,9 @@ fun EditInputDialog(
     }
 
     val density = LocalDensity.current
-    val g2Shape = remember(density) {
-        G2ContinuousShape(with(density) { 36.dp.toPx() })
-    }
+    val g2Shape = if (LocalAppTheme.current == "material3") {
+        remember(density) { LegacyEditDialogShape(with(density) { 36.dp.toPx() }) }
+    } else AppRoundedCornerShape(36.dp)
 
     Column(
         modifier = Modifier
@@ -159,7 +159,7 @@ fun EditInputDialog(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(AppRadius.lg))
+                    .clip(AppRoundedCornerShape(AppRadius.lg))
                     .background(AppColors.BgGray)
                     .padding(horizontal = AppSpace.md, vertical = 14.dp)
             ) {

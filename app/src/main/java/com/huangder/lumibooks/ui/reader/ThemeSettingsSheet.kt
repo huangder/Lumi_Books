@@ -48,7 +48,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
+import com.huangder.lumibooks.ui.theme.drawAppShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -88,7 +89,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -298,7 +298,7 @@ fun ThemeSettingsSheet(
     val isDark = isAppDark
     val sheetScrimAlpha = if (isLiquidGlass) 0.20f else 0.08f
     val sheetContentBackdrop = rememberLayerBackdrop()
-    val sheetShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+    val sheetShape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
 
     Box(Modifier.fillMaxSize()) {
         // 遮罩
@@ -389,7 +389,7 @@ fun ThemeSettingsSheet(
                 Spacer(Modifier.weight(1f))
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(AppRoundedCornerShape(8.dp))
                         .clickable(
                             indication = null,
                             interactionSource = remember { MutableInteractionSource() }
@@ -1224,7 +1224,7 @@ private fun ThemeSuiteCard(
     onClick: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
-    val shape = RoundedCornerShape(14.dp)
+    val shape = AppRoundedCornerShape(14.dp)
     val settings = suite.settingsFor(layout, editingDark)
     val backgroundPreset = customBackgrounds.firstOrNull {
         it.selectionKey == settings.backgroundSelection
@@ -1247,7 +1247,7 @@ private fun ThemeSuiteCard(
         Box(
             modifier = Modifier
                 .size(width = 104.dp, height = 132.dp)
-                .then(if (isSelected) Modifier.border(2.dp, AccentColor, RoundedCornerShape(18.dp)) else Modifier)
+                .then(if (isSelected) Modifier.border(2.dp, AccentColor, AppRoundedCornerShape(18.dp)) else Modifier)
                 .padding(4.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -1329,16 +1329,16 @@ private fun ThemeSuiteCard(
 
 @Composable
 private fun AddThemeSuiteCard(onClick: () -> Unit) {
-    val shape = RoundedCornerShape(14.dp)
+    val shape = AppRoundedCornerShape(14.dp)
     val strokeColor = LightTextSecondary
     Box(
         modifier = Modifier
             .size(width = 104.dp, height = 132.dp)
             .padding(4.dp)
             .drawBehind {
-                drawRoundRect(
+                drawAppShape(
+                    shape = shape,
                     color = strokeColor,
-                    cornerRadius = CornerRadius(14.dp.toPx()),
                     style = Stroke(
                         width = 1.5.dp.toPx(),
                         pathEffect = PathEffect.dashPathEffect(
@@ -1397,7 +1397,7 @@ private fun NewThemeSuiteDialog(
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(24.dp),
+        shape = AppRoundedCornerShape(24.dp),
         transparencyOverride = (LocalLiquidGlassTransparency.current - 0.10f).coerceIn(0f, 0.90f),
         backgroundBlurRadius = 12.dp
     ) {
@@ -1412,12 +1412,12 @@ private fun NewThemeSuiteDialog(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(AppRoundedCornerShape(14.dp))
                     .background(LightBgGray)
                     .border(
                         1.dp,
                         if (name.isNotEmpty() && error != null) Color(0xFFFF3B30) else LightDivider,
-                        RoundedCornerShape(14.dp)
+                        AppRoundedCornerShape(14.dp)
                     )
                     .padding(horizontal = 16.dp, vertical = 14.dp)
             ) {
@@ -1751,7 +1751,7 @@ private fun CustomBackgroundDialog(
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
         backdrop = backdrop,
-        shape = RoundedCornerShape(24.dp),
+        shape = AppRoundedCornerShape(24.dp),
         transparencyOverride = dialogTransparency
     ) {
             Column(Modifier.padding(horizontal = 28.dp, vertical = 20.dp)) {
@@ -1786,9 +1786,9 @@ private fun CustomBackgroundDialog(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(AppRoundedCornerShape(14.dp))
                         .background(LightBgGray)
-                        .border(1.dp, LightDivider, RoundedCornerShape(14.dp))
+                        .border(1.dp, LightDivider, AppRoundedCornerShape(14.dp))
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
                     BasicTextField(
@@ -1844,7 +1844,7 @@ private fun CustomBackgroundDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(44.dp)
-                        .border(1.dp, LightDivider, RoundedCornerShape(22.dp))
+                        .border(1.dp, LightDivider, AppRoundedCornerShape(22.dp))
                 ) {
                         Icon(
                             imageVector = AppIcons.Image,
@@ -1905,10 +1905,10 @@ private fun ThemeButton(
     Box(
         modifier = modifier
             .height(48.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(AppRoundedCornerShape(12.dp))
             .then(
                 if (isSelected || hasBorder) {
-                    Modifier.border(1.dp, borderColor, RoundedCornerShape(12.dp))
+                    Modifier.border(1.dp, borderColor, AppRoundedCornerShape(12.dp))
                 } else {
                     Modifier
                 }
@@ -1936,9 +1936,9 @@ private fun ModeButton(
     Box(
         modifier = modifier
             .height(44.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(AppRoundedCornerShape(12.dp))
             .then(
-                if (isSelected) Modifier.border(1.5.dp, AppColors.TextPrimary, RoundedCornerShape(12.dp))
+                if (isSelected) Modifier.border(1.5.dp, AppColors.TextPrimary, AppRoundedCornerShape(12.dp))
                 else Modifier
             )
             .background(if (isSelected) LightBgGray else AppColors.CardBg)
@@ -2107,8 +2107,10 @@ fun ReaderSettingsSegmentedTag(
     }
 }
 
-private val MarginTargetTagShape = RoundedCornerShape(14.dp)
-private val MarginTargetSegmentShape = RoundedCornerShape(11.dp)
+private val MarginTargetTagShape: androidx.compose.ui.graphics.Shape
+    @Composable get() = AppRoundedCornerShape(14.dp)
+private val MarginTargetSegmentShape: androidx.compose.ui.graphics.Shape
+    @Composable get() = AppRoundedCornerShape(11.dp)
 private val MarginTargetSegmentHeight = 30.dp
 private val SegmentTrackPadding = 3.dp
 private val SegmentHorizontalPadding = 16.dp
@@ -2187,7 +2189,7 @@ private fun ReaderModeModule(
             return@Column
         }
 
-        val shape = RoundedCornerShape(12.dp)
+        val shape = AppRoundedCornerShape(12.dp)
         val containerModifier = if (glass) {
             val isDark = LocalIsDarkTheme.current
             val transparency = LocalLiquidGlassTransparency.current
@@ -2263,7 +2265,7 @@ private fun ReaderModeModule(
                         .offset(x = indicatorX)
                         .width(with(density) { cellWidthPx.toDp() })
                         .height(40.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(AppRoundedCornerShape(8.dp))
                         .background(AppColors.CardBg)
                 )
             }
@@ -2539,7 +2541,7 @@ fun AdvancedSettingsSheet(
                 .navigationBarsPadding()
                 .graphicsLayer { alpha = if (marginPreview == null) 1f else 0f },
             fallbackColor = LightCardBg,
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             surfaceVisible = marginPreview == null
         ) {
             // 顶部预览区域：背景直接铺到容器顶部，操作按钮悬浮在预览之上。
@@ -3096,7 +3098,7 @@ fun AdvancedSettingsSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp)
-                        .clip(RoundedCornerShape(24.dp))
+                        .clip(AppRoundedCornerShape(24.dp))
                         .background(LightBgGray)
                         .clickable(
                             indication = null,
@@ -3184,7 +3186,7 @@ private fun AdvancedSettingsGroup(
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkModeEnabled
     val isDark = LocalIsDarkTheme.current
     val transparency = LocalLiquidGlassTransparency.current
-    val shape = RoundedCornerShape(16.dp)
+    val shape = AppRoundedCornerShape(16.dp)
     val surfaceAlpha = if (isDark) {
         0.43f - transparency * 0.12f
     } else {
@@ -3236,7 +3238,7 @@ private fun AdvancedSettingsSection(
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkModeEnabled
     val isDark = LocalIsDarkTheme.current
     val transparency = LocalLiquidGlassTransparency.current
-    val shape = RoundedCornerShape(16.dp)
+    val shape = AppRoundedCornerShape(16.dp)
     val surfaceAlpha = if (isDark) 0.43f - transparency * 0.12f else 0.59f - transparency * 0.18f
     val container = if (isLiquidGlass) {
         Modifier
@@ -3300,7 +3302,7 @@ private fun ImageAdjustmentEntry(enabled: Boolean, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(AppRoundedCornerShape(12.dp))
             .clickable(enabled = enabled, onClick = onClick)
             .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -3413,7 +3415,7 @@ private fun ReaderCornerSelectionRow(
                     .width(158.dp)
                     .height(36.dp)
                     .liquidGlassMenuAnchor(cornerRadius = 14.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(AppRoundedCornerShape(14.dp))
                     .background(LightBgGray)
                     .onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
                     .clickable {
@@ -3461,7 +3463,7 @@ private fun ReaderCornerSelectionRow(
             DropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
-                shape = RoundedCornerShape(18.dp),
+                shape = AppRoundedCornerShape(18.dp),
                 containerColor = LightCardBg,
                 tonalElevation = 0.dp,
                 shadowElevation = 0.dp
@@ -3519,7 +3521,7 @@ private fun TextAlignmentSetting(
                     .width(158.dp)
                     .height(36.dp)
                     .liquidGlassMenuAnchor(cornerRadius = 14.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(AppRoundedCornerShape(14.dp))
                     .background(LightBgGray)
                     .onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
                     .clickable {
@@ -3569,7 +3571,7 @@ private fun TextAlignmentSetting(
             DropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
-                shape = RoundedCornerShape(18.dp),
+                shape = AppRoundedCornerShape(18.dp),
                 containerColor = LightCardBg,
                 tonalElevation = 0.dp,
                 shadowElevation = 0.dp
@@ -3637,7 +3639,7 @@ private fun ReaderEdgeTapModeSetting(
                     .width(158.dp)
                     .height(38.dp)
                     .liquidGlassMenuAnchor(cornerRadius = 14.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(AppRoundedCornerShape(14.dp))
                     .background(LightBgGray)
                     .onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
                     .clickable {
@@ -3687,7 +3689,7 @@ private fun ReaderEdgeTapModeSetting(
             DropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
-                shape = RoundedCornerShape(18.dp),
+                shape = AppRoundedCornerShape(18.dp),
                 containerColor = LightCardBg,
                 tonalElevation = 0.dp,
                 shadowElevation = 0.dp
@@ -3754,7 +3756,7 @@ private fun ScreenSleepTimeoutSetting(
                     .width(128.dp)
                     .height(38.dp)
                     .liquidGlassMenuAnchor(cornerRadius = 14.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(AppRoundedCornerShape(14.dp))
                     .background(LightBgGray)
                     .onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
                     .clickable {
@@ -3804,7 +3806,7 @@ private fun ScreenSleepTimeoutSetting(
             DropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
-                shape = RoundedCornerShape(18.dp),
+                shape = AppRoundedCornerShape(18.dp),
                 containerColor = LightCardBg,
                 tonalElevation = 0.dp,
                 shadowElevation = 0.dp
@@ -4133,7 +4135,7 @@ private fun TextColorDialog(
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(24.dp),
+        shape = AppRoundedCornerShape(24.dp),
         transparencyOverride = dialogTransparency
     ) {
             Column(Modifier.padding(horizontal = 28.dp, vertical = 20.dp)) {
@@ -4235,7 +4237,7 @@ private fun SliderValueInputDialog(
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(24.dp),
+        shape = AppRoundedCornerShape(24.dp),
         transparencyOverride = dialogTransparency
     ) {
         Column(Modifier.padding(horizontal = 28.dp, vertical = 20.dp)) {
@@ -4267,9 +4269,9 @@ private fun SliderValueInputDialog(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
+                    .clip(AppRoundedCornerShape(16.dp))
                     .background(LightBgGray)
-                    .border(1.5.dp, borderColor, RoundedCornerShape(16.dp))
+                    .border(1.5.dp, borderColor, AppRoundedCornerShape(16.dp))
                     .padding(vertical = 16.dp, horizontal = 20.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -4358,7 +4360,7 @@ internal fun SettingSlider(
         // 点击数值弹出精细输入对话框
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
+                .clip(AppRoundedCornerShape(8.dp))
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() }
@@ -4496,10 +4498,10 @@ private fun FontSelector(
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(48.dp)
-                                    .clip(RoundedCornerShape(12.dp))
+                                    .clip(AppRoundedCornerShape(12.dp))
                                     .then(
-                                        if (isSelected) Modifier.border(2.dp, AccentColor, RoundedCornerShape(12.dp))
-                                        else Modifier.border(1.dp, LightTextSecondary, RoundedCornerShape(12.dp))
+                                        if (isSelected) Modifier.border(2.dp, AccentColor, AppRoundedCornerShape(12.dp))
+                                        else Modifier.border(1.dp, LightTextSecondary, AppRoundedCornerShape(12.dp))
                                     )
                                     .background(AppColors.CardBg)
                                     .pointerInput(preset.id, isDeleteArmed) {
@@ -4542,8 +4544,8 @@ private fun FontSelector(
                             modifier = Modifier
                                 .weight(1f)
                                 .height(48.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .border(1.dp, LightTextSecondary, RoundedCornerShape(12.dp))
+                                .clip(AppRoundedCornerShape(12.dp))
+                                .border(1.dp, LightTextSecondary, AppRoundedCornerShape(12.dp))
                                 .background(AppColors.CardBg)
                                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                                     deleteArmedId = null
@@ -4608,7 +4610,7 @@ private fun FontImportNameDialog(
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
         backdrop = backdrop,
-        shape = RoundedCornerShape(24.dp),
+        shape = AppRoundedCornerShape(24.dp),
         transparencyOverride = (LocalLiquidGlassTransparency.current - 0.10f).coerceIn(0f, 0.90f),
         backgroundBlurRadius = 12.dp
     ) {
@@ -4631,9 +4633,9 @@ private fun FontImportNameDialog(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(AppRoundedCornerShape(14.dp))
                     .background(LightBgGray)
-                    .border(1.dp, LightDivider, RoundedCornerShape(14.dp))
+                    .border(1.dp, LightDivider, AppRoundedCornerShape(14.dp))
                     .padding(horizontal = 16.dp, vertical = 14.dp)
             ) {
                 BasicTextField(
@@ -4690,10 +4692,10 @@ private fun FontButton(
     Box(
         modifier = modifier
             .height(48.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(AppRoundedCornerShape(12.dp))
             .then(
                 if (isSelected) {
-                    Modifier.border(1.dp, AppColors.TextPrimary, RoundedCornerShape(12.dp))
+                    Modifier.border(1.dp, AppColors.TextPrimary, AppRoundedCornerShape(12.dp))
                 } else {
                     Modifier
                 }

@@ -30,7 +30,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.HorizontalDivider
@@ -251,7 +251,7 @@ fun HighlightRulesSheet(
                 .navigationBarsPadding()
                 .padding(start = 24.dp, top = 20.dp, end = 24.dp, bottom = 16.dp),
             fallbackColor = AppColors.CardBg,
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             backdrop = backdrop,
             forceFallback = eInkModeEnabled
         ) {
@@ -667,7 +667,7 @@ private fun HighlightRuleRow(
     val error = remember(rule) { HighlightRuleMatcher.validationError(rule) }
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = AppRoundedCornerShape(18.dp),
         color = AppColors.BgGray
     ) {
         Column(Modifier.padding(14.dp)) {
@@ -856,7 +856,7 @@ private fun HighlightRuleEditorSheet(
                 .navigationBarsPadding()
                 .padding(start = 24.dp, top = 20.dp, end = 24.dp, bottom = 16.dp),
             fallbackColor = AppColors.CardBg,
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             backdrop = backdrop,
             forceFallback = forceFallback
         ) {
@@ -1044,7 +1044,7 @@ private fun HighlightRuleEditorSheet(
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         color = AppColors.BgGray,
-                        shape = RoundedCornerShape(12.dp)
+                        shape = AppRoundedCornerShape(12.dp)
                     ) {
                         Text(
                             text = if (sample.isBlank()) {
@@ -1109,7 +1109,7 @@ private fun RuleEditorTextField(
     isError: Boolean = false,
     placeholder: String? = null
 ) {
-    val shape = RoundedCornerShape(8.dp)
+    val shape = AppRoundedCornerShape(8.dp)
     Column(modifier = modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(label, fontSize = 12.sp, color = AppColors.TextSecondary)
         Box(
@@ -1204,7 +1204,7 @@ private fun HighlightRuleColorDialog(
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(24.dp)
+        shape = AppRoundedCornerShape(24.dp)
     ) {
         Column(
             modifier = Modifier
@@ -1377,7 +1377,7 @@ private fun RuleFontSelector(
                 .fillMaxWidth()
                 .height(48.dp)
                 .liquidGlassMenuAnchor(cornerRadius = 14.dp)
-                .clip(RoundedCornerShape(14.dp))
+                .clip(AppRoundedCornerShape(14.dp))
                 .background(AppColors.BgGray)
                 .onGloballyPositioned { anchorBounds = it.boundsInRoot() }
                 .clickable {
@@ -1406,7 +1406,7 @@ private fun RuleFontSelector(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .heightIn(min = 44.dp)
-                                                .clip(RoundedCornerShape(10.dp))
+                                                .clip(AppRoundedCornerShape(10.dp))
                                                 .clickable(enabled = enabled) {
                                                     select { selectOption(option) }
                                                 }
@@ -1453,7 +1453,7 @@ private fun RuleFontSelector(
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            shape = RoundedCornerShape(18.dp),
+            shape = AppRoundedCornerShape(18.dp),
             containerColor = AppColors.CardBg,
             tonalElevation = 0.dp,
             shadowElevation = 0.dp

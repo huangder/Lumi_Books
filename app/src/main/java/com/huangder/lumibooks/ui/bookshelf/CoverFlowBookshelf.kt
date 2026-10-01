@@ -303,6 +303,7 @@ internal fun CoverFlowBookshelf(
         val hero = books.firstOrNull { it.id == heroBookId }
         val source = heroSource
         if (transferring && motionEnabled && hero != null && source != null) {
+            val heroShape = com.huangder.lumibooks.ui.theme.AppRoundedCornerShape(2.dp)
             val width = with(density) { source.bounds.width.toDp() }
             val height = with(density) { source.bounds.height.toDp() }
             CoverFlowCover(hero, downloadStates[hero.id], Modifier.size(width, height)
@@ -320,7 +321,7 @@ internal fun CoverFlowBookshelf(
                     scaleY = (source.bounds.height + (target.height - source.bounds.height) * p) / source.bounds.height
                     rotationY = source.rotation * (1f - p)
                     cameraDistance = source.camera
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape((2f + 12f * p).dp / scaleX)
+                    shape = heroShape.copy(androidx.compose.foundation.shape.CornerSize((2f + 12f * p).dp / scaleX))
                     clip = true
                 })
         }

@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
@@ -92,7 +92,7 @@ fun CustomCoverSourceSheet(
         LiquidGlassDialog(
             onDismissRequest = onDismiss,
             alignment = Alignment.BottomCenter,
-            shape = RoundedCornerShape(28.dp),
+            shape = AppRoundedCornerShape(28.dp),
             contentScrimColor = AppColors.CardBg.copy(alpha = 0.24f),
             backgroundScrimColor = Color.Black.copy(alpha = 0.12f)
         ) {
@@ -106,7 +106,7 @@ fun CustomCoverSourceSheet(
             containerColor = AppColors.CardBg,
             contentColor = AppColors.TextPrimary,
             scrimColor = Color.Black.copy(alpha = 0.12f),
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+            shape = AppRoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
         ) {
             sheetContent()
         }
@@ -123,7 +123,7 @@ private fun CoverSourceOptionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(AppRadius.md))
+            .clip(AppRoundedCornerShape(AppRadius.md))
             .background(AppColors.BgGray.copy(alpha = 0.42f))
             .clickable(onClick = onClick)
             .padding(horizontal = AppSpace.md, vertical = 14.dp),

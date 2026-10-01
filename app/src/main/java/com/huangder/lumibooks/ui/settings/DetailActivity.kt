@@ -18,6 +18,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
+import com.huangder.lumibooks.data.sync.LocalNetworkAccessManager
+import com.huangder.lumibooks.data.sync.WebdavAutoSyncScheduler
+import com.huangder.lumibooks.ui.components.rememberLocalNetworkPermissionGate
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.MotionPreference
 import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
@@ -45,6 +48,12 @@ class DetailActivity : ComponentActivity() {
 
     @Inject
     lateinit var dataStoreManager: DataStoreManager
+
+    @Inject
+    lateinit var localNetworkAccessManager: LocalNetworkAccessManager
+
+    @Inject
+    lateinit var webdavAutoSyncScheduler: WebdavAutoSyncScheduler
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -88,6 +97,10 @@ class DetailActivity : ComponentActivity() {
                 globalFontMode = globalFontMode,
                 motionPreference = MotionPreference.fromStoredValue(motionPreferenceValue)
             ) {
+                val requestLocalNetworkPermission = rememberLocalNetworkPermissionGate(
+                    accessManager = localNetworkAccessManager,
+                    onPermissionGranted = webdavAutoSyncScheduler::onLocalNetworkPermissionGranted
+                )
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,
                     onBack = { finish() }
@@ -142,7 +155,7 @@ class DetailActivity : ComponentActivity() {
                             ExternalTtsConfigurationDetail(viewModel, onSaved = onBack)
                         }
                         "webdav" -> DetailPage(stringResource(R.string.title_webdav), onBack) {
-                            WebdavSettingsDetail(viewModel) {
+                            WebdavSettingsDetail(viewModel, requestLocalNetworkPermission) {
                                 startActivity(
                                     Intent(this@DetailActivity, DetailActivity::class.java)
                                         .putExtra("category", "webdav_config")
@@ -150,7 +163,11 @@ class DetailActivity : ComponentActivity() {
                             }
                         }
                         "webdav_config" -> DetailPage(stringResource(R.string.title_webdav_configuration), onBack) {
-                            WebdavConfigurationDetail(viewModel, onSaved = onBack)
+                            WebdavConfigurationDetail(
+                                viewModel,
+                                requestLocalNetworkPermission,
+                                onSaved = onBack
+                            )
                         }
                         "changelog" -> DetailPage(stringResource(R.string.title_changelog), onBack) { ChangelogDetail() }
                         "highlight_color" -> DetailPage(stringResource(R.string.highlight_color_palette), onBack) {

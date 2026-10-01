@@ -22,7 +22,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Icon
@@ -179,7 +179,7 @@ private fun HighlightedCover(
     val coverHeightDp = with(density) { coverBounds.height.toDp() }
     val context = LocalContext.current
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
-    val coverShape = RoundedCornerShape(if (isLiquidGlass) 16.dp else AppRadius.sm)
+    val coverShape = AppRoundedCornerShape(if (isLiquidGlass) 16.dp else AppRadius.sm)
     // Keep the highlighted cover anchored to its original position. Moving it to make
     // room for the menu causes a large jump when the pressed book is near the bottom.
     val coverOffsetY = coverTopDp
@@ -333,7 +333,7 @@ private fun BookInfoPanel(
     onEditInfo: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val shape = RoundedCornerShape(
+    val shape = AppRoundedCornerShape(
         if (LocalAppTheme.current == "liquid_glass") 24.dp else AppRadius.md
     )
     val motionProgress = alpha.coerceIn(-0.08f, 1.08f)
@@ -387,7 +387,7 @@ private fun BookInfoPanel(
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
-                .clip(RoundedCornerShape(AppRadius.sm))
+                .clip(AppRoundedCornerShape(AppRadius.sm))
                 .clickable { onEditInfo() }
                 .padding(vertical = 4.dp)
         ) {
@@ -420,7 +420,7 @@ private fun MenuActionsPanel(
     hasCustomCover: Boolean = false,
     onAction: (ContextMenuAction) -> Unit
 ) {
-    val shape = RoundedCornerShape(
+    val shape = AppRoundedCornerShape(
         if (LocalAppTheme.current == "liquid_glass") 24.dp else AppRadius.md
     )
     val motionProgress = actionsAlpha.coerceIn(-0.08f, 1.08f)
@@ -485,7 +485,7 @@ private fun MenuActionItem(
         modifier = Modifier
             .fillMaxWidth()
             .graphicsLayer { this.alpha = alpha }
-            .clip(RoundedCornerShape(AppRadius.sm))
+            .clip(AppRoundedCornerShape(AppRadius.sm))
             .clickable(onClick = onClick)
             .padding(
                 horizontal = if (compact) 6.dp else 10.dp,

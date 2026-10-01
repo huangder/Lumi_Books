@@ -38,7 +38,8 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppShapes
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.HorizontalDivider
@@ -797,7 +798,7 @@ private fun LiquidGlassMenuRow(
     Row(
         Modifier.fillMaxWidth().heightIn(min = MenuItemRowHeight)
             .then(if (hasSelection) Modifier.semantics { selected = itemSelected } else Modifier)
-            .clip(RoundedCornerShape(MenuItemCornerRadius))
+            .clip(AppRoundedCornerShape(MenuItemCornerRadius))
             .clickable(
                 enabled = enabled,
                 indication = null,
@@ -928,9 +929,10 @@ private fun AnchoredLiquidGlassMenu(
     val radiusPx = LiquidGlassMenuMorph.cornerRadiusPx(
         sourceRadius, with(density) { LiquidGlassMenuMorph.TargetCornerRadiusDp.dp.toPx() }, growth
     ).coerceIn(0f, min(rect.width, rect.height).coerceAtLeast(0f) / 2f)
+    val continuousCorners = AppShapes.usesContinuousCorners(LocalAppTheme.current)
     val shape = if (fadeOnlyPanel) {
         if (!motionEnabled) {
-            RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+            AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
         } else {
             val topCorner = with(density) {
                 LiquidGlassMenuMorph.cornerRadiusPx(
@@ -942,15 +944,15 @@ private fun AnchoredLiquidGlassMenu(
             val bottomCorner = with(density) {
                 lerp(sourceRadius, 0f, growth.coerceIn(0f, 1f)).toDp()
             }
-            RoundedCornerShape(
+            AppRoundedCornerShape(
                 topStart = topCorner,
                 topEnd = topCorner,
                 bottomStart = bottomCorner,
                 bottomEnd = bottomCorner
             )
         }
-    } else if (frame != null) remember(frame) { LiquidMenuShape(frame) }
-    else RoundedCornerShape(with(density) { radiusPx.toDp() })
+    } else if (frame != null) remember(frame, continuousCorners) { LiquidMenuShape(frame, continuousCorners) }
+    else AppRoundedCornerShape(with(density) { radiusPx.toDp() })
     val color = spec.surfaceColor.takeOrElse { AppColors.CardBg }
     val backdropBase = spec.surfaceColor.takeOrElse { AppColors.WindowBg }.copy(alpha = 1f)
     // Partial page captures can have transparent regions, including beyond a list's bounds.

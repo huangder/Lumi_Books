@@ -40,7 +40,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items as lazyListItems
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -170,7 +170,7 @@ private fun ImportDestinationButton(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 58.dp),
-        shape = RoundedCornerShape(16.dp),
+        shape = AppRoundedCornerShape(16.dp),
         tintedColor = if (primary) AppColors.Accent else AppColors.BgGray,
         prominentShadow = primary,
         contentColor = if (primary) AppColors.OnAccent else AppColors.TextPrimary
@@ -263,7 +263,7 @@ private fun ImportBooksContainer(
     content: @Composable (floatingContainer: Boolean) -> Unit
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
-    val shape = RoundedCornerShape(
+    val shape = AppRoundedCornerShape(
         topStart = 28.dp,
         topEnd = 28.dp,
         bottomStart = if (isLiquidGlass) 28.dp else 0.dp,
@@ -432,7 +432,7 @@ private fun ImportActionButton(
     enabled: Boolean = true,
     floatingShadow: Boolean = false
 ) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = AppRoundedCornerShape(16.dp)
     val activePrimary = primary && enabled
     val buttonColor = if (activePrimary) AppColors.Accent else AppColors.BgGray
     val labelColor = if (activePrimary) AppColors.OnAccent else if (enabled) {
@@ -532,7 +532,7 @@ private fun SelectedBooksStage(
                 LiquidGlassButton(
                     onClick = onSelectAll,
                     modifier = Modifier.height(44.dp),
-                    shape = RoundedCornerShape(50),
+                    shape = AppRoundedCornerShape(50),
                     tintedColor = AppColors.Accent,
                     prominentShadow = false,
                     contentColor = AppColors.OnAccent
@@ -692,7 +692,7 @@ private fun SelectedBookPreview(
         animationSpec = tween(160),
         label = "importBookSelectionOutline"
     )
-    val selectionShape = RoundedCornerShape(if (compact) 20.dp else 24.dp)
+    val selectionShape = AppRoundedCornerShape(if (compact) 20.dp else 24.dp)
     val contentPadding = if (compact) 6.dp else 8.dp
 
     Column(
@@ -712,7 +712,7 @@ private fun SelectedBookPreview(
     ) {
         ImportBookCoverArt(
             book = book,
-            shape = RoundedCornerShape(if (compact) 16.dp else 20.dp),
+            shape = AppRoundedCornerShape(if (compact) 16.dp else 20.dp),
             placeholderFontSize = if (compact) 12.sp else 15.sp,
             modifier = Modifier
                 .fillMaxWidth()
@@ -922,7 +922,7 @@ private fun ImportSortButton(
                 expanded = sortExpanded,
                 onDismissRequest = { sortExpanded = false },
                 modifier = Modifier.width(176.dp),
-                shape = RoundedCornerShape(16.dp),
+                shape = AppRoundedCornerShape(16.dp),
                 containerColor = AppColors.WindowBg,
                 tonalElevation = 0.dp,
                 shadowElevation = 0.dp
@@ -978,7 +978,7 @@ private fun SelectedBookListRow(
         animationSpec = tween(160),
         label = "importBookListSelection"
     )
-    val shape = RoundedCornerShape(20.dp)
+    val shape = AppRoundedCornerShape(20.dp)
 
     Row(
         modifier = Modifier
@@ -1000,7 +1000,7 @@ private fun SelectedBookListRow(
     ) {
         ImportBookCoverArt(
             book = book,
-            shape = RoundedCornerShape(14.dp),
+            shape = AppRoundedCornerShape(14.dp),
             placeholderFontSize = 11.sp,
             modifier = Modifier
                 .width(46.dp)
@@ -1058,7 +1058,7 @@ private fun SelectedBookListRow(
 @Composable
 internal fun ImportBookCoverArt(
     book: SelectedImportBook,
-    shape: RoundedCornerShape,
+    shape: androidx.compose.ui.graphics.Shape,
     placeholderFontSize: androidx.compose.ui.unit.TextUnit,
     modifier: Modifier = Modifier,
     coverPathOverride: String? = null

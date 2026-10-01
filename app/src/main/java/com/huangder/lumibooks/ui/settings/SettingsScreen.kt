@@ -24,7 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -134,9 +134,9 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = AppSpace.md)
-                        .shadow(8.dp, RoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
-                        .clip(RoundedCornerShape(AppRadius.lg))
-                        .lumiCardSurface(shape = RoundedCornerShape(AppRadius.lg))
+                        .shadow(8.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+                        .clip(AppRoundedCornerShape(AppRadius.lg))
+                        .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
                         .padding(AppSpace.md),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -326,7 +326,7 @@ private fun CategoryItem(
     grouped: Boolean = false,
     onClick: () -> Unit
 ) {
-    val shape = RoundedCornerShape(AppRadius.md)
+    val shape = AppRoundedCornerShape(AppRadius.md)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -356,8 +356,8 @@ private fun SettingsCategoryGroup(content: @Composable () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = AppSpace.md)
-            .clip(RoundedCornerShape(AppRadius.lg))
-            .lumiCardSurface(shape = RoundedCornerShape(AppRadius.lg))
+            .clip(AppRoundedCornerShape(AppRadius.lg))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
     ) {
         content()
     }

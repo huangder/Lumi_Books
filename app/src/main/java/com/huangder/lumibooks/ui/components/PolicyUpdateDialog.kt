@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -133,7 +133,7 @@ private fun PolicyUpdateItem(
     iconContent: @Composable () -> Unit,
     onClick: () -> Unit
 ) {
-    val shape = RoundedCornerShape(18.dp)
+    val shape = AppRoundedCornerShape(18.dp)
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
 
     if (isLiquidGlass) {
@@ -201,7 +201,7 @@ private fun PolicyUpdateItemContent(
                 Text(
                     text = "v$version",
                     modifier = Modifier
-                        .background(AppColors.Accent.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                        .background(AppColors.Accent.copy(alpha = 0.12f), AppRoundedCornerShape(8.dp))
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,

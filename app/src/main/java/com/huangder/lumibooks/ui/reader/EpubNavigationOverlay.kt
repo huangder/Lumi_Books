@@ -43,7 +43,8 @@ internal fun EpubNavigationLoadingOverlay(
         EpubNavigationStage.STARTING -> stringResource(R.string.epub_navigation_preparing)
         EpubNavigationStage.LOADING_DOCUMENT -> stringResource(R.string.epub_navigation_loading)
         EpubNavigationStage.CONFIGURING -> stringResource(R.string.epub_navigation_configuring)
-        EpubNavigationStage.WAITING_FOR_FRAME -> stringResource(R.string.epub_navigation_rendering)
+        EpubNavigationStage.WAITING_FOR_FRAME,
+        EpubNavigationStage.ANIMATING -> stringResource(R.string.epub_navigation_rendering)
     }
     Surface(
         modifier = modifier

@@ -54,11 +54,12 @@ fun SwipeRevealItem(
     resetRevealedKey: Int = 0,
     onRevealedChanged: (Boolean) -> Unit = {},
     onEditTags: (() -> Unit)? = null,
+    onShare: (() -> Unit)? = null,
     content: @Composable RowScope.() -> Unit
 ) {
     val density = LocalDensity.current
     // Leave a small breathing space between the card and the revealed actions.
-    val actionCount = 1 + (if (onEdit != null) 1 else 0) + (if (onEditTags != null) 1 else 0)
+    val actionCount = 1 + (if (onEdit != null) 1 else 0) + (if (onEditTags != null) 1 else 0) + (if (onShare != null) 1 else 0)
     val revealPx = with(density) { (16 + actionCount * 52).dp.toPx() }
     val deletePx = with(density) { 500.dp.toPx() }
     val scope = rememberCoroutineScope()
@@ -93,6 +94,20 @@ fun SwipeRevealItem(
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (onShare != null) {
+                RevealAction(
+                    icon = AppIcons.ShareNetwork,
+                    description = stringResource(R.string.excerpt_share),
+                    color = Color(0xFF398B78),
+                    progress = progress.coerceIn(0f, 1f),
+                    enabled = revealed && !deleting,
+                    onClick = {
+                        revealed = false
+                        scope.launch { offset.animateTo(0f, spring(dampingRatio = 0.6f, stiffness = 300f)) }
+                        onShare()
+                    }
+                )
+            }
             if (onEditTags != null) {
                 RevealAction(
                     icon = AppIcons.Tag,

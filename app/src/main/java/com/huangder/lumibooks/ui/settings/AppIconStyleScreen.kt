@@ -20,7 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -106,8 +106,8 @@ private fun AppIconStyleOption(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val outerShape = RoundedCornerShape(28.dp)
-    val imageShape = RoundedCornerShape(24.dp)
+    val outerShape = AppRoundedCornerShape(28.dp)
+    val imageShape = AppRoundedCornerShape(24.dp)
     val interactionSource = androidx.compose.runtime.remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val motionEnabled = LocalMotionEnabled.current

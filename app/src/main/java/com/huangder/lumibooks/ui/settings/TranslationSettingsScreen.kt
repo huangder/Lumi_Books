@@ -4,7 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
@@ -154,7 +154,7 @@ private fun TranslationChoice(label: String, value: String, choices: List<String
     val width = with(LocalDensity.current) { bounds.width.toDp() }
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
-    val shape = RoundedCornerShape(AppRadius.lg)
+    val shape = AppRoundedCornerShape(AppRadius.lg)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(label, color = AppColors.TextSecondary, fontSize = AppType.BodySmall)
         Row(Modifier.fillMaxWidth().heightIn(min = 52.dp)
@@ -199,7 +199,7 @@ private fun TranslationEditableField(
     secret: Boolean = false, trailingContent: (@Composable () -> Unit)? = null
 ) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(AppRadius.lg)
+    val shape = AppRoundedCornerShape(AppRadius.lg)
     BasicTextField(value, onValueChange, enabled = enabled, singleLine = true,
             modifier = modifier.testTag(tag).semantics { contentDescription = label }
                 .onFocusChanged { focused = it.isFocused }

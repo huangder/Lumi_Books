@@ -3,6 +3,7 @@ package com.huangder.lumibooks.ui.animation
 import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Paint
 import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -11,14 +12,21 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
+import com.huangder.lumibooks.ui.theme.AppShapes
+import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.toAppPath
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.BookFormat
 import kotlinx.coroutines.CoroutineScope
@@ -39,6 +47,72 @@ class BookReaderLayerTest {
     private val book = Book("a", "A", "Author", "a.txt", null, BookFormat.TXT, 0, 0f, createdAt = 0)
     private lateinit var state: BookReaderTransitionState
     private lateinit var scope: CoroutineScope
+
+    @Test fun `moving tab occlusion matches the scaled cover outline in every theme`() {
+        lateinit var view: View
+        var density = 1f
+        val theme = mutableStateOf("lumi")
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            state = rememberBookReaderTransitionState()
+            scope = rememberCoroutineScope()
+            view = LocalView.current
+            density = LocalDensity.current.density
+            CompositionLocalProvider(LocalAppTheme provides theme.value) {
+                Box(Modifier.fillMaxSize().background(Color.White)) {
+                    Box(Modifier.fillMaxSize().bookReaderWindowClip(state, outside = true).background(Color.Red))
+                }
+            }
+        }
+        compose.runOnIdle {
+            state.registerCoverAnchor("cover", book.id, Rect(40f, 100f, 180f, 300f), 28f, null)
+            scope.launch {
+                state.startOpen(book, null, null, 28f)
+                state.markReaderReady()
+            }
+        }
+        compose.mainClock.advanceTimeBy(900)
+        compose.runOnIdle { assertTrue(state.startClose()) }
+        // Closing exercises the moving clip before it reaches the cover endpoint.
+        for (elapsed in listOf(96L, 96L, 96L)) {
+            compose.mainClock.advanceTimeBy(elapsed)
+            for (name in listOf("lumi", "liquid_glass", "material3")) {
+                compose.runOnIdle { theme.value = name }
+                compose.mainClock.advanceTimeByFrame()
+                compose.runOnIdle {
+                    assertEquals(BookReaderTransitionPhase.Closing, state.phase)
+                    val source = state.sourceBounds!!
+                    val target = Rect(0f, 0f, view.width.toFloat(), view.height.toFloat())
+                    val bounds = BookReaderMotion.windowBounds(source, target,
+                        state.positionSnapshot.value, state.sizeSnapshot.value,
+                        BookReaderMotion.CONTROL_POINT_OFFSET_DP * density)
+                    val actual = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+                    view.draw(Canvas(actual))
+                    val expected = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+                    val canvas = Canvas(expected)
+                    canvas.drawColor(android.graphics.Color.RED)
+                    // The cover shell clips at its original size, then its layer scales.
+                    canvas.translate(bounds.left, bounds.top)
+                    canvas.scale(bounds.width / source.width, bounds.height / source.height)
+                    val path = AppShapes.rounded(state.cornerRadiusSnapshot.value.dp,
+                        AppShapes.usesContinuousCorners(name))
+                        .createOutline(source.size, LayoutDirection.Ltr, Density(density)).toAppPath()
+                    canvas.drawPath(path.asAndroidPath(), Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color = android.graphics.Color.WHITE
+                    })
+                    var difference = 0L
+                    for (y in 0 until actual.height) for (x in 0 until actual.width) {
+                        difference += kotlin.math.abs(android.graphics.Color.green(actual.getPixel(x, y)) -
+                            android.graphics.Color.green(expected.getPixel(x, y)))
+                    }
+                    assertTrue("$name moving clip differs from cover by ${difference / 255f} pixels",
+                        difference / 255f < 8f + (bounds.width + bounds.height) * 0.04f)
+                    actual.recycle(); expected.recycle()
+                }
+            }
+        }
+        compose.mainClock.advanceTimeBy(800)
+    }
 
     @Test fun `return uses full cover bounds inside the scaled library`() {
         val top = mutableFloatStateOf(140f)

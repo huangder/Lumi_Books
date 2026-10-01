@@ -34,7 +34,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
@@ -695,7 +695,7 @@ private fun CategorySectionTitle(text: String, modifier: Modifier = Modifier) {
 private fun CategoryGroup(title: String, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(AppRoundedCornerShape(16.dp))
             .background(AppColors.CardBg)
     ) {
         CategorySectionTitle(title, Modifier.padding(start = 14.dp, end = 14.dp, top = 10.dp))
@@ -735,7 +735,7 @@ private fun CategoryRow(
     if (compact) {
         CategoryRowContent(title, count, icon, linked, disclosure, reserveDisclosureSpace, rowModifier, compact)
     } else com.huangder.lumibooks.ui.components.LiquidGlassSurface(
-        shape = RoundedCornerShape(22.dp),
+        shape = AppRoundedCornerShape(22.dp),
         fallbackColor = AppColors.CardBg,
         modifier = rowModifier
     ) {

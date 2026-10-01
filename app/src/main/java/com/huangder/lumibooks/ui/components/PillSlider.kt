@@ -1,5 +1,8 @@
 package com.huangder.lumibooks.ui.components
 
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
+import com.huangder.lumibooks.ui.theme.drawAppShape
+
 /*
  * Glass rendering and motion are adapted from AndroidLiquidGlass' LiquidSlider sample.
  * Copyright 2025 Kyant. Licensed under Apache-2.0.
@@ -29,7 +32,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.clipRect
@@ -94,6 +96,7 @@ fun PillSlider(
     onInteractionChange: ((Boolean) -> Unit)? = null
 ) {
     val rangeLength = valueRange.endInclusive - valueRange.start
+    val trackShape = AppRoundedCornerShape(50)
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current && !forceNonGlass
     val isDark = LocalIsDarkTheme.current
     val transparency = LocalLiquidGlassTransparency.current
@@ -256,18 +259,17 @@ fun PillSlider(
         val visualFraction = sliderFraction(motionState.value, valueRange, isLtr)
         if (!isLiquidGlass) {
             Canvas(modifier = Modifier.fillMaxWidth().height(trackHeight)) {
-                val radius = size.height / 2f
-                drawRoundRect(
+                drawAppShape(
+                    shape = trackShape,
                     color = inactiveColor,
-                    cornerRadius = CornerRadius(radius, radius),
                     size = size
                 )
                 val activeWidth = size.width * visualFraction
                 if (activeWidth > 0f) {
                     clipRect(right = activeWidth) {
-                        drawRoundRect(
+                        drawAppShape(
+                            shape = trackShape,
                             color = activeColor,
-                            cornerRadius = CornerRadius(radius, radius),
                             size = size
                         )
                     }
@@ -285,23 +287,22 @@ fun PillSlider(
                 .layerBackdrop(trackBackdrop)
         ) {
             Canvas(Modifier.matchParentSize()) {
-                val radius = size.height / 2f
                 val glassTrackColor = if (isDark) {
                     Color(0xFF787880).copy(alpha = 0.36f)
                 } else {
                     Color(0xFF787878).copy(alpha = 0.20f)
                 }
-                drawRoundRect(
+                drawAppShape(
+                    shape = trackShape,
                     color = glassTrackColor,
-                    cornerRadius = CornerRadius(radius, radius),
                     size = Size(size.width, size.height)
                 )
                 val activeWidth = size.width * visualFraction
                 if (activeWidth > 0f) {
                     clipRect(right = activeWidth) {
-                        drawRoundRect(
+                        drawAppShape(
+                            shape = trackShape,
                             color = glassActiveColor,
-                            cornerRadius = CornerRadius(radius, radius),
                             size = Size(size.width, size.height)
                         )
                     }

@@ -52,7 +52,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
+import com.huangder.lumibooks.ui.theme.drawAppShape
+import com.huangder.lumibooks.ui.theme.toAppPath
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -762,9 +764,9 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
             Text(stringResource(R.string.floating_subtitle_background_color), fontSize = AppType.Body, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
             Box(
                 Modifier.size(28.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(AppRoundedCornerShape(6.dp))
                     .background(Color(parseAppAccentArgb(settings.backgroundColorHex)))
-                    .border(1.dp, AppColors.Divider, RoundedCornerShape(6.dp))
+                    .border(1.dp, AppColors.Divider, AppRoundedCornerShape(6.dp))
             )
             Spacer(Modifier.width(AppSpace.sm))
             Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
@@ -1734,7 +1736,9 @@ internal fun ThemeColorDialog(
         floatArrayOf(hue, saturation / 100f, brightness / 100f)
     )
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val shape = remember(density) { G2ContinuousCornerShape(with(density) { 30.dp.toPx() }) }
+    val shape = if (LocalAppTheme.current == "material3") {
+        remember(density) { G2ContinuousCornerShape(with(density) { 30.dp.toPx() }) }
+    } else AppRoundedCornerShape(30.dp)
 
     fun updateHexFromSliders() {
         hexInput = appAccentHex(
@@ -2184,7 +2188,7 @@ private fun StorageGroupTitle(text: String) {
 /** HyperOS 分组卡片（miuix Card 复刻：16dp 圆角） */
 @Composable
 private fun StorageCard(content: @Composable () -> Unit) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = AppRoundedCornerShape(16.dp)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -2488,6 +2492,8 @@ private fun StorageCylinder(
         }
     }
 
+    val cylinderShape = AppRoundedCornerShape(0.dp)
+    val materialCylinder = LocalAppTheme.current == "material3"
     Canvas(interactiveModifier) {
         val cylinderWidth = size.width * 0.78f
         val left = (size.width - cylinderWidth) / 2f
@@ -2496,29 +2502,33 @@ private fun StorageCylinder(
         val baseY = size.height - ellipseHeight * 1.35f
         val stackHeight = (baseY - topY - ellipseHeight * 0.5f).coerceAtLeast(0f)
         val outerHeight = (baseY - topY).coerceAtLeast(0f)
-        val cornerRadius = CornerRadius(ellipseHeight * 0.72f, ellipseHeight * 0.72f)
+        val shellShape = cylinderShape.copy(androidx.compose.foundation.shape.CornerSize(ellipseHeight * 0.72f))
 
-        drawRoundRect(
+        drawAppShape(
+            shape = shellShape,
             brush = Brush.horizontalGradient(listOf(shellEdge, shellCenter, shellEdge)),
             topLeft = Offset(left, topY),
-            size = Size(cylinderWidth, outerHeight),
-            cornerRadius = cornerRadius
+            size = Size(cylinderWidth, outerHeight)
         )
-        val right = left + cylinderWidth
-        val bottom = topY + outerHeight
-        val radius = cornerRadius.x
-        val shellClipPath = Path().apply {
-            moveTo(left + radius, topY)
-            lineTo(right - radius, topY)
-            quadraticTo(right, topY, right, topY + radius)
-            lineTo(right, bottom - radius)
-            quadraticTo(right, bottom, right - radius, bottom)
-            lineTo(left + radius, bottom)
-            quadraticTo(left, bottom, left, bottom - radius)
-            lineTo(left, topY + radius)
-            quadraticTo(left, topY, left + radius, topY)
-            close()
-        }
+        val shellClipPath = if (materialCylinder) {
+            // Keep the original quadratic mask in the Material 3 visualization.
+            val right = left + cylinderWidth
+            val bottom = topY + outerHeight
+            val radius = ellipseHeight * 0.72f
+            Path().apply {
+                moveTo(left + radius, topY)
+                lineTo(right - radius, topY)
+                quadraticTo(right, topY, right, topY + radius)
+                lineTo(right, bottom - radius)
+                quadraticTo(right, bottom, right - radius, bottom)
+                lineTo(left + radius, bottom)
+                quadraticTo(left, bottom, left, bottom - radius)
+                lineTo(left, topY + radius)
+                quadraticTo(left, topY, left + radius, topY)
+                close()
+            }
+        } else shellShape.createOutline(Size(cylinderWidth, outerHeight), layoutDirection, this)
+            .toAppPath().apply { translate(Offset(left, topY)) }
         clipPath(shellClipPath) {
             var accumulatedHeight = 0f
             var accumulatedSeedHeight = 0f
@@ -2565,11 +2575,11 @@ private fun StorageCylinder(
             }
         }
 
-        drawRoundRect(
+        drawAppShape(
+            shape = shellShape,
             color = shellOutline,
             topLeft = Offset(left, topY),
             size = Size(cylinderWidth, outerHeight),
-            cornerRadius = cornerRadius,
             style = Stroke(width = 1.dp.toPx())
         )
     }
@@ -2646,7 +2656,7 @@ private fun StorageCategoryRow(
 
 @Composable
 private fun StorageBookCard(title: String, format: String, size: String) {
-    val shape = RoundedCornerShape(AppRadius.sm)
+    val shape = AppRoundedCornerShape(AppRadius.sm)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -2671,7 +2681,7 @@ private fun StorageBookCard(title: String, format: String, size: String) {
             val formatColor = FormatColors[format] ?: AppColors.TextSecondary
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(AppRoundedCornerShape(4.dp))
                     .background(formatColor.copy(alpha = 0.12f))
                     .padding(horizontal = 6.dp, vertical = 2.dp)
             ) {
@@ -2757,7 +2767,7 @@ private fun StorageUsageBar(fraction: Float) {
             .padding(horizontal = AppSpace.md)
             .padding(bottom = AppSpace.md)
             .height(6.dp)
-            .clip(RoundedCornerShape(3.dp))
+            .clip(AppRoundedCornerShape(3.dp))
             .background(AppColors.BgGray)
     ) {
         Box(
@@ -3103,7 +3113,7 @@ fun ChangelogDetail() {
                             Spacer(Modifier.width(AppSpace.sm))
                             Box(
                                 Modifier
-                                    .clip(RoundedCornerShape(AppRadius.sm))
+                                    .clip(AppRoundedCornerShape(AppRadius.sm))
                                     .background(AppColors.Accent)
                                     .padding(horizontal = AppSpace.sm, vertical = 2.dp)
                             ) {
@@ -3172,9 +3182,9 @@ fun HighlightColorDetail(viewModel: SettingsViewModel) {
     }
 
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val g2CardShape = remember(density) {
-        G2ContinuousCornerShape(with(density) { 26.dp.toPx() })
-    }
+    val g2CardShape = if (LocalAppTheme.current == "material3") {
+        remember(density) { G2ContinuousCornerShape(with(density) { 26.dp.toPx() }) }
+    } else AppRoundedCornerShape(26.dp)
 
     Column(
         modifier = Modifier
@@ -3507,9 +3517,9 @@ private fun HighlightPaletteColorDialog(
     var customHex by remember { mutableStateOf("") }
     var customError by remember { mutableStateOf(false) }
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val shape = remember(density) {
-        G2ContinuousCornerShape(with(density) { 30.dp.toPx() })
-    }
+    val shape = if (LocalAppTheme.current == "material3") {
+        remember(density) { G2ContinuousCornerShape(with(density) { 30.dp.toPx() }) }
+    } else AppRoundedCornerShape(30.dp)
 
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
@@ -3646,7 +3656,7 @@ private fun DetailCard(
     horizontalPadding: Dp = AppSpace.md,
     content: @Composable () -> Unit
 ) {
-    val shape = RoundedCornerShape(AppRadius.lg)
+    val shape = AppRoundedCornerShape(AppRadius.lg)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -3683,7 +3693,7 @@ private fun SettingsSliderItem(
                 text = valueText,
                 modifier = if (onValueClick != null) {
                     Modifier
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(AppRoundedCornerShape(6.dp))
                         .clickable(onClick = onValueClick)
                         .padding(horizontal = 6.dp, vertical = 4.dp)
                 } else {
@@ -3723,7 +3733,7 @@ private fun FontTypeRow(selected: String, onSelect: (String) -> Unit) {
             options.forEach { (key, label) ->
                 val sel = key == selected
                 Box(
-                    Modifier.clip(RoundedCornerShape(AppRadius.sm)).background(if (sel) AppColors.Accent else AppColors.BgGray)
+                    Modifier.clip(AppRoundedCornerShape(AppRadius.sm)).background(if (sel) AppColors.Accent else AppColors.BgGray)
                         .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onSelect(key) }
                         .padding(horizontal = AppSpace.sm, vertical = AppSpace.xs)
                 ) { Text(label, fontSize = AppType.Caption, color = if (sel) Color.White else AppColors.TextSecondary, fontWeight = if (sel) FontWeight.Medium else FontWeight.Normal) }
@@ -3760,9 +3770,9 @@ private fun AppThemeGridSettingRow(
                             modifier = Modifier
                                 .weight(1f)
                                 .heightIn(min = 36.dp)
-                                .clip(RoundedCornerShape(AppRadius.sm))
+                                .clip(AppRoundedCornerShape(AppRadius.sm))
                                 .background(if (isSelected) AppColors.Accent else AppColors.WindowBg)
-                                .border(1.dp, if (isSelected) AppColors.Accent else AppColors.Divider, RoundedCornerShape(AppRadius.sm))
+                                .border(1.dp, if (isSelected) AppColors.Accent else AppColors.Divider, AppRoundedCornerShape(AppRadius.sm))
                                 .clickable { onSelect(key) }
                                 .padding(horizontal = 6.dp, vertical = 8.dp),
                             contentAlignment = Alignment.Center
@@ -3819,9 +3829,9 @@ private fun DropdownSettingRow(
                     .width(138.dp)
                     .height(42.dp)
                     .liquidGlassMenuAnchor(cornerRadius = 14.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(AppRoundedCornerShape(14.dp))
                     .background(AppColors.PageBg)
-                    .border(1.dp, AppColors.Divider, RoundedCornerShape(14.dp))
+                    .border(1.dp, AppColors.Divider, AppRoundedCornerShape(14.dp))
                     .onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
                     .clickable {
                         if (liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
@@ -3866,7 +3876,7 @@ private fun DropdownSettingRow(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
                 modifier = Modifier.width(138.dp),
-                shape = RoundedCornerShape(16.dp),
+                shape = AppRoundedCornerShape(16.dp),
                 containerColor = AppColors.WindowBg,
                 border = BorderStroke(1.dp, AppColors.Divider),
                 shadowElevation = 0.dp,
