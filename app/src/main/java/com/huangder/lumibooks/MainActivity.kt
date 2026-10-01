@@ -63,7 +63,6 @@ import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
 import com.huangder.lumibooks.ui.components.rememberLocalNetworkPermissionGate
 import com.huangder.lumibooks.ui.components.PolicyUpdateDialog
 import com.huangder.lumibooks.ui.components.RemoteNoticeDialog
-import com.huangder.lumibooks.ui.settings.WebViewActivity
 import com.huangder.lumibooks.ui.welcome.WelcomeActivity
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.MotionPreference
@@ -96,6 +95,9 @@ private data class PendingPolicyUpdate(
     val hasPrivacyUpdate: Boolean,
     val privacyVersion: Int
 )
+
+private const val REMOTE_TERMS_URL = "https://huangder.top/terms.html"
+private const val REMOTE_PRIVACY_URL = "https://huangder.top/privacy.html"
 
 /** 外部打开/分享导入支持的书籍扩展名。 */
 private val SUPPORTED_IMPORT_EXTENSIONS = setOf("epub", "pdf", "txt", "mobi", "cbz")
@@ -945,10 +947,10 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onDecline = { finishAffinity() },
                                     onViewTerms = {
-                                        openUpdateDocument(getString(R.string.terms_of_service), "terms.html")
+                                        openRemoteUrl(REMOTE_TERMS_URL)
                                     },
                                     onViewPrivacy = {
-                                        openUpdateDocument(getString(R.string.privacy_policy), "privacy.html")
+                                        openRemoteUrl(REMOTE_PRIVACY_URL)
                                     }
                                 )
                             }
@@ -1003,14 +1005,6 @@ class MainActivity : ComponentActivity() {
 
     private fun Configuration.isNightModeEnabled(): Boolean {
         return (uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-    }
-
-    private fun openUpdateDocument(title: String, assetFile: String) {
-        startActivity(
-            Intent(this, WebViewActivity::class.java)
-                .putExtra("title", title)
-                .putExtra("file", assetFile)
-        )
     }
 
     private fun openRemoteUrl(url: String) {
