@@ -16,13 +16,16 @@ val releaseStartupTrace = providers.gradleProperty("lumiStartupTrace")
 
 android {
     namespace = "com.huangder.lumibooks"
-    compileSdk = 36
-    compileSdkExtension = 19
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 0
+        }
+    }
 
     defaultConfig {
         applicationId = "com.huangder.lumibooks"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 37
         versionCode = 15
         versionName = "Dream"
 
@@ -125,6 +128,7 @@ dependencies {
     implementation("com.adamglin:phosphor-icon:1.0.0")
     implementation("dev.chrisbanes.haze:haze:1.1.1")
     implementation("io.github.kyant0:backdrop:1.0.6")
+    implementation("io.github.kyant0:shapes:1.2.0")
 
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.8.9")
