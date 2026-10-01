@@ -45,6 +45,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private const val BUSY_CURL_TAP_MOVE_LIMIT_PX = 12f
+private const val EPUB_CROSS_CHAPTER_COMMIT_FALLBACK_MS = 450L
 
 internal data class EpubPageTarget(
     val chapterIndex: Int,
@@ -321,7 +322,9 @@ internal class EpubPageTurnHost(
     private class ChapterFade(
         val pages: EpubTurnContext<EpubContentWebView>,
         val onComplete: () -> Unit,
-        val onInvalidated: () -> Unit
+        val onInvalidated: () -> Unit,
+        val verticalMotion: Boolean,
+        val durationMs: Int
     ) {
         var startedAtMs: Long? = null
         var completionPosted = false
@@ -756,7 +759,9 @@ internal class EpubPageTurnHost(
         slot: PreloadSlot,
         target: EpubPageTarget,
         onComplete: () -> Unit,
-        onInvalidated: () -> Unit
+        onInvalidated: () -> Unit,
+        verticalMotion: Boolean = true,
+        durationMs: Int = 360
     ): Boolean {
         if (released || chapterFade != null || overlayActive || waitingForTarget != null ||
             !hasPreparedPage(slot, target)
@@ -772,7 +777,9 @@ internal class EpubPageTurnHost(
                 preparedPages.getValue(incoming)
             ),
             onComplete,
-            onInvalidated
+            onInvalidated,
+            verticalMotion,
+            durationMs.coerceIn(100, 1200)
         )
         postInvalidateOnAnimation()
         return true
@@ -1350,23 +1357,24 @@ internal class EpubPageTurnHost(
         }
         val now = SystemClock.uptimeMillis()
         val startedAt = fade.startedAtMs ?: now.also { fade.startedAtMs = it }
-        val progress = ((now - startedAt) / 360f).coerceIn(0f, 1f)
+        val progress = ((now - startedAt) / fade.durationMs.toFloat()).coerceIn(0f, 1f)
         // Fade only the two sheets; the reader background remains stationary.
         canvas.drawColor(pageBackgroundColor)
         if (backgroundImageView.visibility == View.VISIBLE) {
             drawChild(canvas, backgroundImageView, drawingTime)
         }
-        // Both sheets travel through the viewport over the same interval.  The
-        // outgoing sheet leaves upward while the incoming sheet rises from the
-        // opposite edge, so the transition never turns into a stationary fade.
+        // Scrolling chapters move vertically; paginated fade keeps both sheets
+        // stationary and fades out before revealing the destination.
         val eased = progress * progress * (3f - 2f * progress)
         val distance = height.toFloat() * eased
-        val outgoingY = if (fade.pages.direction == PageAnimationController.Direction.NEXT) {
+        val outgoingY = if (!fade.verticalMotion) 0f
+        else if (fade.pages.direction == PageAnimationController.Direction.NEXT) {
             -distance
         } else {
             distance
         }
-        val incomingY = if (fade.pages.direction == PageAnimationController.Direction.NEXT) {
+        val incomingY = if (!fade.verticalMotion) 0f
+        else if (fade.pages.direction == PageAnimationController.Direction.NEXT) {
             height.toFloat() - distance
         } else {
             -height.toFloat() + distance
@@ -1381,8 +1389,14 @@ internal class EpubPageTurnHost(
             canvas.restoreToCount(layer)
             canvas.restoreToCount(clip)
         }
-        draw(fade.pages.current.view, outgoingY, 1f - eased)
-        draw(fade.pages.target.view, incomingY, eased)
+        val outgoingProgress = (progress * 2f).coerceIn(0f, 1f)
+        val incomingProgress = (progress * 2f - 1f).coerceIn(0f, 1f)
+        val outgoingAlpha = if (fade.verticalMotion) 1f - eased
+        else 1f - outgoingProgress * outgoingProgress * (3f - 2f * outgoingProgress)
+        val incomingAlpha = if (fade.verticalMotion) eased
+        else incomingProgress * incomingProgress * (3f - 2f * incomingProgress)
+        draw(fade.pages.current.view, outgoingY, outgoingAlpha)
+        draw(fade.pages.target.view, incomingY, incomingAlpha)
         if (progress < 1f) {
             postInvalidateOnAnimation()
         } else if (!fade.completionPosted) {
@@ -1687,15 +1701,42 @@ internal class EpubPageTurnHost(
                 rememberWaitingGesture(event)
                 capturedSlideTouchStream = false
                 cancelChildTouch(event)
+                targetFor(direction)?.let { target ->
+                    val slot = if (direction == PageAnimationController.Direction.NEXT) {
+                        PreloadSlot.NEXT
+                    } else {
+                        PreloadSlot.PREVIOUS
+                    }
+                    onSlideLookaheadRequested?.invoke(slot, target)
+                }
                 return true
             }
-            if (!hasPotentialTurn(direction)) {
+            if (hasPotentialTurn(direction)) {
+                // Request a missing neighbour, then use the normal waiting gesture
+                // path so releasing below the flip threshold still cancels the turn.
+                queueSlideTurn(direction)
+                val queuedTarget = queuedSlideTurn?.takeIf {
+                    it.source == currentTarget && it.direction == direction.toTurnDelta()
+                }?.target
                 queuedSlideTurn = null
-                capturedSlideTouchStream = true
+                waitingGestureDirection = direction
+                rememberWaitingGesture(event)
+                capturedSlideTouchStream = false
                 cancelChildTouch(event)
+                if (queuedTarget != null) {
+                    val slot = if (direction == PageAnimationController.Direction.NEXT) {
+                        PreloadSlot.NEXT
+                    } else {
+                        PreloadSlot.PREVIOUS
+                    }
+                    onSlideLookaheadRequested?.invoke(slot, queuedTarget)
+                }
                 return true
             }
-            return capturedSlideTouchStream
+            queuedSlideTurn = null
+            capturedSlideTouchStream = true
+            cancelChildTouch(event)
+            return true
         }
         if (!prepareAnimationPages(direction = direction)) return true
         capturedSlideTouchStream = false
@@ -2054,8 +2095,9 @@ internal class EpubPageTurnHost(
             )
             curlTurnSequencer.clear()
             view.evaluateJavascript(
-                "window.LumiReader&&window.LumiReader.turnPage(" +
-                    direction.toTurnDelta() + ");",
+                "window.LumiReader&&window.LumiReader." +
+                    (if (direction == PageAnimationController.Direction.NEXT) "next" else "previous") +
+                    "();",
                 null
             )
         }, CURL_TURN_FALLBACK_DELAY_MS)
@@ -2195,16 +2237,16 @@ internal class EpubPageTurnHost(
         val delta = direction.toTurnDelta()
         val pageGeneration = curlPageGeneration
         val documentGeneration = targetView.documentLifecycle.configurationGeneration
-        val layoutRevision = targetView.documentLifecycle.layoutRevision
         val pageCountAtPromotion = currentPageCount
         var dispatched = false
         val commitOnce = {
             if (!dispatched && !released && !targetView.released &&
                 curlPageGeneration == pageGeneration && waitingForTarget == target &&
                 currentTarget == target && activeWebView === targetView &&
-                targetView.documentLifecycle.configurationGeneration == documentGeneration &&
-                targetView.documentLifecycle.layoutRevision == layoutRevision
+                targetView.documentLifecycle.configurationGeneration == documentGeneration
             ) {
+                // The host has already promoted this visual destination. A late font
+                // reflow in the same document must not leave its handoff locked forever.
                 dispatched = true
                 onPageCommit?.invoke(delta, target, pageCountAtPromotion)
             }
@@ -2212,7 +2254,13 @@ internal class EpubPageTurnHost(
         if (!mediaOnlyNativePaging || !isLiveEpubPageTransition(transition)) {
             // A plain post is not a frame fence when completion came from a
             // touch event. Wait for an actual target draw before chapter work.
-            if (deferToNextFrame) targetView.runAfterNextDraw(commitOnce) else commitOnce()
+            if (deferToNextFrame) {
+                // A promoted chapter can be visible before WebView dispatches its
+                // first draw callback. Without a bounded fallback, waitingForTarget
+                // survives forever and every later turn is treated as busy.
+                targetView.runAfterNextDraw(commitOnce)
+                targetView.postDelayed(commitOnce, EPUB_CROSS_CHAPTER_COMMIT_FALLBACK_MS)
+            } else commitOnce()
             return
         }
 

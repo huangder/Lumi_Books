@@ -309,6 +309,50 @@ class EpubLiveTurnRenderingTest {
         assertEquals(0, commits)
     }
 
+    @Test fun crossChapterReflowBeforeFirstDrawStillFinishesHandoffOnce() {
+        prepareCrossChapterTurn()
+        var commits = 0
+        host.onPageCommit = { _, target, count ->
+            commits++
+            host.setCurrentPage(target.chapterIndex, target.pageIndex, count)
+        }
+        finishCrossChapterAnimation()
+        val lifecycle = host.activeWebView.documentLifecycle
+        lifecycle.observeLayout(lifecycle.configurationGeneration, 2L, stable = false)
+        lifecycle.observeLayout(lifecycle.configurationGeneration, 3L, stable = true)
+        frame().recycle()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+        assertEquals(1, commits)
+        assertEquals(EpubPageTarget(1, 0), host.currentPageTarget())
+        assertFalse(host.hasPendingPageHandoff())
+    }
+
+    @Test fun swipeRequestsStaleNeighbourAgainAndResumesAfterReprepare() {
+        val target = EpubPageTarget(0, 2)
+        val incoming = host.nextWebView
+        incoming.documentLifecycle.observeLayout(
+            incoming.documentLifecycle.configurationGeneration, 3L, stable = true
+        )
+        assertFalse(host.hasPreparedPage(EpubPageTurnHost.PreloadSlot.NEXT, target))
+        var preparations = 0
+        host.onSlideLookaheadRequested = { slot, requested ->
+            assertEquals(EpubPageTurnHost.PreloadSlot.NEXT, slot)
+            assertEquals(target, requested)
+            preparations++
+            host.markPreloadLoading(slot, requested, 4)
+            host.markPreloadReady(slot, requested, 4, 2, 3, incoming)
+        }
+        event(MotionEvent.ACTION_DOWN, 200f, 0)
+        event(MotionEvent.ACTION_MOVE, 130f, 100)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(1, preparations)
+        assertTrue(host.hasPreparedPage(EpubPageTurnHost.PreloadSlot.NEXT, target))
+        assertTrue(host.ownsPage(host.activeWebView))
+        val bitmap = frame()
+        assertEquals(Color.BLUE, bitmap.getPixel(399, 400))
+        bitmap.recycle()
+    }
+
     @Test fun preparedLastPageMatchesSentinelWithoutPreparingAgain() {
         val slot = EpubPageTurnHost.PreloadSlot.PREVIOUS
         val lastPage = EpubPageTarget(0, Int.MAX_VALUE)
@@ -361,6 +405,48 @@ class EpubLiveTurnRenderingTest {
         assertFalse(host.ownsPage(outgoing))
         assertFalse(host.ownsPage(incoming))
         assertEquals(Color.BLUE, pixel())
+    }
+
+    @Test fun paginatedChapterFadeUsesConfiguredDurationWithoutMovingSheets() {
+        host.setNativePagingEnabled(false)
+        prepareCrossChapterTurn()
+        host.setPageBackgroundColor(Color.WHITE)
+        val slot = EpubPageTurnHost.PreloadSlot.NEXT
+        val target = EpubPageTarget(1, 0)
+        var commits = 0
+        assertTrue(host.fadePreparedChapter(slot, target,
+            onComplete = {
+                assertTrue(host.promotePreparedPage(slot, target, 1))
+                commits++
+            },
+            onInvalidated = { fail("stable documents must not cancel") },
+            verticalMotion = false, durationMs = 800))
+
+        fun uniformPixel(): Int {
+            val bitmap = frame()
+            val top = bitmap.getPixel(200, 100)
+            assertEquals("fade must not slide either sheet", top, bitmap.getPixel(200, 700))
+            bitmap.recycle()
+            return top
+        }
+        assertEquals(Color.RED, uniformPixel())
+        SystemClock.sleep(200)
+        val outgoing = uniformPixel()
+        assertEquals(255, Color.red(outgoing))
+        assertTrue(Color.blue(outgoing) in 1..254)
+        SystemClock.sleep(200)
+        assertEquals(Color.WHITE, uniformPixel())
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("duration must not use the scrolling default", 0, commits)
+        SystemClock.sleep(200)
+        val incoming = uniformPixel()
+        assertEquals(255, Color.blue(incoming))
+        assertTrue(Color.red(incoming) in 1..254)
+        SystemClock.sleep(200)
+        assertEquals(Color.BLUE, uniformPixel())
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(1, commits)
+        assertEquals(target, host.currentPageTarget())
     }
 
     @Test fun scrollingChapterFadeMovesBothSheetsThroughTheViewport() {

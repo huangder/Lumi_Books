@@ -10,6 +10,27 @@ import org.junit.Test
 
 class EpubPageTurnHostTest {
     @Test
+    fun preparedChapterKeepsDocumentPagingForFadeAndNoAnimation() {
+        for (transition in listOf("fade", "none")) {
+            val mode = epubDocumentPagingMode(false, transition, EpubRenditionLayout.REFLOWABLE)
+            assertFalse(mode.nativePaging)
+            assertEquals(transition, mode.transition)
+        }
+    }
+
+    @Test
+    fun preparedChapterKeepsNativePagingForNativeAnimations() {
+        for (transition in listOf("slide", "scroll", "curl")) {
+            val mode = epubDocumentPagingMode(false, transition, EpubRenditionLayout.REFLOWABLE)
+            assertTrue(mode.nativePaging)
+            assertEquals("none", mode.transition)
+        }
+        val fixed = epubDocumentPagingMode(false, "slide", EpubRenditionLayout.PRE_PAGINATED)
+        assertFalse(fixed.nativePaging)
+        assertEquals("slide", fixed.transition)
+    }
+
+    @Test
     fun nextTurnPreparesPageAfterItsVisualDestination() {
         assertEquals(
             EpubPageTarget(4, 7),

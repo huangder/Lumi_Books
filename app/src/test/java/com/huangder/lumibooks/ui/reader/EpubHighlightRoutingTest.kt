@@ -2,6 +2,8 @@ package com.huangder.lumibooks.ui.reader
 
 import com.huangder.lumibooks.domain.model.Note
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EpubHighlightRoutingTest {
@@ -22,6 +24,40 @@ class EpubHighlightRoutingTest {
     @Test
     fun missingChapterHasNoNotes() {
         assertEquals(emptyList<Note>(), epubNotesForChapter(listOf(note()), chapterIndex = 9))
+    }
+
+    @Test
+    fun ruleMarksKeepTheirRenderingButCarryTheirOriginToTheTapHandler() {
+        val generated = note().copy(
+            origin = Note.ORIGIN_HIGHLIGHT_RULE,
+            sourceRuleId = "rule",
+            sourceMatchKey = "match",
+            styleSnapshotJson = """{"textColor":-65536,"underlineMode":1}""",
+            tags = listOf("tag")
+        )
+        val payload = highlightsJson(listOf(generated, generated.copy(styleSnapshotJson = null)))
+
+        assertEquals(2, payload.length())
+        assertTrue(payload.getJSONObject(0).getBoolean("generatedByRule"))
+        assertEquals(generated.selectedText, payload.getJSONObject(0).getString("exact"))
+        assertEquals(1, payload.getJSONObject(0).getJSONObject("ruleStyle").getInt("underlineMode"))
+        assertEquals("#ff0000ff", payload.getJSONObject(0).getJSONObject("ruleStyle").getString("textColor"))
+        assertTrue(payload.getJSONObject(1).getBoolean("generatedByRule"))
+    }
+
+    @Test
+    fun manualUnderlinesAndDetachedRuleMarksRemainTappableWithStyleSnapshots() {
+        val manual = note().copy(type = "underline", styleSnapshotJson = """{"underlineMode":2}""")
+        val detached = manual.copy(
+            origin = Note.ORIGIN_HIGHLIGHT_RULE, sourceRuleId = "rule", sourceMatchKey = "match"
+        ).detachFromHighlightRule()
+        val payload = highlightsJson(listOf(note(), manual, detached))
+
+        for (index in 0 until payload.length()) {
+            assertFalse(payload.getJSONObject(index).getBoolean("generatedByRule"))
+        }
+        assertEquals(2, payload.getJSONObject(1).getJSONObject("ruleStyle").getInt("underlineMode"))
+        assertEquals(2, payload.getJSONObject(2).getJSONObject("ruleStyle").getInt("underlineMode"))
     }
 
     private fun note(

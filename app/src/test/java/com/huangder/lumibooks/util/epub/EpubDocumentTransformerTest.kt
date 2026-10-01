@@ -420,7 +420,7 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("state.viewportHeight - fixedInset.top - fixedInset.bottom"))
         // 裁切填满时居中偏移为负，必须原样保留；不裁切时才把负偏移钳成 0。
         assertTrue(output.contains("var cropping = state.imagePageCrop && isMediaOnlyPage()"))
-        assertTrue(output.contains("var fixedLeft = fixedInset.left + (cropping ? offsetX : Math.max(0, offsetX))"))
+        assertTrue(output.contains("var fixedLeft = Math.round(fixedInset.left + (cropping ? offsetX : Math.max(0, offsetX)))"))
         assertFalse(output.contains("Math.max(0, (state.viewportWidth - designWidth * scale) / 2)"))
         assertTrue(output.contains("html.lumi-scrolled"))
         assertTrue(output.contains("overflow-y: auto !important"))

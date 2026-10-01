@@ -1863,8 +1863,11 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       var offsetX = (availableWidth - designWidth * scale) / 2;
       var offsetY = (availableHeight - designHeight * scale) / 2;
       // 裁切时居中偏移为负（页面比视口大），必须原样保留，否则被钳成 0 后只裁右下角。
-      var fixedLeft = fixedInset.left + (cropping ? offsetX : Math.max(0, offsetX));
-      var fixedTop = fixedInset.top + (cropping ? offsetY : Math.max(0, offsetY));
+      // Keep the publisher page on whole CSS pixels. A fractional fixed
+      // translation is rasterized differently from selection handles in WebView
+      // and makes selected text appear to jump by a couple of physical pixels.
+      var fixedLeft = Math.round(fixedInset.left + (cropping ? offsetX : Math.max(0, offsetX)));
+      var fixedTop = Math.round(fixedInset.top + (cropping ? offsetY : Math.max(0, offsetY)));
       // transform 只改变视觉尺寸，不改变布局盒。使用 margin 会把未缩放的 860x1146
       // 设计盒继续计入根页面滚动范围。固定定位并锁住根节点，避免内部滚动。
       document.documentElement.style.setProperty('overflow', 'hidden', 'important');
@@ -3109,20 +3112,40 @@ private const val READER_SCRIPT_PART_3 = """
     var index = textIndex();
     var caret = document.caretRangeFromPoint ? document.caretRangeFromPoint(x, y) : null;
     var position = caret ? textOffsetForBoundary(index, caret.startContainer, caret.startOffset) : -1;
+    var hitSlop = 2;
+    function rectContains(rect) {
+      return x >= rect.left - hitSlop && x <= rect.right + hitSlop &&
+        y >= rect.top - hitSlop && y <= rect.bottom + hitSlop;
+    }
     for (var i = 0; i < items.length; i++) {
       var item = items[i];
       if (!item || !item.exact) continue;
+      // Rule styling follows normal reader taps. A style snapshot alone does
+      // not identify a rule: manual underlines carry one too.
+      if (item.generatedByRule === true) continue;
       var start = item.start && Number(item.start.textPosition);
       var end = item.end && Number(item.end.textPosition);
-      if (isFinite(position) && isFinite(start) && isFinite(end) &&
-          position >= start && position < end) return item;
       var range = rangeFromLocators(item.start, item.end, item.exact) ||
         quoteRange(Object.assign({}, item.start || {}, { exact: item.exact }));
+      // A transformed/fixed-layout document can expose a caret one glyph away
+      // from the painted highlight. Trust the actual range geometry first.
+      if (range) {
+        var rects = range.getClientRects();
+        for (var r = 0; r < rects.length; r++) {
+          if (rectContains(rects[r])) return item;
+        }
+      }
+      if (isFinite(position) && isFinite(start) && isFinite(end) &&
+          position >= start && position < end) return item;
+      // Locators may have stale quote metadata after a publisher text rewrite.
+      // The stored text positions still provide a useful range for hit testing.
+      if (!range && isFinite(start) && isFinite(end) && end > start) {
+        range = rangeAtOffsets(index, start, end);
+      }
       if (!range) continue;
       var rects = range.getClientRects();
       for (var r = 0; r < rects.length; r++) {
-        var rect = rects[r];
-        if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) return item;
+        if (rectContains(rects[r])) return item;
       }
     }
     return null;
