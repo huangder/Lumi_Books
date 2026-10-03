@@ -11,7 +11,7 @@ class TtsTextExtractor {
         internal val CLOSING_PUNCTUATION = setOf('”', '’', '"', '\'', '》', '】', '）', ')')
         private val SOFT_BREAKS = setOf('，', ',', '、', '：', ':')
         private val CLAUSE_BREAKS = TERMINATORS + SOFT_BREAKS + setOf('…', '\n')
-        private val SINGLE_MARKER_TERMINATORS = setOf('.', '。')
+        private val FULL_STOPS = setOf('.', '。')
     }
 
     fun extractPageText(
@@ -115,14 +115,23 @@ class TtsTextExtractor {
     /**
      * Returns the text to send to a speech engine while keeping the original segment unchanged
      * for highlighting and source-offset mapping. Android engines may produce no audible output
-     * for a standalone list marker such as "1." or "1。"; the number itself is speakable.
+     * for short fragments such as "1。", "好。" or "好的.". Blank their trailing full stops
+     * without shifting range callbacks for text inside quotes/brackets.
      */
     fun playbackText(text: String): String {
         val trimmed = text.trim()
-        if (trimmed.length < 2 || trimmed.last() !in SINGLE_MARKER_TERMINATORS) return text
-        val marker = trimmed.dropLast(1).trim()
-        if (marker.isEmpty() || !isSingleGrapheme(marker)) return text
-        return marker
+        val content = trimmed.trim { it.isWhitespace() || it.isPunctuation() }
+        if (content.isEmpty() || graphemeCount(content, 0, content.length) > 2) return text
+        var suffixStart = text.length
+        while (suffixStart > 0 &&
+            (text[suffixStart - 1].isWhitespace() || text[suffixStart - 1] in FULL_STOPS ||
+                text[suffixStart - 1] in CLOSING_PUNCTUATION)
+        ) suffixStart--
+        if (text.substring(suffixStart).none { it in FULL_STOPS }) return text
+        return buildString {
+            append(text, 0, suffixStart)
+            text.substring(suffixStart).forEach { append(if (it in FULL_STOPS) ' ' else it) }
+        }.trimEnd()
     }
 
     /** True when a segment contains at least one non-whitespace, non-punctuation character. */
@@ -354,12 +363,6 @@ class TtsTextExtractor {
             if (end == before) break
         }
         return end
-    }
-
-    private fun isSingleGrapheme(text: String): Boolean {
-        val iterator = BreakIterator.getCharacterInstance(Locale.ROOT)
-        iterator.setText(text)
-        return iterator.first() == 0 && iterator.next() == text.length
     }
 
     private fun Char.isPunctuation(): Boolean = when (Character.getType(this)) {

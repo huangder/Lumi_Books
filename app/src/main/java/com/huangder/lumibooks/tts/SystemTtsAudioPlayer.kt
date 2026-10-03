@@ -14,10 +14,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Plays PCM delivered by TextToSpeech without letting the selected engine own the output stream. */
-internal class SystemTtsAudioPlayer {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+internal class SystemTtsAudioPlayer(
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    private val createTrack: (PcmFormat) -> PcmTrack? = ::createAndroidTrack
+) {
     @Volatile
-    private var track: AudioTrack? = null
+    private var track: PcmTrack? = null
     private var worker: Job? = null
     private var input: Channel<ByteArray>? = null
     private var frameBytes = 2
@@ -33,6 +35,16 @@ internal class SystemTtsAudioPlayer {
     private var onError: ((Throwable) -> Unit)? = null
     private val ranges = ArrayDeque<Pair<Long, () -> Unit>>()
     private val rangeLock = Any()
+
+    internal interface PcmTrack {
+        val bufferSizeInFrames: Int
+        val playbackHeadPosition: Long
+        fun play()
+        fun pause()
+        fun flush()
+        fun release()
+        fun write(bytes: ByteArray, offset: Int, size: Int): Int
+    }
 
     data class PcmFormat(val sampleRate: Int, val encoding: Int, val channels: Int) {
         val channelMask: Int
@@ -52,28 +64,7 @@ internal class SystemTtsAudioPlayer {
         stop()
         val pcm = PcmFormat(sampleRate, encoding, channels)
         if (sampleRate <= 0 || channels !in 1..2 || pcm.frameBytes <= 0) return false
-        val min = AudioTrack.getMinBufferSize(sampleRate, pcm.channelMask, encoding)
-        if (min <= 0) return false
-        val created = runCatching {
-            AudioTrack(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build(),
-                AudioFormat.Builder()
-                    .setSampleRate(sampleRate)
-                    .setChannelMask(pcm.channelMask)
-                    .setEncoding(encoding)
-                    .build(),
-                maxOf(min * 2, pcm.frameBytes * 2_400),
-                AudioTrack.MODE_STREAM,
-                AudioManager.AUDIO_SESSION_ID_GENERATE
-            )
-        }.getOrNull() ?: return false
-        if (created.state != AudioTrack.STATE_INITIALIZED) {
-            created.release()
-            return false
-        }
+        val created = createTrack(pcm) ?: return false
         track = created
         frameBytes = pcm.frameBytes
         writtenBytes = 0L
@@ -92,12 +83,23 @@ internal class SystemTtsAudioPlayer {
                     dispatchRenderedRanges(created, token)
                 }
                 if (token == generation) {
-                    while (paused || created.playbackHeadPosition.toLong() < writtenFrames) {
+                    val speechFrames = writtenFrames
+                    // MODE_STREAM may wait for a full buffer before rendering any audio.
+                    // Single words can end below that threshold, so prime the remainder with
+                    // silence. Completion still follows the speech, not the padding.
+                    if (writtenBytes > 0L && writtenFrames < created.bufferSizeInFrames) {
+                        val paddingBytes = (created.bufferSizeInFrames.toLong() * pcm.frameBytes - writtenBytes).toInt()
+                        val silence = if (pcm.encoding == AudioFormat.ENCODING_PCM_8BIT) 0x80.toByte() else 0.toByte()
+                        writeChunk(created, ByteArray(paddingBytes) { silence }, token)
+                    }
+                    while (token == generation && (paused || created.playbackHeadPosition < speechFrames)) {
                         dispatchRenderedRanges(created, token)
                         delay(10)
                     }
                     dispatchRenderedRanges(created, token)
-                    if (token == generation) withContext(Dispatchers.Main.immediate) { onDone?.invoke() }
+                    if (token == generation) withContext(Dispatchers.Main.immediate) {
+                        if (token == generation) onDone?.invoke()
+                    }
                 }
             } catch (error: Throwable) {
                 if (token == generation) withContext(Dispatchers.Main.immediate) { onError?.invoke(error) }
@@ -111,8 +113,8 @@ internal class SystemTtsAudioPlayer {
         synchronized(rangeLock) { ranges.addLast(frame to callback) }
     }
 
-    private suspend fun dispatchRenderedRanges(active: AudioTrack, token: Long) {
-        val rendered = active.playbackHeadPosition.toLong() and 0xffffffffL
+    private suspend fun dispatchRenderedRanges(active: PcmTrack, token: Long) {
+        val rendered = active.playbackHeadPosition
         while (true) {
             val callback = synchronized(rangeLock) {
                 val first = ranges.firstOrNull()
@@ -136,12 +138,12 @@ internal class SystemTtsAudioPlayer {
         input?.close()
     }
 
-    private suspend fun writeChunk(active: AudioTrack, bytes: ByteArray, token: Long) {
+    private suspend fun writeChunk(active: PcmTrack, bytes: ByteArray, token: Long) {
         var offset = 0
         while (offset < bytes.size && token == generation) {
             while (paused && token == generation) delay(10)
             if (token != generation) return
-            val written = active.write(bytes, offset, bytes.size - offset, AudioTrack.WRITE_NON_BLOCKING)
+            val written = active.write(bytes, offset, bytes.size - offset)
             when {
                 written > 0 -> {
                     offset += written
@@ -189,5 +191,42 @@ internal class SystemTtsAudioPlayer {
     fun release() {
         stop()
         scope.coroutineContext[Job]?.cancel()
+    }
+
+    companion object {
+        private fun createAndroidTrack(pcm: PcmFormat): PcmTrack? {
+            val min = AudioTrack.getMinBufferSize(pcm.sampleRate, pcm.channelMask, pcm.encoding)
+            if (min <= 0) return null
+            val created = runCatching {
+                AudioTrack(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build(),
+                    AudioFormat.Builder()
+                        .setSampleRate(pcm.sampleRate)
+                        .setChannelMask(pcm.channelMask)
+                        .setEncoding(pcm.encoding)
+                        .build(),
+                    maxOf(min * 2, pcm.frameBytes * 2_400),
+                    AudioTrack.MODE_STREAM,
+                    AudioManager.AUDIO_SESSION_ID_GENERATE
+                )
+            }.getOrNull() ?: return null
+            if (created.state != AudioTrack.STATE_INITIALIZED) {
+                created.release()
+                return null
+            }
+            return object : PcmTrack {
+                override val bufferSizeInFrames get() = created.bufferSizeInFrames
+                override val playbackHeadPosition get() = created.playbackHeadPosition.toLong() and 0xffffffffL
+                override fun play() = created.play()
+                override fun pause() = created.pause()
+                override fun flush() = created.flush()
+                override fun release() = created.release()
+                override fun write(bytes: ByteArray, offset: Int, size: Int) =
+                    created.write(bytes, offset, size, AudioTrack.WRITE_NON_BLOCKING)
+            }
+        }
     }
 }

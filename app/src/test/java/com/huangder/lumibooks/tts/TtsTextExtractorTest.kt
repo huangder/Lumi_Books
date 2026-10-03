@@ -66,10 +66,34 @@ class TtsTextExtractorTest {
     }
 
     @Test
-    fun playbackText_stripsOnlyStandaloneSingleGraphemeFullStop() {
-        assertEquals("1", extractor.playbackText("1."))
-        assertEquals("1", extractor.playbackText("1。"))
-        assertEquals("正文。", extractor.playbackText("正文。"))
+    fun playbackText_removesFullStopsFromSingleCharactersAndTwoCharacterFragments() {
+        for (content in listOf("1", "12", "好", "好的", "XX", "𠀀", "e\u0301")) {
+            for (suffix in listOf(".", "。", "...", "。。")) {
+                assertEquals(content, extractor.playbackText(content + suffix))
+            }
+        }
+        assertEquals("完整正文。", extractor.playbackText("完整正文。"))
+        assertEquals("好", extractor.playbackText("好"))
+        assertEquals("好的！", extractor.playbackText("好的！"))
+        assertEquals("3.14", extractor.playbackText("3.14"))
+    }
+
+    @Test
+    fun playbackText_keepsQuotedContentAtItsOriginalOffsets() {
+        assertEquals("“好 ”", extractor.playbackText("“好。”"))
+        assertEquals("（好的 ）", extractor.playbackText("（好的。）。"))
+        assertEquals("  好", extractor.playbackText("  好。 "))
+        assertEquals("。", extractor.playbackText("。"))
+    }
+
+    @Test
+    fun shortSentencesRetainPunctuationAndSourceOffsetsBeforePlayback() {
+        val segments = extractor.splitIntoSegments("好。好的.嗯", baseCharacterOffset = 100)
+
+        assertEquals(listOf("好。", "好的.", "嗯"), segments.map { it.text })
+        assertEquals(listOf(100, 102, 105), segments.map { it.startCharacterOffset })
+        assertEquals(listOf(102, 105, 106), segments.map { it.endCharacterOffset })
+        assertEquals(listOf("好", "好的", "嗯"), segments.map { extractor.playbackText(it.text) })
     }
 
     @Test

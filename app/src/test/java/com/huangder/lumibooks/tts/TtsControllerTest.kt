@@ -92,6 +92,31 @@ class TtsControllerTest {
     }
 
     @Test
+    fun multiTtsShortSentencesAndSingleCharacterAreAllSubmittedInOrder() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val engine = FakePlaybackEngine()
+        val controller = controller(
+            systemEngine = engine,
+            settingsStore = FakeSettingsStore(TtsProviderSelection.AndroidEngine("com.example.multitts"))
+        )
+        try {
+            controller.start("book", FakePageSource(page(0, "好。好的.嗯")), 0, 0)
+            for ((index, original) in listOf("好。", "好的.", "嗯").withIndex()) {
+                assertEquals(original, controller.currentSentence.value?.text)
+                assertEquals(listOf(0, 2, 5)[index], controller.currentSentence.value?.startCharacterOffset)
+                engine.complete(engine.lastUtteranceId)
+                runCurrent()
+            }
+            assertEquals(listOf("好", "好的", "嗯"), engine.spokenTexts)
+            assertEquals(TtsPlaybackState.IDLE, controller.playbackState.value)
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun punctuationOnlyPageIsSkippedWithoutStallingPlayback() = runTest {
         val main = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(main)
