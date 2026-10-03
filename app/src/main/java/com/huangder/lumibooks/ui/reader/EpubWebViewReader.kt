@@ -700,7 +700,8 @@ internal fun EpubWebViewReader(
                         view = view,
                         viewChapter = viewChapter,
                         sentence = latestTtsCurrentSentence.value,
-                        color = latestTtsHighlightColor.value
+                        color = latestTtsHighlightColor.value,
+                        follow = latestContinuousScroll.value && pageTurnHost.activeWebView === view
                     )
                 }
 
@@ -2886,7 +2887,8 @@ internal fun EpubWebViewReader(
                     val viewChapter = session.chapterIndexForUrl(view.url.orEmpty())
                     if (viewChapter != null) {
                         applyHighlights(view, epubNotesForChapter(notes, viewChapter), latestRuleFontUrls.value)
-                        applyTtsHighlight(view, viewChapter, ttsCurrentSentence, ttsHighlightColor)
+                        applyTtsHighlight(view, viewChapter, ttsCurrentSentence, ttsHighlightColor,
+                            follow = continuousScroll && pageTurnHost.activeWebView === view)
                         view.postInvalidateOnAnimation()
                     }
                 }
@@ -2960,7 +2962,8 @@ internal fun EpubWebViewReader(
             val viewChapter = session.chapterIndexForUrl(
                 view.url.orEmpty().substringBefore('#')
             ) ?: return@forEach
-            applyTtsHighlight(view, viewChapter, ttsCurrentSentence, ttsHighlightColor)
+            applyTtsHighlight(view, viewChapter, ttsCurrentSentence, ttsHighlightColor,
+                follow = continuousScroll && host.activeWebView === view)
             view.postInvalidateOnAnimation()
         }
     }
@@ -3474,12 +3477,13 @@ private fun applyTtsHighlight(
     view: WebView,
     viewChapter: Int,
     sentence: TtsSentencePosition?,
-    color: Int
+    color: Int,
+    follow: Boolean = false
 ) {
     val command = if (sentence != null && sentence.chapterIndex == viewChapter) {
         "window.LumiReader&&window.LumiReader.setTtsHighlight(" +
             "${sentence.startOffset},${sentence.endOffset}," +
-            JSONObject.quote(color.toCssColor()) + ");"
+            JSONObject.quote(color.toCssColor()) + ",${follow});"
     } else {
         "window.LumiReader&&window.LumiReader.setTtsHighlight(null,null,null);"
     }

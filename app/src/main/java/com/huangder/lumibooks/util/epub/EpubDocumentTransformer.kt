@@ -3181,7 +3181,25 @@ private const val READER_SCRIPT_PART_3 = """
     return true;
   }
 
-  function setTtsHighlight(start, end, color) {
+  function followTtsHighlight() {
+    if (state.flow !== 'scrolled' || state.fixed || !state.ttsHighlight) return;
+    var tts = state.ttsHighlight;
+    var range = rangeAtOffsets(textIndex(), tts.start, tts.end);
+    if (!range) return;
+    var rects = Array.prototype.filter.call(range.getClientRects(), function (rect) {
+      return rect.width > 0 && rect.height > 0;
+    });
+    if (!rects.length) return;
+    var first = rects[0];
+    var last = rects[rects.length - 1];
+    var bottom = Math.max(1, viewportHeight() - 104);
+    if (last.bottom > bottom || first.top < 0) {
+      var targetBottom = last.bottom - first.top > bottom ? first.bottom : last.bottom;
+      window.scrollBy(0, targetBottom - bottom);
+    }
+  }
+
+  function setTtsHighlight(start, end, color, follow) {
     if (start == null && end == null && !state.ttsHighlight) return true;
     var previousKey = JSON.stringify(state.ttsHighlight);
     var index = textIndex();
@@ -3200,8 +3218,13 @@ private const val READER_SCRIPT_PART_3 = """
         color: normalizedColor
       };
     }
-    if (previousKey === JSON.stringify(state.ttsHighlight)) return true;
-    return rebuildHighlightLayer();
+    if (previousKey === JSON.stringify(state.ttsHighlight)) {
+      if (follow) followTtsHighlight();
+      return true;
+    }
+    var rebuilt = rebuildHighlightLayer();
+    if (follow) followTtsHighlight();
+    return rebuilt;
   }
 
   function clearDocumentSelection() {

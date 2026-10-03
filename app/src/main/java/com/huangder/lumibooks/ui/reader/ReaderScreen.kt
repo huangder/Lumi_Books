@@ -1602,6 +1602,7 @@ fun ReaderScreen(
 
     val latestTtsUiState = rememberUpdatedState(uiState)
     val latestTtsBookLayout = rememberUpdatedState(isBookLayout)
+    val latestTtsBookLayoutScroll = rememberUpdatedState(isBookLayoutContinuousScroll)
     val latestTtsContinuousScroll = rememberUpdatedState(isContinuousScrollMode)
     val latestTtsEInkMode = rememberUpdatedState(eInkMode)
     var lastHandledTtsPageRequestId by remember(bookId) { mutableLongStateOf(0L) }
@@ -1620,7 +1621,8 @@ fun ReaderScreen(
             lastHandledTtsPageRequestId = request.requestId
             if (latestTtsBookLayout.value) {
                 if (request.location.chapterIndex == currentUiState.currentChapterIndex &&
-                    request.location.pageIndex == currentUiState.currentPageIndex
+                    (latestTtsBookLayoutScroll.value ||
+                        request.location.pageIndex == currentUiState.currentPageIndex)
                 ) {
                     viewModel.acknowledgeTtsPageTurnRequest(request)
                     return@collect
@@ -1637,18 +1639,8 @@ fun ReaderScreen(
                 return@collect
             }
             if (latestTtsContinuousScroll.value) {
-                viewModel.ttsPageFractionForContinuousScroll(
-                    request.location.chapterIndex,
-                    request.location.pageIndex
-                )?.let { targetFraction ->
-                    continuousScrollRequests.emit(
-                        ContinuousScrollRequest(
-                            chapterIndex = request.location.chapterIndex,
-                            chapterFraction = targetFraction,
-                            origin = TtsPageChangeOrigin.TTS_FOLLOW
-                        )
-                    )
-                }
+                // The sentence position, not the TTS page estimate, owns scroll placement.
+                viewModel.acknowledgeTtsPageTurnRequest(request)
                 return@collect
             }
             var readView = readViewRef.value
@@ -7228,6 +7220,61 @@ internal fun ContinuousScrollReader(
             restoredLayoutKey = chapterLayoutKey
             onRestoreComplete()
             if (request != null) scrollRequests.compareAndSet(request, null)
+        }
+    }
+
+    val ttsChapterTextComplete = ttsCurrentSentence?.let { chapterTextComplete[it.chapterIndex] }
+    LaunchedEffect(ttsCurrentSentence, chapterLayoutKey, viewportHeightPx,
+        initialRestoreCompleted, ttsChapterTextComplete) {
+        val sentence = ttsCurrentSentence ?: return@LaunchedEffect
+        if (!initialRestoreCompleted || viewportHeightPx <= 0 ||
+            sentence.chapterIndex !in 0 until chapterCount
+        ) return@LaunchedEffect
+        val chapter = sentence.chapterIndex
+        if (listState.layoutInfo.visibleItemsInfo.none { it.index == chapter }) {
+            listState.scrollToItem(chapter)
+        }
+        repeat(CONTINUOUS_RESTORE_WAIT_MAX_FRAMES) {
+            withFrameNanos { }
+            if (selectionViewportBounds.isEmpty) return@repeat
+            val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == chapter }
+                ?: return@repeat
+            val view = chapterTextViews[chapter]?.get()?.takeIf {
+                it.isAttachedToWindow && !it.isLayoutRequested && it.layout != null
+            } ?: return@repeat
+            val layout = view.layout ?: return@repeat
+            if (sentence.endOffset > layout.text.length && ttsChapterTextComplete != true) {
+                return@repeat
+            }
+            val start = sentence.startOffset.coerceIn(0, layout.text.length)
+            val end = (sentence.endOffset - 1).coerceIn(start, layout.text.length)
+            val firstLine = layout.getLineForOffset(start)
+            val lastLine = layout.getLineForOffset(end)
+            val viewY = IntArray(2).also(view::getLocationInWindow)[1]
+            val viewportTop = selectionViewportBounds.top
+            val lineTop = viewY + view.totalPaddingTop + layout.getLineTop(firstLine)
+            val lineBottom = viewY + view.totalPaddingTop + layout.getLineBottom(lastLine)
+            val bottom = (selectionViewportBounds.bottom - (104 * readerDensity).roundToInt())
+                .coerceAtLeast(viewportTop + 1)
+            if (lineBottom > bottom || lineTop < viewportTop) {
+                val viewTopInItem = viewY - viewportTop - item.offset
+                val visibleHeight = bottom - viewportTop
+                val targetLineBottom = if (lineBottom - lineTop > visibleHeight) {
+                    layout.getLineBottom(firstLine)
+                } else {
+                    layout.getLineBottom(lastLine)
+                }
+                val targetOffset = (viewTopInItem + view.totalPaddingTop +
+                    targetLineBottom - visibleHeight).coerceAtLeast(0)
+                listState.scrollToItem(chapter, targetOffset)
+            }
+            val settledItem = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == chapter }
+            if (settledItem != null && settledItem.size > 0) {
+                val fraction = (-settledItem.offset).toFloat()
+                    .div(settledItem.size).coerceIn(0f, 0.9999f)
+                onChapterVisible(chapter, fraction, TtsPageChangeOrigin.LAYOUT)
+            }
+            return@LaunchedEffect
         }
     }
 
