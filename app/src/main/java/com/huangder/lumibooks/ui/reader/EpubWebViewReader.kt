@@ -629,7 +629,8 @@ internal fun EpubWebViewReader(
             EpubPageTurnHost(context).apply {
                 val pageTurnHost = this
                 addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
-                    hostViewportSize.value = (right - left) to (bottom - top)
+                    hostViewportSize.value = (right - left) to
+                        (bottom - top - paddingTop - paddingBottom).coerceAtLeast(0)
                 }
                 val loadedChapterByView = mutableMapOf<EpubContentWebView, Int>()
                 val loadingChapterByView = mutableMapOf<EpubContentWebView, Int>()
@@ -2719,6 +2720,20 @@ internal fun EpubWebViewReader(
             ) ?: chapterIndex
             val isFixedLayout = session.renditionLayout(chapterIndex) ==
                 EpubRenditionLayout.PRE_PAGINATED
+            val scrollTextChapter = continuousScroll && !isFixedLayout &&
+                !session.isMediaOnlyPage(chapterIndex)
+            val density = pageTurnHost.resources.displayMetrics.density
+            val topInset = if (scrollTextChapter) {
+                (marginTopDp.coerceAtLeast(0f) * density).toInt()
+            } else 0
+            val bottomInset = if (scrollTextChapter) {
+                (marginBottomDp.coerceAtLeast(0f) * density).toInt()
+            } else 0
+            if (pageTurnHost.paddingTop != topInset || pageTurnHost.paddingBottom != bottomInset) {
+                pageTurnHost.setPadding(0, topInset, 0, bottomInset)
+                hostViewportSize.value = pageTurnHost.width to
+                    (pageTurnHost.height - topInset - bottomInset).coerceAtLeast(0)
+            }
             val pagingMode = epubDocumentPagingMode(
                 continuousScroll = continuousScroll,
                 transition = pageTransition,
@@ -3312,9 +3327,9 @@ private fun configureReader(
         .put(
             "insets",
             JSONObject()
-                .put("top", marginTopDp)
+                .put("top", if (continuousScroll) 0f else marginTopDp)
                 .put("right", marginRightDp)
-                .put("bottom", marginBottomDp)
+                .put("bottom", if (continuousScroll) 0f else marginBottomDp)
                 .put("left", marginLeftDp)
         )
     if (session.renditionLayout(chapterIndex) == EpubRenditionLayout.PRE_PAGINATED) {
