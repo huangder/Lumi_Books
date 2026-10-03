@@ -1116,7 +1116,7 @@ class ReaderViewModel @Inject constructor(
         )
         if (effectiveSuite != null) {
             nextState = nextState
-                .withReaderThemeSettings(effectiveSuite.settingsFor(layoutTarget))
+                .withReaderThemeSettings(effectiveSuite.settingsFor(layoutTarget, nextState.themeEditingDark))
                 .copy(
                     readerThemeSuites = suiteState.suites,
                     activeReaderThemeSuiteId = effectiveSuiteId,
@@ -1313,7 +1313,7 @@ class ReaderViewModel @Inject constructor(
                     globalActiveBookLayoutThemeSuiteId = state.activeBookLayoutSuiteId
                 )
                 _uiState.value = effectiveSuite?.let {
-                    updated.withReaderThemeSettings(it.settingsFor(layout))
+                    updated.withReaderThemeSettings(it.settingsFor(layout, updated.themeEditingDark))
                 }
                     ?.copy(
                         readerThemeSuites = state.suites,
@@ -1641,7 +1641,7 @@ class ReaderViewModel @Inject constructor(
         parser?.firstLineIndentChars = suite.settings.firstLineIndent
         parser?.clearHtmlCache()
         _uiState.value = state.withReaderThemeSettings(
-            suite.settingsFor(layout)
+            suite.settingsFor(layout, state.themeEditingDark)
         ).copy(
             activeReaderThemeSuiteId = suiteId,
             activeReaderLayoutThemeSuiteId = if (layout == ReaderLayoutTarget.READER_LAYOUT) {
@@ -3380,6 +3380,8 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun resetAdvancedReaderSettings() {
+        val suiteId = _uiState.value.activeThemeSuiteIdFor(ReaderLayoutTarget.READER_LAYOUT)
+        val editingDark = _uiState.value.themeEditingDark
         parser?.paragraphSpacingDp = 2f
         parser?.firstLineIndentChars = 2f
         parser?.clearHtmlCache()
@@ -3419,6 +3421,7 @@ class ReaderViewModel @Inject constructor(
                 volumeKeyPageTurnEnabled = false,
                 bookmarkRemarkPromptEnabled = true,
                 bionicReadingEnabled = false,
+                screenSleepTimeoutSeconds = DataStoreManager.DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS,
                 readerEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT,
                 readerTopLeftContent = defaultReaderCornerContent(ReaderPageCorner.TOP_LEFT),
                 readerTopRightContent = defaultReaderCornerContent(ReaderPageCorner.TOP_RIGHT),
@@ -3429,7 +3432,7 @@ class ReaderViewModel @Inject constructor(
         refreshReaderNotes(_notes.value)
         viewModelScope.launch {
             dataStoreManager.resetAdvancedReaderSettings(
-                _uiState.value.activeThemeSuiteIdFor(ReaderLayoutTarget.READER_LAYOUT)
+                suiteId, ReaderLayoutTarget.READER_LAYOUT, editingDark
             )
             loadChapterContent()
         }
@@ -3437,24 +3440,32 @@ class ReaderViewModel @Inject constructor(
 
     /** 从 URI 导入字体文件到内部存储，注册到自定义字体列表，返回新建的 CustomFontPreset */
     fun resetBookLayoutReaderSettings() {
-        // Only reachable while the book layout sheet is open, so every save*
-        // call below lands in the book layout bucket of the active suite.
-        saveFontType("system")
-        saveTextAlignment(ReaderTextAlignment.NATURAL)
-        saveMarginLeft(38f)
-        saveMarginRight(38f)
-        saveMarginTop(64f)
-        saveMarginBottom(64f)
-        saveReaderTextColor(null)
-        saveVolumeKeyPageTurnEnabled(false)
-        saveBookmarkRemarkPromptEnabled(true)
-        saveBionicReadingEnabled(false)
-        saveScreenSleepTimeoutSeconds(DataStoreManager.DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS)
-        saveReaderEdgeTapMode(ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT)
-        ReaderPageCorner.entries.forEach { corner ->
-            saveReaderCornerContent(corner, defaultReaderCornerContent(corner))
+        val suiteId = _uiState.value.activeThemeSuiteIdFor(ReaderLayoutTarget.BOOK_LAYOUT)
+        val resetSettings = _uiState.value.currentThemeSettings(ReaderLayoutTarget.BOOK_LAYOUT).copy(
+            textColor = null, fontType = "system", lineHeight = 1.5f,
+            letterSpacing = 0f, textAlignment = ReaderTextAlignment.NATURAL,
+            paragraphSpacing = 2f, firstLineIndent = 2f,
+            marginLeft = 38f, marginRight = 38f,
+            marginTop = 64f, marginBottom = 64f
+        )
+        _uiState.value = _uiState.value
+            .withUpdatedActiveThemeSettings(ReaderLayoutTarget.BOOK_LAYOUT) { resetSettings }
+            .withReaderThemeSettings(resetSettings)
+            .copy(
+                volumeKeyPageTurnEnabled = false,
+                bookmarkRemarkPromptEnabled = true,
+                bionicReadingEnabled = false,
+                screenSleepTimeoutSeconds = DataStoreManager.DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS,
+                readerEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT,
+                readerTopLeftContent = defaultReaderCornerContent(ReaderPageCorner.TOP_LEFT),
+                readerTopRightContent = defaultReaderCornerContent(ReaderPageCorner.TOP_RIGHT),
+                readerBottomLeftContent = defaultReaderCornerContent(ReaderPageCorner.BOTTOM_LEFT),
+                readerBottomRightContent = defaultReaderCornerContent(ReaderPageCorner.BOTTOM_RIGHT),
+                readerCornerMargins = ReaderCornerMargins()
+            )
+        viewModelScope.launch {
+            dataStoreManager.resetAdvancedReaderSettings(suiteId, ReaderLayoutTarget.BOOK_LAYOUT)
         }
-        saveReaderCornerMargins(ReaderCornerMargins())
     }
 
     suspend fun importFont(

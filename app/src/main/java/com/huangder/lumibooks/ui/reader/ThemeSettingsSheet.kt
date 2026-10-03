@@ -2493,10 +2493,8 @@ fun AdvancedSettingsSheet(
     }
     val previewLeftPadding = currentMarginLeft.coerceIn(ReaderThemeSettings.HORIZONTAL_MARGIN_RANGE).dp
     val previewRightPadding = currentMarginRight.coerceIn(ReaderThemeSettings.HORIZONTAL_MARGIN_RANGE).dp
-    val previewTopPadding =
-        (currentMarginTop.coerceIn(ReaderThemeSettings.VERTICAL_MARGIN_RANGE) / 3f).dp
-    val previewBottomPadding =
-        (currentMarginBottom.coerceIn(ReaderThemeSettings.VERTICAL_MARGIN_RANGE) / 3f).dp
+    val previewTopPadding = currentMarginTop.coerceIn(ReaderThemeSettings.VERTICAL_MARGIN_RANGE).dp
+    val previewBottomPadding = currentMarginBottom.coerceIn(ReaderThemeSettings.VERTICAL_MARGIN_RANGE).dp
     val previewLineHeight = if (preservePublisherLayout) 1.5f else currentLineHeight
     val previewLetterSpacing = if (preservePublisherLayout) 0f else currentLetterSpacing
     val previewParagraphSpacing = if (preservePublisherLayout) 0f else currentParagraphSpacing
@@ -2548,7 +2546,7 @@ fun AdvancedSettingsSheet(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(260.dp)
+                    .height(400.dp)
                     .background(currentBgColor)
             ) {
                 currentBackgroundImagePath?.let { path ->

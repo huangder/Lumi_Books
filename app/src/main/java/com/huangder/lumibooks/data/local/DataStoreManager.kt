@@ -1617,10 +1617,16 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { preferences -> preferences[APPLY_TO_BODY_ONLY] = enabled }
     }
 
-    suspend fun resetAdvancedReaderSettings(targetSuiteId: String? = null) {
+    suspend fun resetAdvancedReaderSettings(
+        targetSuiteId: String? = null,
+        layout: ReaderLayoutTarget = ReaderLayoutTarget.READER_LAYOUT,
+        modeDark: Boolean? = null
+    ) {
         context.dataStore.edit { preferences ->
-            val shouldApplyLegacyThemeFields = targetSuiteId == null ||
-                targetSuiteId == preferences[ACTIVE_READER_THEME_SUITE_ID]
+            val shouldApplyLegacyThemeFields = layout == ReaderLayoutTarget.READER_LAYOUT &&
+                modeDark == null && (targetSuiteId == null ||
+                    targetSuiteId == preferences[ACTIVE_READER_THEME_SUITE_ID]
+                )
             if (shouldApplyLegacyThemeFields) {
                 preferences[LINE_HEIGHT] = 1.5f
                 preferences[LETTER_SPACING] = 0f
@@ -1652,52 +1658,30 @@ class DataStoreManager @Inject constructor(
             preferences.remove(READER_CORNER_MARGIN_RIGHT)
             preferences.remove(READER_CORNER_MARGIN_TOP)
             preferences.remove(READER_CORNER_MARGIN_BOTTOM)
-            val reset = ReaderThemeSettings(
-                textColor = null,
-                fontType = "system",
-                lineHeight = 1.5f,
-                letterSpacing = 0f,
-                textAlignment = ReaderTextAlignment.NATURAL,
-                paragraphSpacing = 2f,
-                firstLineIndent = 2f,
-                marginLeft = 38f,
-                marginRight = 38f,
-                marginTop = 64f,
-                marginBottom = 64f
+            fun ReaderThemeSettings.resetTypography() = copy(
+                textColor = null, fontType = "system", lineHeight = 1.5f,
+                letterSpacing = 0f, textAlignment = ReaderTextAlignment.NATURAL,
+                paragraphSpacing = 2f, firstLineIndent = 2f,
+                marginLeft = 38f, marginRight = 38f,
+                marginTop = 64f, marginBottom = 64f
             )
             if (targetSuiteId == null) {
-                preferences.updateActiveReaderThemeSuite {
-                    copy(
-                        textColor = reset.textColor,
-                        fontType = reset.fontType,
-                        lineHeight = reset.lineHeight,
-                        letterSpacing = reset.letterSpacing,
-                        textAlignment = reset.textAlignment,
-                        paragraphSpacing = reset.paragraphSpacing,
-                        firstLineIndent = reset.firstLineIndent,
-                        marginLeft = reset.marginLeft,
-                        marginRight = reset.marginRight,
-                        marginTop = reset.marginTop,
-                        marginBottom = reset.marginBottom
-                    )
-                }
+                preferences.updateActiveReaderThemeSuite { resetTypography() }
             } else {
                 val suites = readThemeSuites(preferences)
                 preferences[READER_THEME_SUITES] = ReaderThemeSuiteCodec.encode(
                     suites.map { suite ->
-                        if (suite.id == targetSuiteId) suite.copy(settings = suite.settings.copy(
-                            textColor = reset.textColor,
-                            fontType = reset.fontType,
-                            lineHeight = reset.lineHeight,
-                            letterSpacing = reset.letterSpacing,
-                            textAlignment = reset.textAlignment,
-                            paragraphSpacing = reset.paragraphSpacing,
-                            firstLineIndent = reset.firstLineIndent,
-                            marginLeft = reset.marginLeft,
-                            marginRight = reset.marginRight,
-                            marginTop = reset.marginTop,
-                            marginBottom = reset.marginBottom
-                        )) else suite
+                        if (suite.id != targetSuiteId) suite else when (layout) {
+                            ReaderLayoutTarget.BOOK_LAYOUT -> suite.withSettings(
+                                layout, suite.settingsFor(layout).resetTypography()
+                            )
+                            ReaderLayoutTarget.READER_LAYOUT -> if (modeDark != null) {
+                                suite.withModeSettings(
+                                    modeDark,
+                                    suite.settingsFor(layout, modeDark).resetTypography()
+                                )
+                            } else suite.withSettings(layout, suite.settings.resetTypography())
+                        }
                     }
                 )
             }
