@@ -85,6 +85,7 @@ import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 import com.huangder.lumibooks.data.backup.PortablePreference
+import com.huangder.lumibooks.data.backup.shouldApplyIncomingPortablePreference
 import java.security.MessageDigest
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -2947,6 +2948,21 @@ class DataStoreManager @Inject constructor(
             val metadata = JSONObject(preferences[PORTABLE_PREFERENCE_METADATA] ?: "{}")
             for (entry in entries) {
                 if (!isPortablePreferenceKey(entry.key)) continue
+                val oldMetadata = metadata.optJSONObject(entry.key)
+                val currentValue = preferences.asMap().entries
+                    .firstOrNull { it.key.name == entry.key }
+                    ?.let { (key, value) -> encodePortablePreference(key.name, value) }
+                val currentFingerprint = currentValue?.let {
+                    portablePreferenceFingerprint(it.type, it.value)
+                }
+                if (!shouldApplyIncomingPortablePreference(
+                        hasPreviousMetadata = oldMetadata != null,
+                        hasCurrentValue = currentValue != null,
+                        currentFingerprint = currentFingerprint,
+                        previousFingerprint = oldMetadata?.optString("fingerprint"),
+                        previousWasDeleted = oldMetadata?.optBoolean("deleted") == true
+                    )
+                ) continue
                 applyPortablePreference(preferences, entry)
                 val fingerprint = if (entry.deleted) "" else portablePreferenceFingerprint(entry.type, entry.value)
                 metadata.put(

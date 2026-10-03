@@ -38,3 +38,15 @@ data class PortablePreference(
         )
     }
 }
+
+internal fun shouldApplyIncomingPortablePreference(
+    hasPreviousMetadata: Boolean,
+    hasCurrentValue: Boolean,
+    currentFingerprint: String?,
+    previousFingerprint: String?,
+    previousWasDeleted: Boolean
+): Boolean {
+    if (!hasPreviousMetadata) return true
+    if (previousWasDeleted) return !hasCurrentValue
+    return hasCurrentValue && currentFingerprint == previousFingerprint
+}
