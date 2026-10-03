@@ -129,7 +129,7 @@ internal fun CoverFlowScene(
     val menuLabel = stringResource(R.string.more_options)
     val menuRetreat by androidx.compose.animation.core.animateFloatAsState(
         if (state.menuBookId != null) 1f else 0f,
-        animationSpec = androidx.compose.animation.core.tween(if (motionEnabled) 320 else 80,
+        animationSpec = com.huangder.lumibooks.ui.animation.VisualMotion.tween(if (motionEnabled) 320 else 80,
             easing = androidx.compose.animation.core.FastOutSlowInEasing), label = "coverFlowMenuRetreat")
     var retainedMenuId by remember { mutableStateOf<String?>(null) }
     SideEffect { state.menuBookId?.let { retainedMenuId = it } }
@@ -224,7 +224,7 @@ internal fun CoverFlowScene(
                     DisposableEffect(book.id) { onDispose { layout.covers.remove(book.id) } }
                     val deletionAlpha by androidx.compose.animation.core.animateFloatAsState(
                         if (book.id in deletingIds) 0f else 1f,
-                        androidx.compose.animation.core.tween(if (motionEnabled) 220 else 0), label = "coverFlowDelete")
+                        com.huangder.lumibooks.ui.animation.VisualMotion.tween(if (motionEnabled) 220 else 0), label = "coverFlowDelete")
                     // Keep anchors stable while the focus crosses books. Adding/removing a
                     // position callback at each crossing can miss a layout-only registration.
                     val anchor = Modifier.bookCoverTransitionAnchor(

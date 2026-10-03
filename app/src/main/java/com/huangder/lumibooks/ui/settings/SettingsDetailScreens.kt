@@ -19,8 +19,8 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.spring
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -1539,6 +1539,7 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             label = stringResource(R.string.motion_preference_label),
             options = listOf(
                 "standard" to stringResource(R.string.motion_preference_standard),
+                "fast" to stringResource(R.string.motion_preference_fast),
                 "reduced" to stringResource(R.string.motion_preference_reduced)
             ),
             selected = uiState.motionPreference,

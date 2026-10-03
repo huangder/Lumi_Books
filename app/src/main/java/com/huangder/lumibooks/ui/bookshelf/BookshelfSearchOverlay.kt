@@ -15,9 +15,10 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
+import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.delayMillis
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -253,7 +254,7 @@ internal fun BookshelfSearchOverlay(
     }
     LaunchedEffect(visible, eInkMode) {
         if (visible) {
-            if (!eInkMode) delay(140)
+            if (!eInkMode) delay(delayMillis(140L))
             focusRequester.requestFocus()
         } else {
             keyboardController?.hide()

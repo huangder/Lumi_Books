@@ -2,6 +2,7 @@ package com.huangder.lumibooks.ui.reader.engine
 
 import android.view.animation.Interpolator
 import android.view.animation.LinearInterpolator
+import com.huangder.lumibooks.ui.animation.VisualMotion
 import kotlin.math.roundToInt
 
 /**
@@ -25,11 +26,12 @@ internal fun curlSettleDurationMs(
     val travel = distance.takeIf { it.isFinite() && it > 0f } ?: 0f
     // 一次完整翻页折角 tip 走过 2 屏宽（右缘 → -viewWidth）。
     val scaled = (base.toFloat() * travel / (2f * width)).roundToInt()
-    return scaled.coerceIn(minOf(CURL_SETTLE_MIN_MS, base), base)
+    return scaled.coerceIn(minOf(VisualMotion.durationMillis(CURL_SETTLE_MIN_MS), base), base)
 }
 
 /** 收尾时长下限，避免极短行程算出 0ms 让动画瞬移。 */
 internal const val CURL_SETTLE_MIN_MS = 120
 
 internal fun curlExpeditedDurationMs(baseDurationMs: Int): Int =
-    (baseDurationMs * 0.3f).roundToInt().coerceIn(120, 240)
+    (baseDurationMs * 0.3f).roundToInt().coerceIn(
+        VisualMotion.durationMillis(120), VisualMotion.durationMillis(240))

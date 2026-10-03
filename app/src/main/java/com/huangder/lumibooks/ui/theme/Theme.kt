@@ -25,6 +25,7 @@ import com.huangder.lumibooks.domain.model.blendAppAccentArgb
 import com.huangder.lumibooks.domain.model.deriveDarkAppAccentArgb
 import com.huangder.lumibooks.domain.model.normalizeAppAccentHex
 import com.huangder.lumibooks.domain.model.parseAppAccentArgb
+import com.huangder.lumibooks.ui.animation.VisualMotion
 
 private val LightColorScheme = lightColorScheme(
     primary = PrimaryLight,
@@ -142,6 +143,9 @@ fun EBookReaderTheme(
     lumiBackgroundScene: LumiBackgroundScene? = null,
     content: @Composable () -> Unit
 ) {
+    // Specs are built while composing the content below, so make the timing policy available
+    // before the first child reads it rather than waiting for a post-composition side effect.
+    VisualMotion.setPreference(motionPreference)
     val effectiveDarkTheme = if (eInkMode) false else darkTheme
     val effectiveDynamicColor = if (eInkMode) false else dynamicColor
     val view = LocalView.current
@@ -208,7 +212,7 @@ fun EBookReaderTheme(
         LocalOnAppAccentColor provides effectiveOnAccentColor,
         LocalLiquidGlassCapability provides liquidGlassCapability,
         LocalEInkMode provides eInkMode,
-        LocalMotionEnabled provides (!eInkMode && motionPreference == MotionPreference.STANDARD),
+        LocalMotionEnabled provides (!eInkMode && motionPreference.motionEnabled),
         LocalMotionPreference provides motionPreference,
         LocalMenuAnimationStyle provides menuAnimationStyle,
         LocalGlobalFontMode provides GlobalFontMode.normalize(globalFontMode),

@@ -1386,7 +1386,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     /** Updates the selected transition's timing without restarting an in-flight turn. */
     fun setPageTransitionTiming(mode: String, durationMs: Int) {
-        val sanitized = ReaderPageAnimationSettings.sanitizeDuration(mode, durationMs)
+        val sanitized = ReaderPageAnimationSettings.sanitizeRuntimeDuration(mode, durationMs)
         when (mode) {
             ReaderPageAnimationSettings.MODE_SCROLL -> scrollTransitionDurationMs = sanitized
             ReaderPageAnimationSettings.MODE_FADE -> fadeTransitionDurationMs = sanitized
@@ -2716,7 +2716,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         if (highlight.chapterIndex != chapterIndex || searchHighlightAnimator?.isRunning == true) return
 
         searchHighlightAnimator = ValueAnimator.ofInt(0, 180, 0, 180, 0).apply {
-            duration = 2_000L
+            duration = com.huangder.lumibooks.ui.animation.VisualMotion.durationMillis(2_000L)
             addUpdateListener { animator ->
                 val alpha = animator.animatedValue as Int
                 listOf(

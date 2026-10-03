@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.reader.engine
 
 import android.graphics.Canvas
+import com.huangder.lumibooks.ui.animation.VisualMotion
 
 internal fun verticalPageDirectionForDelta(deltaY: Float, threshold: Float = 12f): Int = when {
     !deltaY.isFinite() || !threshold.isFinite() || threshold < 0f -> 0
@@ -92,7 +93,7 @@ class ScrollPageAnim(
     }
 
     fun setBaseDuration(durationMs: Int) {
-        baseDurationMs = durationMs.coerceIn(100, 1000)
+        baseDurationMs = durationMs.coerceIn(1, 1000)
     }
 
     private val density: Float get() = readView.resources.displayMetrics.density
@@ -164,7 +165,7 @@ class ScrollPageAnim(
         val duration = if (fromDrag && vh > 0f) {
             (baseDurationMs * (kotlin.math.abs(dy) / vh))
                 .toInt()
-                .coerceIn(80, baseDurationMs)
+                .coerceIn(minOf(VisualMotion.durationMillis(80), baseDurationMs), baseDurationMs)
         } else {
             baseDurationMs
         }
@@ -184,7 +185,7 @@ class ScrollPageAnim(
         val dy = toY - fromY
         if (dy == 0) { direction = Direction.NONE; readView.invalidate(); return }
         isRunning = true
-        scroller.startScroll(0, fromY, 0, dy, BOUNCE_DURATION)
+        scroller.startScroll(0, fromY, 0, dy, VisualMotion.durationMillis(BOUNCE_DURATION))
         readView.postInvalidateOnAnimation()
     }
 

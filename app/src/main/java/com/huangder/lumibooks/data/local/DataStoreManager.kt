@@ -946,7 +946,7 @@ class DataStoreManager @Inject constructor(
     /** Full motion policy. The legacy entrance flag remains the migration fallback. */
     val motionPreference: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[MOTION_PREFERENCE]
-            ?.takeIf { it == "standard" || it == "reduced" }
+            ?.takeIf { it == "standard" || it == "fast" || it == "reduced" }
             ?: if (preferences[ENTRANCE_ANIMATIONS_ENABLED] == false) "reduced" else "standard"
     }
 
@@ -1030,7 +1030,7 @@ class DataStoreManager @Inject constructor(
             darkMode = preferences[DARK_MODE] ?: "system",
             menuAnimationStyle = MenuAnimationStyle.normalize(preferences[MENU_ANIMATION_STYLE]),
             motionPreference = preferences[MOTION_PREFERENCE]
-                ?.takeIf { it == "standard" || it == "reduced" }
+                ?.takeIf { it == "standard" || it == "fast" || it == "reduced" }
                 ?: if (preferences[ENTRANCE_ANIMATIONS_ENABLED] == false) "reduced" else "standard",
             eInkModeEnabled = preferences[E_INK_MODE_ENABLED] ?: false,
             predictiveBackEnabled = preferences[PREDICTIVE_BACK_ENABLED] ?: true
@@ -2465,11 +2465,15 @@ class DataStoreManager @Inject constructor(
     }
 
     suspend fun saveMotionPreference(preference: String) {
-        val normalized = if (preference == "reduced") "reduced" else "standard"
+        val normalized = when (preference) {
+            "fast" -> "fast"
+            "reduced" -> "reduced"
+            else -> "standard"
+        }
         context.dataStore.edit { preferences ->
             preferences[MOTION_PREFERENCE] = normalized
             // Keep older builds and exported settings in sync.
-            preferences[ENTRANCE_ANIMATIONS_ENABLED] = normalized == "standard"
+            preferences[ENTRANCE_ANIMATIONS_ENABLED] = normalized != "reduced"
         }
     }
 

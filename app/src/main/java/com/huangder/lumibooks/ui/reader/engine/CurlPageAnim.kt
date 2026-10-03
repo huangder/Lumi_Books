@@ -221,7 +221,7 @@ class CurlPageAnim(
     private var settleStateActive = false
     private var settleTargetY = Float.NaN
     private var settleExpedited = false
-    private var capturedBaseDurationMs = baseDurationMs.coerceIn(300, 1200)
+    private var capturedBaseDurationMs = baseDurationMs.coerceIn(1, 1200)
     private var finalFramePending = false
     private var lastGeometryValid = false
     private var settleGeneration = 0
@@ -648,7 +648,7 @@ class CurlPageAnim(
     }
 
     fun setBaseDuration(durationMs: Int) {
-        baseDurationMs = durationMs.coerceIn(300, 1200)
+        baseDurationMs = durationMs.coerceIn(1, 1200)
     }
 
     fun drawOverlay(@Suppress("UNUSED_PARAMETER") canvas: Canvas) = Unit

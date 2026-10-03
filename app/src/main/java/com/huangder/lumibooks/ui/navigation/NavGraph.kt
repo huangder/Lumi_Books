@@ -18,7 +18,7 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -86,6 +86,7 @@ import com.huangder.lumibooks.ui.home.HomeViewModel
 import com.huangder.lumibooks.ui.home.ReadingGoalSheet
 import com.huangder.lumibooks.ui.animation.PageEntranceTracker
 import com.huangder.lumibooks.ui.animation.PAGE_ENTRANCE_PLAYBACK_MILLIS
+import com.huangder.lumibooks.ui.animation.VisualMotion.delayMillis
 import com.huangder.lumibooks.ui.animation.BookHeroWindowOverlay
 import com.huangder.lumibooks.ui.animation.BookReaderAnchorScope
 import com.huangder.lumibooks.ui.animation.BookReaderLibraryLayer
@@ -267,7 +268,7 @@ private fun rememberPageEntrancePlayback(
     }
     LaunchedEffect(play) {
         if (play) {
-            delay(PAGE_ENTRANCE_PLAYBACK_MILLIS)
+            delay(delayMillis(PAGE_ENTRANCE_PLAYBACK_MILLIS))
             play = false
         }
     }
@@ -703,7 +704,7 @@ fun MainNavGraph(
             tabBarVisible = true
         } else {
             if (!eInkMode) {
-                delay(800)
+                delay(delayMillis(800L))
             }
             useMainReturnTabBarTransition = false
             tabBarVisible = true
@@ -751,6 +752,8 @@ fun MainNavGraph(
             NavHost(
                 navController = navController,
                 startDestination = mainStartDestination,
+                enterTransition = { fadeIn(tween(700)) },
+                exitTransition = { fadeOut(tween(700)) },
                 modifier = Modifier
                     .fillMaxSize()
                     .then(

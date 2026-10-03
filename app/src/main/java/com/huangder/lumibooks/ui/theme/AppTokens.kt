@@ -46,12 +46,23 @@ fun Modifier.cardOutline(shape: Shape): Modifier {
 
 enum class MotionPreference {
     STANDARD,
+    FAST,
     REDUCED;
 
     companion object {
         fun fromStoredValue(value: String?): MotionPreference =
-            if (value == "reduced") REDUCED else STANDARD
+            when (value) {
+                "fast" -> FAST
+                "reduced" -> REDUCED
+                else -> STANDARD
+            }
     }
+
+    val visualDurationScale: Float
+        get() = if (this == FAST) 2f / 3f else 1f
+
+    val motionEnabled: Boolean
+        get() = this != REDUCED
 }
 
 val LocalMotionPreference = staticCompositionLocalOf { MotionPreference.STANDARD }

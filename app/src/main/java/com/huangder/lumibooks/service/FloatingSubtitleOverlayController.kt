@@ -372,8 +372,8 @@ class FloatingSubtitleOverlayController @Inject constructor(
         )
         if (duration <= 0L) return
         scrollAnimator = ValueAnimator.ofInt(0, distance).apply {
-            startDelay = SUBTITLE_SCROLL_START_DELAY_MS
-            this.duration = duration
+            startDelay = com.huangder.lumibooks.ui.animation.VisualMotion.delayMillis(SUBTITLE_SCROLL_START_DELAY_MS)
+            this.duration = com.huangder.lumibooks.ui.animation.VisualMotion.durationMillis(duration)
             interpolator = LinearInterpolator()
             addUpdateListener { animator -> view.scrollX = animator.animatedValue as Int }
             start()

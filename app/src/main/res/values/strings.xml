@@ -20,6 +20,7 @@
     <string name="entrance_animations_description">为部分页面添加元素\n动效，这可能会影响性能</string>
     <string name="motion_preference_label">动效</string>
     <string name="motion_preference_standard">标准</string>
+    <string name="motion_preference_fast">快速</string>
     <string name="motion_preference_reduced">减弱动态</string>
     <string name="book_open_transition_label">打开书籍过渡</string>
     <string name="book_open_transition_hero">一镜到底</string>

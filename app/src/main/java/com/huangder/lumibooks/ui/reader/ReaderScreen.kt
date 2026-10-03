@@ -48,9 +48,10 @@ import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
+import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.delayMillis
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -96,6 +97,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
+import com.huangder.lumibooks.ui.animation.VisualMotion
 import com.huangder.lumibooks.ui.theme.drawAppShape
 import androidx.compose.ui.draw.blur
 import androidx.compose.material3.AlertDialog
@@ -2632,8 +2634,8 @@ fun ReaderScreen(
                     initialFragment = epubPendingFragment,
                     continuousScroll = isBookLayoutContinuousScroll,
                     pageTransition = if (isBookLayoutContinuousScroll) "none" else effectivePageTransition,
-                    pageTransitionDurationMs = uiState.pageAnimationSettings.durationFor(
-                        effectivePageTransition
+                    pageTransitionDurationMs = VisualMotion.durationMillis(
+                        uiState.pageAnimationSettings.durationFor(effectivePageTransition)
                     ),
                     marginTopDp = uiState.marginTopDp,
                     marginRightDp = uiState.marginRightDp,
@@ -3319,7 +3321,9 @@ fun ReaderScreen(
                             ),
                             chineseMode = uiState.chineseMode,
                             pageTransition = pageTransition,
-                            pageTransitionDurationMs = uiState.pageAnimationSettings.durationFor(effectivePageTransition),
+                            pageTransitionDurationMs = VisualMotion.durationMillis(
+                                uiState.pageAnimationSettings.durationFor(effectivePageTransition)
+                            ),
                             edgeTapMode = uiState.readerEdgeTapMode
                         )
                     )
@@ -3920,8 +3924,8 @@ fun ReaderScreen(
                 visible = ttsState.activeBookId == uiState.book?.id &&
                     ttsState.playbackState != TtsPlaybackState.IDLE &&
                     !isAnySheetOpen,
-                enter = if (eInkMode || !motionEnabled) fadeIn(tween(LumiMotion.MenuEnterMillis)) else slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                exit = if (eInkMode || !motionEnabled) fadeOut(tween(LumiMotion.MenuExitMillis)) else slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                enter = if (eInkMode || !motionEnabled) fadeIn(tween(LumiMotion.MenuEnterMillis)) else slideInVertically(spring(stiffness = 400f, visibilityThreshold = IntOffset(1, 1)), initialOffsetY = { it }) + fadeIn(spring(stiffness = 400f)),
+                exit = if (eInkMode || !motionEnabled) fadeOut(tween(LumiMotion.MenuExitMillis)) else slideOutVertically(spring(stiffness = 400f, visibilityThreshold = IntOffset(1, 1)), targetOffsetY = { it }) + fadeOut(spring(stiffness = 400f)),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
@@ -4127,7 +4131,7 @@ fun ReaderScreen(
                         openAdvancedAfterThemeClose = true
                         requestCloseTheme = true
                         scope.launch {
-                            delay(if (eInkMode || !motionEnabled) 0L else 90L)
+                            delay(if (eInkMode || !motionEnabled) 0L else delayMillis(90L))
                             if (openAdvancedAfterThemeClose) {
                                 showAdvancedSheet = true
                                 openAdvancedAfterThemeClose = false
@@ -6050,7 +6054,7 @@ private suspend fun animateReaderMenuCapsuleIn(
     offset: Animatable<Float, AnimationVector1D>,
     enterDelayMillis: Long = 0L
 ) {
-    if (enterDelayMillis > 0L) delay(enterDelayMillis)
+    if (enterDelayMillis > 0L) delay(delayMillis(enterDelayMillis))
     coroutineScope {
         launch { alpha.animateTo(1f, tween(READER_MENU_CAPSULE_ENTER_MILLIS)) }
         launch {
@@ -10724,7 +10728,7 @@ private fun SelectionMenuPill(
     val enterTranslateY = remember(reappearKey) { Animatable(12f) }
     val pillShape = AppRoundedCornerShape(22.dp)
     LaunchedEffect(reappearKey) {
-        if (enterDelayMillis > 0) delay(enterDelayMillis)
+        if (enterDelayMillis > 0) delay(delayMillis(enterDelayMillis))
         launch { enterAlpha.animateTo(1f, tween(250)) }
         launch { enterScale.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = 320f)) }
         launch { enterTranslateY.animateTo(0f, tween(220, easing = FastOutSlowInEasing)) }
@@ -11257,7 +11261,11 @@ internal fun NotesListSheet(
                             onEditTags = { onEditTags(item) },
                             resetRevealedKey = resetRevealedKey,
                             onRevealedChanged = { revealed -> anyItemRevealed = revealed },
-                            modifier = Modifier.animateItem()
+                            modifier = Modifier.animateItem(
+                                fadeInSpec = spring(stiffness = 400f),
+                                placementSpec = spring(stiffness = 400f, visibilityThreshold = IntOffset(1, 1)),
+                                fadeOutSpec = spring(stiffness = 400f)
+                            )
                         )
                         if (idx < items.size - 1) {
                             Spacer(Modifier.height(8.dp))

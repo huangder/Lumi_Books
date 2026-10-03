@@ -3,7 +3,7 @@ package com.huangder.lumibooks.ui.animation
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.SpringSpec
-import androidx.compose.animation.core.spring
+import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 
 /**
  * 统一缓动曲线
@@ -38,15 +38,17 @@ object LumiMotion {
     const val SheetExitMillis = 200
     const val PageEnterMillis = 240
 
-    val ProgrammaticSpring: SpringSpec<Float> = spring(
-        dampingRatio = Spring.DampingRatioNoBouncy,
-        stiffness = 500f,
-        visibilityThreshold = 0.001f
-    )
+    val ProgrammaticSpring: SpringSpec<Float>
+        get() = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = 500f,
+            visibilityThreshold = 0.001f
+        )
 
-    val GestureSpring: SpringSpec<Float> = spring(
-        dampingRatio = 0.82f,
-        stiffness = 380f,
-        visibilityThreshold = 0.001f
-    )
+    val GestureSpring: SpringSpec<Float>
+        get() = spring(
+            dampingRatio = 0.82f,
+            stiffness = 380f,
+            visibilityThreshold = 0.001f
+        )
 }

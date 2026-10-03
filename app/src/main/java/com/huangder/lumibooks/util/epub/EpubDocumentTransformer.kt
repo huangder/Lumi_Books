@@ -506,11 +506,11 @@ a[href*="#ref-footnotebookmark-end-"] img {
 #lumi-footnote-popover[data-placement="below"] { --lumi-footnote-motion-y: -8px; transform-origin: var(--lumi-footnote-arrow-x, 50%) top; }
 #lumi-footnote-popover[data-placement="above"] { --lumi-footnote-motion-y: 8px; transform-origin: var(--lumi-footnote-arrow-x, 50%) bottom; }
 #lumi-footnote-popover[data-state="open"] {
-  animation: lumi-footnote-enter 190ms cubic-bezier(0.2, 0.82, 0.25, 1) both;
+  animation: lumi-footnote-enter calc(190ms * var(--lumi-motion-scale, 1)) cubic-bezier(0.2, 0.82, 0.25, 1) both;
 }
 #lumi-footnote-popover[data-state="closing"] {
   pointer-events: none;
-  animation: lumi-footnote-exit 150ms cubic-bezier(0.4, 0, 1, 1) both;
+  animation: lumi-footnote-exit calc(150ms * var(--lumi-motion-scale, 1)) cubic-bezier(0.4, 0, 1, 1) both;
 }
 #lumi-footnote-popover::before {
   content: '';
@@ -551,7 +551,7 @@ a[href*="#ref-footnotebookmark-end-"] img {
   border: 2px solid rgba(80, 80, 80, 0.2);
   border-top-color: currentColor;
   border-radius: 50%;
-  animation: lumi-footnote-spin 0.8s linear infinite;
+  animation: lumi-footnote-spin calc(800ms * var(--lumi-motion-scale, 1)) linear infinite;
 }
 #lumi-highlight-layer,
 #lumi-underline-layer {
@@ -586,7 +586,7 @@ a[href*="#ref-footnotebookmark-end-"] img {
   filter: none !important;
 }
 .lumi-search-highlight-block {
-  animation: lumi-search-highlight-pulse 2000ms linear forwards;
+  animation: lumi-search-highlight-pulse calc(2000ms * var(--lumi-motion-scale, 1)) linear forwards;
 }
 html.lumi-sepia #lumi-footnote-popover { background: #fff8ee; color: #3e2723; }
 html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
@@ -690,7 +690,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     nativeViewport: null, fixedDesignSize: null, configurationGeneration: 0,
     layoutRevision: 0, stableLayoutRevision: -1,
     pendingProgression: undefined, publisherBox: null, publisherBackground: null, scrollGuard: false, initialFragmentApplied: false,
-    transition: 'slide', transitionDurationMs: 260, nativePaging: false, animationTimer: 0, suppressClickUntil: 0, preservePublisherBackground: true,
+    transition: 'slide', transitionDurationMs: 260, visualDurationScale: 1, nativePaging: false, animationTimer: 0, suppressClickUntil: 0, preservePublisherBackground: true,
     imagePageCrop: false, publisherPaintOnly: false,
     restoreProgressionInclusive: false, pendingLocator: null,
     readerBackgroundColor: null, coverBackgroundColor: null, autoTextColor: null, publisherHasImageBackground: false,
@@ -702,6 +702,9 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     highlightItems: [], ttsHighlight: null, searchHighlight: null, dictionarySelection: null,
     insets: { top: 0, right: 0, bottom: 0, left: 0 }
   };
+  function visualMillis(base) {
+    return Math.max(1, Math.round(base * state.visualDurationScale));
+  }
   var resizeTimer = 0;
   var selectionDispatchTimer = 0;
   var scrollNotifyTimer = 0;
@@ -1292,7 +1295,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     if (!pageStageActive) return;
     var baseDuration = state.transitionDurationMs;
     var remaining = commit ? 1 - pageStageProgress : pageStageProgress;
-    var duration = Math.max(110, Math.round(baseDuration * Math.max(0.3, remaining)));
+    var duration = Math.max(Math.min(visualMillis(110), baseDuration), Math.round(baseDuration * Math.max(0.3, remaining)));
     if (pageStageDurationOverride > 0) {
       duration = Math.min(duration, pageStageDurationOverride);
       pageStageDurationOverride = 0;
@@ -1430,7 +1433,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     // Do not queue input behind a running transition. Finalize the already
     // committed page synchronously, then start the next adjacent animation.
     var interrupted = settleActivePageStageForInput(true);
-    if (interrupted) pageStageDurationOverride = state.transition === 'curl' ? 190 : 150;
+    if (interrupted) pageStageDurationOverride = visualMillis(state.transition === 'curl' ? 190 : 150);
     var target = state.page + direction;
     if (target >= 0 && target < state.total) moveToPage(target, true);
     else post('chapterTurn', { direction: direction });
@@ -1476,10 +1479,10 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       return;
     }
     var body = document.body;
-    body.style.transition = 'transform 190ms cubic-bezier(.2,.72,.2,1)';
+    body.style.transition = 'transform ' + visualMillis(190) + 'ms cubic-bezier(.2,.72,.2,1)';
     body.style.transform = 'translate3d(' + pageX(state.page) + 'px,0,0)';
     clearTimeout(state.animationTimer);
-    state.animationTimer = setTimeout(function () { body.style.transition = 'none'; }, 210);
+    state.animationTimer = setTimeout(function () { body.style.transition = 'none'; }, visualMillis(210));
   }
 
   function settleMedia() {
@@ -2379,7 +2382,9 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     state.flow = config.flow === 'scrolled' ? 'scrolled' : 'paginated';
     state.transition = config.transition === 'fade' ? 'fade' :
       (config.transition === 'none' ? 'none' : (config.transition === 'curl' ? 'curl' : 'slide'));
-    state.transitionDurationMs = Math.max(100, Math.min(1200,
+    state.visualDurationScale = Number(config.visualDurationScale) > 0 ? Number(config.visualDurationScale) : 1;
+    document.documentElement.style.setProperty('--lumi-motion-scale', String(state.visualDurationScale));
+    state.transitionDurationMs = Math.max(1, Math.min(1200,
       Math.round(Number(config.transitionDurationMs) || (state.transition === 'fade' ? 400 : (state.transition === 'curl' ? 800 : 260)))));
     state.nativePaging = config.nativePaging === true;
     state.edgeTapLeft = Number(config.edgeTapLeft) > 0 ? 1 : -1;
@@ -2625,7 +2630,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       if (!state.searchHighlight) return;
       state.searchHighlight = null;
       rebuildHighlightLayer();
-    }, 2000);
+    }, visualMillis(2000));
     post('searchResult', {
       requestToken: Number(requestToken), found: true, pageIndex: page,
       pageCount: state.total, reverseAxis: state.reverseAxis, locator: currentLocator()
@@ -2765,14 +2770,14 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     var body = document.body;
     if (body) {
       body.style.transition = animate
-        ? 'transform 190ms cubic-bezier(.2,.72,.2,1), opacity 160ms ease-out'
+        ? 'transform ' + visualMillis(190) + 'ms cubic-bezier(.2,.72,.2,1), opacity ' + visualMillis(160) + 'ms ease-out'
         : 'none';
       if (!state.fixed) body.style.transform = '';
       body.style.opacity = '1';
       if (animate) {
         scrollChapterAnimationTimer = setTimeout(function () {
           if (body.isConnected) body.style.transition = 'none';
-        }, 210);
+        }, visualMillis(210));
       }
     }
     scrollChapterDragDirection = 0;
@@ -3569,7 +3574,7 @@ private const val READER_SCRIPT_PART_3 = """
       if (existing.isConnected) existing.remove();
     };
     existing.addEventListener('animationend', removePopover);
-    window.setTimeout(removePopover, 220);
+    window.setTimeout(removePopover, visualMillis(220));
   }
 
   function createFootnotePopover(anchor) {
@@ -3744,7 +3749,7 @@ private const val READER_SCRIPT_PART_3 = """
     );
     if (pageStageActive) {
       settleActivePageStageForInput(true);
-      pageStageDurationOverride = state.transition === 'curl' ? 210 : 170;
+      pageStageDurationOverride = visualMillis(state.transition === 'curl' ? 210 : 170);
     }
     touchBaseX = state.flow === 'paginated' ? pageX(state.page) : 0;
   }, { passive: true, capture: true });

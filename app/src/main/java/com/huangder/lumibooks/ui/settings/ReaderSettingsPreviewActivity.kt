@@ -13,11 +13,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.spring
+import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -788,7 +788,7 @@ private fun ThemeSuiteRow(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() }
                 ) {
-                    if (displayOffset < -1f) scope.launch { offset.animateTo(0f) }
+                    if (displayOffset < -1f) scope.launch { offset.animateTo(0f, spring()) }
                     else onEdit()
                 },
             contentAlignment = Alignment.TopStart
@@ -1798,7 +1798,8 @@ private fun PreviewReadView(
                     effectiveSettings.backgroundImageOpacity,
                     imageBlurDp
                 )
-                view.setPageTransitionTiming(pageTransition, pageDurationMs)
+                view.setPageTransitionTiming(pageTransition,
+                    com.huangder.lumibooks.ui.animation.VisualMotion.durationMillis(pageDurationMs))
                 view.setPageTransition(pageTransition)
             }
         },

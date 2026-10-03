@@ -2,8 +2,8 @@ package com.huangder.lumibooks.ui.bookshelf
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.spring
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -233,14 +233,14 @@ internal fun CoverFlowBookshelf(
                             alpha = (1f - progress.value) * (1f - departure)
                         },
                             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                            CoverFlowMetadata(books, state, syncedBookIds,
+                            CoverFlowMetadata(books, state, syncedBookIds, downloadStates,
                                 Modifier.fillMaxWidth().height((100f * density.fontScale.coerceIn(1f, 1.6f)).dp))
                             Box(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 12.dp), contentAlignment = Alignment.TopCenter) {
                                 val menuBook = books.firstOrNull { it.id == state.menuBookId }
                                 androidx.compose.animation.AnimatedVisibility(menuBook != null && !isEditing && enabled,
                                     enter = fadeIn(tween(110)) + scaleIn(initialScale = if (motionEnabled) 0.92f else 1f,
                                         animationSpec = spring(dampingRatio = 0.9f, stiffness = 450f)),
-                                    exit = fadeOut(tween(90)) + scaleOut(targetScale = if (motionEnabled) 0.96f else 1f)) {
+                                    exit = fadeOut(tween(90)) + scaleOut(spring(stiffness = 400f), targetScale = if (motionEnabled) 0.96f else 1f)) {
                                     // Keep the outgoing content until AnimatedVisibility finishes its exit.
                                     val displayed = remember { menuBook ?: books[state.focusedIndex.coerceIn(books.indices)] }
                                     val current = books.firstOrNull { it.id == displayed.id } ?: displayed

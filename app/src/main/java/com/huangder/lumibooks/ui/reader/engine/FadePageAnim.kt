@@ -16,7 +16,7 @@ class FadePageAnim(
 ) : PageAnimationController(readView) {
 
     fun setBaseDuration(durationMs: Int) {
-        baseDurationMs = durationMs.coerceIn(100, 1000)
+        baseDurationMs = durationMs.coerceIn(1, 1000)
     }
 
     /** 动画进度 0f..1f */

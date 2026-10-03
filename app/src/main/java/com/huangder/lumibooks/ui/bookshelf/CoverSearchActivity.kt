@@ -25,8 +25,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.spring
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.delayMillis
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandHorizontally
@@ -287,7 +288,7 @@ private fun CoverSearchScreen(
     // 进入裁剪模式时居中初始化 3:4 框；退出时等淡出动画结束后清空（页面可能已滚动）
     LaunchedEffect(cropMode, containerSize) {
         if (!cropMode) {
-            delay(200)
+            delay(delayMillis(200L))
             if (!cropMode) cropFrame = null
         } else if (containerSize != Size.Zero && cropFrame == null) {
             var width = containerSize.height * 0.62f * COVER_ASPECT_RATIO
@@ -309,7 +310,7 @@ private fun CoverSearchScreen(
                 CoverSearchViewModel.SaveResult.Success -> {
                     capturing = false
                     showSuccess = true
-                    delay(500)
+                    delay(delayMillis(500L))
                     onExit()
                 }
                 is CoverSearchViewModel.SaveResult.Error -> {

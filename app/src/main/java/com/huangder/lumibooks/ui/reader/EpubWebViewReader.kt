@@ -19,7 +19,8 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -1356,7 +1357,7 @@ internal fun EpubWebViewReader(
                                                     failNavigation(inFlight, EpubNavigationFailureReason.DOCUMENT_ERROR)
                                                 },
                                                 verticalMotion = latestContinuousScroll.value,
-                                                durationMs = if (latestContinuousScroll.value) 360
+                                                durationMs = if (latestContinuousScroll.value) VisualMotion.durationMillis(360)
                                                     else latestPageTransitionDurationMs.value
                                             )) {
                                             failNavigation(inFlight, EpubNavigationFailureReason.DOCUMENT_ERROR)
@@ -1842,7 +1843,7 @@ internal fun EpubWebViewReader(
                     pageTurnHost.translationY = 0f
                     pageTurnHost.alpha = 1f
                     view.alpha = 0f
-                    view.animate().alpha(1f).setDuration(170L).start()
+                    view.animate().alpha(1f).setDuration(VisualMotion.durationMillis(170L)).start()
                     if (com.huangder.lumibooks.BuildConfig.DEBUG) {
                         Log.d("EpubLayout", "visible generation=$generation revision=$revision " +
                             "loadToVisibleMs=${SystemClock.elapsedRealtime() - view.documentLoadStartedAt} " +
@@ -2851,7 +2852,7 @@ internal fun EpubWebViewReader(
                 } else {
                     webView.animate()
                         .alpha(0f)
-                        .setDuration(120L)
+                        .setDuration(VisualMotion.durationMillis(120L))
                         .withEndAction(loadTarget)
                         .start()
                 }
@@ -3199,6 +3200,7 @@ private fun configKey(
     continuousScroll,
     pageTransition,
     pageTransitionDurationMs,
+    VisualMotion.durationScale,
     edgeTapMode.key,
     marginTopDp,
     marginRightDp,
@@ -3319,7 +3321,8 @@ private fun configureReader(
         .put("flow", if (continuousScroll) "scrolled" else "paginated")
         .put("nativePaging", nativePagingEnabled)
         .put("transition", pageTransition)
-        .put("transitionDurationMs", pageTransitionDurationMs.coerceIn(100, 1200))
+        .put("transitionDurationMs", pageTransitionDurationMs.coerceIn(1, 1200))
+        .put("visualDurationScale", VisualMotion.durationScale)
         .put("edgeTapLeft", edgeTapMode.leftAction.toEpubTurnDirection())
         .put("edgeTapRight", edgeTapMode.rightAction.toEpubTurnDirection())
         .put("canTurnPrevious", chapterIndex > 0)

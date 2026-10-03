@@ -586,7 +586,7 @@ internal class EpubPageTurnHost(
             "scroll" -> "scroll"
             else -> "slide"
         }
-        val sanitizedDuration = ReaderPageAnimationSettings.sanitizeDuration(
+        val sanitizedDuration = ReaderPageAnimationSettings.sanitizeRuntimeDuration(
             normalized,
             durationMs
         )
@@ -779,7 +779,7 @@ internal class EpubPageTurnHost(
             onComplete,
             onInvalidated,
             verticalMotion,
-            durationMs.coerceIn(100, 1200)
+            durationMs.coerceIn(1, 1200)
         )
         postInvalidateOnAnimation()
         return true

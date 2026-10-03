@@ -13,7 +13,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -66,6 +67,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -539,7 +541,11 @@ private fun CategoryListPage(
                                 ) else null,
                                 reserveDisclosureSpace = true,
                                 compact = true,
-                                modifier = Modifier.animateItem(),
+                                modifier = Modifier.animateItem(
+                                    fadeInSpec = spring(stiffness = 400f),
+                                    placementSpec = spring(stiffness = 400f, visibilityThreshold = IntOffset(1, 1)),
+                                    fadeOutSpec = spring(stiffness = 400f)
+                                ),
                                 onClick = { onFolderSelected(row.folder) },
                                 onLongClick = { onFolderLongClick(row.folder) }
                             )
@@ -607,7 +613,11 @@ private fun CategoryListPage(
                             null
                         },
                         reserveDisclosureSpace = true,
-                        modifier = Modifier.animateItem(),
+                        modifier = Modifier.animateItem(
+                            fadeInSpec = spring(stiffness = 400f),
+                            placementSpec = spring(stiffness = 400f, visibilityThreshold = IntOffset(1, 1)),
+                            fadeOutSpec = spring(stiffness = 400f)
+                        ),
                         onClick = { onFolderSelected(row.folder) },
                         onLongClick = { onFolderLongClick(row.folder) }
                     )

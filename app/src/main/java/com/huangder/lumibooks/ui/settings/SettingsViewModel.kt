@@ -608,11 +608,15 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun saveMotionPreference(preference: String) {
-        val normalized = if (preference == "reduced") "reduced" else "standard"
+        val normalized = when (preference) {
+            "fast" -> "fast"
+            "reduced" -> "reduced"
+            else -> "standard"
+        }
         if (_uiState.value.motionPreference == normalized) return
         _uiState.value = _uiState.value.copy(
             motionPreference = normalized,
-            entranceAnimationsEnabled = normalized == "standard"
+            entranceAnimationsEnabled = normalized != "reduced"
         )
         viewModelScope.launch {
             dataStoreManager.saveMotionPreference(normalized)
