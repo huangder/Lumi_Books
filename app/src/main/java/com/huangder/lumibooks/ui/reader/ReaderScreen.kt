@@ -581,6 +581,7 @@ internal class ContinuousSelectableTextView(context: Context) : RoundedHighlight
     private var tapHadSelection = false
     private var clickDispatched = false
     private var annotationTapHandled = false
+    private var annotationTapCandidate = false
     private val tapSlopPx =
         android.view.ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private val tapDurationLimitMs =
@@ -698,6 +699,8 @@ internal class ContinuousSelectableTextView(context: Context) : RoundedHighlight
                 tapDownY = event.y
                 tapDownTime = event.eventTime
                 tapMoved = false
+                annotationTapCandidate = !ttsJumpEnabled && annotationAt(event.x, event.y) != null
+                if (annotationTapCandidate) parent?.requestDisallowInterceptTouchEvent(true)
             }
             MotionEvent.ACTION_MOVE -> {
                 lastTapX = event.x
@@ -706,6 +709,12 @@ internal class ContinuousSelectableTextView(context: Context) : RoundedHighlight
                     kotlin.math.abs(event.y - tapDownY) > tapSlopPx
                 ) {
                     tapMoved = true
+                    if (annotationTapCandidate) {
+                        annotationTapCandidate = false
+                        if (readerDraggingStartHandle == null) {
+                            parent?.requestDisallowInterceptTouchEvent(false)
+                        }
+                    }
                 }
             }
             MotionEvent.ACTION_UP -> {
@@ -741,6 +750,24 @@ internal class ContinuousSelectableTextView(context: Context) : RoundedHighlight
         if (event.actionMasked == MotionEvent.ACTION_UP && readerDraggingStartHandle != null) {
             val visible = android.graphics.Rect()
             if (selectionVisibleRect(visible)) updateSelectionAtPointer(visible)
+        }
+        val annotationShortTap = event.actionMasked == MotionEvent.ACTION_UP &&
+            annotationTapCandidate && !tapHadSelection && !tapMoved &&
+            (event.eventTime - tapDownTime).coerceAtLeast(0L) <= tapDurationLimitMs &&
+            !hasReaderSelection()
+        if (annotationShortTap) {
+            annotationTapCandidate = false
+            // Do not let selectable TextView process this terminal event. Some OEM
+            // editors focus/reveal the tapped offset before dispatching performClick,
+            // which pulls the owning LazyColumn slightly toward the chapter start.
+            abortNativeTouchStream(event)
+            parent?.requestDisallowInterceptTouchEvent(false)
+            performReaderTap(tapDownX, tapDownY)
+            return true
+        }
+        if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            annotationTapCandidate = false
+            if (readerDraggingStartHandle == null) parent?.requestDisallowInterceptTouchEvent(false)
         }
         val wasDraggingHandle = readerDraggingStartHandle != null
         val handled = super.onTouchEvent(event)
@@ -792,13 +819,7 @@ internal class ContinuousSelectableTextView(context: Context) : RoundedHighlight
 
     /** Linked images retain navigation; ordinary images use the reader menu. */
     private fun performReaderTap(x: Float, y: Float) {
-        val offset = characterOffsetAt(x, y)
-        val annotation = offset?.let { tappedOffset ->
-            savedAnnotations.firstOrNull { note ->
-                (note.type == "highlight" || note.type == "underline") &&
-                    tappedOffset >= note.startPosition && tappedOffset < note.endPosition
-            }
-        }
+        val annotation = annotationAt(x, y)
         if (annotation != null) {
             annotationTapHandled = true
             removeCallbacks(selectionClearDispatch)
@@ -826,6 +847,14 @@ internal class ContinuousSelectableTextView(context: Context) : RoundedHighlight
             else -> readerLinkAt(x, y)
                 ?.let { onLinkTap?.invoke(it, x, y) }
                 ?: onReaderTap?.invoke()
+        }
+    }
+
+    private fun annotationAt(x: Float, y: Float): com.huangder.lumibooks.domain.model.Note? {
+        val offset = characterOffsetAt(x, y) ?: return null
+        return savedAnnotations.firstOrNull { note ->
+            (note.type == "highlight" || note.type == "underline") &&
+                offset >= note.startPosition && offset < note.endPosition
         }
     }
 

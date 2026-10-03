@@ -312,7 +312,10 @@ class ContinuousScrollReaderTest {
             .filterIsInstance<ContinuousSelectableTextView>()
             .any { it.isAttachedToWindow && it.text.isNotEmpty() }
         }
+        compose.runOnIdle { list.dispatchRawDelta(4f) }
+        compose.waitUntil(5_000) { list.firstVisibleItemScrollOffset > 0 }
         var target = Offset.Zero
+        var scrollOffsetBeforeTap = 0
         compose.runOnIdle {
             val view = visibleTextView()
             val location = IntArray(2).also(view::getLocationOnScreen)
@@ -322,6 +325,7 @@ class ContinuousScrollReaderTest {
                     (view.readerHorizontalPosition(4) ?: view.layout.getPrimaryHorizontal(4)),
                 location[1] - rootLocation[1] + view.totalPaddingTop + view.layout.getLineBottom(0) / 2f
             )
+            scrollOffsetBeforeTap = list.firstVisibleItemScrollOffset
         }
 
         compose.onRoot().performTouchInput { down(target); up() }
@@ -333,6 +337,8 @@ class ContinuousScrollReaderTest {
             assertEquals(annotation.endPosition, menuSelection?.end)
             assertEquals("annotation tap must not enqueue a selection clear", 0, clearCount)
             assertEquals("annotation tap must not toggle the reader chrome", 0, menuToggleCount)
+            assertEquals("opening the annotation menu must preserve the exact scroll offset",
+                scrollOffsetBeforeTap, list.firstVisibleItemScrollOffset)
         }
     }
 
