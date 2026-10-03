@@ -265,7 +265,7 @@ html.lumi-fixed-layout body[data-lumi-layout="pre_paginated"] {
 }
 html.lumi-scrolled {
   height: auto !important;
-  min-height: 100% !important;
+  min-height: 0 !important;
   overflow-x: hidden !important;
   overflow-y: auto !important;
   overscroll-behavior-x: none !important;
@@ -1021,7 +1021,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
   function physicalPageForRect(rect) {
     if (!rect) return 0;
     if (state.flow === 'scrolled') {
-      return Math.max(0, Math.floor((rect.top + window.scrollY) / Math.max(1, state.viewportHeight)));
+      var metrics = scrollMetrics();
+      return Math.max(0, Math.floor((rect.top + metrics.scrollY) / metrics.clientHeight));
     }
     var physical = state.pageOffsets[state.page] || 0;
     var originalLeft = rect.left + (state.reverseAxis ? -physical : physical) * state.pageStep;
@@ -1358,7 +1359,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       body.style.transition = 'none';
       body.style.opacity = '1';
       body.style.transform = '';
-      window.scrollTo(0, state.page * state.viewportHeight);
+      var metrics = scrollMetrics();
+      window.scrollTo(0, Math.min(metrics.maxScrollY, state.page * metrics.clientHeight));
     } else {
       var x = pageX(state.page);
       window.scrollTo(0, 0);
@@ -1414,7 +1416,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       window.scrollTo(0, 0);
     } else if (state.flow === 'scrolled') {
       body.style.transform = '';
-      window.scrollTo(0, state.page * state.viewportHeight);
+      var metrics = scrollMetrics();
+      window.scrollTo(0, Math.min(metrics.maxScrollY, state.page * metrics.clientHeight));
     } else {
       window.scrollTo(0, 0);
       body.style.transform = 'translate3d(' + pageX(state.page) + 'px,0,0)';
@@ -1644,9 +1647,12 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
   }
 
   function sizePublisherBackgroundLayer(layer) {
+    var backgroundHeight = !state.fixed && state.flow === 'scrolled'
+      ? Math.max(state.viewportHeight, window.innerHeight || 0)
+      : state.viewportHeight;
     var declarations = {
       position: 'fixed', top: '0px', right: 'auto', bottom: 'auto', left: '0px',
-      width: state.viewportWidth + 'px', height: state.viewportHeight + 'px',
+      width: state.viewportWidth + 'px', height: backgroundHeight + 'px',
       minWidth: '0px', minHeight: '0px', maxWidth: 'none', maxHeight: 'none',
       boxSizing: 'border-box', margin: '0px', padding: '0px', border: '0px',
       overflow: 'hidden', transform: 'none', pointerEvents: 'none', zIndex: '0'
@@ -1779,7 +1785,135 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     body.style.margin = '0px';
     body.style.padding = inset.top + 'px ' + inset.right + 'px ' + inset.bottom + 'px ' + inset.left + 'px';
     body.style.width = '100%';
-    body.style.minHeight = '100%';
+    // The fixed background layer and media-page rules provide viewport height
+    // where it is needed; ordinary short chapters should keep their real height.
+    body.style.minHeight = '0px';
+  }
+
+  function scrollMetrics() {
+    var root = document.scrollingElement || document.documentElement;
+    var clientHeight = Math.max(1,
+      root.clientHeight || document.documentElement.clientHeight || state.viewportHeight);
+    // Android WebView can retain a taller layout viewport after its host is
+    // resized. The root scrollHeight is then at least innerHeight even though
+    // there is no content to scroll. Subtract that layout viewport floor while
+    // keeping clientHeight as the visible-page size.
+    var layoutHeight = Math.max(clientHeight, window.innerHeight || 0);
+    var scrollHeight = Math.max(
+      root.scrollHeight || 0,
+      document.documentElement.scrollHeight || 0,
+      document.body ? document.body.scrollHeight || 0 : 0,
+      clientHeight
+    );
+    var tolerance = Math.max(2, Math.ceil(window.devicePixelRatio || 1));
+    var maxScrollY = Math.max(0, scrollHeight - layoutHeight);
+    var scrollY = Math.max(0, root.scrollTop || window.scrollY || 0);
+    var nonScrollable = maxScrollY <= tolerance;
+    return {
+      root: root,
+      clientHeight: clientHeight,
+      layoutHeight: layoutHeight,
+      scrollHeight: scrollHeight,
+      maxScrollY: maxScrollY,
+      scrollY: scrollY,
+      tolerance: tolerance,
+      nonScrollable: nonScrollable,
+      pageCount: Math.max(1, Math.ceil(
+        (maxScrollY + clientHeight - tolerance) / clientHeight
+      ))
+    };
+  }
+
+  function applyScrollability(metrics) {
+    if (metrics.nonScrollable) {
+      document.documentElement.style.setProperty('overflow-y', 'hidden', 'important');
+    } else {
+      document.documentElement.style.removeProperty('overflow-y');
+    }
+  }
+
+  var overflowFitProperties = [
+    'box-sizing', 'max-width', 'min-width', 'width', 'margin-left', 'margin-right'
+  ];
+
+  function clearOverflowFits() {
+    document.querySelectorAll('[data-lumi-overflow-fit="true"]').forEach(function (element) {
+      var saved = element.__lumiOverflowFitOriginal;
+      if (saved) {
+        overflowFitProperties.forEach(function (name) {
+          var original = saved[name] || { value: '', priority: '' };
+          restoreInlineProperty(element.style, name, original.value, original.priority);
+        });
+      }
+      try { delete element.__lumiOverflowFitOriginal; } catch (_) {
+        element.__lumiOverflowFitOriginal = null;
+      }
+      element.removeAttribute('data-lumi-overflow-fit');
+    });
+  }
+
+  function overflowFitRects(element) {
+    var rects = Array.prototype.slice.call(element.getClientRects()).filter(function (rect) {
+      return rect.width > 0 && rect.height > 0;
+    });
+    return rects.length ? rects : [element.getBoundingClientRect()];
+  }
+
+  function rectOverflowsReaderBox(rect, inset, availableWidth, tolerance) {
+    if (rect.width > availableWidth + tolerance) return true;
+    if (state.flow === 'scrolled') {
+      return rect.left < inset.left - tolerance ||
+        rect.right > state.viewportWidth - inset.right + tolerance;
+    }
+    var step = Math.max(1, state.pageStep || state.viewportWidth);
+    var localLeft = ((rect.left % step) + step) % step;
+    return localLeft < inset.left - tolerance ||
+      localLeft + rect.width > state.viewportWidth - inset.right + tolerance;
+  }
+
+  function shouldFitOverflowElement(element, style) {
+    if (!element || element === document.body || element.closest('[id^="lumi-"]')) return false;
+    if (element.closest('[data-lumi-bleed]') || element.closest('[data-lumi-cover-container="true"]') ||
+        element.closest('[data-lumi-media-only="true"]')) return false;
+    if (/^(SCRIPT|STYLE|LINK|META|IMG|SVG|VIDEO|CANVAS|PICTURE|SOURCE|IFRAME|TBODY|THEAD|TFOOT|TR|TD|TH)$/.test(
+        String(element.tagName || '').toUpperCase())) return false;
+    if (style.position === 'absolute' || style.position === 'fixed') return false;
+    return style.display !== 'inline' && style.display !== 'contents' &&
+      style.display !== 'table-row' && style.display !== 'table-cell' && style.display !== 'none';
+  }
+
+  function fitReflowableHorizontalOverflow() {
+    clearOverflowFits();
+    if (state.fixed || !document.body || isMediaOnlyPage()) return;
+    var inset = readerBox();
+    var availableWidth = Math.max(1, state.viewportWidth - inset.left - inset.right);
+    var tolerance = Math.max(2, Math.ceil(window.devicePixelRatio || 1));
+    Array.prototype.forEach.call(document.body.querySelectorAll('*'), function (element) {
+      var style = window.getComputedStyle(element);
+      if (!shouldFitOverflowElement(element, style)) return;
+      var overflows = overflowFitRects(element).some(function (rect) {
+        return rectOverflowsReaderBox(rect, inset, availableWidth, tolerance);
+      });
+      if (!overflows) return;
+      var saved = {};
+      overflowFitProperties.forEach(function (name) {
+        saved[name] = {
+          value: element.style.getPropertyValue(name),
+          priority: element.style.getPropertyPriority(name)
+        };
+      });
+      element.__lumiOverflowFitOriginal = saved;
+      element.setAttribute('data-lumi-overflow-fit', 'true');
+      element.style.setProperty('box-sizing', 'border-box', 'important');
+      element.style.setProperty('max-width', '100%', 'important');
+      element.style.setProperty('min-width', '0px', 'important');
+      element.style.setProperty('margin-left', 'auto', 'important');
+      element.style.setProperty('margin-right', 'auto', 'important');
+      var stillOverflows = overflowFitRects(element).some(function (rect) {
+        return rect.width > availableWidth + tolerance;
+      });
+      if (stillOverflows) element.style.setProperty('width', '100%', 'important');
+    });
   }
 
   function collectOccupiedPages(maxPhysicalPage) {
@@ -1815,6 +1949,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     state.stableLayoutRevision = -1;
     state.paginating = true;
     var body = document.body;
+    clearOverflowFits();
     applyPendingRuleStyles();
     markFootnoteMarkers();
     resolveFootnoteBodies();
@@ -1904,15 +2039,18 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       body.style.transform = '';
       body.style.columnWidth = 'auto';
       body.style.columnGap = 'normal';
-      var scrollExtent = Math.max(body.scrollHeight, document.documentElement.scrollHeight, state.viewportHeight);
+      fitReflowableHorizontalOverflow();
+      var metrics = scrollMetrics();
+      applyScrollability(metrics);
       state.pageOffsets = [0];
-      state.total = Math.max(1, Math.ceil(scrollExtent / state.viewportHeight));
+      state.total = metrics.pageCount;
       moveToPage(typeof restoreProgression === 'number'
         ? Math.floor(restoreProgression * state.total + 0.000001) : state.page, false);
     } else {
       document.documentElement.style.overflow = 'hidden';
       applyPublisherBackgroundLayer();
       applyPaginationBox(body);
+      fitReflowableHorizontalOverflow();
       var extent = Math.max(document.documentElement.scrollWidth, body.scrollWidth, state.viewportWidth);
       var physicalTotal = Math.max(1, Math.ceil((extent - 1) / state.pageStep));
       state.pageOffsets = collectOccupiedPages(physicalTotal - 1);
@@ -2333,7 +2471,9 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       document.documentElement.insertBefore(layer, document.body);
     }
     var width = state.viewportWidth || window.innerWidth;
-    var height = state.viewportHeight || window.innerHeight;
+    var height = !state.fixed && state.flow === 'scrolled'
+      ? Math.max(state.viewportHeight || 0, window.innerHeight || 0)
+      : (state.viewportHeight || window.innerHeight);
     layer.style.cssText = 'position:fixed !important;left:0 !important;top:0 !important;' +
       'width:' + width + 'px !important;height:' + height + 'px !important;' +
       'z-index:0 !important;pointer-events:none !important;overflow:hidden !important;' +
@@ -2756,11 +2896,11 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
   }
 
   function scrollBoundaryState() {
-    var root = document.scrollingElement || document.documentElement;
-    var extent = Math.max(root.scrollHeight, document.body.scrollHeight, state.viewportHeight);
+    var metrics = scrollMetrics();
     return {
-      atTop: window.scrollY <= 1,
-      atBottom: window.scrollY + state.viewportHeight >= extent - 2
+      atTop: metrics.nonScrollable || metrics.scrollY <= metrics.tolerance,
+      atBottom: metrics.nonScrollable ||
+        metrics.scrollY >= metrics.maxScrollY - metrics.tolerance
     };
   }
 
@@ -4121,11 +4261,11 @@ private const val READER_SCRIPT_PART_3 = """
     if (state.flow === 'scrolled') {
       clearTimeout(scrollNotifyTimer);
       scrollNotifyTimer = setTimeout(function () {
-        var root = document.scrollingElement || document.documentElement;
-        var extent = Math.max(root.scrollHeight, document.body.scrollHeight, state.viewportHeight);
-        state.total = Math.max(1, Math.ceil(extent / Math.max(1, state.viewportHeight)));
+        var metrics = scrollMetrics();
+        applyScrollability(metrics);
+        state.total = metrics.pageCount;
         var nextPage = Math.max(0, Math.min(state.total - 1,
-          Math.floor((window.scrollY + state.viewportHeight * 0.42) / Math.max(1, state.viewportHeight))));
+          Math.floor((metrics.scrollY + metrics.clientHeight * 0.42) / metrics.clientHeight)));
         if (nextPage !== state.page) {
           state.page = nextPage;
           ++pageNotifySerial;

@@ -246,6 +246,65 @@ class EpubDocumentTransformerTest {
     }
 
     @Test
+    fun scrolledFlowUsesOneTolerantViewportMetricForPagingAndChapterEdges() {
+        val output = EpubDocumentTransformer.transform(
+            EpubResource(
+                "chapter.xhtml",
+                "application/xhtml+xml",
+                "<html><body><p>Short chapter</p></body></html>".toByteArray()
+            ),
+            EpubRenditionLayout.REFLOWABLE
+        ).toString(Charsets.UTF_8)
+
+        assertEquals(1, Regex("function scrollMetrics\\(\\)").findAll(output).count())
+        assertTrue(output.contains("var nonScrollable = maxScrollY <= tolerance"))
+        assertTrue(output.contains("var layoutHeight = Math.max(clientHeight, window.innerHeight || 0)"))
+        assertTrue(output.contains("var maxScrollY = Math.max(0, scrollHeight - layoutHeight)"))
+        assertTrue(output.contains("function applyScrollability(metrics)"))
+        assertTrue(output.contains("html.lumi-scrolled {\n  height: auto !important;\n  min-height: 0 !important;"))
+        assertTrue(output.contains("body.style.minHeight = '0px'"))
+        assertTrue(output.contains("var backgroundHeight = !state.fixed && state.flow === 'scrolled'"))
+        assertTrue(output.contains("atTop: metrics.nonScrollable || metrics.scrollY <= metrics.tolerance"))
+        assertTrue(output.contains("atBottom: metrics.nonScrollable ||"))
+        assertTrue(output.contains("state.total = metrics.pageCount"))
+        assertTrue(output.contains("metrics.scrollY + metrics.clientHeight * 0.42"))
+        assertFalse(output.contains("window.scrollY + state.viewportHeight >= extent - 2"))
+        assertFalse(output.contains("Math.ceil(scrollExtent / state.viewportHeight)"))
+    }
+
+    @Test
+    fun reflowableOverflowFitPreservesPublisherContainerAndSkipsFullBleedContent() {
+        val source = """
+            <html><body>
+              <div id="intro" style="width:300px;margin:1em auto;border:60px solid transparent;border-image:url('../Images/frame.png') 225 225 stretch">
+                <img src="../Images/intro.jpg"/><p>Introduction</p>
+              </div>
+              <div data-lumi-bleed="horizontal"><div id="bleed-child">Banner</div></div>
+              <div id="fixed" style="position:absolute;width:500px">Overlay</div>
+            </body></html>
+        """.trimIndent()
+
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("chapter.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE
+        ).toString(Charsets.UTF_8)
+        val document = Jsoup.parse(output, "", Parser.xmlParser())
+
+        assertNotNull(document.selectFirst("#intro"))
+        assertTrue(document.selectFirst("#intro")!!.attr("style").contains("border-image"))
+        assertNotNull(document.selectFirst("#intro img"))
+        assertTrue(output.contains("data-lumi-overflow-fit"))
+        assertTrue(output.contains("function clearOverflowFits()"))
+        assertTrue(output.contains("fitReflowableHorizontalOverflow();"))
+        assertTrue(output.contains("element.style.setProperty('box-sizing', 'border-box', 'important')"))
+        assertTrue(output.contains("element.style.setProperty('max-width', '100%', 'important')"))
+        assertTrue(output.contains("element.style.setProperty('min-width', '0px', 'important')"))
+        assertTrue(output.contains("element.closest('[data-lumi-bleed]')"))
+        assertTrue(output.contains("style.position === 'absolute' || style.position === 'fixed'"))
+        assertTrue(output.contains("restoreInlineProperty(element.style, name, original.value, original.priority)"))
+    }
+
+    @Test
     fun fixedLayoutKeepsPublisherDesignBox() {
         val source = """
             <html><head><meta name="viewport" content="width=860,height=1146"/></head>
@@ -442,7 +501,7 @@ class EpubDocumentTransformerTest {
         assertFalse(output.contains("var source = hasPaint(rootStyle) ? rootStyle"))
         assertTrue(output.contains("lumi-publisher-background"))
         assertTrue(output.contains("width: state.viewportWidth + 'px'"))
-        assertTrue(output.contains("height: state.viewportHeight + 'px'"))
+        assertTrue(output.contains("height: backgroundHeight + 'px'"))
         assertTrue(output.contains("layer.style.setProperty('background-size', computed.size, 'important')"))
         assertTrue(output.contains("document.documentElement.insertBefore(layer, document.body)"))
         assertTrue(output.contains("document.body.style.setProperty('background-image', 'none', 'important')"))
