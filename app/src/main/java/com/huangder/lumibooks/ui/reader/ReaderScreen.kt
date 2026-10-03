@@ -1098,6 +1098,7 @@ fun ReaderScreen(
     onNavigateBack: () -> Unit,
     onFirstContentDrawn: () -> Unit = {},
     onInteractive: () -> Unit = {},
+    onReaderPaperColorChanged: (Int) -> Unit = {},
     readerActive: Boolean = true,
     viewModel: ReaderViewModel = hiltViewModel()
 ) {
@@ -1709,9 +1710,26 @@ fun ReaderScreen(
     var firstContentReported by remember(bookId) { mutableStateOf(false) }
     // pageReady is emitted after the renderer has populated its current page. Waiting for the
     // following frame makes the navigation transition follow visible content instead of parsing.
-    LaunchedEffect(uiState.pageReady, uiState.isLoading, uiState.error, epubRenderFailure, bookId) {
-        if (!firstContentReported && (epubRenderFailure != null || (!uiState.isLoading &&
-            (uiState.pageReady || uiState.error != null)))
+    LaunchedEffect(
+        uiState.pageReady,
+        uiState.isLoading,
+        uiState.error,
+        uiState.pendingPageFraction,
+        uiState.pendingReaderPosition,
+        uiState.currentChapterIndex,
+        uiState.currentPageIndex,
+        uiState.contentRevision,
+        epubRenderFailure,
+        bookId
+    ) {
+        // pageReady can describe the renderer's first page before the saved locator
+        // has been applied. Never reveal that page: it is the chapter opening and
+        // causes a visible flash before the real reading position appears.
+        val restoreSettled = uiState.pendingReaderPosition == null &&
+            uiState.pendingPageFraction <= 0f
+        if (!firstContentReported && (epubRenderFailure != null ||
+            (restoreSettled && !uiState.isLoading &&
+                (uiState.pageReady || uiState.error != null)))
         ) {
             ReaderOpenPerformance.updateState(
                 bookId = bookId,
@@ -1725,6 +1743,7 @@ fun ReaderScreen(
                 event = "first_frame_scheduled"
             )
             ReaderOpenPerformance.beginStage(bookId, ReaderOpenStage.FIRST_FRAME)
+            withFrameNanos { }
             withFrameNanos { }
             firstContentReported = true
             onFirstContentDrawn()
@@ -2227,31 +2246,8 @@ fun ReaderScreen(
     }
 
     val selectedCustomBackground = if (eInkMode) null else selectedReaderBackgroundForTheme
-    val selectedImageBaseBackground = uiState.customReaderBackgrounds.firstOrNull {
-        it.selectionKey == uiState.readerBackgroundColorSelection &&
-            it.type == ReaderBackgroundType.COLOR
-    }
-    val imageBaseColor = when {
-        selectedImageBaseBackground != null -> runCatching {
-            android.graphics.Color.parseColor(selectedImageBaseBackground.value)
-        }.getOrDefault(0xFFFBFBFC.toInt())
-        uiState.readerBackgroundColorSelection == "night" -> 0xFF1a1a1a.toInt()
-        uiState.readerBackgroundColorSelection == "sepia" -> 0xFFf5e6d3.toInt()
-        uiState.readerBackgroundColorSelection == "green" -> 0xFFe8f5e9.toInt()
-        else -> 0xFFFBFBFC.toInt()
-    }
-    val readerBackgroundColorInt = when {
-        publisherPaintSuiteActive -> publisherFallbackPaperColor
-        selectedCustomBackground?.type == ReaderBackgroundType.IMAGE -> imageBaseColor
-        selectedCustomBackground?.type == ReaderBackgroundType.COLOR -> {
-            val base = runCatching { android.graphics.Color.parseColor(selectedCustomBackground.value) }
-                .getOrDefault(0xFFFBFBFC.toInt())
-            if (nightDisplay) darkenReaderSolidColor(base) else base
-        }
-        effectiveReaderBackgroundSelection in ReaderThemeSuites.THEME_IDS ->
-            readerPresetBackgroundColor(effectiveReaderBackgroundSelection, nightDisplay)
-        else -> 0xFFFBFBFC.toInt()
-    }
+    val readerBackgroundColorInt = rawUiState.resolveReaderPaperColor(appIsDark)
+    SideEffect { onReaderPaperColorChanged(readerBackgroundColorInt) }
     val readerBackgroundImageSource = selectedCustomBackground
         ?.resolveImageSource(uiState.readerBackgroundImageBlurDp)
     val readerBackgroundImagePath =

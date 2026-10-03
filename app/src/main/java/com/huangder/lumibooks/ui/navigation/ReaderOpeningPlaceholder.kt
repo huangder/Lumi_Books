@@ -18,8 +18,13 @@ import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.reader.ReaderDocumentState
 import kotlinx.coroutines.delay
 
-internal fun shouldMountReaderContent(state: ReaderDocumentState): Boolean =
-    state.book != null || state.error != null || !state.isLoading
+internal fun shouldMountReaderContent(
+    state: ReaderDocumentState,
+    windowReady: Boolean = true
+): Boolean =
+    state.error != null ||
+        (windowReady && state.book != null) ||
+        (!state.isLoading && state.book == null)
 
 @Composable
 internal fun ReaderOpeningPlaceholder(onNavigateBack: () -> Unit) {

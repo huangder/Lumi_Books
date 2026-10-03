@@ -9,6 +9,13 @@ import kotlin.math.hypot
 
 class BookReaderTransitionTest {
     @Test
+    fun `cover crossfades around the thirty percent handoff`() {
+        assertEquals(0f, BookReaderMotion.coverFade(0.30f - BookReaderMotion.COVER_CROSSFADE_FRACTION), 0f)
+        assertEquals(0.5f, BookReaderMotion.coverFade(0.30f), 0.001f)
+        assertEquals(1f, BookReaderMotion.coverFade(0.30f + BookReaderMotion.COVER_CROSSFADE_FRACTION), 0f)
+    }
+
+    @Test
     fun `shared key is stable per book`() {
         assertEquals("book-window-abc", BookReaderMotion.sharedKey("abc"))
     }
@@ -45,11 +52,14 @@ class BookReaderTransitionTest {
     }
 
     @Test
-    fun `motion uses independent position and size timing`() {
+    fun `window motion keeps position and size on the same 650 millisecond path`() {
         assertEquals(650, BookReaderMotion.WINDOW_DURATION_MS)
-        assertEquals(600, BookReaderMotion.POSITION_DURATION_MS)
+        assertEquals(650, BookReaderMotion.POSITION_DURATION_MS)
         assertEquals(650, BookReaderMotion.SIZE_DURATION_MS)
-        assertTrue(BookReaderMotion.POSITION_DURATION_MS < BookReaderMotion.SIZE_DURATION_MS)
+        assertEquals(0.30f, BookReaderMotion.COVER_STAGE_FRACTION, 0f)
+        assertEquals(195, BookReaderMotion.COVER_STAGE_MS)
+        assertEquals(BookReaderMotion.WINDOW_DURATION_MS, BookReaderMotion.POSITION_DURATION_MS)
+        assertEquals(BookReaderMotion.WINDOW_DURATION_MS, BookReaderMotion.SIZE_DURATION_MS)
     }
 
     @Test

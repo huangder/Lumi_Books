@@ -15,9 +15,11 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidPath
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -48,6 +50,76 @@ class BookReaderLayerTest {
     private lateinit var state: BookReaderTransitionState
     private lateinit var scope: CoroutineScope
 
+    @Test fun `reader stays opaque during paper fades and disappears before shrinking`() {
+        lateinit var view: View
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            state = rememberBookReaderTransitionState()
+            scope = rememberCoroutineScope()
+            view = LocalView.current
+            Box(Modifier.fillMaxSize().background(Color.Red)) {
+                Box(Modifier.fillMaxSize().graphicsLayer { alpha = state.readerLayerAlpha }
+                    .background(Color.White), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(60.dp).background(Color.Black))
+                }
+                BookHeroWindowOverlay(state)
+            }
+        }
+        fun assertPaperAndContent() = compose.runOnIdle {
+            val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap))
+            val paper = bitmap.getPixel(view.width / 4, view.height / 4)
+            // During the short paper/cover overlap the shell is intentionally
+            // translucent, so the neutral paper is blended with the shelf.
+            assertTrue(android.graphics.Color.red(paper) >= 240)
+            assertTrue(android.graphics.Color.green(paper) >= 160)
+            assertTrue(android.graphics.Color.blue(paper) >= 150)
+            assertTrue(state.readerLayerAlpha in 0f..1f)
+            assertTrue(state.overlayAlpha in 0.01f..0.99f)
+            val expectedAlpha = if (state.phase == BookReaderTransitionPhase.Closing)
+                1f - state.readerExitAlphaSnapshot.value else 1f - state.readerRevealSnapshot.value
+            assertEquals(expectedAlpha, state.overlayAlpha, 0.001f)
+            val content = bitmap.getPixel(view.width / 2, view.height / 2)
+            // The centered black content may blend with the red shelf while it fades;
+            // it must remain a darker, non-paper pixel during the handoff.
+            assertTrue(android.graphics.Color.green(content) <= android.graphics.Color.red(content))
+            bitmap.recycle()
+        }
+        compose.runOnIdle {
+            state.registerCoverAnchor("cover", book.id, Rect(20f, 30f, 120f, 180f), 8f, null)
+            scope.launch {
+                state.startOpen(book, null, null, 8f)
+                state.updateReaderPaperColor(android.graphics.Color.WHITE)
+                state.markReaderReady()
+            }
+        }
+        compose.mainClock.advanceTimeBy(720)
+        compose.runOnIdle { assertEquals(BookReaderTransitionPhase.Ready, state.phase) }
+        assertPaperAndContent()
+        compose.mainClock.advanceTimeBy(32)
+        assertPaperAndContent()
+        compose.mainClock.advanceTimeBy(200)
+        compose.runOnIdle { assertTrue(state.startClose()) }
+        compose.mainClock.advanceTimeBy(64)
+        assertPaperAndContent()
+        compose.mainClock.advanceTimeBy(64)
+        assertPaperAndContent()
+        compose.mainClock.advanceTimeBy(128)
+        compose.runOnIdle {
+            assertEquals(0f, state.readerLayerAlpha, 0f)
+            assertTrue(state.consumeCloseNavigation())
+            state.completeCloseAfterNavigation()
+        }
+        compose.mainClock.advanceTimeBy(400)
+        compose.runOnIdle {
+            val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap))
+            assertEquals(android.graphics.Color.RED, bitmap.getPixel(view.width - 1, view.height - 1))
+            bitmap.recycle()
+        }
+        compose.mainClock.advanceTimeBy(500)
+    }
+
     @Test fun `moving tab occlusion matches the scaled cover outline in every theme`() {
         lateinit var view: View
         var density = 1f
@@ -73,6 +145,11 @@ class BookReaderLayerTest {
         }
         compose.mainClock.advanceTimeBy(900)
         compose.runOnIdle { assertTrue(state.startClose()) }
+        compose.mainClock.advanceTimeBy(220)
+        compose.runOnIdle {
+            assertTrue(state.consumeCloseNavigation())
+            state.completeCloseAfterNavigation()
+        }
         // Closing exercises the moving clip before it reaches the cover endpoint.
         for (elapsed in listOf(96L, 96L, 96L)) {
             compose.mainClock.advanceTimeBy(elapsed)
@@ -149,6 +226,11 @@ class BookReaderLayerTest {
             assertEquals(-20f * density, state.sourceBounds!!.left, 0.1f)
             assertEquals(190f * density, state.sourceBounds!!.top, 0.1f)
             assertEquals(100f * density, state.sourceBounds!!.width, 0.1f)
+        }
+        compose.mainClock.advanceTimeBy(BookReaderMotion.CONTENT_EXIT_MS.toLong())
+        compose.runOnIdle {
+            assertTrue(state.consumeCloseNavigation())
+            state.completeCloseAfterNavigation()
         }
         compose.mainClock.advanceTimeBy(800)
         compose.runOnIdle { assertEquals(BookReaderTransitionPhase.Library, state.phase) }
