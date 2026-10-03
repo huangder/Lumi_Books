@@ -5834,10 +5834,11 @@ private fun ReaderTopBar(
             )
             ReaderTitleCapsule(
                 title = title,
-                contentColor = contentColor.copy(alpha = if (isLiquidGlass) 0.88f else 0.7f),
+                contentColor = contentColor.copy(alpha = if (isLiquidGlass && !forceSolidButtons) 0.88f else 1f),
                 fallbackColor = controlBackground,
                 glassContentScrimColor = glassContentScrimColor,
                 isLiquidGlass = isLiquidGlass,
+                forceFallback = forceSolidButtons,
                 modifier = Modifier
                     .weight(1f)
                     .align(Alignment.Top)

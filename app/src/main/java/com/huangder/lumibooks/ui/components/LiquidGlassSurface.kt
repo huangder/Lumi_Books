@@ -166,7 +166,7 @@ internal fun Modifier.liquidGlassBackdrop(
             if (transparency < 1f || blurBoostPx > 0f) {
                 blur((6.dp * (1f - transparency)).toPx() + blurBoostPx.coerceAtLeast(0f))
             }
-            if (lensSupported) {
+            if (lensSupported && shape !is ContinuousCornerBasedShape) {
                 if (buttonInteraction) {
                     lens(12.dp.toPx(), 24.dp.toPx())
                 } else {

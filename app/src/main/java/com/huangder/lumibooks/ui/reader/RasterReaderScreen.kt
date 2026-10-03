@@ -2442,9 +2442,10 @@ private fun PdfTopBar(
             // 中间：书名
             ReaderTitleCapsule(
                 title = title,
-                contentColor = AppColors.TextSecondary.copy(alpha = if (isLiquidGlass) 0.88f else 0.7f),
-                fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
-                glassContentScrimColor = glassContentScrimColor,
+                contentColor = if (isLiquidGlass) Color.White else AppColors.TextSecondary.copy(alpha = 0.7f),
+                fallbackColor = if (isLiquidGlass) Color(0xFF303033) else AppColors.BgGray.copy(alpha = 0.8f),
+                glassContentScrimColor = if (isLiquidGlass) Color.Black.copy(alpha = 0.8f)
+                    else glassContentScrimColor,
                 isLiquidGlass = isLiquidGlass,
                 modifier = Modifier
                     .weight(1f)
