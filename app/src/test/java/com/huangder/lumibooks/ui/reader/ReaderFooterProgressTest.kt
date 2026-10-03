@@ -15,6 +15,23 @@ class ReaderFooterProgressTest {
     }
 
     @Test
+    fun spreadProgressUsesTheFurthestVisiblePage() {
+        assertEquals(
+            100f,
+            calculateBookProgressPercent(
+                chapterIndex = 9,
+                chapterCount = 10,
+                pageIndex = 2,
+                chapterPageCount = 4,
+                rightChapterIndex = 9,
+                rightPageIndex = 3,
+                rightChapterPageCount = 4
+            ),
+            0.001f
+        )
+    }
+
+    @Test
     fun formatsReadingProgressWithTwoDecimalPlaces() {
         assertEquals("0.00%", formatReadingProgressPercent(0f))
         assertEquals("12.35%", formatReadingProgressPercent(12.345f))

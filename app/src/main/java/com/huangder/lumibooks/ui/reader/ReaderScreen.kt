@@ -3050,12 +3050,14 @@ fun ReaderScreen(
                             override fun onSpreadPageChanged(
                                 rightGlobalPage: Int,
                                 rightChapterIndex: Int,
-                                rightPageInChapter: Int
+                                rightPageInChapter: Int,
+                                rightChapterTotalPages: Int
                             ) {
                                 viewModel.onSpreadPageChanged(
                                     rightGlobalPage,
                                     rightChapterIndex,
-                                    rightPageInChapter
+                                    rightPageInChapter,
+                                    rightChapterTotalPages
                                 )
                             }
 
@@ -3466,7 +3468,10 @@ fun ReaderScreen(
                     chapterIndex = uiState.currentChapterIndex,
                     chapterCount = uiState.chapterCount,
                     pageIndex = uiState.currentPageIndex,
-                    chapterPageCount = uiState.totalPages
+                    chapterPageCount = uiState.totalPages,
+                    rightChapterIndex = uiState.rightChapterIndex,
+                    rightPageIndex = uiState.rightPageIndex,
+                    rightChapterPageCount = uiState.rightChapterTotalPages
                 ),
                 rightPageIndex = uiState.rightPageIndex,
                 rightChapterIndex = uiState.rightChapterIndex

@@ -384,6 +384,8 @@ data class ReaderUiState(
     val rightPageIndex: Int? = null,
     /** 右半页所属章节；跨章对开时与 currentChapterIndex 不同。 */
     val rightChapterIndex: Int? = null,
+    /** 右半页所属章节的总页数。 */
+    val rightChapterTotalPages: Int? = null,
     val screenSleepTimeoutSeconds: Int = DataStoreManager.DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS,
     val readerEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT,
     val readerWritingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL,
@@ -2477,6 +2479,7 @@ class ReaderViewModel @Inject constructor(
                     totalPages = 0,
                     rightPageIndex = null,
                     rightChapterIndex = null,
+                    rightChapterTotalPages = null,
                     pendingPageFraction = pageFraction,
                     pendingPageFractionSemantics = ReaderPageFractionSemantics.START,
                     pendingReaderPosition = null,
@@ -2644,6 +2647,7 @@ class ReaderViewModel @Inject constructor(
         _uiState.value = state.copy(epubComicReader = false, epubComicIndex = null,
             epubComicPosition = null, currentChapterIndex = chapter, currentPageIndex = 0,
             totalPages = 0, rightPageIndex = null, rightChapterIndex = null,
+            rightChapterTotalPages = null,
             pendingPageFraction = 0f, pendingReaderPosition = ReaderPositionLocator.fromJson(locator),
             pendingPageFractionSemantics = ReaderPageFractionSemantics.START,
             epubLocatorJson = locator.takeIf { state.renderMode == EpubRenderMode.BOOK_LAYOUT },
@@ -2720,6 +2724,7 @@ class ReaderViewModel @Inject constructor(
             totalPages = 0,
             rightPageIndex = null,
             rightChapterIndex = null,
+            rightChapterTotalPages = null,
             pageReady = false,
             isEpubChapterHandoffInProgress = false,
             isLoading = state.isLoading,
@@ -2799,7 +2804,8 @@ class ReaderViewModel @Inject constructor(
             pendingPageFractionSemantics = ReaderPageFractionSemantics.START,
             pendingReaderPosition = null,
             rightPageIndex = null,
-            rightChapterIndex = null
+            rightChapterIndex = null,
+            rightChapterTotalPages = null
         )
         ReaderOpenPerformance.updateState(
             bookId = bookId,
@@ -2842,7 +2848,8 @@ class ReaderViewModel @Inject constructor(
             pendingPageFractionSemantics = ReaderPageFractionSemantics.START,
             pendingReaderPosition = null,
             rightPageIndex = null,
-            rightChapterIndex = null
+            rightChapterIndex = null,
+            rightChapterTotalPages = null
         )
         ReaderOpenPerformance.updateState(
             bookId = bookId,
@@ -2878,7 +2885,8 @@ class ReaderViewModel @Inject constructor(
             pendingPageFractionSemantics = ReaderPageFractionSemantics.START,
             pendingReaderPosition = null,
             rightPageIndex = null,
-            rightChapterIndex = null
+            rightChapterIndex = null,
+            rightChapterTotalPages = null
         )
         preloadAdjacentChapters()
     }
@@ -4153,7 +4161,8 @@ class ReaderViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(
             currentChapterIndex = state.currentChapterIndex + 1,
             rightPageIndex = null,
-            rightChapterIndex = null
+            rightChapterIndex = null,
+            rightChapterTotalPages = null
         )
         if (!state.useNewEngine) loadChapterContent()
         saveProgress()
@@ -4169,7 +4178,8 @@ class ReaderViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(
             currentChapterIndex = state.currentChapterIndex - 1,
             rightPageIndex = null,
-            rightChapterIndex = null
+            rightChapterIndex = null,
+            rightChapterTotalPages = null
         )
         if (!state.useNewEngine) loadChapterContent(startPage = targetPage)
         saveProgress()
@@ -4196,7 +4206,8 @@ class ReaderViewModel @Inject constructor(
             pendingPageFractionSemantics = ReaderPageFractionSemantics.START,
             pendingReaderPosition = null,
             rightPageIndex = null,
-            rightChapterIndex = null
+            rightChapterIndex = null,
+            rightChapterTotalPages = null
         )
         if (!state.useNewEngine) loadChapterContent()
         if (!isBookLayout) saveProgress()
@@ -4354,6 +4365,7 @@ class ReaderViewModel @Inject constructor(
             totalPages = chapterTotalPages,
             rightPageIndex = null,
             rightChapterIndex = null,
+            rightChapterTotalPages = null,
             pageReady = currentState.pageReady || hasRenderablePage,
             pendingPageFraction = if (reachedPendingPosition) 0f else currentState.pendingPageFraction,
             pendingPageFractionSemantics = if (reachedPendingPosition) {
@@ -4409,7 +4421,8 @@ class ReaderViewModel @Inject constructor(
     fun onSpreadPageChanged(
         rightGlobalPage: Int,
         rightChapterIndex: Int,
-        rightPageInChapter: Int
+        rightPageInChapter: Int,
+        rightChapterTotalPages: Int
     ) {
         if (textCallbacksBlocked) return
         val currentState = _uiState.value
@@ -4420,8 +4433,10 @@ class ReaderViewModel @Inject constructor(
         ) return
         _uiState.value = currentState.copy(
             rightPageIndex = rightPageInChapter.takeIf { it >= 0 },
-            rightChapterIndex = rightChapterIndex.takeIf { it >= 0 }
+            rightChapterIndex = rightChapterIndex.takeIf { it >= 0 },
+            rightChapterTotalPages = rightChapterTotalPages.takeIf { it > 0 }
         )
+        scheduleProgressSave()
     }
 
     fun startTts(restoreSavedPosition: Boolean = true) {
@@ -5389,7 +5404,8 @@ class ReaderViewModel @Inject constructor(
             currentChapterIndex = newIdx,
             currentPageIndex = 0,
             rightPageIndex = null,
-            rightChapterIndex = null
+            rightChapterIndex = null,
+            rightChapterTotalPages = null
         )
         saveProgress()
         preloadAdjacentChapters()
@@ -6136,7 +6152,10 @@ class ReaderViewModel @Inject constructor(
             chapterCount = state.chapterCount,
             currentPageIndex = state.currentPageIndex,
             totalPages = state.totalPages,
-            isContinuousScroll = isContinuousScroll
+            isContinuousScroll = isContinuousScroll,
+            rightChapterIndex = state.rightChapterIndex,
+            rightPageIndex = state.rightPageIndex,
+            rightChapterTotalPages = state.rightChapterTotalPages
         )
         val characterOffset = if (isContinuousScroll) {
             null

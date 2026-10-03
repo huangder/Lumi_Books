@@ -24,7 +24,8 @@ interface ReadViewCallbacks {
     fun onSpreadPageChanged(
         rightGlobalPage: Int,
         rightChapterIndex: Int,
-        rightPageInChapter: Int
+        rightPageInChapter: Int,
+        rightChapterTotalPages: Int
     ) {}
 
     /** 点击中间区域，切换菜单 */

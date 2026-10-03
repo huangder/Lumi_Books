@@ -6,18 +6,21 @@ internal fun calculateBookProgressPercent(
     chapterIndex: Int,
     chapterCount: Int,
     pageIndex: Int,
-    chapterPageCount: Int
+    chapterPageCount: Int,
+    rightChapterIndex: Int? = null,
+    rightPageIndex: Int? = null,
+    rightChapterPageCount: Int? = null
 ): Float {
-    if (chapterCount <= 0) return 0f
-
-    val safeChapterIndex = chapterIndex.coerceIn(0, chapterCount - 1)
-    val pageFraction = if (chapterPageCount > 0) {
-        ((pageIndex.coerceAtLeast(0) + 1f) / chapterPageCount).coerceIn(0f, 1f)
-    } else {
-        0f
-    }
-    return (((safeChapterIndex + pageFraction) / chapterCount) * 100f)
-        .coerceIn(0f, 100f)
+    return calculateSavedReadingProgress(
+        currentChapterIndex = chapterIndex,
+        chapterCount = chapterCount,
+        currentPageIndex = pageIndex,
+        totalPages = chapterPageCount,
+        isContinuousScroll = false,
+        rightChapterIndex = rightChapterIndex,
+        rightPageIndex = rightPageIndex,
+        rightChapterTotalPages = rightChapterPageCount
+    ) * 100f
 }
 
 internal fun formatReadingProgressPercent(progressPercent: Float): String =

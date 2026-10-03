@@ -17,6 +17,60 @@ class ReaderSavedProgressTest {
     }
 
     @Test
+    fun `right page of a spread drives paged progress`() {
+        assertEquals(
+            0.375f,
+            calculateSavedReadingProgress(
+                currentChapterIndex = 0,
+                chapterCount = 2,
+                currentPageIndex = 1,
+                totalPages = 4,
+                isContinuousScroll = false,
+                rightChapterIndex = 0,
+                rightPageIndex = 2,
+                rightChapterTotalPages = 4
+            ),
+            0.0001f
+        )
+    }
+
+    @Test
+    fun `final page on right completes the book`() {
+        assertEquals(
+            1f,
+            calculateSavedReadingProgress(
+                currentChapterIndex = 1,
+                chapterCount = 2,
+                currentPageIndex = 2,
+                totalPages = 4,
+                isContinuousScroll = false,
+                rightChapterIndex = 1,
+                rightPageIndex = 3,
+                rightChapterTotalPages = 4
+            ),
+            0f
+        )
+    }
+
+    @Test
+    fun `right page in the next chapter advances whole book progress`() {
+        assertEquals(
+            0.625f,
+            calculateSavedReadingProgress(
+                currentChapterIndex = 0,
+                chapterCount = 2,
+                currentPageIndex = 2,
+                totalPages = 3,
+                isContinuousScroll = false,
+                rightChapterIndex = 1,
+                rightPageIndex = 0,
+                rightChapterTotalPages = 4
+            ),
+            0.0001f
+        )
+    }
+
+    @Test
     fun `continuous progress keeps its scaled chapter fraction`() {
         assertEquals(
             0.875f,

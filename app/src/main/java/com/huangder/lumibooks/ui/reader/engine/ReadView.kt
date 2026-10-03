@@ -617,8 +617,13 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             configureCurrentPageView()
             invalidate()
         }
-        slotManager.onSpreadPageChangedCallback = { rightGlobalPage, rightChapterIdx, rightPage ->
-            callbacks?.onSpreadPageChanged(rightGlobalPage, rightChapterIdx, rightPage)
+        slotManager.onSpreadPageChangedCallback = { rightGlobalPage, rightChapterIdx, rightPage, rightChapterTotal ->
+            callbacks?.onSpreadPageChanged(
+                rightGlobalPage,
+                rightChapterIdx,
+                rightPage,
+                rightChapterTotal
+            )
         }
         slotManager.onSlotReadyCallback = {
             postOnAnimation {
