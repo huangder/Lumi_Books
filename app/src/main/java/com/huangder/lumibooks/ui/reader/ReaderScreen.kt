@@ -578,6 +578,9 @@ internal class ContinuousSelectableTextView(context: Context) : RoundedHighlight
     private var tapDownY = 0f
     private var tapDownTime = 0L
     private var tapMoved = false
+    private var tapHadSelection = false
+    private var clickDispatched = false
+    private var annotationTapHandled = false
     private val tapSlopPx =
         android.view.ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private val tapDurationLimitMs =
@@ -646,6 +649,7 @@ internal class ContinuousSelectableTextView(context: Context) : RoundedHighlight
             override fun newSpannable(source: CharSequence): Spannable = SpannableStringBuilder(source)
         })
         setTextIsSelectable(true)
+        readerLongPressSelectionDragEnabled = true
         readerSelectionColor = 0x40007AFF
         highlightColor = android.graphics.Color.TRANSPARENT
         configureReaderSelectionHandles(0xFF448AFF.toInt())
@@ -654,6 +658,7 @@ internal class ContinuousSelectableTextView(context: Context) : RoundedHighlight
             setTextClassifier(android.view.textclassifier.TextClassifier.NO_OP)
         }
         setOnClickListener {
+            clickDispatched = true
             // 听书进行中，单击/双击统一由 onTouchEvent 的手势判定处理。
             if (ttsJumpEnabled) return@setOnClickListener
             val spannable = text as? Spannable
@@ -684,6 +689,9 @@ internal class ContinuousSelectableTextView(context: Context) : RoundedHighlight
         if (lineGuideMode) return false
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                annotationTapHandled = false
+                clickDispatched = false
+                tapHadSelection = hasReaderSelection()
                 lastTapX = event.x
                 lastTapY = event.y
                 tapDownX = event.x
@@ -736,6 +744,16 @@ internal class ContinuousSelectableTextView(context: Context) : RoundedHighlight
         }
         val wasDraggingHandle = readerDraggingStartHandle != null
         val handled = super.onTouchEvent(event)
+        if (!ttsJumpEnabled && event.actionMasked == MotionEvent.ACTION_UP &&
+            !clickDispatched && !tapHadSelection && !tapMoved &&
+            (event.eventTime - tapDownTime).coerceAtLeast(0L) <= tapDurationLimitMs &&
+            !hasReaderSelection()
+        ) {
+            // Selectable TextView does not consistently invoke OnClickListener on
+            // every OEM. Resolve a confirmed short tap here when the framework did
+            // not dispatch the click itself.
+            performReaderTap(tapDownX, tapDownY)
+        }
         if ((event.actionMasked == MotionEvent.ACTION_DOWN || event.actionMasked == MotionEvent.ACTION_MOVE) &&
             readerDraggingStartHandle != null) {
             removeCallbacks(selectionDispatch)
@@ -749,7 +767,10 @@ internal class ContinuousSelectableTextView(context: Context) : RoundedHighlight
         } else if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
             selectionEdgeDirection = 0
             removeCallbacks(selectionEdgeScroll)
-            if (!hasReaderSelection()) post(selectionClearDispatch)
+            if (annotationTapHandled) {
+                removeCallbacks(selectionClearDispatch)
+                annotationTapHandled = false
+            } else if (!hasReaderSelection()) post(selectionClearDispatch)
             else if (wasDraggingHandle) post(selectionDispatch)
         }
         return handled
@@ -779,6 +800,8 @@ internal class ContinuousSelectableTextView(context: Context) : RoundedHighlight
             }
         }
         if (annotation != null) {
+            annotationTapHandled = true
+            removeCallbacks(selectionClearDispatch)
             val location = IntArray(2)
             getLocationOnScreen(location)
             onReaderSelection?.invoke(
@@ -7646,6 +7669,13 @@ internal fun ContinuousScrollReader(
                         textView.onSelectionChanging = onSelectionChanging
                         textView.onReaderSelectionRangeChanged = { start, end ->
                             selectionController.update(textView, chapterIndex, start, end)
+                        }
+                        textView.onReaderTextReplaced = { replacement ->
+                            val start = Selection.getSelectionStart(replacement)
+                            val end = Selection.getSelectionEnd(replacement)
+                            if (start >= 0 && end >= 0 && start != end) {
+                                selectionController.update(textView, chapterIndex, start, end)
+                            }
                         }
                         textView.onReaderSelectionCleared = {
                             if (selectionController.activeView === textView) {
