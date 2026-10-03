@@ -87,6 +87,7 @@ import com.huangder.lumibooks.util.parser.PdfParser
 import com.huangder.lumibooks.util.parser.TxtEncoding
 import com.huangder.lumibooks.util.parser.TxtIndexCoordinator
 import com.huangder.lumibooks.util.parser.TxtParser
+import com.huangder.lumibooks.util.parser.normalizeTxtHeadingLine
 import com.huangder.lumibooks.util.parser.TxtIndexState
 import com.huangder.lumibooks.util.parser.TxtOpenResult
 import com.huangder.lumibooks.util.parser.TxtTocRule
@@ -154,8 +155,8 @@ import com.huangder.lumibooks.domain.model.bookmarkPositionForCharacterOffset
 import kotlin.math.roundToInt
 
 internal fun shouldStyleTxtChapterTitle(firstLine: String, chapterTitle: String): Boolean {
-    val normalizedFirstLine = firstLine.trim()
-    val normalizedChapterTitle = chapterTitle.trim()
+    val normalizedFirstLine = normalizeTxtHeadingLine(firstLine)
+    val normalizedChapterTitle = normalizeTxtHeadingLine(chapterTitle)
     return normalizedFirstLine.isNotEmpty() &&
         normalizedFirstLine.length <= 80 &&
         normalizedFirstLine == normalizedChapterTitle
@@ -579,6 +580,24 @@ class ReaderViewModel @Inject constructor(
     private var openBackgroundJob = SupervisorJob(viewModelScope.coroutineContext[Job])
     private var openBackgroundScope = CoroutineScope(viewModelScope.coroutineContext + openBackgroundJob)
     private val preloadJobs = mutableMapOf<Int, Job>()
+
+    private data class TxtFormattingKey(
+        val chapterIndex: Int,
+        val contentWidthPx: Int?,
+        val fontSize: Float,
+        val firstLineIndent: Float,
+        val paragraphSpacing: Float,
+        val chapterTitle: String?,
+        val skipFirstParagraphIndent: Boolean
+    )
+
+    /** Bounded cache for the expensive TXT paragraph scan and span construction. */
+    private val txtFormattingCache = java.util.Collections.synchronizedMap(
+        object : LinkedHashMap<TxtFormattingKey, CharSequence>(6, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<TxtFormattingKey, CharSequence>?): Boolean =
+                size > 4
+        }
+    )
 
     internal fun resumeOpenDeferredWork() {
         if (openBackgroundJob.isActive) return
@@ -4854,13 +4873,22 @@ class ReaderViewModel @Inject constructor(
         // Rebuilding the same 400K+ Spanned here is both redundant and quadratic on Android's
         // SpannableStringBuilder, which can block the main thread when Compose asks for a preview.
         val formatted = if (isTxt) {
-            ReaderParagraphFormatter.applyFirstLineIndent(
+            val formattingKey = TxtFormattingKey(
+                chapterIndex = index,
+                contentWidthPx = contentWidthPx,
+                fontSize = state.fontSize,
+                firstLineIndent = state.firstLineIndent,
+                paragraphSpacing = state.paragraphSpacing,
+                chapterTitle = state.chapterTitles.getOrNull(index),
+                skipFirstParagraphIndent = skipFirstParagraphIndent
+            )
+            txtFormattingCache[formattingKey] ?: ReaderParagraphFormatter.applyFirstLineIndent(
                 text = chapterText,
                 indentCharacters = state.firstLineIndent,
                 textSizePx = state.fontSize * context.resources.displayMetrics.scaledDensity,
                 paragraphSpacingPx = state.paragraphSpacing * context.resources.displayMetrics.density,
                 skipFirstNonEmptyParagraph = skipFirstParagraphIndent
-            )
+            ).also { txtFormattingCache[formattingKey] = it }
         } else {
             chapterText
         }
