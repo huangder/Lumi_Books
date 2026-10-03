@@ -199,8 +199,15 @@ class JustifiedTextView @JvmOverloads constructor(
         // DynamicLayout: that makes glyph coordinates overlap until a later tap
         // happens to invalidate the page. The local StaticLayout is built
         // synchronously by the text setter and is the correct transient fallback.
-        if (supplied != null && spannable != null && supplied.text === spannable) return supplied
-        return local ?: supplied
+        // Rotation and margin changes can leave the selection layer with the
+        // same text but an old, wider Layout until its next measurement. Drawing
+        // that Layout at the new left inset consumes the right margin. Use the
+        // synchronously rebuilt local layout until both layers agree on width.
+        val contentWidth = (width - paddingLeft - paddingRight).coerceAtLeast(1)
+        val matchingSource = supplied?.takeIf {
+            spannable != null && it.text === spannable && it.width == contentWidth
+        }
+        return matchingSource ?: local
     }
 
     /** TTS 褰撳墠鍙ラ珮浜壒ange锛?start, end, color锛夛紝鍦?onDraw 缁樺埗鏁翠綋鍦嗚搴?*/
