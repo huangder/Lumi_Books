@@ -91,7 +91,8 @@ import androidx.compose.ui.platform.LocalContext
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.data.sync.BookDownloadState
-import com.huangder.lumibooks.ui.components.BookCoverProgressOverlay
+import com.huangder.lumibooks.ui.components.BookCoverCloudBadge
+import com.huangder.lumibooks.ui.components.BookProgressStatus
 import com.huangder.lumibooks.domain.model.LibraryFolder
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.animation.HorizontalOverscrollBounce
@@ -674,11 +675,9 @@ private fun BookshelfSearchResultCard(
                     )
                 }
 
-                BookCoverProgressOverlay(
+                BookCoverCloudBadge(
                     book = book,
-                    downloadState = downloadState,
-                    compact = true,
-                    badgeCornerRadius = 14.dp
+                    compact = true
                 )
             }
 
@@ -704,6 +703,12 @@ private fun BookshelfSearchResultCard(
                     fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
+                )
+                BookProgressStatus(
+                    book = book,
+                    downloadState = downloadState,
+                    compact = true,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
 

@@ -128,7 +128,8 @@ import com.huangder.lumibooks.ui.animation.LocalBookReaderAnchorScope
 import com.huangder.lumibooks.ui.animation.bookCoverTransitionAnchor
 import com.huangder.lumibooks.ui.layout.currentAdaptiveWindowInfo
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
-import com.huangder.lumibooks.ui.components.BookCoverProgressOverlay
+import com.huangder.lumibooks.ui.components.BookCoverCloudBadge
+import com.huangder.lumibooks.ui.components.BookProgressStatus
 import com.huangder.lumibooks.ui.components.CloudAwareBookDeleteDialog
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.animation.coverFlowEntranceItem
@@ -2618,10 +2619,9 @@ private fun BookGridItem(
                     )
                 }
             }
-            BookCoverProgressOverlay(
+            BookCoverCloudBadge(
                 book = book,
-                downloadState = downloadState,
-                badgeCornerRadius = coverCorner
+                compact = true
             )
         }
 
@@ -2684,6 +2684,12 @@ private fun BookGridItem(
                 overflow = TextOverflow.Ellipsis
             )
         }
+        BookProgressStatus(
+            book = book,
+            downloadState = downloadState,
+            compact = true,
+            modifier = Modifier.padding(top = 2.dp)
+        )
     }
 }
 
@@ -3020,9 +3026,4 @@ private fun AddBookItem(onClick: () -> Unit) {
             color = AppColors.TextSecondary
         )
     }
-}
-
-internal fun formatProgressPercent(progress: Float): String {
-    val pct = progress * 100f
-    return if (pct < 10f) "%.1f%%".format(pct) else "${pct.toInt()}%"
 }

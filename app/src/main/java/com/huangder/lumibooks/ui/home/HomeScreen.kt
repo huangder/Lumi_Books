@@ -91,8 +91,8 @@ import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.animation.OverscrollBounceState
 import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
-import com.huangder.lumibooks.ui.components.BookCoverProgressOverlay
-import com.huangder.lumibooks.ui.components.FinishedReadingIndicator
+import com.huangder.lumibooks.ui.components.BookCoverCloudBadge
+import com.huangder.lumibooks.ui.components.BookProgressStatus
 import com.huangder.lumibooks.ui.components.CloudAwareBookDeleteDialog
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -563,12 +563,9 @@ private fun ContinueReadingCard(
                     contentScale = ContentScale.Crop
                 )
             }
-            BookCoverProgressOverlay(
+            BookCoverCloudBadge(
                 book = book,
-                downloadState = downloadState,
-                compact = true,
-                showReadingProgress = false,
-                badgeCornerRadius = AppRadius.sm
+                compact = true
             )
         }
         Spacer(Modifier.width(AppSpace.md))
@@ -599,24 +596,12 @@ private fun ContinueReadingCard(
                 )
             }
             Spacer(Modifier.height(AppSpace.xs))
-            if (book.isReadingFinished && downloadState !is BookDownloadState.Downloading) {
-                FinishedReadingIndicator(
-                    tint = if (useCoverBackground) secondaryContentColor else null
-                )
-            } else {
-                Text(
-                    text = if (downloadState is BookDownloadState.Downloading) {
-                    stringResource(
-                        R.string.book_download_progress,
-                        (downloadState.progress * 100f).toInt().coerceIn(0, 100)
-                    )
-                } else {
-                    stringResource(R.string.book_progress, (book.readingProgress * 100).toInt())
-                    },
-                    fontSize = AppType.Caption,
-                    color = secondaryContentColor
-                )
-            }
+            BookProgressStatus(
+                book = book,
+                downloadState = downloadState,
+                color = secondaryContentColor,
+                progressColor = secondaryContentColor
+            )
         }
         Box {
             // A button instead of a bare icon, so the anchored menu has a trigger
@@ -818,15 +803,7 @@ private fun RecentBookCard(
                 color = AppColors.TextSecondary,
                 maxLines = 1
             )
-            if (book.isReadingFinished) {
-                FinishedReadingIndicator()
-            } else {
-                Text(
-                    text = "${(book.readingProgress * 100).toInt()}%",
-                    fontSize = AppType.Caption,
-                    color = AppColors.Accent
-                )
-            }
+            BookProgressStatus(book = book)
         }
     }
 }
@@ -1043,66 +1020,101 @@ private fun BooksReadGrid(
         horizontalArrangement = Arrangement.spacedBy(AppSpace.md)
     ) {
         items(books, key = { it.id }) { book ->
-            Box(
+            Column(
                 modifier = Modifier
                     .width(if (useWideLayout) 120.dp else 96.dp)
-                    .aspectRatio(0.75f)
-                    .bookCoverTransitionAnchor(
-                        bookId = book.id,
-                        anchorId = "home-recent-${book.id}",
-                        cornerRadiusDp = coverRadiusDp,
-                        titleStyle = BookCoverTitleStyle(
-                            fontSizeSp = AppType.BodySmall.value,
-                            maxLines = 3,
-                            paddingDp = AppSpace.sm.value,
-                            color = BookCoverTitleColor.Primary,
-                            useKaiTi = true,
-                            textAlignCenter = true
-                        )
-                    )
-                    .shadow(
-                        elevation = 8.dp,
-                        shape = coverShape,
-                        ambientColor = AppColors.CardShadow,
-                        spotColor = AppColors.CardShadow
-                    )
-                    .clip(coverShape)
-                    .background(AppColors.BgGray)
-                    .border(1.dp, AppColors.Divider, coverShape)
-                    .cardPressEffect()
-                    .onGloballyPositioned { coordinates ->
-                        bookBounds[book.id] = coordinates.boundsInRoot()
-                    }
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() }
-                    ) { onBookClick(book, bookBounds[book.id]) },
-                contentAlignment = Alignment.Center
             ) {
-                if (book.coverPath == null) {
-                    DefaultBookCoverTitle(
-                        title = book.title,
-                        fontSize = AppType.BodySmall
-                    )
-                } else {
-                    AsyncImage(
-                        model = ImageRequest.Builder(LocalContext.current)
-                            .data(book.coverPath)
-                            .memoryCacheKey(
-                                bookCoverMemoryCacheKey(book.id, book.coverPath)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(0.75f)
+                        .bookCoverTransitionAnchor(
+                            bookId = book.id,
+                            anchorId = "home-recent-${book.id}",
+                            cornerRadiusDp = coverRadiusDp,
+                            titleStyle = BookCoverTitleStyle(
+                                fontSizeSp = AppType.BodySmall.value,
+                                maxLines = 3,
+                                paddingDp = AppSpace.sm.value,
+                                color = BookCoverTitleColor.Primary,
+                                useKaiTi = true,
+                                textAlignCenter = true
                             )
-                            .build(),
-                        contentDescription = book.title,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
+                        )
+                        .shadow(
+                            elevation = 8.dp,
+                            shape = coverShape,
+                            ambientColor = AppColors.CardShadow,
+                            spotColor = AppColors.CardShadow
+                        )
+                        .clip(coverShape)
+                        .background(AppColors.BgGray)
+                        .border(1.dp, AppColors.Divider, coverShape)
+                        .cardPressEffect()
+                        .onGloballyPositioned { coordinates ->
+                            bookBounds[book.id] = coordinates.boundsInRoot()
+                        }
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { onBookClick(book, bookBounds[book.id]) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (book.coverPath == null) {
+                        DefaultBookCoverTitle(
+                            title = book.title,
+                            fontSize = AppType.BodySmall
+                        )
+                    } else {
+                        AsyncImage(
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(book.coverPath)
+                                .memoryCacheKey(
+                                    bookCoverMemoryCacheKey(book.id, book.coverPath)
+                                )
+                                .build(),
+                            contentDescription = book.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                    BookCoverCloudBadge(
+                        book = book,
+                        compact = true
                     )
                 }
-                BookCoverProgressOverlay(
-                    book = book,
-                    downloadState = downloadStates[book.id],
-                    compact = true,
-                    badgeCornerRadius = coverRadiusDp.dp
+                Spacer(Modifier.height(AppSpace.xs))
+                Text(
+                    text = book.title,
+                    fontSize = AppType.Caption,
+                    fontWeight = FontWeight.SemiBold,
+                    color = AppColors.TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center
                 )
+                Text(
+                    text = book.author,
+                    fontSize = 10.sp,
+                    color = AppColors.TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center
+                )
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    BookProgressStatus(
+                        book = book,
+                        downloadState = downloadStates[book.id],
+                        compact = true,
+                        color = AppColors.TextSecondary,
+                        progressColor = AppColors.Accent
+                    )
+                }
             }
         }
     }

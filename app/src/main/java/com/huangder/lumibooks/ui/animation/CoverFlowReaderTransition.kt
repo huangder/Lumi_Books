@@ -47,7 +47,7 @@ internal fun CoverFlowReaderOverlay(transition: BookReaderTransitionState, modif
             val p = transition.coverFlowProgressSnapshot.value
             alpha = (CoverFlowReaderMotion.sideExit(p) * (1f - CoverFlowReaderMotion.readerAlpha(p)) * 0.65f)
         }.background(bg))
-        CoverFlowCover(book, transition.coverDownloadState,
+        CoverFlowCover(book,
             Modifier.offset { IntOffset(source.left.roundToInt(), source.top.roundToInt()) }
                 .size(with(density) { source.width.toDp() }, with(density) { source.height.toDp() })
                 .graphicsLayer {

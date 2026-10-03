@@ -56,7 +56,6 @@ import com.huangder.lumibooks.ui.animation.LocalCoverFlowEntrance
 import com.huangder.lumibooks.ui.animation.LocalBookReaderAnchorScope
 import com.huangder.lumibooks.ui.animation.bookCoverMemoryCacheKey
 import com.huangder.lumibooks.ui.animation.bookCoverTransitionAnchor
-import com.huangder.lumibooks.ui.components.BookCoverProgressOverlay
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import kotlinx.coroutines.CoroutineScope
@@ -260,7 +259,7 @@ internal fun CoverFlowScene(
                             .onGloballyPositioned { layout.covers[book.id] = it }
                             .clearAndSetSemantics { }
                     ) {
-                        CoverFlowCover(book, downloadStates[book.id], Modifier.fillMaxSize())
+                        CoverFlowCover(book, Modifier.fillMaxSize())
                     }
                 }
             }
@@ -269,7 +268,7 @@ internal fun CoverFlowScene(
 }
 
 @Composable
-internal fun CoverFlowCover(book: Book, downloadState: BookDownloadState?, modifier: Modifier = Modifier) {
+internal fun CoverFlowCover(book: Book, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val shape = AppRoundedCornerShape(2.dp)
     val request = remember(book.id, book.coverPath, context) {
@@ -285,7 +284,6 @@ internal fun CoverFlowCover(book: Book, downloadState: BookDownloadState?, modif
             overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(12.dp))
         if (book.coverPath != null) AsyncImage(request, contentDescription = null,
             modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        BookCoverProgressOverlay(book, downloadState, showReadingProgress = false)
     }
 }
 
