@@ -1995,9 +1995,19 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         // Build paragraph separators once. Repeated insert/delete on a 400K+ Spanned
         // relocates every following character and span thousands of times.
         val ssb = rebuildParagraphBreaks(text, spacingPx)
-        if (indentPx <= 0) return ssb
 
-        // ── 首行缩进：给每个段落添加 LeadingMarginSpan ──
+        // EPUB 正文常把首行缩进直接写成全角空格或 nbsp。先移除这些源文本空白，
+        // 否则它会和用户设置的 LeadingMarginSpan 叠加，造成固定多出两格左右。
+        data class ParagraphInfo(
+            val start: Int,
+            val end: Int,
+            val leadingWhitespaceEnd: Int,
+            val hasImage: Boolean,
+            val isHeading: Boolean,
+            val isChapterTitle: Boolean
+        )
+
+        val paragraphs = mutableListOf<ParagraphInfo>()
         val imageRanges = ssb.getSpans(
             0,
             ssb.length,
@@ -2014,6 +2024,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             val isNewline = !isEnd && ssb[j] == '\n'
             if (isEnd || isNewline) {
                 if (paraStart < j) {
+                    val leadingWhitespaceEnd = buildLeadingWhitespaceEnd(ssb, paraStart, j)
                     while (imageRangeIndex < imageRanges.size &&
                         imageRanges[imageRangeIndex].last < paraStart
                     ) {
@@ -2029,17 +2040,41 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                             ssb.subSequence(paraStart, j),
                             normalizedChapterTitle
                         )
-                    if (!hasImage) firstContentParagraphSeen = true
-                    if (!hasImage && !isHeading && !isChapterTitle) {
-                        ssb.setSpan(
-                            android.text.style.LeadingMarginSpan.Standard(indentPx, 0),
-                            paraStart, j,
-                            android.text.Spannable.SPAN_INCLUSIVE_INCLUSIVE
-                        )
-                        indentCount++
-                    }
+                    if (!hasImage && leadingWhitespaceEnd < j) firstContentParagraphSeen = true
+                    paragraphs += ParagraphInfo(
+                        start = paraStart,
+                        end = j,
+                        leadingWhitespaceEnd = leadingWhitespaceEnd,
+                        hasImage = hasImage,
+                        isHeading = isHeading,
+                        isChapterTitle = isChapterTitle
+                    )
                 }
                 paraStart = j + 1
+            }
+        }
+
+        // 倒序删除，保持尚未处理段落的索引有效。即使用户把缩进设为 0，
+        // 也必须执行这一步，才能清掉 EPUB 自带的段首空白。
+        paragraphs.asReversed().forEach { paragraph ->
+            val isBodyParagraph = !paragraph.hasImage &&
+                !paragraph.isHeading && !paragraph.isChapterTitle &&
+                paragraph.leadingWhitespaceEnd < paragraph.end
+            if (!isBodyParagraph) return@forEach
+
+            val whitespaceLength = paragraph.leadingWhitespaceEnd - paragraph.start
+            if (whitespaceLength > 0) {
+                ssb.delete(paragraph.start, paragraph.leadingWhitespaceEnd)
+            }
+
+            if (indentPx > 0) {
+                ssb.setSpan(
+                    android.text.style.LeadingMarginSpan.Standard(indentPx, 0),
+                    paragraph.start,
+                    paragraph.end - whitespaceLength,
+                    android.text.Spannable.SPAN_INCLUSIVE_INCLUSIVE
+                )
+                indentCount++
             }
         }
 
@@ -2050,6 +2085,25 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
 
         return ssb
     }
+
+    /** Test hook for the Canvas paragraph formatter; no parser/file state is required. */
+    internal fun formatParagraphFormattingForTest(
+        text: CharSequence,
+        chapterTitle: String = ""
+    ): CharSequence = applyParagraphFormatting(text, chapterTitle)
+
+    private fun buildLeadingWhitespaceEnd(
+        text: CharSequence,
+        start: Int,
+        end: Int
+    ): Int {
+        var index = start
+        while (index < end && text[index].isParagraphIndentWhitespace()) index++
+        return index
+    }
+
+    private fun Char.isParagraphIndentWhitespace(): Boolean =
+        this == ' ' || this == '\t' || this == '\u00A0' || this == '\u3000'
 
     private fun rebuildParagraphBreaks(
         text: CharSequence,

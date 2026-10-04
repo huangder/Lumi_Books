@@ -722,6 +722,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     private var parser: BookParser? = null
+    private var activeReaderThemeDark: Boolean = false
     private var largeTxtIndexJob: Job? = null
     @Volatile
     private var largeTxtFastRanges: List<Pair<Long, Long>?> = emptyList()
@@ -1130,6 +1131,16 @@ class ReaderViewModel @Inject constructor(
                 )
         }
         _uiState.value = nextState
+        val parserThemeSettings = effectiveThemeSettingsForBook(
+            preferences = preferences,
+            format = nextState.book?.format?.name,
+            renderMode = preferences.renderMode,
+            dark = activeReaderThemeDark
+        )
+        syncParserParagraphFormatting(
+            paragraphSpacing = parserThemeSettings?.paragraphSpacing ?: nextState.paragraphSpacing,
+            firstLineIndent = parserThemeSettings?.firstLineIndent ?: nextState.firstLineIndent
+        )
         updateHighlightPalettes(
             preferences.customHighlightPalettes,
             preferences.activeHighlightPaletteId
@@ -2004,6 +2015,54 @@ class ReaderViewModel @Inject constructor(
                 marginBottom = marginBottomDp
             )
 
+    private fun effectiveThemeSettingsForBook(
+        preferences: ReaderPreferencesSnapshot,
+        format: String?,
+        renderMode: EpubRenderMode,
+        dark: Boolean
+    ): ReaderThemeSettings? {
+        val suiteState = preferences.readerThemeSuiteState
+        val layout = readerLayoutTargetFor(format, renderMode)
+        val requestedId = when (layout) {
+            ReaderLayoutTarget.READER_LAYOUT -> if (preferences.readerThemeSuiteBookScoped) {
+                preferences.readerThemeSuiteBookActiveId
+                    ?.takeIf { id -> suiteState.suites.any { it.id == id } }
+                    ?: suiteState.activeSuiteId
+            } else {
+                suiteState.activeSuiteId
+            }
+            ReaderLayoutTarget.BOOK_LAYOUT -> if (preferences.readerThemeSuiteBookScoped) {
+                preferences.readerThemeSuiteBookActiveBookLayoutId
+                    ?.takeIf { id -> suiteState.suites.any { it.id == id } }
+                    ?: suiteState.activeBookLayoutSuiteId
+            } else {
+                suiteState.activeBookLayoutSuiteId
+            }
+        }
+        val resolvedId = ReaderThemeSuites.resolveActiveId(
+            suites = suiteState.suites,
+            requestedId = requestedId,
+            layout = layout
+        )
+        return suiteState.suites.firstOrNull { it.id == resolvedId }
+            ?.settingsFor(layout, dark)
+    }
+
+    private fun syncParserParagraphFormatting(
+        paragraphSpacing: Float,
+        firstLineIndent: Float
+    ) {
+        val activeParser = parser ?: return
+        val spacingChanged = kotlin.math.abs(activeParser.paragraphSpacingDp - paragraphSpacing) > 0.01f
+        val indentChanged = kotlin.math.abs(activeParser.firstLineIndentChars - firstLineIndent) > 0.01f
+        if (!spacingChanged && !indentChanged) return
+
+        activeParser.paragraphSpacingDp = paragraphSpacing
+        activeParser.firstLineIndentChars = firstLineIndent
+        activeParser.clearHtmlCache()
+        preloadCache.clear()
+    }
+
     private fun persistCurrentThemeSettings(
         settings: ReaderThemeSettings,
         layout: ReaderLayoutTarget = _uiState.value.readerLayoutTarget()
@@ -2029,10 +2088,16 @@ class ReaderViewModel @Inject constructor(
         val activeSuiteId = state.activeThemeSuiteIdFor(layout)
         val suite = state.readerThemeSuites.firstOrNull { it.id == activeSuiteId }
             ?: return
+        val settings = suite.settingsFor(layout, state.themeEditingDark)
+        val parserSettings = suite.settingsFor(layout, activeReaderThemeDark)
         // 同时把"当前模式正在用的套装"写回，主题面板高亮的卡片才会和真正生效的套装一致。
         _uiState.value = state.withReaderThemeSettings(
-            suite.settingsFor(layout)
+            settings
         ).copy(activeReaderThemeSuiteId = activeSuiteId)
+        syncParserParagraphFormatting(
+            paragraphSpacing = parserSettings.paragraphSpacing,
+            firstLineIndent = parserSettings.firstLineIndent
+        )
     }
 
     private fun updateCurrentThemeSettings(
@@ -2064,6 +2129,7 @@ class ReaderViewModel @Inject constructor(
 
     /** Refreshes the flattened render state from the active suite when the effective system mode changes. */
     fun applyReaderThemeMode(dark: Boolean) {
+        activeReaderThemeDark = dark
         val state = _uiState.value
         if (state.readerLayoutTarget() != ReaderLayoutTarget.READER_LAYOUT) return
         val suite = state.readerThemeSuites.firstOrNull { it.id == state.activeThemeSuiteIdFor(ReaderLayoutTarget.READER_LAYOUT) }
@@ -2073,6 +2139,10 @@ class ReaderViewModel @Inject constructor(
         // leaves stale line-height, image, alignment, or other values visible when
         // light and dark themes differ only in one of those fields.
         _uiState.value = state.withReaderThemeSettings(settings)
+        syncParserParagraphFormatting(
+            paragraphSpacing = settings.paragraphSpacing,
+            firstLineIndent = settings.firstLineIndent
+        )
     }
 
     fun saveReaderTextColorForMode(dark: Boolean, color: Int?) {
@@ -3657,9 +3727,20 @@ class ReaderViewModel @Inject constructor(
                     val twoPageSpreadEnabled = preferences.twoPageSpreadEnabled
                     val pageTransition = if (eInkModeEnabled) "none" else preferences.pageTransition
                     val readerDisplayMode = preferences.readerDisplayMode
-                    val paragraphSpacing = preferences.paragraphSpacing
-                    val firstLineIndent = preferences.firstLineIndent
-                    val textAlignment = preferences.textAlignment
+                    // Theme-suite edits are persisted in the active light/dark bucket. The
+                    // legacy flat fields can therefore be stale after the reader is reopened.
+                    val effectiveThemeSettings = effectiveThemeSettingsForBook(
+                        preferences = preferences,
+                        format = book.format.name,
+                        renderMode = renderMode,
+                        dark = activeReaderThemeDark
+                    )
+                    val paragraphSpacing = effectiveThemeSettings?.paragraphSpacing
+                        ?: preferences.paragraphSpacing
+                    val firstLineIndent = effectiveThemeSettings?.firstLineIndent
+                        ?: preferences.firstLineIndent
+                    val textAlignment = effectiveThemeSettings?.textAlignment
+                        ?: preferences.textAlignment
                     val pdfPageMode = if (eInkModeEnabled) "horizontal" else preferences.pdfPageMode
                     val serializedReaderPosition = book.locatorJson
                         ?.let(ReaderPositionLocator::fromJson)
