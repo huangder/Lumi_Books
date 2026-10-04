@@ -9802,7 +9802,7 @@ private fun applyAnnotationColor(
             val resolvedColor = runCatching {
                 android.graphics.Color.parseColor(resolveReaderHighlightColor(colorReference))
             }.getOrNull()
-            RuleStyleJson.encode(style.copy(textColor = resolvedColor ?: style.textColor))
+            RuleStyleJson.encode(annotationStyleAfterColorChange(style, type, resolvedColor))
         }
         viewModel.updateNote(
             target.copy(
@@ -9822,6 +9822,14 @@ private fun applyAnnotationColor(
     }
 }
 
+internal fun annotationStyleAfterColorChange(
+    style: RuleStyle,
+    type: String,
+    resolvedColor: Int?
+): RuleStyle = style.copy(
+    textColor = if (type == "underline") null else resolvedColor ?: style.textColor
+)
+
 private fun noteUnderlineMode(note: com.huangder.lumibooks.domain.model.Note?): Int =
     RuleStyleJson.decode(note?.styleSnapshotJson)?.underlineMode
         ?.takeIf { it in 1..4 }
@@ -9834,17 +9842,15 @@ private fun updateUnderlineStyle(
 ) {
     val target = selection.overlappingUnderlines.firstOrNull() ?: return
     val current = RuleStyleJson.decode(target.styleSnapshotJson)
-    val color = runCatching { android.graphics.Color.parseColor(resolveReaderHighlightColor(target.color)) }
-        .getOrNull()
     val style = (current ?: RuleStyle(
-        textColor = color,
+        textColor = null,
         underlineMode = HighlightRule.UNDERLINE_WAVE,
         underlineOffset = 2f,
         underlineWidth = 1f,
         fontWeight = 400,
         italic = false
     )).copy(
-        textColor = current?.textColor ?: color,
+        textColor = null,
         underlineMode = mode
     )
     viewModel.updateNote(

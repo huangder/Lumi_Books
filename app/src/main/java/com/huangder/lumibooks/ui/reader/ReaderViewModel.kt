@@ -30,6 +30,7 @@ import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.domain.model.Bookmark
 import com.huangder.lumibooks.domain.model.Note
 import com.huangder.lumibooks.domain.model.HighlightRule
+import com.huangder.lumibooks.domain.model.RuleStyle
 import com.huangder.lumibooks.domain.model.ReadingRecord
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
@@ -161,6 +162,13 @@ internal fun shouldStyleTxtChapterTitle(firstLine: String, chapterTitle: String)
         normalizedFirstLine.length <= 80 &&
         normalizedFirstLine == normalizedChapterTitle
 }
+
+internal fun annotationSnapshotStyleForRendering(note: Note, style: RuleStyle): RuleStyle =
+    if (note.type == "underline" && !note.isGeneratedByHighlightRule) {
+        style.copy(textColor = null)
+    } else {
+        style
+    }
 
 /** Keeps TXT chapter headings a few steps above the configured body size. */
 internal fun txtChapterTitleFontSize(bodyFontSize: Float): Int {
@@ -5337,7 +5345,8 @@ class ReaderViewModel @Inject constructor(
                     (!note.isGeneratedByHighlightRule || note.sourceRuleId !in knownRuleIds)
             }
             .mapNotNull { note ->
-                val style = RuleStyleJson.decode(note.styleSnapshotJson) ?: return@mapNotNull null
+                val decodedStyle = RuleStyleJson.decode(note.styleSnapshotJson) ?: return@mapNotNull null
+                val style = annotationSnapshotStyleForRendering(note, decodedStyle)
                 com.huangder.lumibooks.domain.model.RuleMatch(
                     ruleId = note.sourceRuleId.orEmpty(),
                     ruleName = "",

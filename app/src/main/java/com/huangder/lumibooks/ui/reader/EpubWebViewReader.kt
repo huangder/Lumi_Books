@@ -3515,7 +3515,8 @@ internal fun highlightsJson(
     notes.forEach { note ->
         val item = JSONObject().put("exact", note.selectedText).put("color", note.color.toCssColor()).put("type", note.type)
             .put("generatedByRule", note.isGeneratedByHighlightRule)
-        RuleStyleJson.decode(note.styleSnapshotJson)?.let { style ->
+        RuleStyleJson.decode(note.styleSnapshotJson)?.let { decodedStyle ->
+            val style = annotationSnapshotStyleForRendering(note, decodedStyle)
             item.put("ruleStyle", JSONObject().apply {
                 style.textColor?.let { put("textColor", it.toCssColor()) }
                 put("underlineMode", style.underlineMode)
