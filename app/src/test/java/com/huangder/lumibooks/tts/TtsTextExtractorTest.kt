@@ -66,6 +66,18 @@ class TtsTextExtractorTest {
     }
 
     @Test
+    fun decimalPointBetweenDigitsDoesNotSplitSentenceOrOffsets() {
+        val text = "售价1.5元。下一句。"
+
+        assertEquals(listOf("售价1.5元。", "下一句。"), extractor.splitIntoSentences(text))
+
+        val segments = extractor.splitIntoSegments(text, baseCharacterOffset = 20)
+        assertEquals(listOf("售价1.5元。", "下一句。"), segments.map { it.text })
+        assertEquals(listOf(20, 27), segments.map { it.startCharacterOffset })
+        assertEquals(listOf(27, 31), segments.map { it.endCharacterOffset })
+    }
+
+    @Test
     fun playbackText_removesFullStopsFromSingleCharactersAndTwoCharacterFragments() {
         for (content in listOf("1", "12", "好", "好的", "XX", "𠀀", "e\u0301")) {
             for (suffix in listOf(".", "。", "...", "。。")) {
@@ -138,6 +150,16 @@ class TtsTextExtractorTest {
         assertEquals(listOf("第一小句，", "第二小句；", "第三小句。"), result.map { it.text })
         assertEquals(listOf(50, 55, 60), result.map { it.startCharacterOffset })
         assertEquals(listOf(55, 60, 65), result.map { it.endCharacterOffset })
+    }
+
+    @Test
+    fun splitIntoClauses_keepsDecimalNumberTogether() {
+        val segment = TtsTextSegment("售价1.5元，下一项。", 10, 21)
+
+        val result = extractor.splitIntoClauses(segment)
+
+        assertEquals(listOf("售价1.5元，", "下一项。"), result.map { it.text })
+        assertEquals(listOf(10, 17), result.map { it.startCharacterOffset })
     }
 
     @Test
@@ -236,6 +258,14 @@ class TtsTextExtractorTest {
 
         assertEquals("This sentence crosses a page boundary.", result.mergedText)
         assertEquals(17, result.consumedSourceChars) // " a page boundary." = 17 raw chars
+    }
+
+    @Test
+    fun mergeTrailingSentence_doesNotStopAtDecimalPoint() {
+        val result = extractor.mergeTrailingSentence("价格是", "1.5元。下一句。")
+
+        assertEquals("价格是1.5元。", result.mergedText)
+        assertEquals(5, result.consumedSourceChars)
     }
 
     @Test

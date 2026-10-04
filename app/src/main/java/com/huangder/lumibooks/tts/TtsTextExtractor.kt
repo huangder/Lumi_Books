@@ -35,7 +35,7 @@ class TtsTextExtractor {
             val char = normalized[index]
             buffer.append(char)
 
-            if (char in TERMINATORS) {
+            if (isSentenceTerminatorAt(normalized, index)) {
                 val end = consumeSentenceEnd(normalized, index)
                 while (index + 1 < end) {
                     index++
@@ -76,9 +76,10 @@ class TtsTextExtractor {
             val char = text[index]
             val paragraphBreak = char == '\n' && index + 1 < text.length && text[index + 1] == '\n'
             val reachedLimit = index - start + 1 >= MAX_SENTENCE_LENGTH
-            if (char in TERMINATORS || paragraphBreak || reachedLimit) {
+            val sentenceTerminator = isSentenceTerminatorAt(text, index)
+            if (sentenceTerminator || paragraphBreak || reachedLimit) {
                 var end = index + 1
-                if (char in TERMINATORS) {
+                if (sentenceTerminator) {
                     end = consumeSentenceEnd(text, index)
                 } else if (reachedLimit) {
                     val softBreak = text.substring(start, end).indexOfLast { it in SOFT_BREAKS }
@@ -155,11 +156,12 @@ class TtsTextExtractor {
         var start = 0
         var index = 0
         while (index < segment.text.length) {
-            if (segment.text[index] in CLAUSE_BREAKS) {
+            if (isClauseBreakAt(segment.text, index)) {
                 var end = index + 1
                 while (
                     end < segment.text.length &&
-                    (segment.text[end] in CLAUSE_BREAKS || segment.text[end] in CLOSING_PUNCTUATION)
+                    (isClauseBreakAt(segment.text, end) ||
+                        segment.text[end] in CLOSING_PUNCTUATION)
                 ) {
                     end++
                 }
@@ -227,7 +229,7 @@ class TtsTextExtractor {
                 else -> {
                     merged.append(char)
                     rawIndex++
-                    if (char in TERMINATORS) {
+                    if (isSentenceTerminatorAt(raw, rawIndex - 1)) {
                         val sentenceEnd = consumeSentenceEnd(raw, rawIndex - 1)
                         val available = maxTotalLength - merged.length
                         val appendEnd = minOf(sentenceEnd, rawIndex + available)
@@ -359,11 +361,26 @@ class TtsTextExtractor {
         while (end < text.length) {
             val before = end
             while (end < text.length && text[end] in CLOSING_PUNCTUATION) end++
-            while (end < text.length && text[end] in TERMINATORS) end++
+            while (end < text.length && isSentenceTerminatorAt(text, end)) end++
             if (end == before) break
         }
         return end
     }
+
+    private fun isSentenceTerminatorAt(text: String, index: Int): Boolean {
+        if (index !in text.indices || text[index] !in TERMINATORS) return false
+        return !isDecimalPointAt(text, index)
+    }
+
+    private fun isClauseBreakAt(text: String, index: Int): Boolean {
+        if (index !in text.indices || text[index] !in CLAUSE_BREAKS) return false
+        return !isDecimalPointAt(text, index)
+    }
+
+    private fun isDecimalPointAt(text: String, index: Int): Boolean =
+        text.getOrNull(index) == '.' &&
+            text.getOrNull(index - 1)?.isDigit() == true &&
+            text.getOrNull(index + 1)?.isDigit() == true
 
     private fun Char.isPunctuation(): Boolean = when (Character.getType(this)) {
         Character.CONNECTOR_PUNCTUATION.toInt(),

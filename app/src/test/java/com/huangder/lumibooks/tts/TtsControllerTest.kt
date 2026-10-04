@@ -92,6 +92,28 @@ class TtsControllerTest {
     }
 
     @Test
+    fun decimalNumberIsSpokenAsPartOfTheWholeSentence() = runTest {
+        val main = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(main)
+        val engine = FakePlaybackEngine()
+        val controller = controller(engine)
+        try {
+            controller.start("book", FakePageSource(page(0, "售价1.5元。下一句。")), 0, 0)
+
+            assertEquals(listOf("售价1.5元。"), engine.spokenTexts)
+            assertEquals("售价1.5元。", controller.currentSentence.value?.text)
+            engine.complete(engine.lastUtteranceId)
+            runCurrent()
+
+            assertEquals(listOf("售价1.5元。", "下一句。"), engine.spokenTexts)
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun multiTtsShortSentencesAndSingleCharacterAreAllSubmittedInOrder() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val engine = FakePlaybackEngine()
