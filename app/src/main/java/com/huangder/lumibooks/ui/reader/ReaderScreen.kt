@@ -402,6 +402,37 @@ internal data class ContinuousTextSelection(
     val annotationOnly: Boolean = false
 )
 
+internal fun shouldClearSelectionAfterMenuDismiss(
+    isBookLayout: Boolean,
+    annotationOnly: Boolean
+): Boolean = !isBookLayout || !annotationOnly
+
+internal fun handleContinuousReaderSurfaceTap(
+    selectionMenuVisible: Boolean,
+    dismissSelectionMenu: () -> Unit,
+    toggleReaderMenu: () -> Unit
+) {
+    if (selectionMenuVisible) dismissSelectionMenu() else toggleReaderMenu()
+}
+
+internal class ContinuousMenuTapGate(
+    private val duplicateWindowMillis: Long = 80L
+) {
+    private var lastDispatchMillis = Long.MIN_VALUE
+
+    fun dispatch(nowMillis: Long, action: () -> Unit): Boolean {
+        val elapsed = if (lastDispatchMillis == Long.MIN_VALUE) {
+            Long.MAX_VALUE
+        } else {
+            nowMillis - lastDispatchMillis
+        }
+        if (elapsed in 0..duplicateWindowMillis) return false
+        lastDispatchMillis = nowMillis
+        action()
+        return true
+    }
+}
+
 internal fun isContinuousSingleImageChapter(
     text: CharSequence,
     imageSpanCount: Int
@@ -581,7 +612,7 @@ internal class ContinuousSelectableTextView(context: Context) : RoundedHighlight
     private var tapHadSelection = false
     private var clickDispatched = false
     private var annotationTapHandled = false
-    private var annotationTapCandidate = false
+    private var readerTapCandidate = false
     private val tapSlopPx =
         android.view.ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private val tapDurationLimitMs =
@@ -699,8 +730,12 @@ internal class ContinuousSelectableTextView(context: Context) : RoundedHighlight
                 tapDownY = event.y
                 tapDownTime = event.eventTime
                 tapMoved = false
-                annotationTapCandidate = !ttsJumpEnabled && annotationAt(event.x, event.y) != null
-                if (annotationTapCandidate) parent?.requestDisallowInterceptTouchEvent(true)
+                // Keep a short tap in this TextView until it either becomes a
+                // selection gesture or moves far enough to belong to LazyColumn.
+                // Physical devices otherwise allow the Compose parent to cancel
+                // the AndroidView stream before its click callback is dispatched.
+                readerTapCandidate = !ttsJumpEnabled
+                if (readerTapCandidate) parent?.requestDisallowInterceptTouchEvent(true)
             }
             MotionEvent.ACTION_MOVE -> {
                 lastTapX = event.x
@@ -709,8 +744,8 @@ internal class ContinuousSelectableTextView(context: Context) : RoundedHighlight
                     kotlin.math.abs(event.y - tapDownY) > tapSlopPx
                 ) {
                     tapMoved = true
-                    if (annotationTapCandidate) {
-                        annotationTapCandidate = false
+                    if (readerTapCandidate) {
+                        readerTapCandidate = false
                         if (readerDraggingStartHandle == null) {
                             parent?.requestDisallowInterceptTouchEvent(false)
                         }
@@ -751,22 +786,22 @@ internal class ContinuousSelectableTextView(context: Context) : RoundedHighlight
             val visible = android.graphics.Rect()
             if (selectionVisibleRect(visible)) updateSelectionAtPointer(visible)
         }
-        val annotationShortTap = event.actionMasked == MotionEvent.ACTION_UP &&
-            annotationTapCandidate && !tapHadSelection && !tapMoved &&
+        val readerShortTap = event.actionMasked == MotionEvent.ACTION_UP &&
+            readerTapCandidate && !tapHadSelection && !tapMoved &&
             (event.eventTime - tapDownTime).coerceAtLeast(0L) <= tapDurationLimitMs &&
             !hasReaderSelection()
-        if (annotationShortTap) {
-            annotationTapCandidate = false
+        if (readerShortTap) {
+            readerTapCandidate = false
             // Do not let selectable TextView process this terminal event. Some OEM
-            // editors focus/reveal the tapped offset before dispatching performClick,
-            // which pulls the owning LazyColumn slightly toward the chapter start.
+            // editors either lose the click to the Compose parent or focus/reveal
+            // the tapped offset before dispatching performClick.
             abortNativeTouchStream(event)
             parent?.requestDisallowInterceptTouchEvent(false)
             performReaderTap(tapDownX, tapDownY)
             return true
         }
         if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
-            annotationTapCandidate = false
+            readerTapCandidate = false
             if (readerDraggingStartHandle == null) parent?.requestDisallowInterceptTouchEvent(false)
         }
         val wasDraggingHandle = readerDraggingStartHandle != null
@@ -1956,11 +1991,14 @@ fun ReaderScreen(
         dictionaryAppOptions = emptyList()
     }
     fun dismissSelectionMenu() {
+        val annotationOnly = selectionState?.annotationOnly == true
         selectionState = null
         epubDictionarySelection = null
         isSelectionDragging = false
         resetSelectionSubmenus()
-        clearActiveTextSelection()
+        if (shouldClearSelectionAfterMenuDismiss(isBookLayout, annotationOnly)) {
+            clearActiveTextSelection()
+        }
     }
     LaunchedEffect(
         selectionState?.chapterIndex,
@@ -2962,7 +3000,11 @@ fun ReaderScreen(
                     scrollRequests = continuousScrollRequests,
                     onSearchHighlightFinished = { continuousSearchHighlight = null },
                     onMenuToggle = {
-                        viewModel.toggleMenu()
+                        handleContinuousReaderSurfaceTap(
+                            selectionMenuVisible = selectionState != null || isSelectionDragging,
+                            dismissSelectionMenu = ::dismissSelectionMenu,
+                            toggleReaderMenu = viewModel::toggleMenu
+                        )
                     },
                     onLinkClick = { sourceChapterIndex, href, anchorWindowX, anchorWindowY ->
                         if (isExternalBookLink(href)) {
@@ -4668,11 +4710,7 @@ fun ReaderScreen(
         dictionaryAppOptions = dictionaryAppOptions,
         isTxtBook = uiState.book?.format?.name == "TXT",
         selectionMenuItems = uiState.selectionMenuItems,
-        onDismiss = {
-            selectionState = null
-            resetSelectionSubmenus()
-            clearActiveTextSelection()
-        },
+        onDismiss = { dismissSelectionMenu() },
         onHighlight = {
             selectionForAction()?.let { selection ->
                 createSelectionAnnotation(viewModel, selection, "highlight")?.let { annotationTagState.quickTarget = it to false }
@@ -6796,6 +6834,16 @@ internal fun ContinuousScrollReader(
             cacheWindow = remember { LazyLayoutCacheWindow(aheadFraction = 0.35f, behindFraction = 0.25f) }
         )
 ) {
+    val currentOnMenuToggle by rememberUpdatedState(onMenuToggle)
+    val menuTapGate = remember { ContinuousMenuTapGate() }
+    val dispatchMenuToggle = remember(menuTapGate) {
+        {
+            menuTapGate.dispatch(android.os.SystemClock.uptimeMillis()) {
+                currentOnMenuToggle()
+            }
+            Unit
+        }
+    }
     if (chapterCount <= 0) return
 
     val searchHighlightAlpha = remember { Animatable(0f) }
@@ -7543,7 +7591,7 @@ internal fun ContinuousScrollReader(
                 .pointerInput(lineGuideEnabled) {
                     detectTapGestures(onTap = { tap ->
                         if (!lineGuideEnabled) {
-                            onMenuToggle()
+                            dispatchMenuToggle()
                         } else {
                             val current = focusedGuideLine() ?: return@detectTapGestures
                             val all = guideTargets(false)
@@ -7645,7 +7693,7 @@ internal fun ContinuousScrollReader(
                                 chapterIndex = chapterIndex,
                                 imageSpan = continuousImages.single(),
                                 imageAdjustments = imageAdjustments,
-                                onReaderTap = { if (!lineGuideEnabled) onMenuToggle() },
+                                onReaderTap = { if (!lineGuideEnabled) dispatchMenuToggle() },
                                 onImageLongPress = { chapter, image ->
                                     if (!lineGuideEnabled) onImageLongPress(chapter, image)
                                 }
@@ -7658,7 +7706,7 @@ internal fun ContinuousScrollReader(
                                     chapterIndex = chapterIndex,
                                     imageSpan = imageSpan,
                                     imageAdjustments = imageAdjustments,
-                                    onReaderTap = { if (!lineGuideEnabled) onMenuToggle() },
+                                    onReaderTap = { if (!lineGuideEnabled) dispatchMenuToggle() },
                                     onImageLongPress = { chapter, image ->
                                         if (!lineGuideEnabled) onImageLongPress(chapter, image)
                                     }
@@ -7683,7 +7731,7 @@ internal fun ContinuousScrollReader(
                             textView.setPadding(textLeft, 0, textRight, 0)
                         }
                         textView.lineGuideMode = lineGuideEnabled
-                        textView.onReaderTap = onMenuToggle
+                        textView.onReaderTap = dispatchMenuToggle
                         textView.savedAnnotations = notes.filter { it.chapterIndex == chapterIndex }
                         textView.ttsJumpEnabled = ttsSentenceJumpEnabled
                         textView.onSentenceDoubleTap = { characterOffset ->

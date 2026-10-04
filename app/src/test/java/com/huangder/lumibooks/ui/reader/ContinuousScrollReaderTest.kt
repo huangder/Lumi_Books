@@ -151,6 +151,38 @@ class ContinuousScrollReaderTest {
         }
     }
 
+    @Test fun plainTextTapTogglesReaderMenuExactlyOnce() {
+        currentChapter = 0
+        chapterCount = 1
+        var menuToggleCount = 0
+        show(onMenuToggle = { menuToggleCount++ })
+        compose.waitUntil(15_000) { restored }
+        compose.waitUntil(15_000) {
+            descendants(composeRoot.rootView)
+                .filterIsInstance<ContinuousSelectableTextView>()
+                .any { it.isAttachedToWindow && it.text.isNotEmpty() }
+        }
+        var target = Offset.Zero
+        compose.runOnIdle {
+            val view = visibleTextView()
+            val location = IntArray(2).also(view::getLocationOnScreen)
+            val rootLocation = IntArray(2).also(composeRoot::getLocationOnScreen)
+            target = Offset(
+                location[0] - rootLocation[0] + view.totalPaddingLeft +
+                    (view.readerHorizontalPosition(20) ?: view.layout.getPrimaryHorizontal(20)),
+                location[1] - rootLocation[1] + view.totalPaddingTop +
+                    (view.layout.getLineTop(1) + view.layout.getLineBottom(1)) / 2f
+            )
+        }
+
+        compose.onRoot().performTouchInput { down(target); up() }
+        compose.waitForIdle()
+
+        compose.runOnIdle {
+            assertEquals("one physical tap must toggle the reader chrome once", 1, menuToggleCount)
+        }
+    }
+
     @Test fun bionicChapterKeepsVisibleTextAndSelectionAfterScrollingToTheMiddle() {
         currentChapter = 0
         chapterCount = 1

@@ -3453,9 +3453,23 @@ private const val READER_SCRIPT_PART_3 = """
     var selection = window.getSelection && window.getSelection();
     if (!selection) return false;
     var hadSelection = !selection.isCollapsed && selection.rangeCount > 0;
-    try { selection.collapse(document.body || document.documentElement, 0); } catch (error) {}
+    if (!hadSelection) return false;
+    var windowX = window.pageXOffset || 0;
+    var windowY = window.pageYOffset || 0;
+    var scrollRoot = document.scrollingElement || document.documentElement || document.body;
+    var rootX = scrollRoot ? scrollRoot.scrollLeft : 0;
+    var rootY = scrollRoot ? scrollRoot.scrollTop : 0;
     if (selection.removeAllRanges) selection.removeAllRanges();
-    if (selection.empty) selection.empty();
+    else if (selection.empty) selection.empty();
+    var restoreSelectionScroll = function () {
+      if (scrollRoot) {
+        scrollRoot.scrollLeft = rootX;
+        scrollRoot.scrollTop = rootY;
+      }
+      if (window.scrollTo) window.scrollTo(windowX, windowY);
+    };
+    restoreSelectionScroll();
+    if (window.requestAnimationFrame) window.requestAnimationFrame(restoreSelectionScroll);
     return hadSelection;
   }
 

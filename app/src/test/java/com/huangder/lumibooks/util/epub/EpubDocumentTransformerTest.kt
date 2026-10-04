@@ -688,4 +688,19 @@ class EpubDocumentTransformerTest {
         // 「原排版」套装下阅读器完全不参与配色。
         assertTrue(output.contains("state.publisherPaintOnly = config.publisherPaintOnly === true"))
     }
+
+    @Test
+    fun clearingDocumentSelectionPreservesTheScrolledReadingPosition() {
+        val source = "<html><body><p>Chapter text</p></body></html>"
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("chapter.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE
+        ).toString(Charsets.UTF_8)
+
+        assertTrue(output.contains("if (!hadSelection) return false"))
+        assertTrue(output.contains("document.scrollingElement || document.documentElement || document.body"))
+        assertTrue(output.contains("restoreSelectionScroll()"))
+        assertTrue(output.contains("window.requestAnimationFrame(restoreSelectionScroll)"))
+        assertFalse(output.contains("selection.collapse(document.body || document.documentElement, 0)"))
+    }
 }

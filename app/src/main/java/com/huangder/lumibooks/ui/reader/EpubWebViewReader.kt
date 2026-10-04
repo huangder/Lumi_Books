@@ -244,14 +244,23 @@ internal class EpubContentWebView(context: android.content.Context) : WebView(co
 
     private fun clearDocumentSelection(attempt: Int) {
         if (!isAttachedToWindow) return
+        val preservedScrollX = scrollX
+        val preservedScrollY = scrollY
         evaluateJavascript(
-            "(function(){var s=window.getSelection&&window.getSelection();" +
-                "if(s){try{s.collapse(document.body||document.documentElement,0);}catch(e){}" +
-                "if(s.removeAllRanges)s.removeAllRanges();if(s.empty)s.empty();}" +
-                "var a=document.activeElement;if(a&&a.blur)a.blur();return true;})()"
-        ) {
+            "(function(){var wx=window.pageXOffset||0,wy=window.pageYOffset||0;" +
+                "var root=document.scrollingElement||document.documentElement||document.body;" +
+                "var rx=root?root.scrollLeft:0,ry=root?root.scrollTop:0;" +
+                "var s=window.getSelection&&window.getSelection();" +
+                "var had=!!(s&&s.rangeCount>0&&!s.isCollapsed);" +
+                "if(had){if(s.removeAllRanges)s.removeAllRanges();else if(s.empty)s.empty();}" +
+                "var a=document.activeElement;if(a&&a.blur)a.blur();" +
+                "var restore=function(){if(root){root.scrollLeft=rx;root.scrollTop=ry;}" +
+                "if(window.scrollTo)window.scrollTo(wx,wy);};restore();" +
+                "if(window.requestAnimationFrame)window.requestAnimationFrame(restore);return had;})()"
+        ) { result ->
+            scrollTo(preservedScrollX, preservedScrollY)
             dismissSelectionUi()
-            if (attempt < 2) {
+            if (result == "true" && attempt < 2) {
                 postDelayed({ clearDocumentSelection(attempt + 1) }, if (attempt == 0) 32L else 96L)
             }
         }
