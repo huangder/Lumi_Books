@@ -4166,6 +4166,7 @@ fun ReaderScreen(
                 }?.path,
                 currentBodyFontWeight = uiState.activeThemeSettingsForMode(uiState.themeEditingDark).bodyFontWeight,
                 onBodyFontWeightChange = viewModel::saveBodyFontWeight,
+                onBodyFontWeightPreview = viewModel::previewBodyFontWeight,
                 currentTheme = uiState.activeThemeSettingsForMode(uiState.themeEditingDark).backgroundSelection,
                 currentBackgroundSelection = uiState.activeThemeSettingsForMode(uiState.themeEditingDark).backgroundSelection,
                 customBackgrounds = uiState.customReaderBackgrounds,
@@ -4188,6 +4189,7 @@ fun ReaderScreen(
                 currentDisplayMode = uiState.readerDisplayMode,
                 editingDark = uiState.themeEditingDark,
                 onFontSizeChange = { viewModel.saveFontSize(it) },
+                onFontSizePreview = viewModel::previewFontSize,
                 onThemeChange = { viewModel.saveReaderTheme(it) },
                 onModeThemeChange = viewModel::saveReaderThemeForMode,
                 onModeChange = viewModel::selectThemeEditMode,
@@ -6891,7 +6893,7 @@ internal fun ContinuousScrollReader(
         mutableStateMapOf<Int, Boolean>()
     }
     val chapterLayoutKey = ContinuousLayoutKey(contentRevision, contentWidthPx, textContentWidthPx,
-        comicModeEnabled, fontSize, lineHeight, letterSpacingDp, paragraphSpacing, firstLineIndent,
+        comicModeEnabled, fontSize, bodyFontWeight, lineHeight, letterSpacingDp, paragraphSpacing, firstLineIndent,
         textAlignment, readerTypeface, chineseMode, bionicReadingEnabled, marginTop, marginBottom,
         readerDensity, LocalDensity.current.fontScale)
     val currentChapterLayoutKey by rememberUpdatedState(chapterLayoutKey)

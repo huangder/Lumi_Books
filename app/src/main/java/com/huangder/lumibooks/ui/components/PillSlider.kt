@@ -228,14 +228,14 @@ fun PillSlider(
                         }
 
                         when {
-                            cancelledByScroll || !released -> {
-                                motionState.cancelInteraction(latestValue.coerceIn(valueRange))
-                            }
                             dragged -> {
                                 val target = snapSliderValue(motionState.targetValue, valueRange, step)
                                 pendingCommittedValue = target
                                 motionState.settleTo(target)
                                 latestOnValueChange(target)
+                            }
+                            cancelledByScroll || !released -> {
+                                motionState.cancelInteraction(latestValue.coerceIn(valueRange))
                             }
                             else -> {
                                 val fraction = (startX / widthPx).coerceIn(0f, 1f)

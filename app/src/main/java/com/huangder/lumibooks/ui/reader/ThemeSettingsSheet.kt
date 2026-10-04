@@ -202,6 +202,7 @@ fun ThemeSettingsSheet(
     currentCustomFontPath: String? = null,
     currentBodyFontWeight: Int = 400,
     onBodyFontWeightChange: (Int) -> Unit = {},
+    onBodyFontWeightPreview: (Int) -> Unit = {},
     currentTheme: String,
     currentBackgroundSelection: String = currentTheme,
     customBackgrounds: List<ReaderBackgroundPreset> = emptyList(),
@@ -225,6 +226,7 @@ fun ThemeSettingsSheet(
     editingDark: Boolean = isAppDark,
     eInkModeEnabled: Boolean = false,
     onFontSizeChange: (Float) -> Unit,
+    onFontSizePreview: (Float) -> Unit = {},
     onThemeChange: (String) -> Unit,
     onModeThemeChange: (Boolean, String) -> Unit = { _, value -> onThemeChange(value) },
     onModeChange: (Boolean) -> Unit = {},
@@ -410,7 +412,7 @@ fun ThemeSettingsSheet(
                 onValueChange = onFontSizeChange,
                 valueRange = 12f..28f,
                 step = 1f,
-                onDragValueChange = onFontSizeChange,
+                onDragValueChange = onFontSizePreview,
                 modifier = Modifier.padding(horizontal = 24.dp)
             )
             if (showFontSizeDialog) {
@@ -444,7 +446,10 @@ fun ThemeSettingsSheet(
                         previewWeight = it.toInt()
                         onBodyFontWeightChange(previewWeight)
                     },
-                    onDragValueChange = { previewWeight = it.toInt() },
+                    onDragValueChange = {
+                        previewWeight = it.toInt()
+                        onBodyFontWeightPreview(previewWeight)
+                    },
                     valueRange = range,
                     step = 1f,
                     modifier = Modifier.padding(horizontal = 24.dp)

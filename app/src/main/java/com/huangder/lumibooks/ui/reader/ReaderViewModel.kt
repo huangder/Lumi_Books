@@ -1490,11 +1490,18 @@ class ReaderViewModel @Inject constructor(
         updateCurrentThemeSettings { copy(fontSize = size) }
     }
 
+    fun previewFontSize(size: Float) {
+        previewCurrentThemeSettings { copy(fontSize = size) }
+    }
+
     fun saveBodyFontWeight(weight: Int) {
         val target = weight.coerceIn(100, 900)
-        val state = _uiState.value
-        if (state.currentThemeSettings(state.readerLayoutTarget()).bodyFontWeight == target) return
         updateCurrentThemeSettings { copy(bodyFontWeight = target) }
+    }
+
+    fun previewBodyFontWeight(weight: Int) {
+        val target = weight.coerceIn(100, 900)
+        previewCurrentThemeSettings { copy(bodyFontWeight = target) }
     }
 
     fun saveLineHeight(lh: Float) {

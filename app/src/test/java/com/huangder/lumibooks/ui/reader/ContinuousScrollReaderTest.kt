@@ -77,6 +77,7 @@ class ContinuousScrollReaderTest {
         background: androidx.compose.runtime.State<Int> = mutableStateOf(Color.WHITE),
         revision: androidx.compose.runtime.State<Long> = mutableStateOf(0L),
         fontSize: androidx.compose.runtime.State<Float> = mutableStateOf(18f),
+        bodyFontWeight: androidx.compose.runtime.State<Int> = mutableStateOf(400),
         lineHeight: Float = 1.5f,
         lineGuide: Boolean = false,
         bionic: Boolean = false,
@@ -100,7 +101,10 @@ class ContinuousScrollReaderTest {
                     initialCharacterOffset = initialOffset,
                     fontSize = fontSize.value, lineHeight = lineHeight, letterSpacingDp = 0f,
                     textAlignment = ReaderTextAlignment.NATURAL,
-                    readerTypeface = ResolvedReaderTypeface(Typeface.DEFAULT, false),
+                    readerTypeface = ResolvedReaderTypeface(
+                        Typeface.DEFAULT,
+                        bodyFontWeight.value >= 600
+                    ),
                     textColor = Color.BLACK, backgroundColor = background.value,
                     backgroundImagePath = null, backgroundImageOpacity = 0f, backgroundImageBlurDp = 0f,
                     marginLeft = leftMargin.value, marginRight = 16f, marginTop = verticalMargin, marginBottom = verticalMargin,
@@ -121,7 +125,8 @@ class ContinuousScrollReaderTest {
                     },
                     onRestoreComplete = { restored = true }, onSentenceDoubleTap = { _, _ -> },
                     ttsSentenceJumpEnabled = false, comicModeEnabled = comicMode.value, listState = list,
-                    imageAdjustments = imageAdjustments.value
+                    imageAdjustments = imageAdjustments.value,
+                    bodyFontWeight = bodyFontWeight.value
                 )
             }
         }
@@ -482,6 +487,41 @@ class ContinuousScrollReaderTest {
             val expected = layout.getLineTop(layout.getLineForOffset(character))
             assertTrue("expected=$expected actual=${list.firstVisibleItemScrollOffset}",
                 kotlin.math.abs(expected - list.firstVisibleItemScrollOffset) <= 2)
+        }
+    }
+
+    @Test fun fontSizeAndWeightChangesReachTheVisibleTextView() {
+        currentChapter = 0
+        chapterCount = 1
+        val font = mutableStateOf(18f)
+        val weight = mutableStateOf(400)
+        show(fontSize = font, bodyFontWeight = weight)
+        compose.waitUntil(15_000) { restored }
+        compose.waitUntil(15_000) {
+            runCatching { visibleTextView().text.isNotEmpty() }.getOrDefault(false)
+        }
+
+        val initialSize = compose.runOnIdle { visibleTextView().textSize }
+        compose.runOnIdle {
+            font.value = 24f
+            weight.value = 700
+        }
+
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        compose.runOnIdle {
+            val views = descendants(composeRoot.rootView)
+                .filterIsInstance<ContinuousSelectableTextView>()
+                .filter { it.isAttachedToWindow }
+                .toList()
+            assertTrue(
+                "initial=$initialSize attached=${views.map { it.textSize to it.text.length }}",
+                views.any { it.text.isNotEmpty() && it.textSize > initialSize }
+            )
+            assertTrue(
+                "attached=${views.map { it.paint.isFakeBoldText to it.text.length }}",
+                views.any { it.text.isNotEmpty() && it.paint.isFakeBoldText }
+            )
         }
     }
 

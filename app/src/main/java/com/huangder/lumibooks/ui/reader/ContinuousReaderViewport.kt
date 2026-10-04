@@ -14,6 +14,7 @@ internal data class ContinuousLayoutKey(
     val textWidth: Int,
     val comic: Boolean,
     val fontSize: Float,
+    val bodyFontWeight: Int,
     val lineHeight: Float,
     val letterSpacing: Float,
     val paragraphSpacing: Float,
