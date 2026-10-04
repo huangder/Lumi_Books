@@ -305,6 +305,37 @@ class EpubDocumentTransformerTest {
     }
 
     @Test
+    fun reflowableLayoutUsesThemeHorizontalInsetsAndWrapsOnlyOverflowingText() {
+        val source = """
+            <html style="margin:0 31px;padding:0 17px"><body style="margin:0 29px;padding:12px 23px">
+              <blockquote style="margin-left:2em"><p id="separator">${"*".repeat(120)}</p></blockquote>
+              <pre id="code">${".".repeat(120)}</pre>
+              <table id="table"><tr><td>${".".repeat(120)}</td></tr></table>
+              <div data-lumi-bleed="horizontal"><p>${"*".repeat(120)}</p></div>
+              <p style="position:absolute">${"*".repeat(120)}</p>
+            </body></html>
+        """.trimIndent()
+
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("chapter.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE
+        ).toString(Charsets.UTF_8)
+        val document = Jsoup.parse(output, "", Parser.xmlParser())
+
+        assertTrue(document.selectFirst("blockquote")!!.attr("style").contains("margin-left:2em"))
+        assertTrue(output.contains("var publisherHorizontalInset = state.fixed ? Math.max(0,"))
+        assertEquals(2, Regex("clearPublisherRootHorizontalInset\\(\\);").findAll(output).count())
+        assertTrue(output.contains("function fitReflowableTextOverflow(inset, availableWidth, tolerance)"))
+        assertTrue(output.contains("textNodeOverflowsReaderBox(node, inset, availableWidth, tolerance)"))
+        assertTrue(output.contains("target.style.setProperty('overflow-wrap', 'anywhere', 'important')"))
+        assertTrue(output.contains("target.style.setProperty('white-space', 'normal', 'important')"))
+        assertTrue(output.contains("current.hasAttribute('data-lumi-bleed')"))
+        assertTrue(output.contains("style.position === 'absolute' || style.position === 'fixed'"))
+        assertTrue(output.contains("PRE|CODE|KBD|SAMP|TABLE"))
+        assertTrue(output.contains("'overflow-wrap', 'white-space'"))
+    }
+
+    @Test
     fun fixedLayoutKeepsPublisherDesignBox() {
         val source = """
             <html><head><meta name="viewport" content="width=860,height=1146"/></head>
@@ -470,7 +501,7 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("image.hasAttribute('usemap')"))
         assertTrue(output.contains("!interactiveTarget"))
         assertTrue(output.contains("--lumi-column-gap"))
-        assertTrue(output.contains("var publisherHorizontalInset = Math.max(0,"))
+        assertTrue(output.contains("var publisherHorizontalInset = state.fixed ? Math.max(0,"))
         assertTrue(output.contains("right: publisherHorizontalInset + state.insets.right"))
         assertTrue(output.contains("left: publisherHorizontalInset + state.insets.left"))
         // 固定排版书籍同样遵守页边距：先按“视口减去 insets”缩放，再按 insets 偏移。

@@ -118,6 +118,81 @@ class EpubReflowableScrollInstrumentedTest {
     }
 
     @SuppressLint("SetJavaScriptEnabled")
+    @Test
+    fun themeInsetsReplacePublisherSpacingAndSeparatorsStayInsideTheirPage() {
+        val webView = openPage(
+            """
+                <html xmlns="http://www.w3.org/1999/xhtml" style="margin:0 31px;padding:0 17px">
+                  <head><meta name="viewport" content="width=320,initial-scale=1"/></head>
+                  <body style="margin:0 29px;padding:12px 23px">
+                    <blockquote id="quote" style="margin-left:2em">
+                      <p id="separator" style="margin:0">${"*".repeat(160)}</p>
+                      <p id="nowrap" style="margin:0;white-space:nowrap">${".".repeat(160)}</p>
+                    </blockquote>
+                    <pre id="code">${".".repeat(160)}</pre>
+                    <table id="table"><tr><td>${".".repeat(160)}</td></tr></table>
+                    <div data-lumi-bleed="horizontal"><p id="bleed">${"*".repeat(160)}</p></div>
+                    <p id="fixed" style="position:absolute">${"*".repeat(160)}</p>
+                  </body>
+                </html>
+            """.trimIndent()
+        )
+        val expression = """
+            (function(){
+              var rootStyle=getComputedStyle(document.documentElement);
+              var bodyStyle=getComputedStyle(document.body);
+              var viewport=window.visualViewport?window.visualViewport.width:innerWidth;
+              var left=parseFloat(bodyStyle.paddingLeft),right=parseFloat(bodyStyle.paddingRight);
+              function textInsidePage(id){
+                var element=document.getElementById(id),node=element.firstChild;
+                var range=document.createRange();range.selectNodeContents(node);
+                return Array.prototype.every.call(range.getClientRects(),function(rect){
+                  var local=((rect.left%viewport)+viewport)%viewport;
+                  return rect.width<=viewport-left-right+2 && local>=left-2 &&
+                    local+rect.width<=viewport-right+2;
+                });
+              }
+              return JSON.stringify({
+                rootMarginLeft:parseFloat(rootStyle.marginLeft),
+                rootMarginRight:parseFloat(rootStyle.marginRight),
+                rootPaddingLeft:parseFloat(rootStyle.paddingLeft),
+                rootPaddingRight:parseFloat(rootStyle.paddingRight),
+                bodyPaddingLeft:left,bodyPaddingRight:right,
+                quoteMarginLeft:parseFloat(getComputedStyle(document.getElementById('quote')).marginLeft),
+                separatorFit:document.getElementById('separator').getAttribute('data-lumi-overflow-fit')==='true',
+                nowrapFit:document.getElementById('nowrap').getAttribute('data-lumi-overflow-fit')==='true',
+                nowrapWhiteSpace:getComputedStyle(document.getElementById('nowrap')).whiteSpace,
+                codeFit:document.getElementById('code').hasAttribute('data-lumi-overflow-fit'),
+                tableFit:document.getElementById('table').hasAttribute('data-lumi-overflow-fit'),
+                bleedFit:document.getElementById('bleed').hasAttribute('data-lumi-overflow-fit'),
+                fixedFit:document.getElementById('fixed').hasAttribute('data-lumi-overflow-fit'),
+                separatorInside:textInsidePage('separator'),nowrapInside:textInsidePage('nowrap')
+              });
+            })()
+        """.trimIndent()
+
+        listOf("paginated", "scrolled").forEach { flow ->
+            val result = configureAndEvaluate(webView, expression, flow)
+            assertEquals(0.0, result.getDouble("rootMarginLeft"), 0.5)
+            assertEquals(0.0, result.getDouble("rootMarginRight"), 0.5)
+            assertEquals(0.0, result.getDouble("rootPaddingLeft"), 0.5)
+            assertEquals(0.0, result.getDouble("rootPaddingRight"), 0.5)
+            assertEquals(23.0, result.getDouble("bodyPaddingLeft"), 0.5)
+            assertEquals(27.0, result.getDouble("bodyPaddingRight"), 0.5)
+            assertTrue(result.getDouble("quoteMarginLeft") > 0.0)
+            assertTrue(result.getBoolean("separatorFit"))
+            assertTrue(result.getBoolean("nowrapFit"))
+            assertEquals("normal", result.getString("nowrapWhiteSpace"))
+            assertTrue(result.getBoolean("separatorInside"))
+            assertTrue(result.getBoolean("nowrapInside"))
+            assertTrue(!result.getBoolean("codeFit"))
+            assertTrue(!result.getBoolean("tableFit"))
+            assertTrue(!result.getBoolean("bleedFit"))
+            assertTrue(!result.getBoolean("fixedFit"))
+        }
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
     private fun openPage(source: String): WebView {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val html = EpubDocumentTransformer.transform(
@@ -187,13 +262,17 @@ class EpubReflowableScrollInstrumentedTest {
         )
     }
 
-    private fun configureAndEvaluate(webView: WebView, expression: String): JSONObject {
+    private fun configureAndEvaluate(
+        webView: WebView,
+        expression: String,
+        flow: String = "scrolled"
+    ): JSONObject {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val completed = CountDownLatch(1)
         var result: JSONObject? = null
         instrumentation.runOnMainSync {
             webView.evaluateJavascript(
-                "window.LumiReader.configure({flow:'scrolled',theme:'day',preservePublisherBackground:true," +
+                "window.LumiReader.configure({flow:'$flow',theme:'day',preservePublisherBackground:true," +
                     "insets:{top:28,right:27,bottom:32,left:23}});"
             ) {
                 webView.postDelayed({

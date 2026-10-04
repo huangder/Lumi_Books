@@ -671,10 +671,11 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
 
     private val READER_SCRIPT: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
         buildString(
-            READER_SCRIPT_PART_1.length + READER_SCRIPT_PART_2.length +
-                READER_SCRIPT_PART_3.length
+            READER_SCRIPT_PART_1.length + READER_SCRIPT_PART_1B.length +
+                READER_SCRIPT_PART_2.length + READER_SCRIPT_PART_3.length
         ) {
             append(READER_SCRIPT_PART_1)
+            append(READER_SCRIPT_PART_1B)
             append(READER_SCRIPT_PART_2)
             append(READER_SCRIPT_PART_3)
         }
@@ -1488,6 +1489,9 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     state.animationTimer = setTimeout(function () { body.style.transition = 'none'; }, visualMillis(210));
   }
 
+"""
+
+    private const val READER_SCRIPT_PART_1B = """
   function settleMedia() {
     var imageJobs = Array.prototype.map.call(document.images || [], function (image) {
       if (image.complete) return Promise.resolve();
@@ -1728,8 +1732,12 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       return { top: 0, right: 0, bottom: 0, left: 0 };
     }
     var box = state.publisherBox;
-    var publisherHorizontalInset = Math.max(0,
-      (box.marginLeft + box.paddingLeft + box.marginRight + box.paddingRight) / 2);
+    // Reflowable books use the reader's horizontal insets as their outer
+    // content boundary. Publisher html/body spacing varies between books and
+    // must not be added to an identical theme setting. Fixed layouts retain
+    // that spacing because it belongs to their authored design coordinates.
+    var publisherHorizontalInset = state.fixed ? Math.max(0,
+      (box.marginLeft + box.paddingLeft + box.marginRight + box.paddingRight) / 2) : 0;
     return {
       top: box.marginTop + box.paddingTop + state.insets.top,
       right: publisherHorizontalInset + state.insets.right,
@@ -1778,6 +1786,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
 
   function applyScrolledBox(body) {
     var inset = readerBox();
+    clearPublisherRootHorizontalInset();
     setInsetVariables(body, inset);
     body.style.removeProperty('--lumi-page-height');
     body.style.removeProperty('--lumi-column-gap');
@@ -1833,8 +1842,22 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
   }
 
   var overflowFitProperties = [
-    'box-sizing', 'max-width', 'min-width', 'width', 'margin-left', 'margin-right'
+    'box-sizing', 'max-width', 'min-width', 'width', 'margin-left', 'margin-right',
+    'overflow-wrap', 'white-space'
   ];
+
+  function rememberOverflowFit(element) {
+    if (element.__lumiOverflowFitOriginal) return;
+    var saved = {};
+    overflowFitProperties.forEach(function (name) {
+      saved[name] = {
+        value: element.style.getPropertyValue(name),
+        priority: element.style.getPropertyPriority(name)
+      };
+    });
+    element.__lumiOverflowFitOriginal = saved;
+    element.setAttribute('data-lumi-overflow-fit', 'true');
+  }
 
   function clearOverflowFits() {
     document.querySelectorAll('[data-lumi-overflow-fit="true"]').forEach(function (element) {
@@ -1875,11 +1898,71 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     if (!element || element === document.body || element.closest('[id^="lumi-"]')) return false;
     if (element.closest('[data-lumi-bleed]') || element.closest('[data-lumi-cover-container="true"]') ||
         element.closest('[data-lumi-media-only="true"]')) return false;
-    if (/^(SCRIPT|STYLE|LINK|META|IMG|SVG|VIDEO|CANVAS|PICTURE|SOURCE|IFRAME|TBODY|THEAD|TFOOT|TR|TD|TH)$/.test(
+    if (/^(SCRIPT|STYLE|LINK|META|IMG|SVG|VIDEO|CANVAS|PICTURE|SOURCE|IFRAME|MATH|TABLE|PRE|CODE|KBD|SAMP|TBODY|THEAD|TFOOT|TR|TD|TH)$/.test(
         String(element.tagName || '').toUpperCase())) return false;
     if (style.position === 'absolute' || style.position === 'fixed') return false;
     return style.display !== 'inline' && style.display !== 'contents' &&
       style.display !== 'table-row' && style.display !== 'table-cell' && style.display !== 'none';
+  }
+
+  function shouldFitOverflowText(element) {
+    var current = element;
+    while (current && current !== document.body) {
+      if (current.id && String(current.id).indexOf('lumi-') === 0) return false;
+      if (current.hasAttribute('data-lumi-bleed') ||
+          current.hasAttribute('data-lumi-cover-container') ||
+          current.hasAttribute('data-lumi-media-only')) return false;
+      if (/^(SCRIPT|STYLE|NOSCRIPT|PRE|CODE|KBD|SAMP|TABLE|TBODY|THEAD|TFOOT|TR|TD|TH|IMG|SVG|VIDEO|CANVAS|PICTURE|SOURCE|IFRAME|MATH)$/.test(
+          String(current.tagName || '').toUpperCase())) return false;
+      var style = window.getComputedStyle(current);
+      if (style.display === 'none' || style.position === 'absolute' || style.position === 'fixed') return false;
+      current = current.parentElement;
+    }
+    return true;
+  }
+
+  function overflowTextTarget(node) {
+    var current = node.parentElement;
+    var fallback = current;
+    while (current && current !== document.body) {
+      var style = window.getComputedStyle(current);
+      if (style.whiteSpace === 'nowrap') return current;
+      if (style.display !== 'inline' && style.display !== 'contents') return current;
+      current = current.parentElement;
+    }
+    return current || fallback;
+  }
+
+  function textNodeOverflowsReaderBox(node, inset, availableWidth, tolerance) {
+    var range = document.createRange();
+    try {
+      range.selectNodeContents(node);
+      return Array.prototype.some.call(range.getClientRects(), function (rect) {
+        return rect.width > 0 && rect.height > 0 &&
+          rectOverflowsReaderBox(rect, inset, availableWidth, tolerance);
+      });
+    } finally {
+      if (range.detach) range.detach();
+    }
+  }
+
+  function fitReflowableTextOverflow(inset, availableWidth, tolerance) {
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    var node;
+    while ((node = walker.nextNode())) {
+      if (!node.nodeValue || !node.nodeValue.trim()) continue;
+      var parent = node.parentElement;
+      if (!parent || !shouldFitOverflowText(parent)) continue;
+      if (!textNodeOverflowsReaderBox(node, inset, availableWidth, tolerance)) continue;
+      var target = overflowTextTarget(node);
+      if (!target || !shouldFitOverflowText(target)) continue;
+      rememberOverflowFit(target);
+      var style = window.getComputedStyle(target);
+      target.style.setProperty('overflow-wrap', 'anywhere', 'important');
+      if (style.whiteSpace === 'nowrap') {
+        target.style.setProperty('white-space', 'normal', 'important');
+      }
+    }
   }
 
   function fitReflowableHorizontalOverflow() {
@@ -1895,15 +1978,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
         return rectOverflowsReaderBox(rect, inset, availableWidth, tolerance);
       });
       if (!overflows) return;
-      var saved = {};
-      overflowFitProperties.forEach(function (name) {
-        saved[name] = {
-          value: element.style.getPropertyValue(name),
-          priority: element.style.getPropertyPriority(name)
-        };
-      });
-      element.__lumiOverflowFitOriginal = saved;
-      element.setAttribute('data-lumi-overflow-fit', 'true');
+      rememberOverflowFit(element);
       element.style.setProperty('box-sizing', 'border-box', 'important');
       element.style.setProperty('max-width', '100%', 'important');
       element.style.setProperty('min-width', '0px', 'important');
@@ -1914,6 +1989,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       });
       if (stillOverflows) element.style.setProperty('width', '100%', 'important');
     });
+    fitReflowableTextOverflow(inset, availableWidth, tolerance);
   }
 
   function collectOccupiedPages(maxPhysicalPage) {
