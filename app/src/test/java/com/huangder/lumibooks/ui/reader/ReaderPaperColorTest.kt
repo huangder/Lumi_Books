@@ -37,11 +37,16 @@ class ReaderPaperColorTest {
     }
 
     @Test fun `image uses its configured base paper before image decode`() {
-        val image = ReaderBackgroundPreset("image", ReaderBackgroundType.IMAGE, "missing.jpg")
+        val image = ReaderBackgroundPreset(
+            "image",
+            ReaderBackgroundType.IMAGE,
+            "missing.jpg",
+            dominantColor = 0xFFB58A62.toInt()
+        )
         val state = ReaderUiState(activeReaderLayoutThemeSuiteId = "image-suite",
             readerThemeSuites = listOf(ReaderThemeSuite("image-suite", settings = ReaderThemeSettings(
                 backgroundSelection = image.selectionKey, backgroundColorSelection = "green"))),
             customReaderBackgrounds = listOf(image), readerDisplayMode = "day")
-        assertEquals(0xFFE8F5E9.toInt(), state.resolveReaderPaperColor(false))
+        assertEquals(0xFFB58A62.toInt(), state.resolveReaderPaperColor(false))
     }
 }

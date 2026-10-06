@@ -33,7 +33,11 @@ internal fun ReaderUiState.resolveReaderPaperColor(appIsDark: Boolean): Int {
     }
     return when {
         publisherPaintSuiteActive -> publisherFallbackPaperColor
-        selectedCustomBackground?.type == ReaderBackgroundType.IMAGE -> imageBaseColor
+        // The image itself is decoded by the reader later. During the shared
+        // transition use its persisted dominant color immediately, then fall
+        // back to the configured paper color only for older presets without it.
+        selectedCustomBackground?.type == ReaderBackgroundType.IMAGE ->
+            selectedCustomBackground.dominantColor ?: imageBaseColor
         selectedCustomBackground?.type == ReaderBackgroundType.COLOR -> {
             val base = runCatching { android.graphics.Color.parseColor(selectedCustomBackground.value) }
                 .getOrDefault(0xFFFBFBFC.toInt())
