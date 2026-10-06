@@ -15,11 +15,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.domain.model.MenuAnimationStyle
@@ -66,7 +69,8 @@ class MenuAnimationStyleHostTest {
                 LiquidGlassMenuHost(Modifier.fillMaxSize(), backdrop = null) {
                     host = LocalLiquidGlassMenuHost.current!!
                     Box(Modifier.align(Alignment.TopEnd).padding(24.dp)
-                        .liquidGlassMenuAnchor(sourceId).size(44.dp).background(Color.Gray))
+                        .liquidGlassMenuAnchor(sourceId).testTag("menuTrigger")
+                        .size(44.dp).background(Color.Gray))
                 }
             }
         }
@@ -98,6 +102,17 @@ class MenuAnimationStyleHostTest {
         }
     }
 
+    private fun triggerPixel(): Int {
+        val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        return try {
+            view.draw(Canvas(bitmap))
+            val center = host.source(menu)!!.rootBounds.center
+            bitmap.getPixel(center.x.toInt(), center.y.toInt())
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
     @Test fun selectingLiquidGlassMenuRendersTheEntireReturnWithTheNewRim() {
         style.value = MenuAnimationStyle.LIQUID
         show(glass = true)
@@ -118,15 +133,20 @@ class MenuAnimationStyleHostTest {
         }
     }
 
-    @Test fun normalMenuKeepsTheTriggerVisibleAndSubmitsSelectionOnlyOnce() {
+    @Test fun normalMenuHidesTheTriggerAndSubmitsSelectionOnlyOnce() {
         show()
+        compose.onNodeWithTag("menuTrigger").assertExists()
+        compose.runOnIdle { assertEquals(Color.Gray.toArgb(), triggerPixel()) }
         compose.runOnIdle { host.show(menu) }
         advance(240)
         compose.runOnIdle {
             assertNotNull(host.displayedMenu)
             assertTrue(host.measured)
             assertFalse(host.ownsDrawing(sourceId))
+            assertTrue(host.hidesSource(sourceId))
+            assertNotEquals("The source must disappear from the page capture", Color.Gray.toArgb(), triggerPixel())
         }
+        compose.onNodeWithTag("menuTrigger").assertDoesNotExist()
         compose.onNodeWithText("Choose this").performClick()
         compose.runOnIdle {
             assertEquals(1, selections)
@@ -138,6 +158,8 @@ class MenuAnimationStyleHostTest {
             assertFalse(host.ownsDrawing(sourceId))
             assertEquals(1, selections)
         }
+        compose.onNodeWithTag("menuTrigger").assertExists()
+        compose.runOnIdle { assertEquals(Color.Gray.toArgb(), triggerPixel()) }
     }
 
     @Test fun categoryPanelMorphsFromItsAnchorRegardlessOfGlobalMenuStyle() {
@@ -277,19 +299,28 @@ class MenuAnimationStyleHostTest {
         compose.runOnIdle { assertNull(host.displayedMenu); assertEquals(1, selections) }
     }
 
-    @Test fun reducedMotionNeverTakesTheTriggerDrawingForEitherStyle() {
+    @Test fun reducedMotionHidesTheTriggerUntilTheMenuHasFinishedClosingForEitherStyle() {
         motion.value = false
         show()
         for (value in MenuAnimationStyle.entries) {
+            compose.onNodeWithTag("menuTrigger").assertExists()
             compose.runOnIdle { style.value = value; host.show(menu) }
             advance(200)
             compose.runOnIdle {
                 assertTrue(host.isActive(menu))
                 assertFalse(host.ownsDrawing(sourceId))
+                assertTrue(host.hidesSource(sourceId))
             }
+            compose.onNodeWithTag("menuTrigger").assertDoesNotExist()
             compose.runOnIdle { host.dismiss() }
+            advance(32)
+            compose.onNodeWithTag("menuTrigger").assertDoesNotExist()
             advance(200)
-            compose.runOnIdle { assertNull(host.displayedMenu) }
+            compose.runOnIdle {
+                assertNull(host.displayedMenu)
+                assertFalse(host.hidesSource(sourceId))
+            }
+            compose.onNodeWithTag("menuTrigger").assertExists()
         }
     }
 }

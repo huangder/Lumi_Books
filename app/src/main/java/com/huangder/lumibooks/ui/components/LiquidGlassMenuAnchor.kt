@@ -50,7 +50,7 @@ fun Modifier.liquidGlassMenuAnchor(
         onDispose { host.unregister(anchor) }
     }
     this
-        .then(if (host.ownsDrawing(anchor.id)) Modifier.clearAndSetSemantics {} else Modifier)
+        .then(if (host.hidesSource(anchor.id)) Modifier.clearAndSetSemantics {} else Modifier)
         .onGloballyPositioned {
             anchor.rootBounds = it.boundsInRoot()
             anchor.windowBounds = it.boundsInWindow()
@@ -58,10 +58,11 @@ fun Modifier.liquidGlassMenuAnchor(
         .drawWithContent {
             // Freeze the source RenderNode during the handoff. Never capture the overlay
             // back into the source, or glass sampling can form a recursive render tree.
-            if (!host.ownsDrawing(anchor.id)) {
+            val hidden = host.hidesSource(anchor.id)
+            if (!host.ownsDrawing(anchor.id) && (!hidden || !anchor.recorded)) {
                 layer.record { this@drawWithContent.drawContent() }
                 anchor.recorded = true
-                drawLayer(layer)
             }
+            if (!hidden) drawLayer(layer)
         }
 }

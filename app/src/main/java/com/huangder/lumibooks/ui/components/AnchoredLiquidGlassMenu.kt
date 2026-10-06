@@ -460,6 +460,10 @@ class LiquidGlassMenuHostState {
 
     internal fun source(spec: LiquidGlassMenuSpec): LiquidGlassMenuAnchor? = anchors[spec.sourceId]
     internal fun ownsDrawing(id: Any): Boolean = drawingSourceId == id
+    // The source stays hidden through the outgoing fade, even when reduced motion
+    // does not transfer its drawing to the morph renderer.
+    internal fun hidesSource(id: Any): Boolean = ownsDrawing(id) ||
+        activeMenu?.sourceId == id || displayedMenu?.sourceId == id
 
     internal fun sameSource(first: LiquidGlassMenuSpec?, second: LiquidGlassMenuSpec): Boolean =
         if (first?.sourceId != null || second.sourceId != null) first?.sourceId == second.sourceId
