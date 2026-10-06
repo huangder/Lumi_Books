@@ -220,6 +220,7 @@ private fun bookmarkToJson(item: BookmarkEntity) = JSONObject().apply {
     putNullable("locatorJson", item.locatorJson); put("title", item.title); put("createdAt", item.createdAt)
     put("syncId", item.syncId); put("updatedAt", item.updatedAt); put("remark", item.remark)
     put("tagsJson", item.tagsJson)
+    put("isStale", item.isStale)
 }
 
 private fun bookmarkFromJson(json: JSONObject) = BookmarkEntity(
@@ -228,7 +229,8 @@ private fun bookmarkFromJson(json: JSONObject) = BookmarkEntity(
     title = json.optString("title"), createdAt = json.optLong("createdAt"), syncId = json.optString("syncId"),
     updatedAt = json.optLong("updatedAt", json.optLong("createdAt")),
     remark = json.optString("remark"),
-    tagsJson = json.optString("tagsJson", "[]")
+    tagsJson = json.optString("tagsJson", "[]"),
+    isStale = json.optBoolean("isStale", false)
 )
 
 private fun noteToJson(item: NoteEntity) = JSONObject().apply {
@@ -244,6 +246,7 @@ private fun noteToJson(item: NoteEntity) = JSONObject().apply {
     putNullable("sourceMatchKey", item.sourceMatchKey)
     putNullable("styleSnapshotJson", item.styleSnapshotJson)
     put("tagsJson", item.tagsJson)
+    put("isStale", item.isStale)
 }
 
 private fun noteFromJson(json: JSONObject) = NoteEntity(
@@ -259,7 +262,8 @@ private fun noteFromJson(json: JSONObject) = NoteEntity(
     sourceRuleId = json.nullableString("sourceRuleId"),
     sourceMatchKey = json.nullableString("sourceMatchKey"),
     styleSnapshotJson = json.nullableString("styleSnapshotJson"),
-    tagsJson = json.optString("tagsJson", "[]")
+    tagsJson = json.optString("tagsJson", "[]"),
+    isStale = json.optBoolean("isStale", false)
 )
 
 private fun highlightRuleToJson(item: HighlightRuleEntity) = JSONObject().apply {

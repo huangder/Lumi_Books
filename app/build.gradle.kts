@@ -163,6 +163,21 @@ dependencies {
 
     // MinerU Markdown results -> safe local EPUB
     implementation("org.commonmark:commonmark:0.24.0")
+    implementation("org.commonmark:commonmark-ext-gfm-tables:0.24.0")
+    implementation("org.commonmark:commonmark-ext-gfm-strikethrough:0.24.0")
+    implementation("org.commonmark:commonmark-ext-task-list-items:0.24.0")
+    implementation("org.commonmark:commonmark-ext-autolink:0.24.0")
+    implementation("org.commonmark:commonmark-ext-footnotes:0.24.0")
+    implementation("org.commonmark:commonmark-ext-yaml-front-matter:0.24.0")
+    implementation("io.noties.markwon:core:4.6.2") {
+        exclude(group = "com.atlassian.commonmark")
+    }
+    implementation("io.noties:prism4j:2.0.0") {
+        // Prism4j 2.0.0 still publishes the Java 5 annotations jar, which
+        // duplicates the modern annotations artifact already used by AndroidX.
+        exclude(group = "org.jetbrains", module = "annotations-java5")
+    }
+    implementation("ru.noties:jlatexmath-android:0.2.0")
     // Direct dependency: MinerU signed-URL uploads use OkHttp's streaming request body.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 

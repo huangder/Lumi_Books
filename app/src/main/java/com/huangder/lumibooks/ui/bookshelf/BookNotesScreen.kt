@@ -637,6 +637,9 @@ private fun HighlightNoteItem(
                 )
             }
 
+            if (note.isStale) {
+                Text(stringResource(R.string.markdown_original_changed), fontSize = 12.sp, color = AppColors.Accent)
+            }
             // 笔记内容（如果有）
             if (note.note.isNotBlank()) {
                 Spacer(Modifier.height(AppSpace.sm))
@@ -707,7 +710,8 @@ private fun BookmarkItem(
             Spacer(Modifier.width(AppSpace.md))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = bookmark.title.ifBlank { stringResource(R.string.chapter_number, bookmark.chapterIndex + 1) },
+                    text = (if (bookmark.isStale) stringResource(R.string.markdown_original_changed) + " · " else "") +
+                        bookmark.title.ifBlank { stringResource(R.string.chapter_number, bookmark.chapterIndex + 1) },
                     fontSize = AppType.BodySmall,
                     fontWeight = FontWeight.SemiBold,
                     color = AppColors.TextPrimary,

@@ -124,6 +124,7 @@ class BookshelfCategoryBooksActivity : ComponentActivity() {
                 is BookshelfCategoryTarget.EpubMobi -> "epub_mobi"
                 is BookshelfCategoryTarget.Pdf -> "pdf"
                 is BookshelfCategoryTarget.Txt -> "txt"
+                is BookshelfCategoryTarget.Markdown -> "markdown"
                 is BookshelfCategoryTarget.Comic -> "cbz"
                 is BookshelfCategoryTarget.Favorites -> "favorites"
                 is BookshelfCategoryTarget.Tag -> "tag"
@@ -149,6 +150,7 @@ class BookshelfCategoryBooksActivity : ComponentActivity() {
                 "epub_mobi" -> BookshelfCategoryTarget.EpubMobi(title)
                 "pdf" -> BookshelfCategoryTarget.Pdf(title)
                 "txt" -> BookshelfCategoryTarget.Txt(title)
+                "markdown" -> BookshelfCategoryTarget.Markdown(title)
                 "cbz" -> BookshelfCategoryTarget.Comic(title)
                 "favorites" -> BookshelfCategoryTarget.Favorites(title)
                 "tag" -> getStringExtra(EXTRA_TAG_ID)

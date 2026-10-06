@@ -2022,6 +2022,14 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { preferences -> preferences[key] = mode.storageValue }
     }
 
+    /** Markdown opens in WebView by default; an explicit layout choice survives reopening. */
+    suspend fun initializeMarkdownRenderMode(bookId: String) {
+        val key = stringPreferencesKey("epub_render_mode_$bookId")
+        context.dataStore.edit { preferences ->
+            if (!preferences.contains(key)) preferences[key] = EpubRenderMode.BOOK_LAYOUT.storageValue
+        }
+    }
+
     fun txtEncoding(bookId: String): Flow<String> {
         val key = stringPreferencesKey("txt_encoding_$bookId")
         return context.dataStore.data.map { preferences -> preferences[key] ?: "auto" }

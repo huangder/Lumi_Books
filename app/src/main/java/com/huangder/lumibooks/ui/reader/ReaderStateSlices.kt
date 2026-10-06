@@ -218,7 +218,7 @@ internal fun readerLayoutTargetFor(
     format: String?,
     renderMode: EpubRenderMode
 ): ReaderLayoutTarget =
-    if ((format == "EPUB" || format == "MOBI") && renderMode == EpubRenderMode.BOOK_LAYOUT) {
+    if ((format in setOf("EPUB", "MOBI")) && renderMode == EpubRenderMode.BOOK_LAYOUT) {
         ReaderLayoutTarget.BOOK_LAYOUT
     } else {
         ReaderLayoutTarget.READER_LAYOUT

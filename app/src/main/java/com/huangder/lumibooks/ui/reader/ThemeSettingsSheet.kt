@@ -222,6 +222,8 @@ fun ThemeSettingsSheet(
     supportsWritingMode: Boolean = true,
     currentChineseMode: String = "original",
     currentPageTransition: String = "slide",
+    supportsChineseConversion: Boolean = true,
+    supportsPageTransitions: Boolean = true,
     currentDisplayMode: String = "auto",
     editingDark: Boolean = isAppDark,
     eInkModeEnabled: Boolean = false,
@@ -691,6 +693,7 @@ fun ThemeSettingsSheet(
 
             Spacer(Modifier.height(16.dp))
 
+            if (supportsChineseConversion) {
             // 简繁转换
             Text(
                 stringResource(R.string.chinese_convert_label),
@@ -724,9 +727,11 @@ fun ThemeSettingsSheet(
             }
 
             Spacer(Modifier.height(16.dp))
+            }
 
             // 翻页效果 + 显示效果（上下两行全宽模块）
             Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+                if (supportsPageTransitions) {
                 if (eInkModeEnabled) {
                     Column(Modifier.fillMaxWidth()) {
                         Text(
@@ -796,6 +801,7 @@ fun ThemeSettingsSheet(
                     )
                 }
                 Spacer(Modifier.height(10.dp))
+                }
                 ReaderModeModule(
                     title = stringResource(R.string.display_module_label),
                     modifier = Modifier.fillMaxWidth(),

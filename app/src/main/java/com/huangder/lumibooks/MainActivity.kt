@@ -100,7 +100,7 @@ private const val REMOTE_TERMS_URL = "https://huangder.top/terms.html"
 private const val REMOTE_PRIVACY_URL = "https://huangder.top/privacy.html"
 
 /** 外部打开/分享导入支持的书籍扩展名。 */
-private val SUPPORTED_IMPORT_EXTENSIONS = setOf("epub", "pdf", "txt", "mobi", "cbz")
+private val SUPPORTED_IMPORT_EXTENSIONS = setOf("epub", "pdf", "txt", "mobi", "cbz", "md", "markdown")
 
 private fun Intent?.extractImportUris(): List<Uri> {
     val importIntent = this ?: return emptyList()
@@ -487,14 +487,20 @@ class MainActivity : ComponentActivity() {
         sourceKey: String?,
         sourceHash: String?
     ): ImportOutcome {
-        val file = FileUtils.copyFileToInternal(this, uri, fileName) ?: return ImportOutcome.UNSUPPORTED
         val format = extension.toBookFormat()
+        val bookId = FileUtils.generateBookId()
+        if (format == BookFormat.MARKDOWN) {
+            runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        }
+        val file = if (format == BookFormat.MARKDOWN) {
+            com.huangder.lumibooks.util.markdown.MarkdownSnapshotStore.create(this, bookId, uri.toString())
+        } else FileUtils.copyFileToInternal(this, uri, fileName) ?: return ImportOutcome.UNSUPPORTED
         val coverPath = extractBookCover(file.absolutePath, format)
         // 导入时从文件解析真实标题和作者，而不是写死"未知作者"
         val (parsedTitle, parsedAuthor) = resolveBookMetadata(file.absolutePath, fileName, format)
 
         val book = Book(
-            id = FileUtils.generateBookId(),
+            id = bookId,
             title = parsedTitle,
             author = parsedAuthor,
             filePath = file.absolutePath,
@@ -505,7 +511,10 @@ class MainActivity : ComponentActivity() {
             createdAt = System.currentTimeMillis(),
             sourceUri = uri.toString(),
             sourceDocumentKey = sourceKey,
-             sourceSha256 = sourceHash ?: runCatching {
+             sourceSha256 = if (format == BookFormat.MARKDOWN) {
+                 com.huangder.lumibooks.util.markdown.MarkdownSnapshotStore.manifest(file)
+                     ?.optString("sourceSha256")?.takeIf { it.isNotBlank() }
+             } else sourceHash ?: runCatching {
                  authorizedStorageManager.sha256(this, file.absolutePath)
              }.getOrNull(),
              sourceDisplayName = fileName,
@@ -552,16 +561,20 @@ class MainActivity : ComponentActivity() {
         }
 
         val format = extension.toBookFormat()
-        val coverPath = extractBookCover(location, format)
-        val (parsedTitle, parsedAuthor) = resolveBookMetadata(location, fileName, format)
+        val bookId = FileUtils.generateBookId()
+        val readingLocation = if (format == BookFormat.MARKDOWN) {
+            com.huangder.lumibooks.util.markdown.MarkdownSnapshotStore.create(this, bookId, location, treeRootUri.toString()).absolutePath
+        } else location
+        val coverPath = extractBookCover(readingLocation, format)
+        val (parsedTitle, parsedAuthor) = resolveBookMetadata(readingLocation, fileName, format)
         val documentKey = authorizedStorageManager.documentKey(move.destinationUri)
         val lastModified = authorizedStorageManager.queryLastModified(this, move.destinationUri)
         val now = System.currentTimeMillis()
         val book = Book(
-            id = FileUtils.generateBookId(),
+            id = bookId,
             title = parsedTitle,
             author = parsedAuthor,
-            filePath = location,
+            filePath = readingLocation,
             coverPath = coverPath,
             format = format,
             lastReadTime = now,
@@ -609,6 +622,11 @@ class MainActivity : ComponentActivity() {
         format: BookFormat
     ): Pair<String, String> {
         val fallback = fileName.substringBeforeLast('.') to getString(R.string.book_author_unknown)
+        if (format == BookFormat.MARKDOWN) {
+            val metadata = com.huangder.lumibooks.util.markdown.MarkdownSnapshotStore.manifest(File(location))
+            return (metadata?.optString("title")?.takeIf { it.isNotBlank() } ?: fallback.first) to
+                (metadata?.optString("author")?.takeIf { it.isNotBlank() } ?: fallback.second)
+        }
         if (format != BookFormat.EPUB && format != BookFormat.MOBI) return fallback
         return runCatching {
             val parser = BookParserFactory.createParser(format, this)
@@ -633,6 +651,7 @@ class MainActivity : ComponentActivity() {
         "pdf" -> BookFormat.PDF
         "mobi" -> BookFormat.MOBI
         "cbz" -> BookFormat.CBZ
+        "md", "markdown", "mdpack" -> BookFormat.MARKDOWN
         else -> BookFormat.TXT
     }
 

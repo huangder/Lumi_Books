@@ -3520,7 +3520,7 @@ internal fun highlightsJson(
     notes: List<Note>,
     ruleFontUrls: Map<String, String> = emptyMap()
 ): JSONArray = JSONArray().apply {
-    notes.forEach { note ->
+    notes.filterNot { it.isStale }.forEach { note ->
         val item = JSONObject().put("exact", note.selectedText).put("color", note.color.toCssColor()).put("type", note.type)
             .put("generatedByRule", note.isGeneratedByHighlightRule)
         RuleStyleJson.decode(note.styleSnapshotJson)?.let { decodedStyle ->

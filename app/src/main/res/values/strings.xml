@@ -102,6 +102,14 @@
     <string name="format_pdf">PDF</string>
     <string name="format_txt">TXT</string>
     <string name="format_cbz">CBZ</string>
+    <string name="format_markdown">Markdown</string>
+    <string name="markdown_source_updated">Markdown 源文件已更新</string>
+    <string name="markdown_source_updated_body">原 Markdown 文件有变化。更新阅读内容后，无法重新定位的笔记会保留并标记为原文已变化。</string>
+    <string name="markdown_source_update">更新阅读内容</string>
+    <string name="markdown_keep_snapshot">继续使用当前版本</string>
+    <string name="markdown_source_unavailable">来源暂时不可用，正在阅读已保存的 Markdown 副本。</string>
+    <string name="markdown_original_changed">原文已变化</string>
+    <string name="markdown_update_failed">更新失败，当前版本和笔记已保留。</string>
     <string name="cbz_open_failed">无法打开该漫画文件</string>
     <string name="cbz_archive_empty">漫画包中没有可显示的图片</string>
     <string name="cbz_page_load_failed">第 %1$d 页加载失败</string>

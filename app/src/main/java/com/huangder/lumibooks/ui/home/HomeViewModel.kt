@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.home
 
 import android.app.Application
+import java.io.File
 import android.content.Context
 import android.net.Uri
 import android.content.Intent
@@ -164,7 +165,7 @@ class HomeViewModel @Inject constructor(
 ) : ViewModel() {
 
     private companion object {
-        val SUPPORTED_BOOK_EXTENSIONS = setOf("epub", "pdf", "txt", "mobi", "cbz")
+        val SUPPORTED_BOOK_EXTENSIONS = setOf("epub", "pdf", "txt", "mobi", "cbz", "md", "markdown")
         const val READING_HISTORY_START_DATE = "1970-01-01"
     }
 
@@ -1066,13 +1067,13 @@ class HomeViewModel @Inject constructor(
                 match.title == oldDefaultTitle
             val updated = match.copy(
                 title = if (shouldUpdateTitle) document.name.substringBeforeLast('.') else match.title,
-                filePath = document.uri.toString(),
-                sourceUri = match.sourceUri ?: document.uri.toString(),
+                filePath = if (match.format == BookFormat.MARKDOWN) match.filePath else document.uri.toString(),
+                sourceUri = if (match.format == BookFormat.MARKDOWN) document.uri.toString() else match.sourceUri ?: document.uri.toString(),
                 sourceDocumentKey = document.sourceDocumentKey,
                 sourceParentUri = document.sourceDirectoryDocumentUri,
-                sourceSha256 = hash ?: match.sourceSha256,
+                sourceSha256 = if (match.format == BookFormat.MARKDOWN) match.sourceSha256 else hash ?: match.sourceSha256,
                 sourceDisplayName = document.name,
-                sourceLastModified = document.sourceLastModified,
+                sourceLastModified = if (match.format == BookFormat.MARKDOWN) match.sourceLastModified else document.sourceLastModified,
                 isMissing = false
             )
             if (updated != match) {
@@ -1090,7 +1091,7 @@ class HomeViewModel @Inject constructor(
 
         var missingCount = 0
         existing.filter { it.id !in matchedIds && it.sourceParentUri != null }.forEach { book ->
-            if (!book.isMissing) {
+            if (!book.isMissing && book.format != BookFormat.MARKDOWN) {
                 bookRepository.updateBook(book.copy(isMissing = true))
                 missingCount++
             }
@@ -1235,14 +1236,20 @@ class HomeViewModel @Inject constructor(
             var extractedCoverPath: String? = null
             var insertedBook: Book? = null
             runCatching {
-                val location = if (copyIntoApp) {
+                val bookId = FileUtils.generateBookId()
+                val format = extension.toBookFormat()
+                if (format == BookFormat.MARKDOWN) {
+                    runCatching { context.contentResolver.takePersistableUriPermission(document.uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                }
+                val location = if (format == BookFormat.MARKDOWN) {
+                    com.huangder.lumibooks.util.markdown.MarkdownSnapshotStore.create(context, bookId, incomingUri, document.sourceDirectoryDocumentUri).absolutePath
+                } else if (copyIntoApp) {
                     FileUtils.copyFileToInternal(context, document.uri, document.name)?.absolutePath
                         ?: error("Unable to copy ${document.name}")
                 } else {
                     document.uri.toString()
                 }
                 importedLocation = location
-                val format = extension.toBookFormat()
                 val parser = BookParserFactory.createParser(format, context)
                 val coverPath = try {
                     parser.extractCoverPath(location)
@@ -1253,11 +1260,11 @@ class HomeViewModel @Inject constructor(
                 }
                 extractedCoverPath = coverPath
                 val now = System.currentTimeMillis()
-                val bookId = FileUtils.generateBookId()
+                val markdownMetadata = if (format == BookFormat.MARKDOWN) com.huangder.lumibooks.util.markdown.MarkdownSnapshotStore.manifest(File(location)) else null
                 val book = Book(
                         id = bookId,
-                        title = document.name.substringBeforeLast('.'),
-                        author = context.getString(R.string.book_author_unknown),
+                        title = markdownMetadata?.optString("title")?.takeIf { it.isNotBlank() } ?: document.name.substringBeforeLast('.'),
+                        author = markdownMetadata?.optString("author")?.takeIf { it.isNotBlank() } ?: context.getString(R.string.book_author_unknown),
                         filePath = location,
                         coverPath = coverPath,
                         format = format,
@@ -1267,7 +1274,7 @@ class HomeViewModel @Inject constructor(
                         sourceUri = incomingUri,
                         sourceDocumentKey = incomingKey,
                         sourceParentUri = document.sourceDirectoryDocumentUri,
-                        sourceSha256 = incomingHash,
+                        sourceSha256 = markdownMetadata?.optString("sourceSha256")?.takeIf { it.isNotBlank() } ?: incomingHash,
                         sourceDisplayName = document.name,
                         sourceLastModified = document.sourceLastModified,
                         isMissing = false
@@ -1298,7 +1305,7 @@ class HomeViewModel @Inject constructor(
             }.onFailure {
                 failed++
                 insertedBook?.let { book -> runCatching { bookRepository.deleteBook(book) } }
-                if (copyIntoApp) {
+                if (copyIntoApp || extension in setOf("md", "markdown")) {
                     importedLocation?.let { FileUtils.deleteAppManagedBookFile(context, it) }
                 }
                 FileUtils.deleteAppOwnedFile(context, extractedCoverPath)
@@ -1383,6 +1390,7 @@ class HomeViewModel @Inject constructor(
         "pdf" -> BookFormat.PDF
         "mobi" -> BookFormat.MOBI
         "cbz" -> BookFormat.CBZ
+        "md", "markdown", "mdpack" -> BookFormat.MARKDOWN
         else -> BookFormat.TXT
     }
 
@@ -1750,7 +1758,9 @@ class HomeViewModel @Inject constructor(
                                     }
                                     ?: documentUri
                             }
-                            val sourceIsAuthorized = book.sourceParentUri != null && book.filePath.startsWith("content://")
+                            val isMarkdown = book.format == BookFormat.MARKDOWN
+                            val sourceLocation = if (isMarkdown && book.sourceParentUri != null) book.sourceUri ?: book.filePath else book.filePath
+                            val sourceIsAuthorized = book.sourceParentUri != null && sourceLocation.startsWith("content://")
                             if (!sourceIsAuthorized && !allowCrossStorageMove) {
                                 error(application.getString(R.string.folder_cross_storage_confirmation))
                             }
@@ -1772,22 +1782,22 @@ class HomeViewModel @Inject constructor(
                                     }
                                 }
                                 if (sourceParent == targetParent) {
-                                    movedUri = Uri.parse(book.filePath)
+                                    movedUri = Uri.parse(sourceLocation)
                                     hash = book.sourceSha256 ?: withContext(Dispatchers.IO) {
-                                        authorizedStorageManager.sha256(application, book.filePath)
+                                        authorizedStorageManager.sha256(application, sourceLocation)
                                     }
                                 } else {
                                     movedUri = withContext(Dispatchers.IO) {
                                         runCatching {
-                                            authorizedStorageManager.move(application, Uri.parse(book.filePath), sourceParent, targetParent)
+                                            authorizedStorageManager.move(application, Uri.parse(sourceLocation), sourceParent, targetParent)
                                         }.getOrElse {
                                             authorizedStorageManager.copyThenDelete(
                                                 application,
-                                                book.filePath,
+                                                sourceLocation,
                                                 targetParent,
-                                                book.sourceDisplayName ?: Uri.parse(book.filePath).lastPathSegment.orEmpty(),
+                                                book.sourceDisplayName ?: Uri.parse(sourceLocation).lastPathSegment.orEmpty(),
                                                 expectedSha256 = runCatching {
-                                                    authorizedStorageManager.sha256(application, book.filePath)
+                                                    authorizedStorageManager.sha256(application, sourceLocation)
                                                 }.getOrNull()
                                             ).destinationUri
                                         }
@@ -1809,17 +1819,19 @@ class HomeViewModel @Inject constructor(
                                         book.sourceDisplayName ?: FileUtils.getFileNameFromUri(application, Uri.parse(book.filePath))
                                             ?: java.io.File(book.filePath).name.takeIf { it.isNotBlank() }
                                             ?: book.title,
-                                        expectedSha256 = currentHash
+                                        expectedSha256 = currentHash,
+                                        deleteSource = !isMarkdown
                                     )
                                 }
                                 movedUri = result.destinationUri
                                 hash = result.sha256
                             }
                             val movedBook = book.copy(
-                                filePath = movedUri.toString(),
+                                filePath = if (isMarkdown) book.filePath else movedUri.toString(),
+                                sourceUri = if (isMarkdown) movedUri.toString() else book.sourceUri,
                                 sourceDocumentKey = authorizedStorageManager.documentKey(movedUri),
                                 sourceParentUri = target.storageDocumentUri,
-                                sourceSha256 = hash,
+                                sourceSha256 = if (isMarkdown) book.sourceSha256 else hash,
                                 sourceDisplayName = withContext(Dispatchers.IO) {
                                     authorizedStorageManager.queryDisplayName(application, movedUri)
                                 } ?: book.sourceDisplayName,
@@ -2003,7 +2015,7 @@ class HomeViewModel @Inject constructor(
             val failures = deleteBooksAndManagedData(booksToDelete, mode)
             if (mode.forcesLocalDelete) {
                 val remoteFileNames = booksToDelete.associate { book ->
-                    book.id to (book.remoteFileName ?: "${book.id}.${book.format.name.lowercase()}")
+                    book.id to (book.remoteFileName ?: "${book.id}.${if (book.format == BookFormat.MARKDOWN) "mdpack" else book.format.name.lowercase()}")
                 }
                 val remoteResult = webdavSyncManager.deleteRemoteBooks(
                     bookIds = booksToDelete.mapTo(mutableSetOf()) { it.id },

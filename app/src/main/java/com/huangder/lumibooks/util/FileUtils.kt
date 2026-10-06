@@ -221,6 +221,15 @@ object FileUtils {
      */
     fun deleteAppManagedBookFile(context: Context, location: String): Boolean {
         if (!isAppManagedBookLocation(context, location)) return true
+        val document = File(location).canonicalFile
+        val markdownRoot = File(getBooksDirectory(context), "markdown").canonicalFile
+        val versionDirectory = document.parentFile
+        val bookDirectory = versionDirectory?.parentFile
+        if (document.name == "document.md" && bookDirectory?.parentFile == markdownRoot &&
+            versionDirectory.name.matches(Regex("[a-f0-9]{64}")) &&
+            bookDirectory.name.matches(Regex("[A-Za-z0-9_-]+"))) {
+            return bookDirectory.deleteRecursively()
+        }
         return deleteFile(File(location))
     }
 

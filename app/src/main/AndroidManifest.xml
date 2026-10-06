@@ -191,6 +191,8 @@
                 <data android:scheme="content" />
                 <data android:scheme="file" />
                 <data android:mimeType="text/plain" />
+                <data android:mimeType="text/markdown" />
+                <data android:mimeType="text/x-markdown" />
             </intent-filter>
 
             <!-- MOBI 文件关联 -->
@@ -231,6 +233,8 @@
                 <data android:mimeType="application/pdf" />
                 <data android:mimeType="application/epub+zip" />
                 <data android:mimeType="text/plain" />
+                <data android:mimeType="text/markdown" />
+                <data android:mimeType="text/x-markdown" />
                 <data android:mimeType="application/x-mobipocket-ebook" />
                 <data android:mimeType="application/vnd.comicbook+zip" />
                 <data android:mimeType="application/x-cbz" />

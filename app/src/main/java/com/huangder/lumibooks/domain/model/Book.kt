@@ -42,7 +42,7 @@ data class Book(
 }
 
 enum class BookFormat {
-    EPUB, PDF, TXT, MOBI, CBZ;
+    EPUB, PDF, TXT, MOBI, CBZ, MARKDOWN;
 
     /** Bitmap page sources (PDF/CBZ) are rendered by the raster reader instead of the text engines. */
     val isRasterPageFormat: Boolean get() = this == PDF || this == CBZ

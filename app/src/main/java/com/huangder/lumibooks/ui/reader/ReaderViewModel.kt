@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.reader
+import com.huangder.lumibooks.util.parser.MarkdownParser
 
 import com.huangder.lumibooks.util.epub.EpubComicIndex
 import com.huangder.lumibooks.util.epub.EpubComicPosition
@@ -259,6 +260,9 @@ internal fun mapReaderTxtRangeToSource(
 
 data class ReaderUiState(
     val book: Book? = null,
+    val markdownSourceUpdated: Boolean = false,
+    val markdownSourceMessage: String? = null,
+    val currentTocAnchor: String? = null,
     val chapterCount: Int = 0,
     val chapterTitles: List<String> = emptyList(),
     val tocEntries: List<com.huangder.lumibooks.util.parser.TocEntry> = emptyList(),
@@ -326,6 +330,7 @@ data class ReaderUiState(
     /** 是否加载 EPUB 自带 CSS 样式（per-book） */
     val useEpubCss: Boolean = false,
     val renderMode: EpubRenderMode = EpubRenderMode.READER_LAYOUT,
+    val markdownPaginationReady: Boolean = false,
     val showEpubLayoutHint: Boolean = false,
     val showMobiLayoutHint: Boolean = false,
     val txtEncoding: TxtEncoding = TxtEncoding.AUTO,
@@ -576,7 +581,8 @@ class ReaderViewModel @Inject constructor(
     private val fontDownloadManager: com.huangder.lumibooks.util.FontDownloadManager,
     private val highlightRuleRepository: HighlightRuleRepository,
     private val highlightRuleMaterializer: HighlightRuleMaterializer,
-    private val highlightRuleScanManager: HighlightRuleScanManager
+    private val highlightRuleScanManager: HighlightRuleScanManager,
+    private val markdownUpdateManager: com.huangder.lumibooks.util.markdown.MarkdownUpdateManager
 ) : ViewModel() {
 
     private companion object {
@@ -842,10 +848,15 @@ class ReaderViewModel @Inject constructor(
                         dataStoreManager.readerPreferences(bookId).first()
                     }
                 }
-                val preferences = preferencesDeferred.await()
+                val initialPreferences = preferencesDeferred.await()
+                val openedBook = bookDeferred.await()
+                val preferences = if (openedBook?.format == BookFormat.MARKDOWN) {
+                    dataStoreManager.initializeMarkdownRenderMode(bookId)
+                    dataStoreManager.readerPreferences(bookId).first()
+                } else initialPreferences
                 applyReaderPreferences(preferences)
                 observeReaderSettings()
-                loadBook(preferences, bookDeferred.await())
+                loadBook(preferences, openedBook)
             }
         }
         viewModelScope.launch {
@@ -2483,6 +2494,14 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    fun onMarkdownPaginationReady(ready: Boolean) {
+        _uiState.value = _uiState.value.copy(markdownPaginationReady = ready)
+    }
+    fun onMarkdownRenderError(message: String) {
+        _uiState.value = _uiState.value.copy(isLoading = false, pageReady = false, error = message)
+    }
+    fun getMarkdownBlockSource() = (parser as? com.huangder.lumibooks.util.parser.MarkdownParser)?.blockSource
+
     @Synchronized
     fun getRenderSession(): BookRenderSession? {
         renderSession?.let { return it }
@@ -2784,9 +2803,10 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun saveRenderMode(mode: EpubRenderMode) {
+        if (_uiState.value.book?.format == BookFormat.MARKDOWN) return
         val state = _uiState.value
         val format = state.book?.format?.name
-        if (format != "EPUB" && format != "MOBI") return
+        if (format !in setOf("EPUB", "MOBI", "MARKDOWN")) return
         if (state.renderMode == mode) return
         val chapterProgression = if (state.totalPages > 0) {
             state.currentPageIndex.toFloat() / state.totalPages
@@ -2849,7 +2869,7 @@ class ReaderViewModel @Inject constructor(
     fun fallbackFromUnsupportedEpubWebView() {
         val state = _uiState.value
         val format = state.book?.format?.name
-        if ((format != "EPUB" && format != "MOBI") || state.renderMode != EpubRenderMode.BOOK_LAYOUT) return
+        if ((format !in setOf("EPUB", "MOBI")) || state.renderMode != EpubRenderMode.BOOK_LAYOUT) return
         val chapterProgression = if (state.totalPages > 0) {
             state.currentPageIndex.toFloat() / state.totalPages
         } else {
@@ -2902,8 +2922,9 @@ class ReaderViewModel @Inject constructor(
             totalPages = pageCount,
             event = "renderer_page_ready"
         )
+        updateMarkdownTocPosition(locatorJson)
         notifyTtsPageVisible(_uiState.value.currentChapterIndex, pageIndex)
-        saveProgress()
+        if (previous.book?.format == BookFormat.MARKDOWN) scheduleProgressSave() else saveProgress()
     }
 
     fun onEpubPageCommitted(
@@ -2946,6 +2967,7 @@ class ReaderViewModel @Inject constructor(
             totalPages = pageCount,
             event = "renderer_page_ready"
         )
+        updateMarkdownTocPosition(locatorJson)
         notifyTtsPageVisible(chapterIndex, pageIndex)
         if (chapterChanged) preloadAdjacentChapters()
         saveProgress()
@@ -3024,7 +3046,7 @@ class ReaderViewModel @Inject constructor(
             (state.pageTransition == "continuous") != (normalizedMode == "continuous")
         val destination = if (normalizedMode == "continuous") ReaderPositionFlow.CONTINUOUS
             else ReaderPositionFlow.PAGED
-        val supportsBookLayout = state.book?.format?.name in setOf("EPUB", "MOBI")
+        val supportsBookLayout = state.book?.format?.name in setOf("EPUB", "MOBI", "MARKDOWN")
         val readerLayout = state.useNewEngine &&
             !(supportsBookLayout && state.renderMode == EpubRenderMode.BOOK_LAYOUT)
         val position = positionForReaderFlowChange(
@@ -3044,6 +3066,7 @@ class ReaderViewModel @Inject constructor(
         }
         _uiState.value = if (crossesContinuousBoundary) {
             state.copy(
+                markdownPaginationReady = false,
                 pageTransition = normalizedMode,
                 currentChapterIndex = position.chapterIndex,
                 currentPageIndex = 0,
@@ -3054,7 +3077,7 @@ class ReaderViewModel @Inject constructor(
                 pageReady = false
             )
         } else {
-            state.copy(pageTransition = normalizedMode)
+            state.copy(pageTransition = normalizedMode, markdownPaginationReady = false)
         }
         viewModelScope.launch {
             dataStoreManager.savePageTransition(normalizedMode)
@@ -3622,6 +3645,46 @@ class ReaderViewModel @Inject constructor(
         pageLayoutEngine.invalidateAll()
     }
 
+    fun dismissMarkdownUpdate() {
+        _uiState.value = _uiState.value.copy(markdownSourceUpdated = false)
+    }
+
+    fun dismissMarkdownSourceMessage() {
+        _uiState.value = _uiState.value.copy(markdownSourceMessage = null)
+    }
+
+    fun updateMarkdownSource() {
+        val current = _uiState.value.book ?: return
+        if (current.format != BookFormat.MARKDOWN || _uiState.value.isLoading) return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(markdownSourceUpdated = false, isLoading = true)
+            try {
+                ++progressWriteVersion
+                val updated = progressWriteMutex.withLock {
+                    val position = captureRecoveryPosition(_uiState.value)
+                    withContext(Dispatchers.IO) { markdownUpdateManager.update(current.copy(
+                        readingProgress = position?.readingProgress ?: current.readingProgress,
+                        locatorJson = position?.locatorJson ?: current.locatorJson)) }
+                }
+                closeActiveBookSession()
+                _uiState.value = _uiState.value.copy(book = updated, epubLocatorJson = null,
+                    contentRevision = _uiState.value.contentRevision + 1)
+                loadBook(dataStoreManager.readerPreferences(bookId).first(), updated)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
+            } catch (error: Exception) {
+                _uiState.value = _uiState.value.copy(isLoading = false,
+                    markdownSourceMessage = context.getString(R.string.markdown_update_failed))
+            }
+        }
+    }
+
+    private fun updateMarkdownTocPosition(locatorJson: String?) {
+        val md = parser as? com.huangder.lumibooks.util.parser.MarkdownParser ?: return
+        val offset = runCatching { org.json.JSONObject(locatorJson ?: "{}").optInt("textPosition") }.getOrDefault(0)
+        val anchor = md.headingAnchorAt(offset)
+        if (_uiState.value.currentTocAnchor != anchor) _uiState.value = _uiState.value.copy(currentTocAnchor = anchor)
+    }
+
     private suspend fun loadBook(
         preferences: ReaderPreferencesSnapshot,
         book: Book?,
@@ -3647,6 +3710,17 @@ class ReaderViewModel @Inject constructor(
             largeTxtIndexJob = null
             try {
                 if (book != null) {
+                    if (book.format == BookFormat.MARKDOWN && !isCacheRecovery && book.sourceUri != null) {
+                        try {
+                            val changed = withContext(Dispatchers.IO) {
+                                com.huangder.lumibooks.util.markdown.MarkdownSnapshotStore.sourceChanged(context, File(book.filePath), book.sourceUri)
+                            }
+                            _uiState.value = _uiState.value.copy(markdownSourceUpdated = changed)
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
+                        } catch (_: Exception) {
+                            _uiState.value = _uiState.value.copy(markdownSourceMessage = context.getString(R.string.markdown_source_unavailable))
+                        }
+                    }
                     val fileSizeBytes = withContext(Dispatchers.IO) {
                         runCatching { BookFileAccess.size(context, book.filePath) }.getOrNull()
                     }
@@ -3695,9 +3769,9 @@ class ReaderViewModel @Inject constructor(
                     largeTxtFastRanges = emptyList()
 
                     val isEpub = book.format.name == "EPUB"
-                    val supportsBookLayout = isEpub || book.format.name == "MOBI"
+                    val supportsBookLayout = isEpub || book.format.name in setOf("MOBI", "MARKDOWN")
                     val isTxt = book.format.name == "TXT"
-                    val renderMode = if (supportsBookLayout) preferences.renderMode
+                    val renderMode = if (book.format == BookFormat.MARKDOWN) EpubRenderMode.BOOK_LAYOUT else if (supportsBookLayout) preferences.renderMode
                     else EpubRenderMode.READER_LAYOUT
                     val showEpubLayoutHint = ReaderFirstOpenHintPolicy.shouldShow(
                         isSupportedFormat = isEpub,
@@ -3801,6 +3875,8 @@ class ReaderViewModel @Inject constructor(
                             try {
                                 if (useFastTxtOpen) {
                                     activeParser.parseFastOpen(book.filePath).also { fastTxtOpen = it }.content
+                                } else if (activeParser is MarkdownParser) {
+                                    kotlinx.coroutines.runInterruptible { activeParser.parse(book.filePath) }
                                 } else {
                                     activeParser.parse(book.filePath)
                                 }
@@ -3825,7 +3901,9 @@ class ReaderViewModel @Inject constructor(
                     val unknownAuthorTokens = setOf("未知作者", "著者不明", "unknown author", "unknown", "作者不详", "作者不詳", "")
                     val storedIsUnknown = book.author.trim().lowercase() in unknownAuthorTokens
                     val parsedIsReal = parsedAuthor.isNotBlank() && parsedAuthor.trim().lowercase() !in unknownAuthorTokens
-                    var displayBook = book
+                    var displayBook = if (activeParser is com.huangder.lumibooks.util.parser.MarkdownParser) {
+                        withContext(Dispatchers.IO) { markdownUpdateManager.migrateNative(book, activeParser.searchText) }
+                    } else book
                     if (storedIsUnknown && parsedIsReal) {
                         displayBook = displayBook.copy(author = parsedAuthor)
                     }
@@ -3848,7 +3926,7 @@ class ReaderViewModel @Inject constructor(
                     require(chapterCount > 0) { context.getString(R.string.error_book_no_content) }
                     ReaderOpenPerformance.beginStage(bookId, ReaderOpenStage.PAGINATION)
                     val chapterTitles = content.chapters.map { it.title }
-                    val tocEntries = content.tocEntries.ifEmpty {
+                    val tocEntries = if (book.format == BookFormat.MARKDOWN) content.tocEntries else content.tocEntries.ifEmpty {
                         content.chapters.map { com.huangder.lumibooks.util.parser.TocEntry(it.title, 1, it.index) }
                     }
                     ReaderOpenPerformance.updateState(
@@ -3926,6 +4004,7 @@ class ReaderViewModel @Inject constructor(
                         useEpubCss = useEpubCss,
                         readerWritingMode = readerWritingMode,
                         renderMode = renderMode,
+                        markdownPaginationReady = false,
                         showEpubLayoutHint = showEpubLayoutHint,
                         showMobiLayoutHint = showMobiLayoutHint,
                         txtEncoding = txtEncoding,
@@ -3938,7 +4017,7 @@ class ReaderViewModel @Inject constructor(
                         txtIndexState = fastTxtOpen?.state ?: TxtIndexState.COMPLETE,
                         txtIndexProgress = fastTxtOpen?.let { 0f },
                         showTxtEncodingHint = showTxtEncodingHint,
-                        epubLocatorJson = book.locatorJson.takeIf {
+                        epubLocatorJson = displayBook.locatorJson.takeIf {
                             renderMode == EpubRenderMode.BOOK_LAYOUT &&
                                 ReaderPositionLocator.fromJson(it) == null
                         },
@@ -4288,7 +4367,7 @@ class ReaderViewModel @Inject constructor(
         val state = _uiState.value
         if (chapterIndex == state.currentChapterIndex) return
         val format = state.book?.format?.name
-        val isBookLayout = (format == "EPUB" || format == "MOBI") &&
+        val isBookLayout = (format in setOf("EPUB", "MOBI", "MARKDOWN")) &&
             state.renderMode == EpubRenderMode.BOOK_LAYOUT
         _uiState.value = state.copy(
             currentChapterIndex = chapterIndex,
@@ -4909,6 +4988,7 @@ class ReaderViewModel @Inject constructor(
         previewChars: Int? = null
     ): CharSequence? {
         val activeParser = parser
+        if (activeParser is com.huangder.lumibooks.util.parser.MarkdownParser) return if (index == 0) activeParser.searchText else null
         val continuousEpub = (activeParser as? com.huangder.lumibooks.util.parser.EpubParser)?.takeIf {
             frameworkDrawsText && contentWidthPx != null
         }
@@ -5879,10 +5959,14 @@ class ReaderViewModel @Inject constructor(
         if (rules.none { it.enabled }) return emptyList()
         val source = parser
         val text = withContext(Dispatchers.IO) {
-            runCatching { source?.getChapterContent(chapterIndex)?.toString() }.getOrNull()
+            runCatching {
+                if (source is com.huangder.lumibooks.util.parser.MarkdownParser &&
+                    _uiState.value.renderMode == EpubRenderMode.BOOK_LAYOUT) source.searchText
+                else source?.getChapterContent(chapterIndex)?.toString()
+            }.getOrNull()
         }
             ?: return emptyList()
-        val epub = _uiState.value.book?.format?.name == "EPUB"
+        val epub = _uiState.value.book?.format?.name in setOf("EPUB", "MOBI", "MARKDOWN")
         return withContext(Dispatchers.Default) {
         val started = android.os.SystemClock.elapsedRealtime()
         val result = HighlightRuleMatcher.match(text, chapterIndex, rules).map { match ->
@@ -6029,7 +6113,7 @@ class ReaderViewModel @Inject constructor(
                 )
                 if (plan.isEmpty) return@launch
                 val prepared = withContext(Dispatchers.IO) {
-                    prepareAnnotationLocators(plan, chapterText, book.format.name == "EPUB")
+                    prepareAnnotationLocators(plan, chapterText, book.format.name in setOf("EPUB", "MOBI", "MARKDOWN"))
                 }
                 val optimistic = applyAnnotationPlanToMemory(snapshot, prepared)
                 _notes.value = optimistic
@@ -6081,6 +6165,7 @@ class ReaderViewModel @Inject constructor(
     private fun loadBookmarks() {
         viewModelScope.launch {
             readingRepository.getBookmarksByBookId(bookId).collect { list ->
+                if (list.any { !it.isStale && legacyMarkdownLocator(it.locatorJson) } && migrateRestoredMarkdownAnnotations()) return@collect
                 _bookmarks.value = list
             }
         }
@@ -6089,12 +6174,24 @@ class ReaderViewModel @Inject constructor(
     private fun loadNotes() {
         viewModelScope.launch {
             readingRepository.getNotesByBookId(bookId).collectLatest { list ->
+                if (list.any { !it.isStale && legacyMarkdownLocator(it.startLocatorJson) } && migrateRestoredMarkdownAnnotations()) return@collectLatest
                 _notes.value = list
                 _readerNotes.value = withContext(Dispatchers.IO) {
                     resolveReaderNotes(list)
                 }
             }
         }
+    }
+    private fun legacyMarkdownLocator(raw: String?): Boolean = parser is MarkdownParser && runCatching {
+        val json = org.json.JSONObject(raw ?: "{}")
+        json.optInt("version") != 3 || json.optString("href") != "document.md"
+    }.getOrDefault(true)
+
+    private suspend fun migrateRestoredMarkdownAnnotations(): Boolean {
+        val active = parser as? MarkdownParser ?: return false
+        val book = _uiState.value.book ?: return false
+        withContext(Dispatchers.IO) { markdownUpdateManager.migrateNative(book, active.searchText) }
+        return true
     }
 
     private fun resolvedReaderNote(note: Note): Note? = _readerNotes.value.firstOrNull { candidate ->
@@ -6183,7 +6280,7 @@ class ReaderViewModel @Inject constructor(
     private fun resolveReaderNotes(notes: List<Note>): List<Note> {
         if (notes.isEmpty()) return emptyList()
         val chapterCache = mutableMapOf<Int, CharSequence?>()
-        return notes.filterNot { isEpubComicInk(it.type) }.mapNotNull { note ->
+        return notes.filterNot { it.isStale || isEpubComicInk(it.type) }.mapNotNull { note ->
             val readerChapterText = chapterCache.getOrPut(note.chapterIndex) {
                 runCatching { getChapterText(note.chapterIndex) }.getOrNull()
             } ?: return@mapNotNull null
@@ -6230,6 +6327,11 @@ class ReaderViewModel @Inject constructor(
     ): ReaderCacheRecoveryPosition? {
         val book = state.book ?: return null
         if (state.chapterCount == 0) return null
+        if (book.format == BookFormat.MARKDOWN && state.epubLocatorJson != null) {
+            val json = runCatching { org.json.JSONObject(state.epubLocatorJson) }.getOrNull()
+            if (json != null && json.optInt("version") == 3) return ReaderCacheRecoveryPosition(
+                json.optDouble("progression", book.readingProgress.toDouble()).toFloat().coerceIn(0f, 1f), state.epubLocatorJson)
+        }
         if (state.epubComicReader || book.format.isRasterPageFormat ||
             hasPendingReaderRestore(state.pendingReaderPosition, state.pendingPageFraction)
         ) {
@@ -6345,7 +6447,7 @@ class ReaderViewModel @Inject constructor(
             val state = _uiState.value
             val titles = state.chapterTitles
             val formatName = state.book?.format?.name
-            if ((formatName == "EPUB" || formatName == "MOBI") &&
+            if ((formatName in setOf("EPUB", "MOBI", "MARKDOWN")) &&
                 state.renderMode == EpubRenderMode.BOOK_LAYOUT &&
                 activeParser is BookSearchSource
             ) {
@@ -6405,6 +6507,10 @@ class ReaderViewModel @Inject constructor(
      * 获取章节文本长度（用于估算搜索结果的页码位置）。
      */
     fun getChapterTextLength(chapterIndex: Int): Int {
+        val markdown = parser as? com.huangder.lumibooks.util.parser.MarkdownParser
+        if (markdown != null && chapterIndex == 0 && _uiState.value.renderMode == EpubRenderMode.BOOK_LAYOUT) {
+            return markdown.searchText.length
+        }
         return try {
             parser?.getChapterContent(chapterIndex)?.length ?: 0
         } catch (_: Exception) { 0 }

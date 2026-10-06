@@ -579,8 +579,13 @@ class WebdavSyncManager @Inject constructor(
                     StandardCopyOption.REPLACE_EXISTING
                 )
             }.getOrThrow()
-            bookRepository.markBookDownloaded(bookId, destination.absolutePath)
-            val updated = enrichDownloadedBook(destination, bookId, entry)
+            val readingFile = if (extension == "mdpack") {
+                com.huangder.lumibooks.util.markdown.MarkdownSnapshotStore.unpack(context, bookId, destination)
+            } else if (book.format == BookFormat.MARKDOWN || extension in setOf("md", "markdown")) {
+                com.huangder.lumibooks.util.markdown.MarkdownSnapshotStore.create(context, bookId, destination.absolutePath)
+            } else destination
+            bookRepository.markBookDownloaded(bookId, readingFile.absolutePath)
+            val updated = enrichDownloadedBook(readingFile, bookId, entry)
                 ?: bookRepository.getBookById(bookId)
                 ?: error(context.getString(R.string.book_download_save_failed))
             _downloadStates.value = _downloadStates.value + (bookId to BookDownloadState.Completed)
@@ -1045,6 +1050,7 @@ class WebdavSyncManager @Inject constructor(
         "pdf" -> BookFormat.PDF
         "mobi" -> BookFormat.MOBI
         "cbz" -> BookFormat.CBZ
+        "md", "markdown", "mdpack" -> BookFormat.MARKDOWN
         else -> BookFormat.TXT
     }
 
@@ -1218,6 +1224,10 @@ class WebdavSyncManager @Inject constructor(
 
     private fun buildBookManifestEntry(book: Book): SyncFileEntry? {
         return runCatching {
+            if (book.format == BookFormat.MARKDOWN) {
+                val pack = com.huangder.lumibooks.util.markdown.MarkdownSnapshotStore.packageFile(File(book.filePath))
+                return@runCatching SyncFileEntry("${book.id}.mdpack", sha256Bytes(pack.readBytes()), pack.length(), File(book.filePath).lastModified())
+            }
             if (BookFileAccess.isContentUri(book.filePath)) {
                 val data = readBookData(book.filePath)
                 SyncFileEntry(
@@ -1251,13 +1261,15 @@ class WebdavSyncManager @Inject constructor(
             com.huangder.lumibooks.domain.model.BookFormat.PDF -> ".pdf"
             com.huangder.lumibooks.domain.model.BookFormat.MOBI -> ".mobi"
             com.huangder.lumibooks.domain.model.BookFormat.CBZ -> ".cbz"
+            com.huangder.lumibooks.domain.model.BookFormat.MARKDOWN -> ".mdpack"
             else -> ".txt"
         }
     }
 
-    private fun remoteBookFileName(book: Book): String = "${book.id}.${bookFileExtension(book)}"
+    private fun remoteBookFileName(book: Book): String = if (book.format == BookFormat.MARKDOWN) "${book.id}.mdpack" else "${book.id}.${bookFileExtension(book)}"
 
     private fun bookFileExtension(book: Book): String {
+        if (book.format == BookFormat.MARKDOWN) return "mdpack"
         val fromName = BookFileAccess.displayName(context, book.filePath)
             ?.substringAfterLast('.', missingDelimiterValue = "")
             ?.lowercase()
@@ -1293,6 +1305,14 @@ class WebdavSyncManager @Inject constructor(
         val lastModified: Long
 
         fileName = remoteBookFileName(book)
+        if (book.format == BookFormat.MARKDOWN) {
+            val document = File(book.filePath)
+            val pack = com.huangder.lumibooks.util.markdown.MarkdownSnapshotStore.packageFile(document)
+            val result = webdavClient.uploadStream(
+                url = WebdavUrl.append(serverUrl, syncPath, "books", fileName), contentLength = pack.length(),
+                inputStreamProvider = { pack.inputStream().buffered() }, username = username, password = password)
+            return SyncFileEntry(fileName, result.sha256, result.bytesWritten, document.lastModified())
+        }
         if (BookFileAccess.isContentUri(book.filePath)) {
             expectedSize = BookFileAccess.size(context, book.filePath).let { if (it > 0L) it else -1L }
             lastModified = book.lastReadTime // SAF providers often omit reliable file timestamps.
@@ -1478,6 +1498,7 @@ class WebdavSyncManager @Inject constructor(
                             put("title", b.title)
                             put("remark", b.remark)
                             put("tags", JSONArray(b.tags))
+                            put("isStale", b.isStale)
                             put("createdAt", b.createdAt)
                             put("syncId", b.syncId)
                             put("updatedAt", b.updatedAt)
@@ -1505,6 +1526,7 @@ class WebdavSyncManager @Inject constructor(
                             put("updatedAt", n.updatedAt)
                             put("origin", n.origin)
                             put("tags", JSONArray(n.tags))
+                            put("isStale", n.isStale)
                             n.sourceRuleId?.let { put("sourceRuleId", it) }
                             n.sourceMatchKey?.let { put("sourceMatchKey", it) }
                             n.styleSnapshotJson?.let { put("styleSnapshotJson", it) }
@@ -1574,6 +1596,7 @@ class WebdavSyncManager @Inject constructor(
                     title = b.getString("title"),
                     remark = b.optString("remark"),
                     tags = com.huangder.lumibooks.domain.model.AnnotationTags.decode(b.optJSONArray("tags")?.toString()),
+                    isStale = b.optBoolean("isStale", false),
                     createdAt = b.getLong("createdAt"),
                     syncId = b.optString("syncId").ifBlank {
                         legacyAnnotationSyncId(
@@ -1603,6 +1626,7 @@ class WebdavSyncManager @Inject constructor(
                     startLocatorJson = n.optString("startLocatorJson", null),
                     endLocatorJson = n.optString("endLocatorJson", null),
                     selectedText = n.getString("selectedText"),
+                    isStale = n.optBoolean("isStale", false),
                     note = n.getString("note"),
                     color = n.getString("color"),
                     createdAt = n.getLong("createdAt"),
@@ -1731,7 +1755,7 @@ class WebdavSyncManager @Inject constructor(
 
         // EPUB/MOBI carry OPF metadata, CBZ may carry ComicInfo.xml.
         val (title, author) = if (format == BookFormat.EPUB || format == BookFormat.MOBI ||
-            format == BookFormat.CBZ
+            format == BookFormat.CBZ || format == BookFormat.MARKDOWN
         ) {
             try {
                 val metadataParser = com.huangder.lumibooks.util.parser.BookParserFactory.createParser(format, context)

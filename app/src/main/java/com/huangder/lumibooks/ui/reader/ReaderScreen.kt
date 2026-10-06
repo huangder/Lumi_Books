@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.reader
 import com.huangder.lumibooks.domain.model.ReaderImageAdjustments
+import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.BuildConfig
 import com.huangder.lumibooks.ui.icons.AppIcons
 
@@ -1195,14 +1196,23 @@ fun ReaderScreen(
     val ttsCurrentSentence by viewModel.ttsSentencePosition.collectAsState()
     val eInkMode = rawUiState.eInkModeEnabled
     val motionEnabled = LocalMotionEnabled.current
-    val basePageTransition = if (eInkMode) "none" else rawUiState.pageTransition
+    val basePageTransition = when {
+        eInkMode -> "none"
+        else -> rawUiState.pageTransition
+    }
     val appIsDark = LocalIsDarkTheme.current
     val nightDisplay = if (eInkMode) false else when (rawUiState.readerDisplayMode) {
         "day" -> false
         "night" -> true
         else -> appIsDark
     }
-    val uiState = rawUiState.withActiveThemeSettingsForMode(nightDisplay)
+    val themedState = rawUiState.withActiveThemeSettingsForMode(nightDisplay).copy(pageTransition = basePageTransition)
+    val uiState = if (themedState.book?.format?.name == "MARKDOWN" && !themedState.markdownPaginationReady) {
+        com.huangder.lumibooks.domain.model.ReaderPageCorner.entries.fold(themedState) { state, corner ->
+            if (when (corner) { ReaderPageCorner.TOP_LEFT -> state.readerTopLeftContent; ReaderPageCorner.TOP_RIGHT -> state.readerTopRightContent; ReaderPageCorner.BOTTOM_LEFT -> state.readerBottomLeftContent; ReaderPageCorner.BOTTOM_RIGHT -> state.readerBottomRightContent } == com.huangder.lumibooks.domain.model.ReaderCornerContent.PAGE_NUMBER)
+                state.withReaderCornerContent(corner, com.huangder.lumibooks.domain.model.ReaderCornerContent.BOOK_PROGRESS) else state
+        }
+    } else themedState
     val activeThemeSettings = uiState.activeThemeSettingsForMode(nightDisplay)
     val editorThemeSettings = uiState.activeThemeSettingsForMode(uiState.themeEditingDark)
     val effectiveReaderTheme = if (eInkMode) "day" else activeThemeSettings.backgroundSelection
@@ -1274,6 +1284,10 @@ fun ReaderScreen(
     }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    LaunchedEffect(uiState.markdownSourceMessage) {
+        uiState.markdownSourceMessage?.let { Toast.makeText(context, it, Toast.LENGTH_LONG).show() }
+        viewModel.dismissMarkdownSourceMessage()
+    }
     var pendingExportThemeId by remember { mutableStateOf<String?>(null) }
     val exportThemeLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -1342,8 +1356,13 @@ fun ReaderScreen(
     }
     val continuousSelectionController = remember { ContinuousSelectionController() }
     val isEpub = uiState.book?.format?.name == "EPUB"
-    val supportsBookLayout = isEpub || uiState.book?.format?.name == "MOBI"
-    val isBookLayout = supportsBookLayout && uiState.renderMode == EpubRenderMode.BOOK_LAYOUT
+    val supportsBookLayout = isEpub || uiState.book?.format?.name in setOf("MOBI", "MARKDOWN")
+    val isMarkdownNative = uiState.book?.format?.name == "MARKDOWN"
+    // MarkdownNativeReader owns one virtualized continuous surface.  Keeping Markdown in the
+    // generic BOOK_LAYOUT state routes TOC/progress drags through EPUB pagination and makes large
+    // documents wait for a page index that the native surface does not need.
+    val isBookLayout = supportsBookLayout && !isMarkdownNative &&
+        uiState.renderMode == EpubRenderMode.BOOK_LAYOUT
     val isVerticalWriting = uiState.readerWritingMode == ReaderWritingMode.VERTICAL_RL &&
         uiState.useNewEngine && !isBookLayout
     // 只判断“是否允许双页”（设备/设置/模式），实际是否启用由 ReadView 按自身宽高（横屏）决定
@@ -1353,7 +1372,11 @@ fun ReaderScreen(
         basePageTransition !in setOf("continuous", "scroll")
     val isBookLayoutContinuousScroll = isBookLayout &&
         uiState.readerWritingMode.usesContinuousScroll(basePageTransition, eInkMode)
-    val usesTransactionalEpubNavigation = isBookLayout
+    // The native Markdown surface consumes the same operation request as the EPUB renderer.
+    // Keeping Markdown on the legacy pending-fragment/page-request path leaves TOC clicks and
+    // progress drags in state intended for the WebView, so the native surface never receives a
+    // destination and cannot move its virtualized scroll window.
+    val usesTransactionalEpubNavigation = isBookLayout || isMarkdownNative
     val effectivePageTransition = if (isBookLayout &&
         basePageTransition == "continuous" &&
         !isBookLayoutContinuousScroll
@@ -1364,9 +1387,13 @@ fun ReaderScreen(
     } else {
         basePageTransition
     }
-    val isContinuousScrollMode = !isBookLayout && uiState.useNewEngine &&
-        uiState.readerWritingMode.usesContinuousScroll(basePageTransition, eInkMode)
-    val lineGuideAvailable = uiState.book?.format?.name in setOf("TXT", "EPUB", "MOBI") &&
+    // Markdown has one native continuous surface regardless of the persisted page-transition
+    // preference.  Treat it as continuous everywhere in the surrounding UI state machine too,
+    // otherwise TOC/progress gestures are routed to paged-reader code paths.
+    val isContinuousScrollMode = isMarkdownNative ||
+        (!isBookLayout && uiState.useNewEngine &&
+            uiState.readerWritingMode.usesContinuousScroll(basePageTransition, eInkMode))
+    val lineGuideAvailable = uiState.book?.format?.name in setOf("TXT", "EPUB", "MOBI", "MARKDOWN") &&
         uiState.useNewEngine && !isBookLayout && !isVerticalWriting
     val effectiveLineGuide = lineGuideAvailable && uiState.lineGuideEnabled
 
@@ -1637,7 +1664,10 @@ fun ReaderScreen(
     }
     val clearActiveTextSelection = {
         when {
-            isBookLayout -> epubSelectionClearToken++
+            // Markdown owns selection ranges inside its native RecyclerView surface.  It shares
+            // the clear token with the paged reader so dismissing the Compose menu also clears
+            // TextView spans, handles and the native global range.
+            isMarkdownNative || isBookLayout -> epubSelectionClearToken++
             isContinuousScrollMode -> continuousSelectionController.clear()
             else -> readViewRef.value?.clearActiveTextSelection()
         }
@@ -2553,7 +2583,7 @@ fun ReaderScreen(
         uiState.customFontPath,
         uiState.bodyFontWeight
     ) {
-        if (isBookLayout) com.huangder.lumibooks.ui.reader.engine.ResolvedReaderTypeface(
+        if (isBookLayout && uiState.book?.format?.name != "MARKDOWN") com.huangder.lumibooks.ui.reader.engine.ResolvedReaderTypeface(
             android.graphics.Typeface.DEFAULT, false) else resolveReaderTypeface(
             context = context,
             fontType = uiState.fontType,
@@ -2562,7 +2592,7 @@ fun ReaderScreen(
         )
     }
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkMode
-    val readerGlassContentScrim = if (isBookLayout) {
+    val readerGlassContentScrim = if (isBookLayout && uiState.book?.format?.name != "MARKDOWN") {
         // Compose cannot reliably sample a WebView into the liquid-glass backdrop. Use a
         // restrained contrast tint so the complete capsule remains visible over book CSS.
         if (ColorUtils.calculateLuminance(menuBgColorInt) < 0.4) {
@@ -2578,7 +2608,7 @@ fun ReaderScreen(
         drawRect(composeBgColor)
         drawContent()
     })
-    val activeReaderGlassBackdrop = readerGlassBackdrop.takeIf { isLiquidGlass && !isBookLayout }
+    val activeReaderGlassBackdrop = readerGlassBackdrop.takeIf { isLiquidGlass && (!isBookLayout || isMarkdownNative) }
     // NavHost keeps the outgoing reader composed during pop animations; it must not
     // overwrite the home screen's system-bar style after navigation has switched.
     if (readerActive) {
@@ -2669,7 +2699,58 @@ fun ReaderScreen(
         ) {
             // ── 新 Canvas 引擎（TXT/EPUB） ──
             val activeEpubSession = epubSession
-            if (isBookLayout) {
+            val markdownSource = viewModel.getMarkdownBlockSource()
+            if (uiState.book?.format?.name == "MARKDOWN" && markdownSource != null) {
+                // Native offsets refer to visible Markdown text, not the old DOM/source positions.
+                val markdownNotes = remember(readerNotes, currentRulePreviewNotes, knownHighlightRuleIds) {
+                    readerNotes.filterNot { it.isGeneratedByHighlightRule && it.sourceRuleId in knownHighlightRuleIds }
+                        .map { it.copy(color = resolveReaderHighlightColor(it.color)) } + currentRulePreviewNotes
+                }
+                MarkdownNativeReader(
+                    source = markdownSource, state = uiState, typeface = continuousTypeface.typeface,
+                    color = readerTextColorInt, paperColor = readerBackgroundColorInt, dark = nightDisplay,
+                    continuous = true,
+                    navigation = epubNavigationRequest, notes = markdownNotes, ttsSentence = ttsCurrentSentence,
+                    selectionClearToken = epubSelectionClearToken,
+                    onPage = { page, count, locator -> viewModel.onEpubPageReady(page, count, locator) },
+                    onSelection = { selection ->
+                        val overlapping = findOverlappingNotes(readerNotes, 0, selection.startPosition, selection.endPosition, "highlight")
+                        selectionState = SelectionState(
+                            chapterIndex = 0, pageInChapter = uiState.currentPageIndex,
+                            charStart = selection.startPosition, charEnd = selection.endPosition,
+                            selectedText = selection.text, touchX = selection.centerX, touchY = selection.centerY,
+                            annotationOnly = selection.annotationOnly,
+                            overlappingHighlights = overlapping,
+                            overlappingUnderlines = findOverlappingNotes(readerNotes, 0, selection.startPosition, selection.endPosition, "underline"),
+                            selTopY = selection.top, selBottomY = selection.bottom,
+                            selStartX = selection.left, selEndX = selection.right,
+                            startLocatorJson = selection.startLocatorJson, endLocatorJson = selection.endLocatorJson)
+                        isSelectionDragging = false
+                    },
+                    onLink = { href ->
+                        if (isExternalBookLink(href)) pendingExternalLink = href
+                        else navigateEpub(EpubNavigationOrigin.INTERNAL_LINK, 0,
+                            EpubNavigationDestination.Fragment(href.removePrefix("#")), false)
+                    },
+                    onMenu = { if (selectionState != null) dismissSelectionMenu() else viewModel.toggleMenu() },
+                    onSelectionCleared = { dismissSelectionMenu() },
+                    onSelectionDragging = { isSelectionDragging = it },
+                    onNavigation = { result ->
+                        if (epubNavigationRequest?.operationId == result.operationId) {
+                            epubNavigationRequest = null
+                            epubSearchRequest = null
+                            epubLocatorRequest = null
+                            epubPageRequest = null
+                            epubPendingFragment = null
+                        }
+                    },
+                    onTurnReady = { handler -> epubPageTurnHandler = handler?.let { turn -> { direction -> turn(direction); true } } },
+                    onTextReady = { epubPageTextProvider = it },
+                    onPaginationReady = viewModel::onMarkdownPaginationReady,
+                    onError = viewModel::onMarkdownRenderError,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else if (isBookLayout) {
                 // Mount with the real font configuration so the first page is not laid out twice.
                 if (activeEpubSession != null && (epubFontReady || epubInitialFontReady)) {
                 androidx.compose.runtime.key(epubRetryToken) {
@@ -3557,7 +3638,9 @@ fun ReaderScreen(
                 chapterTitle = liveChapterTitle,
                 pageIndex = uiState.currentPageIndex,
                 pageCount = uiState.totalPages,
-                bookProgressPercent = calculateBookProgressPercent(
+                bookProgressPercent = if (isMarkdownNative) {
+                    runCatching { org.json.JSONObject(uiState.epubLocatorJson ?: "{}").optDouble("progression", 0.0).toFloat() * 100f }.getOrDefault(0f)
+                } else calculateBookProgressPercent(
                     chapterIndex = uiState.currentChapterIndex,
                     chapterCount = uiState.chapterCount,
                     pageIndex = uiState.currentPageIndex,
@@ -3618,13 +3701,13 @@ fun ReaderScreen(
             ) {
                 LinkReturnButton(
                     backgroundColor = capsuleBgColor,
-                    contentColor = if (isLiquidGlass && !isBookLayout) {
+                    contentColor = if (isLiquidGlass && (!isBookLayout || isMarkdownNative)) {
                         menuContentColor
                     } else {
                         capsuleContentColor
                     },
                     glassContentScrimColor = readerGlassContentScrim,
-                    forceSolid = isBookLayout,
+                    forceSolid = isBookLayout && !isMarkdownNative,
                     onClick = returnToLinkedSource
                 )
             }
@@ -3671,7 +3754,7 @@ fun ReaderScreen(
                     bgColor = menuBgColor,
                     contentColor = menuContentColor,
                     glassContentScrimColor = readerGlassContentScrim,
-                    forceSolidButtons = isBookLayout,
+                    forceSolidButtons = isBookLayout && !isMarkdownNative,
                     isTtsActive = ttsState.activeBookId == uiState.book?.id &&
                         ttsState.playbackState != TtsPlaybackState.IDLE,
                     onTtsClick = {
@@ -3813,10 +3896,10 @@ fun ReaderScreen(
                         rightChapterIndex = displayRightChapterIndex,
                         currentChapterIndex = displayedMenuSnapshot.chapterIndex,
                         capsuleBgColor = capsuleBgColor,
-                        capsuleContentColor = if (isLiquidGlass && !isBookLayout) menuContentColor else capsuleContentColor,
+                        capsuleContentColor = if (isLiquidGlass && (!isBookLayout || isMarkdownNative)) menuContentColor else capsuleContentColor,
                         catalogProgressColor = catalogProgressColor,
                         glassContentScrimColor = readerGlassContentScrim,
-                        forceSolidCapsules = isBookLayout,
+                        forceSolidCapsules = isBookLayout && !isMarkdownNative,
                         canGoToPreviousChapter = uiState.currentChapterIndex > 0,
                         canGoToNextChapter = uiState.currentChapterIndex < uiState.chapterCount - 1,
                         onCatalogClick = {
@@ -3896,12 +3979,26 @@ fun ReaderScreen(
                         onCatalogProgressDragEnd = { finalProgress ->
                             if (isContinuousScrollMode) {
                                 mapGlobalProgress(finalProgress, uiState.chapterCount)?.let { target ->
-                                    continuousScrollRequests.tryEmit(
-                                        ContinuousScrollRequest(
+                                    if (isMarkdownNative) {
+                                        // The native Markdown surface maps this fraction directly
+                                        // to its document coordinate and restores its virtual window.
+                                        navigateEpub(
+                                            EpubNavigationOrigin.PROGRESS,
                                             target.chapterIndex,
-                                            target.chapterFraction
+                                            EpubNavigationDestination.Page(
+                                                index = 0,
+                                                chapterFraction = target.chapterFraction
+                                            ),
+                                            false
                                         )
-                                    )
+                                    } else {
+                                        continuousScrollRequests.tryEmit(
+                                            ContinuousScrollRequest(
+                                                target.chapterIndex,
+                                                target.chapterFraction
+                                            )
+                                        )
+                                    }
                                 }
                             } else if (isBookLayout) {
                                 mapGlobalProgress(finalProgress, uiState.chapterCount)?.let { target ->
@@ -4060,7 +4157,7 @@ fun ReaderScreen(
                     readerMenuVisible = uiState.isMenuVisible,
                     readerBackgroundColor = composeBgColor,
                     readerContentColor = Color(readerTextColorInt),
-                    forceSolidSurface = isBookLayout
+                    forceSolidSurface = isBookLayout && !isMarkdownNative
                 )
             }
 
@@ -4071,6 +4168,7 @@ fun ReaderScreen(
                 glassBackdrop = activeReaderGlassBackdrop,
                 tocEntries = uiState.tocEntries,
                 currentChapter = uiState.currentChapterIndex,
+                currentAnchor = uiState.currentTocAnchor,
                 bookmarks = bookmarks,
                 chapterTitles = uiState.chapterTitles,
                 onChapterSelected = { entry ->
@@ -4080,7 +4178,19 @@ fun ReaderScreen(
                             anchor = entry.anchor
                         ) ?: return@launch
                         val readView = readViewRef.value
-                        if (isContinuousScrollMode) {
+                        if (isMarkdownNative) {
+                            epubSearchRequest = null
+                            epubLocatorRequest = null
+                            epubPageRequest = null
+                            navigateEpub(
+                                EpubNavigationOrigin.TOC,
+                                target.chapterIndex,
+                                entry.anchor?.takeIf { it.isNotBlank() }?.let {
+                                    EpubNavigationDestination.Fragment(it)
+                                } ?: EpubNavigationDestination.ChapterStart,
+                                false
+                            )
+                        } else if (isContinuousScrollMode) {
                             jumpToContinuousChapter(target.chapterIndex)
                         } else if (isBookLayout) {
                             epubSearchRequest = null
@@ -4111,7 +4221,11 @@ fun ReaderScreen(
                     showToc = false
                     requestCloseToc = false
                 },
-                onBookmarkClick = { bm ->
+                onBookmarkClick = bookmarkClick@ { bm ->
+                    if (bm.isStale) {
+                        Toast.makeText(context, R.string.markdown_original_changed, Toast.LENGTH_SHORT).show()
+                        return@bookmarkClick
+                    }
                     if (isBookLayout) {
                         val chapterHref = epubSession?.chapterHref(bm.chapterIndex).orEmpty()
                         val locatorJson = bm.locatorJson?.let { json ->
@@ -4179,12 +4293,14 @@ fun ReaderScreen(
                 currentBrightness = uiState.brightness,
                 currentOptimizeLayout = uiState.optimizeLayout,
                 currentUseEpubCss = uiState.useEpubCss,
-                supportsBookLayout = supportsBookLayout,
+                supportsBookLayout = supportsBookLayout && !isMarkdownNative,
                 currentRenderMode = uiState.renderMode,
                 currentWritingMode = uiState.readerWritingMode,
                 supportsWritingMode = uiState.useNewEngine && !isBookLayout,
                 currentChineseMode = uiState.chineseMode,
                 currentPageTransition = effectivePageTransition,
+                supportsChineseConversion = !isMarkdownNative,
+                supportsPageTransitions = !isMarkdownNative,
                 currentDisplayMode = uiState.readerDisplayMode,
                 editingDark = uiState.themeEditingDark,
                 onFontSizeChange = { viewModel.saveFontSize(it) },
@@ -4598,6 +4714,10 @@ fun ReaderScreen(
         glassBackdrop = activeReaderGlassBackdrop,
         notes = viewModel.notes.collectAsState().value,
         onNoteClick = noteClick@ { note ->
+            if (note.isStale) {
+                Toast.makeText(context, R.string.markdown_original_changed, Toast.LENGTH_SHORT).show()
+                return@noteClick
+            }
             if (isBookLayout) {
                 val chapterTextLength = viewModel.getChapterTextLength(note.chapterIndex).coerceAtLeast(1)
                 val chapterHref = epubSession?.chapterHref(note.chapterIndex).orEmpty()
@@ -4645,7 +4765,7 @@ fun ReaderScreen(
     LocalDictionarySheet(
         query = localDictionaryQuery,
         glassBackdrop = activeReaderGlassBackdrop,
-        forceSolid = isBookLayout || eInkMode,
+        forceSolid = (isBookLayout && !isMarkdownNative) || eInkMode,
         onDismiss = {
             localDictionaryQuery = null
             dismissSelectionMenu()
@@ -4702,7 +4822,7 @@ fun ReaderScreen(
         state = selectionState.takeIf { localDictionaryQuery == null },
         readerTheme = renderingTheme,
         glassBackdrop = activeReaderGlassBackdrop,
-        forceSolidSurface = isBookLayout,
+        forceSolidSurface = isBookLayout && !isMarkdownNative,
         isDragging = isSelectionDragging,
         dismissOnBackgroundTap = !isVerticalWriting,
         reappearKey = menuReappearKey,
@@ -4959,6 +5079,23 @@ fun ReaderScreen(
             openExternalBookLink(context, href)
         }
     )
+
+    if (uiState.markdownSourceUpdated && !uiState.isLoading) {
+        LiquidGlassAlertDialog(
+            onDismissRequest = viewModel::dismissMarkdownUpdate,
+            backdrop = activeReaderGlassBackdrop,
+            title = { Text(stringResource(R.string.markdown_source_updated), color = AppColors.TextPrimary, fontWeight = FontWeight.SemiBold) },
+            text = { Text(stringResource(R.string.markdown_source_updated_body), color = AppColors.TextSecondary, lineHeight = 22.sp) },
+            confirmButton = {
+                LiquidGlassTextButton(text = stringResource(R.string.markdown_source_update),
+                    onClick = viewModel::updateMarkdownSource, tintedColor = AppColors.Accent, contentColor = AppColors.OnAccent)
+            },
+            dismissButton = {
+                LiquidGlassTextButton(text = stringResource(R.string.markdown_keep_snapshot),
+                    onClick = viewModel::dismissMarkdownUpdate, contentColor = AppColors.TextPrimary)
+            }
+        )
+    }
 
     ReaderSelectionNoteSheet(
         visible = showNoteInput,
@@ -5873,14 +6010,14 @@ private fun ReaderTopBar(
         if (supportsHighlightRules) add(LiquidGlassMenuItem(stringResource(R.string.highlight_rules_title), AppIcons.Code) { onHighlightRulesClick() })
         if (lineGuideAvailable) add(LiquidGlassMenuItem(stringResource(R.string.line_guide), AppIcons.Rows,
             selectedState = { currentLineGuideEnabled }) { currentOnLineGuideToggle() })
-        if (bookFormat == "EPUB" || bookFormat == "MOBI") {
+        if (bookFormat in setOf("EPUB", "MOBI", "MARKDOWN")) {
             add(LiquidGlassMenuItem(stringResource(R.string.comic_mode), AppIcons.Image,
                 selectedState = { currentComicModeEnabled }) { currentOnComicModeToggle() })
         }
         if (bookFormat == "EPUB") {
             add(LiquidGlassMenuItem(stringResource(R.string.epub_comic_switch), AppIcons.Image) { onSwitchComicReader() })
         }
-        if (bookFormat in setOf("TXT", "EPUB", "MOBI")) {
+        if (bookFormat in setOf("TXT", "EPUB", "MOBI", "MARKDOWN")) {
             add(LiquidGlassMenuItem(stringResource(R.string.bionic_reading), AppIcons.TextB,
                 selectedState = { currentBionicReadingEnabled }) { currentOnBionicReadingToggle() })
         }
@@ -5967,7 +6104,7 @@ private fun ReaderTopBar(
                     forceSolid = forceSolidButtons,
                         onClick = onBookmarkToggle
                     )
-                    if (bookFormat in setOf("TXT", "EPUB", "MOBI")) {
+                    if (bookFormat in setOf("TXT", "EPUB", "MOBI", "MARKDOWN")) {
                         ReaderTopBarButton(
                             icon = AppIcons.DotsThreeVertical,
                             contentDescription = stringResource(R.string.more_options),
@@ -8017,6 +8154,7 @@ private fun TocSheet(
     requestClose: Boolean = false,
     tocEntries: List<com.huangder.lumibooks.util.parser.TocEntry>,
     currentChapter: Int,
+    currentAnchor: String? = null,
     bookmarks: List<com.huangder.lumibooks.domain.model.Bookmark> = emptyList(),
     chapterTitles: List<String> = emptyList(),
     glassBackdrop: Backdrop? = null,
@@ -8041,8 +8179,9 @@ private fun TocSheet(
     val visibleEntries = remember(tocEntries, foldGroups, collapsedGroups) {
         visibleTocEntries(tocEntries, foldGroups, collapsedGroups)
     }
-    val currentSourceIndex = remember(tocEntries, currentChapter) {
-        tocEntries.indexOfFirst { it.chapterIndex == currentChapter }
+    val currentSourceIndex = remember(tocEntries, currentChapter, currentAnchor) {
+        if (currentAnchor != null) tocEntries.indexOfFirst { it.chapterIndex == currentChapter && it.anchor == currentAnchor }
+        else tocEntries.indexOfFirst { it.chapterIndex == currentChapter }
     }
 
     val currentEntryIndex = remember(
@@ -8050,14 +8189,16 @@ private fun TocSheet(
         visibleEntries,
         foldGroups,
         collapsedGroups,
-        currentChapter
+        currentChapter,
+        currentAnchor
     ) {
         currentTocVisibleIndex(
             entries = tocEntries,
             visibleEntries = visibleEntries,
             foldGroups = foldGroups,
             collapsedGroups = collapsedGroups,
-            currentChapter = currentChapter
+            currentChapter = currentChapter,
+            currentAnchor = currentAnchor
         )
     }
     val tocListState = rememberLazyListState(
@@ -8972,6 +9113,7 @@ private fun TocBookmarkItem(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (bookmark.isStale) Text(stringResource(R.string.markdown_original_changed), fontSize = 12.sp, color = AccentColor)
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = if (chapterTitle.isBlank()) chapterNumber else "$chapterNumber · $chapterTitle",
@@ -11548,6 +11690,7 @@ internal fun HighlightNoteItem(
                         maxLines = 1
                     )
                 }
+                if (item.isStale) Text(stringResource(R.string.markdown_original_changed), fontSize = 12.sp, color = AccentColor)
                 AnnotationTagChips(item.tags, modifier = Modifier.padding(top = 6.dp))
                 Spacer(Modifier.height(4.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

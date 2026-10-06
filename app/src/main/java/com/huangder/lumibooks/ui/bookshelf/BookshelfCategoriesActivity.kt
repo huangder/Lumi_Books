@@ -216,6 +216,7 @@ internal sealed interface BookshelfCategoryTarget {
     data class All(override val title: String) : BookshelfCategoryTarget
     data class EpubMobi(override val title: String) : BookshelfCategoryTarget
     data class Pdf(override val title: String) : BookshelfCategoryTarget
+    data class Markdown(override val title: String) : BookshelfCategoryTarget
     data class Txt(override val title: String) : BookshelfCategoryTarget
     data class Comic(override val title: String) : BookshelfCategoryTarget
     data class Favorites(override val title: String) : BookshelfCategoryTarget
@@ -270,6 +271,7 @@ private fun BookshelfCategoriesScreen(
             )
         )
         add(CategoryRowModel(BookshelfCategoryTarget.Pdf("PDF"), uiState.books.count { it.format == BookFormat.PDF }, AppIcons.FileText))
+        add(CategoryRowModel(BookshelfCategoryTarget.Markdown("Markdown"), uiState.books.count { it.format == BookFormat.MARKDOWN }, AppIcons.FileText))
         add(CategoryRowModel(BookshelfCategoryTarget.Txt("TXT"), uiState.books.count { it.format == BookFormat.TXT }, AppIcons.FileText))
         add(
             CategoryRowModel(
@@ -436,6 +438,7 @@ internal fun BookshelfCategoryBooksRoute(
             is BookshelfCategoryTarget.All -> uiState.books
             is BookshelfCategoryTarget.EpubMobi -> uiState.books.filter(Book::isEpubMobi)
             is BookshelfCategoryTarget.Pdf -> uiState.books.filter { it.format == BookFormat.PDF }
+            is BookshelfCategoryTarget.Markdown -> uiState.books.filter { it.format == BookFormat.MARKDOWN }
             is BookshelfCategoryTarget.Txt -> uiState.books.filter { it.format == BookFormat.TXT }
             is BookshelfCategoryTarget.Comic -> uiState.books.filter { it.format == BookFormat.CBZ }
             is BookshelfCategoryTarget.Favorites -> uiState.books.filter { it.isFavorite }

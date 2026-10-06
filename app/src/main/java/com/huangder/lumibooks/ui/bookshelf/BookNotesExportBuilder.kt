@@ -100,7 +100,7 @@ class BookNotesExportBuilder @Inject constructor(
             val pageTexts = when (book.format) {
                 BookFormat.PDF -> extractPdfBookmarkPages(book, bookmarks)
                 BookFormat.CBZ -> emptyMap()
-                BookFormat.EPUB, BookFormat.TXT, BookFormat.MOBI -> parsed?.first?.let { parser ->
+                BookFormat.EPUB, BookFormat.TXT, BookFormat.MOBI, BookFormat.MARKDOWN -> parsed?.first?.let { parser ->
                     layoutBookmarkPages(parser, book.format, chapterTitles, bookmarks)
                 }.orEmpty()
             }

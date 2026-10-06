@@ -260,6 +260,7 @@ fun BookshelfScreen(
         add(BookshelfFilterTab(BookshelfFilter.EpubMobi, stringResource(R.string.filter_epub_mobi)))
         add(BookshelfFilterTab(BookshelfFilter.Pdf, stringResource(R.string.format_pdf)))
         add(BookshelfFilterTab(BookshelfFilter.Txt, stringResource(R.string.format_txt)))
+        add(BookshelfFilterTab(BookshelfFilter.Markdown, stringResource(R.string.format_markdown)))
         add(BookshelfFilterTab(BookshelfFilter.Comic, stringResource(R.string.format_cbz)))
         add(BookshelfFilterTab(BookshelfFilter.Favorites, stringResource(R.string.filter_favorites)))
         uiState.tags.forEach { tag ->
@@ -515,6 +516,7 @@ fun BookshelfScreen(
             BookshelfFilter.All -> null
             BookshelfFilter.EpubMobi -> uiState.books.filter(Book::isEpubMobi).mapTo(mutableSetOf()) { it.id }
             BookshelfFilter.Pdf -> uiState.books.filter { it.format == BookFormat.PDF }.mapTo(mutableSetOf()) { it.id }
+            BookshelfFilter.Markdown -> uiState.books.filter { it.format == BookFormat.MARKDOWN }.mapTo(mutableSetOf()) { it.id }
             BookshelfFilter.Txt -> uiState.books.filter { it.format == BookFormat.TXT }.mapTo(mutableSetOf()) { it.id }
             BookshelfFilter.Comic -> uiState.books.filter { it.format == BookFormat.CBZ }.mapTo(mutableSetOf()) { it.id }
             BookshelfFilter.Favorites -> uiState.books.filter { it.isFavorite }.mapTo(mutableSetOf()) { it.id }
@@ -2402,6 +2404,7 @@ private sealed interface BookshelfFilter {
     data object All : BookshelfFilter
     data object EpubMobi : BookshelfFilter
     data object Pdf : BookshelfFilter
+    data object Markdown : BookshelfFilter
     data object Txt : BookshelfFilter
     data object Comic : BookshelfFilter
     data object Favorites : BookshelfFilter
