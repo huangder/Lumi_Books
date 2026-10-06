@@ -112,7 +112,7 @@ class ScrollPageAnim(
             view = readView.curPageView,
             translationY = frame.currentY,
             visible = frame.currentVisible,
-            z = 2f
+            z = if (direction == Direction.PREV) 1f else 2f
         )
         applyPageFrame(
             view = readView.prevPageView,

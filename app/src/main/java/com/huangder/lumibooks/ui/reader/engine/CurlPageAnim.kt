@@ -409,10 +409,17 @@ class CurlPageAnim(
 
         canvas.save()
         canvas.clipRect(0f, 0f, width, height)
-        drawPage(canvas, underBitmap, underPageView)
+        // Transparent WebView snapshots must not expose another page (or an
+        // unrelated preload drawn by the host) through the still-flat sheet.
+        canvas.drawColor(readView.bgColor)
 
         if (calculateCurlPoints()) {
             buildCurlPaths(simulationFrame, path0, path1)
+            val underSaveCount = canvas.save()
+            canvas.clipPath(path0)
+            canvas.clipOutPath(path1)
+            drawPage(canvas, underBitmap, underPageView)
+            canvas.restoreToCount(underSaveCount)
             // The turning sheet is outside path0 in both legado-E branches:
             // current over next for NEXT, previous over current for PREV.
             drawCurrentPageArea(canvas, turningBitmap, turningPageView)
@@ -1051,7 +1058,7 @@ class CurlPageAnim(
         // path0/path1 由 drawCurl() 通过 buildCurlPaths() 统一构建，保证与收尾判据一致。
         canvas.save()
         canvas.clipOutPath(path0)
-        drawPageContent(canvas, bitmap, pageView)
+        drawPage(canvas, bitmap, pageView)
         canvas.restore()
     }
 
@@ -1511,9 +1518,8 @@ class CurlPageAnim(
 
 
     private fun drawPage(canvas: Canvas, bitmap: Bitmap?, pageView: View?) {
-        if (!drawPageContent(canvas, bitmap, pageView)) {
-            canvas.drawColor(readView.bgColor)
-        }
+        canvas.drawColor(readView.bgColor)
+        drawPageContent(canvas, bitmap, pageView)
     }
 
     private fun drawPageContent(canvas: Canvas, bitmap: Bitmap?, pageView: View?): Boolean {
