@@ -32,6 +32,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.unit.dp
@@ -56,6 +57,8 @@ import com.huangder.lumibooks.domain.model.ReaderTextAlignment
 import com.huangder.lumibooks.ui.reader.engine.TtsSentenceHighlightSpan
 import com.huangder.lumibooks.highlight.RuleStyleJson
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.ByteArrayInputStream
 import kotlin.coroutines.resume
@@ -509,6 +512,11 @@ internal fun EpubWebViewReader(
     onRenderUnavailable: (EpubRenderFailure) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Source classification parses HTML; never perform it from AndroidView.update on the UI thread.
+    val mediaOnlyPage by produceState<Boolean?>(null, session, chapterIndex) {
+        value = withContext(Dispatchers.IO) { session.isMediaOnlyPage(chapterIndex) }
+    }
+    if (mediaOnlyPage == null) return
     val backgroundPreparationEnabled = LocalReaderOpeningComplete.current
     val latestBackgroundPreparationEnabled = rememberUpdatedState(backgroundPreparationEnabled)
     val restorePreloads = remember(session) { mutableStateOf<(() -> Unit)?>(null) }
@@ -2739,14 +2747,14 @@ internal fun EpubWebViewReader(
                 continuousScroll = continuousScroll,
                 transition = pageTransition,
                 renditionLayout = session.renditionLayout(chapterIndex),
-                mediaOnlyPage = session.isMediaOnlyPage(chapterIndex)
+                mediaOnlyPage = mediaOnlyPage == true
             )
             val nativePageTurn = pagingMode.nativePaging
             val mediaOnlyNativePaging = usesMediaOnlyNativeEpubPaging(
                 continuousScroll = continuousScroll,
                 transition = pageTransition,
                 renditionLayout = session.renditionLayout(chapterIndex),
-                mediaOnlyPage = session.isMediaOnlyPage(chapterIndex)
+                mediaOnlyPage = mediaOnlyPage == true
             )
             pageTurnHost.setNativePagingEnabled(nativePageTurn)
             pageTurnHost.setNativeTouchPagingEnabled(nativePageTurn)
