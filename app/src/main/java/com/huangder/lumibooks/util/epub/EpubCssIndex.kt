@@ -109,6 +109,15 @@ internal class EpubCssIndex(private val rules: List<EpubCssRule>) {
     /** 元素命中的宽度声明（原样返回，交给调用方换算）。 */
     fun widthDeclaration(element: Element): String? = declaration(element, "width")
 
+    /**
+     * Append rules declared inside the XHTML document after linked stylesheets.
+     * Inline chapter styles follow linked CSS in document order and therefore
+     * must be considered last for the approximate cascade used by this index.
+     */
+    fun plus(documentRules: EpubCssIndex): EpubCssIndex =
+        if (documentRules.rules.isEmpty()) this
+        else EpubCssIndex(rules + documentRules.rules)
+
     private fun matches(rule: EpubCssRule, element: Element): Boolean =
         runCatching { element.`is`(rule.selector) }.getOrDefault(false)
 

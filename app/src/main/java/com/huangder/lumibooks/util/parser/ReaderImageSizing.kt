@@ -41,7 +41,8 @@ internal object ReaderImageSizing {
         originalWidth: Int,
         originalHeight: Int,
         contentWidth: Int,
-        allowUpscale: Boolean = false
+        allowUpscale: Boolean = false,
+        contentHeight: Int = 0
     ): ReaderImageBounds? {
         if (originalWidth <= 0 || originalHeight <= 0 || contentWidth <= 0) return null
         // 整页漫画/插画（整页只有这一张图）要铺满正文列宽，哪怕是放大；
@@ -51,11 +52,14 @@ internal object ReaderImageSizing {
         } else {
             minOf(originalWidth, contentWidth)
         }.coerceAtLeast(1)
-        val scale = width.toDouble() / originalWidth.toDouble()
+        val scale = minOf(
+            width.toDouble() / originalWidth.toDouble(),
+            if (contentHeight > 0) contentHeight.toDouble() / originalHeight else Double.MAX_VALUE
+        )
         val height = (originalHeight.toDouble() * scale)
             .roundToInt()
             .coerceAtLeast(1)
-        return ReaderImageBounds(width, height)
+        return ReaderImageBounds((originalWidth * scale).roundToInt().coerceIn(1, width), height)
     }
 
     /**

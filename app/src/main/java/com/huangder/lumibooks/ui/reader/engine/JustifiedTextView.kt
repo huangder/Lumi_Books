@@ -13,7 +13,6 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.style.BackgroundColorSpan
 import android.text.style.ClickableSpan
-import android.text.style.DynamicDrawableSpan
 import android.text.style.ImageSpan
 import android.text.style.URLSpan
 import android.util.AttributeSet
@@ -534,13 +533,8 @@ class JustifiedTextView @JvmOverloads constructor(
             val spanEnd = text.getSpanEnd(image).coerceAtLeast(spanStart + 1)
             val imageWidth = drawable.bounds.width().toFloat().coerceAtLeast(1f)
             val imageHeight = drawable.bounds.height().toFloat().coerceAtLeast(1f)
-            val lineHeight = sl.getLineBottom(line) - sl.getLineTop(line)
             val cursorX = geometry.horizontalPosition(spanStart) ?: return null
-            val imageTop = when (image.verticalAlignment) {
-                DynamicDrawableSpan.ALIGN_BASELINE -> sl.getLineBaseline(line) - imageHeight
-                DynamicDrawableSpan.ALIGN_CENTER -> sl.getLineTop(line) + (lineHeight - imageHeight) / 2f
-                else -> sl.getLineBottom(line) - imageHeight
-            }
+            val imageTop = readerImageTop(sl, line, image)
             val imageBottom = imageTop + imageHeight
             if (tx in cursorX..(cursorX + imageWidth) && ty in imageTop..imageBottom) {
                 val url = text.getSpans(spanStart, spanEnd, URLSpan::class.java)

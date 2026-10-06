@@ -7,6 +7,7 @@ import org.jsoup.nodes.TextNode
 import org.jsoup.parser.Parser
 import org.jsoup.select.NodeTraversor
 import org.jsoup.select.NodeVisitor
+import org.jsoup.select.NodeFilter
 import java.io.ByteArrayInputStream
 
 object EpubDocumentTransformer {
@@ -63,7 +64,8 @@ object EpubDocumentTransformer {
             allowCoverStyling = layout == EpubRenditionLayout.REFLOWABLE,
             isCoverCandidate = isCoverCandidate
         )
-        markFullBleedMedia(document, layout, cssIndex)
+        markReflowableMediaWrappers(document, layout)
+        markFullBleedMedia(document, layout, cssIndex.plus(documentCssIndex(document)))
         // 必须以 DataNode 注入：文档以 XML 语法序列化，appendText 会把脚本里的
         // '<'、'>'、'&' 转义成 &lt; &gt; &amp;，浏览器在 <script> 内不会反转义，
         // 导致分页脚本语法错误、原排版空白卡死（text/html 章节尤其明显）。
@@ -108,13 +110,50 @@ object EpubDocumentTransformer {
 
     private fun isMediaOnlyDocument(document: Document): Boolean {
         val body = document.body()
-        val textProbe = body.clone().apply {
-            // Text inside an SVG is part of the cover artwork, not flowing chapter copy.
-            select("script, style, noscript, svg").remove()
-        }
-        if (textProbe.text().isNotBlank()) return false
+        if (hasVisibleFlowText(body)) return false
 
         return topLevelMedia(body).size == 1
+    }
+
+    private fun hasVisibleFlowText(container: org.jsoup.nodes.Element): Boolean {
+        var hasText = false
+        NodeTraversor.filter(object : NodeFilter {
+            override fun head(node: org.jsoup.nodes.Node, depth: Int): NodeFilter.FilterResult {
+                // Artwork and hidden script/style contents are not flowing chapter text.
+                if (node.nodeName().lowercase() in setOf("script", "style", "noscript", "svg")) {
+                    return NodeFilter.FilterResult.SKIP_CHILDREN
+                }
+                if (node is org.jsoup.nodes.Element && isExplicitlyHidden(node)) {
+                    return NodeFilter.FilterResult.SKIP_CHILDREN
+                }
+                if (node is TextNode && node.wholeText.any(::isVisibleFlowCharacter)) {
+                    hasText = true
+                    return NodeFilter.FilterResult.STOP
+                }
+                return NodeFilter.FilterResult.CONTINUE
+            }
+            override fun tail(node: org.jsoup.nodes.Node, depth: Int) = NodeFilter.FilterResult.CONTINUE
+        }, container)
+        return hasText
+    }
+
+    private fun isExplicitlyHidden(element: org.jsoup.nodes.Element): Boolean {
+        if (element.hasAttr("hidden") || element.attr("aria-hidden").equals("true", ignoreCase = true)) {
+            return true
+        }
+        val compactStyle = element.attr("style").lowercase().replace(Regex("\\s+"), "")
+        return compactStyle.contains("display:none") || compactStyle.contains("visibility:hidden")
+    }
+
+    private fun isVisibleFlowCharacter(character: Char): Boolean {
+        if (character.isWhitespace() || character.isISOControl()) return false
+        return when (Character.getType(character)) {
+            Character.FORMAT.toInt(),
+            Character.SPACE_SEPARATOR.toInt(),
+            Character.LINE_SEPARATOR.toInt(),
+            Character.PARAGRAPH_SEPARATOR.toInt() -> false
+            else -> true
+        }
     }
 
     private fun topLevelMedia(body: org.jsoup.nodes.Element) =
@@ -125,12 +164,41 @@ object EpubDocumentTransformer {
             }
         }
 
+    /** Prevent a publisher's image-only wrapper from being fragmented between CSS columns. */
+    private fun markReflowableMediaWrappers(document: Document, layout: EpubRenditionLayout) {
+        if (layout != EpubRenditionLayout.REFLOWABLE) return
+        val body = document.body()
+        topLevelMedia(body).forEach { media ->
+            if (isFootnoteMedia(media)) return@forEach
+
+            var wrapper = media.parent()
+            while (wrapper != null && wrapper !== body) {
+                val wrappedMedia = topLevelMedia(wrapper)
+                if (wrappedMedia.size != 1 || wrappedMedia.single() !== media || hasVisibleFlowText(wrapper)) {
+                    break
+                }
+                wrapper.attr(MEDIA_WRAPPER_ATTR, "true")
+                wrapper = wrapper.parent()
+            }
+        }
+    }
+
+    private fun isFootnoteMedia(media: org.jsoup.nodes.Element): Boolean {
+        if (media.classNames().any { it.contains("footnote", ignoreCase = true) }) return true
+        return media.parents().any { parent ->
+            if (parent.tagName().equals("sup", ignoreCase = true)) return@any true
+            if (!parent.tagName().equals("a", ignoreCase = true)) return@any false
+            parent.attr("href").contains("footnote", ignoreCase = true) ||
+                parent.id().contains("footnote", ignoreCase = true)
+        }
+    }
+
     /**
      * 标记出版社显式声明铺满宽度的块级图片。
      *
-     * 判定口径：只认匹配到图片元素自身的 `width` 属性 / 内联 style / CSS 规则里的
-     * `100%`、`100vw`；父容器声明的宽度不算。命中后由阅读器样式取消左右页边距，
-     * 章首第一张这样的图连顶部页边距一起取消。固定版式不做此标记（设计盒优先）。
+     * 判定口径：匹配图片自身，或只包裹该图片的父容器上的 `width: 100%/100vw`。
+     * 命中后由阅读器样式取消左右页边距，章首第一张这样的图连顶部页边距一起取消。
+     * 固定版式不做此标记（设计盒优先）。
      */
     private fun markFullBleedMedia(
         document: Document,
@@ -149,7 +217,12 @@ object EpubDocumentTransformer {
         }
         val firstBlock = firstVisualContent(body)
         media.forEach { element ->
-            if (!cssIndex.declaresFullWidth(element)) return@forEach
+            val hasFullWidthDeclaration = cssIndex.declaresFullWidth(element) ||
+                element.parents().asSequence()
+                    .takeWhile { it !== body }
+                    .filter { it.hasAttr(MEDIA_WRAPPER_ATTR) }
+                    .any(cssIndex::declaresFullWidth)
+            if (!hasFullWidthDeclaration) return@forEach
             val bleedsTop = firstBlock != null &&
                 (firstBlock === element || element.parents().contains(firstBlock))
             element.attr(
@@ -157,6 +230,14 @@ object EpubDocumentTransformer {
                 if (bleedsTop) BLEED_HORIZONTAL_TOP else BLEED_HORIZONTAL
             )
         }
+    }
+
+    private fun documentCssIndex(document: Document): EpubCssIndex {
+        val styles = document.select("style:not(#lumi-reader-style)").mapNotNull { style ->
+            val css = style.data().trim().ifEmpty { style.wholeText().trim() }
+            css.takeIf { it.isNotEmpty() }?.let { "chapter-inline.css" to it }
+        }
+        return EpubCssIndex.parse(styles)
     }
 
     /** 正文里第一个真正有内容（含图片）的元素。 */
@@ -167,7 +248,7 @@ object EpubDocumentTransformer {
             ) {
                 continue
             }
-            if (child.text().isNotBlank() || child.selectFirst("img, svg, video, canvas") != null) {
+            if (hasVisibleFlowText(child) || child.selectFirst("img, svg, video, canvas") != null) {
                 return child
             }
         }
@@ -207,6 +288,9 @@ object EpubDocumentTransformer {
         val parser = if (useXmlParser) Parser.xmlParser() else Parser.htmlParser()
         val document = Jsoup.parse(ByteArrayInputStream(bytes), null, path, parser)
         document.outputSettings().syntax(Document.OutputSettings.Syntax.xml).charset(Charsets.UTF_8)
+        if (document.selectFirst("body[data-lumi-markdown]") != null) {
+            document.outputSettings().prettyPrint(false)
+        }
         sanitize(document)
         return document
     }
@@ -304,10 +388,31 @@ body[data-lumi-layout="reflowable"] canvas {
   margin-left: auto;
   margin-right: auto;
   max-width: 100%;
-  /* 竖版大图按整页宽度放大后会超出页面高度、下半截被裁掉；
-     限制高度不超过当前分页的内容区高度，保持比例缩放到整页可见。 */
-  max-height: var(--lumi-content-height, calc(var(--lumi-page-height, 100vh) - 32px));
   object-fit: contain;
+}
+/* 分页中的图片必须作为一个整体进入某一栏。出版社常在纯图片容器上写固定高度或
+   overflow:hidden；横屏后这会把图片留在半页位置并裁掉下半截。 */
+html.lumi-paginated body[data-lumi-layout="reflowable"]:not([data-lumi-media-only="true"])
+  [data-lumi-media-wrapper="true"] {
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: var(--lumi-content-height, 100vh) !important;
+  overflow: visible !important;
+  break-inside: avoid-column !important;
+  -webkit-column-break-inside: avoid !important;
+}
+html.lumi-paginated body[data-lumi-layout="reflowable"]:not([data-lumi-media-only="true"]) img:not([data-lumi-footnote-marker="true"]),
+html.lumi-paginated body[data-lumi-layout="reflowable"]:not([data-lumi-media-only="true"]) svg,
+html.lumi-paginated body[data-lumi-layout="reflowable"]:not([data-lumi-media-only="true"]) video,
+html.lumi-paginated body[data-lumi-layout="reflowable"]:not([data-lumi-media-only="true"]) canvas {
+  max-height: var(--lumi-content-height, 100vh) !important;
+  object-fit: contain !important;
+  vertical-align: top !important;
+  break-inside: avoid-column !important;
+  -webkit-column-break-inside: avoid !important;
+}
+html.lumi-paginated body[data-lumi-layout="reflowable"]:not([data-lumi-media-only="true"]) img:not([data-lumi-footnote-marker="true"]) {
+  height: auto !important;
 }
 /* 注释引用图标（脚注标记）是行内小图：上面的块级/居中处理会把它们推到单独一行、并放大到
    整页宽度，表现为"注释图标位置不对"。这里还原成行内、按字号缩放。
@@ -665,6 +770,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
 """
 
     private const val MEDIA_ONLY_ATTR = "data-lumi-media-only"
+    private const val MEDIA_WRAPPER_ATTR = "data-lumi-media-wrapper"
     private const val BLEED_ATTR = "data-lumi-bleed"
     private const val BLEED_HORIZONTAL = "horizontal"
     private const val BLEED_HORIZONTAL_TOP = "horizontal-top"

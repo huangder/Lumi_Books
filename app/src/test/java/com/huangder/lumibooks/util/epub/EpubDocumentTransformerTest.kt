@@ -106,6 +106,33 @@ class EpubDocumentTransformerTest {
     }
 
     @Test
+    fun invisiblePublisherSpacersDoNotPreventFullPageImageLayout() {
+        val source = """
+            <html><body><span hidden="hidden">screen reader label</span><span style="display: none">hidden label</span>
+              <div class="plate">&nbsp;&#x200B;&#xFEFF;<img src="../Images/plate.jpg"/>&#x00AD;</div>
+            </body></html>
+        """.trimIndent()
+        val resource = EpubResource("OPS/Text/plate.xhtml", "application/xhtml+xml", source.toByteArray())
+
+        val output = EpubDocumentTransformer.transform(
+            resource,
+            EpubRenditionLayout.REFLOWABLE
+        ).toString(Charsets.UTF_8)
+        val document = Jsoup.parse(output, "", Parser.xmlParser())
+        val fixedDocument = Jsoup.parse(
+            EpubDocumentTransformer.transform(resource, EpubRenditionLayout.PRE_PAGINATED)
+                .toString(Charsets.UTF_8),
+            "",
+            Parser.xmlParser()
+        )
+
+        assertTrue(EpubDocumentTransformer.isMediaOnlyPage(resource))
+        assertEquals("true", document.body().attr("data-lumi-media-only"))
+        assertEquals("true", document.selectFirst("img")!!.attr("data-lumi-cover-media"))
+        assertEquals("true", fixedDocument.body().attr("data-lumi-media-only"))
+    }
+
+    @Test
     fun fixedLayoutImagePageIgnoresMarginsWithoutCoverStyling() {
         val source = """
             <html><head><meta name="viewport" content="width=1200,height=1600"/></head>
@@ -148,6 +175,52 @@ class EpubDocumentTransformerTest {
         assertEquals("horizontal", images[1].attr("data-lumi-bleed"))
         assertTrue(output.contains("--lumi-inset-left"))
         assertTrue(output.contains("width: calc(100% + var(--lumi-inset-left, 0px) + var(--lumi-inset-right, 0px)) !important"))
+    }
+
+    @Test
+    fun marksFullWidthImageWrapperAsBleedingAndKeepsPaginatedMediaWhole() {
+        val source = """
+            <html><body>
+              <div class="hero"><img src="../Images/banner.jpg"/></div>
+              <p>正文</p>
+              <p class="inline"><img src="../Images/inline.jpg"/></p>
+            </body></html>
+        """.trimIndent()
+        val cssIndex = EpubCssIndex.parse(listOf("OPS/Styles/main.css" to ".hero { width: 100%; overflow: hidden; }"))
+
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("OPS/Text/chapter.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE,
+            isCoverCandidate = false,
+            cssIndex = cssIndex
+        ).toString(Charsets.UTF_8)
+        val document = Jsoup.parse(output, "", Parser.xmlParser())
+        val images = document.select("img")
+
+        assertEquals("horizontal-top", images[0].attr("data-lumi-bleed"))
+        assertFalse(images[1].hasAttr("data-lumi-bleed"))
+        assertEquals("true", document.selectFirst(".hero")!!.attr("data-lumi-media-wrapper"))
+        assertEquals("true", document.selectFirst(".inline")!!.attr("data-lumi-media-wrapper"))
+        assertTrue(output.contains("break-inside: avoid-column !important"))
+        assertTrue(output.contains("height: auto !important"))
+        assertTrue(output.contains("max-height: var(--lumi-content-height, 100vh) !important"))
+    }
+
+    @Test
+    fun considersChapterInlineStylesWhenMarkingFullWidthMedia() {
+        val source = """
+            <html><head><style>.chapter-art img { width: 100vw; }</style></head><body>
+              <p>&nbsp;&#x200B;</p><div class="chapter-art"><img src="../Images/banner.jpg"/></div><p>正文</p>
+            </body></html>
+        """.trimIndent()
+
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("OPS/Text/chapter.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE
+        ).toString(Charsets.UTF_8)
+        val document = Jsoup.parse(output, "", Parser.xmlParser())
+
+        assertEquals("horizontal-top", document.selectFirst("img")!!.attr("data-lumi-bleed"))
     }
 
     @Test

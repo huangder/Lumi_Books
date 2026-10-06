@@ -3257,25 +3257,16 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 } else {
                     // 出版社给了尺寸（width="12%"、style="width:60px"）就按它排，
                     // 装饰小图不再被拉满正文列宽。
-                    sizeHints[source]?.resolveWidthPx(pageW, density) ?: pageW
+                    (sizeHints[source]?.resolveWidthPx(pageW, density) ?: pageW).coerceIn(1, pageW)
                 }
-                // 整页图（漫画页）按"正文列宽 × 列高"等比铺满，避免超出一页被拆开；
-                // 普通插图仍按宽度封顶、不放大。
-                val imageBounds = if (allowUpscale) {
-                    ReaderImageSizing.fitBounds(
-                        originalWidth = originalWidth,
-                        originalHeight = originalHeight,
-                        maxWidth = targetWidth,
-                        maxHeight = pageContentHeight
-                    )
-                } else {
-                    ReaderImageSizing.bounds(
-                        originalWidth,
-                        originalHeight,
-                        targetWidth,
-                        allowUpscale = false
-                    )
-                }
+                // Every paged illustration must fit its column, including multi-image chapters.
+                val imageBounds = ReaderImageSizing.bounds(
+                    originalWidth,
+                    originalHeight,
+                    targetWidth,
+                    allowUpscale = allowUpscale,
+                    contentHeight = if (isInlineMarker) 0 else pageContentHeight
+                )
                     ?: return createErrorPlaceholder("Invalid image dimensions: ${entry.name.take(60)}")
 
                 LazyEpubImageDrawable(
@@ -3307,17 +3298,11 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             }
             val density = (context?.resources?.displayMetrics
                 ?: android.content.res.Resources.getSystem().displayMetrics).density
-            val targetWidth = sizeHints[source]?.resolveWidthPx(pageW, density) ?: pageW
-            val bounds = if (allowUpscale) {
-                ReaderImageSizing.fitBounds(
-                    originalWidth = intrinsic.width,
-                    originalHeight = intrinsic.height,
-                    maxWidth = targetWidth,
-                    maxHeight = pageContentHeight
-                )
-            } else {
-                ReaderImageSizing.bounds(intrinsic.width, intrinsic.height, targetWidth)
-            }
+            val targetWidth = (sizeHints[source]?.resolveWidthPx(pageW, density) ?: pageW).coerceIn(1, pageW)
+            val bounds = ReaderImageSizing.bounds(
+                intrinsic.width, intrinsic.height, targetWidth,
+                allowUpscale = allowUpscale, contentHeight = pageContentHeight
+            )
                 ?: return null
             return LazyEpubImageDrawable(
                 zipFile = zipFile,
@@ -3456,11 +3441,11 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                     val marginPx = (38 * dm.density).toInt()
                     dm.widthPixels - marginPx * 2
                 }
-                val imageBounds = ReaderImageSizing.bounds(originalWidth, originalHeight, pageW)
+                val imageBounds = ReaderImageSizing.bounds(originalWidth, originalHeight, pageW,
+                    allowUpscale = allowUpscale, contentHeight = pageContentHeight)
                     ?: return null
-                val ratio = imageBounds.width.toFloat() / bitmap.width.coerceAtLeast(1)
                 val drawW = imageBounds.width
-                val drawH = (bitmap.height * ratio).toInt().coerceAtLeast(1)
+                val drawH = imageBounds.height
                 val drawable = BitmapDrawable(null, bitmap)
                 drawable.setBounds(0, 0, drawW, drawH)
                 return drawable

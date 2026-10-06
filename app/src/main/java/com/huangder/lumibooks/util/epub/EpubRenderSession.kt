@@ -340,6 +340,10 @@ class EpubRenderSession private constructor(
         val chapter = logicalChapters.getOrNull(chapterIndex) ?: return null
         val spineItem = epubPackage.spine.getOrNull(chapter.spineIndex) ?: return null
         val raw = readRawChapter(chapter.path) ?: return null
+        // Generated Markdown is a single, already sanitized document. Comic annotation would
+        // parse and serialize its entire DOM again and introduce locator-changing whitespace.
+        if (chapter.startAnchor == null && raw.bytes.take(4096).toByteArray().toString(Charsets.UTF_8)
+                .contains("<body data-lumi-markdown=\"true\">")) return raw
         val sliced = sliceEpubLogicalChapter(
             EpubComicIndexer.annotate(epubPackage, chapter.path, chapterIndex, raw.bytes), chapter.startAnchor, chapter.endAnchor
         )

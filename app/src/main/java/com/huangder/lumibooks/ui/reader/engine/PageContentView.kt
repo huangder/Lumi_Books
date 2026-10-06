@@ -13,7 +13,6 @@ import android.text.Spannable
 import android.text.Spanned
 import android.text.SpannableStringBuilder
 import android.text.style.ClickableSpan
-import android.text.style.DynamicDrawableSpan
 import android.text.style.ImageSpan
 import android.text.style.URLSpan
 import android.util.Log
@@ -954,15 +953,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
             val imageLeft = textView.totalPaddingLeft +
                 (geometry?.horizontalPosition(spanStart)
                     ?: textLayout.getPrimaryHorizontal(spanStart)) - textView.scrollX
-            val lineTop = textLayout.getLineTop(line).toFloat()
-            val lineBottom = textLayout.getLineBottom(line).toFloat()
-            val imageTopInLayout = when (image.verticalAlignment) {
-                DynamicDrawableSpan.ALIGN_BASELINE ->
-                    textLayout.getLineBaseline(line).toFloat() - imageHeight
-                DynamicDrawableSpan.ALIGN_CENTER ->
-                    lineTop + (lineBottom - lineTop - imageHeight) / 2f
-                else -> lineBottom - imageHeight
-            }
+            val imageTopInLayout = readerImageTop(textLayout, line, image)
             val imageTop = textView.totalPaddingTop + imageTopInLayout - textView.scrollY
             val imageRight = imageLeft + imageWidth
             val imageBottom = imageTop + imageHeight
