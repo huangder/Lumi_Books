@@ -128,7 +128,7 @@ import com.huangder.lumibooks.ui.animation.LocalBookReaderAnchorScope
 import com.huangder.lumibooks.ui.animation.bookCoverTransitionAnchor
 import com.huangder.lumibooks.ui.layout.currentAdaptiveWindowInfo
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
-import com.huangder.lumibooks.ui.components.BookCoverCloudBadge
+import com.huangder.lumibooks.ui.components.BookCoverStatusBadge
 import com.huangder.lumibooks.ui.components.BookProgressStatus
 import com.huangder.lumibooks.ui.components.CloudAwareBookDeleteDialog
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
@@ -2619,7 +2619,7 @@ private fun BookGridItem(
                     )
                 }
             }
-            BookCoverCloudBadge(
+            BookCoverStatusBadge(
                 book = book,
                 compact = true
             )

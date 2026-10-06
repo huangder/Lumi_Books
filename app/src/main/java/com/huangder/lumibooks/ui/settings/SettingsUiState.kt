@@ -80,6 +80,7 @@ data class SettingsUiState(
     val menuAnimationStyle: String = com.huangder.lumibooks.domain.model.MenuAnimationStyle.LIQUID.storedValue,
     val entranceAnimationsEnabled: Boolean = true,
     val bookOpenTransition: String = BookOpenTransition.HERO.storedValue, // "hero" / "loading_page"
+    val coverReadingProgressEnabled: Boolean = false,
     val eInkModeEnabled: Boolean = false,
     val twoPageSpreadEnabled: Boolean = true,
     val predictiveBackEnabled: Boolean = true,

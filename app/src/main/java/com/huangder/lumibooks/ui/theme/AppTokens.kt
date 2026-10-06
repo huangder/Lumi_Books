@@ -35,6 +35,7 @@ val LocalLiquidGlassCapability = staticCompositionLocalOf {
 val LocalEInkMode = staticCompositionLocalOf { false }
 val LocalMotionEnabled = staticCompositionLocalOf { true }
 val LocalCardOutlinesEnabled = staticCompositionLocalOf { false }
+val LocalCoverReadingProgressEnabled = staticCompositionLocalOf { false }
 
 /** Adds the optional high-contrast edge used by standard (non-liquid) cards. */
 @Composable

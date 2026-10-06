@@ -1158,6 +1158,7 @@
     <string name="motion_preference_reduced">モーションを減らす</string>
     <string name="motion_preference_standard">標準</string>
     <string name="book_open_transition_label">本を開く演出</string>
+    <string name="cover_reading_progress_enabled">表紙に読書の進捗を表示</string>
     <string name="book_open_transition_hero">シームレス</string>
     <string name="book_open_transition_loading_page">ローディング画面</string>
     <string name="page_turn_module_label">ページめくり</string>

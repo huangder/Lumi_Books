@@ -1158,6 +1158,7 @@
     <string name="motion_preference_reduced">모션 줄이기</string>
     <string name="motion_preference_standard">표준</string>
     <string name="book_open_transition_label">책 열기 전환</string>
+    <string name="cover_reading_progress_enabled">표지에 읽기 진행률 표시</string>
     <string name="book_open_transition_hero">심리스</string>
     <string name="book_open_transition_loading_page">로딩 화면</string>
     <string name="page_turn_module_label">페이지 넘기기</string>

@@ -234,6 +234,7 @@ private fun HighlightedCover(
                 )
             }
         }
+        com.huangder.lumibooks.ui.components.BookCoverReadingProgress(book, compact = true)
     }
 }
 

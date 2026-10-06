@@ -1590,6 +1590,33 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .clickable { viewModel.saveCoverReadingProgressEnabled(!uiState.coverReadingProgressEnabled) }
+                .padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(AppIcons.BookOpen, contentDescription = null,
+                tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(AppSpace.md))
+            Text(
+                stringResource(R.string.cover_reading_progress_enabled),
+                fontSize = AppType.Body,
+                color = AppColors.TextPrimary,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.width(12.dp))
+            LiquidGlassSwitch(
+                checked = uiState.coverReadingProgressEnabled,
+                onCheckedChange = viewModel::saveCoverReadingProgressEnabled
+            )
+        }
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    DetailCard {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
                 .clickable { viewModel.saveSplashEnabled(!uiState.splashEnabled) }
                 .padding(AppSpace.md),
             verticalAlignment = Alignment.CenterVertically

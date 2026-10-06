@@ -22,6 +22,7 @@
     <string name="motion_preference_standard">Standard</string>
     <string name="motion_preference_reduced">Reduced</string>
     <string name="book_open_transition_label">Opening a book</string>
+    <string name="cover_reading_progress_enabled">Reading progress on covers</string>
     <string name="book_open_transition_hero">Seamless</string>
     <string name="book_open_transition_loading_page">Loading page</string>
     <string name="label_app_theme">Theme</string>

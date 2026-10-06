@@ -343,6 +343,7 @@ class DataStoreManager @Inject constructor(
         private val MOTION_PREFERENCE = stringPreferencesKey("motion_preference")
         private val MENU_ANIMATION_STYLE = stringPreferencesKey("menu_animation_style")
         private val BOOK_OPEN_TRANSITION = stringPreferencesKey("book_open_transition")
+        private val COVER_READING_PROGRESS_ENABLED = booleanPreferencesKey("cover_reading_progress_enabled")
         private val E_INK_MODE_ENABLED = booleanPreferencesKey("e_ink_mode_enabled")
         private val TWO_PAGE_SPREAD_ENABLED = booleanPreferencesKey("two_page_spread_enabled")
         private val PAGE_RENDER_MODE = stringPreferencesKey("page_render_mode")
@@ -962,6 +963,16 @@ class DataStoreManager @Inject constructor(
 
     val eInkModeEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[E_INK_MODE_ENABLED] ?: false
+    }
+
+    val coverReadingProgressEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[COVER_READING_PROGRESS_ENABLED] ?: false
+    }.distinctUntilChanged()
+
+    suspend fun saveCoverReadingProgressEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[COVER_READING_PROGRESS_ENABLED] = enabled
+        }
     }
 
     val twoPageSpreadEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->

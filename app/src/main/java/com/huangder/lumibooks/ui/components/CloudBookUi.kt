@@ -34,6 +34,7 @@ import com.huangder.lumibooks.data.sync.BookDownloadState
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.BookDeleteMode
 import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.LocalCoverReadingProgressEnabled
 
 @Composable
 fun CloudBookDownloadDialog(
@@ -140,9 +141,9 @@ fun CloudAwareBookDeleteDialog(
     )
 }
 
-/** Draws only the static cloud affordance; progress is rendered in the book metadata area. */
+/** Cover status follows the progress preference; cloud affordances remain visible in both modes. */
 @Composable
-fun BookCoverCloudBadge(
+fun BookCoverStatusBadge(
     book: Book,
     modifier: Modifier = Modifier,
     compact: Boolean = false
@@ -169,6 +170,42 @@ fun BookCoverCloudBadge(
                 )
             }
         }
+    } else {
+        BookCoverReadingProgress(book, modifier, compact)
+    }
+}
+
+@Composable
+fun BookCoverReadingProgress(
+    book: Book,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false
+) {
+    if (!LocalCoverReadingProgressEnabled.current || book.isCloudOnly) return
+    val cornerRadius = 8.dp
+    Box(
+        modifier = modifier.fillMaxSize().padding(if (compact) 5.dp else 7.dp),
+        contentAlignment = Alignment.BottomEnd
+    ) {
+        if (book.isReadingFinished) {
+            FinishedReadingIndicator(
+                compact = compact,
+                showContainer = true,
+                tint = Color.White,
+                containerCornerRadius = cornerRadius
+            )
+        } else {
+            Text(
+                text = formatReadingProgressPercent(book.readingProgress),
+                modifier = Modifier
+                    .clip(AppRoundedCornerShape(cornerRadius))
+                    .background(Color.Black.copy(alpha = 0.64f))
+                    .padding(horizontal = if (compact) 4.dp else 5.dp, vertical = 2.dp),
+                fontSize = if (compact) 10.sp else 12.sp,
+                color = Color.White,
+                maxLines = 1
+            )
+        }
     }
 }
 
@@ -183,6 +220,7 @@ fun BookProgressStatus(
     progressColor: Color = AppColors.Accent
 ) {
     val downloading = downloadState as? BookDownloadState.Downloading
+    if (LocalCoverReadingProgressEnabled.current && !book.isCloudOnly && downloading == null) return
     when {
         downloading != null -> Text(
             text = stringResource(

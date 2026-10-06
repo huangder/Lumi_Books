@@ -91,7 +91,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.data.sync.BookDownloadState
-import com.huangder.lumibooks.ui.components.BookCoverCloudBadge
+import com.huangder.lumibooks.ui.components.BookCoverStatusBadge
 import com.huangder.lumibooks.ui.components.BookProgressStatus
 import com.huangder.lumibooks.domain.model.LibraryFolder
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
@@ -675,7 +675,7 @@ private fun BookshelfSearchResultCard(
                     )
                 }
 
-                BookCoverCloudBadge(
+                BookCoverStatusBadge(
                     book = book,
                     compact = true
                 )

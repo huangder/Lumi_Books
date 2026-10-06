@@ -261,6 +261,11 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            dataStoreManager.coverReadingProgressEnabled.collectLatest { enabled ->
+                _uiState.update { it.copy(coverReadingProgressEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.twoPageSpreadEnabled.collectLatest { enabled ->
                 _uiState.value = _uiState.value.copy(twoPageSpreadEnabled = enabled)
             }
@@ -660,6 +665,13 @@ class SettingsViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(eInkModeEnabled = enabled)
         viewModelScope.launch {
             dataStoreManager.saveEInkModeEnabled(enabled)
+        }
+    }
+
+    fun saveCoverReadingProgressEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(coverReadingProgressEnabled = enabled) }
+        viewModelScope.launch {
+            dataStoreManager.saveCoverReadingProgressEnabled(enabled)
         }
     }
 

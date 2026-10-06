@@ -91,7 +91,7 @@ import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.animation.OverscrollBounceState
 import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
-import com.huangder.lumibooks.ui.components.BookCoverCloudBadge
+import com.huangder.lumibooks.ui.components.BookCoverStatusBadge
 import com.huangder.lumibooks.ui.components.BookProgressStatus
 import com.huangder.lumibooks.ui.components.CloudAwareBookDeleteDialog
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -539,7 +539,7 @@ private fun ContinueReadingCard(
                         useKaiTi = true,
                         textAlignCenter = true
                     ),
-                    showReadingProgress = false
+                    showReadingProgress = com.huangder.lumibooks.ui.theme.LocalCoverReadingProgressEnabled.current
                 )
                 .clip(AppRoundedCornerShape(AppRadius.sm))
                 .background(AppColors.BgGray)
@@ -563,7 +563,7 @@ private fun ContinueReadingCard(
                     contentScale = ContentScale.Crop
                 )
             }
-            BookCoverCloudBadge(
+            BookCoverStatusBadge(
                 book = book,
                 compact = true
             )
@@ -786,6 +786,7 @@ private fun RecentBookCard(
                     contentScale = ContentScale.Crop
                 )
             }
+            BookCoverStatusBadge(book = book, compact = true)
         }
         Spacer(Modifier.width(AppSpace.sm))
         Column(modifier = Modifier.weight(1f)) {
@@ -1078,7 +1079,7 @@ private fun BooksReadGrid(
                             contentScale = ContentScale.Crop
                         )
                     }
-                    BookCoverCloudBadge(
+                    BookCoverStatusBadge(
                         book = book,
                         compact = true
                     )

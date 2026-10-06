@@ -906,7 +906,7 @@ internal fun Modifier.bookCoverTransitionAnchor(
     cornerRadiusDp: Float,
     anchorId: Any? = null,
     titleStyle: BookCoverTitleStyle? = null,
-    showReadingProgress: Boolean = true,
+    showReadingProgress: Boolean = com.huangder.lumibooks.ui.theme.LocalCoverReadingProgressEnabled.current,
     presentation: BookReaderPresentation = BookReaderPresentation.Window
 ): Modifier {
     val anchors = LocalBookReaderAnchorScope.current ?: return this
@@ -1272,6 +1272,11 @@ internal fun BookHeroWindowOverlay(
                         maxLines = titleStyle.maxLines,
                         overflow = TextOverflow.Ellipsis
                     )
+                }
+                if (transition.coverShowsReadingProgress) {
+                    transition.coverBook?.let { book ->
+                        com.huangder.lumibooks.ui.components.BookCoverReadingProgress(book, compact = true)
+                    }
                 }
                 Box(
                     modifier = Modifier

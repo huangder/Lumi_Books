@@ -284,6 +284,7 @@ internal fun CoverFlowCover(book: Book, modifier: Modifier = Modifier) {
             overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(12.dp))
         if (book.coverPath != null) AsyncImage(request, contentDescription = null,
             modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        com.huangder.lumibooks.ui.components.BookCoverReadingProgress(book, compact = true)
     }
 }
 
