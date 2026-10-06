@@ -100,7 +100,6 @@ import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import com.huangder.lumibooks.ui.animation.VisualMotion
 import com.huangder.lumibooks.ui.theme.drawAppShape
 import androidx.compose.ui.draw.blur
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
@@ -4912,6 +4911,7 @@ fun ReaderScreen(
 
     SelectionMenuSettingsDialog(
         visible = showMenuSettings,
+        backdrop = activeReaderGlassBackdrop,
         currentItems = uiState.selectionMenuItems,
         onDismiss = { showMenuSettings = false },
         onSave = { items ->
@@ -4952,6 +4952,7 @@ fun ReaderScreen(
 
     ReaderExternalLinkDialog(
         href = pendingExternalLink,
+        backdrop = activeReaderGlassBackdrop,
         onDismiss = { pendingExternalLink = null },
         onOpen = { href ->
             pendingExternalLink = null
@@ -5030,23 +5031,25 @@ fun ReaderScreen(
 @Composable
 private fun ReaderExternalLinkDialog(
     href: String?,
+    backdrop: Backdrop?,
     onDismiss: () -> Unit,
     onOpen: (String) -> Unit
 ) {
     if (href == null) return
-    AlertDialog(
+    LiquidGlassAlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.reader_external_link_title)) },
-        text = { Text(stringResource(R.string.reader_external_link_message, href)) },
+        backdrop = backdrop,
+        title = { Text(stringResource(R.string.reader_external_link_title), color = AppColors.TextPrimary, fontWeight = FontWeight.SemiBold) },
+        text = { Text(stringResource(R.string.reader_external_link_message, href),
+            color = AppColors.TextSecondary, lineHeight = 22.sp,
+            modifier = Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState())) },
         confirmButton = {
-            TextButton(onClick = { onOpen(href) }) {
-                Text(stringResource(R.string.reader_external_link_open))
-            }
+            LiquidGlassTextButton(text = stringResource(R.string.reader_external_link_open),
+                onClick = { onOpen(href) }, tintedColor = AppColors.Accent, contentColor = AppColors.OnAccent)
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
-            }
+            LiquidGlassTextButton(text = stringResource(R.string.cancel), onClick = onDismiss,
+                contentColor = AppColors.TextPrimary)
         }
     )
 }
@@ -10446,6 +10449,7 @@ private fun SelectionMenuOverlay(
 @Composable
 private fun SelectionMenuSettingsDialog(
     visible: Boolean,
+    backdrop: Backdrop?,
     currentItems: Map<String, Boolean>,
     onDismiss: () -> Unit,
     onSave: (Map<String, Boolean>) -> Unit
@@ -10467,8 +10471,9 @@ private fun SelectionMenuSettingsDialog(
         if (visible) localItems = currentItems
     }
 
-    AlertDialog(
+    LiquidGlassAlertDialog(
         onDismissRequest = onDismiss,
+        backdrop = backdrop,
         title = {
             Text(
                 stringResource(R.string.selection_menu_settings),
@@ -10514,14 +10519,12 @@ private fun SelectionMenuSettingsDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(localItems) }) {
-                Text(stringResource(R.string.confirm))
-            }
+            LiquidGlassTextButton(text = stringResource(R.string.confirm), onClick = { onSave(localItems) },
+                tintedColor = AppColors.Accent, contentColor = AppColors.OnAccent)
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
-            }
+            LiquidGlassTextButton(text = stringResource(R.string.cancel), onClick = onDismiss,
+                contentColor = AppColors.TextPrimary)
         }
     )
 }
