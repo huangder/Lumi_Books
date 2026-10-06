@@ -13,6 +13,12 @@ interface TtsPlaybackEngine {
 
     suspend fun initialize(): Result<Unit>
 
+    /** Discards a failed engine instance before restoring its selected voice and settings. */
+    suspend fun reinitialize(): Result<Unit> {
+        stop()
+        return initialize()
+    }
+
     suspend fun speak(text: String, utteranceId: String): Result<Unit>
 
     /** Best-effort memory-only prefetch. Implementations may ignore it. */
@@ -42,6 +48,9 @@ interface TtsPlaybackEngine {
     suspend fun resume(): Boolean
 
     suspend fun stop()
+
+    /** Ends the spoken page while retaining the next prepared sentence on a normal page turn. */
+    suspend fun stopForPageTurn() = stop()
 
     suspend fun setSpeechRate(rate: Float)
 

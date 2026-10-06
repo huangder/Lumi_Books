@@ -16,6 +16,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TtsControllerTest {
@@ -184,6 +185,82 @@ class TtsControllerTest {
             runCurrent()
             assertEquals(TtsPlaybackState.PLAYING, controller.playbackState.value)
             assertEquals(listOf("第一句。"), engine.spokenTexts)
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun systemPlaybackErrorReinitializesAndReplaysTheCurrentSentence() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val engine = FakePlaybackEngine()
+        val controller = controller(engine)
+        try {
+            controller.start("book", FakePageSource(page(0, "第一句。第二句。")), 0, 0)
+            val failedId = engine.lastUtteranceId
+
+            engine.error(failedId)
+            runCurrent()
+
+            assertEquals(listOf("第一句。", "第一句。"), engine.spokenTexts)
+            assertEquals(TtsPlaybackState.PLAYING, controller.playbackState.value)
+            assertEquals(2, engine.initializeCalls)
+
+            // A late callback from the failed utterance must not stop the retry.
+            engine.error(failedId)
+            runCurrent()
+            assertEquals(TtsPlaybackState.PLAYING, controller.playbackState.value)
+
+            engine.complete(engine.lastUtteranceId)
+            runCurrent()
+            assertEquals("第二句。", controller.currentSentence.value?.text)
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun repeatedSystemPlaybackErrorPausesWithoutDiscardingTheSession() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val engine = FakePlaybackEngine()
+        val controller = controller(engine)
+        try {
+            controller.start("book", FakePageSource(page(0, "第一句。")), 0, 0)
+            val firstId = engine.lastUtteranceId
+            engine.error(firstId)
+            runCurrent()
+            val retryId = engine.lastUtteranceId
+
+            engine.error(retryId)
+            runCurrent()
+
+            assertEquals(TtsPlaybackState.PAUSED, controller.playbackState.value)
+            assertEquals("第一句。", controller.currentSentence.value?.text)
+            assertEquals("book", controller.activeBookId.value)
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun engineInitializationFailureAfterPlaybackErrorLeavesTheSentencePaused() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val engine = FakePlaybackEngine()
+        val controller = controller(engine)
+        try {
+            controller.start("book", FakePageSource(page(0, "第一句。")), 0, 0)
+            engine.failNextInitialize = true
+            engine.error(engine.lastUtteranceId)
+            runCurrent()
+
+            assertEquals(TtsPlaybackState.PAUSED, controller.playbackState.value)
+            assertEquals("第一句。", controller.currentSentence.value?.text)
         } finally {
             controller.shutdown()
             runCurrent()
@@ -1039,6 +1116,71 @@ class TtsControllerTest {
         }
     }
 
+    @Test
+    fun systemEnginePrefetchesTheWholeNextSentenceAcrossPages() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val engine = FakePlaybackEngine()
+        val controller = controller(engine)
+        try {
+            controller.start("book", FakePageSource(
+                page(0, "One. Two, together.", next = TtsPageLocation(0, 1)),
+                page(1, "Three.", previous = TtsPageLocation(0, 0))), 0, 0)
+            runCurrent()
+            assertEquals(listOf("Two, together."), engine.prefetchedTexts)
+            engine.complete(engine.lastUtteranceId)
+            runCurrent()
+            assertEquals(listOf("Two, together.", "Three."), engine.prefetchedTexts)
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun prefetchMergesTheSameCrossPageSentenceAsPlayback() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val engine = FakePlaybackEngine()
+        val controller = controller(engine)
+        try {
+            controller.start("book", FakePageSource(
+                page(0, "One. Continuing", next = TtsPageLocation(0, 1)),
+                page(1, " the sentence. Next.", previous = TtsPageLocation(0, 0))), 0, 0)
+            runCurrent()
+            engine.complete(engine.lastUtteranceId)
+            runCurrent()
+            assertEquals(engine.prefetchedTexts.first(), engine.spokenTexts.last())
+            assertTrue(engine.spokenTexts.last().contains("the sentence."))
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun rawAudioIOExceptionRetriesAndNewSentenceGetsItsOwnRetryBudget() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val engine = FakePlaybackEngine()
+        val controller = controller(engine)
+        try {
+            controller.start("book", FakePageSource(page(0, "One. Two.")), 0, 0)
+            engine.error(engine.lastUtteranceId, IOException("AudioTrack initialization failed"))
+            runCurrent()
+            assertEquals(listOf("One.", "One."), engine.spokenTexts)
+            controller.skip()
+            runCurrent()
+            engine.error(engine.lastUtteranceId)
+            runCurrent()
+            assertEquals(listOf("One.", "One.", "Two.", "Two."), engine.spokenTexts)
+            assertEquals(3, engine.initializeCalls)
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
     private fun controller(
         systemEngine: FakePlaybackEngine,
         externalEngine: FakePlaybackEngine = FakePlaybackEngine(isExternal = true),
@@ -1099,18 +1241,28 @@ class TtsControllerTest {
     ) : AndroidTtsPlaybackEngine {
         private lateinit var listener: TtsPlaybackListener
         val spokenTexts = mutableListOf<String>()
+        val prefetchedTexts = mutableListOf<String>()
         val selectedEnginePackages = mutableListOf<String?>()
         val suppliedCacheKeys = mutableListOf<String?>()
         val suppliedStartFrames = mutableListOf<Long>()
         val prosodyApplications = mutableListOf<Pair<Float?, Float?>>()
         var lastUtteranceId = ""
+        var initializeCalls = 0
+        var failNextInitialize = false
         var rejectNextProsody = false
 
         override suspend fun selectEngine(packageName: String?) {
             selectedEnginePackages += packageName
         }
 
-        override suspend fun initialize(): Result<Unit> = Result.success(Unit)
+        override suspend fun initialize(): Result<Unit> {
+            initializeCalls++
+            if (failNextInitialize) {
+                failNextInitialize = false
+                return Result.failure(SystemTtsException.Initialization())
+            }
+            return Result.success(Unit)
+        }
 
         override suspend fun speak(text: String, utteranceId: String): Result<Unit> {
             spokenTexts += text
@@ -1131,6 +1283,9 @@ class TtsControllerTest {
         }
 
         fun complete(utteranceId: String) = listener.onDone(utteranceId)
+        fun error(utteranceId: String, error: Throwable = SystemTtsException.Playback()) =
+            listener.onError(utteranceId, error)
+        override suspend fun prefetch(text: String) { prefetchedTexts += text }
         fun range(utteranceId: String, start: Int, end: Int) =
             listener.onRangeStart(utteranceId, start, end)
         fun interrupt() = listener.onPlaybackInterrupted()
