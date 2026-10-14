@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
@@ -24,6 +25,7 @@ import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 import com.huangder.lumibooks.ui.components.LiquidGlassSwitch
+import com.huangder.lumibooks.ui.components.lumiCardSurface
 import com.huangder.lumibooks.ui.settings.DetailActivity
 import com.huangder.lumibooks.ui.settings.FeedbackActivity
 import com.huangder.lumibooks.ui.theme.*
@@ -60,6 +62,7 @@ fun LocalDictionarySettings(viewModel: DictionaryViewModel = hiltViewModel()) {
     var information by remember { mutableStateOf<DictionaryCatalogItem?>(null) }
     var remove by remember { mutableStateOf<DictionaryCatalogItem?>(null) }
     Column(Modifier.padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        DictionarySectionCard {
         Text(stringResource(R.string.dictionary_management_intro), fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
         LiquidGlassTextButton(stringResource(R.string.translation_settings), {
             com.huangder.lumibooks.translation.openTranslationSettings(context)
@@ -67,6 +70,8 @@ fun LocalDictionarySettings(viewModel: DictionaryViewModel = hiltViewModel()) {
         LiquidGlassTextButton(stringResource(R.string.dictionary_refresh), { viewModel.action { refreshCatalog() } }, enabled = !state.refreshing)
         if (state.refreshing) LinearProgressIndicator(Modifier.fillMaxWidth())
         (error ?: state.error)?.let { Text(it, color = AppColors.TextSecondary, fontSize = AppType.BodySmall) }
+        }
+        DictionarySectionCard {
         for ((index, item) in state.items.withIndex()) {
             val d = item.descriptor
             Column(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -108,9 +113,12 @@ fun LocalDictionarySettings(viewModel: DictionaryViewModel = hiltViewModel()) {
             }
             HorizontalDivider(color = AppColors.Divider)
         }
+        }
+        DictionarySectionCard {
         Text(stringResource(R.string.dictionary_disclaimer_title), fontSize = AppType.Section, color = AppColors.TextPrimary, fontWeight = FontWeight.SemiBold)
         Text(stringResource(R.string.dictionary_disclaimer_full), fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
         LiquidGlassTextButton(stringResource(R.string.dictionary_feedback), { openDictionaryFeedback(context) })
+        }
         Spacer(Modifier.height(24.dp))
     }
     confirm?.let { item ->
@@ -135,6 +143,19 @@ fun LocalDictionarySettings(viewModel: DictionaryViewModel = hiltViewModel()) {
             confirmButton = { LiquidGlassTextButton(stringResource(R.string.dictionary_delete), { remove = null; viewModel.action { delete(item.descriptor.id) } }) },
             dismissButton = { LiquidGlassTextButton(stringResource(R.string.cancel), { remove = null }) })
     }
+}
+
+@Composable
+private fun DictionarySectionCard(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(AppRoundedCornerShape(AppRadius.md))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
+            .padding(AppSpace.md),
+        verticalArrangement = Arrangement.spacedBy(AppSpace.sm),
+        content = content
+    )
 }
 
 @Composable

@@ -21,6 +21,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -132,42 +133,44 @@ fun ExternalTtsSettingsDetail(
             .padding(horizontal = AppSpace.md, vertical = AppSpace.sm),
         verticalArrangement = Arrangement.spacedBy(AppSpace.md)
     ) {
-        ExternalTtsStatusCard(settings = currentSettings, onConfigure = onConfigure)
+        ExternalTtsSectionCard {
+            ExternalTtsStatusCard(settings = currentSettings, onConfigure = onConfigure)
 
-        if (!isEnabled) {
-            ExternalTtsPrimaryButton(
-                label = stringResource(R.string.external_tts_configure),
-                onClick = onConfigure
-            )
-        }
+            if (!isEnabled) {
+                ExternalTtsPrimaryButton(
+                    label = stringResource(R.string.external_tts_configure),
+                    onClick = onConfigure
+                )
+            }
 
-        if (isEnabled && hasToken) {
-            ExternalTtsSecondaryButton(
-                label = stringResource(R.string.external_tts_test_connection),
-                icon = AppIcons.Pulse,
-                onClick = viewModel::testExternalTtsConnection
-            )
-        }
+            if (isEnabled && hasToken) {
+                ExternalTtsSecondaryButton(
+                    label = stringResource(R.string.external_tts_test_connection),
+                    icon = AppIcons.Pulse,
+                    onClick = viewModel::testExternalTtsConnection
+                )
+            }
 
-        if (isEnabled) {
-            ExternalTtsSecondaryButton(
-                label = stringResource(R.string.external_tts_disable_only),
-                icon = AppIcons.CloudSlash,
-                onClick = { viewModel.disableExternalTts(clearKey = false) }
-            )
-            ExternalTtsSecondaryButton(
-                label = stringResource(R.string.external_tts_disable_and_clear),
-                icon = AppIcons.Trash,
-                destructive = true,
-                onClick = { viewModel.disableExternalTts(clearKey = true) }
-            )
-        } else if (hasToken) {
-            ExternalTtsSecondaryButton(
-                label = stringResource(R.string.external_tts_clear_key),
-                icon = AppIcons.Trash,
-                destructive = true,
-                onClick = viewModel::clearExternalTtsToken
-            )
+            if (isEnabled) {
+                ExternalTtsSecondaryButton(
+                    label = stringResource(R.string.external_tts_disable_only),
+                    icon = AppIcons.CloudSlash,
+                    onClick = { viewModel.disableExternalTts(clearKey = false) }
+                )
+                ExternalTtsSecondaryButton(
+                    label = stringResource(R.string.external_tts_disable_and_clear),
+                    icon = AppIcons.Trash,
+                    destructive = true,
+                    onClick = { viewModel.disableExternalTts(clearKey = true) }
+                )
+            } else if (hasToken) {
+                ExternalTtsSecondaryButton(
+                    label = stringResource(R.string.external_tts_clear_key),
+                    icon = AppIcons.Trash,
+                    destructive = true,
+                    onClick = viewModel::clearExternalTtsToken
+                )
+            }
         }
 
         ExternalTtsDisclosureCard()
@@ -265,13 +268,14 @@ fun ExternalTtsConfigurationDetail(
             .padding(horizontal = AppSpace.md, vertical = AppSpace.sm),
         verticalArrangement = Arrangement.spacedBy(AppSpace.md)
     ) {
-        Text(
-            text = stringResource(R.string.external_tts_choose_protocol),
-            fontSize = AppType.BodySmall,
-            color = AppColors.TextSecondary
-        )
+        ExternalTtsSectionCard {
+            Text(
+                text = stringResource(R.string.external_tts_choose_protocol),
+                fontSize = AppType.BodySmall,
+                color = AppColors.TextSecondary
+            )
 
-        ExternalTtsProtocolCard(
+            ExternalTtsProtocolCard(
             title = stringResource(R.string.external_tts_protocol_openai),
             description = stringResource(R.string.external_tts_protocol_openai_desc),
             selected = draftProtocol == ExternalTtsProtocol.OPENAI_SPEECH,
@@ -282,7 +286,7 @@ fun ExternalTtsConfigurationDetail(
                 }
             }
         )
-        ExternalTtsProtocolCard(
+            ExternalTtsProtocolCard(
             title = stringResource(R.string.external_tts_protocol_mimo),
             description = stringResource(R.string.external_tts_protocol_mimo_desc),
             selected = draftProtocol == ExternalTtsProtocol.MIMO_CHAT,
@@ -294,15 +298,17 @@ fun ExternalTtsConfigurationDetail(
             }
         )
 
-        Text(
-            text = stringResource(R.string.external_tts_more_services_planned),
-            modifier = Modifier.fillMaxWidth(),
-            fontSize = AppType.Caption,
-            color = AppColors.TextSecondary,
-            textAlign = TextAlign.Start
-        )
+            Text(
+                text = stringResource(R.string.external_tts_more_services_planned),
+                modifier = Modifier.fillMaxWidth(),
+                fontSize = AppType.Caption,
+                color = AppColors.TextSecondary,
+                textAlign = TextAlign.Start
+            )
+        }
 
-        OutlinedTextField(
+        ExternalTtsSectionCard {
+            OutlinedTextField(
             value = draftBaseUrl,
             onValueChange = {
                 draftBaseUrl = it
@@ -327,7 +333,7 @@ fun ExternalTtsConfigurationDetail(
             shape = AppRoundedCornerShape(AppRadius.md)
         )
 
-        OutlinedTextField(
+            OutlinedTextField(
             value = draftModel,
             onValueChange = {
                 draftModel = it
@@ -347,7 +353,7 @@ fun ExternalTtsConfigurationDetail(
             shape = AppRoundedCornerShape(AppRadius.md)
         )
 
-        ExternalTtsVoiceSelection(
+            ExternalTtsVoiceSelection(
             protocol = draftProtocol,
             voice = draftVoice,
             onVoiceChange = {
@@ -356,7 +362,7 @@ fun ExternalTtsConfigurationDetail(
             }
         )
 
-        OutlinedTextField(
+            OutlinedTextField(
             value = draftStyle,
             onValueChange = {
                 draftStyle = it
@@ -370,7 +376,7 @@ fun ExternalTtsConfigurationDetail(
             shape = AppRoundedCornerShape(AppRadius.md)
         )
 
-        OutlinedTextField(
+            OutlinedTextField(
             value = token,
             onValueChange = {
                 token = it
@@ -412,7 +418,7 @@ fun ExternalTtsConfigurationDetail(
             }
         )
 
-        Row(
+            Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(AppRoundedCornerShape(AppRadius.md))
@@ -464,6 +470,7 @@ fun ExternalTtsConfigurationDetail(
                 },
                 colors = CheckboxDefaults.colors(checkedColor = AppColors.Accent)
             )
+            }
         }
 
         ExternalTtsPrimaryButton(
@@ -672,6 +679,19 @@ private fun ExternalTtsVoiceSelection(
 }
 
 @Composable
+private fun ExternalTtsSectionCard(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(AppRoundedCornerShape(AppRadius.md))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
+            .padding(AppSpace.md),
+        verticalArrangement = Arrangement.spacedBy(AppSpace.sm),
+        content = content
+    )
+}
+
+@Composable
 private fun ExternalTtsStatusCard(
     settings: ExternalTtsSettings,
     onConfigure: () -> Unit
@@ -683,8 +703,6 @@ private fun ExternalTtsStatusCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(AppRoundedCornerShape(AppRadius.md))
-            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
             .clickable(
                 role = Role.Button,
                 onClickLabel = stringResource(R.string.external_tts_configure),
@@ -752,28 +770,14 @@ private fun ExternalTtsProtocolCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(AppRoundedCornerShape(AppRadius.md))
-            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
-            .border(
-                width = if (selected) 1.5.dp else 1.dp,
-                color = if (selected) AppColors.Accent else AppColors.Divider,
-                shape = AppRoundedCornerShape(AppRadius.md)
-            )
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },
                 onClick = onClick
             )
-            .padding(AppSpace.md),
+            .padding(vertical = AppSpace.sm),
         verticalAlignment = Alignment.Top
     ) {
-        Icon(
-            AppIcons.MicrophonePair.resolve(selected),
-            null,
-            tint = if (selected) AppColors.Accent else AppColors.TextSecondary,
-            modifier = Modifier.size(22.dp)
-        )
-        Spacer(Modifier.size(AppSpace.md))
         Column(Modifier.weight(1f)) {
             Text(title, fontSize = AppType.Body, color = AppColors.TextPrimary, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(4.dp))

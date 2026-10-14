@@ -85,56 +85,75 @@ internal fun TranslationSettingsContent(
     Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(stringResource(R.string.translation_description), color = AppColors.TextSecondary, fontSize = AppType.Body)
-        TranslationChoice(stringResource(R.string.translation_provider), when (draft.provider) {
-            TranslationProvider.MIMO -> "MiMo"
-            TranslationProvider.DEEPSEEK -> "DeepSeek"
-            TranslationProvider.OPENAI -> "OpenAI"
-            TranslationProvider.CUSTOM -> stringResource(R.string.translation_custom)
-        }, listOf("MiMo", "DeepSeek", "OpenAI", stringResource(R.string.translation_custom)), !action.busy) { index ->
-            val provider = TranslationProvider.entries[index]
-            if (provider != draft.provider) {
-                token = ""
-                update(draft.copy(provider = provider, baseUrl = provider.baseUrl, auth = provider.auth, model = ""))
+        TranslationSectionCard {
+            TranslationChoice(stringResource(R.string.translation_provider), when (draft.provider) {
+                TranslationProvider.MIMO -> "MiMo"
+                TranslationProvider.DEEPSEEK -> "DeepSeek"
+                TranslationProvider.OPENAI -> "OpenAI"
+                TranslationProvider.CUSTOM -> stringResource(R.string.translation_custom)
+            }, listOf("MiMo", "DeepSeek", "OpenAI", stringResource(R.string.translation_custom)), !action.busy) { index ->
+                val provider = TranslationProvider.entries[index]
+                if (provider != draft.provider) {
+                    token = ""
+                    update(draft.copy(provider = provider, baseUrl = provider.baseUrl, auth = provider.auth, model = ""))
+                }
+            }
+            TranslationInput("Base URL", draft.baseUrl, { update(draft.copy(baseUrl = it)) },
+                enabled = !action.busy, keyboardType = KeyboardType.Uri,
+                hint = stringResource(R.string.translation_url_hint), tag = "translation-base-url")
+            if (draft.provider == TranslationProvider.CUSTOM) {
+                TranslationChoice(stringResource(R.string.translation_auth),
+                    if (draft.auth == TranslationAuth.BEARER) "Bearer" else "api-key",
+                    listOf("Bearer", "api-key"), !action.busy) { update(draft.copy(auth = TranslationAuth.entries[it])) }
+            }
+            TranslationInput("API Key", token, { token = it; onConnectionEdited() }, enabled = !action.busy,
+                keyboardType = KeyboardType.Password, secret = true, tag = "translation-api-key",
+                hint = stringResource(if (config.hasToken && config.settings.credentialScope == draft.credentialScope)
+                    R.string.translation_key_saved else R.string.translation_key_hint))
+            TranslationModelInput(draft.model, { update(draft.copy(model = it)) }, !action.busy, models,
+                onFetch = { onFetchModels(draft, token) })
+            TranslationToggle(stringResource(R.string.translation_allow_http), draft.allowHttp, !action.busy) {
+                update(draft.copy(allowHttp = it))
             }
         }
-        TranslationInput("Base URL", draft.baseUrl, { update(draft.copy(baseUrl = it)) },
-            enabled = !action.busy, keyboardType = KeyboardType.Uri,
-            hint = stringResource(R.string.translation_url_hint), tag = "translation-base-url")
-        if (draft.provider == TranslationProvider.CUSTOM) {
-            TranslationChoice(stringResource(R.string.translation_auth),
-                if (draft.auth == TranslationAuth.BEARER) "Bearer" else "api-key",
-                listOf("Bearer", "api-key"), !action.busy) { update(draft.copy(auth = TranslationAuth.entries[it])) }
-        }
-        TranslationInput("API Key", token, { token = it; onConnectionEdited() }, enabled = !action.busy,
-            keyboardType = KeyboardType.Password, secret = true, tag = "translation-api-key",
-            hint = stringResource(if (config.hasToken && config.settings.credentialScope == draft.credentialScope)
-                R.string.translation_key_saved else R.string.translation_key_hint))
-        TranslationModelInput(draft.model, { update(draft.copy(model = it)) }, !action.busy, models,
-            onFetch = { onFetchModels(draft, token) })
         val custom = stringResource(R.string.translation_custom)
-        TranslationChoice(stringResource(R.string.translation_language), if (customLanguage) custom else draft.targetLanguage,
-            languages + custom, !action.busy) { index ->
-            val useCustom = index == languages.size
-            if (!useCustom || !customLanguage) update(draft.copy(targetLanguage = if (useCustom) "" else languages[index]))
-            customLanguage = useCustom
+        TranslationSectionCard {
+            TranslationChoice(stringResource(R.string.translation_language), if (customLanguage) custom else draft.targetLanguage,
+                languages + custom, !action.busy) { index ->
+                val useCustom = index == languages.size
+                if (!useCustom || !customLanguage) update(draft.copy(targetLanguage = if (useCustom) "" else languages[index]))
+                customLanguage = useCustom
+            }
+            if (customLanguage) TranslationInput(stringResource(R.string.translation_language), draft.targetLanguage,
+                { update(draft.copy(targetLanguage = it)) }, enabled = !action.busy, tag = "translation-custom-language",
+                keyboardType = KeyboardType.Text)
+            Text(stringResource(R.string.translation_consent), color = AppColors.TextSecondary, fontSize = AppType.BodySmall)
+            TranslationToggle(stringResource(R.string.translation_enable), draft.enabled, !action.busy) {
+                update(draft.copy(enabled = it))
+            }
         }
-        if (customLanguage) TranslationInput(stringResource(R.string.translation_language), draft.targetLanguage,
-            { update(draft.copy(targetLanguage = it)) }, enabled = !action.busy, tag = "translation-custom-language",
-            keyboardType = KeyboardType.Text)
-        TranslationToggle(stringResource(R.string.translation_allow_http), draft.allowHttp, !action.busy) {
-            update(draft.copy(allowHttp = it))
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            LiquidGlassTextButton(stringResource(R.string.translation_save), { onSave(draft, token) }, enabled = !action.busy)
+            LiquidGlassTextButton(stringResource(R.string.translation_test), { onTest(draft, token) }, enabled = !action.busy)
+            if (action.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (action.saved) Text(stringResource(R.string.translation_saved), color = AppColors.TextSecondary)
+            action.error?.let { Text(stringResource(it.messageResource()), color = AppColors.TextSecondary) }
+            action.testTranslation?.let { Text(it, color = AppColors.TextPrimary, fontSize = AppType.Body) }
         }
-        Text(stringResource(R.string.translation_consent), color = AppColors.TextSecondary, fontSize = AppType.BodySmall)
-        TranslationToggle(stringResource(R.string.translation_enable), draft.enabled, !action.busy) {
-            update(draft.copy(enabled = it))
-        }
-        LiquidGlassTextButton(stringResource(R.string.translation_save), { onSave(draft, token) }, enabled = !action.busy)
-        LiquidGlassTextButton(stringResource(R.string.translation_test), { onTest(draft, token) }, enabled = !action.busy)
-        if (action.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (action.saved) Text(stringResource(R.string.translation_saved), color = AppColors.TextSecondary)
-        action.error?.let { Text(stringResource(it.messageResource()), color = AppColors.TextSecondary) }
-        action.testTranslation?.let { Text(it, color = AppColors.TextPrimary, fontSize = AppType.Body) }
     }
+}
+
+@Composable
+private fun TranslationSectionCard(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(AppRoundedCornerShape(AppRadius.md))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        content = content
+    )
 }
 
 @Composable

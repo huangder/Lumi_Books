@@ -9,13 +9,22 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.security.MessageDigest
 import javax.inject.Inject
+import javax.inject.Singleton
+import kotlinx.coroutines.sync.Mutex
 
 /**
  * SAF operations used by authorized-library reconciliation and physical folder moves.
  * All methods are deliberately small and side-effect explicit so callers can update Room only
  * after the corresponding document operation has succeeded.
  */
+@Singleton
 class AuthorizedStorageManager @Inject constructor() {
+    val operationMutex = Mutex()
+
+    /** Renaming the granted root may invalidate the persisted grant on path-based providers. */
+    fun isTreeRoot(treeUri: Uri, documentUri: Uri): Boolean =
+        DocumentsContract.getTreeDocumentId(treeUri) == DocumentsContract.getDocumentId(documentUri)
+
     data class ScannedDirectory(
         val uri: Uri,
         val treeUri: Uri,
@@ -47,9 +56,10 @@ class AuthorizedStorageManager @Inject constructor() {
         val usedCopyFallback: Boolean
     )
 
-    fun scan(context: Context, treeUri: Uri): ScanResult {
+    fun scan(context: Context, treeUri: Uri, rootDocumentUri: Uri? = null): ScanResult {
         val resolver = context.contentResolver
-        val rootId = DocumentsContract.getTreeDocumentId(treeUri)
+        val rootId = rootDocumentUri?.let(DocumentsContract::getDocumentId)
+            ?: DocumentsContract.getTreeDocumentId(treeUri)
         val rootUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootId)
         val queue = ArrayDeque<Pair<String, String?>>()
         queue += rootId to null
@@ -79,14 +89,16 @@ class AuthorizedStorageManager @Inject constructor() {
             if (!visited.add(parentId)) continue
             val parentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, parentId)
             val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentId)
-            resolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
+            requireNotNull(resolver.query(childrenUri, projection, null, null, null)) {
+                "Unable to scan directory"
+            }.use { cursor ->
                 val idIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
                 val nameIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
                 val mimeIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE)
                 val flagsIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_FLAGS)
                 val modifiedIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
                 val sizeIndex = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_SIZE)
-                if (idIndex < 0 || nameIndex < 0 || mimeIndex < 0) return@use
+                check(idIndex >= 0 && nameIndex >= 0 && mimeIndex >= 0) { "Invalid directory query" }
                 while (cursor.moveToNext()) {
                     val id = cursor.getString(idIndex)
                     val name = cursor.getString(nameIndex).orEmpty()

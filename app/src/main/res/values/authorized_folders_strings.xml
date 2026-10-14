@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="authorized_folders_title">授权文件夹</string>
+    <string name="authorized_folders_hint">左滑删除授权，保留书籍与原文件。</string>
+    <string name="authorized_folders_empty">暂无授权文件夹，可在导入书籍时授权文件夹。</string>
+    <string name="authorized_folders_remove_failed">删除授权失败，请重试。</string>
+</resources>

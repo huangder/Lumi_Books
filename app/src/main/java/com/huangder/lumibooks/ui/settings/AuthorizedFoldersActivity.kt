@@ -1,0 +1,147 @@
+package com.huangder.lumibooks.ui.settings
+
+import android.os.Bundle
+import android.content.res.Configuration
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.background
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
+import com.huangder.lumibooks.data.local.DataStoreManager
+import com.huangder.lumibooks.ui.theme.EBookReaderTheme
+import com.huangder.lumibooks.ui.theme.MotionPreference
+import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
+import com.huangder.lumibooks.ui.theme.effectiveAppTheme
+import com.huangder.lumibooks.util.LaunchThemeController
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import androidx.compose.foundation.layout.Box
+
+/**
+ * 授权文件夹管理 — 独立 Activity
+ *
+ * 过渡动画：不调用 overrideActivityTransition / overridePendingTransition，
+ * 由系统使用 OEM 默认动画（小米 HyperOS、OPPO ColorOS、vivo OriginOS、
+ * 荣耀 MagicOS 各自的原生过渡），Pixel 走 Android 原生 CrossActivityAnim。
+ */
+@AndroidEntryPoint
+class AuthorizedFoldersActivity : ComponentActivity() {
+
+    private var systemDarkMode by mutableStateOf(false)
+
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(com.huangder.lumibooks.util.LocaleHelper.applyLanguage(newBase))
+    }
+
+    @Inject
+    lateinit var dataStoreManager: DataStoreManager
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
+        super.onCreate(savedInstanceState)
+        systemDarkMode = resources.configuration.isNightModeEnabled()
+        val launchTheme = LaunchThemeController.themeSnapshot(this)
+
+        setContent {
+            val appTheme by dataStoreManager.appTheme.collectAsState(initial = launchTheme.appTheme)
+            val appAccentColor by dataStoreManager.appAccentColor.collectAsState(initial = launchTheme.appAccentColor)
+            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = launchTheme.globalFontMode)
+            val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = launchTheme.liquidGlassTransparency)
+            val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = launchTheme.liquidGlassHdrHighlightEnabled)
+            val cardOutlinesEnabled by dataStoreManager.cardOutlinesEnabled.collectAsState(initial = launchTheme.cardOutlinesEnabled)
+            val darkMode by dataStoreManager.darkMode.collectAsState(initial = launchTheme.darkMode)
+            val motionPreferenceValue by dataStoreManager.motionPreference.collectAsState(initial = launchTheme.motionPreference)
+            val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = launchTheme.predictiveBackEnabled)
+            val liquidGlassCapability = rememberLiquidGlassCapability(view = LocalView.current)
+            val effectiveAppTheme = effectiveAppTheme(appTheme, liquidGlassCapability)
+            val isDark = when (darkMode) {
+                "dark" -> true
+                "light" -> false
+                else -> systemDarkMode
+            }
+
+            val eInkMode by dataStoreManager.eInkModeEnabled.collectAsState(initial = launchTheme.eInkModeEnabled)
+            val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = launchTheme.menuAnimationStyle)
+            EBookReaderTheme(
+                menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
+                eInkMode = eInkMode,
+                darkTheme = isDark,
+                dynamicColor = effectiveAppTheme == "material3",
+                appTheme = appTheme,
+                lumiBackgroundScene = com.huangder.lumibooks.ui.theme.LumiBackgroundScene.SECONDARY,
+                appAccentColor = appAccentColor,
+                liquidGlassTransparency = liquidGlassTransparency,
+                liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled,
+                cardOutlinesEnabled = cardOutlinesEnabled,
+                globalFontMode = globalFontMode,
+                motionPreference = MotionPreference.fromStoredValue(motionPreferenceValue)
+            ) {
+                val settingsBackdrop = rememberLayerBackdrop()
+                val settingsControlsBackdrop = rememberLayerBackdrop()
+                com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
+                    predictiveBackEnabled = predictiveBackEnabled,
+                    onBack = { finish() }
+                )
+                Surface(modifier = Modifier.fillMaxSize(), color = com.huangder.lumibooks.ui.theme.AppColors.PageBg) {
+                    com.huangder.lumibooks.ui.components.LiquidGlassDialogHost(
+                        modifier = Modifier.fillMaxSize(),
+                        backdrop = settingsBackdrop.takeIf { effectiveAppTheme == "liquid_glass" }
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .then(
+                                    if (effectiveAppTheme == "liquid_glass") {
+                                        Modifier.layerBackdrop(settingsBackdrop)
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .then(
+                                        if (effectiveAppTheme == "liquid_glass") {
+                                            Modifier.layerBackdrop(settingsControlsBackdrop)
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
+                                    .background(AppColors.PageBg)
+                            )
+                            com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop(
+                                settingsControlsBackdrop.takeIf { effectiveAppTheme == "liquid_glass" }
+                            ) {
+                                AuthorizedFoldersScreen(
+                                    onBack = { finish() }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        systemDarkMode = newConfig.isNightModeEnabled()
+    }
+
+    private fun Configuration.isNightModeEnabled(): Boolean {
+        return (uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    }
+
+    // finish() 不再覆写 — 系统默认返回动画由 OEM 自行控制
+}

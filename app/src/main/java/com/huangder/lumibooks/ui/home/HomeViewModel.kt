@@ -7,6 +7,9 @@ import android.net.Uri
 import android.content.Intent
 import android.provider.DocumentsContract
 import android.util.Log
+import androidx.room.withTransaction
+import com.huangder.lumibooks.data.local.database.AppDatabase
+import com.huangder.lumibooks.util.AuthorizedFolderRenamePlan
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.huangder.lumibooks.R
@@ -49,7 +52,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.text.SimpleDateFormat
 import java.time.LocalDate
@@ -161,7 +163,8 @@ class HomeViewModel @Inject constructor(
     private val application: Application,
     private val webdavSyncManager: com.huangder.lumibooks.data.sync.WebdavSyncManager,
     private val authorizedStorageManager: AuthorizedStorageManager,
-    private val authorizedFolderSnapshotStore: AuthorizedFolderSnapshotStore
+    private val authorizedFolderSnapshotStore: AuthorizedFolderSnapshotStore,
+    private val database: AppDatabase
 ) : ViewModel() {
 
     private companion object {
@@ -177,7 +180,7 @@ class HomeViewModel @Inject constructor(
     // Importing several documents writes books and folder links one at a time. Defer preview
     // refreshes until the whole batch is complete so the cover collage is computed once.
     private var folderPreviewInitializationSuspended = false
-    private val authorizedStorageMutex = Mutex()
+    private val authorizedStorageMutex = authorizedStorageManager.operationMutex
     private var authorizedFolderSnapshotJob: Job? = null
     private var authorizedFolderRefreshJob: Job? = null
 
@@ -715,8 +718,12 @@ class HomeViewModel @Inject constructor(
                 withContext(Dispatchers.IO) { authorizedFolderSnapshotStore.load() }
                 combine(
                     authorizedFolderSnapshotStore.snapshot,
-                    bookRepository.getAllBooks()
-                ) { snapshot, books -> snapshot to books }
+                    bookRepository.getAllBooks(),
+                    dataStoreManager.authorizedBookDirectories
+                ) { snapshot, books, directories ->
+                    // A revoked root must stay hidden even if an in-flight scan finishes later.
+                    snapshot.copy(trees = snapshot.trees.filterKeys { it in directories }) to books
+                }
                     .collectLatest { (snapshot, books) ->
                         _uiState.value = _uiState.value.copy(
                             authorizedFolderFiles = buildAuthorizedFolderFiles(snapshot, books),
@@ -873,7 +880,7 @@ class HomeViewModel @Inject constructor(
         var inaccessibleDirectories = 0
         directories.forEach { treeUri ->
             runCatching {
-                val scan = authorizedStorageManager.scan(context, treeUri)
+                val scan = scanAuthorizedTree(context, treeUri)
                 authorizedFolderSnapshotStore.replaceTree(
                     treeUri = treeUri,
                     scan = scan,
@@ -952,6 +959,17 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    private suspend fun scanAuthorizedTree(context: Context, treeUri: Uri): AuthorizedStorageManager.ScanResult {
+        val scan = authorizedStorageManager.scan(context, treeUri)
+        // Keep a granted root's library label when refreshing its physical contents.
+        val rootFolder = folderRepository.getAllFolders().first().firstOrNull {
+            it.storageDocumentUri == scan.rootUri.toString()
+        } ?: return scan
+        return scan.copy(directories = scan.directories.map {
+            if (it.uri == scan.rootUri) it.copy(name = rootFolder.name) else it
+        })
+    }
+
     private fun authorizedRootName(
         context: Context,
         scan: AuthorizedStorageManager.ScanResult,
@@ -974,7 +992,7 @@ class HomeViewModel @Inject constructor(
         var newFileCount = 0
         directories.forEach { treeUri ->
             runCatching {
-                val scan = authorizedStorageManager.scan(context, treeUri)
+                val scan = scanAuthorizedTree(context, treeUri)
                 newFileCount += authorizedFolderSnapshotStore.replaceTree(
                     treeUri = treeUri,
                     scan = scan,
@@ -1535,36 +1553,76 @@ class HomeViewModel @Inject constructor(
         }
         viewModelScope.launch {
             runCatching {
-                val folder = folderRepository.getAllFolders().first().firstOrNull { it.id == folderId }
-                    ?: return@runCatching false
-                val cleanName = FolderNameValidator.clean(rawName)
-                val oldName = folder.name
-                val renamedUri = folder.storageDocumentUri?.let { uri ->
-                    withContext(Dispatchers.IO) {
-                        authorizedStorageManager.rename(application, Uri.parse(uri), cleanName)
+                authorizedStorageMutex.withLock {
+                    val folders = folderRepository.getAllFolders().first()
+                    val folder = folders.firstOrNull { it.id == folderId }
+                        ?: return@withLock false
+                    val cleanName = FolderNameValidator.clean(rawName)
+                    if (cleanName == folder.name) return@withLock true
+                    // Reject conflicts before changing anything on disk.
+                    if (folders.any {
+                        it.id != folderId && it.parentId == folder.parentId &&
+                            FolderNameValidator.normalized(it.name) == FolderNameValidator.normalized(cleanName)
+                    }) return@withLock false
+                    val documentUri = folder.storageDocumentUri?.let(Uri::parse)
+                        ?: return@withLock folderRepository.renameFolder(folderId, cleanName)
+                    val treeUri = folder.storageTreeUri?.let(Uri::parse)
+                        ?: error("Missing authorized tree URI")
+                    if (authorizedStorageManager.isTreeRoot(treeUri, documentUri)) {
+                        // Keep the persisted SAF grant valid; only rename the library label.
+                        return@withLock folderRepository.renameFolder(folderId, cleanName)
                     }
-                }
-                val renamed = folderRepository.renameFolder(folderId, cleanName)
-                if (!renamed) {
-                    renamedUri?.let { uri ->
-                        runCatching {
-                            withContext(Dispatchers.IO) {
-                                authorizedStorageManager.rename(application, uri, oldName)
+                    val before = withContext(Dispatchers.IO) {
+                        authorizedStorageManager.scan(application, treeUri, documentUri)
+                    }
+                    val renamedUri = withContext(Dispatchers.IO) {
+                        authorizedStorageManager.rename(application, documentUri, cleanName)
+                    }
+                    try {
+                        val after = withContext(Dispatchers.IO) {
+                            authorizedStorageManager.scan(application, treeUri, renamedUri)
+                        }
+                        val plan = AuthorizedFolderRenamePlan(before, after)
+                        database.withTransaction {
+                            check(folderRepository.renameFolder(folderId, cleanName)) {
+                                application.getString(R.string.folder_name_exists)
+                            }
+                            folderRepository.getAllFolders().first().forEach { current ->
+                                val updated = plan.rebind(current)
+                                if (updated != current) {
+                                    check(folderRepository.reconcileStorageFolder(
+                                        folderId = current.id,
+                                        name = updated.name,
+                                        storageTreeUri = updated.storageTreeUri,
+                                        storageDocumentUri = updated.storageDocumentUri,
+                                        storageParentUri = updated.storageParentUri,
+                                        storageMissing = updated.storageMissing
+                                    )) { "Folder no longer exists" }
+                                }
+                            }
+                            bookRepository.getAllBooks().first().forEach { current ->
+                                val updated = plan.rebind(current)
+                                if (updated != current) bookRepository.updateBook(updated)
                             }
                         }
+                    } catch (error: Throwable) {
+                        // Room rolls back all references together; restore the physical name too.
+                        withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+                            runCatching { authorizedStorageManager.rename(application, renamedUri, folder.name) }
+                                .onFailure { error.addSuppressed(it) }
+                        }
+                        throw error
                     }
-                    false
-                } else {
-                    if (renamedUri != null) {
-                        folderRepository.reconcileStorageFolder(
-                            folderId = folderId,
-                            name = cleanName,
-                            storageTreeUri = folder.storageTreeUri,
-                            storageDocumentUri = renamedUri.toString(),
-                            storageParentUri = folder.storageParentUri,
-                            storageMissing = false
-                        )
-                    }
+                    // Refresh the picker cache only after all book/folder bindings are current.
+                    // Cache failure must never undo a committed rename.
+                    runCatching {
+                        withContext(Dispatchers.IO) {
+                            val scan = scanAuthorizedTree(application, treeUri)
+                            authorizedFolderSnapshotStore.replaceTree(
+                                treeUri, scan, authorizedRootName(application, scan, treeUri)
+                            )
+                        }
+                    }.onFailure { Log.w("AuthorizedStorage", "Unable to refresh renamed folder snapshot", it) }
                     true
                 }
             }
