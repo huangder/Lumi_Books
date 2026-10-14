@@ -23,6 +23,7 @@ const ctx = vm.createContext({
   isFootnoteReference: anchor => !!anchor.footnote,
   showFootnotePopover: () => Promise.resolve(true),
   pageX: () => 0,
+  annotationAtPoint: () => null,
 });
 vm.runInContext(`
   var state = { flow: 'paginated', fixed: false, nativePaging: true,

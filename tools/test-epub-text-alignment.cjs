@@ -10,8 +10,8 @@ const { spawnSync } = require('node:child_process');
 
 const source = readFileSync(join(__dirname,
   '../app/src/main/java/com/huangder/lumibooks/util/epub/EpubDocumentTransformer.kt'), 'utf8');
-const scriptParts = [...source.matchAll(/private const val READER_SCRIPT_PART_[123] = """([\s\S]*?)"""/g)];
-assert.equal(scriptParts.length, 3, 'All production reader script parts must be exercised');
+const scriptParts = [...source.matchAll(/private const val READER_SCRIPT_PART_(?:1B|[123]) = """([\s\S]*?)"""/g)];
+assert.equal(scriptParts.length, 4, 'All production reader script parts must be exercised');
 const readerScript = scriptParts.map(match => match[1]).join('');
 const readerCss = source.match(/private const val READER_CSS = """([\s\S]*?)"""/)[1];
 
@@ -29,6 +29,7 @@ function verifyAlignment() {
   });
   const typography = {
     fontFamily: 'monospace', textColor: '#123456', bodyFontWeight: 600, letterSpacingDp: 1.25,
+    lineHeight: 2, paragraphSpacingDp: 12, firstLineIndent: 1.5,
   };
   const typographyIntact = label => {
     const style = getComputedStyle(document.getElementById('class-heading'));
@@ -36,13 +37,25 @@ function verifyAlignment() {
     equal(style.color, 'rgb(18, 52, 86)', label + ' color');
     equal(style.fontWeight, '600', label + ' weight');
     equal(style.letterSpacing, '1.25px', label + ' spacing');
+    equal(style.lineHeight, (parseFloat(style.fontSize) * 2) + 'px', label + ' line height');
+    const paragraph = getComputedStyle(document.getElementById('body-paragraph'));
+    equal(paragraph.marginBlockStart, '0px', label + ' paragraph start');
+    equal(paragraph.marginBlockEnd, '12px', label + ' paragraph end');
+    equal(paragraph.textIndent, (parseFloat(paragraph.fontSize) * 1.5) + 'px', label + ' indent');
   };
+  const paragraph = document.getElementById('body-paragraph');
+  const spacingProperties = ['lineHeight', 'letterSpacing', 'marginBlockStart', 'marginBlockEnd', 'textIndent'];
+  const originalSpacing = spacingProperties.map(property => getComputedStyle(paragraph)[property]);
+  const spacingRestored = label => spacingProperties.forEach((property, index) => {
+    equal(getComputedStyle(paragraph)[property], originalSpacing[index], label + ' / ' + property);
+  });
   try {
     equal(getComputedStyle(document.getElementById('class-heading')).textAlign, 'center',
       'Publisher stylesheet fixture starts centered');
     for (const flow of ['paginated', 'scrolled']) {
       configure(flow, { textAlignment: 'natural' });
       original(flow + ' default');
+      spacingRestored(flow + ' default spacing');
       equal(document.getElementById('lumi-reader-overrides'), null, flow + ' no default override');
       configure(flow, { textAlignment: 'natural', ...typography });
       original(flow + ' custom typography');
@@ -59,6 +72,7 @@ function verifyAlignment() {
         configure(flow, { textAlignment });
         configure(flow, { textAlignment: 'natural' });
         original(flow + ' remove override from ' + textAlignment);
+        spacingRestored(flow + ' restore publisher spacing');
         equal(document.getElementById('lumi-reader-overrides'), null, flow + ' override removed');
       }
       for (const textAlignment of [undefined, 'invalid']) {
@@ -66,6 +80,19 @@ function verifyAlignment() {
         configure(flow, { textAlignment });
         original(flow + ' unspecified or invalid alignment');
       }
+      configure(flow, { lineHeight: 1.8, paragraphSpacingDp: 0, firstLineIndent: 0 });
+      const zero = getComputedStyle(paragraph);
+      equal(zero.lineHeight, (parseFloat(zero.fontSize) * 1.8) + 'px', flow + ' spacing without other overrides');
+      equal(zero.marginBlockEnd, '0px', flow + ' zero paragraph spacing');
+      equal(zero.textIndent, '0px', flow + ' zero indent');
+      configure(flow, { lineHeight: 8, paragraphSpacingDp: 80, firstLineIndent: 8 });
+      const clamped = getComputedStyle(paragraph);
+      equal(clamped.lineHeight, (parseFloat(clamped.fontSize) * 2.5) + 'px', flow + ' clamp line height');
+      equal(clamped.marginBlockEnd, '30px', flow + ' clamp paragraph spacing');
+      equal(clamped.textIndent, (parseFloat(clamped.fontSize) * 4) + 'px', flow + ' clamp indent');
+      configure(flow, {});
+      spacingRestored(flow + ' reset spacing');
+      equal(document.getElementById('lumi-reader-overrides'), null, flow + ' spacing override removed');
     }
     document.getElementById('alignment-result').textContent = JSON.stringify({ passed: true, checks });
   } catch (error) {
@@ -80,7 +107,8 @@ try {
   const fixture = join(directory, 'alignment.html');
   writeFileSync(fixture, `<!doctype html><html><head><meta charset="utf-8">
     <link rel="stylesheet" href="publisher.css">
-    <style>body { text-align: justify; } .left-copy { text-align: left; }</style>
+    <style>body { text-align: justify; } .left-copy { text-align: left; }
+      #body-paragraph { line-height: 1.4; letter-spacing: 0.5px; margin-block: 7px 9px; text-indent: 0.75em; }</style>
     <style>${readerCss}</style></head><body data-lumi-layout="reflowable">
     <h1 id="class-heading" class="chapter-title" data-alignment-fixture>居中的章标题</h1>
     <h2 id="inline-heading" style="text-align:center" data-alignment-fixture>内联居中标题</h2>

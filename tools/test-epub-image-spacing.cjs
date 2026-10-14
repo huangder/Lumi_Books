@@ -10,8 +10,8 @@ const { spawnSync } = require('node:child_process');
 const source = readFileSync(join(__dirname,
   '../app/src/main/java/com/huangder/lumibooks/util/epub/EpubDocumentTransformer.kt'), 'utf8');
 const readerCss = source.match(/private const val READER_CSS = """([\s\S]*?)"""/)[1];
-const parts = [...source.matchAll(/private const val READER_SCRIPT_PART_[123] = """([\s\S]*?)"""/g)];
-assert.equal(parts.length, 3);
+const parts = [...source.matchAll(/private const val READER_SCRIPT_PART_(?:1B|[123]) = """([\s\S]*?)"""/g)];
+assert.equal(parts.length, 4);
 const readerScript = parts.map(match => match[1]).join('');
 
 async function verifySpacing() {
