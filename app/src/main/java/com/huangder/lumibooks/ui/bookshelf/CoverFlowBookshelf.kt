@@ -236,6 +236,13 @@ internal fun CoverFlowBookshelf(
                             CoverFlowMetadata(books, state, syncedBookIds, downloadStates,
                                 Modifier.fillMaxWidth().height((100f * density.fontScale.coerceIn(1f, 1.6f)).dp))
                             Box(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 12.dp), contentAlignment = Alignment.TopCenter) {
+                                CoverFlowScrollbar(
+                                    state = state,
+                                    bookCount = books.size,
+                                    enabled = enabled && libraryReady && !isEditing && !transferring,
+                                    motionEnabled = motionEnabled,
+                                    modifier = Modifier.widthIn(max = 360.dp).fillMaxWidth().padding(horizontal = 20.dp)
+                                )
                                 val menuBook = books.firstOrNull { it.id == state.menuBookId }
                                 androidx.compose.animation.AnimatedVisibility(menuBook != null && !isEditing && enabled,
                                     enter = fadeIn(tween(110)) + scaleIn(initialScale = if (motionEnabled) 0.92f else 1f,

@@ -75,6 +75,13 @@ internal class CoverFlowState(initialPosition: Float = 0f, initialBookId: String
         isMoving = true
     }
 
+    fun dragTo(positionInBooks: Float) {
+        rawDragPosition = positionInBooks.coerceIn(0f, (ids.size - 1).coerceAtLeast(0).toFloat())
+        position = rawDragPosition
+        focusedId = ids.getOrNull(focusedIndex)
+        isMoving = true
+    }
+
     fun release(scope: CoroutineScope, velocity: Float, motionEnabled: Boolean) {
         settle(scope, CoverFlowPhysics.releaseTarget(position, velocity, ids.size, motionEnabled),
             motionEnabled, if (motionEnabled) velocity else 0f)

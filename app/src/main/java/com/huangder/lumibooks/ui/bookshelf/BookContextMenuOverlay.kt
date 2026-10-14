@@ -154,7 +154,7 @@ fun BookContextMenuOverlay(
                         is ContextMenuAction.CustomCover -> onCustomCover(book)
                         is ContextMenuAction.RemoveCustomCover -> onRemoveCustomCover(book)
                         is ContextMenuAction.BookmarksNotes -> onBookmarksNotes(book)
-                        is ContextMenuAction.Tags -> onTags(book)
+                        is ContextMenuAction.Tags -> onTags(book) 
                         is ContextMenuAction.EditInfo -> onEditInfo(book)
                     }
                 },
