@@ -125,7 +125,8 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
-    implementation("com.adamglin:phosphor-icon:1.0.0")
+    // Vendored subset of Fluent UI System Icons containing only vectors used by AppIcons.
+    implementation(files("libs/fluentui-system-icons-used.jar"))
     implementation("dev.chrisbanes.haze:haze:1.1.1")
     implementation("io.github.kyant0:backdrop:1.0.6")
     implementation("io.github.kyant0:shapes:1.2.0")
