@@ -10,6 +10,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Composer
+import androidx.compose.runtime.CompositionTracer
+import androidx.compose.runtime.InternalComposeTracingApi
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,6 +26,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.domain.model.MenuAnimationStyle
@@ -185,6 +190,64 @@ class MenuAnimationStyleHostTest {
         compose.runOnIdle {
             assertEquals(2, selections)
             assertNull(host.displayedMenu)
+        }
+    }
+
+    @Test fun categoryContentKeepsItsExpandedSizeThroughoutTheMorphAndReturn() {
+        val sizes = mutableListOf<IntSize>()
+        val panel = menu.copy(
+            fadeOnlyPanel = true,
+            content = { _, _ ->
+                Box(Modifier.fillMaxSize().onSizeChanged { sizes += it })
+            }
+        )
+        show()
+        compose.runOnIdle { host.show(panel) }
+        advance(800)
+        compose.runOnIdle {
+            assertTrue("The panel content must be laid out", sizes.isNotEmpty())
+            assertTrue("The morph must not reflow the panel content: $sizes", sizes.distinct().size == 1)
+            assertEquals(view.width, sizes.single().width)
+            assertEquals(view.height * 0.85, sizes.single().height.toDouble(), 1.0)
+            host.dismiss()
+        }
+        advance(500)
+        compose.runOnIdle {
+            assertEquals("Closing must keep the same content layout", 1, sizes.distinct().size)
+            assertNull(host.displayedMenu)
+        }
+    }
+
+    @OptIn(InternalComposeTracingApi::class)
+    @Test fun menuMorphDoesNotRecomposeItsShellEveryFrame() {
+        style.value = MenuAnimationStyle.LIQUID
+        var compositions = 0
+        Composer.setTracer(object : CompositionTracer {
+            override fun isTraceInProgress() = true
+            override fun traceEventStart(key: Int, dirty1: Int, dirty2: Int, info: String) {
+                if (info.startsWith("com.huangder.lumibooks.ui.components.AnchoredLiquidGlassMenu ")) compositions++
+            }
+            override fun traceEventEnd() = Unit
+        })
+        try {
+            show(glass = true)
+            for (panel in listOf(false, true)) {
+                compose.runOnIdle {
+                    compositions = 0
+                    host.show(menu.copy(fadeOnlyPanel = panel, forceSolid = panel))
+                }
+                advance(1200, renderFrames = true)
+                compose.runOnIdle { host.dismiss() }
+                advance(1200, renderFrames = true)
+                compose.runOnIdle {
+                    println("Menu shell compositions (panel=$panel): $compositions")
+                    assertTrue("The tracer must observe the menu", compositions > 0)
+                    assertTrue("Only setup and interaction changes should recompose the shell (panel=$panel): $compositions", compositions <= 12)
+                    assertNull(host.displayedMenu)
+                }
+            }
+        } finally {
+            Composer.setTracer(null)
         }
     }
 

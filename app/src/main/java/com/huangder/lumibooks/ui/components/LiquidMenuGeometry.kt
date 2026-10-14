@@ -14,7 +14,6 @@ import com.huangder.lumibooks.ui.theme.toAppPath
 import androidx.compose.ui.util.lerp
 import kotlin.math.PI
 import kotlin.math.cos
-import kotlin.math.ceil
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
@@ -92,16 +91,34 @@ internal data class LiquidMenuFrame(
     fun outlinePoints(continuous: Boolean = false): List<Offset> {
         if (continuous) {
             val outline = AppShapes.rounded(radius).createOutline(bounds.size, LayoutDirection.Ltr, Density(1f))
-            // PathMeasure's default flattening can shift a corner by ~0.2px at
-            // the final handoff. Use an explicit subpixel error, and subdivide
-            // straight edges too because the neck warp is nonlinear in y.
+            // Keep the original subpixel corner accuracy. Subdivide straight edges only
+            // where the neck actually bends them, rather than adding a vertex every 2px.
             val samples = outline.toAppPath().asAndroidPath().approximate(0.01f)
             val points = ArrayList<Offset>()
+            fun segment(a: Offset, b: Offset, warpedA: Offset, warpedB: Offset, depth: Int) {
+                val delta = b - a
+                val warpedDelta = warpedB - warpedA
+                // The warp is cubic in y: checking both quarter points also catches
+                // an inflection whose midpoint happens to lie on the chord.
+                var needsSplit = false
+                if (depth < 12) for (step in 1..3) {
+                    val t = step * 0.25f
+                    if ((warp(a + delta * t) - (warpedA + warpedDelta * t)).getDistanceSquared() > 0.0001f) {
+                        needsSplit = true
+                        break
+                    }
+                }
+                if (needsSplit) {
+                    val middle = a + delta * 0.5f
+                    val warpedMiddle = warp(middle)
+                    segment(a, middle, warpedA, warpedMiddle, depth + 1)
+                    segment(middle, b, warpedMiddle, warpedB, depth + 1)
+                } else points.add(warpedA)
+            }
             for (i in 3 until samples.size step 3) {
                 val a = Offset(samples[i - 2], samples[i - 1])
                 val b = Offset(samples[i + 1], samples[i + 2])
-                val steps = ceil((b - a).getDistance() / 2f).toInt().coerceAtLeast(1)
-                repeat(steps) { step -> points.add(warp(a + (b - a) * (step.toFloat() / steps))) }
+                segment(a, b, warp(a), warp(b), 0)
             }
             return points
         }
@@ -138,7 +155,22 @@ internal class LiquidMenuShape(
     private val frame: LiquidMenuFrame,
     private val continuous: Boolean = true
 ) : Shape {
+    // Shadow, backdrop, content clip and optical rim ask for the same outline within
+    // one frame. Share the immutable result instead of rebuilding the warped path.
+    private var cachedSize = Size.Unspecified
+    private var cachedDirection = LayoutDirection.Ltr
+    private var cachedOutline: Outline? = null
+
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        cachedOutline?.let { if (size == cachedSize && layoutDirection == cachedDirection) return it }
+        return buildOutline(size, layoutDirection).also {
+            cachedSize = size
+            cachedDirection = layoutDirection
+            cachedOutline = it
+        }
+    }
+
+    private fun buildOutline(size: Size, layoutDirection: LayoutDirection): Outline {
         val scaleX = size.width / frame.bounds.width
         val scaleY = size.height / frame.bounds.height
         // The resting outline is exactly the same shape used by cards and panels.

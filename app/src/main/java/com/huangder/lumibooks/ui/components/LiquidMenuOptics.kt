@@ -11,12 +11,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawPlainBackdrop
@@ -27,8 +26,8 @@ import com.kyant.backdrop.effects.vibrancy
 /** Scoped to the menu so arbitrary paths never reach Backdrop's rounded-rectangle lens. */
 @Composable
 internal fun LiquidMenuSurface(
-    frame: LiquidMenuFrame,
-    shape: Shape,
+    frame: () -> LiquidMenuFrame,
+    shape: () -> Shape,
     backdrop: Backdrop?,
     baseColor: Color,
     isDark: Boolean,
@@ -41,11 +40,7 @@ internal fun LiquidMenuSurface(
             shape, baseColor, isDark, LocalLiquidGlassControlEdgeForceCanvas.current
         )
     } else {
-        Modifier.border(
-            0.5.dp,
-            Brush.linearGradient(listOf(Color.White.copy(alpha = 0.58f), Color.White.copy(alpha = 0.10f))),
-            shape
-        )
+        menuFallbackBorder(shape)
     }
     // Like sheet containers, derive frosting from the user's transparency with
     // a readability offset. Menus use 15 percentage points (70% becomes 55%).
@@ -60,12 +55,12 @@ internal fun LiquidMenuSurface(
     val surface = if (backdrop != null) {
         Modifier.drawPlainBackdrop(
             backdrop = backdrop,
-            shape = { shape },
+            shape = shape,
             effects = {
                 vibrancy()
                 blur((6.dp * (1f - menuTransparency)).toPx())
                 if (Build.VERSION.SDK_INT >= 33) {
-                    optics?.effect(frame, padding, density, content = false)?.let { effect(it) }
+                    optics?.effect(frame(), padding, density, content = false)?.let { effect(it) }
                 }
             },
             onDrawSurface = {
@@ -77,13 +72,22 @@ internal fun LiquidMenuSurface(
         Modifier.background(baseColor.copy(alpha = 0.92f)).background(contrastScrim)
     }
     Box(
-        modifier.shadow(
-            16.dp, shape, clip = false,
-            ambientColor = Color.Black.copy(alpha = if (isDark) 0.24f else 0.12f),
-            spotColor = Color.Black.copy(alpha = if (isDark) 0.30f else 0.16f)
-        ).clip(shape).then(surface).then(edge)
+        modifier.graphicsLayer {
+            shadowElevation = 16.dp.toPx()
+            this.shape = shape()
+            ambientShadowColor = Color.Black.copy(alpha = if (isDark) 0.24f else 0.12f)
+            spotShadowColor = Color.Black.copy(alpha = if (isDark) 0.30f else 0.16f)
+        }.graphicsLayer { this.shape = shape(); clip = true }.then(surface).then(edge)
     )
 }
+
+// The debug rim override is not part of the animated glass path.
+@Composable
+private fun menuFallbackBorder(shape: () -> Shape): Modifier = Modifier.border(
+    0.5.dp,
+    Brush.linearGradient(listOf(Color.White.copy(alpha = 0.58f), Color.White.copy(alpha = 0.10f))),
+    shape()
+)
 
 @Composable
 internal fun rememberMenuOptics(): LiquidMenuOptics? = remember {

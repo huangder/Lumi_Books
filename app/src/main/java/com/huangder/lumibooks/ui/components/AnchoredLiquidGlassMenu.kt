@@ -32,6 +32,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
@@ -47,6 +49,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -63,13 +66,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.BiasAbsoluteAlignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.BlurEffect
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.graphics.drawscope.translate
@@ -85,6 +91,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -92,6 +99,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.constrainWidth
+import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -577,7 +587,8 @@ fun LiquidGlassMenuHost(
     val menuBackdrop = if (backgroundBackdrop != null) {
         rememberCombinedBackdrop(backgroundBackdrop, pageBackdrop)
     } else pageBackdrop
-    val capturePage = liquidTheme && (activeMenu != null || hostState.displayedMenu != null)
+    val capturePage = liquidTheme &&
+        (activeMenu?.forceSolid == false || hostState.displayedMenu?.forceSolid == false)
     var hostWindowBounds by remember { mutableStateOf(Rect.Zero) }
     var hostRootOrigin by remember { mutableStateOf(Offset.Zero) }
 
@@ -703,14 +714,14 @@ fun LiquidGlassMenuHost(
                             widthPx = hostWidthPx,
                             heightPx = hostHeightPx,
                             passThrough = passThrough,
-                            scrimColor = if (menu.fadeOnlyPanel) {
+                            scrimColor = { if (menu.fadeOnlyPanel) {
                                 val panelProgress = if (motionEnabled) {
                                     LiquidGlassMenuMorph.containerAlpha(progress.value)
                                 } else {
                                     fade.value
                                 }
                                 Color.Black.copy(alpha = 0.24f * panelProgress)
-                            } else Color.Transparent,
+                            } else Color.Transparent },
                             onDismiss = { position ->
                                 if (hostState.activeMenu == null && sourceRect.contains(position)) {
                                     hostState.show(menu)
@@ -764,7 +775,7 @@ private fun MenuDismissLayer(
     widthPx: Float,
     heightPx: Float,
     passThrough: Rect?,
-    scrimColor: Color,
+    scrimColor: () -> Color,
     onDismiss: (Offset) -> Unit
 ) {
     val density = LocalDensity.current
@@ -779,7 +790,10 @@ private fun MenuDismissLayer(
         Box(
             Modifier.absoluteOffset { IntOffset(rect.left.roundToInt(), rect.top.roundToInt()) }
                 .size(with(density) { rect.width.toDp() }, with(density) { rect.height.toDp() })
-                .then(if (scrimColor.alpha > 0f) Modifier.background(scrimColor) else Modifier)
+                .drawBehind {
+                    val color = scrimColor()
+                    if (color.alpha > 0f) drawRect(color)
+                }
                 .pointerInput(onDismiss) { detectTapGestures { onDismiss(it + rect.topLeft) } }
         )
     }
@@ -852,6 +866,40 @@ private fun LiquidGlassMenuRow(
 }
 
 @Composable
+private fun MenuFallbackSurface(
+    shape: () -> Shape,
+    color: Color,
+    backdrop: Backdrop?,
+    isDark: Boolean,
+    isLiquidGlass: Boolean,
+    forceSolid: Boolean,
+    blurBoost: () -> Dp,
+    modifier: Modifier
+) {
+    if (forceSolid && LocalAppTheme.current == "liquid_glass") {
+        // The categories surface is solid even in the glass theme. Its shadow and
+        // clip can follow the morph without rebuilding a general-purpose surface.
+        Box(modifier.graphicsLayer {
+            shadowElevation = 8.dp.toPx()
+            this.shape = shape()
+            clip = true
+        }.background(color))
+    } else {
+        val currentShape = shape()
+        LiquidGlassSurface(
+            shape = currentShape,
+            fallbackColor = color,
+            backdrop = backdrop,
+            contentScrimColor = color.copy(alpha = if (isDark) 0.68f else 0.62f),
+            forceFallback = forceSolid,
+            decorationModifier = if (isLiquidGlass) null else Modifier.shadow(8.dp, currentShape),
+            blurBoost = blurBoost(),
+            modifier = modifier
+        ) {}
+    }
+}
+
+@Composable
 private fun AnchoredLiquidGlassMenu(
     spec: LiquidGlassMenuSpec,
     hostState: LiquidGlassMenuHostState,
@@ -879,14 +927,19 @@ private fun AnchoredLiquidGlassMenu(
     val layoutDirection = LocalLayoutDirection.current
     val continuous = source != null
     val embedded = source?.kind == LiquidGlassMenuAnchorKind.Embedded
-    val p = if (motionEnabled && !normalMotion) progress.value else 1f
-    val growth = LiquidGlassMenuMorph.growthProgress(p, continuous)
-    val reveal = if (droplet) LiquidMenuGeometry.contentAlpha(p)
-        else if (continuous) LiquidGlassMenuMorph.contentProgress(growth)
-        else ((growth - 0.68f) / 0.32f).coerceIn(0f, 1f)
-    val sourceAlpha = if (motionEnabled && !normalMotion && hostState.ownsDrawing(spec.sourceId ?: Unit)) {
-        if (droplet) LiquidMenuGeometry.sourceAlpha(p) else LiquidGlassMenuMorph.sourceAlpha(p)
-    } else 0f
+    // Animation values are consumed by layout/draw/layer observers, not composition.
+    val phase = { if (motionEnabled && !normalMotion) progress.value else 1f }
+    val growth = { LiquidGlassMenuMorph.growthProgress(phase(), continuous) }
+    val reveal = {
+        if (droplet) LiquidMenuGeometry.contentAlpha(phase())
+        else if (continuous) LiquidGlassMenuMorph.contentProgress(growth())
+        else ((growth() - 0.68f) / 0.32f).coerceIn(0f, 1f)
+    }
+    val sourceAlpha = {
+        if (motionEnabled && !normalMotion && hostState.ownsDrawing(spec.sourceId ?: Unit)) {
+            if (droplet) LiquidMenuGeometry.sourceAlpha(phase()) else LiquidGlassMenuMorph.sourceAlpha(phase())
+        } else 0f
+    }
     val margin = with(density) { MenuScreenMargin.toPx() }
     val gap = with(density) { MenuAnchorGap.toPx() }
     val availableHeight = (hostHeightPx - safeTop - safeBottom - margin * 2f).coerceAtLeast(1f)
@@ -924,39 +977,40 @@ private fun AnchoredLiquidGlassMenu(
     ).translate(Offset(0f, safeTop))
     val sourceRadius = with(density) { (spec.anchorCornerRadius ?: source?.cornerRadius)?.toPx() }
         ?: LiquidGlassMenuMorph.capsuleCornerRadiusPx(sourceRect)
-    val frame = if (droplet) LiquidMenuGeometry.frame(
-        sourceRect, targetRect, p, sourceRadius,
-        with(density) { LiquidGlassMenuMorph.TargetCornerRadiusDp.dp.toPx() }
-    ) else null
-    val rect = if (!motionEnabled || normalMotion) targetRect else if (frame != null) frame.bounds
-        else LiquidGlassMenuMorph.morphRect(sourceRect, targetRect, p, continuous)
-    val radiusPx = LiquidGlassMenuMorph.cornerRadiusPx(
-        sourceRadius, with(density) { LiquidGlassMenuMorph.TargetCornerRadiusDp.dp.toPx() }, growth
-    ).coerceIn(0f, min(rect.width, rect.height).coerceAtLeast(0f) / 2f)
-    val continuousCorners = AppShapes.usesContinuousCorners(LocalAppTheme.current)
-    val shape = if (fadeOnlyPanel) {
-        if (!motionEnabled) {
-            AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
-        } else {
-            val topCorner = with(density) {
-                LiquidGlassMenuMorph.cornerRadiusPx(
-                    sourceRadius,
-                    LiquidGlassMenuMorph.TargetCornerRadiusDp.dp.toPx(),
-                    growth
-                ).toDp()
-            }
-            val bottomCorner = with(density) {
-                lerp(sourceRadius, 0f, growth.coerceIn(0f, 1f)).toDp()
-            }
-            AppRoundedCornerShape(
-                topStart = topCorner,
-                topEnd = topCorner,
-                bottomStart = bottomCorner,
-                bottomEnd = bottomCorner
-            )
+    val targetRadius = with(density) { LiquidGlassMenuMorph.TargetCornerRadiusDp.dp.toPx() }
+    val frame = remember(droplet, sourceRect, targetRect, phase, sourceRadius, targetRadius) {
+        derivedStateOf {
+            if (droplet) LiquidMenuGeometry.frame(sourceRect, targetRect, phase(), sourceRadius, targetRadius)
+            else null
         }
-    } else if (frame != null) remember(frame, continuousCorners) { LiquidMenuShape(frame, continuousCorners) }
-    else AppRoundedCornerShape(with(density) { radiusPx.toDp() })
+    }
+    val rect = remember(motionEnabled, normalMotion, frame, targetRect, sourceRect, phase, continuous) {
+        derivedStateOf {
+            if (!motionEnabled || normalMotion) targetRect else frame.value?.bounds
+                ?: LiquidGlassMenuMorph.morphRect(sourceRect, targetRect, phase(), continuous)
+        }
+    }
+    val radiusPx = {
+        LiquidGlassMenuMorph.cornerRadiusPx(sourceRadius, targetRadius, growth())
+            .coerceIn(0f, rect.value.size.minDimension.coerceAtLeast(0f) / 2f)
+    }
+    val continuousCorners = AppShapes.usesContinuousCorners(LocalAppTheme.current)
+    val shape = remember(fadeOnlyPanel, motionEnabled, sourceRadius, targetRadius, growth, density, frame, radiusPx, continuousCorners) {
+        derivedStateOf<Shape> {
+            if (fadeOnlyPanel) {
+                val topCorner = if (!motionEnabled) 24.dp else with(density) {
+                    LiquidGlassMenuMorph.cornerRadiusPx(sourceRadius, targetRadius, growth()).toDp()
+                }
+                val bottomCorner = if (!motionEnabled) 0.dp else with(density) {
+                    lerp(sourceRadius, 0f, growth().coerceIn(0f, 1f)).toDp()
+                }
+                AppShapes.rounded(topCorner, topCorner, bottomCorner, bottomCorner, continuousCorners)
+            } else {
+                frame.value?.let { LiquidMenuShape(it, continuousCorners) }
+                    ?: AppShapes.rounded(radiusPx(), continuousCorners)
+            }
+        }
+    }
     val color = spec.surfaceColor.takeOrElse { AppColors.CardBg }
     val backdropBase = spec.surfaceColor.takeOrElse { AppColors.WindowBg }.copy(alpha = 1f)
     // Partial page captures can have transparent regions, including beyond a list's bounds.
@@ -968,33 +1022,39 @@ private fun AnchoredLiquidGlassMenu(
         }
     }
     val textColor = spec.contentColor.takeOrElse { AppColors.TextPrimary }
-    val enabled = hostState.sameSource(hostState.activeMenu, spec) &&
-        reveal > LiquidGlassMenuMorph.ItemClickableReveal && (!droplet || p >= 0.96f)
-    val alpha = when {
+    val enabled by remember(hostState, spec, reveal, droplet, phase) {
+        derivedStateOf {
+            hostState.sameSource(hostState.activeMenu, spec) &&
+                reveal() > LiquidGlassMenuMorph.ItemClickableReveal && (!droplet || phase() >= 0.96f)
+        }
+    }
+    val alpha = { when {
         !hostState.measured -> 0f
         normalMotion -> fade.value
         continuous && motionEnabled && !fadeOnlyPanel && !hostState.ownsDrawing(source.id) -> 0f
         !motionEnabled -> fade.value
         continuous -> 1f
-        else -> LiquidGlassMenuMorph.containerAlpha(p)
-    }
-    val blur = if (motionEnabled && !normalMotion) LiquidGlassMenuMorph.contentBlurDp(reveal).dp else 0.dp
+        else -> LiquidGlassMenuMorph.containerAlpha(phase())
+    } }
     val alignment = LiquidGlassMenuMorph.nearAlignment(sourceRect, targetRect)
     val contentOptics = if (droplet) rememberMenuOptics() else null
     val panelContentBackdrop = rememberLayerBackdrop()
-    val contentEffect = if (Build.VERSION.SDK_INT >= 33 && motionEnabled && glassSurface && frame != null) {
-        contentOptics?.contentEffect(frame, density.density)
-    } else null
     val transparency = LocalLiquidGlassTransparency.current
     val currentRect by rememberUpdatedState(rect)
     val currentSourceRect by rememberUpdatedState(sourceRect)
     val currentSpec by rememberUpdatedState(spec)
 
     Box(
-        Modifier.absoluteOffset { IntOffset(rect.left.roundToInt(), rect.top.roundToInt()) }
-            .size(with(density) { rect.width.coerceAtLeast(1f).toDp() }, with(density) { rect.height.coerceAtLeast(1f).toDp() })
+        Modifier.absoluteOffset { IntOffset(rect.value.left.roundToInt(), rect.value.top.roundToInt()) }
+            .layout { measurable, constraints ->
+                val bounds = rect.value
+                val width = constraints.constrainWidth(bounds.width.roundToInt().coerceAtLeast(1))
+                val height = constraints.constrainHeight(bounds.height.roundToInt().coerceAtLeast(1))
+                val placeable = measurable.measure(Constraints.fixed(width, height))
+                layout(width, height) { placeable.place(0, 0) }
+            }
             .graphicsLayer {
-                this.alpha = alpha
+                this.alpha = alpha()
                 if (normalMotion && motionEnabled && !fadeOnlyPanel) {
                     val scale = lerp(0.94f, 1f, fade.value)
                     scaleX = scale
@@ -1007,7 +1067,7 @@ private fun AnchoredLiquidGlassMenu(
             }
             .pointerInput(spec.sourceId ?: spec.anchorBounds) {
                 detectTapGestures { position ->
-                    if (hostState.activeMenu == null && currentSourceRect.contains(position + currentRect.topLeft)) {
+                    if (hostState.activeMenu == null && currentSourceRect.contains(position + currentRect.value.topLeft)) {
                         hostState.show(currentSpec)
                     } else hostState.dismiss()
                 }
@@ -1017,28 +1077,27 @@ private fun AnchoredLiquidGlassMenu(
             LiquidMenuSurface(
                 // Animation style changes motion only; ordinary and unanchored
                 // menus retain the same settled glass lens as the liquid morph.
-                frame = frame ?: LiquidMenuFrame(rect, radiusPx, 0f, 0f, 0f, 0f),
-                shape = shape, backdrop = menuBackdrop,
+                frame = { frame.value ?: LiquidMenuFrame(rect.value, radiusPx(), 0f, 0f, 0f, 0f) },
+                shape = { shape.value }, backdrop = menuBackdrop,
                 baseColor = color, isDark = isDark, transparency = transparency,
-                modifier = Modifier.matchParentSize().graphicsLayer { this.alpha = 1f - sourceAlpha }
+                modifier = Modifier.matchParentSize().graphicsLayer { this.alpha = 1f - sourceAlpha() }
             )
-        } else LiquidGlassSurface(
-            shape = shape,
-            fallbackColor = color,
+        } else MenuFallbackSurface(
+            shape = { shape.value },
+            color = color,
             backdrop = menuBackdrop,
-            contentScrimColor = color.copy(alpha = if (isDark) 0.68f else 0.62f),
-            forceFallback = spec.forceSolid,
-            decorationModifier = if (isLiquidGlass) null else Modifier.shadow(8.dp, shape),
-            blurBoost = if (motionEnabled && !normalMotion) LiquidGlassMenuMorph.blurBoostDp(p).dp else 0.dp,
+            isDark = isDark, isLiquidGlass = isLiquidGlass, forceSolid = spec.forceSolid,
+            blurBoost = { if (motionEnabled && !normalMotion) LiquidGlassMenuMorph.blurBoostDp(phase()).dp else 0.dp },
             modifier = Modifier.matchParentSize()
                 .then(if (fadeOnlyPanel) Modifier.layerBackdrop(panelContentBackdrop) else Modifier)
-                .graphicsLayer { this.alpha = 1f - sourceAlpha }
-        ) {}
-        if (source != null && sourceAlpha > 0f) {
+                .graphicsLayer { this.alpha = 1f - sourceAlpha() }
+        )
+        if (source != null) {
             Box(
-                Modifier.matchParentSize().graphicsLayer { this.alpha = sourceAlpha }
+                Modifier.matchParentSize().graphicsLayer { this.alpha = sourceAlpha() }
                     .clearAndSetSemantics {}
                     .drawWithContent {
+                        if (sourceAlpha() <= 0f || !source.recorded) return@drawWithContent
                         val sourceScale = min(size.width / source.layer.size.width, size.height / source.layer.size.height).coerceAtMost(1f)
                         val x = if (LiquidGlassMenuMorph.nearEdgeBiasX(sourceRect, targetRect) > 0f) size.width - source.layer.size.width * sourceScale else 0f
                         val y = if (LiquidGlassMenuMorph.nearEdgeBiasY(sourceRect, targetRect) > 0f) size.height - source.layer.size.height * sourceScale else 0f
@@ -1050,20 +1109,36 @@ private fun AnchoredLiquidGlassMenu(
             LocalLiquidGlassBackdrop provides if (fadeOnlyPanel) panelContentBackdrop else LocalLiquidGlassBackdrop.current
         ) {
         Box(
-            Modifier.matchParentSize().clip(shape)
-                .graphicsLayer { renderEffect = contentEffect },
+            Modifier.matchParentSize().graphicsLayer { this.shape = shape.value; clip = true }
+                .graphicsLayer {
+                    renderEffect = if (Build.VERSION.SDK_INT >= 33 && motionEnabled && glassSurface) {
+                        frame.value?.let { contentOptics?.contentEffect(it, density.density) }
+                    } else null
+                },
             contentAlignment = alignment
         ) {
             Column(
-                (if (fadeOnlyPanel) Modifier.fillMaxSize() else Modifier.requiredWidth(menuWidth)
+                (if (fadeOnlyPanel) Modifier
+                    // Lay out the sheet at its final size. Only the surrounding viewport morphs;
+                    // changing text/list constraints on every frame would reflow the entire sheet.
+                    .wrapContentSize(alignment, unbounded = true)
+                    .requiredSize(with(density) { hostWidthPx.toDp() }, maxContentHeight)
+                else Modifier.requiredWidth(menuWidth)
                     .wrapContentHeight(unbounded = true, align = Alignment.Top))
                     .heightIn(max = maxContentHeight)
                     .onSizeChanged {
                         measuredHeightPx = it.height.toFloat()
                         hostState.measured = true
                     }
-                    .then(if (Build.VERSION.SDK_INT >= 31 && blur > 0.1.dp) Modifier.blur(blur) else Modifier)
-                    .graphicsLayer { this.alpha = reveal }
+                    .graphicsLayer {
+                        val blur = if (motionEnabled && !normalMotion) LiquidGlassMenuMorph.contentBlurDp(reveal()).dp else 0.dp
+                        renderEffect = if (Build.VERSION.SDK_INT >= 31 && blur > 0.1.dp) {
+                            BlurEffect(blur.toPx(), blur.toPx(), TileMode.Clamp)
+                        } else null
+                        // Match Modifier.blur's default bounded treatment while active.
+                        clip = Build.VERSION.SDK_INT >= 31 && blur > 0.1.dp
+                    }
+                    .graphicsLayer { this.alpha = reveal() }
                     .then(if (!enabled) Modifier.clearAndSetSemantics {} else Modifier)
                     .then(if (fadeOnlyPanel) Modifier else Modifier.verticalScroll(rememberScrollState()))
                     .then(if (fadeOnlyPanel) Modifier else Modifier.padding(MenuContentPadding))
