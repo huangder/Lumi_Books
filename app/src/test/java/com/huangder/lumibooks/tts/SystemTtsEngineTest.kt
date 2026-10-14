@@ -126,6 +126,79 @@ class SystemTtsEngineTest {
     }
 
     @Test
+    fun unfinishedPrefetchIsCancelledAndResynthesizedBeforePlayback() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        ShadowTextToSpeech.addLanguageAvailability(Locale.CHINESE)
+        val track = Track()
+        val player = SystemTtsAudioPlayer(backgroundScope) { track }
+        val engine = TtsEngine(ApplicationProvider.getApplicationContext(), player)
+        val started = mutableListOf<String>()
+        val done = mutableListOf<String>()
+        val errors = mutableListOf<Throwable>()
+        engine.setListener(listener(started, done, errors))
+        try {
+            initializeEngine(engine)
+            val shadow = shadowOf(ShadowTextToSpeech.getLastTextToSpeechInstance()) as RecordingTts
+            val callbacks = shadow.utteranceProgressListener
+
+            engine.speak("First sentence.", "first")
+            engine.prefetch("Next sentence.")
+            val firstId = shadow.requests.single().id
+            callbacks.onBeginSynthesis(firstId, 24_000, AudioFormat.ENCODING_PCM_16BIT, 1)
+            callbacks.onAudioAvailable(firstId, ByteArray(8) { 1 })
+            callbacks.onDone(firstId)
+            shadowOf(Looper.getMainLooper()).idle()
+            runCurrent()
+
+            val incompletePrefetchId = shadow.requests.last().id
+            callbacks.onBeginSynthesis(
+                incompletePrefetchId,
+                24_000,
+                AudioFormat.ENCODING_PCM_16BIT,
+                1
+            )
+            callbacks.onAudioAvailable(incompletePrefetchId, ByteArray(8) { 2 })
+            shadowOf(Looper.getMainLooper()).idle()
+            runCurrent()
+
+            track.playbackHeadPosition = 4
+            advanceTimeBy(10)
+            runCurrent()
+            assertEquals(listOf("first"), done)
+
+            engine.speak("Next sentence.", "next")
+            runCurrent()
+
+            assertEquals(3, shadow.requests.size)
+            assertEquals(listOf("first"), started)
+            assertTrue(errors.isEmpty())
+
+            // Late callbacks from the discarded partial synthesis cannot start playback.
+            callbacks.onDone(incompletePrefetchId)
+            shadowOf(Looper.getMainLooper()).idle()
+            runCurrent()
+            assertEquals(listOf("first"), started)
+
+            val replacementId = shadow.requests.last().id
+            callbacks.onBeginSynthesis(
+                replacementId,
+                24_000,
+                AudioFormat.ENCODING_PCM_16BIT,
+                1
+            )
+            callbacks.onAudioAvailable(replacementId, ByteArray(8) { 3 })
+            callbacks.onDone(replacementId)
+            shadowOf(Looper.getMainLooper()).idle()
+            runCurrent()
+            assertEquals(listOf("first", "next"), started)
+        } finally {
+            engine.shutdown()
+            player.release()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun audioTrackInitializationFailureIsReportedAsRecoverablePlaybackError() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         ShadowTextToSpeech.addLanguageAvailability(Locale.CHINESE)

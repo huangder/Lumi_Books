@@ -347,8 +347,20 @@ class TtsEngine internal constructor(
     override suspend fun speak(text: String, utteranceId: String): Result<Unit> =
         withContext(Dispatchers.Main.immediate) {
             if (engine == null) return@withContext Result.failure(SystemTtsException.Initialization())
-            val prepared = prefetchedSynthesis?.takeIf { it.text == text && it.error == null }
-            if (prepared == null && activeSynthesis?.playbackDone != true) {
+            val prefetched = prefetchedSynthesis
+            val prepared = prefetched?.takeIf {
+                it.text == text && it.error == null && it.finished
+            }
+            val incompletePrefetch = prefetched?.takeIf { !it.finished }
+            if (incompletePrefetch != null) {
+                logSynthesis("prefetch_incomplete_discarded", incompletePrefetch)
+            }
+            if (prepared == null &&
+                (activeSynthesis?.playbackDone != true || incompletePrefetch != null)
+            ) {
+                // An incomplete speculative synthesis may have delivered enough PCM to start but
+                // then stopped producing callbacks. Cancel it before requesting this sentence so
+                // a partial buffer cannot leave playback silent until the watchdog retries it.
                 stopLocalSynthesis()
             } else {
                 discardSynthesis(activeSynthesis)

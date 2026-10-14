@@ -96,6 +96,8 @@ data class SettingsUiState(
     val externalTtsSettings: com.huangder.lumibooks.tts.ExternalTtsSettings = com.huangder.lumibooks.tts.ExternalTtsSettings(),
     val externalTtsHasToken: Boolean = false,
     val externalTtsSettingsLoaded: Boolean = false,
+    val ttsStartChoice: com.huangder.lumibooks.tts.TtsStartChoice? = null,
+    val ttsReaderResumeChoice: com.huangder.lumibooks.tts.TtsReaderResumeChoice? = null,
     val ttsProviderSelection: com.huangder.lumibooks.tts.TtsProviderSelection =
         com.huangder.lumibooks.tts.TtsProviderSelection.SystemDefault,
     val installedTtsEngines: List<com.huangder.lumibooks.tts.InstalledTtsEngine> = emptyList(),

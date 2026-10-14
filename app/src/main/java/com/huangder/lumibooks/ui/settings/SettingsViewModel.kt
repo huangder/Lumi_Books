@@ -379,6 +379,16 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            dataStoreManager.ttsStartChoice.collectLatest { choice ->
+                _uiState.value = _uiState.value.copy(ttsStartChoice = choice)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.ttsReaderResumeChoice.collectLatest { choice ->
+                _uiState.value = _uiState.value.copy(ttsReaderResumeChoice = choice)
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.bodyFontWeight.collectLatest { bodyFontWeight ->
                 _uiState.value = _uiState.value.copy(bodyFontWeight = bodyFontWeight)
             }
@@ -536,6 +546,14 @@ class SettingsViewModel @Inject constructor(
                 dataStoreManager.saveTtsProviderSelection(selection)
             }
         }
+    }
+
+    fun saveTtsStartChoice(choice: com.huangder.lumibooks.tts.TtsStartChoice?) {
+        viewModelScope.launch { dataStoreManager.saveTtsStartChoice(choice) }
+    }
+
+    fun saveTtsReaderResumeChoice(choice: com.huangder.lumibooks.tts.TtsReaderResumeChoice?) {
+        viewModelScope.launch { dataStoreManager.saveTtsReaderResumeChoice(choice) }
     }
 
     fun refreshInstalledTtsEngines() {

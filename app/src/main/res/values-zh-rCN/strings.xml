@@ -157,7 +157,7 @@
     <string name="dark_mode_light">浅色</string>
     <string name="dark_mode_dark">深色</string>
     <string name="label_reader_theme">默认阅读主题</string>
-    <string name="theme_day">日间</string>
+    <string name="theme_day">默认</string>
     <string name="theme_night">夜间</string>
     <string name="theme_sepia">护眼</string>
     <string name="theme_green">绿色</string>
@@ -488,7 +488,8 @@
     <string name="reader_corner_content_none">不显示</string>
     <string name="reader_corner_content_chapter">章节信息</string>
     <string name="reader_corner_content_book_progress">全书进度</string>
-    <string name="reader_corner_content_page_number">页码</string>
+    <string name="reader_corner_content_page_number">本章页码</string>
+    <string name="reader_corner_content_global_page_number">全局页码</string>
     <string name="reader_corner_content_battery">电量</string>
     <string name="reader_corner_content_time">时间</string>
     <string name="search_placeholder">输入关键词</string>
@@ -1414,7 +1415,7 @@
     <string name="page_animation_curl_short">卷曲</string>
     <string name="reader_settings_preview_sample">第一章 光落在书页上\n\n清晨的风越过窗台，纸张轻轻翻动。阅读让时间慢下来，也让遥远的声音在此刻变得清晰。</string>
     <string name="exit_preview">退出预览</string>
-    <string name="theme_suite_day_name">日间</string>
+    <string name="theme_suite_day_name">默认</string>
     <string name="theme_suite_night_name">夜间</string>
     <string name="theme_suite_sepia_name">羊皮纸</string>
     <string name="theme_suite_green_name">护眼</string>

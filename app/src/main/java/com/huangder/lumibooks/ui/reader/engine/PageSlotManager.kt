@@ -136,14 +136,18 @@ class PageSlotManager(
     /**
      * 初始化：加载起始页到 CUR 槽位，预加载 PREV 和 NEXT。
      */
-    fun initialize(startChapter: Int, startPageInChapter: Int) {
+    fun initialize(
+        startChapter: Int,
+        startPageInChapter: Int,
+        preserveCurrentContent: Boolean = false
+    ) {
         cancelActiveJump()
         previousPrefetchJob?.cancel()
         previousPrefetchJob = null
         nextPrefetchJob?.cancel()
         nextPrefetchJob = null
         for (i in 0..2) {
-            recycleSlot(i)
+            recycleSlot(i, preserveContent = preserveCurrentContent && i == SLOT_CUR)
         }
 
         pairingAnchor = PageLocation(
@@ -153,13 +157,19 @@ class PageSlotManager(
         currentChapterIndex = startChapter
         currentGlobalPage = layoutEngine.localToGlobal(startChapter, startPageInChapter)
 
-        loadSlot(SLOT_CUR, currentChapterIndex, startPageInChapter)
+        loadSlot(SLOT_CUR, currentChapterIndex, startPageInChapter,
+            preserveContent = preserveCurrentContent)
     }
 
     /**
      * 加载一个槽位（单页模式加载单页，双页模式按配对规则加载跨页单元）。
      */
-    fun loadSlot(slotIdx: Int, chapterIndex: Int, pageInChapter: Int) {
+    fun loadSlot(
+        slotIdx: Int,
+        chapterIndex: Int,
+        pageInChapter: Int,
+        preserveContent: Boolean = false
+    ) {
         if (slotIdx != SLOT_CUR && !backgroundPreparationEnabled) return
         if (chapterIndex < 0 || chapterIndex >= chapterCount) return
         if (pageInChapter < 0) return
@@ -184,8 +194,13 @@ class PageSlotManager(
         slot.rightChapterTotalPages = 0
         slot.primaryIsRight = false
         slot.chapterTotalPages = 0
-        slot.contentView.clear()
-        slot.rightContentView?.clear()
+        // Margin previews replace the page only once its new pagination is ready.
+        // The retained content is visual only: isLoaded stays false so stale
+        // geometry cannot be used for a page turn while the request is pending.
+        if (!preserveContent) {
+            slot.contentView.clear()
+            slot.rightContentView?.clear()
+        }
 
         // Slot rotation asks for another page from the same already-laid-out
         // chapter on every turn. Populate that page in this MOVE dispatch so a
@@ -1069,7 +1084,7 @@ class PageSlotManager(
         return leftRendered && rightRendered
     }
 
-    private fun recycleSlot(slotIdx: Int) {
+    private fun recycleSlot(slotIdx: Int, preserveContent: Boolean = false) {
         invalidateRequest(slotIdx)
         val slot = slots[slotIdx]
         slot.chapterIndex = -1
@@ -1083,8 +1098,10 @@ class PageSlotManager(
         slot.rightChapterTotalPages = 0
         slot.primaryIsRight = false
         slot.chapterTotalPages = 0
-        slot.contentView.clear()
-        slot.rightContentView?.clear()
+        if (!preserveContent) {
+            slot.contentView.clear()
+            slot.rightContentView?.clear()
+        }
     }
 
     private fun invalidateRequest(slotIdx: Int) {

@@ -40,7 +40,7 @@ private fun EpubCssDeclaration.isBackground(): Boolean =
  * 出版社的 CSS 常有 `@media`、`@import`、注释与多种简写，这里统一拍平成一条有序规则表，
  * 让「原排版铺满宽判定」和「阅读器排版装饰还原」用同一套解析结果。
  */
-internal class EpubCssIndex(private val rules: List<EpubCssRule>) {
+internal class EpubCssIndex(internal val rules: List<EpubCssRule>) {
     val isEmpty: Boolean get() = rules.isEmpty()
 
     /** 书籍样式表里是否有背景图声明（没有就不必为装饰还原解析章节）。 */

@@ -214,7 +214,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     fun setLineGuide(enabled: Boolean, dimLevel: Int) {
         val wasEnabled = lineGuideEnabled
-        val safeLevel = dimLevel.coerceIn(0, 3)
+        val safeLevel = dimLevel.coerceIn(0, 4)
         if (wasEnabled == enabled && lineGuideDimLevel == safeLevel) return
         lineGuideEnabled = enabled
         lineGuideDimLevel = safeLevel
@@ -777,24 +777,30 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 writingMode = currentWritingMode,
                 boldText = resolvedTypeface.fakeBold
             )
-            left.setReaderBackground(
-                bgColor,
-                currentReaderBackgroundImagePath,
-                currentReaderBackgroundImageOpacity,
-                currentReaderBackgroundImageBlurDp
-            )
-            right.setReaderBackground(
-                bgColor,
-                currentReaderBackgroundImagePath,
-                currentReaderBackgroundImageOpacity,
-                currentReaderBackgroundImageBlurDp
-            )
         }
+        applyReaderBackgroundToPages(bgColor)
         setBackgroundColor(bgColor)
         prevGutterView.setBackgroundColor(bgColor)
         curGutterView.setBackgroundColor(bgColor)
         nextGutterView.setBackgroundColor(bgColor)
         this.bgColor = bgColor
+    }
+
+    private fun applyReaderBackgroundToPages(backgroundColor: Int) {
+        listOf(prevPageView, curPageView, nextPageView, prevPageRightView, curPageRightView, nextPageRightView)
+            .forEach { page ->
+                page.setReaderBackground(
+                    backgroundColor,
+                    currentReaderBackgroundImagePath,
+                    currentReaderBackgroundImageOpacity,
+                    currentReaderBackgroundImageBlurDp
+                )
+            }
+    }
+
+    private fun retryReaderBackgroundOnPages() {
+        listOf(prevPageView, curPageView, nextPageView, prevPageRightView, curPageRightView, nextPageRightView)
+            .forEach { it.retryReaderBackground() }
     }
 
     fun setImageAdjustments(settings: ReaderImageAdjustments) {
@@ -814,7 +820,12 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             currentReaderBackgroundImagePath == imagePath &&
             currentReaderBackgroundImageOpacity == imageOpacity &&
             currentReaderBackgroundImageBlurDp == imageBlurDp
-        ) return
+        ) {
+            // Keep successful/in-flight requests intact while allowing a failed
+            // background request to recover on the next preview update.
+            retryReaderBackgroundOnPages()
+            return
+        }
 
         animationController.abortAnim()
         currentReaderBackgroundColor = backgroundColor
@@ -969,7 +980,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         // 槽位在异步加载中（isLoaded=false）时 chapterIndex/pageIndex 仍是本次目标位置，
         // 必须继续作为锚点；否则连续 resize 期间会回退到 startChapter/pendingStartChapter
         // （初始化早期可能为 0），把阅读进度清零。
-        val relayoutToCurrent = sizeChanged || spreadModeChanged
+        val relayoutToCurrent = sizeChanged || spreadModeChanged || marginChanged
         val curSlotForRelayout = slotManager.getCurSlot()
         val hasCurrentAnchor = curSlotForRelayout.chapterIndex >= 0
         val effectiveStartChapter = if (relayoutToCurrent && hasCurrentAnchor) {
@@ -1018,6 +1029,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         currentWritingMode = writingMode
         currentTwoPageSpreadEnabled = twoPageSpread
         currentTwoPageSpread = resolvedSpread
+        updatePaginationLayoutIdentity()
         // 双页对开/竖排不在自持跨页选择的支持范围内：切换过去时直接结束自持选区，
         // 否则手柄与翻页语义都会对不上。
         if (!isContentSelectionSupported()) clearReaderSelection()
@@ -1091,7 +1103,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             chapterCount = chapterCount,
             useDisplayDensityForSpans = useDisplayDensityForSpans,
             textAlignment = textAlignment,
-            writingMode = writingMode
+            writingMode = writingMode,
+            fontIdentity = com.huangder.lumibooks.ui.reader.readerPaginationFontKey(
+                context, fontType, customFontPath, currentBodyFontWeight)
         )
 
         configureCurrentPageView(height)
@@ -1124,12 +1138,19 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                         primaryOffset.takeIf { it >= 0 } ?: curSlot.contentView.chapterStartOffset
                 }
             }
-            layoutEngine.invalidateAll()
+            // Metric changes were invalidated by configure/identity; a theme refresh
+            // only evicts the styled layouts, keeping the independent book index.
+            layoutEngine.refreshLayouts()
         }
 
         if (!isConfigured || needsRelayout) {
             slotManager.setChapterCount(chapterCount)
-            slotManager.initialize(effectiveStartChapter, effectiveStartPage)
+            slotManager.initialize(
+                effectiveStartChapter,
+                effectiveStartPage,
+                preserveCurrentContent = isConfigured && marginChanged &&
+                    !chapterCountChanged && !writingModeChanged && !spreadModeChanged
+            )
             isConfigured = true
         }
     }
@@ -1154,7 +1175,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 primaryOffset.takeIf { it >= 0 } ?: current.contentView.chapterStartOffset
         }
         slotManager.clearContentCache()
-        layoutEngine.invalidateAll()
+        layoutEngine.refreshLayouts()
         if (current.chapterIndex >= 0) {
             slotManager.initialize(current.chapterIndex, current.pageIndex.coerceAtLeast(0))
         }
@@ -1198,7 +1219,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     }
 
     /** 跳转到章节内包含指定字符偏移的页面。 */
-    fun jumpToCharacter(chapterIndex: Int, characterOffset: Int) {
+    fun jumpToCharacter(chapterIndex: Int, characterOffset: Int,
+        origin: TtsPageChangeOrigin = TtsPageChangeOrigin.USER) {
+        pendingPageChangeOrigin = origin
         val targetOffset = characterOffset.coerceAtLeast(0)
         val cachedLayout = layoutEngine.getChapterLayout(chapterIndex)
         val cachedPage = cachedLayout?.pages?.indexOfFirst { page ->
@@ -1211,7 +1234,6 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             jumpToChapterInternal(chapterIndex, cachedPage)
         } else {
             slotManager.pendingStartCharOffset = targetOffset
-            layoutEngine.invalidateChapter(chapterIndex)
             jumpToChapterInternal(chapterIndex, 0)
         }
     }
@@ -1272,6 +1294,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     fun setChineseMode(mode: String) {
         if (currentChineseMode == mode) return
         currentChineseMode = mode
+        updatePaginationLayoutIdentity()
         for (pageView in listOf(
             prevPageView, curPageView, nextPageView,
             prevPageRightView, curPageRightView, nextPageRightView
@@ -1288,8 +1311,15 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     fun applyRenderConfig(config: ReaderRenderConfig) {
         val previous = lastRenderConfig
-        if (previous == config) return
+        if (previous == config) {
+            // A cached Compose configuration does not mean asynchronous image
+            // loading succeeded. Recover failed requests without reopening the book.
+            retryReaderBackgroundOnPages()
+            return
+        }
         lastRenderConfig = config
+
+        layoutEngine.setPaginationIdentity(config.paginationContentIdentity)
 
         if (previous?.layout != config.layout) {
             with(config.layout) {
@@ -1324,8 +1354,12 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             with(config.background) {
                 setReaderBackground(color, textColor, imagePath, imageOpacity, imageBlurDp)
             }
+        } else {
+            retryReaderBackgroundOnPages()
         }
         if (previous?.chineseMode != config.chineseMode) setChineseMode(config.chineseMode)
+        if (previous != null && previous.layout == config.layout &&
+            previous.paginationContentIdentity != config.paginationContentIdentity) forceRelayout()
         if (previous?.pageTransitionDurationMs != config.pageTransitionDurationMs ||
             previous.pageTransition != config.pageTransition
         ) {
@@ -1339,8 +1373,18 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val normalized = weight.coerceIn(100, 900)
         if (currentBodyFontWeight == normalized) return
         currentBodyFontWeight = normalized
+        updatePaginationLayoutIdentity()
         configureCurrentPageView()
         forceRelayout()
+    }
+
+    private fun updatePaginationLayoutIdentity() {
+        layoutEngine.setPaginationLayoutIdentity(listOf(
+            com.huangder.lumibooks.ui.reader.readerPaginationFontKey(context, currentFontType,
+                currentCustomFontPath, currentBodyFontWeight),
+            currentParagraphSpacingDp, currentFirstLineIndent, currentBionicReadingEnabled,
+            currentTwoPageSpreadEnabled, currentChineseMode
+        ).joinToString("|"))
     }
 
     /** 设置翻页动画类型 */

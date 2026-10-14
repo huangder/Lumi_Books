@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tts_listening_resume_title">Go to listening position?</string>
+    <string name="tts_listening_resume_message">Your reading position has been restored. You last listened to “%1$s”. Go to your listening position?</string>
+    <string name="tts_listening_resume_jump">Go to listening position</string>
+    <string name="tts_listening_resume_keep">Keep reading position</string>
+    <string name="tts_listening_resume_setting">Position when opening a book</string>
+    <string name="tts_start_title">Where to start listening?</string>
+    <string name="tts_start_message">You last listened to “%1$s”. Start from this page or resume listening?</string>
+    <string name="tts_start_current_page">From this page</string>
+    <string name="tts_start_saved_position">Resume listening</string>
+    <string name="tts_start_remember_choice">Remember this choice</string>
+    <string name="tts_start_setting">Listening start position</string>
+    <string name="tts_start_ask_each_time">Ask each time</string>
+    <string name="tts_listening_resume_show_prompt">Show return hint</string>
+</resources>

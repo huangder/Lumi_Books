@@ -116,6 +116,7 @@ class ReaderCacheStore private constructor(private val context: Context) {
         val directory = ensureRoot()
         cleanupStaleMirrors(directory)
         trimChapterMetadata()
+        trimPageIndexes()
     }
 
     /**
@@ -308,7 +309,7 @@ class ReaderCacheStore private constructor(private val context: Context) {
                 file.delete()
                 null
             } else {
-                if (namespace.startsWith("epub_chapter_v")) {
+                if (namespace.startsWith("epub_chapter_v") || namespace.startsWith("page_index_v")) {
                     file.setLastModified(System.currentTimeMillis())
                 }
                 envelope.optJSONObject("payload")?.also { payload ->
@@ -346,6 +347,7 @@ class ReaderCacheStore private constructor(private val context: Context) {
             temporary.writeText(envelope.toString())
             moveAtomically(temporary, file)
             if (namespace.startsWith("epub_chapter_v")) trimChapterMetadata()
+            if (namespace.startsWith("page_index_v")) trimPageIndexes()
         }
     }
 
@@ -429,6 +431,17 @@ class ReaderCacheStore private constructor(private val context: Context) {
     }
 
     /** Keep persisted EPUB chapter artifacts bounded independently of mirrored book files. */
+    private fun trimPageIndexes() {
+        val files = ensureRoot().listFiles { file ->
+            file.isFile && file.name.startsWith("page_index_v") && file.extension == "json"
+        }.orEmpty().sortedByDescending { it.lastModified() }
+        var total = 0L
+        files.forEachIndexed { index, file ->
+            total += file.length()
+            if (index >= 128 || total > 32L * 1024 * 1024) file.delete()
+        }
+    }
+
     private fun trimChapterMetadata() {
         val files = ensureRoot().listFiles { file ->
             file.isFile && file.name.startsWith("epub_chapter_v") && file.extension == "json"
@@ -455,6 +468,7 @@ class ReaderCacheStore private constructor(private val context: Context) {
     internal fun enforceLimitsForTesting() {
         trim(excludeKey = null)
         trimChapterMetadata()
+        trimPageIndexes()
     }
 
     @Synchronized

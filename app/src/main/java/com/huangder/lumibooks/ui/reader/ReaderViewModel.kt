@@ -4,7 +4,6 @@ import com.huangder.lumibooks.util.parser.MarkdownParser
 import com.huangder.lumibooks.util.epub.EpubComicIndex
 import com.huangder.lumibooks.util.epub.EpubComicPosition
 import com.huangder.lumibooks.util.epub.EpubComicArchive
-import kotlinx.coroutines.ensureActive
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -47,6 +46,7 @@ import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.domain.model.ReaderThemeSettings
 import com.huangder.lumibooks.domain.model.ReaderThemeSuite
 import com.huangder.lumibooks.domain.model.ReaderThemeSuites
+import com.huangder.lumibooks.domain.model.withoutReaderBackground
 import com.huangder.lumibooks.domain.model.PdfPageMode
 import com.huangder.lumibooks.domain.model.normalizeReaderThemeSuiteName
 import com.huangder.lumibooks.domain.model.readerThemeSuiteNameCodePointCount
@@ -108,6 +108,10 @@ import com.huangder.lumibooks.ui.reader.engine.WaveUnderlineSpan
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.service.TtsForegroundService
 import com.huangder.lumibooks.tts.TtsController
+import com.huangder.lumibooks.tts.TtsListeningPosition
+import com.huangder.lumibooks.tts.TtsStartChoice
+import com.huangder.lumibooks.tts.TtsReaderResumeChoice
+import com.huangder.lumibooks.tts.TtsStartRequest
 import com.huangder.lumibooks.tts.TtsPageSource
 import com.huangder.lumibooks.tts.TtsPageContent
 import com.huangder.lumibooks.tts.TtsPageTurnRequest
@@ -371,6 +375,7 @@ data class ReaderUiState(
     val bionicReadingEnabled: Boolean = false,
     val comicModeEnabled: Boolean = false,
     val epubComicReader: Boolean = false,
+    val nativeEpubCssEnabled: Boolean = false,
     val epubComicIndex: EpubComicIndex? = null,
     val epubComicPosition: EpubComicPosition? = null,
     val epubComicPreparing: Boolean = false,
@@ -669,6 +674,103 @@ class ReaderViewModel @Inject constructor(
     private val _ttsSentencePosition = MutableStateFlow<TtsSentencePosition?>(null)
     val ttsSentencePosition: StateFlow<TtsSentencePosition?> = _ttsSentencePosition.asStateFlow()
 
+    private val listeningReaderSession = ListeningReaderSession()
+    val listeningResumePrompt = listeningReaderSession.prompt
+    val listeningResumeJumpRequest = listeningReaderSession.jumpRequest
+    val ttsReaderFollowEnabled = listeningReaderSession.followEnabled
+    private val ttsStartRequest = TtsStartRequest(viewModelScope, dataStoreManager, bookId)
+    val ttsStartPrompt = ttsStartRequest.prompt
+
+    fun requestTtsStart(onStart: (Boolean) -> Unit) {
+        if (_uiState.value.isLoading) return
+        keepReadingPosition()
+        ttsStartRequest.request(_uiState.value.chapterCount, onStart)
+    }
+
+    fun chooseTtsStart(choice: TtsStartChoice, remember: Boolean) = ttsStartRequest.choose(choice, remember)
+
+    fun dismissTtsStart() = ttsStartRequest.dismiss()
+
+    fun hideListeningReader() {
+        dismissTtsStart()
+        listeningReaderSession.hide()
+        ttsController.setReaderAttached(bookId, false)
+    }
+
+    internal suspend fun checkListeningResume(readingChapter: Int, readingPage: Int,
+        visibleStart: Int? = null, visibleEnd: Int? = null, allowPageFallback: Boolean = true,
+        visibleCharacters: List<ReaderVisibleCharacters> = emptyList(),
+        visibleChapters: Set<Int> = emptySet()) {
+        val state = _uiState.value
+        val book = state.book ?: return
+        val generation = listeningReaderSession.beginCheck() ?: return
+        val position = dataStoreManager.ttsListeningPosition(bookId).first()
+        if (!listeningReaderSession.isCurrent(generation)) return
+        val page = if (book.format.isRasterPageFormat ||
+            state.renderMode == EpubRenderMode.BOOK_LAYOUT ||
+            state.readerWritingMode.usesContinuousScroll(state.pageTransition, state.eInkModeEnabled)
+        ) null else pageLayoutEngine.getPageLayout(readingChapter, readingPage)
+        val visible = if (visibleCharacters.isNotEmpty() || page == null) visibleCharacters else buildList {
+            add(ReaderVisibleCharacters(readingChapter, page.startCharOffset, page.endCharOffset))
+            state.rightPageIndex?.let { right ->
+                val chapter = state.rightChapterIndex ?: readingChapter
+                pageLayoutEngine.getPageLayout(chapter, right)?.let {
+                    add(ReaderVisibleCharacters(chapter, it.startCharOffset, it.endCharOffset))
+                }
+            }
+        }
+        if (shouldOfferListeningResume(position, bookId, state.chapterCount, readingChapter,
+                readingPage, visibleStart ?: page?.startCharOffset,
+                visibleEnd ?: page?.endCharOffset, allowPageFallback, visible, visibleChapters)) {
+            val choice = dataStoreManager.ttsReaderResumeChoice.first()
+            if (!listeningReaderSession.isCurrent(generation)) return
+            when (choice) {
+                null -> listeningReaderSession.offer(position!!)
+                TtsReaderResumeChoice.KEEP_READING -> keepReadingPosition()
+                TtsReaderResumeChoice.LISTENING_POSITION -> listeningReaderSession.requestJump(position!!)
+            }
+        } else {
+            enableListeningReaderFollow()
+        }
+    }
+
+    fun keepReadingPosition() {
+        listeningReaderSession.keepReading()
+        ttsController.setReaderAttached(bookId, false)
+    }
+
+    fun chooseListeningResume(choice: TtsReaderResumeChoice, remember: Boolean) {
+        val position = listeningResumePrompt.value ?: return
+        if (remember) viewModelScope.launch { dataStoreManager.saveTtsReaderResumeChoice(choice) }
+        when (choice) {
+            TtsReaderResumeChoice.KEEP_READING -> keepReadingPosition()
+            TtsReaderResumeChoice.LISTENING_POSITION -> {
+                listeningReaderSession.requestJump(position)
+            }
+        }
+    }
+
+    fun completeListeningResumeJump(position: TtsListeningPosition) {
+        if (listeningReaderSession.completeJump(position)) ttsController.setReaderAttached(bookId, true)
+    }
+
+    /** Normal browsing detaches audio follow but keeps the opening hint's saved target. */
+    fun onListeningReaderPageTurn() {
+        listeningReaderSession.pageTurn()
+        ttsController.setReaderAttached(bookId, false)
+    }
+
+    /** A deliberate jump ends the opening hint without changing audio playback. */
+    fun onListeningReaderManualNavigation() {
+        listeningReaderSession.navigate()
+        ttsController.setReaderAttached(bookId, false)
+    }
+
+    fun enableListeningReaderFollow() {
+        listeningReaderSession.follow()
+        ttsController.setReaderAttached(bookId, true)
+    }
+
     private val _bookmarks = MutableStateFlow<List<Bookmark>>(emptyList())
     val bookmarks: StateFlow<List<Bookmark>> = _bookmarks.asStateFlow()
 
@@ -743,6 +845,8 @@ class ReaderViewModel @Inject constructor(
     private val firstChapterDecodeTraced = AtomicBoolean(false)
     private var renderSession: BookRenderSession? = null
     private val readerCacheStore = ReaderCacheStore.get(context)
+    private var nativePageIndexCache: ReaderPageIndexCache? = null
+    private var nativePageIndexGeneration: Long? = null
     private var observedCacheGeneration = readerCacheStore.currentGeneration()
     private var cacheRecoveryJob: Job? = null
     private val bookLoadMutex = Mutex()
@@ -752,6 +856,7 @@ class ReaderViewModel @Inject constructor(
 
     /** 应用进入后台：暂停计时 */
     fun onAppBackgrounded() {
+        flushNativePageIndex()
         if (!isPaused) {
             pausedTime = System.currentTimeMillis()
             isPaused = true
@@ -822,6 +927,8 @@ class ReaderViewModel @Inject constructor(
     }
 
     init {
+        // A live background session must not move the restored reader before the user's choice.
+        ttsController.setReaderAttached(bookId, false)
         viewModelScope.launch {
             highlightRules.drop(1).collectLatest {
                 _uiState.value = _uiState.value.copy(contentRevision = _uiState.value.contentRevision + 1)
@@ -1070,6 +1177,7 @@ class ReaderViewModel @Inject constructor(
         }
         val effectiveSuite = suiteState.suites.firstOrNull { it.id == effectiveSuiteId }
         var nextState = _uiState.value.copy(
+            nativeEpubCssEnabled = preferences.nativeEpubCssEnabled,
             fontSize = preferences.fontSize,
             lineHeight = preferences.lineHeight,
             letterSpacing = preferences.letterSpacing,
@@ -2319,34 +2427,17 @@ class ReaderViewModel @Inject constructor(
         val state = _uiState.value
         val removed = state.customReaderBackgrounds.firstOrNull { it.id == id } ?: return
         val remaining = state.customReaderBackgrounds.filterNot { it.id == id }
-        val wasSelected = state.readerBackgroundSelection == removed.selectionKey
-        val repairedSuites = state.readerThemeSuites.map { suite ->
-            val repairedLayouts = ReaderLayoutTarget.entries.fold(suite) { acc, layout ->
-                val layoutSettings = acc.settingsFor(layout)
-                if (layoutSettings.backgroundSelection == removed.selectionKey) {
-                    acc.withSettings(layout, layoutSettings.copy(backgroundSelection = layoutSettings.backgroundColorSelection))
-                } else acc
-            }
-            listOf(false, true).fold(repairedLayouts) { acc, dark ->
-                val modeSettings = acc.settingsFor(ReaderLayoutTarget.READER_LAYOUT, dark)
-                if (modeSettings.backgroundSelection == removed.selectionKey) {
-                    acc.withModeSettings(dark, modeSettings.copy(backgroundSelection = modeSettings.backgroundColorSelection))
-                } else acc
-            }
+        val repairedSuites = state.readerThemeSuites.map {
+            it.withoutReaderBackground(removed.selectionKey)
         }
-        val restoredSelection = repairedSuites
+        val restoredSettings = repairedSuites
             .firstOrNull { it.id == state.activeThemeSuiteId() }
-            ?.settingsFor(state.readerLayoutTarget())
-            ?.backgroundSelection
-            ?: ReaderThemeSuites.DAY_ID
-        val restoredTheme = restoredSelection.takeIf { id -> id in ReaderThemeSuites.THEME_IDS }
-            ?: ReaderThemeSuites.DAY_ID
-        _uiState.value = state.copy(
+            ?.settingsFor(state.readerLayoutTarget(), activeReaderThemeDark)
+        val next = state.copy(
             customReaderBackgrounds = remaining,
-            readerThemeSuites = repairedSuites,
-            readerTheme = if (wasSelected) restoredTheme else state.readerTheme,
-            readerBackgroundSelection = if (wasSelected) restoredSelection else state.readerBackgroundSelection
+            readerThemeSuites = repairedSuites
         )
+        _uiState.value = restoredSettings?.let { next.withReaderThemeSettings(it) } ?: next
         viewModelScope.launch {
             dataStoreManager.saveCustomReaderBackgrounds(remaining)
             dataStoreManager.saveReaderThemeSuiteState(
@@ -2356,13 +2447,6 @@ class ReaderViewModel @Inject constructor(
                     state.globalActiveReaderThemeSuiteId == state.activeReaderThemeSuiteId,
                 activeBookLayoutSuiteId = state.globalActiveBookLayoutThemeSuiteId
             )
-            if (state.readerThemeSuiteBookScoped && wasSelected) {
-                dataStoreManager.saveReaderThemeSuiteBookActiveId(
-                    bookId,
-                    restoredSelection,
-                    state.readerLayoutTarget()
-                )
-            }
             if (removed.type == ReaderBackgroundType.IMAGE) {
                 withContext(Dispatchers.IO) {
                     runCatching { File(removed.value).delete() }
@@ -2800,6 +2884,17 @@ class ReaderViewModel @Inject constructor(
         _uiState.value = state.copy(epubComicPosition = position,
             book = state.book?.copy(readingProgress = progress, locatorJson = position.encode()))
         scheduleProgressSave()
+    }
+
+    fun saveNativeEpubCssEnabled(enabled: Boolean) {
+        val state = _uiState.value
+        if (state.book?.format != BookFormat.EPUB || state.nativeEpubCssEnabled == enabled) return
+        saveProgress()
+        _uiState.value = state.copy(nativeEpubCssEnabled = enabled,
+            pendingPageFraction = if (state.totalPages > 0) state.currentPageIndex.toFloat() / state.totalPages else state.pendingPageFraction,
+            pendingPageFractionSemantics = ReaderPageFractionSemantics.START,
+            pageReady = false)
+        viewModelScope.launch { dataStoreManager.saveNativeEpubCssEnabled(bookId, enabled) }
     }
 
     fun saveRenderMode(mode: EpubRenderMode) {
@@ -3340,7 +3435,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun saveLineGuideDimLevel(level: Int) {
-        val value = level.coerceIn(0, 3)
+        val value = level.coerceIn(0, 4)
         _uiState.value = _uiState.value.copy(lineGuideDimLevel = value)
         viewModelScope.launch { dataStoreManager.saveLineGuideDimLevel(bookId, value) }
     }
@@ -3625,6 +3720,7 @@ class ReaderViewModel @Inject constructor(
 
     /** 用户离开阅读页时调用（DisposableEffect.onDispose） */
     fun saveAndPause() {
+        flushNativePageIndex()
         continuousProgressJob?.cancel()
         saveProgress()
         saveReadingSession()
@@ -3632,6 +3728,10 @@ class ReaderViewModel @Inject constructor(
     }
 
     private fun closeActiveBookSession() {
+        flushNativePageIndex()
+        nativePageIndexCache?.close()
+        nativePageIndexCache = null
+        nativePageIndexGeneration = null
         stopTts()
         largeTxtIndexJob?.cancel()
         largeTxtIndexJob = null
@@ -4004,6 +4104,7 @@ class ReaderViewModel @Inject constructor(
                         useEpubCss = useEpubCss,
                         readerWritingMode = readerWritingMode,
                         renderMode = renderMode,
+                        nativeEpubCssEnabled = preferences.nativeEpubCssEnabled,
                         markdownPaginationReady = false,
                         showEpubLayoutHint = showEpubLayoutHint,
                         showMobiLayoutHint = showMobiLayoutHint,
@@ -4720,6 +4821,7 @@ class ReaderViewModel @Inject constructor(
         startCharacterOffset: Int? = null,
         restoreSavedPosition: Boolean = true
     ) {
+        enableListeningReaderFollow()
         ContextCompat.startForegroundService(
             context,
             TtsForegroundService.startIntent(context, bookTitle)
@@ -4821,6 +4923,7 @@ class ReaderViewModel @Inject constructor(
     fun seekTtsToSentence(chapterIndex: Int, characterOffset: Int) {
         // 只允许调整当前这本书的朗读会话，避免影响其他书籍或已停止的会话。
         if (_ttsState.value.activeBookId != bookId) return
+        enableListeningReaderFollow()
         ttsController.seekTo(
             chapterIndex = chapterIndex.coerceAtLeast(0),
             characterOffset = characterOffset.coerceAtLeast(0)
@@ -4962,6 +5065,72 @@ class ReaderViewModel @Inject constructor(
         frameworkDrawsText = false
     )
 
+    /** Keep only page counts and character boundaries; background work never fills the layout LRU. */
+    internal fun paginationContentIdentity(): String {
+        fun metricStyle(style: RuleStyle): String? = if (style.fontWeight >= 600 || style.italic || style.fontType.isNotBlank())
+            listOf(style.fontWeight, style.italic, style.fontType,
+                readerPaginationFontKey(context, style.fontType,
+                    _uiState.value.customFonts.firstOrNull { it.fontTypeKey == style.fontType }?.path,
+                    style.fontWeight)).joinToString("|") else null
+        val rules = highlightRules.value.filter { it.enabled }.mapNotNull { rule ->
+            metricStyle(RuleStyle(rule.textColor, rule.underlineMode, rule.underlineOffset,
+                rule.underlineWidth, rule.fontWeight, rule.isItalic, rule.fontType))?.let {
+                listOf(rule.pattern, rule.targetScope, rule.position, it).joinToString("|")
+            }
+        }
+        val notes = _readerNotes.value.mapNotNull { note ->
+            note.styleSnapshotJson?.let(RuleStyleJson::decode)?.let { style -> metricStyle(style)?.let {
+                listOf(note.chapterIndex, note.startPosition, note.endPosition, it).joinToString("|")
+            } }
+        }
+        return paginationHash(_uiState.value.paginationContentKey() + "|" + rules + "|" + notes)
+    }
+
+    internal suspend fun indexBookPages(generation: Long, countMissing: Boolean = true) = kotlinx.coroutines.coroutineScope {
+        val book = _uiState.value.book ?: return@coroutineScope
+        val signature = pageLayoutEngine.paginationSignature()
+        val cache = ReaderPageIndexCache.open(context, book, signature, pageLayoutEngine.bookPages.value.chapterCounts.size)
+        if (pageLayoutEngine.bookPages.value.generation != generation || pageLayoutEngine.paginationSignature() != signature) {
+            cache.close()
+            return@coroutineScope
+        }
+        cache.restored?.let { pageLayoutEngine.restoreBookPages(it, generation) }
+        nativePageIndexCache = cache
+        nativePageIndexGeneration = generation
+        val writer = launch {
+            pageLayoutEngine.bookPages.collect { pages -> if (pages.generation == generation) cache.submit(pages) }
+        }
+        try {
+            if (countMissing && pageLayoutEngine.bookPages.value.totalPages == null) countMissingBookPages(generation)
+            // Also persist chapters confirmed later by foreground navigation when statistics
+            // are disabled, incomplete, or a chapter failed to load in the background.
+            kotlinx.coroutines.awaitCancellation()
+        } finally {
+            writer.cancel()
+            if (pageLayoutEngine.bookPages.value.generation == generation) cache.submit(pageLayoutEngine.bookPages.value)
+            cache.close()
+            if (nativePageIndexCache === cache) {
+                nativePageIndexCache = null
+                nativePageIndexGeneration = null
+            }
+        }
+    }
+
+    private suspend fun countMissingBookPages(generation: Long) {
+        pageLayoutEngine.indexMissingPages(generation) { chapter ->
+            try {
+                withContext(Dispatchers.IO) {
+                    buildChapterText(chapter, null, null, frameworkDrawsText = false, backgroundPagination = true)
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                android.util.Log.w("ReaderBookPages", "Cannot count chapter $chapter", error)
+                null
+            }
+        }
+    }
+
     /**
      * 供框架直接绘制正文的通道使用（上下滚动模式的原生 TextView）。
      *
@@ -4985,7 +5154,8 @@ class ReaderViewModel @Inject constructor(
         contentWidthPx: Int?,
         contentHeightPx: Int?,
         frameworkDrawsText: Boolean,
-        previewChars: Int? = null
+        previewChars: Int? = null,
+        backgroundPagination: Boolean = false
     ): CharSequence? {
         val activeParser = parser
         if (activeParser is com.huangder.lumibooks.util.parser.MarkdownParser) return if (index == 0) activeParser.searchText else null
@@ -5000,7 +5170,9 @@ class ReaderViewModel @Inject constructor(
             }
         }
         fun decode(): CharSequence? = try {
-            if (continuousEpub != null) {
+            if (backgroundPagination && activeParser is com.huangder.lumibooks.util.parser.EpubParser) {
+                activeParser.getChapterContentForPagination(index)
+            } else if (continuousEpub != null) {
                 if (previewChars != null) {
                     continuousEpub.getChapterContentPreview(index, contentWidthPx!!, 0, previewChars).text
                 } else {
@@ -5616,6 +5788,8 @@ class ReaderViewModel @Inject constructor(
             }
             val newChapterTitles = newContent.chapters.map { it.title }
             val newChapterCount = newContent.chapters.size
+            preloadCache.clear()
+            pageLayoutEngine.invalidateAll()
 
             // 尝试通过标题匹配恢复章节位置，失败则回退到索引
             val bestChapterIndex = if (oldChapterTitle.isNotBlank()) {
@@ -6528,7 +6702,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     private fun saveReadingSession() {
-        val endTime = System.currentTimeMillis()
+        val endTime = if (isPaused) pausedTime else System.currentTimeMillis()
         val duration = endTime - sessionStartTime
         android.util.Log.e("READING", "saveReadingSession: duration=${duration}ms, bookId=$bookId")
         if (duration < 5000) {
@@ -6558,13 +6732,15 @@ class ReaderViewModel @Inject constructor(
                 }
             }
             // 重置会话起始时间，为下一段阅读做准备
-            sessionStartTime = System.currentTimeMillis()
+            sessionStartTime = endTime
         } catch (e: Exception) {
             android.util.Log.e("READING", "Save failed: ${e.message}")
         }
     }
 
     override fun onCleared() {
+        flushNativePageIndex()
+        nativePageIndexCache?.close()
         cancelOpenDeferredWork()
         cacheRecoveryJob?.cancel()
         largeTxtIndexJob?.cancel()
@@ -6573,5 +6749,13 @@ class ReaderViewModel @Inject constructor(
         renderSession = null
         preloadCache.clear()
         super.onCleared()
+    }
+
+    private fun flushNativePageIndex() {
+        nativePageIndexCache?.let { cache ->
+            val pages = pageLayoutEngine.bookPages.value
+            if (pages.generation == nativePageIndexGeneration) cache.submit(pages)
+            cache.flush()
+        }
     }
 }

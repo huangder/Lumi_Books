@@ -96,6 +96,7 @@ internal class PdfPageDecoder(
 ) : RasterPageDecoder {
     override val pageCount = renderer.pageCount
     override val parallelism = 1
+    private val memoryPixelBudget = pdfMemoryPixelBudget(Runtime.getRuntime().maxMemory())
 
     override fun dimensions(page: Int): RasterDimensions = renderer.openPage(page).use {
         RasterDimensions(it.width, it.height)
@@ -104,24 +105,29 @@ internal class PdfPageDecoder(
     override fun spec(page: Int, dimensions: RasterDimensions, width: Int, mode: PageRenderMode, preview: Boolean): RasterDecodeSpec {
         val scale = if (preview) {
             minOf(width.toFloat() / dimensions.width,
+                PDF_RENDER_MAX_DIMENSION.toFloat() / maxOf(dimensions.width, dimensions.height),
                 kotlin.math.sqrt(512_000.0 / (dimensions.width.toDouble() * dimensions.height)).toFloat())
-        } else pdfRenderScale(dimensions.width, dimensions.height, pageRenderTargetWidth(width), mode)
-        val outputWidth = (dimensions.width * scale).toInt().coerceAtLeast(1)
-        return RasterDecodeSpec(page, outputWidth, (outputWidth / dimensions.ratio).toInt().coerceAtLeast(1))
+        } else pdfRenderScale(dimensions.width, dimensions.height, pageRenderTargetWidth(width), mode, memoryPixelBudget)
+        return RasterDecodeSpec(page, (dimensions.width * scale).toInt().coerceAtLeast(1),
+            (dimensions.height * scale).toInt().coerceAtLeast(1))
     }
 
     override fun decode(spec: RasterDecodeSpec): Bitmap? {
-        var bitmap: Bitmap? = null
         return try {
-            renderer.openPage(spec.page).use { page ->
-                Bitmap.createBitmap(spec.width, spec.height, Bitmap.Config.ARGB_8888).also {
-                    bitmap = it
-                    it.eraseColor(android.graphics.Color.WHITE)
-                    page.render(it, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+            renderPdfWithMemoryFallback(spec) { attempt ->
+                renderer.openPage(attempt.page).use { page ->
+                    val bitmap = Bitmap.createBitmap(attempt.width, attempt.height, Bitmap.Config.ARGB_8888)
+                    try {
+                        bitmap.eraseColor(android.graphics.Color.WHITE)
+                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        bitmap
+                    } catch (error: Throwable) {
+                        bitmap.recycle()
+                        throw error
+                    }
                 }
             }
         } catch (error: Throwable) {
-            bitmap?.recycle()
             android.util.Log.w("RasterReader", "PDF decode failed: ${spec.page}", error)
             null
         }
@@ -131,6 +137,21 @@ internal class PdfPageDecoder(
         runCatching { renderer.close() }
         runCatching { descriptor.close() }
     }
+}
+
+/** 降低分辨率再试，避免内存不足时反复分配同一张大位图。 */
+internal fun <T> renderPdfWithMemoryFallback(spec: RasterDecodeSpec, render: (RasterDecodeSpec) -> T): T {
+    var attempt = spec
+    repeat(3) { retry ->
+        try {
+            return render(attempt)
+        } catch (error: OutOfMemoryError) {
+            if (retry == 2 || (attempt.width == 1 && attempt.height == 1)) throw error
+            attempt = attempt.copy(width = (attempt.width / 2).coerceAtLeast(1),
+                height = (attempt.height / 2).coerceAtLeast(1))
+        }
+    }
+    error("PDF render attempts exhausted")
 }
 
 internal class CbzPageDecoder(private val archive: OpenedCbzArchive) : RasterPageDecoder {

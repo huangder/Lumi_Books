@@ -37,8 +37,11 @@ class EpubRenderSession private constructor(
     private val readerBackgroundFiles = mutableMapOf<String, File>()
     private val readerBackgroundKeysByPath = mutableMapOf<String, String>()
     private val cssIndexByChapterPath = mutableMapOf<String, EpubCssIndex>()
-    private val mediaOnlyByChapter = mutableMapOf<Int, Boolean>()
+    private val mediaOnlyByChapter = java.util.concurrent.ConcurrentHashMap<Int, Boolean>()
     private val missingResourceLog = mutableSetOf<String>()
+    private val documentCache = EpubDocumentCache()
+    private val documentPreparationLock = Any()
+    @Volatile private var closed = false
 
     override val assetLoader: WebViewAssetLoader = WebViewAssetLoader.Builder()
         .setDomain(ASSET_DOMAIN)
@@ -153,7 +156,6 @@ class EpubRenderSession private constructor(
             ?.let { epubPackage.spine.getOrNull(it)?.renditionLayout }
             ?: EpubRenditionLayout.REFLOWABLE
 
-    @Synchronized
     override fun isMediaOnlyPage(chapterIndex: Int): Boolean =
         mediaOnlyByChapter.getOrPut(chapterIndex) {
             readLogicalSource(chapterIndex)?.let(EpubDocumentTransformer::isMediaOnlyPage) == true
@@ -274,6 +276,7 @@ class EpubRenderSession private constructor(
 
     @Synchronized
     private fun readPhysical(normalized: String): EpubResource? {
+        if (closed) return null
         val entry = zipFile.getEntry(normalized) ?: entriesByLowercase[normalized.lowercase()] ?: return null
         if (entry.isDirectory) return null
         val bytes = runCatching {
@@ -336,6 +339,44 @@ class EpubRenderSession private constructor(
             ?.takeIf { it in logicalChapters.indices }
     }
 
+    /** Raw logical DOM and ordered local styles for the optional native CSS reader. */
+    internal fun nativeChapterSource(chapterIndex: Int): NativeEpubSource? = synchronized(documentPreparationLock) {
+        if (closed) return@synchronized null
+        val chapter = logicalChapters.getOrNull(chapterIndex) ?: return@synchronized null
+        val resource = readLogicalSource(chapterIndex) ?: return@synchronized null
+        val dom = org.jsoup.Jsoup.parse(resource.bytes.toString(Charsets.UTF_8))
+        val sheets = mutableListOf<Pair<String, String>>()
+        var failure: String? = null
+        var totalCssBytes = 0
+        fun load(path: String, chain: Set<String>) {
+            if (path in chain || chain.size >= 8 || sheets.size >= 64) { failure = "CSS import limit"; return }
+            val css = synchronized(this) { if (closed) null else readStyleSheet(path) }
+            if (css == null) { failure = "missing stylesheet"; return }
+            totalCssBytes += css.length
+            if (totalCssBytes > 1024 * 1024) { failure = "CSS size limit"; return }
+            EpubCssIndex.imports(css).forEach { reference ->
+                EpubPathResolver.resolve(path, reference)?.let { load(it, chain + path) }
+                    ?: run { failure = "external stylesheet" }
+            }
+            // Import media queries are not flattened into unconditional styles.
+            if (Regex("@import[^;]+\\)\\s+[^;\\s][^;]*;", RegexOption.IGNORE_CASE).containsMatchIn(css)) failure = "conditional import"
+            sheets += path to css.replace(Regex("@import\\s+[^;]+;", RegexOption.IGNORE_CASE), "")
+        }
+        dom.select("head link, head style").forEach { element ->
+            if (element.attr("media").isNotBlank() && element.attr("media") !in setOf("all", "screen")) failure = "conditional stylesheet"
+            if (element.normalName() == "style") sheets += resource.path to element.data()
+            else if (element.attr("rel").split(' ').any { it.equals("stylesheet", true) }) {
+                val path = EpubPathResolver.resolve(resource.path, element.attr("href"))
+                if (path == null) failure = "external stylesheet" else load(path, emptySet())
+            }
+        }
+        NativeEpubSource(chapterHref(chapterIndex), resource, sheets,
+            epubPackage.spine[chapter.spineIndex].renditionLayout, failure)
+    }
+
+    internal fun nativeResource(path: String): EpubResource? = readRawChapter(path)
+    internal fun nativeImageUrl(path: String): String = physicalChapterUrl(path)
+
     private fun readLogicalSource(chapterIndex: Int): EpubResource? {
         val chapter = logicalChapters.getOrNull(chapterIndex) ?: return null
         val spineItem = epubPackage.spine.getOrNull(chapter.spineIndex) ?: return null
@@ -353,10 +394,14 @@ class EpubRenderSession private constructor(
         )
     }
 
-    private fun readLogicalChapter(chapterIndex: Int): EpubResource? {
-        val chapter = logicalChapters.getOrNull(chapterIndex) ?: return null
-        val spineItem = epubPackage.spine.getOrNull(chapter.spineIndex) ?: return null
-        val source = readLogicalSource(chapterIndex) ?: return null
+    private fun readLogicalChapter(chapterIndex: Int): EpubResource? = synchronized(documentPreparationLock) {
+        if (closed) return@synchronized null
+        val cacheKey = "logical:$chapterIndex"
+        documentCache[cacheKey]?.let { return@synchronized it }
+        val chapter = logicalChapters.getOrNull(chapterIndex) ?: return@synchronized null
+        val spineItem = epubPackage.spine.getOrNull(chapter.spineIndex) ?: return@synchronized null
+        val source = readLogicalSource(chapterIndex) ?: return@synchronized null
+        val mediaOnly = EpubDocumentTransformer.isMediaOnlyPage(source)
         val cssIndex = cssIndexFor(chapter.path, source.bytes)
         val transformed = EpubDocumentTransformer.transform(
             resource = source,
@@ -365,10 +410,19 @@ class EpubRenderSession private constructor(
             cssIndex = cssIndex
         )
         val baseUrl = physicalChapterUrl(chapter.path)
-        return source.copy(bytes = transformed.withBaseHref(baseUrl))
+        val document = source.copy(bytes = transformed.withBaseHref(baseUrl))
+        // Closing never waits for conversion; publish only while the ZIP session is still live.
+        synchronized(this) {
+            if (closed) null else {
+                mediaOnlyByChapter.putIfAbsent(chapterIndex, mediaOnly)
+                documentCache.put(cacheKey, document)
+            }
+        }
     }
 
+    @Synchronized
     private fun readRawChapter(path: String): EpubResource? {
+        if (closed) return null
         val normalized = EpubPathResolver.normalize(path) ?: return null
         val entry = zipFile.getEntry(normalized) ?: entriesByLowercase[normalized.lowercase()] ?: return null
         if (entry.isDirectory) return null
@@ -396,6 +450,7 @@ class EpubRenderSession private constructor(
      */
     @Synchronized
     private fun cssIndexFor(chapterPath: String, chapterBytes: ByteArray): EpubCssIndex {
+        if (closed) return EpubCssIndex.parse(emptyList())
         val cacheKey = chapterPath.lowercase()
         cssIndexByChapterPath[cacheKey]?.let { return it }
         val html = String(chapterBytes, Charsets.UTF_8)
@@ -454,6 +509,14 @@ class EpubRenderSession private constructor(
 
     @Synchronized
     override fun close() {
+        if (closed) return
+        closed = true
+        documentCache.clear()
+        mediaOnlyByChapter.clear()
+        missingResourceLog.clear()
+        cssIndexByChapterPath.clear()
+        readerBackgroundFiles.clear()
+        readerBackgroundKeysByPath.clear()
         readerFontFiles.clear()
         readerFontKeysByPath.clear()
         zipFile.close()

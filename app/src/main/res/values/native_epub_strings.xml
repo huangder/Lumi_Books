@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="native_epub_css_title">原生 CSS 排版（实验）</string>
+    <string name="native_epub_css_hint">仅对本书启用。常用排版使用原生引擎；复杂章节和暂不支持的阅读设置自动使用 WebView。</string>
+</resources>

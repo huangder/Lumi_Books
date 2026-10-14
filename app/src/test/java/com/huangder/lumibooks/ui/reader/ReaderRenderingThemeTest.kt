@@ -5,9 +5,9 @@ import org.junit.Test
 
 class ReaderRenderingThemeTest {
     @Test
-    fun publisherSuiteIgnoresSystemDarkMode() {
+    fun publisherSuiteDimsInSystemDarkMode() {
         assertEquals(
-            "day",
+            "publisher_night",
             resolveReaderRenderingTheme(
                 eInkMode = false,
                 publisherPaintSuiteActive = true,
@@ -19,9 +19,9 @@ class ReaderRenderingThemeTest {
     }
 
     @Test
-    fun publisherSuiteIgnoresExplicitNightMode() {
+    fun publisherSuiteDimsInExplicitNightMode() {
         assertEquals(
-            "day",
+            "publisher_night",
             resolveReaderRenderingTheme(
                 eInkMode = false,
                 publisherPaintSuiteActive = true,
@@ -30,6 +30,11 @@ class ReaderRenderingThemeTest {
                 hasImageBackground = false
             )
         )
+    }
+
+    @Test
+    fun publisherSuiteRestoresOriginalColorsInDayMode() {
+        assertEquals("day", resolveReaderRenderingTheme(false, true, false, "night", false))
     }
 
     @Test

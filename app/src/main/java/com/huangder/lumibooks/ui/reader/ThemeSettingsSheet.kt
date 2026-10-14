@@ -12,6 +12,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import androidx.compose.animation.AnimatedVisibility
@@ -111,6 +112,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -249,6 +251,9 @@ fun ThemeSettingsSheet(
     onOptimizeLayoutChange: (Boolean) -> Unit = {},
     onUseEpubCssChange: (Boolean) -> Unit = {},
     onRenderModeChange: (EpubRenderMode) -> Unit = {},
+    supportsNativeEpubCss: Boolean = false,
+    nativeEpubCssEnabled: Boolean = false,
+    onNativeEpubCssChange: (Boolean) -> Unit = {},
     onWritingModeChange: (ReaderWritingMode) -> Unit = {},
     onChineseModeChange: (String) -> Unit = {},
     onPageTransitionChange: (String) -> Unit = {},
@@ -582,6 +587,16 @@ fun ThemeSettingsSheet(
                     fontSize = 12.sp,
                     color = LightTextSecondary
                 )
+                if (supportsNativeEpubCss && currentRenderMode == EpubRenderMode.BOOK_LAYOUT) {
+                    Spacer(Modifier.height(12.dp))
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.native_epub_css_title), modifier = Modifier.weight(1f),
+                            fontSize = 13.sp, color = AppColors.TextPrimary)
+                        LiquidGlassSwitch(checked = nativeEpubCssEnabled, onCheckedChange = onNativeEpubCssChange)
+                    }
+                    Text(stringResource(R.string.native_epub_css_hint), modifier = Modifier.padding(horizontal = 24.dp),
+                        fontSize = 12.sp, color = LightTextSecondary)
+                }
                 Spacer(Modifier.height(16.dp))
             }
 
@@ -2452,6 +2467,11 @@ fun AdvancedSettingsSheet(
     val sheetOffset = remember { Animatable(1f) }
     val settingsScrollState = rememberScrollState()
     var marginPreview by remember { mutableStateOf<ReaderMarginPreview?>(null) }
+    val marginSheetAlpha by animateFloatAsState(
+        targetValue = if (marginPreview == null) 1f else 0f,
+        animationSpec = tween(if (eInkModeEnabled) 0 else 140),
+        label = "marginSheetAlpha"
+    )
     val expandedGroups = remember { mutableStateMapOf<String, Boolean>() }
     fun isGroupExpanded(key: String, defaultExpanded: Boolean = false): Boolean =
         expandedGroups[key] ?: defaultExpanded
@@ -2504,12 +2524,16 @@ fun AdvancedSettingsSheet(
     }
     val previewLeftPadding = currentMarginLeft.coerceIn(ReaderThemeSettings.HORIZONTAL_MARGIN_RANGE).dp
     val previewRightPadding = currentMarginRight.coerceIn(ReaderThemeSettings.HORIZONTAL_MARGIN_RANGE).dp
-    val previewTopPadding = currentMarginTop.coerceIn(ReaderThemeSettings.VERTICAL_MARGIN_RANGE).dp
-    val previewBottomPadding = currentMarginBottom.coerceIn(ReaderThemeSettings.VERTICAL_MARGIN_RANGE).dp
-    val previewLineHeight = if (preservePublisherLayout) 1.5f else currentLineHeight
-    val previewLetterSpacing = if (preservePublisherLayout) 0f else currentLetterSpacing
-    val previewParagraphSpacing = if (preservePublisherLayout) 0f else currentParagraphSpacing
-    val previewFirstLineIndent = if (preservePublisherLayout) 0f else currentFirstLineIndent
+    val screenHeight = LocalConfiguration.current.screenHeightDp.toFloat()
+    val previewHeight = (screenHeight * 0.28f).coerceIn(120f, 240f).dp
+    // Scale vertical margins to the compact sample so they do not consume its text area.
+    val previewMarginScale = (previewHeight.value - 62f) / (screenHeight - 62f).coerceAtLeast(1f)
+    val previewTopPadding = (currentMarginTop.coerceIn(ReaderThemeSettings.VERTICAL_MARGIN_RANGE) * previewMarginScale).dp
+    val previewBottomPadding = (currentMarginBottom.coerceIn(ReaderThemeSettings.VERTICAL_MARGIN_RANGE) * previewMarginScale).dp
+    val previewLineHeight = currentLineHeight
+    val previewLetterSpacing = currentLetterSpacing
+    val previewParagraphSpacing = currentParagraphSpacing
+    val previewFirstLineIndent = currentFirstLineIndent
     val previewContext = LocalContext.current
     val verticalPreviewTypeface = remember(previewContext, currentFontType, customFontPath) {
         resolveReaderTypeface(
@@ -2526,11 +2550,8 @@ fun AdvancedSettingsSheet(
             Modifier.fillMaxSize()
                 .background(
                     AppColors.Scrim.copy(
-                        alpha = if (marginPreview == null) {
-                            0.20f * (1f - sheetOffset.value.coerceIn(0f, 1f))
-                        } else {
-                            0f
-                        }
+                        alpha = 0.20f * marginSheetAlpha *
+                            (1f - sheetOffset.value.coerceIn(0f, 1f))
                     )
                 )
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
@@ -2544,20 +2565,20 @@ fun AdvancedSettingsSheet(
                 .pointerInput(Unit) {
                     detectTapGestures(onTap = {})
                 }
-                .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress),
+                .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
+                .graphicsLayer { alpha = marginSheetAlpha },
             contentModifier = Modifier
                 .fillMaxSize()
-                .navigationBarsPadding()
-                .graphicsLayer { alpha = if (marginPreview == null) 1f else 0f },
+                .navigationBarsPadding(),
             fallbackColor = LightCardBg,
-            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            surfaceVisible = marginPreview == null
+            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
         ) {
             // 顶部预览区域：背景直接铺到容器顶部，操作按钮悬浮在预览之上。
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(400.dp)
+                    .height(previewHeight)
+                    .clip(androidx.compose.ui.graphics.RectangleShape)
                     .background(currentBgColor)
             ) {
                 currentBackgroundImagePath?.let { path ->
@@ -2872,42 +2893,40 @@ fun AdvancedSettingsSheet(
                 }
                 Spacer(Modifier.height(12.dp))
 
-                if (!preservePublisherLayout) {
-                    AdvancedSettingsSection(
-                        title = stringResource(R.string.reader_settings_text_spacing),
-                        summary = stringResource(R.string.reader_settings_text_spacing_summary),
-                        expanded = isGroupExpanded("text_spacing"),
-                        onExpandedChange = { expandedGroups["text_spacing"] = it },
-                        eInkModeEnabled = eInkModeEnabled
-                    ) {
-                        SettingSlider(stringResource(R.string.label_line_height), currentLineHeight, 1.0f..2.5f, 0.1f, { String.format("%.1fx", it) }, onLineHeightChange)
-                        Spacer(Modifier.height(12.dp))
-                        SettingSlider(stringResource(R.string.label_letter_spacing), currentLetterSpacing, 0f..10f, 0.5f, { String.format("%.1f sp", it) }, onLetterSpacingChange)
-                        Spacer(Modifier.height(12.dp))
-                        SettingSlider(
-                            stringResource(R.string.label_paragraph_spacing),
-                            currentParagraphSpacing,
-                            0f..30f,
-                            0.5f,
-                            {
-                                if (it % 1f == 0f) "${it.toInt()} dp"
-                                else String.format("%.1f dp", it)
-                            },
-                            onParagraphSpacingChange
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        val characterUnit = stringResource(R.string.reader_unit_character)
-                        SettingSlider(
-                            stringResource(R.string.label_first_line_indent),
-                            currentFirstLineIndent,
-                            0f..4f,
-                            0.5f,
-                            { "$it $characterUnit" },
-                            onFirstLineIndentChange
-                        )
-                    }
+                AdvancedSettingsSection(
+                    title = stringResource(R.string.reader_settings_text_spacing),
+                    summary = stringResource(R.string.reader_settings_text_spacing_summary),
+                    expanded = isGroupExpanded("text_spacing"),
+                    onExpandedChange = { expandedGroups["text_spacing"] = it },
+                    eInkModeEnabled = eInkModeEnabled
+                ) {
+                    SettingSlider(stringResource(R.string.label_line_height), currentLineHeight, 1.0f..2.5f, 0.1f, { String.format("%.1fx", it) }, onLineHeightChange)
                     Spacer(Modifier.height(12.dp))
+                    SettingSlider(stringResource(R.string.label_letter_spacing), currentLetterSpacing, 0f..10f, 0.5f, { String.format("%.1f sp", it) }, onLetterSpacingChange)
+                    Spacer(Modifier.height(12.dp))
+                    SettingSlider(
+                        stringResource(R.string.label_paragraph_spacing),
+                        currentParagraphSpacing,
+                        0f..30f,
+                        0.5f,
+                        {
+                            if (it % 1f == 0f) "${it.toInt()} dp"
+                            else String.format("%.1f dp", it)
+                        },
+                        onParagraphSpacingChange
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    val characterUnit = stringResource(R.string.reader_unit_character)
+                    SettingSlider(
+                        stringResource(R.string.label_first_line_indent),
+                        currentFirstLineIndent,
+                        0f..4f,
+                        0.5f,
+                        { "$it $characterUnit" },
+                        onFirstLineIndentChange
+                    )
                 }
+                Spacer(Modifier.height(12.dp))
                 AdvancedSettingsSection(
                     title = stringResource(R.string.reader_settings_page_layout),
                     summary = stringResource(R.string.reader_settings_page_layout_summary),
@@ -3171,16 +3190,16 @@ private fun MarginSettingSlider(
             onChange(changed)
         },
         onPreview = { changed ->
-            onActivePreviewChange(activePreview?.takeIf { it.control == control }?.copy(value = changed))
+            // Only reveal the full page after a horizontal drag is confirmed.
+            // Touching a slider to scroll the sheet must not hide and show it.
+            val preview = activePreview?.takeIf { it.control == control }?.copy(value = changed)
+                ?: bounds?.let { ReaderMarginPreview(control, it, changed, range, step) }
+            onActivePreviewChange(preview)
             onPreview(changed)
         },
         sliderModifier = Modifier.onGloballyPositioned { bounds = it.boundsInRoot() },
         onInteractionChange = { active ->
-            if (active) {
-                bounds?.let {
-                    onActivePreviewChange(ReaderMarginPreview(control, it, value, range, step))
-                }
-            } else if (activePreview?.control == control) {
+            if (!active && activePreview?.control == control) {
                 onActivePreviewChange(null)
             }
         }
@@ -3885,6 +3904,7 @@ private fun readerCornerContentLabel(content: ReaderCornerContent): String = str
         ReaderCornerContent.CHAPTER_INFO -> R.string.reader_corner_content_chapter
         ReaderCornerContent.BOOK_PROGRESS -> R.string.reader_corner_content_book_progress
         ReaderCornerContent.PAGE_NUMBER -> R.string.reader_corner_content_page_number
+        ReaderCornerContent.GLOBAL_PAGE_NUMBER -> R.string.reader_corner_content_global_page_number
         ReaderCornerContent.BATTERY -> R.string.reader_corner_content_battery
         ReaderCornerContent.TIME -> R.string.reader_corner_content_time
     }

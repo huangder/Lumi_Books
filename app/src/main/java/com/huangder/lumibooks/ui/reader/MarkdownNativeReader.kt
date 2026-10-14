@@ -24,6 +24,13 @@ import kotlinx.coroutines.*
 import org.json.JSONObject
 import kotlin.math.abs
 
+internal fun markdownPaginationSignature(identity: String, style: MarkdownPageStyle,
+    density: Float, scaledDensity: Float): String = listOf(
+    "markdown", identity, style.render.width, style.render.height, style.render.fontSize,
+    style.render.paragraphSpacing, style.render.firstLineIndent, style.lineHeight,
+    style.letterSpacing, style.alignment, style.justify, density, scaledDensity
+).joinToString("|")
+
 /** Native document surface; menus, dialogs, themes and navigation remain owned by ReaderScreen. */
 @Composable
 internal fun MarkdownNativeReader(
@@ -39,6 +46,8 @@ internal fun MarkdownNativeReader(
     ttsSentence: TtsSentencePosition?,
     selectionClearToken: Int,
     onPage: (Int, Int, String) -> Unit,
+    onPageIndex: (List<Int>) -> Unit = {},
+    onManualNavigation: () -> Unit = {},
     onSelection: (EpubSelectionInfo) -> Unit,
     onLink: (String) -> Unit,
     onMenu: () -> Unit,
@@ -52,6 +61,8 @@ internal fun MarkdownNativeReader(
     modifier: Modifier = Modifier,
 ) {
     val latestPage by rememberUpdatedState(onPage)
+    val latestPageIndex by rememberUpdatedState(onPageIndex)
+    val latestManualNavigation by rememberUpdatedState(onManualNavigation)
     val latestSelection by rememberUpdatedState(onSelection)
     val latestLink by rememberUpdatedState(onLink)
     val latestMenu by rememberUpdatedState(onMenu)
@@ -66,6 +77,8 @@ internal fun MarkdownNativeReader(
     AndroidView(modifier = modifier, factory = { context ->
         MarkdownNativeSurface(context, source).apply {
             pageChanged = { page, count, locator -> latestPage(page, count, locator) }
+            pageIndexChanged = { latestPageIndex(it) }
+            manualNavigation = { latestManualNavigation() }
             selected = { latestSelection(it) }
             link = { latestLink(it) }
             menu = { latestMenu() }
@@ -129,6 +142,8 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
     private var interactiveDown: MotionEvent? = null
     private var interactiveLatest: MotionEvent? = null
     var pageChanged: (Int, Int, String) -> Unit = { _, _, _ -> }
+    var pageIndexChanged: (List<Int>) -> Unit = {}
+    var manualNavigation: () -> Unit = {}
     var selected: (EpubSelectionInfo) -> Unit = {}
     var link: (String) -> Unit = {}
     var menu: () -> Unit = {}
@@ -145,6 +160,9 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
     private var provider: MarkdownPageProvider? = null
     private var renderJob: Job? = null
     private var countJob: Job? = null
+    private var pageIndexCache: ReaderPageIndexCache? = null
+    private var paginationBook: com.huangder.lumibooks.domain.model.Book? = null
+    private var paginationIdentity = ""
     private var current = 0
     private var currentEnd = 0
     private var generation = 0
@@ -452,12 +470,17 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
     }
 
     fun configure(state: ReaderUiState, typeface: Typeface, color: Int, dark: Boolean, continuous: Boolean) {
+        paginationBook = state.book
+        val previousIdentity = paginationIdentity
+        paginationIdentity = state.paginationContentKey() + "|" +
+            readerPaginationFontKey(context, state.fontType, state.customFontPath, state.bodyFontWeight)
         val value = SurfaceConfig(state.fontSize, typeface, color, dark, state.lineHeight,
             state.letterSpacing, state.paragraphSpacing, state.marginLeftDp, state.marginTopDp,
             state.marginRightDp, state.marginBottomDp, continuous, state.firstLineIndent, state.textAlignment, state.readerEdgeTapMode, state.eInkModeEnabled)
         if (initialRestore) { savedRestore = state.epubLocatorJson; savedFraction = state.pendingPageFraction }
-        if (value == config) return
-        val colorOnly = config?.copy(color = value.color, dark = value.dark) == value
+        if (value == config && previousIdentity == paginationIdentity) return
+        val colorOnly = previousIdentity == paginationIdentity && config?.copy(color = value.color,
+            dark = value.dark, edgeTapMode = value.edgeTapMode, eInk = value.eInk, continuous = value.continuous) == value
         config = value
         rebuild(preservePagination = colorOnly)
     }
@@ -469,13 +492,15 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
         if (width <= 0 || height <= 0) return
         stopTransition()
         removeCallbacks(progressPublisher); progressPostPending = false
-        renderJob?.cancel(); countJob?.cancel(); countJob = null; generation++
+        renderJob?.cancel(); generation++
+        closePageIndex()
         windowGeneration++
         cancelContinuousRenders(clearViews = true)
         recycler?.adapter = null; recycler = null
         provider?.clear()
         if (!preservePagination) { history.clear(); pageStarts = emptyList(); livePageStarts.clear(); livePage = 0 }
         paginationReady(pageStarts.isNotEmpty())
+        pageIndexChanged(pageStarts)
         val density = resources.displayMetrics.density
         val scaled = resources.displayMetrics.scaledDensity
         setPadding((c.left * density).toInt(), (c.top * density).toInt(), (c.right * density).toInt(), (c.bottom * density).toInt())
@@ -559,18 +584,54 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
     }
     private fun buildPageIndex(engine: MarkdownPageProvider) {
         val stamp = generation
+        val book = paginationBook
+        val style = engine.style
+        val signature = markdownPaginationSignature(paginationIdentity, style,
+            resources.displayMetrics.density, resources.displayMetrics.scaledDensity)
         countJob = scope.launch {
+            val cache = book?.let { ReaderPageIndexCache.open(context, it, signature, 1) }
+            if (stamp != generation || provider !== engine) { cache?.close(); return@launch }
+            pageIndexCache = cache
+            val saved = cache?.restored
+            val savedStarts = saved?.chapterStarts?.get(0).orEmpty()
+            if (saved?.totalPages != null && savedStarts.isNotEmpty() &&
+                (savedStarts.last() < engine.length || engine.length == 0 && savedStarts == listOf(0))) {
+                pageStarts = savedStarts; pageIndexChanged(pageStarts); publish(); paginationReady(true)
+                return@launch
+            }
             // Rendering is already visible; retain page boundaries only, not every block layout.
-            val starts = ArrayList<Int>()
-            var at = 0
-            do {
-                ensureActive(); starts.add(at)
-                val page = engine.page(at)
-                if (page.end <= at) break
-                at = page.end
-                yield()
-            } while (at < engine.length)
-            if (stamp == generation) { pageStarts = starts; publish(); paginationReady(true) }
+            val starts = ArrayList(savedStarts.takeIf { saved?.totalPages == null && it.size >= 2 &&
+                it.last() <= engine.length }.orEmpty())
+            // An incomplete artifact stores the next offset after its confirmed boundaries.
+            var at = if (starts.isNotEmpty()) starts.removeAt(starts.lastIndex) else 0
+            var lastSubmitted = android.os.SystemClock.uptimeMillis()
+            var complete = false
+            try {
+                while (at < engine.length || starts.isEmpty()) {
+                    ensureActive()
+                    val page = engine.page(at)
+                    if (stamp != generation || provider !== engine) return@launch
+                    if (page.end <= at && engine.length > 0) return@launch
+                    starts.add(at)
+                    at = page.end
+                    val now = android.os.SystemClock.uptimeMillis()
+                    if (starts.size % 16 == 0 || now - lastSubmitted >= 400) {
+                        cache?.submit(ReaderBookPages(chapterCounts = listOf(null), chapterStarts = mapOf(0 to (starts + at))))
+                        lastSubmitted = now
+                    }
+                    if (engine.length == 0) break
+                    yield()
+                }
+                complete = true
+                pageStarts = starts.toList(); pageIndexChanged(pageStarts); publish(); paginationReady(true)
+                cache?.submit(ReaderBookPages(chapterCounts = listOf(starts.size), chapterStarts = mapOf(0 to pageStarts)))
+            } finally {
+                // Even a cancelled scan commits its last confirmed boundary. The old
+                // cache's signature remains fixed when a new layout starts.
+                if (!complete && starts.isNotEmpty()) cache?.submit(ReaderBookPages(
+                    chapterCounts = listOf(null), chapterStarts = mapOf(0 to (starts + at))))
+                if (!complete) cache?.close()
+            }
         }
     }
     suspend fun pageText(index: Int): EpubPageText? {
@@ -603,6 +664,7 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
         restoreContinuous(current)
         list.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
+                if (newState == RecyclerView.SCROLL_STATE_DRAGGING) manualNavigation()
                 scrolling = newState != RecyclerView.SCROLL_STATE_IDLE
                 if (scrolling) touchSession.onScrollStarted()
                 if (!scrolling) {
@@ -916,6 +978,8 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
         val old = holder.frame.layoutParams?.height ?: holder.frame.height
         holder.renderedPosition = holder.bindingAdapterPosition
         holder.renderedHeight = height
+        // Start restoration/counting only after the first visible block has rendered.
+        if (paginationBook != null && countJob == null && pageStarts.isEmpty()) provider?.let(::buildPageIndex)
         holder.frame.minimumHeight = height
         if (old > 0 && abs(old - height) <= (8 * resources.displayMetrics.density).toInt()) return
         holder.frame.layoutParams = (holder.frame.layoutParams ?: RecyclerView.LayoutParams(-1, height)).also { it.height = height }
@@ -1111,6 +1175,7 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
     }
     fun turn(direction: Int) {
         if (turnPending || transitionView != null) return
+        manualNavigation()
         if (config?.continuous == true) { recycler?.smoothScrollBy(0, direction * (height - paddingTop - paddingBottom)); return }
         if (direction > 0 && currentEnd < source.document.text.length) { turnPending = true; history.addLast(current); livePage++; showPage(currentEnd, direction = direction) }
         else if (direction < 0 && current > 0) {
@@ -1199,11 +1264,25 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
         finishHandleDrag(); selectionMagnifier.dismiss(); super.onDetachedFromWindow()
     }
     fun release() {
+        closePageIndex()
+        generation++
         restoreFrame?.let(::removeCallbacks); restoreFrame = null
         removeCallbacks(progressPublisher); progressPostPending = false
         finishHandleDrag(); selectionMagnifier.dismiss(); stopTransition(); renderJob?.cancel(); countJob?.cancel()
         windowGeneration++
         cancelContinuousRenders(clearViews = true)
         scope.cancel(); recycler?.adapter = null; provider?.clear(); removeAllViews()
+    }
+
+    private fun closePageIndex() {
+        val counting = countJob
+        val cache = pageIndexCache
+        countJob = null
+        pageIndexCache = null
+        if (counting != null && !counting.isCompleted) {
+            // The scan's finally block submits its last confirmed boundaries first.
+            counting.invokeOnCompletion { cache?.close() }
+            counting.cancel()
+        } else cache?.close()
     }
 }

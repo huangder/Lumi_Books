@@ -63,6 +63,57 @@ class EpubLiveTurnRenderingTest {
 
     @After fun tearDown() { host.release(); activity.pause().stop().destroy() }
 
+    @Test fun warmChapterMovesIntoNeighbourWithoutReplacingActiveOrReloading() {
+        assertTrue(host.ensureWarmPage())
+        val warm = host.warmWebView!!
+        warm.right = 400
+        warm.bottom = 800
+        val active = host.activeWebView
+        val oldNext = host.nextWebView
+        val target = EpubPageTarget(1, 0)
+        host.markPreloadLoading(EpubPageTurnHost.PreloadSlot.WARM, target, 42)
+        host.markPreloadReady(EpubPageTurnHost.PreloadSlot.WARM, target, 42, 0, 4, warm)
+        assertTrue(host.adoptWarmPage(EpubPageTurnHost.PreloadSlot.NEXT, target))
+        assertSame(active, host.activeWebView)
+        assertSame(warm, host.nextWebView)
+        assertSame(oldNext, host.warmWebView)
+        assertTrue(host.hasPreparedPage(EpubPageTurnHost.PreloadSlot.NEXT, target))
+        host.discardWarmPage()
+        assertEquals(3, host.allWebViews().size)
+        assertFalse(warm.released)
+        assertTrue(oldNext.released)
+    }
+
+    @Test fun loadingWarmChapterKeepsItsRequestWhenItBecomesAdjacent() {
+        assertTrue(host.ensureWarmPage())
+        val warm = host.warmWebView!!
+        warm.right = 400
+        warm.bottom = 800
+        val target = EpubPageTarget(1, 0)
+        host.markPreloadLoading(EpubPageTurnHost.PreloadSlot.WARM, target, 42)
+        assertTrue(host.adoptWarmPage(EpubPageTurnHost.PreloadSlot.NEXT, target))
+        assertFalse(host.isPreloadReady(EpubPageTurnHost.PreloadSlot.NEXT))
+        host.markPreloadReady(EpubPageTurnHost.PreloadSlot.NEXT, target, 41, 0, 4, warm)
+        assertFalse(host.isPreloadReady(EpubPageTurnHost.PreloadSlot.NEXT))
+        host.markPreloadReady(EpubPageTurnHost.PreloadSlot.NEXT, target, 42, 0, 4, warm)
+        assertTrue(host.hasPreparedPage(EpubPageTurnHost.PreloadSlot.NEXT, target))
+    }
+
+    @Test fun warmChapterWithChangedConfigurationCannotBePromoted() {
+        assertTrue(host.ensureWarmPage())
+        val warm = host.warmWebView!!
+        warm.right = 400
+        warm.bottom = 800
+        val target = EpubPageTarget(1, 0)
+        host.markPreloadLoading(EpubPageTurnHost.PreloadSlot.WARM, target, 42)
+        host.markPreloadReady(EpubPageTurnHost.PreloadSlot.WARM, target, 42, 0, 4, warm)
+        warm.documentLifecycle.configure("new-font")
+        assertFalse(host.adoptWarmPage(EpubPageTurnHost.PreloadSlot.NEXT, target))
+        assertEquals(4, host.allWebViews().size)
+        host.discardWarmPage()
+        assertEquals(3, host.allWebViews().size)
+    }
+
     @Test fun closingDetachesImmediatelyButDestroysAndNavigatesOnlyAfterFrameFence() {
         var frameCommitted: (() -> Unit)? = null
         val closingHost = EpubPageTurnHost(activity.get()) { _, callback -> frameCommitted = callback }
@@ -325,6 +376,57 @@ class EpubLiveTurnRenderingTest {
         assertEquals(1, commits)
         assertEquals(EpubPageTarget(1, 0), host.currentPageTarget())
         assertFalse(host.hasPendingPageHandoff())
+    }
+
+    @Test fun marginChangeDuringChapterHandoffAcceptsTheRepaginatedPosition() {
+        prepareCrossChapterTurn()
+        var staleCommits = 0
+        host.onPageCommit = { _, _, _ -> staleCommits++ }
+        finishCrossChapterAnimation()
+        assertTrue(host.hasPendingPageHandoff())
+
+        host.activeWebView.documentLifecycle.configure("new-margins")
+        host.invalidateLayout()
+        host.setCurrentPage(1, 2, 6)
+        frame().recycle()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+
+        assertFalse("old page address must not keep the handoff busy", host.hasPendingPageHandoff())
+        assertEquals(EpubPageTarget(1, 2), host.currentPageTarget())
+        assertEquals(6, host.currentPageCount())
+        assertEquals(0, staleCommits)
+
+        val next = EpubPageTarget(1, 3)
+        host.markPreloadLoading(EpubPageTurnHost.PreloadSlot.NEXT, next, 10)
+        host.markPreloadReady(EpubPageTurnHost.PreloadSlot.NEXT, next, 10, 3, 6, host.nextWebView)
+        host.onPageCommit = { _, target, count -> host.setCurrentPage(target.chapterIndex, target.pageIndex, count) }
+        assertTrue(host.requestTurn(1))
+        SystemClock.sleep(500)
+        repeat(3) { host.computeScroll(); frame().recycle() }
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(next, host.currentPageTarget())
+    }
+
+    @Test fun marginChangeDuringSwipeReleasesBothOldSheetsBeforeInvalidatingPreloads() {
+        var invalidations = 0
+        host.onInvalidatePreloads = {
+            invalidations++
+            assertFalse(host.ownsPage(host.activeWebView))
+            assertFalse(host.ownsPage(host.nextWebView))
+        }
+        event(MotionEvent.ACTION_DOWN, 200f, 0)
+        event(MotionEvent.ACTION_MOVE, 130f, 100)
+        assertTrue(host.ownsPage(host.activeWebView))
+
+        host.activeWebView.documentLifecycle.configure("new-margins")
+        host.invalidateLayout()
+        host.setCurrentPage(0, 4, 8)
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(1, invalidations)
+        assertEquals(EpubPageTarget(0, 4), host.currentPageTarget())
+        assertFalse(host.isPreloadReady(EpubPageTurnHost.PreloadSlot.NEXT))
+        assertFalse(host.isPreloadReady(EpubPageTurnHost.PreloadSlot.PREVIOUS))
     }
 
     @Test fun swipeRequestsStaleNeighbourAgainAndResumesAfterReprepare() {

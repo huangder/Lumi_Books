@@ -87,6 +87,9 @@ class ContinuousScrollReaderTest {
         onSelection: (Int, ContinuousTextSelection) -> Unit = { _, _ -> },
         onSelectionCleared: () -> Unit = {},
         onMenuToggle: () -> Unit = {},
+        ttsSentence: androidx.compose.runtime.State<TtsSentencePosition?> = mutableStateOf(null),
+        ttsFollow: androidx.compose.runtime.State<Boolean> = mutableStateOf(true),
+        onManualScrollStarted: () -> Unit = {},
         notes: List<com.huangder.lumibooks.domain.model.Note> = emptyList(),
         onChapterVisible: (Int, Float) -> Unit = { _, _ -> }
     ) {
@@ -126,7 +129,10 @@ class ContinuousScrollReaderTest {
                     onRestoreComplete = { restored = true }, onSentenceDoubleTap = { _, _ -> },
                     ttsSentenceJumpEnabled = false, comicModeEnabled = comicMode.value, listState = list,
                     imageAdjustments = imageAdjustments.value,
-                    bodyFontWeight = bodyFontWeight.value
+                    bodyFontWeight = bodyFontWeight.value,
+                    ttsCurrentSentence = ttsSentence.value,
+                    ttsFollowEnabled = ttsFollow.value,
+                    onManualScrollStarted = onManualScrollStarted
                 )
             }
         }
@@ -827,6 +833,60 @@ class ContinuousScrollReaderTest {
             assertNull(selectionController.activeView)
             assertNull(selectionController.selection)
             assertEquals(2, clearCount)
+        }
+    }
+
+    @Test fun manualDragKeepsViewportDuringTtsUpdatesUntilExplicitReturn() {
+        currentChapter = 0
+        chapterCount = 1
+        fun sentence(paragraph: Int): TtsSentencePosition {
+            val start = text.indexOf("Paragraph $paragraph:")
+            return TtsSentencePosition(0, start, text.indexOf('\n', start).takeIf { it >= 0 } ?: text.length)
+        }
+        val highlighted = mutableStateOf<TtsSentencePosition?>(sentence(70))
+        val following = mutableStateOf(true)
+        var dragStarts = 0
+        show(ttsSentence = highlighted, ttsFollow = following,
+            onManualScrollStarted = { dragStarts++ })
+        compose.waitUntil(15_000) { restored && list.firstVisibleItemScrollOffset > 1_000 }
+        compose.onRoot().performTouchInput {
+            down(center)
+            moveBy(Offset(0f, -100f), delayMillis = 100)
+        }
+        compose.waitForIdle()
+        var browsingOffset = 0
+        compose.runOnIdle {
+            assertTrue("manual navigation is reported before finger-up", dragStarts > 0)
+            browsingOffset = list.firstVisibleItemScrollOffset
+            highlighted.value = sentence(90)
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(browsingOffset, list.firstVisibleItemScrollOffset) }
+        compose.onRoot().performTouchInput {
+            repeat(3) { moveBy(Offset(0f, -30f), delayMillis = 60) }
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            browsingOffset = list.firstVisibleItemScrollOffset
+            highlighted.value = sentence(95)
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(browsingOffset, list.firstVisibleItemScrollOffset) }
+        compose.onRoot().performTouchInput { up() }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            browsingOffset = list.firstVisibleItemScrollOffset
+            highlighted.value = sentence(100)
+            following.value = false
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(browsingOffset, list.firstVisibleItemScrollOffset) }
+        compose.runOnIdle { following.value = true }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertTrue("Explicit return should advance from $browsingOffset toward paragraph 100; " +
+                "actual=${list.firstVisibleItemScrollOffset}, scrolling=${list.isScrollInProgress}",
+                list.firstVisibleItemScrollOffset > browsingOffset + 500)
         }
     }
 

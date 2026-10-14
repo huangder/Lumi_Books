@@ -152,6 +152,8 @@ class PageContentView(context: Context) : FrameLayout(context) {
     private var readerBackgroundImagePath: String? = null
     private var readerBackgroundImageOpacity: Float = 1f
     private var readerBackgroundImageBlurDp: Float = 0f
+    private var backgroundImageNeedsRetry = false
+    private var backgroundImageRequestGeneration = 0L
     private var currentBgColor: Int = 0
     private var showingCoverPage = false
     private var coverImageSpan: ImageSpan? = null
@@ -168,28 +170,60 @@ class PageContentView(context: Context) : FrameLayout(context) {
         val opacity = imageOpacity.coerceIn(0f, 1f)
         val blurDp = imageBlurDp.coerceIn(0f, 40f)
         val imageChanged = readerBackgroundImagePath != imagePath
-        val effectChanged = readerBackgroundImageOpacity != opacity ||
-            readerBackgroundImageBlurDp != blurDp
-        if (!imageChanged && !effectChanged) return
+        val blurChanged = readerBackgroundImageBlurDp != blurDp
+
+        // Opacity belongs to the view, not the decoded image. Reloading on every
+        // slider tick cancels the in-flight blur and clears the visible drawable.
+        readerBackgroundImageOpacity = opacity
+        backgroundImageView.alpha = opacity
+        if (!imageChanged && !blurChanged && !backgroundImageNeedsRetry) return
 
         readerBackgroundImagePath = imagePath
-        readerBackgroundImageOpacity = opacity
         readerBackgroundImageBlurDp = blurDp
-        backgroundImageView.alpha = opacity
-        val imageFile = imagePath?.let(::File)?.takeIf { it.exists() }
-        if (imageFile == null) {
+        backgroundImageNeedsRetry = false
+        val requestGeneration = ++backgroundImageRequestGeneration
+        if (imagePath == null) {
             backgroundImageView.load(null)
             backgroundImageView.visibility = View.GONE
         } else {
+            val imageFile = File(imagePath)
+            if (!imageFile.isFile) {
+                // A temporarily unavailable file must not latch an empty image
+                // as an already-applied background for the lifetime of the page.
+                backgroundImageNeedsRetry = true
+                return
+            }
+            val previousImage = backgroundImageView.drawable
             backgroundImageView.visibility = View.VISIBLE
             backgroundImageView.load(imageFile) {
                 allowHardware(false)
                 crossfade(false)
+                placeholder(previousImage)
+                error(previousImage)
+                listener(
+                    onError = { _, _ ->
+                        if (requestGeneration == backgroundImageRequestGeneration) backgroundImageNeedsRetry = true
+                    },
+                    onSuccess = { _, _ ->
+                        if (requestGeneration == backgroundImageRequestGeneration) backgroundImageNeedsRetry = false
+                    }
+                )
                 val radiusPx = blurDp * resources.displayMetrics.density
                 if (radiusPx >= 0.5f) {
                     transformations(ReaderBackgroundBlurTransformation(radiusPx.roundToInt()))
                 }
             }
+        }
+    }
+
+    internal fun retryReaderBackground() {
+        if (backgroundImageNeedsRetry) {
+            setReaderBackground(
+                currentBgColor,
+                readerBackgroundImagePath,
+                readerBackgroundImageOpacity,
+                readerBackgroundImageBlurDp
+            )
         }
     }
 

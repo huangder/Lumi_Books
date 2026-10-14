@@ -193,7 +193,7 @@
     <string name="dark_mode_light">Light</string>
     <string name="dark_mode_dark">Dark</string>
     <string name="label_reader_theme">Default Reading Theme</string>
-    <string name="theme_day">Day</string>
+    <string name="theme_day">Default</string>
     <string name="theme_night">Night</string>
     <string name="theme_sepia">Eye Care</string>
     <string name="theme_green">Green</string>
@@ -578,6 +578,7 @@
     <string name="line_guide_dim_low">Low</string>
     <string name="line_guide_dim_medium">Medium</string>
     <string name="line_guide_dim_high">High</string>
+    <string name="line_guide_dim_very_high">Very high</string>
     <string name="line_guide_close">Turn off line guide</string>
     <string name="bionic_reading_hint">Bold the first part of each word to guide your eyes and improve focus</string>
     <string name="reader_edge_tap_page_turn">Turn pages by tapping the edges</string>
@@ -595,7 +596,8 @@
     <string name="reader_corner_content_none">Hidden</string>
     <string name="reader_corner_content_chapter">Chapter information</string>
     <string name="reader_corner_content_book_progress">Book progress</string>
-    <string name="reader_corner_content_page_number">Page number</string>
+    <string name="reader_corner_content_page_number">Chapter page number</string>
+    <string name="reader_corner_content_global_page_number">Global page number</string>
     <string name="reader_corner_content_battery">Battery</string>
     <string name="reader_corner_content_time">Time</string>
     <string name="search_placeholder">Enter keywords</string>
@@ -1485,7 +1487,7 @@
     <string name="page_animation_curl_short">Curl</string>
     <string name="reader_settings_preview_sample">Chapter One: Light on the Page\n\nMorning air drifted over the windowsill and gently stirred the paper. Reading slowed time and brought distant voices clearly into the present.</string>
     <string name="exit_preview">Exit preview</string>
-    <string name="theme_suite_day_name">Day</string>
+    <string name="theme_suite_day_name">Default</string>
     <string name="theme_suite_night_name">Night</string>
     <string name="theme_suite_sepia_name">Parchment</string>
     <string name="theme_suite_green_name">Eye comfort</string>

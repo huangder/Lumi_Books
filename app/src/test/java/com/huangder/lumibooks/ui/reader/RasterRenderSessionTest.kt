@@ -26,7 +26,7 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @OptIn(ExperimentalCoroutinesApi::class)
 class RasterRenderSessionTest {
-    private class Decoder(private val tiled: Boolean = false) : RasterPageDecoder {
+    private class Decoder(private val tiled: Boolean = false, private val reduced: Boolean = false) : RasterPageDecoder {
         override val pageCount = 1
         override val parallelism = 2
         var boundsReads = 0
@@ -38,11 +38,26 @@ class RasterRenderSessionTest {
         override fun decode(spec: RasterDecodeSpec): Bitmap {
             check(!closed)
             decodes++
-            return Bitmap.createBitmap(spec.width, spec.height, Bitmap.Config.ARGB_8888)
+            return Bitmap.createBitmap(if (reduced) spec.width / 2 else spec.width,
+                if (reduced) spec.height / 2 else spec.height, Bitmap.Config.ARGB_8888)
         }
         override fun tileSource(page: Int, dimensions: RasterDimensions): RasterTileSource? =
             if (tiled) RasterTileSource(Uri.EMPTY, dimensions) else null
         override fun close() { closed = true }
+    }
+
+    @Test fun `reduced PDF fallback stays readable but does not masquerade as full resolution`() = runTest {
+        val decoder = Decoder(tiled = true, reduced = true)
+        val session = RasterRenderSession(decoder, scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)))
+        val fallback = session.renderPage(0, 200, PageRenderMode.NATIVE)!!
+        assertEquals(100, fallback.width)
+        assertSame(fallback, session.cachedReadablePage(0))
+        assertSame(fallback, session.renderPreview(0, 20))
+        assertEquals(1, decoder.decodes)
+        session.renderPage(0, 200, PageRenderMode.NATIVE)
+        assertEquals(2, decoder.decodes)
+        session.close()
+        runCurrent()
     }
 
     @Test fun `tiled visible page does not compete with SSIV until bitmap fallback is requested`() = runTest {

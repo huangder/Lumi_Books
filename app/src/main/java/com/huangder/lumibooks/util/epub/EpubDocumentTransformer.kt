@@ -545,8 +545,8 @@ html.lumi-ignore-publisher-background body {
   background-color: transparent !important;
   background-image: none !important;
 }
-html.lumi-night { filter: invert(0.86) hue-rotate(180deg); background: #111 !important; }
-html.lumi-night img, html.lumi-night svg, html.lumi-night video, html.lumi-night canvas { filter: invert(1) hue-rotate(180deg); }
+html.lumi-night { background: #111 !important; }
+html.lumi-night body { color: #e8e8ea !important; }
 html.lumi-sepia { background: #f5e6d3 !important; }
 html.lumi-sepia body { color: #3e2723 !important; }
 html.lumi-green { background: #e8f5e9 !important; }
@@ -806,7 +806,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     readerBackgroundUrl: null,
     edgeTapLeft: -1, edgeTapRight: 1, canTurnPrevious: true, canTurnNext: true,
     bionicReading: false, chineseMode: 'original', chineseMap: null, pendingPreparedPage: null, prepareSerial: 0,
-    highlightItems: [], ttsHighlight: null, searchHighlight: null, dictionarySelection: null,
+    highlightItems: [], ttsHighlight: null, ttsFollowSuspended: false, searchHighlight: null, dictionarySelection: null,
     insets: { top: 0, right: 0, bottom: 0, left: 0 }
   };
   function visualMillis(base) {
@@ -932,7 +932,17 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     return null;
   }
 
+  var locatorFrameCache = null;
   function currentLocator() {
+    var key = [state.configurationGeneration, state.layoutRevision, state.page, window.scrollX, window.scrollY].join(':');
+    if (locatorFrameCache && locatorFrameCache.key === key) return locatorFrameCache.value;
+    var value = computeCurrentLocator();
+    locatorFrameCache = {key:key, value:value};
+    requestAnimationFrame(function () { locatorFrameCache = null; });
+    return value;
+  }
+
+  function computeCurrentLocator() {
     var result = currentTextLocator();
     var images = document.querySelectorAll('[data-lumi-comic-image]');
     for (var imageIndex = 0; imageIndex < images.length; imageIndex++) {
@@ -1538,7 +1548,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     });
   }
 
-  function turnByDirection(direction) {
+  function turnByDirection(direction, manual) {
+    if (manual) post('manualScroll', {});
     direction = Number(direction) < 0 ? -1 : 1;
     // Do not queue input behind a running transition. Finalize the already
     // committed page synchronously, then start the next adjacent animation.
@@ -1706,12 +1717,13 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     // Only an image/gradient counts as the book's own background. A plain paper
     // color should not hide the reader background the user picked.
     state.publisherHasImageBackground = hasPublisherBackgroundImage(source);
-    if (!source) return;
     var computed = publisherBackgroundComputed(rootStyle, bodyStyle);
-    if (!computed) return;
     state.publisherBackground = {
       fromBody: source === bodyStyle,
       computed: computed,
+      rootPriority: Array.prototype.reduce.call(root.style, function (result, name) {
+        result[name] = root.style.getPropertyPriority(name); return result;
+      }, {}),
       rootInline: {
         backgroundColor: root.style.backgroundColor,
         backgroundImage: root.style.backgroundImage,
@@ -1781,7 +1793,10 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     if (!saved) return;
     var root = document.documentElement;
     var body = document.body;
-    Object.keys(saved.rootInline).forEach(function (name) { root.style[name] = saved.rootInline[name]; });
+    Object.keys(saved.rootInline).forEach(function (name) {
+      var cssName = name.replace(/[A-Z]/g, function (c) { return '-' + c.toLowerCase(); });
+      restoreInlineProperty(root.style, cssName, saved.rootInline[name], saved.rootPriority[cssName]);
+    });
     restoreInlineProperty(body.style, 'background-color', saved.bodyInline.backgroundColor, saved.bodyPriority.backgroundColor);
     restoreInlineProperty(body.style, 'background-image', saved.bodyInline.backgroundImage, saved.bodyPriority.backgroundImage);
     restoreInlineProperty(body.style, 'position', saved.bodyInline.position, saved.bodyPriority.position);
@@ -2121,7 +2136,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     return Object.keys(occupied).map(Number).sort(function (a, b) { return a - b; });
   }
 
-  function paginate(restoreProgression) {
+  function paginate(restoreProgression, insetAnchor) {
     if (state.paginating) return;
     state.fixed = document.body.getAttribute('data-lumi-layout') === 'pre_paginated';
     if (state.fixed && state.nativeViewport &&
@@ -2133,8 +2148,12 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     var body = document.body;
     clearOverflowFits();
     applyPendingRuleStyles();
-    markFootnoteMarkers();
-    resolveFootnoteBodies();
+    // Insets cannot change footnote references or bodies. Keep document setup
+    // out of the live margin path, especially for chapters with many notes.
+    if (!insetAnchor) {
+      markFootnoteMarkers();
+      resolveFootnoteBodies();
+    }
     capturePublisherBox(body);
     capturePublisherBackground(body);
     restorePublisherBox(body);
@@ -2242,9 +2261,18 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
         : state.page;
       moveToPage(target, false);
     }
+    if (insetAnchor) {
+      if (insetAnchor.range && document.body.contains(insetAnchor.range.startContainer)) {
+        moveToPage(pageForRange(insetAnchor.range), false);
+      } else if (insetAnchor.locator) {
+        state.pendingLocator = insetAnchor.locator;
+      }
+      restoreComicImageScroll(insetAnchor.locator);
+    }
     // 早于分页到达的恢复锚点在这里生效：ready 载荷带回的才是最终页。
     applyPendingLocator();
     // 视口尺寸在分页时才最终确定，这里同步一次阅读器背景层（用户自设的背景图/底色）。
+    applyReaderPaperBackground(state.readerBackgroundActive);
     applyReaderPageBackgroundLayer(state.readerBackgroundActive);
     body.style.visibility = 'visible';
     // 分页完成后整页容器的尺寸才确定，这时再压制覆盖整页的纯色"纸张"背景。
@@ -2502,7 +2530,6 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     var existing = document.getElementById('lumi-reader-overrides');
     var family = config.fontFamily ? String(config.fontFamily) : '';
     var fontUrl = config.fontUrl ? String(config.fontUrl) : '';
-    var textColor = config.textColor ? String(config.textColor) : '';
     var bodyFontWeight = Math.max(100, Math.min(900, Math.round(Number(config.bodyFontWeight) || 400)));
     var textAlignment = String(config.textAlignment || '');
     // 原排版的「自然对齐」保留书籍 CSS（包括标题居中、段落继承和署名右对齐）。
@@ -2510,7 +2537,14 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     if (!/^(left|center|right|justify)$/.test(textAlignment)) textAlignment = '';
     var letterSpacingDp = Number(config.letterSpacingDp);
     var hasLetterSpacing = Number.isFinite(letterSpacingDp);
-    if (!family && !textColor && !textAlignment && bodyFontWeight === 400 && !hasLetterSpacing) {
+    var lineHeight = Number(config.lineHeight);
+    var hasLineHeight = config.lineHeight != null && Number.isFinite(lineHeight);
+    var paragraphSpacingDp = Number(config.paragraphSpacingDp);
+    var hasParagraphSpacing = config.paragraphSpacingDp != null && Number.isFinite(paragraphSpacingDp);
+    var firstLineIndent = Number(config.firstLineIndent);
+    var hasFirstLineIndent = config.firstLineIndent != null && Number.isFinite(firstLineIndent);
+    if (!family && !textAlignment && bodyFontWeight === 400 && !hasLetterSpacing &&
+        !hasLineHeight && !hasParagraphSpacing && !hasFirstLineIndent) {
       if (existing) existing.remove();
       return;
     }
@@ -2535,30 +2569,94 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       letterSpacingDp = Math.max(-8, Math.min(16, letterSpacingDp));
       rules += textSelector + '{letter-spacing:' + letterSpacingDp.toFixed(3) + 'px !important;}';
     }
-    if (textColor) rules += textSelector + '{color:' + textColor + ' !important;}';
+    if (hasLineHeight) {
+      lineHeight = Math.max(1, Math.min(2.5, lineHeight));
+      rules += textSelector + '{line-height:' + lineHeight.toFixed(3) + ' !important;}';
+    }
+    if (hasParagraphSpacing) {
+      paragraphSpacingDp = Math.max(0, Math.min(30, paragraphSpacingDp));
+      rules += 'p{margin-block-start:0 !important;margin-block-end:' + paragraphSpacingDp.toFixed(3) + 'px !important;}';
+    }
+    if (hasFirstLineIndent) {
+      firstLineIndent = Math.max(0, Math.min(4, firstLineIndent));
+      rules += 'p{text-indent:' + firstLineIndent.toFixed(3) + 'em !important;}';
+    }
     if (bodyFontWeight !== 400) rules += textSelector + '{font-weight:' + bodyFontWeight + ' !important;}';
     if (textAlignment) rules += textSelector + '{text-align:' + textAlignment + ' !important;}';
-    style.textContent = rules;
+    if (style.textContent !== rules) style.textContent = rules;
     if (!existing) document.head.appendChild(style);
   }
 
   /**
-   * Auto text color only applies where the reader background is visible; pages
-   * that paint the book's own image background keep the book's text color.
+   * Auto text color only applies where the reader background is visible.
+   * Both automatic and explicit reader colors replace dark neutral text only;
+   * publisher accent colors survive every theme, including custom backgrounds.
    */
-  function applyReaderAutoTextColor(config, readerBackgroundActive) {
+  var overriddenTextColors = new Map();
+
+  function restoreReaderTextColors() {
+    overriddenTextColors.forEach(function (saved, element) {
+      restoreInlineProperty(element.style, 'color', saved.value, saved.priority);
+    });
+    overriddenTextColors.clear();
     var existing = document.getElementById('lumi-reader-auto-text');
+    if (existing) existing.remove();
+  }
+
+  function applyReaderAutoTextColor(config, readerBackgroundActive) {
     var color = config && config.autoTextColor ? String(config.autoTextColor) : '';
     var explicit = config && config.textColor ? String(config.textColor) : '';
-    if (!readerBackgroundActive || !color || explicit) {
-      if (existing) existing.remove();
-      return;
+    if (!explicit && (!readerBackgroundActive || !color)) return;
+    // Read every publisher color before changing any ancestor's inheritance.
+    // Pin colored descendants to their original computed color so mixed text,
+    // nested emphasis, inline !important and stylesheet colors all survive.
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+    var elements = new Set();
+    var node;
+    while ((node = walker.nextNode())) {
+      var parent = node.parentElement;
+      if (!parent || !node.nodeValue || !node.nodeValue.trim() ||
+          parent.closest('script,style,noscript,svg,math,#lumi-page-stage,#lumi-footnote-popover')) continue;
+      elements.add(parent);
     }
-    var style = existing || document.createElement('style');
-    style.id = 'lumi-reader-auto-text';
-    style.textContent = 'body,p,div,section,article,aside,header,footer,nav,h1,h2,h3,h4,h5,h6,' +
-      'span,a,li,dt,dd,td,th,blockquote,figcaption,label{color:' + color + ' !important;}';
-    if (!existing) document.head.appendChild(style);
+    var replacements = [];
+    var publisherPaperCache = new Map();
+    elements.forEach(function (element) {
+      var publisherColor = getComputedStyle(element).color;
+      var match = String(publisherColor || '').match(/rgba?\(([^)]+)\)/i);
+      if (!match) return;
+      var channels = match[1].split(',').map(function (value) { return Number(value.trim()); });
+      if (channels.length < 3 || channels.some(function (value) { return !Number.isFinite(value); })) return;
+      var maximum = Math.max.apply(null, channels.slice(0, 3));
+      var spread = maximum - Math.min.apply(null, channels.slice(0, 3));
+      var luminance = channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+      var darkNeutral = spread <= 16 && spread <= maximum * 0.15 && luminance < 150 &&
+        (channels.length < 4 || channels[3] > 0);
+      // An image/gradient supplies its own paper and contrast, even when it is
+      // painted on a chapter container rather than on html/body.
+      var publisherPaper = false;
+      if (state.preservePublisherBackground && !explicit) {
+        var ancestors = [];
+        for (var ancestor = element; ancestor; ancestor = ancestor.parentElement) {
+          if (publisherPaperCache.has(ancestor)) {
+            publisherPaper = publisherPaperCache.get(ancestor); break;
+          }
+          ancestors.push(ancestor);
+          if (hasPublisherBackgroundImage(getComputedStyle(ancestor))) {
+            publisherPaper = true; break;
+          }
+        }
+        ancestors.forEach(function (ancestor) { publisherPaperCache.set(ancestor, publisherPaper); });
+      }
+      replacements.push([element, darkNeutral && !publisherPaper ? (explicit || color) : publisherColor]);
+    });
+    replacements.forEach(function (replacement) {
+      var element = replacement[0];
+      overriddenTextColors.set(element, {
+        value: element.style.getPropertyValue('color'), priority: element.style.getPropertyPriority('color')
+      });
+      element.style.setProperty('color', replacement[1], 'important');
+    });
   }
 
   /**
@@ -2570,6 +2668,13 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
    */
   function applyReaderPaperBackground(active) {
     var existing = document.getElementById('lumi-reader-paper');
+    if (active) {
+      document.documentElement.style.setProperty('background-color',
+        state.readerBackgroundHasImage ? 'transparent' : (state.readerBackgroundColor || '#ffffff'), 'important');
+      document.documentElement.style.setProperty('background-image', 'none', 'important');
+      document.body.style.setProperty('background-color', 'transparent', 'important');
+      document.body.style.setProperty('background-image', 'none', 'important');
+    }
     // 背景是图片时不能在文档层铺底色：底色会盖住 WebView 下方的图片层，
     // 页面就只剩纯色（表现为"设置了图片背景还是白色/纯色"）。
     var color = active && !state.readerBackgroundHasImage && state.readerBackgroundColor
@@ -2592,6 +2697,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
    * 应当让位给用户设置的背景。只处理覆盖整页、且背景是纯色（无图片/渐变）的元素，
    * 图片、渐变、以及书内局部色块都保留。
    */
+  var overriddenPagePaint = new Map();
   function neutralizeSolidPagePaint() {
     if (!state.readerBackgroundActive || !state.readerBackgroundColor) return;
     var body = document.body;
@@ -2605,25 +2711,34 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       var tag = String(element.tagName || '').toUpperCase();
       if (tag === 'IMG' || tag === 'SVG' || tag === 'VIDEO' || tag === 'CANVAS' ||
           tag === 'PICTURE' || tag === 'IFRAME') continue;
+      if (element.closest('svg,picture,video,canvas')) continue;
       if (element.id && element.id.indexOf('lumi-') === 0) continue;
       var style = window.getComputedStyle(element);
       var image = String(style.backgroundImage || 'none');
-      if (image !== 'none' && image !== '') continue;
+      if (state.preservePublisherBackground && image !== 'none' && image !== '') continue;
       var color = String(style.backgroundColor || '').replace(/\s+/g, '');
-      if (!isOpaqueBackgroundColor(color)) continue;
+      if (!isOpaqueBackgroundColor(color) && !(!state.preservePublisherBackground && image !== 'none')) continue;
       var rect = element.getBoundingClientRect();
       if (!(rect.width >= viewportWidth * 0.9) || !(rect.height >= viewportHeight * 0.9)) continue;
+      if (!overriddenPagePaint.has(element)) {
+        overriddenPagePaint.set(element, ['background-color', 'background-image'].map(function (name) {
+          return [name, element.style.getPropertyValue(name), element.style.getPropertyPriority(name)];
+        }));
+      }
       element.style.setProperty('background-color', 'transparent', 'important');
+      if (!state.preservePublisherBackground) element.style.setProperty('background-image', 'none', 'important');
       element.setAttribute('data-lumi-solid-page-paint', 'true');
     }
   }
 
   function restoreSolidPagePaint() {
-    var nodes = document.querySelectorAll('[data-lumi-solid-page-paint]');
-    for (var i = 0; i < nodes.length; i++) {
-      nodes[i].style.removeProperty('background-color');
-      nodes[i].removeAttribute('data-lumi-solid-page-paint');
-    }
+    overriddenPagePaint.forEach(function (properties, element) {
+      properties.forEach(function (property) {
+        restoreInlineProperty(element.style, property[0], property[1], property[2]);
+      });
+      element.removeAttribute('data-lumi-solid-page-paint');
+    });
+    overriddenPagePaint.clear();
   }
 
   /**
@@ -2690,15 +2805,116 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     if (!existing) document.head.appendChild(style);
   }
 
+  // Dim the original page as a whole without filters, which would change the
+  // containing block of fixed publisher backgrounds in scrolling documents.
+  // A sibling of body also stays outside fixed-layout scaling and page clones.
+  function applyPublisherNightShade(active) {
+    var shade = document.getElementById('lumi-publisher-night-shade');
+    if (!active) {
+      if (shade) shade.remove();
+      return;
+    }
+    if (!shade) {
+      shade = document.createElementNS(
+        document.documentElement.namespaceURI || 'http://www.w3.org/1999/xhtml', 'div');
+      shade.id = 'lumi-publisher-night-shade';
+      shade.setAttribute('aria-hidden', 'true');
+      document.documentElement.appendChild(shade);
+    }
+    shade.style.cssText = 'display:block !important;position:fixed !important;inset:0 !important;' +
+      'margin:0 !important;padding:0 !important;border:0 !important;' +
+      'width:auto !important;height:auto !important;min-width:0 !important;min-height:0 !important;' +
+      'max-width:none !important;max-height:none !important;box-sizing:border-box !important;' +
+      'transform:none !important;filter:none !important;opacity:1 !important;visibility:visible !important;' +
+      'background:rgba(0,0,0,0.45) !important;z-index:2147483647 !important;' +
+      'pointer-events:none !important;';
+  }
+
+  var lastGeometryConfig = null;
+  var lastNonInsetConfig = null;
+  function nonInsetConfigKey(config) {
+    var values = {};
+    Object.keys(config).sort().forEach(function (key) {
+      if (['configurationGeneration', 'insets', 'progressionValue', 'restoreProgressionInclusive'].indexOf(key) < 0) {
+        values[key] = config[key];
+      }
+    });
+    return JSON.stringify(values);
+  }
+
+  function configureInsets(insets) {
+    insets = insets || {};
+    state.insets = {
+      top: Math.max(0, Number(insets.top) || 0), right: Math.max(0, Number(insets.right) || 0),
+      bottom: Math.max(0, Number(insets.bottom) || 0), left: Math.max(0, Number(insets.left) || 0)
+    };
+  }
+  function geometryConfigKey(config) {
+    var geometry = {};
+    var paintKeys = ['configurationGeneration', 'theme', 'backgroundColor', 'autoTextColor', 'textColor',
+      'backgroundImage', 'backgroundUrl', 'coverBackgroundColor', 'publisherPaintOnly', 'preservePublisherBackground',
+      'progressionValue', 'restoreProgressionInclusive', 'transition', 'transitionDurationMs', 'visualDurationScale',
+      'edgeTapLeft', 'edgeTapRight', 'canTurnPrevious', 'canTurnNext'];
+    Object.keys(config).sort().forEach(function (key) {
+      if (paintKeys.indexOf(key) < 0) geometry[key] = config[key];
+    });
+    return JSON.stringify(geometry);
+  }
+
   function configure(config) {
     closeFootnotePopover(true);
     config = config || {};
     if (state.configured && config.configurationGeneration &&
         config.configurationGeneration === state.configurationGeneration) return;
+    // Paint-only suites keep the layout revision, but their pixels still need
+    // a new compositor fence. Never report the previous configuration as ready.
+    state.stableLayoutRevision = -1;
+    state.prepareSerial += 1;
+    var geometryKey = geometryConfigKey(config);
+    var geometryChanged = lastGeometryConfig !== geometryKey;
+    lastGeometryConfig = geometryKey;
+    var nonInsetKey = nonInsetConfigKey(config);
+    var insetsOnly = state.ready && geometryChanged && lastNonInsetConfig === nonInsetKey;
+    lastNonInsetConfig = nonInsetKey;
+    if (insetsOnly) {
+      // The DOM and typography are unchanged: retain a live Range rather than
+      // search and normalize the entire chapter again to restore the same text.
+      var anchor = currentLocator();
+      var node = nodeAtPath(anchor.domPath || []);
+      var range = null;
+      if (node && node.nodeType === Node.TEXT_NODE) {
+        range = document.createRange();
+        range.setStart(node, Math.min(anchor.textOffset || 0, node.nodeValue.length));
+        range.collapse(true);
+      }
+      var progression = state.total > 1 ? state.page / (state.total - 1) : 0;
+      state.configurationGeneration = Number(config.configurationGeneration) || state.configurationGeneration + 1;
+      state.restoreProgressionInclusive = config.restoreProgressionInclusive === true;
+      configureInsets(config.insets);
+      paginate(progression, { range: range, locator: anchor });
+      return;
+    }
+    // Work on a copy: publisher-only must win even if a caller supplies night colors.
+    config = Object.assign({}, config);
+    var palette = {night:['#111111','#e8e8ea'], sepia:['#f5e6d3','#3e2723'],
+      green:['#e8f5e9','#1b5e20'], sepia_dark:['#2b2118','#e8d5bc'], green_dark:['#142a1a','#c8e6c9']};
+    var publisherNightShade = config.publisherPaintOnly && config.theme === 'publisher_night';
+    if (config.publisherPaintOnly) {
+      config.theme = 'day'; config.textColor = null; config.autoTextColor = null;
+      config.backgroundColor = null; config.coverBackgroundColor = null;
+      config.backgroundImage = false; config.backgroundUrl = null;
+    } else {
+      var colors = palette[config.theme] || ['#ffffff','#333333'];
+      config.backgroundColor = config.backgroundColor || colors[0];
+      config.autoTextColor = config.autoTextColor || colors[1];
+    }
+    restoreSolidPagePaint();
+    restoreReaderTextColors();
+    document.documentElement.classList.remove('lumi-night', 'lumi-sepia', 'lumi-green', 'lumi-sepia-dark', 'lumi-green-dark');
     state.configurationGeneration = Number(config.configurationGeneration) || state.configurationGeneration + 1;
     state.fixed = document.body.getAttribute('data-lumi-layout') === 'pre_paginated';
     state.nativeViewport = config.viewport || null;
-    var liveLocator = state.ready ? currentLocator() : null;
+    var liveLocator = state.ready && geometryChanged ? currentLocator() : null;
     var liveProgression = state.ready && state.total > 1 ? state.page / (state.total - 1) : undefined;
     state.progression = config.progression === 'rtl' ? 'rtl' : 'ltr';
     state.flow = config.flow === 'scrolled' ? 'scrolled' : 'paginated';
@@ -2713,17 +2929,14 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     state.edgeTapRight = Number(config.edgeTapRight) < 0 ? -1 : 1;
     state.canTurnPrevious = config.canTurnPrevious !== false;
     state.canTurnNext = config.canTurnNext !== false;
-    var insets = config.insets || {};
-    state.insets = {
-      top: Math.max(0, Number(insets.top) || 0), right: Math.max(0, Number(insets.right) || 0),
-      bottom: Math.max(0, Number(insets.bottom) || 0), left: Math.max(0, Number(insets.left) || 0)
-    };
+    configureInsets(config.insets);
     state.pendingProgression = typeof liveProgression === 'number' ? liveProgression :
       (typeof config.progressionValue === 'number' ? config.progressionValue : undefined);
     // 书籍原排版的进度分数按"页尾"保存（(pageIndex + 1) / totalPages），
     // 自研引擎用 ceil(f * N - ε) - 1 反解；这里同步这套语义，否则固定差一页。
     state.restoreProgressionInclusive = config.restoreProgressionInclusive === true;
-    state.preservePublisherBackground = config.preservePublisherBackground !== false;
+    state.preservePublisherBackground = config.publisherPaintOnly === true ||
+      config.preservePublisherBackground !== false;
     // 整页图页是否按屏幕比例裁切铺满（默认等比留白）。
     state.imagePageCrop = config.imagePageCrop === true;
     document.documentElement.classList.toggle('lumi-crop-page-image', state.imagePageCrop);
@@ -2753,19 +2966,31 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     }
     applyReaderPageBackgroundLayer(readerBackgroundActive);
     applyCoverBackgroundColor();
+    applyPublisherNightShade(publisherNightShade);
     applyReaderOverrides(config);
+    if (geometryChanged) {
+      applyChineseConversion(config);
+      applyBionicReading(config.bionicReading === true);
+    }
     applyReaderAutoTextColor(config, readerBackgroundActive);
-    applyChineseConversion(config);
-    applyBionicReading(config.bionicReading === true);
-    document.documentElement.classList.remove('lumi-night', 'lumi-sepia', 'lumi-green', 'lumi-sepia-dark', 'lumi-green-dark');
-    if (config.theme === 'night') document.documentElement.classList.add('lumi-night');
-    if (config.theme === 'sepia') document.documentElement.classList.add('lumi-sepia');
-    if (config.theme === 'green') document.documentElement.classList.add('lumi-green');
-    if (config.theme === 'sepia_dark') document.documentElement.classList.add('lumi-sepia-dark');
-    if (config.theme === 'green_dark') document.documentElement.classList.add('lumi-green-dark');
-    if (state.ready || state.mediaSettled) {
+    if (readerBackgroundActive) {
+      if (config.theme === 'night') document.documentElement.classList.add('lumi-night');
+      if (config.theme === 'sepia') document.documentElement.classList.add('lumi-sepia');
+      if (config.theme === 'green') document.documentElement.classList.add('lumi-green');
+      if (config.theme === 'sepia_dark') document.documentElement.classList.add('lumi-sepia-dark');
+      if (config.theme === 'green_dark') document.documentElement.classList.add('lumi-green-dark');
+    }
+    if (geometryChanged && (state.ready || state.mediaSettled)) {
       paginate(state.pendingProgression);
       if (liveLocator) restore(liveLocator);
+    } else if (state.ready) {
+      applyPublisherBackgroundLayer();
+      applyReaderPaperBackground(readerBackgroundActive);
+      applyReaderPageBackgroundLayer(readerBackgroundActive);
+      applyCoverBackgroundColor();
+      // New configuration identity, same geometry; native still waits for compositor readiness.
+      post('page', currentPagePayload());
+      publishStableLayout();
     }
   }
 
@@ -3509,7 +3734,7 @@ private const val READER_SCRIPT_PART_3 = """
   }
 
   function followTtsHighlight() {
-    if (state.flow !== 'scrolled' || state.fixed || !state.ttsHighlight) return;
+    if (state.flow !== 'scrolled' || state.fixed || !state.ttsHighlight || state.ttsFollowSuspended) return;
     var tts = state.ttsHighlight;
     var range = rangeAtOffsets(textIndex(), tts.start, tts.end);
     if (!range) return;
@@ -4096,6 +4321,11 @@ private const val READER_SCRIPT_PART_3 = """
     var touch = event.touches[0];
     var dx = touch.clientX - touchStartX;
     var dy = touch.clientY - touchStartY;
+    if (state.flow === 'scrolled' && !state.fixed && !state.ttsFollowSuspended && Math.abs(dy) >= 12) {
+      // Stop locally before a queued highlight update or the native bridge can move the viewport.
+      state.ttsFollowSuspended = true;
+      post('manualScroll', {});
+    }
     if (Math.abs(dx) >= 12 || Math.abs(dy) >= 12) cancelImageLongPress();
     if (state.flow === 'scrolled' && !state.fixed) {
       if (scrollChapterTurnPending) {
@@ -4262,6 +4492,7 @@ private const val READER_SCRIPT_PART_3 = """
       return;
     }
     if (shouldTurn) {
+      post('manualScroll', {});
       var advances = state.reverseAxis ? dx > 0 : dx < 0;
       var target = state.page + (advances ? 1 : -1);
       if (target >= 0 && target < state.total) moveToPage(target, true);
@@ -4286,11 +4517,11 @@ private const val READER_SCRIPT_PART_3 = """
       var ratio = tapRatio;
       if (ratio < 0.3) {
         if (state.nativePaging) post('tap', { zone: 'left' });
-        else turnByDirection(state.edgeTapLeft);
+        else turnByDirection(state.edgeTapLeft, true);
       }
       else if (ratio > 0.7) {
         if (state.nativePaging) post('tap', { zone: 'right' });
-        else turnByDirection(state.edgeTapRight);
+        else turnByDirection(state.edgeTapRight, true);
       }
       else {
         pageStageDurationOverride = 0;
@@ -4368,11 +4599,11 @@ private const val READER_SCRIPT_PART_3 = """
     var ratio = event.clientX / viewportWidth();
     if (ratio < 0.3) {
       if (state.nativePaging) post('tap', { zone: 'left' });
-      else turnByDirection(state.edgeTapLeft);
+      else turnByDirection(state.edgeTapLeft, true);
     }
     else if (ratio > 0.7) {
       if (state.nativePaging) post('tap', { zone: 'right' });
-      else turnByDirection(state.edgeTapRight);
+      else turnByDirection(state.edgeTapRight, true);
     }
     else post('tap', { zone: 'center' });
   }, true);
@@ -4519,6 +4750,7 @@ private const val READER_SCRIPT_PART_3 = """
     setHighlights: setHighlights,
     setDictionarySelection: setDictionarySelection,
     setTtsHighlight: setTtsHighlight,
+    setTtsFollowEnabled: function (enabled) { state.ttsFollowSuspended = !enabled; },
     findText: findText,
     clearSearchHighlight: clearSearchHighlight,
     cancelChapterTurn: function () { resetScrolledChapterDrag(true); },

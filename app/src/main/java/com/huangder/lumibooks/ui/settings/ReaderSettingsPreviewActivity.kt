@@ -1093,8 +1093,7 @@ private fun ThemeEditorScreen(
                 dark = editingDark,
                 pageTransition = "slide",
                 pageDurationMs = ReaderPageAnimationSettings.SLIDE_DEFAULT_MS,
-                sample = sample,
-                preservePublisherLayout = preservePublisherLayout
+                sample = sample
             )
         }
         ProvideLiquidGlassBackdrop(previewBackdrop) {
@@ -1468,26 +1467,24 @@ private fun TextPanel(
                 onUpdate(settings.copy(bodyFontWeight = (it / 100).roundToInt() * 100))
             }
         )
-        if (!preservePublisherLayout) {
-            SettingSlider(
-                stringResource(R.string.label_line_height),
-                settings.lineHeight,
-                1f..2.5f,
-                14,
-                "×",
-                onPreview = { onPreviewUpdate(settings.copy(lineHeight = it)) },
-                onChange = { onUpdate(settings.copy(lineHeight = it)) }
-            )
-            SettingSlider(
-                stringResource(R.string.label_letter_spacing),
-                settings.letterSpacing,
-                0f..10f,
-                19,
-                "dp",
-                onPreview = { onPreviewUpdate(settings.copy(letterSpacing = it)) },
-                onChange = { onUpdate(settings.copy(letterSpacing = it)) }
-            )
-        }
+        SettingSlider(
+            stringResource(R.string.label_line_height),
+            settings.lineHeight,
+            1f..2.5f,
+            14,
+            "×",
+            onPreview = { onPreviewUpdate(settings.copy(lineHeight = it)) },
+            onChange = { onUpdate(settings.copy(lineHeight = it)) }
+        )
+        SettingSlider(
+            stringResource(R.string.label_letter_spacing),
+            settings.letterSpacing,
+            0f..10f,
+            19,
+            "dp",
+            onPreview = { onPreviewUpdate(settings.copy(letterSpacing = it)) },
+            onChange = { onUpdate(settings.copy(letterSpacing = it)) }
+        )
         Text(
             stringResource(R.string.label_text_alignment),
             fontSize = AppType.BodySmall,
@@ -1503,20 +1500,18 @@ private fun TextPanel(
             ),
             settings.textAlignment.key
         ) { onUpdate(settings.copy(textAlignment = ReaderTextAlignment.fromKey(it))) }
-        if (!preservePublisherLayout) {
-            SettingSlider(
-                stringResource(R.string.label_paragraph_spacing),
-                settings.paragraphSpacing, 0f..30f, 29, "dp",
-                onPreview = { onPreviewUpdate(settings.copy(paragraphSpacing = it)) },
-                onChange = { onUpdate(settings.copy(paragraphSpacing = it)) }
-            )
-            SettingSlider(
-                stringResource(R.string.label_first_line_indent),
-                settings.firstLineIndent, 0f..4f, 7, stringResource(R.string.reader_unit_character),
-                onPreview = { onPreviewUpdate(settings.copy(firstLineIndent = it)) },
-                onChange = { onUpdate(settings.copy(firstLineIndent = it)) }
-            )
-        }
+        SettingSlider(
+            stringResource(R.string.label_paragraph_spacing),
+            settings.paragraphSpacing, 0f..30f, 29, "dp",
+            onPreview = { onPreviewUpdate(settings.copy(paragraphSpacing = it)) },
+            onChange = { onUpdate(settings.copy(paragraphSpacing = it)) }
+        )
+        SettingSlider(
+            stringResource(R.string.label_first_line_indent),
+            settings.firstLineIndent, 0f..4f, 7, stringResource(R.string.reader_unit_character),
+            onPreview = { onPreviewUpdate(settings.copy(firstLineIndent = it)) },
+            onChange = { onUpdate(settings.copy(firstLineIndent = it)) }
+        )
         SettingSlider(
             stringResource(R.string.label_margin_left), settings.marginLeft, 0f..80f, 79, "dp",
             onPreview = { onPreviewUpdate(settings.copy(marginLeft = it)) },
@@ -1691,23 +1686,11 @@ private fun PreviewReadView(
     pageTransition: String,
     pageDurationMs: Int,
     sample: String,
-    preservePublisherLayout: Boolean = false,
     readerTheme: String = "day",
     dark: Boolean = false
 ) {
     val density = LocalDensity.current.density
-    // Publisher layout keeps the book's own typography, so the sample mirrors
-    // the controls the reader sheet hides in that mode.
-    val effectiveSettings = if (preservePublisherLayout) {
-        settings.copy(
-            lineHeight = 1.5f,
-            letterSpacing = 0f,
-            paragraphSpacing = 0f,
-            firstLineIndent = 0f
-        )
-    } else {
-        settings
-    }
+    val effectiveSettings = settings
     val formattedSample = remember(
         sample,
         effectiveSettings.firstLineIndent,

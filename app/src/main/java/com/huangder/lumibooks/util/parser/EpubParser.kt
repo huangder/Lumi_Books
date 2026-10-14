@@ -1614,6 +1614,10 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
     fun getChapterContent(chapterIndex: Int, width: Int, height: Int): CharSequence =
         getChapterContentPreview(chapterIndex, width, height, 0).text
 
+    /** Whole-book counting must not evict the chapter text retained for reading. */
+    internal fun getChapterContentForPagination(chapterIndex: Int): CharSequence =
+        getChapterContentPreviewInternal(chapterIndex, contentWidth, contentHeight, 0, retainCache = false).text
+
     /**
      * Decode only the first part of a long chapter for continuous scrolling. The returned
      * preview has its own cache key and never replaces the complete chapter cache.
@@ -1634,7 +1638,8 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         chapterIndex: Int,
         width: Int,
         height: Int,
-        maxChars: Int
+        maxChars: Int,
+        retainCache: Boolean = true
     ): ChapterContentPreview {
         lastPersistedChapterCacheHit = false
         if (chapterIndex !in chapterPaths.indices) {
@@ -1723,11 +1728,13 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 val stored = synchronized(zipLock) storeResult@{
                     if (!isActiveRevisionLocked(revision, zipFile)) return@storeResult false
                     anchorOffsets[chapterIndex] = anchored.offsets
-                    contentCache.put(loadKey, result)
-                    previewCompleteness[loadKey] = previewHtml.isComplete
+                    if (retainCache) {
+                        contentCache.put(loadKey, result)
+                        previewCompleteness[loadKey] = previewHtml.isComplete
+                    }
                     // A short chapter was already decoded in full. Publish the same result
                     // under the complete key so the follow-up promotion is a cache hit.
-                    if (maxChars > 0 && previewHtml.isComplete) {
+                    if (retainCache && maxChars > 0 && previewHtml.isComplete) {
                         val completeKey = ContentLoadKey(revision, chapterIndex, width, height, 0)
                         contentCache.put(completeKey, result)
                         previewCompleteness[completeKey] = true
@@ -1744,6 +1751,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 ChapterContentPreview(result, previewHtml.isComplete)
             }
         } catch (e: Exception) {
+            if (!retainCache) throw e
             android.util.Log.e("EpubParser", "getChapterContent: exception for idx=$chapterIndex", e)
             e.printStackTrace()
             return ChapterContentPreview("", true)

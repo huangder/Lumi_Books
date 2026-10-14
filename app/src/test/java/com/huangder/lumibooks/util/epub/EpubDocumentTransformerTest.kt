@@ -308,10 +308,10 @@ class EpubDocumentTransformerTest {
         ).toString(Charsets.UTF_8)
 
         // 上下滚动时底图不能铺在整篇文档上（cover 会被放大到整本书高度、滚动错位），
-        // 必须和分页模式一样搬进随视口大小的固定层：两处调用 = 分页 + 滚动。
+        // 必须在分页、滚动和只改色时同步随视口大小的固定层。
         assertTrue(output.contains("function applyPublisherBackgroundLayer()"))
         assertEquals(
-            2,
+            3,
             Regex("applyPublisherBackgroundLayer\\(\\);").findAll(output).count()
         )
         // 分页完成后同步一次阅读器自己的背景层，保证滚动模式下几何与视口一致。
@@ -547,8 +547,9 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("pageSerial: pageNotifySerial"))
         assertTrue(output.contains("function currentPagePayload()"))
         assertTrue(output.contains("edgeTapLeft: -1, edgeTapRight: 1"))
-        assertTrue(output.contains("turnByDirection(state.edgeTapLeft)"))
-        assertTrue(output.contains("turnByDirection(state.edgeTapRight)"))
+        assertTrue(output.contains("turnByDirection(state.edgeTapLeft, true)"))
+        assertTrue(output.contains("turnByDirection(state.edgeTapRight, true)"))
+        assertTrue(output.contains("if (manual) post('manualScroll', {});"))
         assertTrue(output.contains("if (state.nativePaging) post('tap', { zone: 'left' })"))
         assertTrue(output.contains("if (state.nativePaging) post('tap', { zone: 'right' })"))
         assertTrue(output.contains("if (state.nativePaging || state.flow !== 'paginated'"))
@@ -610,7 +611,7 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("document.documentElement.insertBefore(layer, document.body)"))
         assertTrue(output.contains("document.body.style.setProperty('background-image', 'none', 'important')"))
         assertTrue(output.contains("if (!source) return"))
-        assertTrue(output.contains("var liveLocator = state.ready ? currentLocator() : null"))
+        assertTrue(output.contains("var liveLocator = state.ready && geometryChanged ? currentLocator() : null"))
         assertTrue(output.contains("if (liveLocator) restore(liveLocator)"))
         assertFalse(output.contains("caretRangeFromPoint(2, 2)"))
         assertTrue(output.contains("logicalPage !== state.page"))

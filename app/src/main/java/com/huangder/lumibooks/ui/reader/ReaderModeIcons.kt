@@ -12,9 +12,9 @@ import com.huangder.lumibooks.ui.icons.IconPair
 
 /**
  * 阅读模式图标。
- * 翻页图标使用 Phosphor Regular/Fill：
+ * 翻页图标使用 Fluent Regular/Filled：
  * 左右箭头 / 上下箭头 / 闪电 / 合上的书。
- * 显示图标使用 Phosphor Regular/Fill：太阳 / 月亮；自动模式为字母 A。
+ * 显示图标使用 Fluent Regular/Filled：太阳 / 月亮；自动模式为字母 A。
  */
 
 /** 左右翻页：左右双向箭头 */

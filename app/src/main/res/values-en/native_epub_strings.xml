@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="native_epub_css_title">Native CSS layout (experimental)</string>
+    <string name="native_epub_css_hint">Enable for this book. Common layouts use the native engine; complex chapters and unsupported reader settings use WebView.</string>
+</resources>
