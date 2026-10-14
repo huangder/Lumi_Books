@@ -1,6 +1,8 @@
 package com.huangder.lumibooks.ui.reader
 import com.huangder.lumibooks.util.parser.MarkdownParser
 
+import com.huangder.lumibooks.domain.model.SelectionMenuSettings
+
 import com.huangder.lumibooks.util.epub.EpubComicIndex
 import com.huangder.lumibooks.util.epub.EpubComicPosition
 import com.huangder.lumibooks.util.epub.EpubComicArchive
@@ -414,7 +416,7 @@ data class ReaderUiState(
     /** 四角信息区（页眉/页脚）边距；空字段表示跟随正文 / 沿用旧版默认位置。 */
     val readerCornerMargins: ReaderCornerMargins = ReaderCornerMargins(),
     val contentRevision: Long = 0L,
-    val selectionMenuItems: Map<String, Boolean> = emptyMap()
+    val selectionMenuItems: SelectionMenuSettings = SelectionMenuSettings()
 )
 
 data class ReaderThemeImportReport(
@@ -3440,7 +3442,7 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch { dataStoreManager.saveLineGuideDimLevel(bookId, value) }
     }
 
-    fun saveSelectionMenuItems(items: Map<String, Boolean>) {
+    fun saveSelectionMenuItems(items: SelectionMenuSettings) {
         _uiState.value = _uiState.value.copy(selectionMenuItems = items)
         viewModelScope.launch { dataStoreManager.saveSelectionMenuItems(items) }
     }

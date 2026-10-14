@@ -58,6 +58,8 @@ data class SettingsUiState(
     val nickname: String = "",
 
     // 阅读设置
+    val selectionMenuItems: com.huangder.lumibooks.domain.model.SelectionMenuSettings =
+        com.huangder.lumibooks.domain.model.SelectionMenuSettings(),
     val fontSize: Float = 16f,
     val lineHeight: Float = 1.5f,
     val letterSpacing: Float = 0f,

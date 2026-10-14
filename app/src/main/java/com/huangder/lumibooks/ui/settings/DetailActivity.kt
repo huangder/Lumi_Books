@@ -110,6 +110,9 @@ class DetailActivity : ComponentActivity() {
 
                     when (category) {
                         "reading" -> DetailPage(stringResource(R.string.title_reading_settings), onBack) { ReadingSettingsDetail(viewModel) }
+                        "selection_menu" -> SelectionMenuSettingsScreen(
+                            uiState.selectionMenuItems, viewModel::saveSelectionMenuItems, onBack
+                        )
                         "floating_subtitle" -> DetailPage(stringResource(R.string.title_floating_subtitle_settings), onBack) {
                             FloatingSubtitleSettingsDetail(viewModel)
                         }

@@ -239,6 +239,23 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     LaunchedEffect(Unit) { viewModel.refreshInstalledTtsEngines() }
+    DetailCard {
+        Row(
+            Modifier.fillMaxWidth().clickable {
+                context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "selection_menu"))
+            }.padding(AppSpace.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(AppIcons.List, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(AppSpace.md))
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.selection_menu_settings), fontSize = AppType.Body, color = AppColors.TextPrimary)
+                Text(stringResource(R.string.selection_menu_settings_description), fontSize = AppType.Caption, color = AppColors.TextSecondary)
+            }
+            Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+        }
+    }
+    Spacer(Modifier.height(12.dp))
     val aiConfigured = uiState.externalTtsSettings.enabled &&
         uiState.externalTtsHasToken &&
         uiState.externalTtsSettings.hasRequiredFields &&

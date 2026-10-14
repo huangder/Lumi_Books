@@ -1,4 +1,9 @@
 package com.huangder.lumibooks.ui.reader
+
+import com.huangder.lumibooks.domain.model.SelectionMenuAction
+import com.huangder.lumibooks.domain.model.SelectionMenuSettings
+import com.huangder.lumibooks.ui.components.SelectionMenuSettingsDialog
+import com.huangder.lumibooks.ui.components.labelRes
 import com.huangder.lumibooks.domain.model.ReaderImageAdjustments
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.BuildConfig
@@ -10392,21 +10397,8 @@ private enum class SelectionMenuMode {
     Settings
 }
 
-private const val MENU_KEY_HIGHLIGHT = "highlight"
-private const val MENU_KEY_UNDERLINE = "underline"
-private const val MENU_KEY_NOTE = "note"
-private const val MENU_KEY_DICTIONARY = "dictionary"
-private const val MENU_KEY_SEARCH = "search"
-private const val MENU_KEY_WEB_SEARCH = "web_search"
-private const val MENU_KEY_COPY = "copy"
-private const val MENU_KEY_REPLACE = "replace"
-
 /** 多胶囊菜单依次弹出的级联间隔（毫秒） */
 private const val SELECTION_PILL_STAGGER_MILLIS = 90L
-
-private fun isMenuEnabled(items: Map<String, Boolean>, key: String): Boolean {
-    return items.isEmpty() || items[key] != false
-}
 
 @Composable
 private fun SelectionMenuOverlay(
@@ -10422,7 +10414,7 @@ private fun SelectionMenuOverlay(
     showSettings: Boolean = false,
     dictionaryAppOptions: List<DictionaryAppOption> = emptyList(),
     isTxtBook: Boolean = false,
-    selectionMenuItems: Map<String, Boolean> = emptyMap(),
+    selectionMenuItems: SelectionMenuSettings = SelectionMenuSettings(),
     onDismiss: () -> Unit,
     onHighlight: () -> Unit,
     onUnderline: () -> Unit = {},
@@ -10478,19 +10470,24 @@ private fun SelectionMenuOverlay(
     // A stale or unresolved annotation must never collapse the overlay to 0 x 0.
     val showAnnotationActionsOnly = state.annotationOnly && annotationRowCount > 0
     // 普通行菜单项：隐藏选区已存在的标注类型；带笔记时"笔记"换成"查看笔记"
-    val actionLabels = buildList {
-        if (!showAnnotationActionsOnly) {
-            if (!state.hasHighlight && isMenuEnabled(selectionMenuItems, MENU_KEY_HIGHLIGHT)) add(stringResource(R.string.menu_highlight))
-            if (!state.hasUnderline && isMenuEnabled(selectionMenuItems, MENU_KEY_UNDERLINE)) add(stringResource(R.string.menu_underline))
-            if (isMenuEnabled(selectionMenuItems, MENU_KEY_NOTE)) add(stringResource(if (state.hasNote) R.string.menu_view_note else R.string.menu_note))
-            if (isMenuEnabled(selectionMenuItems, MENU_KEY_DICTIONARY)) add(stringResource(R.string.menu_dictionary))
-            add(stringResource(R.string.excerpt_title))
-            if (isMenuEnabled(selectionMenuItems, MENU_KEY_SEARCH)) add(stringResource(R.string.menu_search))
-            if (isMenuEnabled(selectionMenuItems, MENU_KEY_WEB_SEARCH)) add(stringResource(R.string.menu_web_search))
-            if (isMenuEnabled(selectionMenuItems, MENU_KEY_COPY)) add(stringResource(R.string.menu_copy))
-            if (isTxtBook && isMenuEnabled(selectionMenuItems, MENU_KEY_REPLACE)) add(stringResource(R.string.menu_replace))
+    val actionItems = if (showAnnotationActionsOnly) emptyList() else {
+        selectionMenuItems.visibleActions(isTxtBook, state.hasHighlight, state.hasUnderline).map { action ->
+            val label = stringResource(if (action == SelectionMenuAction.NOTE && state.hasNote)
+                R.string.menu_view_note else action.labelRes())
+            label to when (action) {
+                SelectionMenuAction.HIGHLIGHT -> onHighlight
+                SelectionMenuAction.UNDERLINE -> onUnderline
+                SelectionMenuAction.NOTE -> if (state.hasNote) onViewNote else onNote
+                SelectionMenuAction.DICTIONARY -> onDictionary
+                SelectionMenuAction.EXCERPT -> onExcerpt
+                SelectionMenuAction.SEARCH -> onSearch
+                SelectionMenuAction.WEB_SEARCH -> onWebSearch
+                SelectionMenuAction.COPY -> onCopy
+                SelectionMenuAction.REPLACE -> onReplace
+            }
         }
     }
+    val actionLabels = actionItems.map { it.first }
     val actionChipHorizontalPadding = if (isLiquidGlass) 10.dp else 16.dp
     // chip 实际渲染样式（MenuChip 用 fontSize + 继承的 LocalTextStyle），测量时保持一致
     val menuChipTextStyle = LocalTextStyle.current.merge(
@@ -10528,7 +10525,9 @@ private fun SelectionMenuOverlay(
     val annotationPillWidth = if (annotationRemoveLabels.isEmpty()) 0.dp else {
         val maxRemoveChipWidth = annotationRemoveLabels.maxOf { measuredLabelWidth(it) + actionChipHorizontalPadding * 2 }
         val stylePickerWidth = if (state.hasUnderline) 78.dp else 0.dp
-        (182.dp + stylePickerWidth + 12.5.dp + 20.dp + maxRemoveChipWidth + measuredLabelWidth(stringResource(R.string.excerpt_title)) + actionChipHorizontalPadding * 2 + 0.5.dp + measuredLabelWidth(stringResource(R.string.annotation_tags)) + 24.dp).coerceAtMost(maxMenuWidth)
+        val excerptWidth = if (selectionMenuItems.isVisible(SelectionMenuAction.EXCERPT))
+            measuredLabelWidth(stringResource(R.string.excerpt_title)) + actionChipHorizontalPadding * 2 + 0.5.dp else 0.dp
+        (182.dp + stylePickerWidth + 12.5.dp + 20.dp + maxRemoveChipWidth + excerptWidth + measuredLabelWidth(stringResource(R.string.annotation_tags)) + 24.dp).coerceAtMost(maxMenuWidth)
     }
     // 菜单行高跟随系统字体缩放：固定 52dp 会把大字体下的 chip 文字裁掉下半截
     val menuChipLabels = buildList {
@@ -10742,6 +10741,7 @@ private fun SelectionMenuOverlay(
                                         menuText = menuText,
                                         dividerColor = dividerColor,
                                         onColorChange = onChangeHighlightColor,
+                                        showExcerpt = selectionMenuItems.isVisible(SelectionMenuAction.EXCERPT),
                                         onExcerpt = onExcerpt,
                                         onRemove = onDeleteHighlight
                                     )
@@ -10773,6 +10773,7 @@ private fun SelectionMenuOverlay(
                                         menuText = menuText,
                                         dividerColor = dividerColor,
                                         onColorChange = onChangeUnderlineColor,
+                                        showExcerpt = selectionMenuItems.isVisible(SelectionMenuAction.EXCERPT),
                                         onUnderlineStyleChange = onChangeUnderlineStyle,
                                         onExcerpt = onExcerpt,
                                         onRemove = onDeleteUnderline
@@ -10783,22 +10784,6 @@ private fun SelectionMenuOverlay(
                             pillIndex++
                         }
                         if (!showAnnotationActionsOnly) {
-                            val actionItems = buildList {
-                                if (!state.hasHighlight && isMenuEnabled(selectionMenuItems, MENU_KEY_HIGHLIGHT)) add(Pair(stringResource(R.string.menu_highlight), onHighlight))
-                                if (!state.hasUnderline && isMenuEnabled(selectionMenuItems, MENU_KEY_UNDERLINE)) add(Pair(stringResource(R.string.menu_underline), onUnderline))
-                                if (isMenuEnabled(selectionMenuItems, MENU_KEY_NOTE)) {
-                                    add(Pair(
-                                        stringResource(if (state.hasNote) R.string.menu_view_note else R.string.menu_note),
-                                        if (state.hasNote) onViewNote else onNote
-                                    ))
-                                }
-                                if (isMenuEnabled(selectionMenuItems, MENU_KEY_DICTIONARY)) add(Pair(stringResource(R.string.menu_dictionary), onDictionary))
-                                add(Pair(stringResource(R.string.excerpt_title), onExcerpt))
-                                if (isMenuEnabled(selectionMenuItems, MENU_KEY_SEARCH)) add(Pair(stringResource(R.string.menu_search), onSearch))
-                                if (isMenuEnabled(selectionMenuItems, MENU_KEY_WEB_SEARCH)) add(Pair(stringResource(R.string.menu_web_search), onWebSearch))
-                                if (isMenuEnabled(selectionMenuItems, MENU_KEY_COPY)) add(Pair(stringResource(R.string.menu_copy), onCopy))
-                                if (isTxtBook && isMenuEnabled(selectionMenuItems, MENU_KEY_REPLACE)) add(Pair(stringResource(R.string.menu_replace), onReplace))
-                            }
                             SelectionMenuPill(
                                 width = normalPillWidth,
                                 height = menuRowHeight,
@@ -10832,89 +10817,6 @@ private fun SelectionMenuOverlay(
             }
         }
     }
-}
-
-@Composable
-private fun SelectionMenuSettingsDialog(
-    visible: Boolean,
-    backdrop: Backdrop?,
-    currentItems: Map<String, Boolean>,
-    onDismiss: () -> Unit,
-    onSave: (Map<String, Boolean>) -> Unit
-) {
-    if (!visible) return
-
-    val allMenuItems = listOf(
-        MENU_KEY_HIGHLIGHT to stringResource(R.string.menu_highlight),
-        MENU_KEY_UNDERLINE to stringResource(R.string.menu_underline),
-        MENU_KEY_NOTE to stringResource(R.string.menu_note),
-        MENU_KEY_DICTIONARY to stringResource(R.string.menu_dictionary),
-        MENU_KEY_SEARCH to stringResource(R.string.menu_search),
-        MENU_KEY_WEB_SEARCH to stringResource(R.string.menu_web_search),
-        MENU_KEY_COPY to stringResource(R.string.menu_copy),
-        MENU_KEY_REPLACE to stringResource(R.string.menu_replace)
-    )
-    var localItems by remember { mutableStateOf(currentItems) }
-    LaunchedEffect(visible) {
-        if (visible) localItems = currentItems
-    }
-
-    LiquidGlassAlertDialog(
-        onDismissRequest = onDismiss,
-        backdrop = backdrop,
-        title = {
-            Text(
-                stringResource(R.string.selection_menu_settings),
-                fontWeight = FontWeight.SemiBold,
-                color = AppColors.TextPrimary
-            )
-        },
-        text = {
-            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                allMenuItems.forEach { (key, label) ->
-                    val enabled = isMenuEnabled(localItems, key)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                localItems = if (localItems.isEmpty()) {
-                                    allMenuItems.associate { it.first to (it.first != key) }
-                                } else {
-                                    localItems.toMutableMap().apply { put(key, !enabled) }
-                                }
-                            }
-                            .padding(vertical = 10.dp, horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = label,
-                            fontSize = 15.sp,
-                            color = AppColors.TextPrimary,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Switch(
-                            checked = enabled,
-                            onCheckedChange = { checked ->
-                                localItems = if (localItems.isEmpty()) {
-                                    allMenuItems.associate { it.first to (it.first != key) }
-                                } else {
-                                    localItems.toMutableMap().apply { put(key, checked) }
-                                }
-                            }
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            LiquidGlassTextButton(text = stringResource(R.string.confirm), onClick = { onSave(localItems) },
-                tintedColor = AppColors.Accent, contentColor = AppColors.OnAccent)
-        },
-        dismissButton = {
-            LiquidGlassTextButton(text = stringResource(R.string.cancel), onClick = onDismiss,
-                contentColor = AppColors.TextPrimary)
-        }
-    )
 }
 
 private data class ReplaceSelectionInfo(
@@ -11279,6 +11181,7 @@ internal fun SelectionAnnotationRow(
     dividerColor: Color,
     onColorChange: (Int) -> Unit,
     onUnderlineStyleChange: (Int) -> Unit = {},
+    showExcerpt: Boolean = true,
     onExcerpt: () -> Unit,
     onRemove: () -> Unit
 ) {
@@ -11310,8 +11213,10 @@ internal fun SelectionAnnotationRow(
         Spacer(Modifier.width(6.dp))
         MenuDivider(dividerColor)
         Spacer(Modifier.width(6.dp))
-        MenuChip(stringResource(R.string.excerpt_title), menuText, onExcerpt)
-        MenuDivider(dividerColor)
+        if (showExcerpt) {
+            MenuChip(stringResource(R.string.excerpt_title), menuText, onExcerpt)
+            MenuDivider(dividerColor)
+        }
         MenuChip(removeLabel, menuText, onRemove)
     }
 }

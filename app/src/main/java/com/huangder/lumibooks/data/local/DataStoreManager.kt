@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.data.local
+
+import com.huangder.lumibooks.domain.model.SelectionMenuSettings
 import kotlinx.coroutines.launch
 
 import android.content.Context
@@ -157,7 +159,7 @@ data class ReaderPreferencesSnapshot(
     val paragraphSpacing: Float,
     val firstLineIndent: Float,
     val chineseMode: String,
-    val selectionMenuItems: Map<String, Boolean>,
+    val selectionMenuItems: SelectionMenuSettings,
     val customHighlightPalettes: List<HighlightPalette>,
     val activeHighlightPaletteId: String?,
     val renderMode: EpubRenderMode,
@@ -446,16 +448,7 @@ class DataStoreManager @Inject constructor(
                     ReaderLayoutTarget.BOOK_LAYOUT
                 )
             )
-            val selectionItems = preferences[SELECTION_MENU_ITEMS]
-                ?.takeIf(String::isNotBlank)
-                ?.let { raw ->
-                    runCatching {
-                        JSONObject(raw).let { json ->
-                            json.keys().asSequence().associateWith(json::getBoolean)
-                        }
-                    }.getOrDefault(emptyMap())
-                }
-                .orEmpty()
+            val selectionItems = decodeSelectionMenuSettings(preferences[SELECTION_MENU_ITEMS])
             val modeKey = stringPreferencesKey("epub_render_mode_$bookId")
             val themeSuiteBookScopedKey = booleanPreferencesKey("reader_theme_suite_book_scoped_$bookId")
             val themeSuiteBookActiveKey = stringPreferencesKey("reader_theme_suite_book_active_$bookId")
@@ -720,16 +713,9 @@ class DataStoreManager @Inject constructor(
         }.getOrDefault(emptyList())
     }
 
-    /** 选择文本菜单项开关（JSON 对象，如 "{\"copy\":true,\"search\":true}"），为空时默认全部开启 */
-    val selectionMenuItems: Flow<Map<String, Boolean>> = context.dataStore.data.map { preferences ->
-        val raw = preferences[SELECTION_MENU_ITEMS] ?: ""
-        if (raw.isBlank()) emptyMap()
-        else try {
-            val obj = org.json.JSONObject(raw)
-            val map = mutableMapOf<String, Boolean>()
-            obj.keys().forEach { key -> map[key] = obj.getBoolean(key) }
-            map
-        } catch (_: Exception) { emptyMap() }
+    /** Text selection actions and order, with migration from visibility-only settings. */
+    val selectionMenuItems: Flow<SelectionMenuSettings> = context.dataStore.data.map { preferences ->
+        decodeSelectionMenuSettings(preferences[SELECTION_MENU_ITEMS])
     }
 
     val floatingSubtitleSettings: Flow<FloatingSubtitleSettings> = context.dataStore.data.map { preferences ->
@@ -1448,15 +1434,9 @@ class DataStoreManager @Inject constructor(
         }
     }
 
-    suspend fun saveSelectionMenuItems(items: Map<String, Boolean>) {
+    suspend fun saveSelectionMenuItems(items: SelectionMenuSettings) {
         context.dataStore.edit { preferences ->
-            if (items.isEmpty()) {
-                preferences.remove(SELECTION_MENU_ITEMS)
-            } else {
-                val obj = JSONObject()
-                items.forEach { (k, v) -> obj.put(k, v) }
-                preferences[SELECTION_MENU_ITEMS] = obj.toString()
-            }
+            preferences[SELECTION_MENU_ITEMS] = encodeSelectionMenuSettings(items)
         }
     }
 

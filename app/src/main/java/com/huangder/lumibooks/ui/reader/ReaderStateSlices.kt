@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.reader
 
+import com.huangder.lumibooks.domain.model.SelectionMenuSettings
+
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.CustomFontPreset
@@ -114,7 +116,7 @@ data class ReaderControlsState(
         defaultReaderCornerContent(ReaderPageCorner.BOTTOM_LEFT),
     val readerBottomRightContent: ReaderCornerContent =
         defaultReaderCornerContent(ReaderPageCorner.BOTTOM_RIGHT),
-    val selectionMenuItems: Map<String, Boolean> = emptyMap()
+    val selectionMenuItems: SelectionMenuSettings = SelectionMenuSettings()
 )
 
 internal fun ReaderUiState.toDocumentState() = ReaderDocumentState(

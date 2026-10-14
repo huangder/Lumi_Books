@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="selection_menu_settings_description">Choose and reorder text selection tools</string>
+    <string name="selection_menu_drag">Drag to reorder: %1$s</string>
+    <string name="selection_menu_txt_only">TXT only</string>
+    <string name="selection_menu_move_up">Move %1$s up</string>
+    <string name="selection_menu_move_down">Move %1$s down</string>
+</resources>

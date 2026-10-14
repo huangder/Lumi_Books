@@ -83,6 +83,11 @@ class SettingsViewModel @Inject constructor(
     val txtTocThirdPartyRules: kotlinx.coroutines.flow.Flow<List<TxtTocRule>> =
         dataStoreManager.txtTocThirdPartyRules()
 
+    fun saveSelectionMenuItems(items: com.huangder.lumibooks.domain.model.SelectionMenuSettings) {
+        _uiState.update { it.copy(selectionMenuItems = items) }
+        viewModelScope.launch { dataStoreManager.saveSelectionMenuItems(items) }
+    }
+
     fun saveTxtTocCustomRules(rules: List<TxtTocRule>) {
         viewModelScope.launch { dataStoreManager.saveTxtTocCustomRules(rules) }
     }
@@ -140,6 +145,11 @@ class SettingsViewModel @Inject constructor(
     }
 
     private fun collectAllPreferences() {
+        viewModelScope.launch {
+            dataStoreManager.selectionMenuItems.collectLatest { items ->
+                _uiState.update { it.copy(selectionMenuItems = items) }
+            }
+        }
         viewModelScope.launch {
             dataStoreManager.avatarUri.collectLatest { uri ->
                 _uiState.value = _uiState.value.copy(avatarUri = uri)
