@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="authorized_folders_title">授權資料夾</string>
+    <string name="authorized_folders_hint">向左滑動刪除授權，保留書籍與原始檔案。</string>
+    <string name="authorized_folders_empty">目前沒有授權資料夾，可在匯入書籍時授權資料夾。</string>
+    <string name="authorized_folders_remove_failed">刪除授權失敗，請重試。</string>
+</resources>

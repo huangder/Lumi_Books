@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="authorized_folders_title">Authorized folders</string>
+    <string name="authorized_folders_hint">Swipe left to remove access. Books and files are kept.</string>
+    <string name="authorized_folders_empty">No authorized folders. Authorize a folder when importing books.</string>
+    <string name="authorized_folders_remove_failed">Could not remove access. Please try again.</string>
+</resources>

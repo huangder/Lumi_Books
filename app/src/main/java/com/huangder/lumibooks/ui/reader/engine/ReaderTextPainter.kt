@@ -5,6 +5,7 @@ import android.graphics.Rect
 import android.graphics.Path
 import android.graphics.RectF
 import android.icu.text.BreakIterator
+import android.os.Build
 import android.text.Layout
 import android.text.Spanned
 import android.text.TextPaint
@@ -17,6 +18,44 @@ import android.text.style.ImageSpan
 import com.huangder.lumibooks.util.parser.InlineFootnoteMarkerDrawable
 import com.huangder.lumibooks.util.parser.ReaderImageSizing
 import com.huangder.lumibooks.ui.reader.usesReaderEnglishHyphenation
+import kotlin.math.roundToInt
+
+/** Image placement and hit testing share the line box before trailing text spacing. */
+internal fun readerImageTop(layout: Layout, line: Int, span: ImageSpan): Float {
+    val height = span.drawable.bounds.height().toFloat()
+    val isMarker = (span.drawable as? InlineFootnoteMarkerDrawable)?.isInlineFootnoteMarker == true
+    val text = layout.text as? Spanned
+    if (!isMarker && span.verticalAlignment == DynamicDrawableSpan.ALIGN_BOTTOM && text != null) {
+        val start = text.getSpanStart(span)
+        val end = text.getSpanEnd(span)
+        if ((layout.getLineStart(line) until layout.getLineEnd(line)).all {
+                it in start until end || text[it].isWhitespace()
+            }) {
+            return layout.getLineTop(line).toFloat()
+        }
+    }
+    if (isMarker ||
+        span.verticalAlignment == DynamicDrawableSpan.ALIGN_BASELINE) {
+        return layout.getLineBaseline(line) - height
+    }
+    val top = layout.getLineTop(line)
+    val bottom = if (Build.VERSION.SDK_INT >= 34) {
+        layout.getLineBottom(line, false)
+    } else if (line == layout.lineCount - 1) {
+        layout.getLineBottom(line)
+    } else {
+        // Older SDKs expose only the box with spacing. Invert StaticLayout's
+        // rounded height * multiplier + extra calculation without hidden APIs.
+        val rawHeight = ((layout.getLineBottom(line) - top - layout.spacingAdd) /
+            layout.spacingMultiplier.coerceAtLeast(0.01f)).roundToInt()
+        top + rawHeight
+    }
+    return if (span.verticalAlignment == DynamicDrawableSpan.ALIGN_CENTER) {
+        top + (bottom - top - height) / 2f
+    } else {
+        bottom - height
+    }
+}
 
 /** Resolve the real glyph paint, without the measurement-only punctuation scale. */
 internal fun readerGlyphPaint(
@@ -209,18 +248,7 @@ internal class ReaderTextPainter {
         val savedBounds = Rect(drawable.bounds)
         val width = savedBounds.width().toFloat()
         val height = savedBounds.height().toFloat()
-        val top = layout.getLineTop(line).toFloat()
-        val bottom = layout.getLineBottom(line).toFloat()
-        val slotTop = if (isInlineFootnoteMarker) {
-            // Footnote icons are text-like inline marks. ALIGN_BOTTOM uses the whole
-            // line box (including descent/line spacing), which makes them look like
-            // subscripts; pin their bottom edge to the text baseline instead.
-            layout.getLineBaseline(line) - height
-        } else when (span.verticalAlignment) {
-            DynamicDrawableSpan.ALIGN_BASELINE -> layout.getLineBaseline(line) - height
-            DynamicDrawableSpan.ALIGN_CENTER -> top + (bottom - top - height) / 2f
-            else -> bottom - height
-        }
+        val slotTop = readerImageTop(layout, line, span)
         val rect = ReaderImageSizing.drawRect(left, slotTop, width, height,
             isInlineFootnoteMarker,
             textSize * ReaderImageSizing.INLINE_MARKER_EM)

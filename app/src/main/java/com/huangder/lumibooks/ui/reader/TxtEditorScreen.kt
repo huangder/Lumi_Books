@@ -21,7 +21,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -489,8 +489,12 @@ fun TxtEditorScreen(
         AnimatedVisibility(
             visible = uiState.sheetMode == null,
             modifier = Modifier.align(Alignment.BottomCenter),
-            enter = fadeIn() + slideInVertically { it / 2 },
-            exit = fadeOut() + slideOutVertically { it / 2 }
+            enter = fadeIn(com.huangder.lumibooks.ui.animation.VisualMotion.spring(stiffness = 400f)) +
+                slideInVertically(com.huangder.lumibooks.ui.animation.VisualMotion.spring(stiffness = 400f,
+                    visibilityThreshold = androidx.compose.ui.unit.IntOffset(1, 1))) { it / 2 },
+            exit = fadeOut(com.huangder.lumibooks.ui.animation.VisualMotion.spring(stiffness = 400f)) +
+                slideOutVertically(com.huangder.lumibooks.ui.animation.VisualMotion.spring(stiffness = 400f,
+                    visibilityThreshold = androidx.compose.ui.unit.IntOffset(1, 1))) { it / 2 }
         ) {
             TxtEditorBottomActions(
                 canGoPrevious = uiState.chapterIndex > 0,

@@ -70,6 +70,7 @@ class AuthorizedFolderBooksActivity : ComponentActivity() {
             val cardOutlinesEnabled by dataStoreManager.cardOutlinesEnabled
                 .collectAsState(initial = launchTheme.cardOutlinesEnabled)
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = launchTheme.darkMode)
+            val coverReadingProgressEnabled by dataStoreManager.coverReadingProgressEnabled.collectAsState(initial = false)
             val motionPreferenceValue by dataStoreManager.motionPreference
                 .collectAsState(initial = launchTheme.motionPreference)
             val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled
@@ -98,6 +99,7 @@ class AuthorizedFolderBooksActivity : ComponentActivity() {
                 liquidGlassTransparency = liquidGlassTransparency,
                 liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled && !eInkMode,
                 cardOutlinesEnabled = cardOutlinesEnabled,
+                coverReadingProgressEnabled = coverReadingProgressEnabled,
                 eInkMode = eInkMode,
                 globalFontMode = globalFontMode,
                 motionPreference = MotionPreference.fromStoredValue(motionPreferenceValue)

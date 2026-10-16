@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tts_listening_resume_title">跳到听书进度？</string>
+    <string name="tts_listening_resume_message">已恢复上次阅读位置。你上次听到「%1$s」，是否跳转到听书进度？</string>
+    <string name="tts_listening_resume_jump">跳到听书进度</string>
+    <string name="tts_listening_resume_keep">保留阅读位置</string>
+    <string name="tts_listening_resume_furthest">跳到更靠后的进度</string>
+    <string name="tts_listening_resume_setting">打开书本时的位置</string>
+    <string name="tts_start_title">听书从哪里开始？</string>
+    <string name="tts_start_message">上次听到「%1$s」。请选择从当前页或原听书进度读起。</string>
+    <string name="tts_start_current_page">从当前页读起</string>
+    <string name="tts_start_saved_position">从原进度读起</string>
+    <string name="tts_start_remember_choice">记住本次选择</string>
+    <string name="tts_start_setting">听书起始位置</string>
+    <string name="tts_start_ask_each_time">每次询问</string>
+    <string name="tts_listening_resume_show_prompt">显示返回提示</string>
+</resources>

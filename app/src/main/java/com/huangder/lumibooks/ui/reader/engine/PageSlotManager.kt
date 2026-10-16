@@ -89,8 +89,8 @@ class PageSlotManager(
     }
     /** Page counts retained independently of the LRU so cross-chapter parity stays stable. */
     private val knownPageCounts = mutableMapOf<Int, Int>()
-    /** The chapter whose first page is the left anchor for the current run. */
-    private var pairingAnchorChapter: Int = 0
+    /** The exact page kept on the left when the current pairing run begins. */
+    private var pairingAnchor: PageLocation = PageLocation(0, 0)
 
     /** 字号/尺寸/模式变化时暂存当前页的字符起始偏移，供 loadSlot 搜索修正后的页码 */
     var pendingStartCharOffset: Int = -1
@@ -116,7 +116,7 @@ class PageSlotManager(
     var onPageChangedCallback: ((globalPage: Int, chapterIdx: Int, pageInChapter: Int, chapterTotal: Int) -> Unit)? = null
 
     /** 双页模式右半页回调 */
-    var onSpreadPageChangedCallback: ((rightGlobalPage: Int, rightChapterIdx: Int, rightPageInChapter: Int) -> Unit)? = null
+    var onSpreadPageChangedCallback: ((rightGlobalPage: Int, rightChapterIdx: Int, rightPageInChapter: Int, rightChapterTotalPages: Int) -> Unit)? = null
 
     internal var onSlotReadyCallback: (() -> Unit)? = null
 
@@ -136,27 +136,40 @@ class PageSlotManager(
     /**
      * 初始化：加载起始页到 CUR 槽位，预加载 PREV 和 NEXT。
      */
-    fun initialize(startChapter: Int, startPageInChapter: Int) {
+    fun initialize(
+        startChapter: Int,
+        startPageInChapter: Int,
+        preserveCurrentContent: Boolean = false
+    ) {
         cancelActiveJump()
         previousPrefetchJob?.cancel()
         previousPrefetchJob = null
         nextPrefetchJob?.cancel()
         nextPrefetchJob = null
         for (i in 0..2) {
-            recycleSlot(i)
+            recycleSlot(i, preserveContent = preserveCurrentContent && i == SLOT_CUR)
         }
 
-        pairingAnchorChapter = startChapter.coerceIn(0, (chapterCount - 1).coerceAtLeast(0))
+        pairingAnchor = PageLocation(
+            startChapter.coerceIn(0, (chapterCount - 1).coerceAtLeast(0)),
+            startPageInChapter.coerceAtLeast(0)
+        )
         currentChapterIndex = startChapter
         currentGlobalPage = layoutEngine.localToGlobal(startChapter, startPageInChapter)
 
-        loadSlot(SLOT_CUR, currentChapterIndex, startPageInChapter)
+        loadSlot(SLOT_CUR, currentChapterIndex, startPageInChapter,
+            preserveContent = preserveCurrentContent)
     }
 
     /**
      * 加载一个槽位（单页模式加载单页，双页模式按配对规则加载跨页单元）。
      */
-    fun loadSlot(slotIdx: Int, chapterIndex: Int, pageInChapter: Int) {
+    fun loadSlot(
+        slotIdx: Int,
+        chapterIndex: Int,
+        pageInChapter: Int,
+        preserveContent: Boolean = false
+    ) {
         if (slotIdx != SLOT_CUR && !backgroundPreparationEnabled) return
         if (chapterIndex < 0 || chapterIndex >= chapterCount) return
         if (pageInChapter < 0) return
@@ -178,10 +191,16 @@ class PageSlotManager(
         slot.rightPageIndex = -1
         slot.rightGlobalPageIndex = -1
         slot.rightIsLoaded = false
+        slot.rightChapterTotalPages = 0
         slot.primaryIsRight = false
         slot.chapterTotalPages = 0
-        slot.contentView.clear()
-        slot.rightContentView?.clear()
+        // Margin previews replace the page only once its new pagination is ready.
+        // The retained content is visual only: isLoaded stays false so stale
+        // geometry cannot be used for a page turn while the request is pending.
+        if (!preserveContent) {
+            slot.contentView.clear()
+            slot.rightContentView?.clear()
+        }
 
         // Slot rotation asks for another page from the same already-laid-out
         // chapter on every turn. Populate that page in this MOVE dispatch so a
@@ -293,12 +312,7 @@ class PageSlotManager(
     }
 
     private fun planSpread(target: PageLocation): SpreadTarget? {
-        val anchor = if (target.chapterIndex < pairingAnchorChapter) {
-            target.chapterIndex
-        } else {
-            pairingAnchorChapter
-        }
-        return ReaderSpreadPlanner.spreadFor(target, anchor, pageCountsSnapshot())
+        return ReaderSpreadPlanner.spreadFor(target, pairingAnchor, pageCountsSnapshot())
     }
 
     /** Loads every chapter needed by a spread before exposing the slot to animation. */
@@ -312,6 +326,8 @@ class PageSlotManager(
         // Re-anchor the primary page after a relayout. The old page index is
         // only a hint; the character offset is stable across width/font changes.
         var resolvedPage = requestedPage
+        val resolvesPendingAnchor = slotIdx == SLOT_CUR &&
+            (pendingStartCharOffset >= 0 || pendingStartPageFraction != null)
         if (slotIdx == SLOT_CUR) {
             if (pendingStartCharOffset >= 0) {
                 primaryMaterial.layout.pages.indexOfFirst { page ->
@@ -326,6 +342,9 @@ class PageSlotManager(
                 )
                 pendingStartPageFraction = null
             }
+        }
+        if (resolvesPendingAnchor) {
+            pairingAnchor = PageLocation(chapterIndex, resolvedPage)
         }
 
         var target = planSpread(PageLocation(chapterIndex, resolvedPage))
@@ -408,6 +427,7 @@ class PageSlotManager(
                 slot.rightPageIndex = -1
                 slot.rightGlobalPageIndex = -1
                 slot.rightIsLoaded = false
+                slot.rightChapterTotalPages = 0
                 slot.isLoaded = false
                 if (slotIdx == SLOT_CUR) finishCurrentSlotLoad(requestToken, CurrentSlotLoadResult.EMPTY)
                 return
@@ -416,12 +436,14 @@ class PageSlotManager(
             slot.rightPageIndex = right.pageIndex
             slot.rightGlobalPageIndex = layoutEngine.localToGlobal(right.chapterIndex, right.pageIndex)
             slot.rightIsLoaded = true
+            slot.rightChapterTotalPages = rightMaterial.layout.totalPages
         } else {
             slot.rightContentView?.clear()
             slot.rightChapterIndex = -1
             slot.rightPageIndex = -1
             slot.rightGlobalPageIndex = -1
             slot.rightIsLoaded = false
+            slot.rightChapterTotalPages = 0
         }
 
         slot.isLoaded = true
@@ -501,6 +523,7 @@ class PageSlotManager(
         slot.rightPageIndex = -1
         slot.rightGlobalPageIndex = -1
         slot.rightIsLoaded = false
+        slot.rightChapterTotalPages = 0
         slot.primaryIsRight = false
         if (!isCurrentRequest(slotIdx, requestToken) ||
             slot.chapterIndex != chapterIndex
@@ -798,6 +821,7 @@ class PageSlotManager(
             curSlot.rightPageIndex = -1
             curSlot.rightGlobalPageIndex = -1
             curSlot.rightIsLoaded = false
+            curSlot.rightChapterTotalPages = 0
             curSlot.primaryIsRight = false
             curSlot.chapterTotalPages = 0
             curSlot.contentView.clear()
@@ -848,6 +872,7 @@ class PageSlotManager(
             curSlot.rightPageIndex = -1
             curSlot.rightGlobalPageIndex = -1
             curSlot.rightIsLoaded = false
+            curSlot.rightChapterTotalPages = 0
             curSlot.primaryIsRight = false
             curSlot.chapterTotalPages = 0
             curSlot.contentView.clear()
@@ -898,9 +923,9 @@ class PageSlotManager(
             return
         }
 
-        // A direct chapter jump starts a fresh pairing run so its first page
-        // is guaranteed to occupy the left half of the new spread.
-        pairingAnchorChapter = chapterIndex
+        // A direct jump starts a fresh pairing run at the exact target so a
+        // restored left page cannot move to the right because of chapter parity.
+        pairingAnchor = PageLocation(chapterIndex, pageInChapter)
         currentChapterIndex = chapterIndex
         currentGlobalPage = layoutEngine.localToGlobal(chapterIndex, pageInChapter)
 
@@ -918,7 +943,7 @@ class PageSlotManager(
 
         if (spreadEnabled()) {
             val next = ReaderSpreadPlanner.next(
-                currentSpread(cur), pairingAnchorChapter, pageCountsSnapshot()
+                currentSpread(cur), pairingAnchor, pageCountsSnapshot()
             )?.primary
             return (next?.chapterIndex ?: -1) to (next?.pageIndex ?: -1)
         }
@@ -942,7 +967,7 @@ class PageSlotManager(
 
         if (spreadEnabled()) {
             val previous = ReaderSpreadPlanner.previous(
-                currentSpread(cur), pairingAnchorChapter, pageCountsSnapshot()
+                currentSpread(cur), pairingAnchor, pageCountsSnapshot()
             )?.primary
             return (previous?.chapterIndex ?: -1) to (previous?.pageIndex ?: -1)
         }
@@ -982,6 +1007,7 @@ class PageSlotManager(
         toSlot.rightPageIndex = fromSlot.rightPageIndex
         toSlot.rightGlobalPageIndex = fromSlot.rightGlobalPageIndex
         toSlot.rightIsLoaded = fromSlot.rightIsLoaded
+        toSlot.rightChapterTotalPages = fromSlot.rightChapterTotalPages
         toSlot.primaryIsRight = fromSlot.primaryIsRight
         toSlot.chapterTotalPages = fromSlot.chapterTotalPages
         if (!renderSlotFromCache(toSlot)) {
@@ -1014,6 +1040,7 @@ class PageSlotManager(
         fromSlot.rightPageIndex = -1
         fromSlot.rightGlobalPageIndex = -1
         fromSlot.rightIsLoaded = false
+        fromSlot.rightChapterTotalPages = 0
         fromSlot.primaryIsRight = false
         fromSlot.chapterTotalPages = 0
         fromSlot.contentView.clear()
@@ -1057,7 +1084,7 @@ class PageSlotManager(
         return leftRendered && rightRendered
     }
 
-    private fun recycleSlot(slotIdx: Int) {
+    private fun recycleSlot(slotIdx: Int, preserveContent: Boolean = false) {
         invalidateRequest(slotIdx)
         val slot = slots[slotIdx]
         slot.chapterIndex = -1
@@ -1068,10 +1095,13 @@ class PageSlotManager(
         slot.rightPageIndex = -1
         slot.rightGlobalPageIndex = -1
         slot.rightIsLoaded = false
+        slot.rightChapterTotalPages = 0
         slot.primaryIsRight = false
         slot.chapterTotalPages = 0
-        slot.contentView.clear()
-        slot.rightContentView?.clear()
+        if (!preserveContent) {
+            slot.contentView.clear()
+            slot.rightContentView?.clear()
+        }
     }
 
     private fun invalidateRequest(slotIdx: Int) {
@@ -1131,7 +1161,8 @@ class PageSlotManager(
             onSpreadPageChangedCallback?.invoke(
                 cur.rightGlobalPageIndex,
                 cur.rightChapterIndex,
-                cur.rightPageIndex
+                cur.rightPageIndex,
+                cur.rightChapterTotalPages
             )
         }
     }

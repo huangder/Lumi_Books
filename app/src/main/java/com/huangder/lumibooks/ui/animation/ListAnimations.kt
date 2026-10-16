@@ -3,7 +3,8 @@ package com.huangder.lumibooks.ui.animation
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.delayMillis
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -38,7 +39,7 @@ fun StaggeredItem(
     val visible = remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        delay(index * delayPerItem.toLong())
+        delay(delayMillis(index * delayPerItem.toLong()))
         visible.value = true
     }
 

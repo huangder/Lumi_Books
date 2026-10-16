@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LUMI - 为阅读而生</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --lumi-pink: #FF385C;
+      --lumi-pink-light: #FF6B9D;
+      --bg-dark-1: #05070C;
+      --bg-dark-2: #0F131C;
+      --bg-dark-3: #1E2636;
+      --text-white: #FFFFFF;
+      --text-gray: #A0A0A0;
+      --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Noto Sans SC', sans-serif;
+      --font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Noto Sans SC', sans-serif;
+    }
+
+    body {
+      font-family: var(--font-body);
+      overflow: hidden;
+      background: var(--bg-dark-1);
+    }
+
+    .video-container {
+      position: relative;
+      width: 1080px;
+      height: 1920px;
+      margin: 0 auto;
+      background: linear-gradient(180deg, var(--bg-dark-1) 0%, var(--bg-dark-2) 50%, var(--bg-dark-3) 100%);
+      overflow: hidden;
+    }
+
+    /* 噪点纹理 */
+    .noise-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iMzAwIj48ZmlsdGVyIGlkPSJhIj48ZmVUdXJidWxlbmNlIGJhc2VGcmVxdWVuY3k9Ii43NSIgc3RpdGNoVGlsZXM9InN0aXRjaCIgdHlwZT0iZnJhY3RhbE5vaXNlIi8+PGZlQ29sb3JNYXRyaXggdHlwZT0ic2F0dXJhdGUiIHZhbHVlcz0iMCIvPjwvZmlsdGVyPjxwYXRoIGQ9Ik0wIDBoMzAwdjMwMEgweiIgZmlsdGVyPSJ1cmwoI2EpIiBvcGFjaXR5PSIuMDUiLz48L3N2Zz4=');
+      opacity: 0.03;
+      mix-blend-mode: overlay;
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    /* 光晕层 */
+    .glow-layer {
+      position: absolute;
+      width: 800px;
+      height: 800px;
+      top: 30%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255, 56, 92, 0.15) 0%, transparent 70%);
+      filter: blur(120px);
+      animation: glowMove 20s ease-in-out infinite;
+      z-index: 1;
+    }
+
+    @keyframes glowMove {
+      0%, 100% {
+        transform: translate(-50%, -50%) scale(1);
+      }
+      50% {
+        transform: translate(-30%, -40%) scale(1.2);
+      }
+    }
+
+    /* 场景基础样式 */
+    .scene {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      z-index: 2;
+    }
+
+    .scene.active {
+      opacity: 1;
+    }
+
+    /* ========== 第一幕：开场 ========== */
+    .scene-1 .mascot {
+      width: 200px;
+      height: 200px;
+      margin-bottom: 60px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--lumi-pink) 0%, var(--lumi-pink-light) 100%);
+      animation: depthFocus 2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      box-shadow: 0 30px 80px rgba(255, 56, 92, 0.4);
+    }
+
+    .scene-1 .title {
+      font-family: var(--font-display);
+      font-size: 96px;
+      font-weight: 200;
+      letter-spacing: -0.02em;
+      color: var(--text-white);
+      margin-bottom: 20px;
+      animation: appleFadeIn 1.2s cubic-bezier(0.4, 0, 0.2, 1) 0.5s forwards;
+      opacity: 0;
+    }
+
+    .scene-1 .subtitle {
+      font-family: var(--font-body);
+      font-size: 32px;
+      font-weight: 300;
+      letter-spacing: 0.02em;
+      color: var(--text-gray);
+      animation: appleFadeIn 1.2s cubic-bezier(0.4, 0, 0.2, 1) 1s forwards;
+      opacity: 0;
+    }
+
+    /* ========== 第二幕：功能展示 ========== */
+    .scene-2 {
+      padding: 0 100px;
+    }
+
+    .scene-2 .feature-list {
+      display: flex;
+      flex-direction: column;
+      gap: 40px;
+      align-items: center;
+    }
+
+    .scene-2 .feature-list span {
+      font-family: var(--font-display);
+      font-size: 48px;
+      font-weight: 300;
+      letter-spacing: 0.05em;
+      color: var(--text-white);
+      opacity: 0;
+    }
+
+    .scene-2.active .feature-list span:nth-child(1) { animation: wordReveal 0.8s cubic-bezier(0.4, 0, 0.2, 1) 0.2s forwards; }
+    .scene-2.active .feature-list span:nth-child(2) { animation: wordReveal 0.8s cubic-bezier(0.4, 0, 0.2, 1) 0.4s forwards; }
+    .scene-2.active .feature-list span:nth-child(3) { animation: wordReveal 0.8s cubic-bezier(0.4, 0, 0.2, 1) 0.6s forwards; }
+    .scene-2.active .feature-list span:nth-child(4) { animation: wordReveal 0.8s cubic-bezier(0.4, 0, 0.2, 1) 0.8s forwards; }
+    .scene-2.active .feature-list span:nth-child(5) { animation: wordReveal 0.8s cubic-bezier(0.4, 0, 0.2, 1) 1.0s forwards; }
+
+    .scene-2 .feature-separator {
+      width: 400px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.2) 50%, transparent 100%);
+      margin: 60px 0;
+      opacity: 0;
+      animation: appleFadeIn 1s cubic-bezier(0.4, 0, 0.2, 1) 1.2s forwards;
+    }
+
+    .scene-2 .feature-highlight {
+      font-family: var(--font-body);
+      font-size: 36px;
+      font-weight: 300;
+      color: var(--lumi-pink-light);
+      opacity: 0;
+      animation: appleFadeIn 1s cubic-bezier(0.4, 0, 0.2, 1) 1.8s forwards;
+    }
+
+    /* ========== 第三幕：体验亮点 ========== */
+    .scene-3 .phone-mockup {
+      width: 400px;
+      height: 800px;
+      border-radius: 50px;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(40px) saturate(150%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow:
+        0 30px 80px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: depthFocus 1.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      opacity: 0;
+    }
+
+    .scene-3 .reader-interface {
+      width: 90%;
+      height: 90%;
+      border-radius: 40px;
+      background: linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 100%);
+      padding: 40px;
+      color: var(--text-white);
+      font-size: 20px;
+      line-height: 1.8;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .scene-3 .reader-text {
+      opacity: 0.9;
+      animation: appleFadeIn 1s cubic-bezier(0.4, 0, 0.2, 1) 0.8s forwards;
+    }
+
+    .scene-3 .highlight-mark {
+      position: absolute;
+      bottom: 100px;
+      left: 40px;
+      right: 40px;
+      height: 32px;
+      background: rgba(255, 107, 157, 0.3);
+      border-radius: 4px;
+      animation: highlightDraw 1.5s cubic-bezier(0.4, 0, 0.2, 1) 1.5s forwards;
+      transform-origin: left;
+      transform: scaleX(0);
+    }
+
+    @keyframes highlightDraw {
+      to { transform: scaleX(1); }
+    }
+
+    /* ========== 第四幕：设计美学 ========== */
+    .scene-4 {
+      gap: 80px;
+    }
+
+    .scene-4 .glass-card {
+      width: 700px;
+      height: 400px;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(40px) saturate(150%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow:
+        0 20px 60px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      border-radius: 48px;
+      animation: glassBreath 4s ease-in-out infinite, appleFadeIn 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+      opacity: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .scene-4 .glass-text {
+      font-family: var(--font-display);
+      font-size: 48px;
+      font-weight: 200;
+      color: var(--text-white);
+      letter-spacing: 0.03em;
+    }
+
+    .scene-4 .theme-text {
+      font-family: var(--font-body);
+      font-size: 28px;
+      font-weight: 300;
+      color: var(--text-gray);
+      opacity: 0;
+      animation: appleFadeIn 1s cubic-bezier(0.4, 0, 0.2, 1) 1.5s forwards;
+    }
+
+    /* ========== 第五幕：隐私理念 ========== */
+    .scene-5 {
+      gap: 50px;
+    }
+
+    .scene-5 h2 {
+      font-family: var(--font-display);
+      font-size: 72px;
+      font-weight: 200;
+      color: var(--text-white);
+      letter-spacing: 0.02em;
+      opacity: 0;
+      animation: appleFadeIn 1.5s cubic-bezier(0.4, 0, 0.2, 1) 0.3s forwards;
+    }
+
+    .scene-5 p {
+      font-family: var(--font-body);
+      font-size: 32px;
+      font-weight: 300;
+      color: var(--text-gray);
+      opacity: 0;
+      animation: appleFadeIn 1.5s cubic-bezier(0.4, 0, 0.2, 1) 1s forwards;
+    }
+
+    .scene-5 .badge {
+      margin-top: 100px;
+      font-size: 20px;
+      color: rgba(255, 255, 255, 0.4);
+      opacity: 0;
+      animation: appleFadeIn 1s cubic-bezier(0.4, 0, 0.2, 1) 1.8s forwards;
+    }
+
+    /* ========== 第六幕：结尾 ========== */
+    .scene-6 {
+      gap: 60px;
+    }
+
+    .scene-6 .logo-large {
+      font-family: var(--font-display);
+      font-size: 120px;
+      font-weight: 200;
+      color: var(--text-white);
+      letter-spacing: -0.02em;
+      opacity: 0;
+      animation: appleFadeIn 1.5s cubic-bezier(0.4, 0, 0.2, 1) 0.3s forwards, glowSpread 3s ease-in-out 0.3s forwards;
+    }
+
+    .scene-6 .cta {
+      font-family: var(--font-body);
+      font-size: 36px;
+      font-weight: 300;
+      color: var(--text-gray);
+      opacity: 0;
+      animation: appleFadeIn 1.2s cubic-bezier(0.4, 0, 0.2, 1) 1.5s forwards;
+    }
+
+    .scene-6 .link {
+      margin-top: 80px;
+      font-size: 22px;
+      color: var(--lumi-pink-light);
+      opacity: 0;
+      animation: appleFadeIn 1s cubic-bezier(0.4, 0, 0.2, 1) 2.5s forwards;
+    }
+
+    /* ========== 关键帧动画 ========== */
+    @keyframes appleFadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(30px) scale(0.95);
+        filter: blur(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        filter: blur(0);
+      }
+    }
+
+    @keyframes depthFocus {
+      0% {
+        filter: blur(20px);
+        opacity: 0.3;
+        transform: scale(1.1);
+      }
+      100% {
+        filter: blur(0);
+        opacity: 1;
+        transform: scale(1.0);
+      }
+    }
+
+    @keyframes glassBreath {
+      0%, 100% {
+        backdrop-filter: blur(40px) brightness(1.0) saturate(150%);
+        transform: scale(1.0);
+      }
+      50% {
+        backdrop-filter: blur(45px) brightness(1.05) saturate(160%);
+        transform: scale(1.01);
+      }
+    }
+
+    @keyframes glowSpread {
+      0% {
+        text-shadow: 0 0 0 rgba(255, 56, 92, 0);
+      }
+      50% {
+        text-shadow: 0 0 100px rgba(255, 56, 92, 0.6);
+      }
+      100% {
+        text-shadow: 0 0 80px rgba(255, 56, 92, 0.4);
+      }
+    }
+
+    @keyframes wordReveal {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* 场景淡入淡出 */
+    .scene {
+      transition: opacity 2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+  </style>
+</head>
+<body>
+  <div class="video-container">
+    <div class="noise-overlay"></div>
+    <div class="glow-layer"></div>
+
+    <!-- 第一幕：开场 -->
+    <section class="scene scene-1 active">
+      <div class="mascot"></div>
+      <h1 class="title">LUMI</h1>
+      <p class="subtitle">为阅读而生</p>
+    </section>
+
+    <!-- 第二幕：功能展示 -->
+    <section class="scene scene-2">
+      <div class="feature-list">
+        <span>EPUB</span>
+        <span>PDF</span>
+        <span>TXT</span>
+        <span>MOBI</span>
+        <span>CBZ</span>
+      </div>
+      <div class="feature-separator"></div>
+      <div class="feature-highlight">摘录卡片 · 双渲染模式</div>
+    </section>
+
+    <!-- 第三幕：体验亮点 -->
+    <section class="scene scene-3">
+      <div class="phone-mockup">
+        <div class="reader-interface">
+          <div class="reader-text">
+            阅读是一场与文字的对话<br>
+            每一次翻页<br>
+            都是思想的延伸
+          </div>
+          <div class="highlight-mark"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 第四幕：设计美学 -->
+    <section class="scene scene-4">
+      <div class="glass-card">
+        <div class="glass-text">液态玻璃</div>
+      </div>
+      <div class="theme-text">G2 连续圆角 · 简洁优雅</div>
+    </section>
+
+    <!-- 第五幕：隐私理念 -->
+    <section class="scene scene-5">
+      <h2>本地优先</h2>
+      <p>零第三方追踪</p>
+      <div class="badge">开源 · GPLv3</div>
+    </section>
+
+    <!-- 第六幕：结尾 -->
+    <section class="scene scene-6">
+      <div class="logo-large">LUMI</div>
+      <p class="cta">即刻体验</p>
+      <div class="link">github.com/huangder/Lumi_Books</div>
+    </section>
+  </div>
+
+  <script>
+    // 场景控制器
+    const scenes = document.querySelectorAll('.scene');
+    const sceneDurations = [5000, 8000, 8000, 7000, 7000, 8000]; // 每个场景的持续时间（毫秒）
+    let currentScene = 0;
+
+    function showScene(index) {
+      scenes.forEach((scene, i) => {
+        if (i === index) {
+          scene.classList.add('active');
+        } else {
+          scene.classList.remove('active');
+        }
+      });
+    }
+
+    function nextScene() {
+      currentScene++;
+      if (currentScene < scenes.length) {
+        showScene(currentScene);
+        setTimeout(nextScene, sceneDurations[currentScene]);
+      } else {
+        // 循环播放（可选）
+        setTimeout(() => {
+          currentScene = 0;
+          showScene(0);
+          setTimeout(nextScene, sceneDurations[0]);
+        }, 2000);
+      }
+    }
+
+    // 开始动画序列
+    setTimeout(nextScene, sceneDurations[0]);
+
+    // 键盘控制（调试用）
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' && currentScene < scenes.length - 1) {
+        currentScene++;
+        showScene(currentScene);
+      } else if (e.key === 'ArrowLeft' && currentScene > 0) {
+        currentScene--;
+        showScene(currentScene);
+      } else if (e.key === 'r') {
+        currentScene = 0;
+        showScene(0);
+      }
+    });
+  </script>
+</body>
+</html>

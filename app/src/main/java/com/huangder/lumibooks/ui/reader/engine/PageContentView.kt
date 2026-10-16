@@ -13,7 +13,6 @@ import android.text.Spannable
 import android.text.Spanned
 import android.text.SpannableStringBuilder
 import android.text.style.ClickableSpan
-import android.text.style.DynamicDrawableSpan
 import android.text.style.ImageSpan
 import android.text.style.URLSpan
 import android.util.Log
@@ -153,6 +152,8 @@ class PageContentView(context: Context) : FrameLayout(context) {
     private var readerBackgroundImagePath: String? = null
     private var readerBackgroundImageOpacity: Float = 1f
     private var readerBackgroundImageBlurDp: Float = 0f
+    private var backgroundImageNeedsRetry = false
+    private var backgroundImageRequestGeneration = 0L
     private var currentBgColor: Int = 0
     private var showingCoverPage = false
     private var coverImageSpan: ImageSpan? = null
@@ -169,28 +170,60 @@ class PageContentView(context: Context) : FrameLayout(context) {
         val opacity = imageOpacity.coerceIn(0f, 1f)
         val blurDp = imageBlurDp.coerceIn(0f, 40f)
         val imageChanged = readerBackgroundImagePath != imagePath
-        val effectChanged = readerBackgroundImageOpacity != opacity ||
-            readerBackgroundImageBlurDp != blurDp
-        if (!imageChanged && !effectChanged) return
+        val blurChanged = readerBackgroundImageBlurDp != blurDp
+
+        // Opacity belongs to the view, not the decoded image. Reloading on every
+        // slider tick cancels the in-flight blur and clears the visible drawable.
+        readerBackgroundImageOpacity = opacity
+        backgroundImageView.alpha = opacity
+        if (!imageChanged && !blurChanged && !backgroundImageNeedsRetry) return
 
         readerBackgroundImagePath = imagePath
-        readerBackgroundImageOpacity = opacity
         readerBackgroundImageBlurDp = blurDp
-        backgroundImageView.alpha = opacity
-        val imageFile = imagePath?.let(::File)?.takeIf { it.exists() }
-        if (imageFile == null) {
+        backgroundImageNeedsRetry = false
+        val requestGeneration = ++backgroundImageRequestGeneration
+        if (imagePath == null) {
             backgroundImageView.load(null)
             backgroundImageView.visibility = View.GONE
         } else {
+            val imageFile = File(imagePath)
+            if (!imageFile.isFile) {
+                // A temporarily unavailable file must not latch an empty image
+                // as an already-applied background for the lifetime of the page.
+                backgroundImageNeedsRetry = true
+                return
+            }
+            val previousImage = backgroundImageView.drawable
             backgroundImageView.visibility = View.VISIBLE
             backgroundImageView.load(imageFile) {
                 allowHardware(false)
                 crossfade(false)
+                placeholder(previousImage)
+                error(previousImage)
+                listener(
+                    onError = { _, _ ->
+                        if (requestGeneration == backgroundImageRequestGeneration) backgroundImageNeedsRetry = true
+                    },
+                    onSuccess = { _, _ ->
+                        if (requestGeneration == backgroundImageRequestGeneration) backgroundImageNeedsRetry = false
+                    }
+                )
                 val radiusPx = blurDp * resources.displayMetrics.density
                 if (radiusPx >= 0.5f) {
                     transformations(ReaderBackgroundBlurTransformation(radiusPx.roundToInt()))
                 }
             }
+        }
+    }
+
+    internal fun retryReaderBackground() {
+        if (backgroundImageNeedsRetry) {
+            setReaderBackground(
+                currentBgColor,
+                readerBackgroundImagePath,
+                readerBackgroundImageOpacity,
+                readerBackgroundImageBlurDp
+            )
         }
     }
 
@@ -954,15 +987,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
             val imageLeft = textView.totalPaddingLeft +
                 (geometry?.horizontalPosition(spanStart)
                     ?: textLayout.getPrimaryHorizontal(spanStart)) - textView.scrollX
-            val lineTop = textLayout.getLineTop(line).toFloat()
-            val lineBottom = textLayout.getLineBottom(line).toFloat()
-            val imageTopInLayout = when (image.verticalAlignment) {
-                DynamicDrawableSpan.ALIGN_BASELINE ->
-                    textLayout.getLineBaseline(line).toFloat() - imageHeight
-                DynamicDrawableSpan.ALIGN_CENTER ->
-                    lineTop + (lineBottom - lineTop - imageHeight) / 2f
-                else -> lineBottom - imageHeight
-            }
+            val imageTopInLayout = readerImageTop(textLayout, line, image)
             val imageTop = textView.totalPaddingTop + imageTopInLayout - textView.scrollY
             val imageRight = imageLeft + imageWidth
             val imageBottom = imageTop + imageHeight
@@ -1210,17 +1235,22 @@ class PageContentView(context: Context) : FrameLayout(context) {
         if (width > 0 && height > 0) {
             val widthSpec = View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY)
             val heightSpec = View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
-            listOf(textView, justifiedView, verticalTextView).forEach { child ->
+            // The cover starts GONE while the opening chapter loads, so it
+            // may never have been measured by the empty page's layout pass.
+            // Size it now as well, before drawing the first loaded frame.
+            listOf(coverImageView, textView, justifiedView, verticalTextView).forEach { child ->
                 child.forceLayout()
                 child.measure(widthSpec, heightSpec)
                 child.layout(0, 0, width, height)
             }
         } else {
+            coverImageView.requestLayout()
             textView.requestLayout()
             justifiedView.requestLayout()
             verticalTextView.requestLayout()
             requestLayout()
         }
+        coverImageView.invalidate()
         textView.invalidate()
         justifiedView.invalidate()
         verticalTextView.invalidate()

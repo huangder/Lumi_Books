@@ -83,19 +83,27 @@ internal fun pdfRenderOversample(mode: PageRenderMode): Float = when (mode) {
     PageRenderMode.NATIVE -> 4f
 }
 
-/** 某档位的 PDF 整页像素预算；null 表示不设上限。 */
-internal fun pdfRenderPixelBudget(mode: PageRenderMode): Long? = when (mode) {
+/** PDF 原画仍是整页矢量渲染，必须限制位图大小；16MP 的 ARGB 页约占 64MB。 */
+internal fun pdfRenderPixelBudget(mode: PageRenderMode): Long = when (mode) {
     PageRenderMode.NORMAL -> 4_000_000L
     PageRenderMode.HIGH -> 16_000_000L
-    PageRenderMode.NATIVE -> null
+    PageRenderMode.NATIVE -> 16_000_000L
 }
+
+/** 留出页面缓存、前后页、锐化副本和 PDF 原生解码所需的内存。 */
+internal fun pdfMemoryPixelBudget(maxHeapBytes: Long): Long =
+    (maxHeapBytes / 32L).coerceIn(1L, 16_000_000L)
+
+/** 超长页还需限制纹理边长，否则即使总像素不多也可能无法上传 GPU。 */
+internal const val PDF_RENDER_MAX_DIMENSION = 8192
 
 /** PDF 页按屏幕宽度和画质档位计算最终渲染倍率。 */
 internal fun pdfRenderScale(
     pageWidth: Int,
     pageHeight: Int,
     targetWidthPx: Int,
-    mode: PageRenderMode
+    mode: PageRenderMode,
+    memoryPixelBudget: Long = pdfRenderPixelBudget(mode)
 ): Float {
     if (pageWidth <= 0 || pageHeight <= 0 || targetWidthPx <= 0) return MIN_PDF_RENDER_SCALE
     val requestedScale = (
@@ -103,12 +111,11 @@ internal fun pdfRenderScale(
         ).coerceIn(MIN_PDF_RENDER_SCALE, pdfMaxRenderScale(mode))
     val requestedPixels = pageWidth.toDouble() * pageHeight.toDouble() *
         requestedScale.toDouble() * requestedScale.toDouble()
-    val pixelBudget = pdfRenderPixelBudget(mode)
-    return if (pixelBudget != null && requestedPixels > pixelBudget) {
+    val pixelBudget = minOf(pdfRenderPixelBudget(mode), memoryPixelBudget.coerceAtLeast(1L))
+    val pixelScale = if (requestedPixels > pixelBudget)
         (requestedScale * kotlin.math.sqrt(pixelBudget.toDouble() / requestedPixels)).toFloat()
-    } else {
-        requestedScale
-    }
+    else requestedScale
+    return minOf(pixelScale, PDF_RENDER_MAX_DIMENSION.toFloat() / maxOf(pageWidth, pageHeight))
 }
 
 /**

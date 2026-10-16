@@ -160,7 +160,7 @@ fun SettingsScreen(
                 ) {
                     if (uiState.avatarUri != null) {
                         AsyncImage(
-                            model = File(uiState.avatarUri),
+                            model = File(uiState.avatarUri!!),
                             contentDescription = stringResource(R.string.avatar),
                             modifier = Modifier.fillMaxSize().clip(CircleShape),
                             contentScale = ContentScale.Crop
@@ -192,6 +192,11 @@ fun SettingsScreen(
             }
 
                 Spacer(Modifier.height(AppSpace.lg))
+
+                CategoryItem(AppIcons.FolderOpen, stringResource(R.string.authorized_folders_title)) {
+                    context.startActivity(Intent(context, AuthorizedFoldersActivity::class.java))
+                }
+                Spacer(Modifier.height(AppSpace.sm))
 
                 // 分类列表：按设置域分组，组内使用细分隔线保持扫描节奏。
                 SettingsCategoryGroup {
@@ -266,31 +271,36 @@ fun ThirdPartyServicesDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
 
-    CategoryItem(icon = AppIcons.BookOpen, label = stringResource(R.string.dictionary_title),
-        supportingText = stringResource(R.string.dictionary_management_intro)) {
-        com.huangder.lumibooks.dictionary.openDictionarySettings(context)
-    }
-    Spacer(Modifier.height(AppSpace.sm))
-    CategoryItem(icon = AppIcons.Globe, label = stringResource(R.string.translation_title),
-        supportingText = stringResource(R.string.translation_description)) {
-        com.huangder.lumibooks.translation.openTranslationSettings(context)
-    }
-    Spacer(Modifier.height(AppSpace.sm))
-
-    CategoryItem(
-        icon = AppIcons.Cloud,
-        label = stringResource(R.string.category_mineru),
-        supportingText = when (uiState.mineruMode) {
-            "agent" -> stringResource(R.string.mineru_mode_agent_short)
-            "precise" -> stringResource(R.string.mineru_mode_precise_short)
-            else -> stringResource(R.string.mineru_not_configured)
-        }
-    ) {
-        context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "mineru"))
-    }
-        Spacer(Modifier.height(AppSpace.sm))
+    SettingsCategoryGroup {
         CategoryItem(
-            icon = AppIcons.Cloud,
+            label = stringResource(R.string.dictionary_title),
+            supportingText = stringResource(R.string.dictionary_management_intro),
+            grouped = true
+        ) {
+            com.huangder.lumibooks.dictionary.openDictionarySettings(context)
+        }
+        SettingsGroupDivider()
+        CategoryItem(
+            label = stringResource(R.string.translation_title),
+            supportingText = stringResource(R.string.translation_description),
+            grouped = true
+        ) {
+            com.huangder.lumibooks.translation.openTranslationSettings(context)
+        }
+        SettingsGroupDivider()
+        CategoryItem(
+            label = stringResource(R.string.category_mineru),
+            supportingText = when (uiState.mineruMode) {
+                "agent" -> stringResource(R.string.mineru_mode_agent_short)
+                "precise" -> stringResource(R.string.mineru_mode_precise_short)
+                else -> stringResource(R.string.mineru_not_configured)
+            },
+            grouped = true
+        ) {
+            context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "mineru"))
+        }
+        SettingsGroupDivider()
+        CategoryItem(
             label = stringResource(R.string.category_external_tts),
             supportingText = when {
                 uiState.externalTtsSettings.enabled &&
@@ -299,28 +309,30 @@ fun ThirdPartyServicesDetail(viewModel: SettingsViewModel) {
                 uiState.externalTtsSettings.enabled ->
                     stringResource(R.string.external_tts_configured_status)
                 else -> stringResource(R.string.external_tts_not_configured)
-            }
+            },
+            grouped = true
         ) {
             context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "external_tts"))
         }
-        Spacer(Modifier.height(AppSpace.sm))
+        SettingsGroupDivider()
         CategoryItem(
-            icon = AppIcons.ArrowsClockwise,
             label = stringResource(R.string.category_webdav),
             supportingText = when {
                 uiState.webdavConfig.enabled -> stringResource(R.string.webdav_enabled_status)
                 else -> stringResource(R.string.webdav_not_configured)
-            }
+            },
+            grouped = true
         ) {
             context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "webdav"))
         }
+    }
 }
 
 // ─── 分类条目 ──────────────────────────────────────────────────
 
 @Composable
 private fun CategoryItem(
-    icon: ImageVector,
+    icon: ImageVector? = null,
     label: String,
     supportingText: String? = null,
     grouped: Boolean = false,
@@ -337,8 +349,10 @@ private fun CategoryItem(
             .padding(horizontal = AppSpace.md, vertical = AppSpace.md + 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
-        Spacer(Modifier.width(AppSpace.md))
+        if (icon != null) {
+            Icon(icon, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(AppSpace.md))
+        }
         Column(Modifier.weight(1f)) {
             Text(label, fontSize = AppType.Body, color = AppColors.TextPrimary)
             if (supportingText != null) {

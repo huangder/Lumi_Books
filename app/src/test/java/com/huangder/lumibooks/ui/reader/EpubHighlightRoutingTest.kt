@@ -47,7 +47,10 @@ class EpubHighlightRoutingTest {
 
     @Test
     fun manualUnderlinesAndDetachedRuleMarksRemainTappableWithStyleSnapshots() {
-        val manual = note().copy(type = "underline", styleSnapshotJson = """{"underlineMode":2}""")
+        val manual = note().copy(
+            type = "underline",
+            styleSnapshotJson = """{"textColor":-65536,"underlineMode":2}"""
+        )
         val detached = manual.copy(
             origin = Note.ORIGIN_HIGHLIGHT_RULE, sourceRuleId = "rule", sourceMatchKey = "match"
         ).detachFromHighlightRule()
@@ -58,6 +61,8 @@ class EpubHighlightRoutingTest {
         }
         assertEquals(2, payload.getJSONObject(1).getJSONObject("ruleStyle").getInt("underlineMode"))
         assertEquals(2, payload.getJSONObject(2).getJSONObject("ruleStyle").getInt("underlineMode"))
+        assertFalse(payload.getJSONObject(1).getJSONObject("ruleStyle").has("textColor"))
+        assertFalse(payload.getJSONObject(2).getJSONObject("ruleStyle").has("textColor"))
     }
 
     private fun note(

@@ -59,9 +59,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
+import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -128,7 +128,8 @@ import com.huangder.lumibooks.ui.animation.LocalBookReaderAnchorScope
 import com.huangder.lumibooks.ui.animation.bookCoverTransitionAnchor
 import com.huangder.lumibooks.ui.layout.currentAdaptiveWindowInfo
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
-import com.huangder.lumibooks.ui.components.BookCoverProgressOverlay
+import com.huangder.lumibooks.ui.components.BookCoverStatusBadge
+import com.huangder.lumibooks.ui.components.BookProgressStatus
 import com.huangder.lumibooks.ui.components.CloudAwareBookDeleteDialog
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.animation.coverFlowEntranceItem
@@ -259,6 +260,7 @@ fun BookshelfScreen(
         add(BookshelfFilterTab(BookshelfFilter.EpubMobi, stringResource(R.string.filter_epub_mobi)))
         add(BookshelfFilterTab(BookshelfFilter.Pdf, stringResource(R.string.format_pdf)))
         add(BookshelfFilterTab(BookshelfFilter.Txt, stringResource(R.string.format_txt)))
+        add(BookshelfFilterTab(BookshelfFilter.Markdown, stringResource(R.string.format_markdown)))
         add(BookshelfFilterTab(BookshelfFilter.Comic, stringResource(R.string.format_cbz)))
         add(BookshelfFilterTab(BookshelfFilter.Favorites, stringResource(R.string.filter_favorites)))
         uiState.tags.forEach { tag ->
@@ -514,6 +516,7 @@ fun BookshelfScreen(
             BookshelfFilter.All -> null
             BookshelfFilter.EpubMobi -> uiState.books.filter(Book::isEpubMobi).mapTo(mutableSetOf()) { it.id }
             BookshelfFilter.Pdf -> uiState.books.filter { it.format == BookFormat.PDF }.mapTo(mutableSetOf()) { it.id }
+            BookshelfFilter.Markdown -> uiState.books.filter { it.format == BookFormat.MARKDOWN }.mapTo(mutableSetOf()) { it.id }
             BookshelfFilter.Txt -> uiState.books.filter { it.format == BookFormat.TXT }.mapTo(mutableSetOf()) { it.id }
             BookshelfFilter.Comic -> uiState.books.filter { it.format == BookFormat.CBZ }.mapTo(mutableSetOf()) { it.id }
             BookshelfFilter.Favorites -> uiState.books.filter { it.isFavorite }.mapTo(mutableSetOf()) { it.id }
@@ -2138,7 +2141,7 @@ private fun BookshelfCapsuleHeader(
                     initialScale = 0.78f,
                     animationSpec = spring(dampingRatio = 0.68f, stiffness = 360f)
                 ),
-                exit = fadeOut(tween(110)) + scaleOut(targetScale = 0.82f)
+                exit = fadeOut(tween(110)) + scaleOut(spring(stiffness = 400f), targetScale = 0.82f)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Spacer(Modifier.width(10.dp))
@@ -2401,6 +2404,7 @@ private sealed interface BookshelfFilter {
     data object All : BookshelfFilter
     data object EpubMobi : BookshelfFilter
     data object Pdf : BookshelfFilter
+    data object Markdown : BookshelfFilter
     data object Txt : BookshelfFilter
     data object Comic : BookshelfFilter
     data object Favorites : BookshelfFilter
@@ -2618,10 +2622,9 @@ private fun BookGridItem(
                     )
                 }
             }
-            BookCoverProgressOverlay(
+            BookCoverStatusBadge(
                 book = book,
-                downloadState = downloadState,
-                badgeCornerRadius = coverCorner
+                compact = true
             )
         }
 
@@ -2684,6 +2687,12 @@ private fun BookGridItem(
                 overflow = TextOverflow.Ellipsis
             )
         }
+        BookProgressStatus(
+            book = book,
+            downloadState = downloadState,
+            compact = true,
+            modifier = Modifier.padding(top = 2.dp)
+        )
     }
 }
 
@@ -3020,9 +3029,4 @@ private fun AddBookItem(onClick: () -> Unit) {
             color = AppColors.TextSecondary
         )
     }
-}
-
-internal fun formatProgressPercent(progress: Float): String {
-    val pct = progress * 100f
-    return if (pct < 10f) "%.1f%%".format(pct) else "${pct.toInt()}%"
 }

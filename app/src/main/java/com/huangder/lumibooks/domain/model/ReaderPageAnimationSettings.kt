@@ -51,5 +51,9 @@ data class ReaderPageAnimationSettings(
             return (range.first + ((clamped - range.first + step / 2) / step) * step)
                 .coerceIn(range)
         }
+
+        // Runtime values have already been speed-adjusted; preserve their millisecond precision.
+        fun sanitizeRuntimeDuration(mode: String, value: Int): Int =
+            value.coerceIn(1, rangeFor(mode).last)
     }
 }

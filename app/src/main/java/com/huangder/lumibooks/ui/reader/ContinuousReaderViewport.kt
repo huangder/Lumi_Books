@@ -14,6 +14,7 @@ internal data class ContinuousLayoutKey(
     val textWidth: Int,
     val comic: Boolean,
     val fontSize: Float,
+    val bodyFontWeight: Int,
     val lineHeight: Float,
     val letterSpacing: Float,
     val paragraphSpacing: Float,
@@ -39,6 +40,7 @@ internal data class ContinuousViewportAnchor(
 private data class ImagePosition(val character: Int, val top: Int, val height: Int)
 
 private fun imagePositions(text: CharSequence, width: Int, gap: Int, viewportHeight: Int): List<ImagePosition> {
+    if (width <= 0) return emptyList()
     val images = continuousChapterImages(text)
     val spanned = text as? Spanned ?: return emptyList()
     var top = 0
@@ -51,6 +53,30 @@ private fun imagePositions(text: CharSequence, width: Int, gap: Int, viewportHei
         }
         ImagePosition(spanned.getSpanStart(image), top, height).also { top += height + gap }
     }
+}
+
+/** Intersect content with the clipped list viewport, excluding chapter and image gaps. */
+internal fun continuousVisibleCharacters(
+    chapter: Int, itemOffset: Int, text: CharSequence, layout: Layout?,
+    imageWidth: Int, imageGap: Int, coverHeight: Int,
+    viewportStart: Int, viewportEnd: Int
+): List<ReaderVisibleCharacters> {
+    if (viewportEnd <= viewportStart) return emptyList()
+    val top = viewportStart - itemOffset
+    val bottom = viewportEnd - itemOffset
+    val images = imagePositions(text, imageWidth, imageGap, if (chapter == 0) coverHeight else 0)
+    if (images.isNotEmpty()) {
+        return images.mapIndexedNotNull { index, image ->
+            if (image.top >= bottom || image.top + image.height <= top) null
+            else ReaderVisibleCharacters(chapter, image.character,
+                images.getOrNull(index + 1)?.character ?: text.length)
+        }
+    }
+    layout ?: return emptyList()
+    if (layout.lineCount == 0 || top >= layout.height || bottom <= 0) return emptyList()
+    val first = layout.getLineForVertical(top.coerceAtLeast(0))
+    val last = layout.getLineForVertical((bottom - 1).coerceAtMost(layout.height - 1))
+    return listOf(ReaderVisibleCharacters(chapter, layout.getLineStart(first), layout.getLineEnd(last)))
 }
 
 internal fun captureContinuousViewportAnchor(

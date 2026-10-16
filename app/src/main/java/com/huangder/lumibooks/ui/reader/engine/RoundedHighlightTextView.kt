@@ -163,6 +163,10 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
     private var magnifierLastTouchX = 0f
     private var magnifierLastTouchY = 0f
     private var draggingSelectionStartHandle = false
+    private var longPressSelectionDragActive = false
+    private var longPressSelectionStart = -1
+    private var longPressSelectionEnd = -1
+    internal var readerLongPressSelectionDragEnabled = false
     private var draggingHandleMagnifierOffset: Int? = null
     private var draggingHandleMagnifierTrailing = false
     private var magnifierStateReady = false
@@ -305,10 +309,18 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         if (!internalSelectionMutation) {
             updateMagnifierForCurrentSelection()
         }
+        if (readerLongPressSelectionDragEnabled && !internalSelectionMutation && !longPressSelectionDragActive &&
+            magnifierPointerDown && magnifierLongPressReady &&
+            selStart >= 0 && selEnd >= 0 && selStart != selEnd
+        ) {
+            beginLongPressSelectionDrag(selStart, selEnd)
+        }
         // Let Editor finish creating its action mode, then detach only its
         // selection controller. The Editable and Selection spans remain intact,
         // so copy/menu callbacks continue to read the exact same range.
-        if (!internalSelectionMutation && selStart >= 0 && selEnd >= 0 && selStart != selEnd) {
+        if (!internalSelectionMutation && !longPressSelectionDragActive &&
+            selStart >= 0 && selEnd >= 0 && selStart != selEnd
+        ) {
             post { suppressNativeSelectionController() }
         }
     }
@@ -426,6 +438,11 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
     }
 
     override fun onDetachedFromWindow() {
+        draggingSelectionHandle = null
+        longPressSelectionDragActive = false
+        longPressSelectionStart = -1
+        longPressSelectionEnd = -1
+        parent?.requestDisallowInterceptTouchEvent(false)
         endMagnifierPointerSession()
         super.onDetachedFromWindow()
     }
@@ -436,7 +453,11 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
      */
     internal fun endReaderSelectionSession() {
         draggingSelectionHandle = null
+        longPressSelectionDragActive = false
+        longPressSelectionStart = -1
+        longPressSelectionEnd = -1
         handleDragBeyondEdgeNotified = false
+        parent?.requestDisallowInterceptTouchEvent(false)
         endMagnifierPointerSession()
         val start = Selection.getSelectionStart(text)
         val end = Selection.getSelectionEnd(text)
@@ -685,6 +706,7 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
 
     /** Reuse the same glyph geometry when the viewport moves under a held handle. */
     internal fun updateReaderSelectionHandlePosition(x: Float, y: Float): Boolean {
+        if (longPressSelectionDragActive) return updateLongPressSelectionAtPosition(x, y)
         val drag = draggingSelectionHandle ?: return false
         val spanned = text as? Spannable ?: return false
         val textLayout = layout ?: return false
@@ -705,6 +727,66 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         draggingHandleMagnifierTrailing = mapped > otherEndpoint
         if (drag) Selection.setSelection(spanned, mapped, otherEndpoint)
         else Selection.setSelection(spanned, otherEndpoint, mapped)
+        updateMagnifierForCurrentSelection()
+        return true
+    }
+
+    private fun beginLongPressSelectionDrag(selStart: Int, selEnd: Int) {
+        val source = text as? Spannable ?: return
+        val start = minOf(selStart, selEnd).coerceIn(0, source.length)
+        val end = maxOf(selStart, selEnd).coerceIn(start, source.length)
+        if (end <= start) return
+        longPressSelectionDragActive = true
+        longPressSelectionStart = start
+        longPressSelectionEnd = end
+        // A non-null handle state keeps the current pointer stream with the
+        // reader and activates the continuous reader's existing edge-scroll loop.
+        draggingSelectionHandle = false
+        draggingSelectionStartHandle = false
+        draggingHandleMagnifierOffset = end
+        draggingHandleMagnifierTrailing = true
+        parent?.requestDisallowInterceptTouchEvent(true)
+    }
+
+    private fun updateLongPressSelectionAtPosition(x: Float, y: Float): Boolean {
+        val source = text as? Spannable ?: return false
+        val textLayout = layout ?: return false
+        if (!longPressSelectionDragActive || source.isEmpty() || textLayout.height <= 0) return false
+        val start = longPressSelectionStart
+        val end = longPressSelectionEnd
+        if (start < 0 || end <= start) return false
+        val localX = x - totalPaddingLeft + scrollX
+        val localY = y - totalPaddingTop + scrollY
+        val line = textLayout.getLineForVertical(localY.toInt().coerceIn(0, textLayout.height - 1))
+        val offset = (ReaderLineGeometry(
+            textLayout, source, readerJustificationMode, readerForceLastLineJustification
+        ).offsetForHorizontal(line, localX) ?: return false).coerceIn(0, source.length)
+        val currentStart = Selection.getSelectionStart(source)
+        val currentEnd = Selection.getSelectionEnd(source)
+        when {
+            offset < start -> {
+                draggingSelectionHandle = true
+                draggingSelectionStartHandle = true
+                draggingHandleMagnifierOffset = offset
+                draggingHandleMagnifierTrailing = false
+                if (currentStart != offset || currentEnd != end) Selection.setSelection(source, offset, end)
+            }
+            offset > end -> {
+                draggingSelectionHandle = false
+                draggingSelectionStartHandle = false
+                draggingHandleMagnifierOffset = offset
+                draggingHandleMagnifierTrailing = true
+                if (currentStart != start || currentEnd != offset) Selection.setSelection(source, start, offset)
+            }
+            else -> {
+                draggingSelectionHandle = false
+                draggingSelectionStartHandle = false
+                draggingHandleMagnifierOffset = end
+                draggingHandleMagnifierTrailing = true
+                if (currentStart != start || currentEnd != end) Selection.setSelection(source, start, end)
+            }
+        }
+        updateMagnifierPointerPosition(x, y)
         updateMagnifierForCurrentSelection()
         return true
     }
@@ -755,6 +837,7 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 val wasDragging = drag != null
+                val wasLongPressDragging = longPressSelectionDragActive
                 // End the magnifier session before Editor handles the terminal event:
                 // a long-press release can still touch the selection and would
                 // otherwise flash the magnifier for one frame.
@@ -762,7 +845,16 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
                 handleDragBeyondEdgeNotified = false
                 if (wasDragging) {
                     draggingSelectionHandle = null
+                    longPressSelectionDragActive = false
+                    longPressSelectionStart = -1
+                    longPressSelectionEnd = -1
                     parent?.requestDisallowInterceptTouchEvent(false)
+                    if (wasLongPressDragging) {
+                        // Editor only dismisses several OEM magnifiers on UP, so
+                        // CANCEL also finishes through the established synthetic-UP path.
+                        endPlatformSelectionDrag()
+                        post { suppressNativeSelectionController() }
+                    }
                     return true
                 }
                 return super.onTouchEvent(event)
@@ -814,6 +906,14 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
     private fun onMagnifierLongPressReady() {
         if (!magnifierPointerDown) return
         magnifierLongPressReady = true
+        val source = text as? Spannable
+        val start = source?.let(Selection::getSelectionStart) ?: -1
+        val end = source?.let(Selection::getSelectionEnd) ?: -1
+        if (readerLongPressSelectionDragEnabled && !longPressSelectionDragActive &&
+            start >= 0 && end >= 0 && start != end
+        ) {
+            beginLongPressSelectionDrag(start, end)
+        }
         updateMagnifierForCurrentSelection()
     }
 

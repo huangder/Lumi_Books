@@ -156,7 +156,7 @@
     <string name="dark_mode_light">ライト</string>
     <string name="dark_mode_dark">ダーク</string>
     <string name="label_reader_theme">デフォルトテーマ</string>
-    <string name="theme_day">デイ</string>
+    <string name="theme_day">デフォルト</string>
     <string name="theme_night">ナイト</string>
     <string name="theme_sepia">セピア</string>
     <string name="theme_green">グリーン</string>
@@ -434,6 +434,7 @@
     <string name="line_guide_dim_low">弱</string>
     <string name="line_guide_dim_medium">中</string>
     <string name="line_guide_dim_high">強</string>
+    <string name="line_guide_dim_very_high">最強</string>
     <string name="line_guide_close">読書ガイドをオフ</string>
     <string name="bionic_reading_hint">単語の前半を太字にして、視線の移動と集中を助けます</string>
     <string name="reader_edge_tap_page_turn">画面両端のタップでページ送り</string>
@@ -451,7 +452,8 @@
     <string name="reader_corner_content_none">表示しない</string>
     <string name="reader_corner_content_chapter">章情報</string>
     <string name="reader_corner_content_book_progress">全体の進捗</string>
-    <string name="reader_corner_content_page_number">ページ番号</string>
+    <string name="reader_corner_content_page_number">章内ページ番号</string>
+    <string name="reader_corner_content_global_page_number">全体ページ番号</string>
     <string name="reader_corner_content_battery">バッテリー</string>
     <string name="reader_corner_content_time">時刻</string>
     <string name="search_placeholder">キーワードを入力</string>
@@ -1158,6 +1160,7 @@
     <string name="motion_preference_reduced">モーションを減らす</string>
     <string name="motion_preference_standard">標準</string>
     <string name="book_open_transition_label">本を開く演出</string>
+    <string name="cover_reading_progress_enabled">表紙に読書の進捗を表示</string>
     <string name="book_open_transition_hero">シームレス</string>
     <string name="book_open_transition_loading_page">ローディング画面</string>
     <string name="page_turn_module_label">ページめくり</string>
@@ -1323,7 +1326,7 @@
     <string name="page_animation_curl_short">カール</string>
     <string name="reader_settings_preview_sample">第一章 ページに差す光\n\n朝の風が窓辺を越え、紙を静かに揺らします。読書は時間をゆるやかにし、遠い声を今この瞬間へ鮮やかに届けます。</string>
     <string name="exit_preview">プレビューを終了</string>
-    <string name="theme_suite_day_name">昼間</string>
+    <string name="theme_suite_day_name">デフォルト</string>
     <string name="theme_suite_night_name">夜間</string>
     <string name="theme_suite_sepia_name">羊皮紙</string>
     <string name="theme_suite_green_name">目に優しい</string>

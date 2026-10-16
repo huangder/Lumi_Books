@@ -13,7 +13,6 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.style.BackgroundColorSpan
 import android.text.style.ClickableSpan
-import android.text.style.DynamicDrawableSpan
 import android.text.style.ImageSpan
 import android.text.style.URLSpan
 import android.util.AttributeSet
@@ -199,8 +198,15 @@ class JustifiedTextView @JvmOverloads constructor(
         // DynamicLayout: that makes glyph coordinates overlap until a later tap
         // happens to invalidate the page. The local StaticLayout is built
         // synchronously by the text setter and is the correct transient fallback.
-        if (supplied != null && spannable != null && supplied.text === spannable) return supplied
-        return local ?: supplied
+        // Rotation and margin changes can leave the selection layer with the
+        // same text but an old, wider Layout until its next measurement. Drawing
+        // that Layout at the new left inset consumes the right margin. Use the
+        // synchronously rebuilt local layout until both layers agree on width.
+        val contentWidth = (width - paddingLeft - paddingRight).coerceAtLeast(1)
+        val matchingSource = supplied?.takeIf {
+            spannable != null && it.text === spannable && it.width == contentWidth
+        }
+        return matchingSource ?: local
     }
 
     /** TTS 褰撳墠鍙ラ珮浜壒ange锛?start, end, color锛夛紝鍦?onDraw 缁樺埗鏁翠綋鍦嗚搴?*/
@@ -527,13 +533,8 @@ class JustifiedTextView @JvmOverloads constructor(
             val spanEnd = text.getSpanEnd(image).coerceAtLeast(spanStart + 1)
             val imageWidth = drawable.bounds.width().toFloat().coerceAtLeast(1f)
             val imageHeight = drawable.bounds.height().toFloat().coerceAtLeast(1f)
-            val lineHeight = sl.getLineBottom(line) - sl.getLineTop(line)
             val cursorX = geometry.horizontalPosition(spanStart) ?: return null
-            val imageTop = when (image.verticalAlignment) {
-                DynamicDrawableSpan.ALIGN_BASELINE -> sl.getLineBaseline(line) - imageHeight
-                DynamicDrawableSpan.ALIGN_CENTER -> sl.getLineTop(line) + (lineHeight - imageHeight) / 2f
-                else -> sl.getLineBottom(line) - imageHeight
-            }
+            val imageTop = readerImageTop(sl, line, image)
             val imageBottom = imageTop + imageHeight
             if (tx in cursorX..(cursorX + imageWidth) && ty in imageTop..imageBottom) {
                 val url = text.getSpans(spanStart, spanEnd, URLSpan::class.java)

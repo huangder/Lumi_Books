@@ -16,6 +16,23 @@ import org.json.JSONObject
 
 class PortableSnapshotTest {
     @Test
+    fun staleAnnotationsRoundTripAndOlderBackupsDefaultToActive() {
+        val original = snapshot(deviceId = "device-a",
+            notes = listOf(note("n1").copy(isStale = true)),
+            bookmarks = listOf(bookmark("b1").copy(isStale = true)))
+        val restored = PortableSnapshot.fromJson(original.toJson())
+        assertTrue(restored.notes.single().isStale)
+        assertTrue(restored.bookmarks.single().isStale)
+        val legacy = JSONObject(original.toJson()).apply {
+            getJSONArray("notes").getJSONObject(0).remove("isStale")
+            getJSONArray("bookmarks").getJSONObject(0).remove("isStale")
+        }
+        val old = PortableSnapshot.fromJson(legacy.toString())
+        assertFalse(old.notes.single().isStale)
+        assertFalse(old.bookmarks.single().isStale)
+    }
+
+    @Test
     fun readingTagsRoundTripAndOldBackupsHaveEmptyTags() {
         val tagJson = "[\"人物\",\"复习\"]"
         val original = snapshot(deviceId = "device-a",

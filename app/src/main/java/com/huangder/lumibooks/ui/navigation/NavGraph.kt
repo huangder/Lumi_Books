@@ -18,7 +18,7 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -86,6 +86,7 @@ import com.huangder.lumibooks.ui.home.HomeViewModel
 import com.huangder.lumibooks.ui.home.ReadingGoalSheet
 import com.huangder.lumibooks.ui.animation.PageEntranceTracker
 import com.huangder.lumibooks.ui.animation.PAGE_ENTRANCE_PLAYBACK_MILLIS
+import com.huangder.lumibooks.ui.animation.VisualMotion.delayMillis
 import com.huangder.lumibooks.ui.animation.BookHeroWindowOverlay
 import com.huangder.lumibooks.ui.animation.BookReaderAnchorScope
 import com.huangder.lumibooks.ui.animation.BookReaderLibraryLayer
@@ -104,6 +105,7 @@ import com.huangder.lumibooks.ui.reader.EpubComicSwitchDialog
 import com.huangder.lumibooks.ui.reader.RasterReaderScreen
 import com.huangder.lumibooks.ui.reader.LocalReaderOpeningComplete
 import androidx.compose.runtime.rememberUpdatedState
+import com.huangder.lumibooks.ui.reader.resolveReaderPaperColor
 import com.huangder.lumibooks.ui.reader.ReaderScreen
 import com.huangder.lumibooks.ui.reader.ReaderViewModel
 import com.huangder.lumibooks.ui.statistics.StatisticsScreen
@@ -142,6 +144,8 @@ private fun ReaderRouter(
     onNavigateBack: () -> Unit,
     onFirstContentDrawn: () -> Unit,
     onInteractive: () -> Unit,
+    onReaderPaperColorChanged: (Int) -> Unit,
+    windowReady: Boolean,
     openingComplete: Boolean,
     readerActive: Boolean,
     onOpenBook: (String) -> Unit
@@ -174,8 +178,13 @@ private fun ReaderRouter(
             viewModel.cancelOpenDeferredWork()
         }
     }
+    val appIsDark = LocalIsDarkTheme.current
+    val paperColor by remember(viewModel, appIsDark) {
+        viewModel.uiState.map { it.resolveReaderPaperColor(appIsDark) }.distinctUntilChanged()
+    }.collectAsState(initial = viewModel.uiState.value.resolveReaderPaperColor(appIsDark))
+    androidx.compose.runtime.SideEffect { onReaderPaperColorChanged(paperColor) }
     val documentState by viewModel.documentState.collectAsState()
-    if (!shouldMountReaderContent(documentState)) {
+    if (!shouldMountReaderContent(documentState, windowReady = windowReady)) {
         // The ViewModel loads independently. Avoid constructing the text engine
         // with default settings before the actual book/renderer is known.
         ReaderOpeningPlaceholder(onNavigateBack)
@@ -238,6 +247,7 @@ private fun ReaderRouter(
                     onNavigateBack = onNavigateBack,
                     onFirstContentDrawn = reportFirstContent,
                     onInteractive = {},
+                    onReaderPaperColorChanged = onReaderPaperColorChanged,
                     readerActive = readerActive,
                     viewModel = viewModel
                 )
@@ -267,7 +277,7 @@ private fun rememberPageEntrancePlayback(
     }
     LaunchedEffect(play) {
         if (play) {
-            delay(PAGE_ENTRANCE_PLAYBACK_MILLIS)
+            delay(delayMillis(PAGE_ENTRANCE_PLAYBACK_MILLIS))
             play = false
         }
     }
@@ -355,7 +365,7 @@ fun MainNavGraph(
         if (showImportActions) {
             val candidates = uris.mapNotNull { uri ->
                 val name = FileUtils.getFileNameFromUri(context, uri) ?: return@mapNotNull null
-                if (FileUtils.getFileExtension(name) !in setOf("epub", "pdf", "txt", "mobi", "cbz")) {
+                if (FileUtils.getFileExtension(name) !in setOf("epub", "pdf", "txt", "mobi", "cbz", "md", "markdown")) {
                     return@mapNotNull null
                 }
                 SelectedImportBook(
@@ -651,6 +661,18 @@ fun MainNavGraph(
     // 监听路由变化，从阅读页/设置页返回时延迟显示 TabBar
     val currentEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentEntry?.destination?.route
+    LaunchedEffect(bookReaderTransition.closeNavigationReady) {
+        if (bookReaderTransition.consumeCloseNavigation()) {
+            navController.popBackStack()
+        }
+    }
+    LaunchedEffect(currentRoute, bookReaderTransition.phase) {
+        if (currentRoute != Screen.Reader.route &&
+            bookReaderTransition.phase == BookReaderTransitionPhase.Closing
+        ) {
+            bookReaderTransition.completeCloseAfterNavigation()
+        }
+    }
     val visibleEntries by navController.visibleEntries.collectAsState()
     val canCaptureNavigationBackdrop = navigationBackdropCaptureAllowed(
         currentRoute, visibleEntries.map { it.destination.route }
@@ -703,7 +725,7 @@ fun MainNavGraph(
             tabBarVisible = true
         } else {
             if (!eInkMode) {
-                delay(800)
+                delay(delayMillis(800L))
             }
             useMainReturnTabBarTransition = false
             tabBarVisible = true
@@ -751,6 +773,8 @@ fun MainNavGraph(
             NavHost(
                 navController = navController,
                 startDestination = mainStartDestination,
+                enterTransition = { fadeIn(tween(700)) },
+                exitTransition = { fadeOut(tween(700)) },
                 modifier = Modifier
                     .fillMaxSize()
                     .then(
@@ -1065,21 +1089,10 @@ fun MainNavGraph(
                                         com.huangder.lumibooks.ui.animation.BookReaderTransitionPhase.Closing
                                     ) {
                                         Modifier.graphicsLayer {
-                                            val transitionPhase = bookReaderTransition.phase
-                                            alpha = when (transitionPhase) {
-                                                com.huangder.lumibooks.ui.animation.BookReaderTransitionPhase.Ready ->
-                                                    bookReaderTransition.readerRevealSnapshot.value
-                                                com.huangder.lumibooks.ui.animation.BookReaderTransitionPhase.Opening,
-                                                com.huangder.lumibooks.ui.animation.BookReaderTransitionPhase.ReaderLoading -> 0f
-                                                com.huangder.lumibooks.ui.animation.BookReaderTransitionPhase.Closing ->
-                                                    bookReaderTransition.readerExitAlphaSnapshot.value
-                                                else -> 1f
-                                            }
+                                            alpha = bookReaderTransition.readerLayerAlpha
                                             translationY = 0f
                                             if (coverFlowReader) {
                                                 val p = bookReaderTransition.coverFlowProgressSnapshot.value
-                                                alpha = com.huangder.lumibooks.ui.animation.CoverFlowReaderMotion.readerAlpha(p) *
-                                                    bookReaderTransition.readerRevealSnapshot.value
                                                 scaleX = com.huangder.lumibooks.ui.animation.CoverFlowReaderMotion.readerScale(p)
                                                 scaleY = scaleX
                                                 translationY = 0f
@@ -1094,14 +1107,20 @@ fun MainNavGraph(
                     bookId = bookId,
                     onNavigateBack = {
                         if (bookReaderTransition.activeBookId == bookId) {
+                            val hasWindowHero = bookReaderTransition.presentation ==
+                                com.huangder.lumibooks.ui.animation.BookReaderPresentation.Window
                             if (!bookReaderTransition.startClose()) {
                                 bookReaderTransition.fallbackToLibrary()
+                                navController.popBackStack()
+                            } else if (!hasWindowHero) {
+                                navController.popBackStack()
                             }
+                        } else {
+                            navController.popBackStack()
                         }
                         showTransition = false
                         pendingBookId = null
                         ReaderOpenPerformance.cancel(bookId)
-                        navController.popBackStack()
                     },
                     onFirstContentDrawn = {
                         if (readerActive) {
@@ -1115,6 +1134,13 @@ fun MainNavGraph(
                     onInteractive = {
                         if (readerActive) ReaderOpenPerformance.markInteractive(bookId)
                     },
+                    onReaderPaperColorChanged = { color ->
+                        if (readerActive && bookReaderTransition.activeBookId == bookId) {
+                            bookReaderTransition.updateReaderPaperColor(color, openingSession)
+                        }
+                    },
+                    windowReady = bookReaderTransition.activeBookId != bookId ||
+                        bookReaderTransition.phase != BookReaderTransitionPhase.Opening,
                     readerActive = readerActive,
                     openingComplete = if (bookReaderTransition.activeBookId == bookId) {
                         bookReaderTransition.phase == BookReaderTransitionPhase.Reader
@@ -1171,7 +1197,8 @@ fun MainNavGraph(
         // Keep the transition host composed so the bar animates out for context menus
         // and animates back in after the menu returns to Idle.
         AnimatedVisibility(
-            visible = (heroBackdropVisible || tabBarVisible) && !bookshelfContextMenuVisible,
+            visible = (heroBackdropVisible || tabBarVisible) &&
+                !bookshelfContextMenuVisible && bookshelfOverlayProgress <= 0.01f,
             enter = if (eInkMode || heroTabTransition) {
                 EnterTransition.None
             } else if (useMainReturnTabBarTransition) {

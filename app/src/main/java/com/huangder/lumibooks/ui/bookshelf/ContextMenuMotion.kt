@@ -2,7 +2,8 @@ package com.huangder.lumibooks.ui.bookshelf
 
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.SpringSpec
-import androidx.compose.animation.core.spring
+import com.huangder.lumibooks.ui.animation.VisualMotion.spring
+import com.huangder.lumibooks.ui.animation.VisualMotion
 import com.huangder.lumibooks.ui.animation.AppEasing
 
 /**
@@ -19,22 +20,28 @@ internal object ContextMenuMotion {
     // ── 入场 ──────────────────────────────────────────────
 
     /** 信息面板（书名 / 作者）。 */
-    val InfoPanelEnter: SpringSpec<Float> = spring(dampingRatio = 0.75f, stiffness = 420f)
+    val InfoPanelEnter: SpringSpec<Float>
+        get() = spring(dampingRatio = 0.75f, stiffness = 420f)
 
     /** 操作面板（详情、收藏、删除…）。 */
-    val ActionsPanelEnter: SpringSpec<Float> = spring(dampingRatio = 0.72f, stiffness = 380f)
+    val ActionsPanelEnter: SpringSpec<Float>
+        get() = spring(dampingRatio = 0.72f, stiffness = 380f)
 
     /** 被长按封面的放大。 */
-    val CoverScaleEnter: SpringSpec<Float> = spring(dampingRatio = 0.62f, stiffness = 420f)
+    val CoverScaleEnter: SpringSpec<Float>
+        get() = spring(dampingRatio = 0.62f, stiffness = 420f)
 
     /** 封面放大后的位置微调。 */
-    val CoverPositionEnter: SpringSpec<Float> = spring(dampingRatio = 0.72f, stiffness = 380f)
+    val CoverPositionEnter: SpringSpec<Float>
+        get() = spring(dampingRatio = 0.72f, stiffness = 380f)
 
     /** 信息面板不再等待，长按确认后立刻开始。 */
-    const val InfoPanelEnterDelayMillis = 0L
+    val InfoPanelEnterDelayMillis: Long
+        get() = VisualMotion.delayMillis(0L)
 
     /** 操作面板只比信息面板慢一拍，保留先后关系但不再拖时间。 */
-    const val ActionsPanelEnterDelayMillis = 60L
+    val ActionsPanelEnterDelayMillis: Long
+        get() = VisualMotion.delayMillis(60L)
 
     /** 原位书本让位。 */
     const val ItemHideMillis = 80
@@ -51,11 +58,15 @@ internal object ContextMenuMotion {
     // ── 退场 ──────────────────────────────────────────────
 
     /** 两个面板的退出（几乎不过冲，收得干净）。 */
-    val ActionsPanelExit: SpringSpec<Float> = spring(dampingRatio = 0.88f, stiffness = 320f)
-    val InfoPanelExit: SpringSpec<Float> = spring(dampingRatio = 0.88f, stiffness = 320f)
+    val ActionsPanelExit: SpringSpec<Float>
+        get() = spring(dampingRatio = 0.88f, stiffness = 320f)
+    val InfoPanelExit: SpringSpec<Float>
+        get() = spring(dampingRatio = 0.88f, stiffness = 320f)
 
-    const val ActionsPanelExitDelayMillis = 0L
-    const val InfoPanelExitDelayMillis = 60L
+    val ActionsPanelExitDelayMillis: Long
+        get() = VisualMotion.delayMillis(0L)
+    val InfoPanelExitDelayMillis: Long
+        get() = VisualMotion.delayMillis(60L)
 
     /** 封面归位与遮罩退场。 */
     const val CoverReturnMillis = 260

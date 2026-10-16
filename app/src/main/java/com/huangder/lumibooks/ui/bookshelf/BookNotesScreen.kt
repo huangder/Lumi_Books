@@ -10,7 +10,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -637,6 +637,9 @@ private fun HighlightNoteItem(
                 )
             }
 
+            if (note.isStale) {
+                Text(stringResource(R.string.markdown_original_changed), fontSize = 12.sp, color = AppColors.Accent)
+            }
             // 笔记内容（如果有）
             if (note.note.isNotBlank()) {
                 Spacer(Modifier.height(AppSpace.sm))
@@ -707,7 +710,8 @@ private fun BookmarkItem(
             Spacer(Modifier.width(AppSpace.md))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = bookmark.title.ifBlank { stringResource(R.string.chapter_number, bookmark.chapterIndex + 1) },
+                    text = (if (bookmark.isStale) stringResource(R.string.markdown_original_changed) + " · " else "") +
+                        bookmark.title.ifBlank { stringResource(R.string.chapter_number, bookmark.chapterIndex + 1) },
                     fontSize = AppType.BodySmall,
                     fontWeight = FontWeight.SemiBold,
                     color = AppColors.TextPrimary,

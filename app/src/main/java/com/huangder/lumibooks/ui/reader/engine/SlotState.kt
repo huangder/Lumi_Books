@@ -21,5 +21,7 @@ data class SlotState(
     /** 双页模式章首单独右页时，主内容位于右半页 */
     var primaryIsRight: Boolean = false,
     /** The page count used to render this slot, retained if the shared layout cache is evicted. */
-    var chapterTotalPages: Int = 0
+    var chapterTotalPages: Int = 0,
+    /** Page count for the right page's chapter, including cross-chapter spreads. */
+    var rightChapterTotalPages: Int = 0
 )

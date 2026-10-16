@@ -10,6 +10,20 @@ import org.junit.Test
 
 class EpubDocumentTransformerTest {
     @Test
+    fun svgTextPageIsNotTreatedAsSingleImage() {
+        val resource = EpubResource("OPS/page.xhtml", "application/xhtml+xml",
+            "<html><body><svg viewBox='0 0 100 100'><image href='cover.jpg'/><text>Title</text></svg></body></html>".toByteArray())
+        assertFalse(EpubDocumentTransformer.isMediaOnlyPage(resource))
+    }
+
+    @Test
+    fun svgLetteringWithoutImageRemainsCoverArtwork() {
+        val resource = EpubResource("OPS/cover.xhtml", "application/xhtml+xml",
+            "<html><body><svg viewBox='0 0 100 100'><text>Title</text></svg></body></html>".toByteArray())
+        assertTrue(EpubDocumentTransformer.isMediaOnlyPage(resource))
+    }
+
+    @Test
     fun injectsIndependentLumiRuleStylingAndFallbackCleanup() {
         val output = EpubDocumentTransformer.transform(
             EpubResource(
@@ -106,6 +120,33 @@ class EpubDocumentTransformerTest {
     }
 
     @Test
+    fun invisiblePublisherSpacersDoNotPreventFullPageImageLayout() {
+        val source = """
+            <html><body><span hidden="hidden">screen reader label</span><span style="display: none">hidden label</span>
+              <div class="plate">&nbsp;&#x200B;&#xFEFF;<img src="../Images/plate.jpg"/>&#x00AD;</div>
+            </body></html>
+        """.trimIndent()
+        val resource = EpubResource("OPS/Text/plate.xhtml", "application/xhtml+xml", source.toByteArray())
+
+        val output = EpubDocumentTransformer.transform(
+            resource,
+            EpubRenditionLayout.REFLOWABLE
+        ).toString(Charsets.UTF_8)
+        val document = Jsoup.parse(output, "", Parser.xmlParser())
+        val fixedDocument = Jsoup.parse(
+            EpubDocumentTransformer.transform(resource, EpubRenditionLayout.PRE_PAGINATED)
+                .toString(Charsets.UTF_8),
+            "",
+            Parser.xmlParser()
+        )
+
+        assertTrue(EpubDocumentTransformer.isMediaOnlyPage(resource))
+        assertEquals("true", document.body().attr("data-lumi-media-only"))
+        assertEquals("true", document.selectFirst("img")!!.attr("data-lumi-cover-media"))
+        assertEquals("true", fixedDocument.body().attr("data-lumi-media-only"))
+    }
+
+    @Test
     fun fixedLayoutImagePageIgnoresMarginsWithoutCoverStyling() {
         val source = """
             <html><head><meta name="viewport" content="width=1200,height=1600"/></head>
@@ -148,6 +189,52 @@ class EpubDocumentTransformerTest {
         assertEquals("horizontal", images[1].attr("data-lumi-bleed"))
         assertTrue(output.contains("--lumi-inset-left"))
         assertTrue(output.contains("width: calc(100% + var(--lumi-inset-left, 0px) + var(--lumi-inset-right, 0px)) !important"))
+    }
+
+    @Test
+    fun marksFullWidthImageWrapperAsBleedingAndKeepsPaginatedMediaWhole() {
+        val source = """
+            <html><body>
+              <div class="hero"><img src="../Images/banner.jpg"/></div>
+              <p>正文</p>
+              <p class="inline"><img src="../Images/inline.jpg"/></p>
+            </body></html>
+        """.trimIndent()
+        val cssIndex = EpubCssIndex.parse(listOf("OPS/Styles/main.css" to ".hero { width: 100%; overflow: hidden; }"))
+
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("OPS/Text/chapter.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE,
+            isCoverCandidate = false,
+            cssIndex = cssIndex
+        ).toString(Charsets.UTF_8)
+        val document = Jsoup.parse(output, "", Parser.xmlParser())
+        val images = document.select("img")
+
+        assertEquals("horizontal-top", images[0].attr("data-lumi-bleed"))
+        assertFalse(images[1].hasAttr("data-lumi-bleed"))
+        assertEquals("true", document.selectFirst(".hero")!!.attr("data-lumi-media-wrapper"))
+        assertEquals("true", document.selectFirst(".inline")!!.attr("data-lumi-media-wrapper"))
+        assertTrue(output.contains("break-inside: avoid-column !important"))
+        assertTrue(output.contains("height: auto !important"))
+        assertTrue(output.contains("max-height: var(--lumi-content-height, 100vh) !important"))
+    }
+
+    @Test
+    fun considersChapterInlineStylesWhenMarkingFullWidthMedia() {
+        val source = """
+            <html><head><style>.chapter-art img { width: 100vw; }</style></head><body>
+              <p>&nbsp;&#x200B;</p><div class="chapter-art"><img src="../Images/banner.jpg"/></div><p>正文</p>
+            </body></html>
+        """.trimIndent()
+
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("OPS/Text/chapter.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE
+        ).toString(Charsets.UTF_8)
+        val document = Jsoup.parse(output, "", Parser.xmlParser())
+
+        assertEquals("horizontal-top", document.selectFirst("img")!!.attr("data-lumi-bleed"))
     }
 
     @Test
@@ -197,7 +284,8 @@ class EpubDocumentTransformerTest {
 
         // 分页时整页图占满一屏，滚动阅读时按满宽 + 自然高度，避免中间大片空白。
         assertTrue(output.contains("html.lumi-scrolled body[data-lumi-media-only=\"true\"]"))
-        assertTrue(output.contains("html.lumi-crop-page-image body[data-lumi-media-only=\"true\"]"))
+        assertTrue(output.contains("html.lumi-paginated.lumi-crop-page-image body[data-lumi-media-only=\"true\"]"))
+        assertTrue(output.contains("html.lumi-scrolled.lumi-crop-page-image body[data-lumi-media-only=\"true\"]"))
         assertTrue(output.contains("state.imagePageCrop = config.imagePageCrop === true"))
     }
 
@@ -235,14 +323,104 @@ class EpubDocumentTransformerTest {
         ).toString(Charsets.UTF_8)
 
         // 上下滚动时底图不能铺在整篇文档上（cover 会被放大到整本书高度、滚动错位），
-        // 必须和分页模式一样搬进随视口大小的固定层：两处调用 = 分页 + 滚动。
+        // 必须在分页、滚动和只改色时同步随视口大小的固定层。
         assertTrue(output.contains("function applyPublisherBackgroundLayer()"))
         assertEquals(
-            2,
+            3,
             Regex("applyPublisherBackgroundLayer\\(\\);").findAll(output).count()
         )
         // 分页完成后同步一次阅读器自己的背景层，保证滚动模式下几何与视口一致。
         assertTrue(output.contains("applyReaderPageBackgroundLayer(state.readerBackgroundActive);"))
+    }
+
+    @Test
+    fun scrolledFlowUsesOneTolerantViewportMetricForPagingAndChapterEdges() {
+        val output = EpubDocumentTransformer.transform(
+            EpubResource(
+                "chapter.xhtml",
+                "application/xhtml+xml",
+                "<html><body><p>Short chapter</p></body></html>".toByteArray()
+            ),
+            EpubRenditionLayout.REFLOWABLE
+        ).toString(Charsets.UTF_8)
+
+        assertEquals(1, Regex("function scrollMetrics\\(\\)").findAll(output).count())
+        assertTrue(output.contains("var nonScrollable = maxScrollY <= tolerance"))
+        assertTrue(output.contains("var layoutHeight = Math.max(clientHeight, window.innerHeight || 0)"))
+        assertTrue(output.contains("var maxScrollY = Math.max(0, scrollHeight - layoutHeight)"))
+        assertTrue(output.contains("function applyScrollability(metrics)"))
+        assertTrue(output.contains("html.lumi-scrolled {\n  height: auto !important;\n  min-height: 0 !important;"))
+        assertTrue(output.contains("body.style.minHeight = '0px'"))
+        assertTrue(output.contains("var backgroundHeight = !state.fixed && state.flow === 'scrolled'"))
+        assertTrue(output.contains("atTop: metrics.nonScrollable || metrics.scrollY <= metrics.tolerance"))
+        assertTrue(output.contains("atBottom: metrics.nonScrollable ||"))
+        assertTrue(output.contains("state.total = metrics.pageCount"))
+        assertTrue(output.contains("metrics.scrollY + metrics.clientHeight * 0.42"))
+        assertFalse(output.contains("window.scrollY + state.viewportHeight >= extent - 2"))
+        assertFalse(output.contains("Math.ceil(scrollExtent / state.viewportHeight)"))
+    }
+
+    @Test
+    fun reflowableOverflowFitPreservesPublisherContainerAndSkipsFullBleedContent() {
+        val source = """
+            <html><body>
+              <div id="intro" style="width:300px;margin:1em auto;border:60px solid transparent;border-image:url('../Images/frame.png') 225 225 stretch">
+                <img src="../Images/intro.jpg"/><p>Introduction</p>
+              </div>
+              <div data-lumi-bleed="horizontal"><div id="bleed-child">Banner</div></div>
+              <div id="fixed" style="position:absolute;width:500px">Overlay</div>
+            </body></html>
+        """.trimIndent()
+
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("chapter.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE
+        ).toString(Charsets.UTF_8)
+        val document = Jsoup.parse(output, "", Parser.xmlParser())
+
+        assertNotNull(document.selectFirst("#intro"))
+        assertTrue(document.selectFirst("#intro")!!.attr("style").contains("border-image"))
+        assertNotNull(document.selectFirst("#intro img"))
+        assertTrue(output.contains("data-lumi-overflow-fit"))
+        assertTrue(output.contains("function clearOverflowFits()"))
+        assertTrue(output.contains("fitReflowableHorizontalOverflow();"))
+        assertTrue(output.contains("element.style.setProperty('box-sizing', 'border-box', 'important')"))
+        assertTrue(output.contains("element.style.setProperty('max-width', '100%', 'important')"))
+        assertTrue(output.contains("element.style.setProperty('min-width', '0px', 'important')"))
+        assertTrue(output.contains("element.closest('[data-lumi-bleed]')"))
+        assertTrue(output.contains("style.position === 'absolute' || style.position === 'fixed'"))
+        assertTrue(output.contains("restoreInlineProperty(element.style, name, original.value, original.priority)"))
+    }
+
+    @Test
+    fun reflowableLayoutUsesThemeHorizontalInsetsAndWrapsOnlyOverflowingText() {
+        val source = """
+            <html style="margin:0 31px;padding:0 17px"><body style="margin:0 29px;padding:12px 23px">
+              <blockquote style="margin-left:2em"><p id="separator">${"*".repeat(120)}</p></blockquote>
+              <pre id="code">${".".repeat(120)}</pre>
+              <table id="table"><tr><td>${".".repeat(120)}</td></tr></table>
+              <div data-lumi-bleed="horizontal"><p>${"*".repeat(120)}</p></div>
+              <p style="position:absolute">${"*".repeat(120)}</p>
+            </body></html>
+        """.trimIndent()
+
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("chapter.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE
+        ).toString(Charsets.UTF_8)
+        val document = Jsoup.parse(output, "", Parser.xmlParser())
+
+        assertTrue(document.selectFirst("blockquote")!!.attr("style").contains("margin-left:2em"))
+        assertTrue(output.contains("var publisherHorizontalInset = state.fixed ? Math.max(0,"))
+        assertEquals(2, Regex("clearPublisherRootHorizontalInset\\(\\);").findAll(output).count())
+        assertTrue(output.contains("function fitReflowableTextOverflow(inset, availableWidth, tolerance)"))
+        assertTrue(output.contains("textNodeOverflowsReaderBox(node, inset, availableWidth, tolerance)"))
+        assertTrue(output.contains("target.style.setProperty('overflow-wrap', 'anywhere', 'important')"))
+        assertTrue(output.contains("target.style.setProperty('white-space', 'normal', 'important')"))
+        assertTrue(output.contains("current.hasAttribute('data-lumi-bleed')"))
+        assertTrue(output.contains("style.position === 'absolute' || style.position === 'fixed'"))
+        assertTrue(output.contains("PRE|CODE|KBD|SAMP|TABLE"))
+        assertTrue(output.contains("'overflow-wrap', 'white-space'"))
     }
 
     @Test
@@ -384,8 +562,9 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("pageSerial: pageNotifySerial"))
         assertTrue(output.contains("function currentPagePayload()"))
         assertTrue(output.contains("edgeTapLeft: -1, edgeTapRight: 1"))
-        assertTrue(output.contains("turnByDirection(state.edgeTapLeft)"))
-        assertTrue(output.contains("turnByDirection(state.edgeTapRight)"))
+        assertTrue(output.contains("turnByDirection(state.edgeTapLeft, true)"))
+        assertTrue(output.contains("turnByDirection(state.edgeTapRight, true)"))
+        assertTrue(output.contains("if (manual) post('manualScroll', {});"))
         assertTrue(output.contains("if (state.nativePaging) post('tap', { zone: 'left' })"))
         assertTrue(output.contains("if (state.nativePaging) post('tap', { zone: 'right' })"))
         assertTrue(output.contains("if (state.nativePaging || state.flow !== 'paginated'"))
@@ -411,7 +590,7 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("image.hasAttribute('usemap')"))
         assertTrue(output.contains("!interactiveTarget"))
         assertTrue(output.contains("--lumi-column-gap"))
-        assertTrue(output.contains("var publisherHorizontalInset = Math.max(0,"))
+        assertTrue(output.contains("var publisherHorizontalInset = state.fixed ? Math.max(0,"))
         assertTrue(output.contains("right: publisherHorizontalInset + state.insets.right"))
         assertTrue(output.contains("left: publisherHorizontalInset + state.insets.left"))
         // 固定排版书籍同样遵守页边距：先按“视口减去 insets”缩放，再按 insets 偏移。
@@ -442,12 +621,12 @@ class EpubDocumentTransformerTest {
         assertFalse(output.contains("var source = hasPaint(rootStyle) ? rootStyle"))
         assertTrue(output.contains("lumi-publisher-background"))
         assertTrue(output.contains("width: state.viewportWidth + 'px'"))
-        assertTrue(output.contains("height: state.viewportHeight + 'px'"))
+        assertTrue(output.contains("height: backgroundHeight + 'px'"))
         assertTrue(output.contains("layer.style.setProperty('background-size', computed.size, 'important')"))
         assertTrue(output.contains("document.documentElement.insertBefore(layer, document.body)"))
         assertTrue(output.contains("document.body.style.setProperty('background-image', 'none', 'important')"))
         assertTrue(output.contains("if (!source) return"))
-        assertTrue(output.contains("var liveLocator = state.ready ? currentLocator() : null"))
+        assertTrue(output.contains("var liveLocator = state.ready && geometryChanged ? currentLocator() : null"))
         assertTrue(output.contains("if (liveLocator) restore(liveLocator)"))
         assertFalse(output.contains("caretRangeFromPoint(2, 2)"))
         assertTrue(output.contains("logicalPage !== state.page"))
@@ -597,5 +776,21 @@ class EpubDocumentTransformerTest {
         )
         // 「原排版」套装下阅读器完全不参与配色。
         assertTrue(output.contains("state.publisherPaintOnly = config.publisherPaintOnly === true"))
+        assertTrue(output.contains("publisherNightShade\n        ? Object.assign({}, config, { textColor: '#e8e8ea' })"))
+    }
+
+    @Test
+    fun clearingDocumentSelectionPreservesTheScrolledReadingPosition() {
+        val source = "<html><body><p>Chapter text</p></body></html>"
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("chapter.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE
+        ).toString(Charsets.UTF_8)
+
+        assertTrue(output.contains("if (!hadSelection) return false"))
+        assertTrue(output.contains("document.scrollingElement || document.documentElement || document.body"))
+        assertTrue(output.contains("restoreSelectionScroll()"))
+        assertTrue(output.contains("window.requestAnimationFrame(restoreSelectionScroll)"))
+        assertFalse(output.contains("selection.collapse(document.body || document.documentElement, 0)"))
     }
 }

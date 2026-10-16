@@ -6,7 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -115,17 +115,17 @@ fun TtsPlayerPanel(
     val cancelTimerLabel = stringResource(R.string.tts_timer_cancel)
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val eInkMode = LocalEInkMode.current
-    var panelHidden by remember { mutableStateOf(false) }
+    var actionsHidden by remember { mutableStateOf(false) }
     var interactionSerial by remember { mutableStateOf(0) }
     val markInteraction = {
-        panelHidden = false
+        actionsHidden = false
         interactionSerial += 1
     }
     LaunchedEffect(readerMenuVisible, interactionSerial) {
-        panelHidden = false
+        actionsHidden = false
         delay(5_000L)
         if (playbackState != TtsPlaybackState.IDLE) {
-            panelHidden = true
+            actionsHidden = true
             menuHost?.dismiss()
         }
     }
@@ -213,15 +213,15 @@ fun TtsPlayerPanel(
             .fillMaxWidth()
             .onGloballyPositioned { capsuleBounds = it.boundsInWindow() }
     ) {
-        AnimatedVisibility(
-            visible = !panelHidden,
-            enter = fadeIn(tween(if (eInkMode) 0 else 200)),
-            exit = fadeOut(tween(if (eInkMode) 0 else 280))
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+            AnimatedVisibility(
+                visible = !actionsHidden,
+                enter = fadeIn(tween(if (eInkMode) 0 else 200)),
+                exit = fadeOut(tween(if (eInkMode) 0 else 280))
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -282,8 +282,9 @@ fun TtsPlayerPanel(
                         onClick = { openMenu(TtsMenuKind.Timer) }
                     )
                 }
+            }
 
-                LiquidGlassSurface(
+            LiquidGlassSurface(
                     controlEdge = true,
                     shape = AppRoundedCornerShape(36.dp),
                     fallbackColor = panelFallbackColor,
@@ -343,11 +344,9 @@ fun TtsPlayerPanel(
                         }
                     }
                 }
-
-                }
+            }
         }
     }
-}
 @Composable
 private fun TtsActionPill(
     label: String,

@@ -45,6 +45,7 @@ import com.huangder.lumibooks.util.epub.EpubSearchMatch
 import com.huangder.lumibooks.util.epub.EpubTextSearch
 import com.huangder.lumibooks.util.epub.CachedEpubMetadata
 import com.huangder.lumibooks.util.epub.EpubMetadataCache
+import com.huangder.lumibooks.util.epub.EpubCoverCandidates
 import com.huangder.lumibooks.util.cache.WeightedLruCache
 
 /**
@@ -1614,6 +1615,10 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
     fun getChapterContent(chapterIndex: Int, width: Int, height: Int): CharSequence =
         getChapterContentPreview(chapterIndex, width, height, 0).text
 
+    /** Whole-book counting must not evict the chapter text retained for reading. */
+    internal fun getChapterContentForPagination(chapterIndex: Int): CharSequence =
+        getChapterContentPreviewInternal(chapterIndex, contentWidth, contentHeight, 0, retainCache = false).text
+
     /**
      * Decode only the first part of a long chapter for continuous scrolling. The returned
      * preview has its own cache key and never replaces the complete chapter cache.
@@ -1634,7 +1639,8 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         chapterIndex: Int,
         width: Int,
         height: Int,
-        maxChars: Int
+        maxChars: Int,
+        retainCache: Boolean = true
     ): ChapterContentPreview {
         lastPersistedChapterCacheHit = false
         if (chapterIndex !in chapterPaths.indices) {
@@ -1723,11 +1729,13 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 val stored = synchronized(zipLock) storeResult@{
                     if (!isActiveRevisionLocked(revision, zipFile)) return@storeResult false
                     anchorOffsets[chapterIndex] = anchored.offsets
-                    contentCache.put(loadKey, result)
-                    previewCompleteness[loadKey] = previewHtml.isComplete
+                    if (retainCache) {
+                        contentCache.put(loadKey, result)
+                        previewCompleteness[loadKey] = previewHtml.isComplete
+                    }
                     // A short chapter was already decoded in full. Publish the same result
                     // under the complete key so the follow-up promotion is a cache hit.
-                    if (maxChars > 0 && previewHtml.isComplete) {
+                    if (retainCache && maxChars > 0 && previewHtml.isComplete) {
                         val completeKey = ContentLoadKey(revision, chapterIndex, width, height, 0)
                         contentCache.put(completeKey, result)
                         previewCompleteness[completeKey] = true
@@ -1744,6 +1752,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 ChapterContentPreview(result, previewHtml.isComplete)
             }
         } catch (e: Exception) {
+            if (!retainCache) throw e
             android.util.Log.e("EpubParser", "getChapterContent: exception for idx=$chapterIndex", e)
             e.printStackTrace()
             return ChapterContentPreview("", true)
@@ -1995,9 +2004,19 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         // Build paragraph separators once. Repeated insert/delete on a 400K+ Spanned
         // relocates every following character and span thousands of times.
         val ssb = rebuildParagraphBreaks(text, spacingPx)
-        if (indentPx <= 0) return ssb
 
-        // ── 首行缩进：给每个段落添加 LeadingMarginSpan ──
+        // EPUB 正文常把首行缩进直接写成全角空格或 nbsp。先移除这些源文本空白，
+        // 否则它会和用户设置的 LeadingMarginSpan 叠加，造成固定多出两格左右。
+        data class ParagraphInfo(
+            val start: Int,
+            val end: Int,
+            val leadingWhitespaceEnd: Int,
+            val hasImage: Boolean,
+            val isHeading: Boolean,
+            val isChapterTitle: Boolean
+        )
+
+        val paragraphs = mutableListOf<ParagraphInfo>()
         val imageRanges = ssb.getSpans(
             0,
             ssb.length,
@@ -2014,6 +2033,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             val isNewline = !isEnd && ssb[j] == '\n'
             if (isEnd || isNewline) {
                 if (paraStart < j) {
+                    val leadingWhitespaceEnd = buildLeadingWhitespaceEnd(ssb, paraStart, j)
                     while (imageRangeIndex < imageRanges.size &&
                         imageRanges[imageRangeIndex].last < paraStart
                     ) {
@@ -2029,17 +2049,41 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                             ssb.subSequence(paraStart, j),
                             normalizedChapterTitle
                         )
-                    if (!hasImage) firstContentParagraphSeen = true
-                    if (!hasImage && !isHeading && !isChapterTitle) {
-                        ssb.setSpan(
-                            android.text.style.LeadingMarginSpan.Standard(indentPx, 0),
-                            paraStart, j,
-                            android.text.Spannable.SPAN_INCLUSIVE_INCLUSIVE
-                        )
-                        indentCount++
-                    }
+                    if (!hasImage && leadingWhitespaceEnd < j) firstContentParagraphSeen = true
+                    paragraphs += ParagraphInfo(
+                        start = paraStart,
+                        end = j,
+                        leadingWhitespaceEnd = leadingWhitespaceEnd,
+                        hasImage = hasImage,
+                        isHeading = isHeading,
+                        isChapterTitle = isChapterTitle
+                    )
                 }
                 paraStart = j + 1
+            }
+        }
+
+        // 倒序删除，保持尚未处理段落的索引有效。即使用户把缩进设为 0，
+        // 也必须执行这一步，才能清掉 EPUB 自带的段首空白。
+        paragraphs.asReversed().forEach { paragraph ->
+            val isBodyParagraph = !paragraph.hasImage &&
+                !paragraph.isHeading && !paragraph.isChapterTitle &&
+                paragraph.leadingWhitespaceEnd < paragraph.end
+            if (!isBodyParagraph) return@forEach
+
+            val whitespaceLength = paragraph.leadingWhitespaceEnd - paragraph.start
+            if (whitespaceLength > 0) {
+                ssb.delete(paragraph.start, paragraph.leadingWhitespaceEnd)
+            }
+
+            if (indentPx > 0) {
+                ssb.setSpan(
+                    android.text.style.LeadingMarginSpan.Standard(indentPx, 0),
+                    paragraph.start,
+                    paragraph.end - whitespaceLength,
+                    android.text.Spannable.SPAN_INCLUSIVE_INCLUSIVE
+                )
+                indentCount++
             }
         }
 
@@ -2050,6 +2094,25 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
 
         return ssb
     }
+
+    /** Test hook for the Canvas paragraph formatter; no parser/file state is required. */
+    internal fun formatParagraphFormattingForTest(
+        text: CharSequence,
+        chapterTitle: String = ""
+    ): CharSequence = applyParagraphFormatting(text, chapterTitle)
+
+    private fun buildLeadingWhitespaceEnd(
+        text: CharSequence,
+        start: Int,
+        end: Int
+    ): Int {
+        var index = start
+        while (index < end && text[index].isParagraphIndentWhitespace()) index++
+        return index
+    }
+
+    private fun Char.isParagraphIndentWhitespace(): Boolean =
+        this == ' ' || this == '\t' || this == '\u00A0' || this == '\u3000'
 
     private fun rebuildParagraphBreaks(
         text: CharSequence,
@@ -3203,25 +3266,16 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 } else {
                     // 出版社给了尺寸（width="12%"、style="width:60px"）就按它排，
                     // 装饰小图不再被拉满正文列宽。
-                    sizeHints[source]?.resolveWidthPx(pageW, density) ?: pageW
+                    (sizeHints[source]?.resolveWidthPx(pageW, density) ?: pageW).coerceIn(1, pageW)
                 }
-                // 整页图（漫画页）按"正文列宽 × 列高"等比铺满，避免超出一页被拆开；
-                // 普通插图仍按宽度封顶、不放大。
-                val imageBounds = if (allowUpscale) {
-                    ReaderImageSizing.fitBounds(
-                        originalWidth = originalWidth,
-                        originalHeight = originalHeight,
-                        maxWidth = targetWidth,
-                        maxHeight = pageContentHeight
-                    )
-                } else {
-                    ReaderImageSizing.bounds(
-                        originalWidth,
-                        originalHeight,
-                        targetWidth,
-                        allowUpscale = false
-                    )
-                }
+                // Every paged illustration must fit its column, including multi-image chapters.
+                val imageBounds = ReaderImageSizing.bounds(
+                    originalWidth,
+                    originalHeight,
+                    targetWidth,
+                    allowUpscale = allowUpscale,
+                    contentHeight = if (isInlineMarker) 0 else pageContentHeight
+                )
                     ?: return createErrorPlaceholder("Invalid image dimensions: ${entry.name.take(60)}")
 
                 LazyEpubImageDrawable(
@@ -3253,17 +3307,11 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             }
             val density = (context?.resources?.displayMetrics
                 ?: android.content.res.Resources.getSystem().displayMetrics).density
-            val targetWidth = sizeHints[source]?.resolveWidthPx(pageW, density) ?: pageW
-            val bounds = if (allowUpscale) {
-                ReaderImageSizing.fitBounds(
-                    originalWidth = intrinsic.width,
-                    originalHeight = intrinsic.height,
-                    maxWidth = targetWidth,
-                    maxHeight = pageContentHeight
-                )
-            } else {
-                ReaderImageSizing.bounds(intrinsic.width, intrinsic.height, targetWidth)
-            }
+            val targetWidth = (sizeHints[source]?.resolveWidthPx(pageW, density) ?: pageW).coerceIn(1, pageW)
+            val bounds = ReaderImageSizing.bounds(
+                intrinsic.width, intrinsic.height, targetWidth,
+                allowUpscale = allowUpscale, contentHeight = pageContentHeight
+            )
                 ?: return null
             return LazyEpubImageDrawable(
                 zipFile = zipFile,
@@ -3402,11 +3450,11 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                     val marginPx = (38 * dm.density).toInt()
                     dm.widthPixels - marginPx * 2
                 }
-                val imageBounds = ReaderImageSizing.bounds(originalWidth, originalHeight, pageW)
+                val imageBounds = ReaderImageSizing.bounds(originalWidth, originalHeight, pageW,
+                    allowUpscale = allowUpscale, contentHeight = pageContentHeight)
                     ?: return null
-                val ratio = imageBounds.width.toFloat() / bitmap.width.coerceAtLeast(1)
                 val drawW = imageBounds.width
-                val drawH = (bitmap.height * ratio).toInt().coerceAtLeast(1)
+                val drawH = imageBounds.height
                 val drawable = BitmapDrawable(null, bitmap)
                 drawable.setBounds(0, 0, drawW, drawH)
                 return drawable
@@ -3447,89 +3495,32 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
 
     private fun extractCover(zipFile: ZipFile, opfContent: String, sourceKey: String): String? {
         val ctx = context ?: return null
-
-        try {
-            val coverIdRegex = """<meta\s+name="cover"\s+content="([^"]+)"""".toRegex()
-            val coverId = coverIdRegex.find(opfContent)?.groupValues?.get(1)
-
-            val manifestRegex = """<manifest[^>]*>(.*?)</manifest>""".toRegex(RegexOption.DOT_MATCHES_ALL)
-            val manifestContent = manifestRegex.find(opfContent)?.groupValues?.get(1) ?: ""
-
-            var coverHref: String? = null
-
-            // 方式1：<meta name="cover" content="ID"> → 在 manifest 中按 id 找 href
-            if (coverId != null) {
-                coverHref = extractHrefById(manifestContent, coverId)
-            }
-
-            // 方式2：EPUB 3 — <item properties="cover-image" href="...">
-            if (coverHref == null) {
-                val r1 = """<item[^>]*\bproperties="[^"]*\bcover-image\b[^"]*"[^>]*\bhref="([^"]+)"""".toRegex(RegexOption.IGNORE_CASE)
-                val r2 = """<item[^>]*\bhref="([^"]+)"[^>]*\bproperties="[^"]*\bcover-image\b[^"]*"""".toRegex(RegexOption.IGNORE_CASE)
-                coverHref = r1.find(manifestContent)?.groupValues?.get(1)
-                    ?: r2.find(manifestContent)?.groupValues?.get(1)
-            }
-
-            // 方式3：manifest item 的 id 含 "cover"（属性顺序不限）
-            if (coverHref == null) {
-                val coverIdPattern = """<item\b[^>]*\bid="([^"]*cover[^"]*)"[^>]*>""".toRegex(RegexOption.IGNORE_CASE)
-                coverIdPattern.find(manifestContent)?.groupValues?.get(1)?.let { id ->
-                    coverHref = extractHrefById(manifestContent, id)
+        val packagePath = zipFile.name
+        return runCatching {
+            val epubPackage = EpubPackageReader.read(packagePath)
+            val candidates = EpubCoverCandidates.paths(epubPackage, opfContent) { path ->
+                findEntry(zipFile, path)?.let { entry ->
+                    zipFile.getInputStream(entry).bufferedReader().use { it.readText() }
                 }
             }
-
-            // 方式4：href 本身含 "cover" 且是图片
-            if (coverHref == null) {
-                """<item\b[^>]*\bhref="([^"]*cover[^"]*\.(?:jpg|jpeg|png|webp))"""".toRegex(RegexOption.IGNORE_CASE)
-                    .find(manifestContent)?.let { coverHref = it.groupValues[1] }
+            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            for (path in candidates) {
+                val entry = findEntry(zipFile, path) ?: continue
+                if (entry.size > MAX_IMAGE_RESOURCE_BYTES) continue
+                val bytes = zipFile.getInputStream(entry).use { it.readBytes() }
+                if (bytes.isEmpty() || bytes.size > MAX_IMAGE_RESOURCE_BYTES) continue
+                options.outWidth = 0
+                options.outHeight = 0
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+                if (options.outWidth <= 0 || options.outHeight <= 0) continue
+                val coversDir = File(ctx.filesDir, "covers")
+                coversDir.mkdirs()
+                val coverFile = File(coversDir, "${sourceKey.hashCode()}.${path.substringAfterLast('.', "jpg").lowercase()}")
+                coverFile.writeBytes(bytes)
+                return@runCatching coverFile.absolutePath
             }
-
-            // 方式5：<meta name="cover"> 指向的是 HTML 章节，从该章节中提取第一张图片
-            if (coverHref == null && coverId != null) {
-                val htmlHref = extractHrefById(manifestContent, coverId)
-                if (htmlHref != null && (htmlHref.endsWith(".html", true) || htmlHref.endsWith(".xhtml", true) || htmlHref.endsWith(".htm", true))) {
-                    val htmlPath = if (basePath.isNotEmpty()) "$basePath/$htmlHref" else htmlHref
-                    val htmlEntry = findEntry(zipFile, htmlPath)
-                    if (htmlEntry != null) {
-                        val html = zipFile.getInputStream(htmlEntry).bufferedReader().readText()
-                        val imgSrc = """<img\b[^>]*\bsrc="([^"]+)"""".toRegex(RegexOption.IGNORE_CASE).find(html)?.groupValues?.get(1)
-                            ?: """xlink:href="([^"]+\.(?:jpg|jpeg|png|webp))"""".toRegex(RegexOption.IGNORE_CASE).find(html)?.groupValues?.get(1)
-                        if (imgSrc != null) {
-                            val imgPath = normalizePath(if (basePath.isNotEmpty()) "$basePath/$imgSrc" else imgSrc)
-                            if (findEntry(zipFile, imgPath) != null) coverHref = imgSrc
-                        }
-                    }
-                }
-            }
-
-            if (coverHref == null) {
-                zipFile.entries().toList().forEach { entry ->
-                    if (entry.name.contains("cover", ignoreCase = true) &&
-                        (entry.name.endsWith(".jpg", true) || entry.name.endsWith(".jpeg", true) ||
-                         entry.name.endsWith(".png", true) || entry.name.endsWith(".webp", true))) {
-                        coverHref = entry.name
-                        return@forEach
-                    }
-                }
-            }
-
-            val href = coverHref ?: return null
-
-            val fullPath = if (basePath.isNotEmpty()) "$basePath/$href" else href
-            val entry = findEntry(zipFile, fullPath) ?: return null
-            val bytes = zipFile.getInputStream(entry).readBytes()
-            if (bytes.isEmpty()) return null
-
-            val coversDir = File(ctx.filesDir, "covers")
-            coversDir.mkdirs()
-            val coverFile = File(coversDir, "${sourceKey.hashCode()}.jpg")
-            coverFile.writeBytes(bytes)
-
-            return coverFile.absolutePath
-        } catch (e: Exception) {
-            e.printStackTrace()
-            return null
-        }
+            null
+        }.getOrNull()
     }
 
     override fun extractCoverPath(filePath: String): String? {

@@ -8,15 +8,30 @@ internal fun calculateSavedReadingProgress(
     chapterCount: Int,
     currentPageIndex: Int,
     totalPages: Int,
-    isContinuousScroll: Boolean
+    isContinuousScroll: Boolean,
+    rightChapterIndex: Int? = null,
+    rightPageIndex: Int? = null,
+    rightChapterTotalPages: Int? = null
 ): Float {
     if (chapterCount <= 0) return 0f
 
-    val chapterIndex = currentChapterIndex.coerceIn(0, chapterCount - 1)
+    val useRightPage = !isContinuousScroll &&
+        rightChapterIndex != null && rightPageIndex != null && rightChapterTotalPages != null &&
+        rightChapterIndex in 0 until chapterCount &&
+        rightChapterTotalPages > 0 && rightPageIndex in 0 until rightChapterTotalPages &&
+        (rightChapterIndex > currentChapterIndex ||
+            (rightChapterIndex == currentChapterIndex && rightPageIndex > currentPageIndex))
+    val chapterIndex = if (useRightPage) {
+        requireNotNull(rightChapterIndex)
+    } else {
+        currentChapterIndex.coerceIn(0, chapterCount - 1)
+    }
+    val pageIndex = if (useRightPage) requireNotNull(rightPageIndex) else currentPageIndex
+    val pageCount = if (useRightPage) requireNotNull(rightChapterTotalPages) else totalPages
     val chapterProgress = when {
-        totalPages <= 0 -> 0f
-        isContinuousScroll -> currentPageIndex.toFloat() / totalPages
-        else -> (currentPageIndex.toFloat() + 1f) / totalPages
+        pageCount <= 0 -> 0f
+        isContinuousScroll -> pageIndex.toFloat() / pageCount
+        else -> (pageIndex.toFloat() + 1f) / pageCount
     }.coerceIn(0f, 1f)
 
     return ((chapterIndex + chapterProgress) / chapterCount).coerceIn(0f, 1f)

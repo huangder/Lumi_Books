@@ -13,7 +13,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -66,6 +67,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -214,6 +216,7 @@ internal sealed interface BookshelfCategoryTarget {
     data class All(override val title: String) : BookshelfCategoryTarget
     data class EpubMobi(override val title: String) : BookshelfCategoryTarget
     data class Pdf(override val title: String) : BookshelfCategoryTarget
+    data class Markdown(override val title: String) : BookshelfCategoryTarget
     data class Txt(override val title: String) : BookshelfCategoryTarget
     data class Comic(override val title: String) : BookshelfCategoryTarget
     data class Favorites(override val title: String) : BookshelfCategoryTarget
@@ -268,6 +271,7 @@ private fun BookshelfCategoriesScreen(
             )
         )
         add(CategoryRowModel(BookshelfCategoryTarget.Pdf("PDF"), uiState.books.count { it.format == BookFormat.PDF }, AppIcons.FileText))
+        add(CategoryRowModel(BookshelfCategoryTarget.Markdown("Markdown"), uiState.books.count { it.format == BookFormat.MARKDOWN }, AppIcons.FileText))
         add(CategoryRowModel(BookshelfCategoryTarget.Txt("TXT"), uiState.books.count { it.format == BookFormat.TXT }, AppIcons.FileText))
         add(
             CategoryRowModel(
@@ -434,6 +438,7 @@ internal fun BookshelfCategoryBooksRoute(
             is BookshelfCategoryTarget.All -> uiState.books
             is BookshelfCategoryTarget.EpubMobi -> uiState.books.filter(Book::isEpubMobi)
             is BookshelfCategoryTarget.Pdf -> uiState.books.filter { it.format == BookFormat.PDF }
+            is BookshelfCategoryTarget.Markdown -> uiState.books.filter { it.format == BookFormat.MARKDOWN }
             is BookshelfCategoryTarget.Txt -> uiState.books.filter { it.format == BookFormat.TXT }
             is BookshelfCategoryTarget.Comic -> uiState.books.filter { it.format == BookFormat.CBZ }
             is BookshelfCategoryTarget.Favorites -> uiState.books.filter { it.isFavorite }
@@ -539,7 +544,11 @@ private fun CategoryListPage(
                                 ) else null,
                                 reserveDisclosureSpace = true,
                                 compact = true,
-                                modifier = Modifier.animateItem(),
+                                modifier = Modifier.animateItem(
+                                    fadeInSpec = spring(stiffness = 400f),
+                                    placementSpec = spring(stiffness = 400f, visibilityThreshold = IntOffset(1, 1)),
+                                    fadeOutSpec = spring(stiffness = 400f)
+                                ),
                                 onClick = { onFolderSelected(row.folder) },
                                 onLongClick = { onFolderLongClick(row.folder) }
                             )
@@ -607,7 +616,11 @@ private fun CategoryListPage(
                             null
                         },
                         reserveDisclosureSpace = true,
-                        modifier = Modifier.animateItem(),
+                        modifier = Modifier.animateItem(
+                            fadeInSpec = spring(stiffness = 400f),
+                            placementSpec = spring(stiffness = 400f, visibilityThreshold = IntOffset(1, 1)),
+                            fadeOutSpec = spring(stiffness = 400f)
+                        ),
                         onClick = { onFolderSelected(row.folder) },
                         onLongClick = { onFolderLongClick(row.folder) }
                     )

@@ -13,8 +13,8 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.spring
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
@@ -470,6 +470,10 @@ class LiquidGlassMenuHostState {
 
     internal fun source(spec: LiquidGlassMenuSpec): LiquidGlassMenuAnchor? = anchors[spec.sourceId]
     internal fun ownsDrawing(id: Any): Boolean = drawingSourceId == id
+    // Hide the source only after the overlay has taken ownership of its recorded layer.
+    // Keeping the real control visible during the handoff prevents a one-frame flash when
+    // a liquid menu is opened. Normal menus intentionally keep the source visible throughout.
+    internal fun hidesSource(id: Any): Boolean = ownsDrawing(id)
 
     internal fun sameSource(first: LiquidGlassMenuSpec?, second: LiquidGlassMenuSpec): Boolean =
         if (first?.sourceId != null || second.sourceId != null) first?.sourceId == second.sourceId

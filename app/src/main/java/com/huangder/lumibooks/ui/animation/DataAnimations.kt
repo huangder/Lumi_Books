@@ -1,7 +1,7 @@
 package com.huangder.lumibooks.ui.animation
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember

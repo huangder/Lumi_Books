@@ -66,6 +66,10 @@ data class TxtIndexSnapshot(
     val diagnostics: List<TxtTocRuleDiagnostics>
 )
 
+/** Normalizes a decoded TXT line before applying chapter matching rules. */
+internal fun normalizeTxtHeadingLine(line: String): String =
+    line.trimStart().removePrefix("\uFEFF").trim()
+
 class TxtParser(private val context: Context? = null) : BookParser {
     /** Guards the parser's active source, encoding, entries, and caches as one snapshot. */
     private val parserStateLock = Any()
@@ -723,7 +727,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
         forEachLinePrefix(file, encoding, encoding.contentStart, file.length()) { start, _, prefix ->
             // 🔥 同时 trim 首尾：中文TXT常见全角空格缩进如「　　第一章」
             // 原来只 trimEnd 导致 ^ 锚定失败，触发 fallback 用正文首行当标题
-            val line = prefix.trim()
+            val line = normalizeTxtHeadingLine(prefix)
             if (sampleLines.size < 20_000 && line.isNotEmpty()) sampleLines += line
             pendingDecoratedHeading?.let { pending ->
                 if (line.isNotEmpty()) {
@@ -778,7 +782,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
                 if (compiled != null) {
                     val headings = mutableListOf<Heading>()
                     forEachLinePrefix(file, encoding, encoding.contentStart, file.length()) { start, _, prefix ->
-                        val match = compiled.match(prefix.trim()) ?: return@forEachLinePrefix
+                        val match = compiled.match(normalizeTxtHeadingLine(prefix)) ?: return@forEachLinePrefix
                         headings += Heading(match.title.take(TITLE_PREFIX_BYTES), start, match.role)
                     }
                     return applyEmbeddedTocDetection(file, encoding, headings)
@@ -822,7 +826,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
             }
         } else {
             forEachLinePrefix(file, encoding, encoding.contentStart, file.length()) { start, _, prefix ->
-                val line = prefix.trim()
+                val line = normalizeTxtHeadingLine(prefix)
                 if (line.isNotEmpty()) nonBlankLines++
                 val match = compiled.match(line) ?: return@forEachLinePrefix
                 if (samples.size < 3) samples = samples + match.title
@@ -1063,7 +1067,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
     ): Long? {
         var markerStart: Long? = null
         forEachLinePrefix(file, encoding, encoding.contentStart, beforeByte) { start, _, prefix ->
-            if (TOC_MARKER_PATTERN.matches(prefix.trim())) markerStart = start
+            if (TOC_MARKER_PATTERN.matches(normalizeTxtHeadingLine(prefix))) markerStart = start
         }
         return markerStart
     }

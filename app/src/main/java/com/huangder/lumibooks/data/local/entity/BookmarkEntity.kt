@@ -21,5 +21,7 @@ data class BookmarkEntity(
     val updatedAt: Long = createdAt,
     val remark: String = "",
     @androidx.room.ColumnInfo(defaultValue = "'[]'")
-    val tagsJson: String = "[]"
+    val tagsJson: String = "[]",
+    @androidx.room.ColumnInfo(defaultValue = "0")
+    val isStale: Boolean = false
 )

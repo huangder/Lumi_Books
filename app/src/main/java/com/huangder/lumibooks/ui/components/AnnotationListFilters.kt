@@ -28,7 +28,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.sp
+import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.HighlightRule
 import com.huangder.lumibooks.ui.icons.AppIcons
@@ -129,7 +131,8 @@ private fun <T> AnnotationFilterMenu(
     LiquidGlassButton(
         onClick = { host?.toggle(spec) },
         modifier = Modifier.liquidGlassMenuAnchor(sourceId)
-            .onGloballyPositioned { bounds = it.boundsInRoot() }.animateContentSize(),
+            .onGloballyPositioned { bounds = it.boundsInRoot() }
+            .animateContentSize(animationSpec = spring(stiffness = 400f, visibilityThreshold = IntSize(1, 1))),
         compact = true,
         tintedColor = if (selected != null) AppColors.Accent else null,
         contentColor = if (selected != null) AppColors.OnAccent else AppColors.TextPrimary

@@ -33,6 +33,34 @@ import org.robolectric.annotation.LooperMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @LooperMode(LooperMode.Mode.PAUSED)
 class ReaderImagePagingStabilityTest {
+    @Test fun coverAppearsOnFirstFrameWhenLoadedAfterPageLayout() {
+        val bitmap = Bitmap.createBitmap(200, 320, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.BLUE)
+            setHasAlpha(false)
+        }
+        val source = BitmapDrawable(null, bitmap).apply { setBounds(0, 0, 100, 160) }
+        val text = SpannableString("\uFFFC").apply {
+            setSpan(ImageSpan(source, "cover.jpg"), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            setSpan(EpubParser.CoverPageSpan(), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        val page = PageContentView(ApplicationProvider.getApplicationContext<Application>())
+        page.setReaderBackground(Color.WHITE, null)
+        // Opening lays out the empty page before its chapter is loaded. Do not
+        // run another layout pass or turn a page before checking the first frame.
+        measurePage(page)
+        page.setPageContent(text, 0, text.length)
+        val frame = Bitmap.createBitmap(400, 800, Bitmap.Config.ARGB_8888)
+        try {
+            page.draw(Canvas(frame))
+            assertEquals("cover pixels on the first frame", Color.BLUE, frame.getPixel(200, 400))
+            assertEquals(Rect(0, 0, 100, 160), source.bounds)
+        } finally {
+            frame.recycle()
+            page.clear()
+            bitmap.recycle()
+        }
+    }
+
     @Test fun coverImageViewDoesNotResizeTheLayoutSpan() {
         val bitmap = Bitmap.createBitmap(200, 320, Bitmap.Config.ARGB_8888).apply {
             eraseColor(Color.BLUE)

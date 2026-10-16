@@ -20,8 +20,8 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.exponentialDecay
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.spring
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -40,6 +40,7 @@ import androidx.compose.foundation.gestures.calculateCentroidSize
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -90,6 +91,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -124,6 +126,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.geometry.Offset
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.core.content.ContextCompat
@@ -135,7 +138,13 @@ import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.SwipeRevealItem
-import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuHost
+import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
+import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import com.huangder.lumibooks.ui.components.animateBottomSheetIn
 import com.huangder.lumibooks.ui.components.animateBottomSheetOut
 import com.huangder.lumibooks.ui.components.LiquidGlassColumnSheetContainer
@@ -456,6 +465,10 @@ fun RasterReaderScreen(
     val uiState by viewModel.uiState.collectAsState()
     val ttsState by viewModel.ttsState.collectAsState()
     val ttsCurrentPage by viewModel.ttsCurrentPage.collectAsState()
+    val listeningResumePrompt by viewModel.listeningResumePrompt.collectAsState()
+    val listeningResumeJumpRequest by viewModel.listeningResumeJumpRequest.collectAsState()
+    val ttsStartPrompt by viewModel.ttsStartPrompt.collectAsState()
+    val ttsReaderFollowEnabled by viewModel.ttsReaderFollowEnabled.collectAsState()
     val storedBookmarks by viewModel.bookmarks.collectAsState()
     val bookmarks = remember(storedBookmarks, uiState.epubComicIndex) {
         val index = uiState.epubComicIndex
@@ -471,6 +484,10 @@ fun RasterReaderScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val activity = context as? MainActivity
+
+    DisposableEffect(viewModel) {
+        onDispose { viewModel.saveAndPause() }
+    }
 
     val book = uiState.book
     val filePath = book?.filePath
@@ -557,9 +574,6 @@ fun RasterReaderScreen(
             viewModel.importManualMineruResult(uri, pendingManualReplace)
         }
     }
-    val ttsNotificationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { }
 
     fun startConversion(
         replaceExisting: Boolean,
@@ -736,9 +750,13 @@ fun RasterReaderScreen(
         } else setOf(startPage)
     }
     val openingReadiness = remember(bookId, openingPages) { RasterOpeningReadiness(openingPages) }
+    var firstPagePrepared by remember(bookId) { mutableStateOf(false) }
     val currentFirstContentCallback by rememberUpdatedState(onFirstContentDrawn)
     val reportPagePrepared: (Int) -> Unit = remember(openingReadiness) {
-        { page -> if (openingReadiness.pagePrepared(page)) currentFirstContentCallback() }
+        { page -> if (openingReadiness.pagePrepared(page)) {
+            firstPagePrepared = true
+            currentFirstContentCallback()
+        } }
     }
     LaunchedEffect(pageSourceFailed) {
         if (pageSourceFailed) {
@@ -861,9 +879,24 @@ fun RasterReaderScreen(
             }
     }
 
-    suspend fun scrollToPdfPage(targetPage: Int, animate: Boolean = !eInkMode) {
+    var returnPage by remember(bookId) { mutableStateOf<Int?>(null) }
+    var returnPageToken by remember(bookId) { mutableIntStateOf(0) }
+    fun rememberRasterReturnPage() {
+        returnPage = currentPage
+        returnPageToken++
+    }
+    fun beginManualRasterNavigation() {
+        if (viewModel.listeningResumePrompt.value != null) rememberRasterReturnPage()
+        viewModel.onListeningReaderManualNavigation()
+    }
+    fun beginManualRasterBrowsing() = viewModel.onListeningReaderPageTurn()
+    suspend fun scrollToPdfPage(targetPage: Int, animate: Boolean = !eInkMode,
+        manual: Boolean = true, pageTurn: Boolean = false) {
         // 页面还没准备好时（pageCount 为 0）不能做 coerceIn，否则会抛出空区间异常。
         if (pageCount <= 0) return
+        if (manual) {
+            if (pageTurn) beginManualRasterBrowsing() else beginManualRasterNavigation()
+        }
         val page = targetPage.coerceIn(0, pageCount - 1)
         // Announce a distant target before the pager/list has measured it.
         pageSource?.updateViewport(RasterViewport(visiblePages = setOf(page), anchor = page, scrolling = true))
@@ -885,7 +918,7 @@ fun RasterReaderScreen(
 
     LaunchedEffect(pageMode, pendingModePage) {
         val targetPage = pendingModePage ?: return@LaunchedEffect
-        scrollToPdfPage(targetPage, animate = false)
+        scrollToPdfPage(targetPage, animate = false, manual = false)
         pendingModePage = null
     }
 
@@ -905,23 +938,54 @@ fun RasterReaderScreen(
     LaunchedEffect(pageMode, currentPage) {
         if (pageMode != PdfPageMode.HORIZONTAL_PAGING) settledDisplayPage = currentPage
     }
+    LaunchedEffect(pageMode, listState, pagerState, verticalPagerState) {
+        val interactions = when (pageMode) {
+            PdfPageMode.VERTICAL_SCROLL -> listState.interactionSource
+            PdfPageMode.HORIZONTAL_PAGING -> pagerState.interactionSource
+            PdfPageMode.VERTICAL_PAGING -> verticalPagerState.interactionSource
+        }
+        interactions.interactions.collect { interaction ->
+            if (interaction is DragInteraction.Start) beginManualRasterBrowsing()
+        }
+    }
     LaunchedEffect(
         bookId,
         pageCount,
         pageMode,
+        ttsReaderFollowEnabled,
         ttsState.activeBookId,
         ttsState.playbackState
     ) {
         viewModel.ttsPageTurnRequests.collect { request ->
-            if (request.bookId != bookId ||
+            if (!viewModel.ttsReaderFollowEnabled.value || !viewModel.isTtsPageTurnRequestActive(request) ||
+                request.bookId != bookId ||
                 ttsState.activeBookId != bookId ||
                 ttsState.playbackState == TtsPlaybackState.IDLE ||
                 request.location.pageIndex != 0
             ) return@collect
             val targetPage = request.location.chapterIndex
             if (targetPage !in 0 until pageCount) return@collect
-            scrollToPdfPage(targetPage)
+            scrollToPdfPage(targetPage, manual = false)
         }
+    }
+
+    val visibleRasterPages = when {
+        spreadEnabled -> CbzSpreadPlanner.spreadFor(readingIndexForPage(currentPage),
+            pageCount, COVER_ALONE_FIRST_PAGE).let { setOfNotNull(it?.firstPage, it?.secondPage) }
+        pageMode == PdfPageMode.VERTICAL_SCROLL -> listState.layoutInfo.let { viewport ->
+            viewport.visibleItemsInfo.filter { it.offset < viewport.viewportEndOffset &&
+                it.offset + it.size > viewport.viewportStartOffset }.map { it.index }.toSet()
+        }
+        else -> setOf(currentPage)
+    }
+    ObserveListeningResume(viewModel, firstPagePrepared && !uiState.isLoading,
+        readerActive, currentPage, 0, visibleChapters = visibleRasterPages)
+
+    LaunchedEffect(listeningResumeJumpRequest, readerActive, firstPagePrepared, uiState.isLoading) {
+        val position = listeningResumeJumpRequest ?: return@LaunchedEffect
+        if (!readerActive || !firstPagePrepared || uiState.isLoading) return@LaunchedEffect
+        scrollToPdfPage(position.chapterIndex, animate = false, manual = false)
+        viewModel.completeListeningResumeJump(position)
     }
 
     // 当前页是否已收藏（PDF 每页 = 一个 chapterIndex）
@@ -1034,7 +1098,7 @@ fun RasterReaderScreen(
             if (targetPage == currentPage) return@handler
 
             scope.launch {
-                scrollToPdfPage(targetPage)
+                scrollToPdfPage(targetPage, pageTurn = true)
             }
         }
         activity.readerVolumeKeyHandler = handler
@@ -1082,8 +1146,20 @@ fun RasterReaderScreen(
 
     val pdfGlassBackdrop = rememberLayerBackdrop()
     val capturePdfBackdrop = isLiquidGlass && openingComplete
+    val startTtsWithPermission = rememberTtsStartWithNotificationPermission(bookId) { restore ->
+        viewModel.startPdfTts(filePath, currentPage, pageCount, restoreSavedPosition = restore)
+    }
+    TtsStartDialog(
+        position = ttsStartPrompt.takeIf { readerActive },
+        chapterTitle = ttsStartPrompt?.let {
+            stringResource(R.string.pdf_page_number, it.chapterIndex + 1)
+        }.orEmpty(),
+        paperColor = rasterBackgroundColor, contentColor = AppColors.TextPrimary,
+        eInkMode = eInkMode, backdrop = pdfGlassBackdrop.takeIf { capturePdfBackdrop },
+        onDismiss = viewModel::dismissTtsStart, onChoose = viewModel::chooseTtsStart
+    )
     androidx.compose.runtime.CompositionLocalProvider(LocalRasterPagePrepared provides reportPagePrepared) {
-    ProvideLiquidGlassBackdrop(pdfGlassBackdrop.takeIf { capturePdfBackdrop }) {
+    LiquidGlassMenuHost(Modifier.fillMaxSize(), backdrop = pdfGlassBackdrop.takeIf { capturePdfBackdrop }) {
     Box(
         Modifier
             .fillMaxSize()
@@ -1115,7 +1191,7 @@ fun RasterReaderScreen(
                         if (targetIndex != null) {
                             if (targetIndex != currentIndex) {
                                 val targetPage = if (isHorizontal) pageForReadingIndex(targetIndex) else targetIndex
-                                scope.launch { scrollToPdfPage(targetPage) }
+                                scope.launch { scrollToPdfPage(targetPage, pageTurn = true) }
                             }
                         } else if (annotationMode && inkColorExpanded) {
                             inkColorExpanded = false
@@ -1202,7 +1278,8 @@ fun RasterReaderScreen(
                                     ?: DefaultReaderHighlightColor,
                                 existingStrokes = inkStrokes,
                                 onStrokeCommitted = viewModel::addPdfInkStroke,
-                                onStrokeErased = viewModel::deletePdfInkStroke
+                                onStrokeErased = viewModel::deletePdfInkStroke,
+                                onManualNavigation = ::beginManualRasterBrowsing
                             )
                         }
                     }
@@ -1237,7 +1314,8 @@ fun RasterReaderScreen(
                                 ?: DefaultReaderHighlightColor,
                             existingStrokes = inkStrokes,
                             onStrokeCommitted = viewModel::addPdfInkStroke,
-                            onStrokeErased = viewModel::deletePdfInkStroke
+                            onStrokeErased = viewModel::deletePdfInkStroke,
+                            onManualNavigation = ::beginManualRasterBrowsing
                         )
                     }
                 }
@@ -1465,6 +1543,45 @@ fun RasterReaderScreen(
             }
         }
 
+        val listeningTarget = listeningResumePrompt.takeIf { returnPage == null }
+        val cornerTarget = returnPage ?: listeningTarget?.chapterIndex
+        val visibleSpread = if (spreadEnabled) CbzSpreadPlanner.spreadFor(
+            readingIndexForPage(currentPage), pageCount, COVER_ALONE_FIRST_PAGE) else null
+        val targetSide = cornerTarget?.takeUnless { it in visibleRasterPages }?.let { readerReturnSide(it, 0f, currentPage, 0f,
+            visibleSpread?.secondPage, visibleSpread?.secondPage?.let { 0f }) }
+        val cornerVisible = readerActive && targetSide != null && !showMenu && !isAnySheetOpen &&
+            !annotationMode && ttsStartPrompt == null && firstPagePrepared
+        ListeningResumeHintExpiry(listeningResumePrompt,
+            cornerVisible && listeningTarget != null, viewModel::keepReadingPosition)
+        ListeningResumeHintExpiry(returnPage?.let { it to returnPageToken },
+            cornerVisible && returnPage != null, { returnPage = null })
+        if (cornerVisible) {
+            ReaderReturnChip(pageNumber = cornerTarget?.plus(1), side = targetSide ?: ReaderReturnSide.LEFT,
+                headphones = listeningTarget != null, paperColor = rasterBackgroundColor,
+                contentColor = AppColors.TextPrimary, eInkMode = eInkMode,
+                description = stringResource(if (listeningTarget != null)
+                    R.string.tts_listening_resume_jump else R.string.reader_link_return),
+                entryKey = listeningTarget ?: returnPageToken,
+                onClick = {
+                    if (listeningTarget != null) {
+                        if (viewModel.listeningResumePrompt.value != null) {
+                            viewModel.chooseListeningResume(
+                                com.huangder.lumibooks.tts.TtsReaderResumeChoice.LISTENING_POSITION, false)
+                            rememberRasterReturnPage()
+                        }
+                    } else cornerTarget?.let { target ->
+                        viewModel.onListeningReaderManualNavigation()
+                        returnPage = null
+                        scope.launch { scrollToPdfPage(target, manual = false) }
+                    }
+                },
+                modifier = Modifier.align(if (targetSide == ReaderReturnSide.RIGHT)
+                    Alignment.TopEnd else Alignment.TopStart).statusBarsPadding().padding(
+                    start = uiState.readerCornerMargins.resolvedLeftDp(uiState.marginLeftDp).coerceAtLeast(0f).dp,
+                    end = uiState.readerCornerMargins.resolvedRightDp(uiState.marginRightDp).coerceAtLeast(0f).dp,
+                    top = (uiState.readerCornerMargins.resolvedTopDp() - 10f).coerceAtLeast(0f).dp))
+        }
+
         // ── 顶部栏（淡入淡出）──
         AnimatedVisibility(
             visible = showMenu,
@@ -1484,6 +1601,8 @@ fun RasterReaderScreen(
                 title = book?.title ?: "",
                 currentPage = currentPage,
                 pageCount = pageCount,
+                pageLabel = readerPhysicalPageLabel(currentPage, pageCount,
+                    visibleRasterPages.maxOrNull().takeIf { spreadEnabled }),
                 isBookmarked = isCurrentPageBookmarked,
                 pageMode = pageMode,
                 renderMode = renderMode,
@@ -1512,21 +1631,7 @@ fun RasterReaderScreen(
                     viewModel.setRasterZoomLocked(!uiState.rasterZoomLocked, scale)
                 },
                 onTtsToggle = {
-                    if (ttsState.activeBookId == bookId &&
-                        ttsState.playbackState != TtsPlaybackState.IDLE
-                    ) {
-                        viewModel.toggleTtsPlayPause()
-                    } else {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
-                            PackageManager.PERMISSION_GRANTED
-                        ) {
-                            runCatching {
-                                ttsNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                            }
-                        }
-                        viewModel.startPdfTts(filePath, currentPage, pageCount)
-                    }
+                    viewModel.requestTtsStart(startTtsWithPermission)
                 },
                 onBookmarkToggle = {
                     if (isCurrentPageBookmarked) {
@@ -1751,8 +1856,8 @@ fun RasterReaderScreen(
             visible = ttsState.activeBookId == bookId &&
                 ttsState.playbackState != TtsPlaybackState.IDLE &&
                 !showPdfToc && !showPdfBookmarks && conversionSheet == null,
-            enter = if (eInkMode) EnterTransition.None else if (!motionEnabled) fadeIn(tween(120)) else slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit = if (eInkMode) ExitTransition.None else if (!motionEnabled) fadeOut(tween(100)) else slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            enter = if (eInkMode) EnterTransition.None else if (!motionEnabled) fadeIn(tween(120)) else slideInVertically(spring(stiffness = 400f, visibilityThreshold = IntOffset(1, 1)), initialOffsetY = { it }) + fadeIn(spring(stiffness = 400f)),
+            exit = if (eInkMode) ExitTransition.None else if (!motionEnabled) fadeOut(tween(100)) else slideOutVertically(spring(stiffness = 400f, visibilityThreshold = IntOffset(1, 1)), targetOffsetY = { it }) + fadeOut(spring(stiffness = 400f)),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
@@ -1781,8 +1886,10 @@ fun RasterReaderScreen(
                 onSetSleepTimer = viewModel::setSleepTimer,
                 onCancelSleepTimer = viewModel::cancelSleepTimer,
                 onReturnToProgress = {
+                    viewModel.enableListeningReaderFollow()
                     ttsCurrentPage?.location?.chapterIndex?.let { targetPage ->
-                        scope.launch { scrollToPdfPage(targetPage) }
+                        rememberRasterReturnPage()
+                        scope.launch { scrollToPdfPage(targetPage, manual = false) }
                     }
                 },
                 onStartFromCurrentPage = {
@@ -1795,7 +1902,7 @@ fun RasterReaderScreen(
                         )
                     }
                 },
-                canReturnToProgress = ttsCurrentPage?.location?.chapterIndex != currentPage,
+                canReturnToProgress = !ttsReaderFollowEnabled || ttsCurrentPage?.location?.chapterIndex != currentPage,
                 readerMenuVisible = showMenu,
                 readerBackgroundColor = rasterBackgroundColor,
                 readerContentColor = AppColors.TextPrimary
@@ -1970,7 +2077,8 @@ private fun PdfPagerPage(
     activeInkColor: String,
     existingStrokes: List<PdfInkStroke>,
     onStrokeCommitted: (PdfInkStroke) -> Unit,
-    onStrokeErased: (PdfInkStroke) -> Unit
+    onStrokeErased: (PdfInkStroke) -> Unit,
+    onManualNavigation: () -> Unit
 ) {
     val latestScale = rememberUpdatedState(scale)
     val latestOffsetX = rememberUpdatedState(offsetX)
@@ -2162,6 +2270,7 @@ private fun PdfPagerPage(
                             gestureScale <= PDF_ZOOM_EPSILON &&
                             gestureMode == PdfMultiTouchMode.PAN
                         if (targetPage != pageIndex || shouldSettlePager) {
+                            onManualNavigation()
                             pagerState.animateScrollToPage(targetPage)
                         }
                     }
@@ -2304,6 +2413,7 @@ private fun PdfTopBar(
     title: String,
     currentPage: Int,
     pageCount: Int,
+    pageLabel: String = readerPhysicalPageLabel(currentPage, pageCount),
     isBookmarked: Boolean = false,
     pageMode: PdfPageMode,
     renderMode: PageRenderMode = PageRenderMode.NORMAL,
@@ -2378,7 +2488,7 @@ private fun PdfTopBar(
                         .height(36.dp)
                 ) {
                     Text(
-                        text = "${currentPage + 1} / $pageCount",
+                        text = pageLabel,
                         fontSize = 12.sp,
                         color = if (isLiquidGlass) AppColors.TextPrimary else Color.White,
                         fontWeight = FontWeight.Medium,
@@ -2441,9 +2551,10 @@ private fun PdfTopBar(
             // 中间：书名
             ReaderTitleCapsule(
                 title = title,
-                contentColor = AppColors.TextSecondary.copy(alpha = if (isLiquidGlass) 0.88f else 0.7f),
-                fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
-                glassContentScrimColor = glassContentScrimColor,
+                contentColor = if (isLiquidGlass) Color.White else AppColors.TextSecondary.copy(alpha = 0.7f),
+                fallbackColor = if (isLiquidGlass) Color(0xFF303033) else AppColors.BgGray.copy(alpha = 0.8f),
+                glassContentScrimColor = if (isLiquidGlass) Color.Black.copy(alpha = 0.8f)
+                    else glassContentScrimColor,
                 isLiquidGlass = isLiquidGlass,
                 modifier = Modifier
                     .weight(1f)
@@ -2577,6 +2688,14 @@ private fun PdfBottomMenu(
     onBookmarksClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val menuHost = LocalLiquidGlassMenuHost.current
+    val moreMenuId = remember { Any() }
+    var moreAnchorBounds by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
+    val moreExpanded = menuHost?.activeMenu?.sourceId == moreMenuId
+    val conversionLabel = stringResource(R.string.pdf_convert_action)
+    val menuSurfaceColor = AppColors.CardBg
+    val menuContentColor = AppColors.TextPrimary
+    val currentOnConversionClick by rememberUpdatedState(onConversionClick)
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -2614,7 +2733,7 @@ private fun PdfBottomMenu(
                     )
                 }
             }
-        } else {
+        } else if (conversionState is PdfConversionState.Running) {
             PdfConversionCapsule(
                 conversionState = conversionState,
                 glassContentScrimColor = glassContentScrimColor,
@@ -2655,6 +2774,37 @@ private fun PdfBottomMenu(
                 modifier = Modifier.weight(1f),
                 onClick = onImageAdjustmentsClick
             )
+            if (!isComic) {
+                LiquidGlassIconButton(
+                    imageVector = AppIcons.DotsThreeVertical,
+                    contentDescription = stringResource(R.string.more_options),
+                    contentColor = if (moreExpanded) AppColors.Accent else AppColors.TextPrimary,
+                    normalContainerColor = AppColors.BgGray,
+                    liquidContainerColor = AppColors.BgGray,
+                    liquidScrimColor = glassContentScrimColor,
+                    pressFeedbackEnabled = false,
+                    modifier = Modifier
+                        .liquidGlassMenuAnchor(moreMenuId)
+                        .onGloballyPositioned { moreAnchorBounds = it.boundsInWindow() },
+                    onClick = {
+                        if (moreAnchorBounds != androidx.compose.ui.geometry.Rect.Zero) {
+                            menuHost?.toggle(
+                                LiquidGlassMenuSpec(
+                                    anchorBounds = moreAnchorBounds,
+                                    sourceId = moreMenuId,
+                                    width = 208.dp,
+                                    preferAbove = true,
+                                    surfaceColor = menuSurfaceColor,
+                                    contentColor = menuContentColor,
+                                    items = listOf(LiquidGlassMenuItem(conversionLabel, AppIcons.Books) {
+                                        currentOnConversionClick()
+                                    })
+                                )
+                            )
+                        }
+                    }
+                )
+            }
         }
     }
 }
@@ -3494,7 +3644,7 @@ private fun PdfAnnotationToolCapsule(
             targetState = colorExpanded,
             transitionSpec = {
                 (fadeIn(tween(170)) + androidx.compose.animation.scaleIn(initialScale = 0.82f, animationSpec = spring(dampingRatio = 0.72f)))
-                    .togetherWith(fadeOut(tween(100)) + androidx.compose.animation.scaleOut(targetScale = 0.82f))
+                    .togetherWith(fadeOut(tween(100)) + androidx.compose.animation.scaleOut(spring(stiffness = 400f), targetScale = 0.82f))
                     .using(SizeTransform(clip = false))
             },
             contentAlignment = Alignment.Center,

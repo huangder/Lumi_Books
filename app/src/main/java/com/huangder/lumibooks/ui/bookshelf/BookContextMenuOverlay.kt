@@ -48,6 +48,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.Book
+import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
 import com.huangder.lumibooks.ui.theme.AppColors
 import androidx.compose.ui.res.stringResource
 import com.huangder.lumibooks.ui.theme.AppRadius
@@ -99,6 +100,9 @@ fun BookContextMenuOverlay(
     if (state.phase == ContextMenuPhase.Idle) return
 
     val book = state.selectedBook ?: return
+    ConfigurableBackHandler(enabled = state.phase != ContextMenuPhase.Pressing) {
+        state.dismiss()
+    }
     val coverBounds = state.coverBounds
     val coverScale = state.coverScale.value
 
@@ -150,7 +154,7 @@ fun BookContextMenuOverlay(
                         is ContextMenuAction.CustomCover -> onCustomCover(book)
                         is ContextMenuAction.RemoveCustomCover -> onRemoveCustomCover(book)
                         is ContextMenuAction.BookmarksNotes -> onBookmarksNotes(book)
-                        is ContextMenuAction.Tags -> onTags(book)
+                        is ContextMenuAction.Tags -> onTags(book) 
                         is ContextMenuAction.EditInfo -> onEditInfo(book)
                     }
                 },
@@ -230,6 +234,7 @@ private fun HighlightedCover(
                 )
             }
         }
+        com.huangder.lumibooks.ui.components.BookCoverReadingProgress(book, compact = true)
     }
 }
 

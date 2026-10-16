@@ -31,6 +31,8 @@ class ReaderStateSlicesTest {
 
     @Test
     fun onlyEpubLikeBooksInBookLayoutUseTheBookLayoutSettings() {
+        assertEquals(ReaderLayoutTarget.READER_LAYOUT,
+            readerLayoutTargetFor("MARKDOWN", EpubRenderMode.BOOK_LAYOUT))
         assertEquals(
             ReaderLayoutTarget.BOOK_LAYOUT,
             readerLayoutTargetFor("EPUB", EpubRenderMode.BOOK_LAYOUT)

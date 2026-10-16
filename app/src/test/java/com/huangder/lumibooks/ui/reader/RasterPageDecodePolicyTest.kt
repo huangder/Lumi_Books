@@ -3,7 +3,6 @@ package com.huangder.lumibooks.ui.reader
 import com.huangder.lumibooks.domain.model.PageRenderMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -101,7 +100,7 @@ class RasterPageDecodePolicyTest {
 
         assertEquals(4_000_000L, pdfRenderPixelBudget(PageRenderMode.NORMAL))
         assertEquals(16_000_000L, pdfRenderPixelBudget(PageRenderMode.HIGH))
-        assertNull(pdfRenderPixelBudget(PageRenderMode.NATIVE))
+        assertEquals(16_000_000L, pdfRenderPixelBudget(PageRenderMode.NATIVE))
     }
 
     @Test
@@ -123,7 +122,84 @@ class RasterPageDecodePolicyTest {
         val scale = pdfRenderScale(612, 792, phoneWidthPx * 5, PageRenderMode.NORMAL)
         val pixels = 612.0 * 792.0 * scale * scale
 
-        assertTrue(pixels <= pdfRenderPixelBudget(PageRenderMode.NORMAL)!!)
+        assertTrue(pixels <= pdfRenderPixelBudget(PageRenderMode.NORMAL))
+    }
+
+    @Test
+    fun `pdf native large and long pages stay within bitmap and texture limits`() {
+        listOf(2400 to 3600, 1200 to 20000, 14400 to 14400, 612 to 792).forEach { (width, height) ->
+            PageRenderMode.entries.forEach { mode ->
+                val scale = pdfRenderScale(width, height, phoneWidthPx * 5, mode)
+                val outputWidth = (width * scale).toInt().coerceAtLeast(1)
+                val outputHeight = (height * scale).toInt().coerceAtLeast(1)
+                assertTrue(outputWidth.toLong() * outputHeight <= pdfRenderPixelBudget(mode))
+                assertTrue(maxOf(outputWidth, outputHeight) <= PDF_RENDER_MAX_DIMENSION)
+            }
+        }
+    }
+
+    @Test
+    fun `pdf bitmap budget adapts to small heaps`() {
+        assertEquals(8_388_608L, pdfMemoryPixelBudget(256L * 1024 * 1024))
+        assertEquals(16_000_000L, pdfMemoryPixelBudget(1024L * 1024 * 1024))
+        val budget = pdfMemoryPixelBudget(128L * 1024 * 1024)
+        val scale = pdfRenderScale(2400, 3600, phoneWidthPx * 5, PageRenderMode.NATIVE, budget)
+        assertTrue((2400 * scale).toLong() * (3600 * scale).toLong() <= budget)
+    }
+
+    @Test
+    fun `2085 page scanned PDF stays under 32 MiB per page on 256 MiB heap`() {
+        // Regression profile: 1.43 GiB JPEG-only PDF, measured on a 1200px phone.
+        val budget = pdfMemoryPixelBudget(256L * 1024 * 1024)
+        listOf(1736, 1758, 1761, 1782).forEach { width ->
+            listOf(1200, 6000).forEach { target ->
+                val scale = pdfRenderScale(width, 2500, pageRenderTargetWidth(target), PageRenderMode.NATIVE, budget)
+                val pixels = (width * scale).toLong() * (2500 * scale).toLong()
+                assertTrue(pixels * 4 <= 32L * 1024 * 1024)
+                // Preserve all source image detail at this device budget.
+                assertTrue(scale >= 1f)
+            }
+        }
+    }
+
+    @Test
+    fun `pdf memory failure retries at reduced resolution`() {
+        val attempts = mutableListOf<RasterDecodeSpec>()
+        val initial = RasterDecodeSpec(7, 4000, 6000)
+        val result = renderPdfWithMemoryFallback(initial) {
+            attempts += it
+            if (attempts.size < 3) throw OutOfMemoryError("test allocation failure")
+            it
+        }
+        assertEquals(listOf(initial, initial.copy(width = 2000, height = 3000),
+            initial.copy(width = 1000, height = 1500)), attempts)
+        assertEquals(attempts.last(), result)
+    }
+
+    @Test(expected = OutOfMemoryError::class)
+    fun `pdf memory retries stop after three attempts`() {
+        var attempts = 0
+        try {
+            renderPdfWithMemoryFallback(RasterDecodeSpec(0, 4000, 6000)) {
+                attempts++
+                throw OutOfMemoryError("test allocation failure")
+            }
+        } finally {
+            assertEquals(3, attempts)
+        }
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun `pdf invalid render is not retried as memory failure`() {
+        var attempts = 0
+        try {
+            renderPdfWithMemoryFallback(RasterDecodeSpec(0, 4000, 6000)) {
+                attempts++
+                throw IllegalStateException("invalid PDF")
+            }
+        } finally {
+            assertEquals(1, attempts)
+        }
     }
 
     @Test

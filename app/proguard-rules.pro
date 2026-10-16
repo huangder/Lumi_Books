@@ -49,3 +49,10 @@
     public static *** d(...);
     public static *** v(...);
 }
+
+# Kotlin 2.3 Compose generates very large default-argument bridges in the
+# reader. R8's aggressive optimization can emit invalid dex for these methods
+# (ART reports VerifyError: Float unexpected as arg to if-eqz/if-nez).
+# Keep shrinking/resource shrinking enabled, but disable the optimizer so the
+# release artifact remains verifiable on Android 16/API 36.
+-dontoptimize

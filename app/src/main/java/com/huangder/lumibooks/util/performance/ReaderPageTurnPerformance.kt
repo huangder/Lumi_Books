@@ -10,6 +10,7 @@ object ReaderPageTurnPerformance {
         val cookie: Int,
         val preloaded: Boolean,
         val crossChapter: Boolean,
+        val startedAtNanos: Long = android.os.SystemClock.elapsedRealtimeNanos(),
         var visualStarted: Boolean = false
     )
 
@@ -41,6 +42,11 @@ object ReaderPageTurnPerformance {
     fun markFirstFrame() {
         val turn = pending?.takeIf(PendingTurn::visualStarted) ?: return
         pending = null
+        if (com.huangder.lumibooks.BuildConfig.DEBUG) android.util.Log.d(
+            "ReaderTurnTiming",
+            "firstFrameMs=${(android.os.SystemClock.elapsedRealtimeNanos() - turn.startedAtNanos) / 1_000_000.0} " +
+                "preloaded=${turn.preloaded} crossChapter=${turn.crossChapter}"
+        )
         end(turn)
     }
 

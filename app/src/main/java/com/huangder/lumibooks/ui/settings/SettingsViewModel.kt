@@ -271,6 +271,11 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            dataStoreManager.coverReadingProgressEnabled.collectLatest { enabled ->
+                _uiState.update { it.copy(coverReadingProgressEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.twoPageSpreadEnabled.collectLatest { enabled ->
                 _uiState.value = _uiState.value.copy(twoPageSpreadEnabled = enabled)
             }
@@ -381,6 +386,16 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.ttsProviderSelection.collectLatest { selection ->
                 _uiState.value = _uiState.value.copy(ttsProviderSelection = selection)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.ttsStartChoice.collectLatest { choice ->
+                _uiState.value = _uiState.value.copy(ttsStartChoice = choice)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.ttsReaderResumeChoice.collectLatest { choice ->
+                _uiState.value = _uiState.value.copy(ttsReaderResumeChoice = choice)
             }
         }
         viewModelScope.launch {
@@ -543,6 +558,14 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun saveTtsStartChoice(choice: com.huangder.lumibooks.tts.TtsStartChoice?) {
+        viewModelScope.launch { dataStoreManager.saveTtsStartChoice(choice) }
+    }
+
+    fun saveTtsReaderResumeChoice(choice: com.huangder.lumibooks.tts.TtsReaderResumeChoice?) {
+        viewModelScope.launch { dataStoreManager.saveTtsReaderResumeChoice(choice) }
+    }
+
     fun refreshInstalledTtsEngines() {
         _uiState.value = _uiState.value.copy(
             installedTtsEngines = ttsEngine.getInstalledEngines()
@@ -618,11 +641,15 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun saveMotionPreference(preference: String) {
-        val normalized = if (preference == "reduced") "reduced" else "standard"
+        val normalized = when (preference) {
+            "fast" -> "fast"
+            "reduced" -> "reduced"
+            else -> "standard"
+        }
         if (_uiState.value.motionPreference == normalized) return
         _uiState.value = _uiState.value.copy(
             motionPreference = normalized,
-            entranceAnimationsEnabled = normalized == "standard"
+            entranceAnimationsEnabled = normalized != "reduced"
         )
         viewModelScope.launch {
             dataStoreManager.saveMotionPreference(normalized)
@@ -666,6 +693,13 @@ class SettingsViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(eInkModeEnabled = enabled)
         viewModelScope.launch {
             dataStoreManager.saveEInkModeEnabled(enabled)
+        }
+    }
+
+    fun saveCoverReadingProgressEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(coverReadingProgressEnabled = enabled) }
+        viewModelScope.launch {
+            dataStoreManager.saveCoverReadingProgressEnabled(enabled)
         }
     }
 

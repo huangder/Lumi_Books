@@ -28,11 +28,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.util.Locale
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.sync.BookDownloadState
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.BookDeleteMode
 import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.LocalCoverReadingProgressEnabled
 
 @Composable
 fun CloudBookDownloadDialog(
@@ -139,33 +141,22 @@ fun CloudAwareBookDeleteDialog(
     )
 }
 
-/** Drawn inside a cover box so download progress occupies the existing reading-progress slot. */
+/** Cover status follows the progress preference; cloud affordances remain visible in both modes. */
 @Composable
-fun BookCoverProgressOverlay(
+fun BookCoverStatusBadge(
     book: Book,
-    downloadState: BookDownloadState?,
     modifier: Modifier = Modifier,
-    compact: Boolean = false,
-    showReadingProgress: Boolean = true,
-    badgeCornerRadius: Dp = if (compact) 6.dp else 8.dp
+    compact: Boolean = false
 ) {
-    val downloading = downloadState as? BookDownloadState.Downloading
-    val progress = downloading?.progress ?: book.readingProgress
-        .takeIf { it.isFinite() }
-        ?.coerceIn(0f, 1f)
-        .orEmptyProgress()
-    val showProgress = downloading != null || (showReadingProgress && progress > 0f && !book.isCloudOnly)
-    val showFinished = downloading == null &&
-        showReadingProgress &&
-        !book.isCloudOnly &&
-        book.isReadingFinished
-
-    Box(modifier = modifier.fillMaxSize()) {
-        if (book.isCloudOnly && downloading == null) {
+    if (book.isCloudOnly) {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(if (compact) 5.dp else 7.dp),
+            contentAlignment = Alignment.BottomEnd
+        ) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(if (compact) 5.dp else 7.dp)
                     .size(if (compact) 24.dp else 30.dp)
                     .clip(CircleShape)
                     .background(Color.Black.copy(alpha = 0.62f)),
@@ -179,50 +170,96 @@ fun BookCoverProgressOverlay(
                 )
             }
         }
+    } else {
+        BookCoverReadingProgress(book, modifier, compact)
+    }
+}
 
-        if (showFinished) {
+@Composable
+fun BookCoverReadingProgress(
+    book: Book,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false
+) {
+    if (!LocalCoverReadingProgressEnabled.current || book.isCloudOnly) return
+    val cornerRadius = 8.dp
+    Box(
+        modifier = modifier.fillMaxSize().padding(if (compact) 5.dp else 7.dp),
+        contentAlignment = Alignment.BottomEnd
+    ) {
+        if (book.isReadingFinished) {
             FinishedReadingIndicator(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = if (compact) 5.dp else 6.dp, bottom = if (compact) 6.dp else 7.dp),
                 compact = compact,
                 showContainer = true,
                 tint = Color.White,
-                containerCornerRadius = badgeCornerRadius
+                containerCornerRadius = cornerRadius
             )
-        } else if (showProgress) {
-            Box(
+        } else {
+            Text(
+                text = formatReadingProgressPercent(book.readingProgress),
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = if (compact) 5.dp else 6.dp, bottom = if (compact) 6.dp else 7.dp)
-                    .clip(AppRoundedCornerShape(badgeCornerRadius))
+                    .clip(AppRoundedCornerShape(cornerRadius))
                     .background(Color.Black.copy(alpha = 0.64f))
-                    .padding(horizontal = if (compact) 3.dp else 4.dp, vertical = 1.dp)
-            ) {
-                Text(
-                    text = "${(progress * 100f).toInt().coerceIn(0, 100)}%",
-                    color = Color.White,
-                    fontSize = if (compact) 8.sp else 9.sp
-                )
-            }
+                    .padding(horizontal = if (compact) 4.dp else 5.dp, vertical = 2.dp),
+                fontSize = if (compact) 10.sp else 12.sp,
+                color = Color.White,
+                maxLines = 1
+            )
         }
+    }
+}
 
-        if (showProgress && !showFinished) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(3.dp)
-                    .background(Color.Black.copy(alpha = 0.16f))
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(progress)
-                        .height(3.dp)
-                        .background(AppColors.Accent)
-                )
-            }
-        }
+/** Book status for metadata rows outside the cover. */
+@Composable
+fun BookProgressStatus(
+    book: Book,
+    downloadState: BookDownloadState? = null,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+    color: Color = AppColors.TextSecondary,
+    progressColor: Color = AppColors.Accent
+) {
+    val downloading = downloadState as? BookDownloadState.Downloading
+    if (LocalCoverReadingProgressEnabled.current && !book.isCloudOnly && downloading == null) return
+    when {
+        downloading != null -> Text(
+            text = stringResource(
+                R.string.book_download_progress,
+                (downloading.progress * 100f).toInt().coerceIn(0, 100)
+            ),
+            modifier = modifier,
+            fontSize = if (compact) 10.sp else 12.sp,
+            color = color,
+            maxLines = 1
+        )
+        book.isCloudOnly -> Text(
+            text = stringResource(R.string.book_detail_cloud_only),
+            modifier = modifier,
+            fontSize = if (compact) 10.sp else 12.sp,
+            color = color,
+            maxLines = 1
+        )
+        book.isReadingFinished -> FinishedReadingIndicator(
+            modifier = modifier,
+            compact = compact,
+            tint = color
+        )
+        else -> Text(
+            text = formatReadingProgressPercent(book.readingProgress),
+            modifier = modifier,
+            fontSize = if (compact) 10.sp else 12.sp,
+            color = progressColor,
+            maxLines = 1
+        )
+    }
+}
+
+internal fun formatReadingProgressPercent(progress: Float): String {
+    val pct = progress.takeIf { it.isFinite() }?.coerceIn(0f, 1f)?.times(100f) ?: 0f
+    return if (pct < 10f) {
+        String.format(Locale.ROOT, "%.1f%%", pct)
+    } else {
+        "${pct.toInt()}%"
     }
 }
 
@@ -272,5 +309,3 @@ fun FinishedReadingIndicator(
         )
     }
 }
-
-private fun Float?.orEmptyProgress(): Float = this ?: 0f

@@ -4,9 +4,10 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.spring
+import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.delayMillis
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -122,7 +123,7 @@ class LiquidGlassDialogHostState internal constructor(
         visible = false
         clearJob?.cancel()
         clearJob = scope.launch {
-            delay(260)
+            delay(delayMillis(260L))
             if (!visible && dialogs.lastOrNull()?.id === id) {
                 dialogs = dialogs.dropLast(1)
                 visible = dialogs.isNotEmpty()

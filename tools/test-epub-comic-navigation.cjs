@@ -8,7 +8,7 @@ const { spawnSync } = require('node:child_process');
 const source = readFileSync(join(__dirname,
   '../app/src/main/java/com/huangder/lumibooks/util/epub/EpubDocumentTransformer.kt'), 'utf8');
 const css = source.match(/private const val READER_CSS = """([\s\S]*?)"""/)[1];
-const script = [...source.matchAll(/private const val READER_SCRIPT_PART_[123] = """([\s\S]*?)"""/g)].map(m => m[1]).join('');
+const script = [...source.matchAll(/private const val READER_SCRIPT_PART_(?:1B|[123]) = """([\s\S]*?)"""/g)].map(m => m[1]).join('');
 
 async function verify() {
   const near = (a, b) => { if (Math.abs(a - b) > 1) throw Error(`Expected ${b}, got ${a}`); };

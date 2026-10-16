@@ -15,9 +15,10 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
+import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.delayMillis
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -90,7 +91,8 @@ import androidx.compose.ui.platform.LocalContext
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.data.sync.BookDownloadState
-import com.huangder.lumibooks.ui.components.BookCoverProgressOverlay
+import com.huangder.lumibooks.ui.components.BookCoverStatusBadge
+import com.huangder.lumibooks.ui.components.BookProgressStatus
 import com.huangder.lumibooks.domain.model.LibraryFolder
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.animation.HorizontalOverscrollBounce
@@ -253,7 +255,7 @@ internal fun BookshelfSearchOverlay(
     }
     LaunchedEffect(visible, eInkMode) {
         if (visible) {
-            if (!eInkMode) delay(140)
+            if (!eInkMode) delay(delayMillis(140L))
             focusRequester.requestFocus()
         } else {
             keyboardController?.hide()
@@ -673,11 +675,9 @@ private fun BookshelfSearchResultCard(
                     )
                 }
 
-                BookCoverProgressOverlay(
+                BookCoverStatusBadge(
                     book = book,
-                    downloadState = downloadState,
-                    compact = true,
-                    badgeCornerRadius = 14.dp
+                    compact = true
                 )
             }
 
@@ -703,6 +703,12 @@ private fun BookshelfSearchResultCard(
                     fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
+                )
+                BookProgressStatus(
+                    book = book,
+                    downloadState = downloadState,
+                    compact = true,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
 

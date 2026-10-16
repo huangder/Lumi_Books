@@ -160,11 +160,23 @@ private fun FeedbackOverviewPage(onBack: () -> Unit) {
             Text(stringResource(R.string.feedback_thanks), fontSize = AppType.Body, fontWeight = FontWeight.Medium, color = AppColors.TextPrimary, textAlign = TextAlign.Center)
         }
         Spacer(Modifier.height(AppSpace.lg))
-        FeedbackLinkSection(stringResource(R.string.feedback_website), "huangder.top") { openFeedbackUrl(context, "https://huangder.top") }
-        Spacer(Modifier.height(AppSpace.md))
-        FeedbackLinkSection(stringResource(R.string.feedback_github_issues), stringResource(R.string.feedback_github_issues_desc)) { openFeedbackUrl(context, "https://github.com/huangder/Lumi_Books/issues") }
-        Spacer(Modifier.height(AppSpace.md))
-        FeedbackLinkSection(stringResource(R.string.feedback_qq_channel), stringResource(R.string.feedback_qq_channel_desc)) { openFeedbackUrl(context, "https://pd.qq.com/s/29t6pms4a?b=9") }
+        FeedbackLinksCard(
+            links = listOf(
+                stringResource(R.string.feedback_website) to "huangder.top",
+                stringResource(R.string.feedback_github_issues) to stringResource(R.string.feedback_github_issues_desc),
+                stringResource(R.string.feedback_qq_channel) to stringResource(R.string.feedback_qq_channel_desc)
+            ),
+            onClick = { index ->
+                openFeedbackUrl(
+                    context,
+                    listOf(
+                        "https://huangder.top",
+                        "https://github.com/huangder/Lumi_Books/issues",
+                        "https://pd.qq.com/s/29t6pms4a?b=9"
+                    )[index]
+                )
+            }
+        )
     }
 }
 
@@ -737,6 +749,41 @@ private fun FeedbackLinkSection(
                 tint = AppColors.TextSecondary,
                 modifier = Modifier.size(20.dp)
             )
+        }
+    }
+}
+
+@Composable
+private fun FeedbackLinksCard(
+    links: List<Pair<String, String>>,
+    onClick: (Int) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpace.lg)
+            .shadow(6.dp, AppRoundedCornerShape(AppRadius.md), ambientColor = Color(0x04000000), spotColor = Color(0x04000000))
+            .clip(AppRoundedCornerShape(AppRadius.md))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
+    ) {
+        links.forEachIndexed { index, (label, title) ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onClick(index) }
+                    .padding(AppSpace.md),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(label, fontSize = AppType.Caption, color = AppColors.TextSecondary)
+                    Text(title, fontSize = AppType.Body, color = AppColors.TextPrimary)
+                }
+                Spacer(Modifier.width(AppSpace.sm))
+                Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+            }
+            if (index != links.lastIndex) {
+                Box(Modifier.fillMaxWidth().padding(horizontal = AppSpace.md).height(1.dp).background(AppColors.Divider))
+            }
         }
     }
 }

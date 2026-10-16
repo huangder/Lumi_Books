@@ -3,7 +3,8 @@ package com.huangder.lumibooks.ui.animation
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.delayMillis
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
@@ -68,7 +69,7 @@ internal class CoverFlowEntranceState(private val scope: CoroutineScope) {
                 coroutineScope {
                     launch { maskAlpha.animateTo(1f, tween(if (motionEnabled) 240 else 60)) }
                     launch {
-                        if (motionEnabled) delay(120)
+                        if (motionEnabled) delay(delayMillis(120L))
                         titleAlpha.animateTo(1f, tween(if (motionEnabled) 320 else 60))
                     }
                 }

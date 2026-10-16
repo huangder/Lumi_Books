@@ -156,7 +156,7 @@
     <string name="dark_mode_light">라이트</string>
     <string name="dark_mode_dark">다크</string>
     <string name="label_reader_theme">기본 읽기 테마</string>
-    <string name="theme_day">주간</string>
+    <string name="theme_day">기본</string>
     <string name="theme_night">야간</string>
     <string name="theme_sepia">눈 보호</string>
     <string name="theme_green">그린</string>
@@ -434,6 +434,7 @@
     <string name="line_guide_dim_low">낮음</string>
     <string name="line_guide_dim_medium">보통</string>
     <string name="line_guide_dim_high">높음</string>
+    <string name="line_guide_dim_very_high">매우 높음</string>
     <string name="line_guide_close">한 줄씩 읽기 끄기</string>
     <string name="bionic_reading_hint">단어 앞부분을 굵게 표시해 시선 이동과 집중을 돕습니다</string>
     <string name="reader_edge_tap_page_turn">화면 양쪽 탭으로 페이지 넘기기</string>
@@ -451,7 +452,8 @@
     <string name="reader_corner_content_none">표시 안 함</string>
     <string name="reader_corner_content_chapter">장 정보</string>
     <string name="reader_corner_content_book_progress">전체 진행률</string>
-    <string name="reader_corner_content_page_number">페이지 번호</string>
+    <string name="reader_corner_content_page_number">현재 장 페이지 번호</string>
+    <string name="reader_corner_content_global_page_number">전체 페이지 번호</string>
     <string name="reader_corner_content_battery">배터리</string>
     <string name="reader_corner_content_time">시간</string>
     <string name="search_placeholder">키워드 입력</string>
@@ -1158,6 +1160,7 @@
     <string name="motion_preference_reduced">모션 줄이기</string>
     <string name="motion_preference_standard">표준</string>
     <string name="book_open_transition_label">책 열기 전환</string>
+    <string name="cover_reading_progress_enabled">표지에 읽기 진행률 표시</string>
     <string name="book_open_transition_hero">심리스</string>
     <string name="book_open_transition_loading_page">로딩 화면</string>
     <string name="page_turn_module_label">페이지 넘기기</string>
@@ -1323,7 +1326,7 @@
     <string name="page_animation_curl_short">컬</string>
     <string name="reader_settings_preview_sample">제1장 책장 위의 빛\n\n아침 바람이 창가를 넘어와 종이를 가볍게 흔듭니다. 독서는 시간을 천천히 흐르게 하고 먼 목소리를 지금 이 순간 또렷하게 전합니다.</string>
     <string name="exit_preview">미리 보기 종료</string>
-    <string name="theme_suite_day_name">주간</string>
+    <string name="theme_suite_day_name">기본</string>
     <string name="theme_suite_night_name">야간</string>
     <string name="theme_suite_sepia_name">양피지</string>
     <string name="theme_suite_green_name">눈 보호</string>

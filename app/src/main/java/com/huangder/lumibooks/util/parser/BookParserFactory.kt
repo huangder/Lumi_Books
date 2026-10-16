@@ -19,6 +19,7 @@ object BookParserFactory {
             BookFormat.TXT -> TxtParser(context)
             BookFormat.MOBI -> MobiParser(context)
             BookFormat.CBZ -> CbzParser(context)
+            BookFormat.MARKDOWN -> MarkdownParser(context)
         }
     }
 }

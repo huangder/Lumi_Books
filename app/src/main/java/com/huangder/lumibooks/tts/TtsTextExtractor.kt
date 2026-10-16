@@ -11,7 +11,7 @@ class TtsTextExtractor {
         internal val CLOSING_PUNCTUATION = setOf('”', '’', '"', '\'', '》', '】', '）', ')')
         private val SOFT_BREAKS = setOf('，', ',', '、', '：', ':')
         private val CLAUSE_BREAKS = TERMINATORS + SOFT_BREAKS + setOf('…', '\n')
-        private val SINGLE_MARKER_TERMINATORS = setOf('.', '。')
+        private val FULL_STOPS = setOf('.', '。')
     }
 
     fun extractPageText(
@@ -35,7 +35,7 @@ class TtsTextExtractor {
             val char = normalized[index]
             buffer.append(char)
 
-            if (char in TERMINATORS) {
+            if (isSentenceTerminatorAt(normalized, index)) {
                 val end = consumeSentenceEnd(normalized, index)
                 while (index + 1 < end) {
                     index++
@@ -76,9 +76,10 @@ class TtsTextExtractor {
             val char = text[index]
             val paragraphBreak = char == '\n' && index + 1 < text.length && text[index + 1] == '\n'
             val reachedLimit = index - start + 1 >= MAX_SENTENCE_LENGTH
-            if (char in TERMINATORS || paragraphBreak || reachedLimit) {
+            val sentenceTerminator = isSentenceTerminatorAt(text, index)
+            if (sentenceTerminator || paragraphBreak || reachedLimit) {
                 var end = index + 1
-                if (char in TERMINATORS) {
+                if (sentenceTerminator) {
                     end = consumeSentenceEnd(text, index)
                 } else if (reachedLimit) {
                     val softBreak = text.substring(start, end).indexOfLast { it in SOFT_BREAKS }
@@ -115,14 +116,23 @@ class TtsTextExtractor {
     /**
      * Returns the text to send to a speech engine while keeping the original segment unchanged
      * for highlighting and source-offset mapping. Android engines may produce no audible output
-     * for a standalone list marker such as "1." or "1。"; the number itself is speakable.
+     * for short fragments such as "1。", "好。" or "好的.". Blank their trailing full stops
+     * without shifting range callbacks for text inside quotes/brackets.
      */
     fun playbackText(text: String): String {
         val trimmed = text.trim()
-        if (trimmed.length < 2 || trimmed.last() !in SINGLE_MARKER_TERMINATORS) return text
-        val marker = trimmed.dropLast(1).trim()
-        if (marker.isEmpty() || !isSingleGrapheme(marker)) return text
-        return marker
+        val content = trimmed.trim { it.isWhitespace() || it.isPunctuation() }
+        if (content.isEmpty() || graphemeCount(content, 0, content.length) > 2) return text
+        var suffixStart = text.length
+        while (suffixStart > 0 &&
+            (text[suffixStart - 1].isWhitespace() || text[suffixStart - 1] in FULL_STOPS ||
+                text[suffixStart - 1] in CLOSING_PUNCTUATION)
+        ) suffixStart--
+        if (text.substring(suffixStart).none { it in FULL_STOPS }) return text
+        return buildString {
+            append(text, 0, suffixStart)
+            text.substring(suffixStart).forEach { append(if (it in FULL_STOPS) ' ' else it) }
+        }.trimEnd()
     }
 
     /** True when a segment contains at least one non-whitespace, non-punctuation character. */
@@ -146,11 +156,12 @@ class TtsTextExtractor {
         var start = 0
         var index = 0
         while (index < segment.text.length) {
-            if (segment.text[index] in CLAUSE_BREAKS) {
+            if (isClauseBreakAt(segment.text, index)) {
                 var end = index + 1
                 while (
                     end < segment.text.length &&
-                    (segment.text[end] in CLAUSE_BREAKS || segment.text[end] in CLOSING_PUNCTUATION)
+                    (isClauseBreakAt(segment.text, end) ||
+                        segment.text[end] in CLOSING_PUNCTUATION)
                 ) {
                     end++
                 }
@@ -218,7 +229,7 @@ class TtsTextExtractor {
                 else -> {
                     merged.append(char)
                     rawIndex++
-                    if (char in TERMINATORS) {
+                    if (isSentenceTerminatorAt(raw, rawIndex - 1)) {
                         val sentenceEnd = consumeSentenceEnd(raw, rawIndex - 1)
                         val available = maxTotalLength - merged.length
                         val appendEnd = minOf(sentenceEnd, rawIndex + available)
@@ -350,17 +361,26 @@ class TtsTextExtractor {
         while (end < text.length) {
             val before = end
             while (end < text.length && text[end] in CLOSING_PUNCTUATION) end++
-            while (end < text.length && text[end] in TERMINATORS) end++
+            while (end < text.length && isSentenceTerminatorAt(text, end)) end++
             if (end == before) break
         }
         return end
     }
 
-    private fun isSingleGrapheme(text: String): Boolean {
-        val iterator = BreakIterator.getCharacterInstance(Locale.ROOT)
-        iterator.setText(text)
-        return iterator.first() == 0 && iterator.next() == text.length
+    private fun isSentenceTerminatorAt(text: String, index: Int): Boolean {
+        if (index !in text.indices || text[index] !in TERMINATORS) return false
+        return !isDecimalPointAt(text, index)
     }
+
+    private fun isClauseBreakAt(text: String, index: Int): Boolean {
+        if (index !in text.indices || text[index] !in CLAUSE_BREAKS) return false
+        return !isDecimalPointAt(text, index)
+    }
+
+    private fun isDecimalPointAt(text: String, index: Int): Boolean =
+        text.getOrNull(index) == '.' &&
+            text.getOrNull(index - 1)?.isDigit() == true &&
+            text.getOrNull(index + 1)?.isDigit() == true
 
     private fun Char.isPunctuation(): Boolean = when (Character.getType(this)) {
         Character.CONNECTOR_PUNCTUATION.toInt(),

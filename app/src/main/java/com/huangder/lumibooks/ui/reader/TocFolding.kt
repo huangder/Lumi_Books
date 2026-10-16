@@ -72,9 +72,12 @@ internal fun currentTocVisibleIndex(
     visibleEntries: List<TocVisibleEntry>,
     foldGroups: Map<Int, Int>,
     collapsedGroups: Set<Int>,
-    currentChapter: Int
+    currentChapter: Int,
+    currentAnchor: String? = null
 ): Int {
-    val sourceIndex = entries.indexOfFirst { it.chapterIndex == currentChapter }
+    val sourceIndex = if (currentAnchor != null) entries.indexOfFirst {
+        it.chapterIndex == currentChapter && it.anchor == currentAnchor
+    } else entries.indexOfFirst { it.chapterIndex == currentChapter }
     if (sourceIndex < 0) return -1
 
     val directIndex = visibleEntries.indexOfFirst { it.sourceIndex == sourceIndex }

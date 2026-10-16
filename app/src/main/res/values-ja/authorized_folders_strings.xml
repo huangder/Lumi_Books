@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="authorized_folders_title">アクセス許可済みフォルダ</string>
+    <string name="authorized_folders_hint">左にスワイプしてアクセス許可を削除。本とファイルは保持されます。</string>
+    <string name="authorized_folders_empty">アクセス許可済みのフォルダはありません。本のインポート時にフォルダへのアクセスを許可できます。</string>
+    <string name="authorized_folders_remove_failed">アクセス許可を削除できませんでした。もう一度お試しください。</string>
+</resources>

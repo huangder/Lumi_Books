@@ -2,6 +2,7 @@ package com.huangder.lumibooks.ui.reader
 
 import android.app.Application
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -43,5 +44,28 @@ class ReaderWeightSliderTest {
         compose.onNode(weightSlider).assert(SemanticsMatcher("restored weight") {
             it.config[SemanticsProperties.ProgressBarRangeInfo].current == 550f
         })
+    }
+
+    @Test fun horizontalDragCommitsItsLastValueWhenThePointerStreamIsCancelled() {
+        val weight = mutableStateOf(400)
+        compose.setContent {
+            ThemeSettingsSheet(visible = true, currentFontSize = 20f,
+                currentFontType = "serif", currentBodyFontWeight = weight.value,
+                onBodyFontWeightChange = { weight.value = it },
+                currentTheme = "white", eInkModeEnabled = true,
+                onFontSizeChange = {}, onThemeChange = {}, onOpenAdvanced = {}, onDismiss = {})
+        }
+        val weightSlider = SemanticsMatcher("variable weight range") {
+            it.config.getOrNull(SemanticsProperties.ProgressBarRangeInfo)?.range == 200f..900f
+        }
+        compose.waitUntil(10_000) { compose.onAllNodes(weightSlider).fetchSemanticsNodes().size == 1 }
+        compose.onNode(weightSlider).performTouchInput {
+            down(Offset(width * 0.3f, centerY))
+            moveTo(Offset(width * 0.8f, centerY), delayMillis = 100)
+            cancel()
+        }
+        compose.runOnIdle {
+            assertEquals(750, weight.value)
+        }
     }
 }

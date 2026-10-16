@@ -282,7 +282,8 @@ class ReadingRepositoryImpl @Inject constructor(
             syncId = syncId,
             updatedAt = updatedAt,
             remark = remark,
-            tags = AnnotationTags.decode(tagsJson)
+            tags = AnnotationTags.decode(tagsJson),
+            isStale = isStale
         )
     }
 
@@ -298,7 +299,8 @@ class ReadingRepositoryImpl @Inject constructor(
             syncId = syncId,
             updatedAt = updatedAt,
             remark = remark,
-            tagsJson = AnnotationTags.encode(tags)
+            tagsJson = AnnotationTags.encode(tags),
+            isStale = isStale
         )
     }
 
@@ -323,7 +325,8 @@ class ReadingRepositoryImpl @Inject constructor(
             sourceRuleId = sourceRuleId,
             sourceMatchKey = sourceMatchKey,
             styleSnapshotJson = styleSnapshotJson,
-            tags = AnnotationTags.decode(tagsJson)
+            tags = AnnotationTags.decode(tagsJson),
+            isStale = isStale
         )
     }
 
@@ -348,7 +351,8 @@ class ReadingRepositoryImpl @Inject constructor(
             sourceRuleId = sourceRuleId,
             sourceMatchKey = sourceMatchKey,
             styleSnapshotJson = styleSnapshotJson,
-            tagsJson = AnnotationTags.encode(tags)
+            tagsJson = AnnotationTags.encode(tags),
+            isStale = isStale
         )
     }
 }

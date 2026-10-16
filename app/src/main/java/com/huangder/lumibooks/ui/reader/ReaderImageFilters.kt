@@ -37,7 +37,11 @@ internal fun rememberSharpenedBitmap(source: Bitmap?, amount: Float): Bitmap? {
         value = null
         value = withContext(Dispatchers.Default) {
             val context = currentCoroutineContext()
-            sharpenReaderBitmap(source, amount) { context.ensureActive() }
+            try {
+                sharpenReaderBitmap(source, amount) { context.ensureActive() }
+            } catch (_: OutOfMemoryError) {
+                source
+            }
         }
     }
     return result ?: source

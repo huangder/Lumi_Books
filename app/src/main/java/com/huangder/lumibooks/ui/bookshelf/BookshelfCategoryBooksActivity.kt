@@ -55,6 +55,7 @@ class BookshelfCategoryBooksActivity : ComponentActivity() {
             val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = launchTheme.liquidGlassTransparency)
             val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = launchTheme.liquidGlassHdrHighlightEnabled)
             val darkMode by dataStoreManager.darkMode.collectAsState(initial = launchTheme.darkMode)
+            val coverReadingProgressEnabled by dataStoreManager.coverReadingProgressEnabled.collectAsState(initial = false)
             val eInkMode by dataStoreManager.eInkModeEnabled.collectAsState(initial = launchTheme.eInkModeEnabled)
             val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = launchTheme.predictiveBackEnabled)
             val isDark = if (eInkMode) false else when (darkMode) {
@@ -73,6 +74,7 @@ class BookshelfCategoryBooksActivity : ComponentActivity() {
                 darkTheme = isDark,
                 dynamicColor = effectiveTheme == "material3",
                 appTheme = appTheme,
+                coverReadingProgressEnabled = coverReadingProgressEnabled,
                 lumiBackgroundScene = com.huangder.lumibooks.ui.theme.LumiBackgroundScene.SECONDARY,
                 appAccentColor = appAccentColor,
                 liquidGlassTransparency = liquidGlassTransparency,
@@ -122,6 +124,7 @@ class BookshelfCategoryBooksActivity : ComponentActivity() {
                 is BookshelfCategoryTarget.EpubMobi -> "epub_mobi"
                 is BookshelfCategoryTarget.Pdf -> "pdf"
                 is BookshelfCategoryTarget.Txt -> "txt"
+                is BookshelfCategoryTarget.Markdown -> "markdown"
                 is BookshelfCategoryTarget.Comic -> "cbz"
                 is BookshelfCategoryTarget.Favorites -> "favorites"
                 is BookshelfCategoryTarget.Tag -> "tag"
@@ -147,6 +150,7 @@ class BookshelfCategoryBooksActivity : ComponentActivity() {
                 "epub_mobi" -> BookshelfCategoryTarget.EpubMobi(title)
                 "pdf" -> BookshelfCategoryTarget.Pdf(title)
                 "txt" -> BookshelfCategoryTarget.Txt(title)
+                "markdown" -> BookshelfCategoryTarget.Markdown(title)
                 "cbz" -> BookshelfCategoryTarget.Comic(title)
                 "favorites" -> BookshelfCategoryTarget.Favorites(title)
                 "tag" -> getStringExtra(EXTRA_TAG_ID)

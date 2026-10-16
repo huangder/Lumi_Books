@@ -1,7 +1,7 @@
 package com.huangder.lumibooks.ui.animation
 
 import androidx.compose.animation.core.animate
-import androidx.compose.animation.core.spring
+import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalOverscrollConfiguration
 import androidx.compose.foundation.layout.Box

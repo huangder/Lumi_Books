@@ -7,6 +7,7 @@ import org.jsoup.nodes.TextNode
 import org.jsoup.parser.Parser
 import org.jsoup.select.NodeTraversor
 import org.jsoup.select.NodeVisitor
+import org.jsoup.select.NodeFilter
 import java.io.ByteArrayInputStream
 
 object EpubDocumentTransformer {
@@ -63,7 +64,8 @@ object EpubDocumentTransformer {
             allowCoverStyling = layout == EpubRenditionLayout.REFLOWABLE,
             isCoverCandidate = isCoverCandidate
         )
-        markFullBleedMedia(document, layout, cssIndex)
+        markReflowableMediaWrappers(document, layout)
+        markFullBleedMedia(document, layout, cssIndex.plus(documentCssIndex(document)))
         // 必须以 DataNode 注入：文档以 XML 语法序列化，appendText 会把脚本里的
         // '<'、'>'、'&' 转义成 &lt; &gt; &amp;，浏览器在 <script> 内不会反转义，
         // 导致分页脚本语法错误、原排版空白卡死（text/html 章节尤其明显）。
@@ -108,13 +110,55 @@ object EpubDocumentTransformer {
 
     private fun isMediaOnlyDocument(document: Document): Boolean {
         val body = document.body()
-        val textProbe = body.clone().apply {
-            // Text inside an SVG is part of the cover artwork, not flowing chapter copy.
-            select("script, style, noscript, svg").remove()
-        }
-        if (textProbe.text().isNotBlank()) return false
+        if (hasVisibleFlowText(body)) return false
+
+        // SVG lettering alone is still a single cover illustration. An SVG that
+        // overlays its image with independent text is a designed page.
+        if (body.select("svg image").isNotEmpty() &&
+            body.select("svg text, svg foreignObject").any { it.text().isNotBlank() }) return false
 
         return topLevelMedia(body).size == 1
+    }
+
+    private fun hasVisibleFlowText(container: org.jsoup.nodes.Element): Boolean {
+        var hasText = false
+        NodeTraversor.filter(object : NodeFilter {
+            override fun head(node: org.jsoup.nodes.Node, depth: Int): NodeFilter.FilterResult {
+                // Artwork and hidden script/style contents are not flowing chapter text.
+                if (node.nodeName().lowercase() in setOf("script", "style", "noscript", "svg")) {
+                    return NodeFilter.FilterResult.SKIP_CHILDREN
+                }
+                if (node is org.jsoup.nodes.Element && isExplicitlyHidden(node)) {
+                    return NodeFilter.FilterResult.SKIP_CHILDREN
+                }
+                if (node is TextNode && node.wholeText.any(::isVisibleFlowCharacter)) {
+                    hasText = true
+                    return NodeFilter.FilterResult.STOP
+                }
+                return NodeFilter.FilterResult.CONTINUE
+            }
+            override fun tail(node: org.jsoup.nodes.Node, depth: Int) = NodeFilter.FilterResult.CONTINUE
+        }, container)
+        return hasText
+    }
+
+    private fun isExplicitlyHidden(element: org.jsoup.nodes.Element): Boolean {
+        if (element.hasAttr("hidden") || element.attr("aria-hidden").equals("true", ignoreCase = true)) {
+            return true
+        }
+        val compactStyle = element.attr("style").lowercase().replace(Regex("\\s+"), "")
+        return compactStyle.contains("display:none") || compactStyle.contains("visibility:hidden")
+    }
+
+    private fun isVisibleFlowCharacter(character: Char): Boolean {
+        if (character.isWhitespace() || character.isISOControl()) return false
+        return when (Character.getType(character)) {
+            Character.FORMAT.toInt(),
+            Character.SPACE_SEPARATOR.toInt(),
+            Character.LINE_SEPARATOR.toInt(),
+            Character.PARAGRAPH_SEPARATOR.toInt() -> false
+            else -> true
+        }
     }
 
     private fun topLevelMedia(body: org.jsoup.nodes.Element) =
@@ -125,12 +169,41 @@ object EpubDocumentTransformer {
             }
         }
 
+    /** Prevent a publisher's image-only wrapper from being fragmented between CSS columns. */
+    private fun markReflowableMediaWrappers(document: Document, layout: EpubRenditionLayout) {
+        if (layout != EpubRenditionLayout.REFLOWABLE) return
+        val body = document.body()
+        topLevelMedia(body).forEach { media ->
+            if (isFootnoteMedia(media)) return@forEach
+
+            var wrapper = media.parent()
+            while (wrapper != null && wrapper !== body) {
+                val wrappedMedia = topLevelMedia(wrapper)
+                if (wrappedMedia.size != 1 || wrappedMedia.single() !== media || hasVisibleFlowText(wrapper)) {
+                    break
+                }
+                wrapper.attr(MEDIA_WRAPPER_ATTR, "true")
+                wrapper = wrapper.parent()
+            }
+        }
+    }
+
+    private fun isFootnoteMedia(media: org.jsoup.nodes.Element): Boolean {
+        if (media.classNames().any { it.contains("footnote", ignoreCase = true) }) return true
+        return media.parents().any { parent ->
+            if (parent.tagName().equals("sup", ignoreCase = true)) return@any true
+            if (!parent.tagName().equals("a", ignoreCase = true)) return@any false
+            parent.attr("href").contains("footnote", ignoreCase = true) ||
+                parent.id().contains("footnote", ignoreCase = true)
+        }
+    }
+
     /**
      * 标记出版社显式声明铺满宽度的块级图片。
      *
-     * 判定口径：只认匹配到图片元素自身的 `width` 属性 / 内联 style / CSS 规则里的
-     * `100%`、`100vw`；父容器声明的宽度不算。命中后由阅读器样式取消左右页边距，
-     * 章首第一张这样的图连顶部页边距一起取消。固定版式不做此标记（设计盒优先）。
+     * 判定口径：匹配图片自身，或只包裹该图片的父容器上的 `width: 100%/100vw`。
+     * 命中后由阅读器样式取消左右页边距，章首第一张这样的图连顶部页边距一起取消。
+     * 固定版式不做此标记（设计盒优先）。
      */
     private fun markFullBleedMedia(
         document: Document,
@@ -149,7 +222,12 @@ object EpubDocumentTransformer {
         }
         val firstBlock = firstVisualContent(body)
         media.forEach { element ->
-            if (!cssIndex.declaresFullWidth(element)) return@forEach
+            val hasFullWidthDeclaration = cssIndex.declaresFullWidth(element) ||
+                element.parents().asSequence()
+                    .takeWhile { it !== body }
+                    .filter { it.hasAttr(MEDIA_WRAPPER_ATTR) }
+                    .any(cssIndex::declaresFullWidth)
+            if (!hasFullWidthDeclaration) return@forEach
             val bleedsTop = firstBlock != null &&
                 (firstBlock === element || element.parents().contains(firstBlock))
             element.attr(
@@ -157,6 +235,14 @@ object EpubDocumentTransformer {
                 if (bleedsTop) BLEED_HORIZONTAL_TOP else BLEED_HORIZONTAL
             )
         }
+    }
+
+    private fun documentCssIndex(document: Document): EpubCssIndex {
+        val styles = document.select("style:not(#lumi-reader-style)").mapNotNull { style ->
+            val css = style.data().trim().ifEmpty { style.wholeText().trim() }
+            css.takeIf { it.isNotEmpty() }?.let { "chapter-inline.css" to it }
+        }
+        return EpubCssIndex.parse(styles)
     }
 
     /** 正文里第一个真正有内容（含图片）的元素。 */
@@ -167,7 +253,7 @@ object EpubDocumentTransformer {
             ) {
                 continue
             }
-            if (child.text().isNotBlank() || child.selectFirst("img, svg, video, canvas") != null) {
+            if (hasVisibleFlowText(child) || child.selectFirst("img, svg, video, canvas") != null) {
                 return child
             }
         }
@@ -207,6 +293,9 @@ object EpubDocumentTransformer {
         val parser = if (useXmlParser) Parser.xmlParser() else Parser.htmlParser()
         val document = Jsoup.parse(ByteArrayInputStream(bytes), null, path, parser)
         document.outputSettings().syntax(Document.OutputSettings.Syntax.xml).charset(Charsets.UTF_8)
+        if (document.selectFirst("body[data-lumi-markdown]") != null) {
+            document.outputSettings().prettyPrint(false)
+        }
         sanitize(document)
         return document
     }
@@ -265,7 +354,7 @@ html.lumi-fixed-layout body[data-lumi-layout="pre_paginated"] {
 }
 html.lumi-scrolled {
   height: auto !important;
-  min-height: 100% !important;
+  min-height: 0 !important;
   overflow-x: hidden !important;
   overflow-y: auto !important;
   overscroll-behavior-x: none !important;
@@ -304,10 +393,31 @@ body[data-lumi-layout="reflowable"] canvas {
   margin-left: auto;
   margin-right: auto;
   max-width: 100%;
-  /* 竖版大图按整页宽度放大后会超出页面高度、下半截被裁掉；
-     限制高度不超过当前分页的内容区高度，保持比例缩放到整页可见。 */
-  max-height: var(--lumi-content-height, calc(var(--lumi-page-height, 100vh) - 32px));
   object-fit: contain;
+}
+/* 分页中的图片必须作为一个整体进入某一栏。出版社常在纯图片容器上写固定高度或
+   overflow:hidden；横屏后这会把图片留在半页位置并裁掉下半截。 */
+html.lumi-paginated body[data-lumi-layout="reflowable"]:not([data-lumi-media-only="true"])
+  [data-lumi-media-wrapper="true"] {
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: var(--lumi-content-height, 100vh) !important;
+  overflow: visible !important;
+  break-inside: avoid-column !important;
+  -webkit-column-break-inside: avoid !important;
+}
+html.lumi-paginated body[data-lumi-layout="reflowable"]:not([data-lumi-media-only="true"]) img:not([data-lumi-footnote-marker="true"]),
+html.lumi-paginated body[data-lumi-layout="reflowable"]:not([data-lumi-media-only="true"]) svg,
+html.lumi-paginated body[data-lumi-layout="reflowable"]:not([data-lumi-media-only="true"]) video,
+html.lumi-paginated body[data-lumi-layout="reflowable"]:not([data-lumi-media-only="true"]) canvas {
+  max-height: var(--lumi-content-height, 100vh) !important;
+  object-fit: contain !important;
+  vertical-align: top !important;
+  break-inside: avoid-column !important;
+  -webkit-column-break-inside: avoid !important;
+}
+html.lumi-paginated body[data-lumi-layout="reflowable"]:not([data-lumi-media-only="true"]) img:not([data-lumi-footnote-marker="true"]) {
+  height: auto !important;
 }
 /* 注释引用图标（脚注标记）是行内小图：上面的块级/居中处理会把它们推到单独一行、并放大到
    整页宽度，表现为"注释图标位置不对"。这里还原成行内、按字号缩放。
@@ -352,6 +462,7 @@ body[data-lumi-cover="true"] [data-lumi-cover-container="true"] {
   margin: 0 !important;
   padding: 0 !important;
   border: 0 !important;
+  transform: none !important;
 }
 body[data-lumi-cover="true"] [data-lumi-cover-media="true"] {
   position: absolute !important;
@@ -364,7 +475,9 @@ body[data-lumi-cover="true"] [data-lumi-cover-media="true"] {
   margin: 0 !important;
   padding: 0 !important;
   border: 0 !important;
+  transform: none !important;
   object-fit: contain !important;
+  object-position: center center !important;
 }
 body[data-lumi-layout="reflowable"] table,
 body[data-lumi-layout="reflowable"] pre {
@@ -429,8 +542,11 @@ html.lumi-scrolled body[data-lumi-media-only="true"] [data-lumi-cover-media="tru
   object-fit: contain !important;
 }
 /* 「整页图裁切填满」开启时整页图按屏幕比例裁切铺满，不再等比留白。 */
-html.lumi-crop-page-image body[data-lumi-media-only="true"] [data-lumi-cover-media="true"] {
+html.lumi-paginated.lumi-crop-page-image body[data-lumi-media-only="true"] [data-lumi-cover-media="true"] {
   object-fit: cover !important;
+}
+html.lumi-scrolled.lumi-crop-page-image body[data-lumi-media-only="true"] [data-lumi-cover-media="true"] {
+  object-fit: contain !important;
 }
 html.lumi-ignore-publisher-background:not(.lumi-night):not(.lumi-sepia):not(.lumi-green):not(.lumi-sepia-dark):not(.lumi-green-dark) {
   background-color: transparent !important;
@@ -440,8 +556,8 @@ html.lumi-ignore-publisher-background body {
   background-color: transparent !important;
   background-image: none !important;
 }
-html.lumi-night { filter: invert(0.86) hue-rotate(180deg); background: #111 !important; }
-html.lumi-night img, html.lumi-night svg, html.lumi-night video, html.lumi-night canvas { filter: invert(1) hue-rotate(180deg); }
+html.lumi-night { background: #111 !important; }
+html.lumi-night body { color: #e8e8ea !important; }
 html.lumi-sepia { background: #f5e6d3 !important; }
 html.lumi-sepia body { color: #3e2723 !important; }
 html.lumi-green { background: #e8f5e9 !important; }
@@ -506,11 +622,11 @@ a[href*="#ref-footnotebookmark-end-"] img {
 #lumi-footnote-popover[data-placement="below"] { --lumi-footnote-motion-y: -8px; transform-origin: var(--lumi-footnote-arrow-x, 50%) top; }
 #lumi-footnote-popover[data-placement="above"] { --lumi-footnote-motion-y: 8px; transform-origin: var(--lumi-footnote-arrow-x, 50%) bottom; }
 #lumi-footnote-popover[data-state="open"] {
-  animation: lumi-footnote-enter 190ms cubic-bezier(0.2, 0.82, 0.25, 1) both;
+  animation: lumi-footnote-enter calc(190ms * var(--lumi-motion-scale, 1)) cubic-bezier(0.2, 0.82, 0.25, 1) both;
 }
 #lumi-footnote-popover[data-state="closing"] {
   pointer-events: none;
-  animation: lumi-footnote-exit 150ms cubic-bezier(0.4, 0, 1, 1) both;
+  animation: lumi-footnote-exit calc(150ms * var(--lumi-motion-scale, 1)) cubic-bezier(0.4, 0, 1, 1) both;
 }
 #lumi-footnote-popover::before {
   content: '';
@@ -551,7 +667,7 @@ a[href*="#ref-footnotebookmark-end-"] img {
   border: 2px solid rgba(80, 80, 80, 0.2);
   border-top-color: currentColor;
   border-radius: 50%;
-  animation: lumi-footnote-spin 0.8s linear infinite;
+  animation: lumi-footnote-spin calc(800ms * var(--lumi-motion-scale, 1)) linear infinite;
 }
 #lumi-highlight-layer,
 #lumi-underline-layer {
@@ -586,7 +702,7 @@ a[href*="#ref-footnotebookmark-end-"] img {
   filter: none !important;
 }
 .lumi-search-highlight-block {
-  animation: lumi-search-highlight-pulse 2000ms linear forwards;
+  animation: lumi-search-highlight-pulse calc(2000ms * var(--lumi-motion-scale, 1)) linear forwards;
 }
 html.lumi-sepia #lumi-footnote-popover { background: #fff8ee; color: #3e2723; }
 html.lumi-green #lumi-footnote-popover { background: #f3fbf3; color: #1b4d27; }
@@ -665,16 +781,18 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
 """
 
     private const val MEDIA_ONLY_ATTR = "data-lumi-media-only"
+    private const val MEDIA_WRAPPER_ATTR = "data-lumi-media-wrapper"
     private const val BLEED_ATTR = "data-lumi-bleed"
     private const val BLEED_HORIZONTAL = "horizontal"
     private const val BLEED_HORIZONTAL_TOP = "horizontal-top"
 
     private val READER_SCRIPT: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
         buildString(
-            READER_SCRIPT_PART_1.length + READER_SCRIPT_PART_2.length +
-                READER_SCRIPT_PART_3.length
+            READER_SCRIPT_PART_1.length + READER_SCRIPT_PART_1B.length +
+                READER_SCRIPT_PART_2.length + READER_SCRIPT_PART_3.length
         ) {
             append(READER_SCRIPT_PART_1)
+            append(READER_SCRIPT_PART_1B)
             append(READER_SCRIPT_PART_2)
             append(READER_SCRIPT_PART_3)
         }
@@ -690,7 +808,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     nativeViewport: null, fixedDesignSize: null, configurationGeneration: 0,
     layoutRevision: 0, stableLayoutRevision: -1,
     pendingProgression: undefined, publisherBox: null, publisherBackground: null, scrollGuard: false, initialFragmentApplied: false,
-    transition: 'slide', transitionDurationMs: 260, nativePaging: false, animationTimer: 0, suppressClickUntil: 0, preservePublisherBackground: true,
+    transition: 'slide', transitionDurationMs: 260, visualDurationScale: 1, nativePaging: false, animationTimer: 0, suppressClickUntil: 0, preservePublisherBackground: true,
     imagePageCrop: false, publisherPaintOnly: false,
     restoreProgressionInclusive: false, pendingLocator: null,
     readerBackgroundColor: null, coverBackgroundColor: null, autoTextColor: null, publisherHasImageBackground: false,
@@ -699,9 +817,12 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     readerBackgroundUrl: null,
     edgeTapLeft: -1, edgeTapRight: 1, canTurnPrevious: true, canTurnNext: true,
     bionicReading: false, chineseMode: 'original', chineseMap: null, pendingPreparedPage: null, prepareSerial: 0,
-    highlightItems: [], ttsHighlight: null, searchHighlight: null, dictionarySelection: null,
+    highlightItems: [], ttsHighlight: null, ttsFollowSuspended: false, searchHighlight: null, dictionarySelection: null,
     insets: { top: 0, right: 0, bottom: 0, left: 0 }
   };
+  function visualMillis(base) {
+    return Math.max(1, Math.round(base * state.visualDurationScale));
+  }
   var resizeTimer = 0;
   var selectionDispatchTimer = 0;
   var scrollNotifyTimer = 0;
@@ -822,7 +943,17 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     return null;
   }
 
+  var locatorFrameCache = null;
   function currentLocator() {
+    var key = [state.configurationGeneration, state.layoutRevision, state.page, window.scrollX, window.scrollY].join(':');
+    if (locatorFrameCache && locatorFrameCache.key === key) return locatorFrameCache.value;
+    var value = computeCurrentLocator();
+    locatorFrameCache = {key:key, value:value};
+    requestAnimationFrame(function () { locatorFrameCache = null; });
+    return value;
+  }
+
+  function computeCurrentLocator() {
     var result = currentTextLocator();
     var images = document.querySelectorAll('[data-lumi-comic-image]');
     for (var imageIndex = 0; imageIndex < images.length; imageIndex++) {
@@ -1018,7 +1149,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
   function physicalPageForRect(rect) {
     if (!rect) return 0;
     if (state.flow === 'scrolled') {
-      return Math.max(0, Math.floor((rect.top + window.scrollY) / Math.max(1, state.viewportHeight)));
+      var metrics = scrollMetrics();
+      return Math.max(0, Math.floor((rect.top + metrics.scrollY) / metrics.clientHeight));
     }
     var physical = state.pageOffsets[state.page] || 0;
     var originalLeft = rect.left + (state.reverseAxis ? -physical : physical) * state.pageStep;
@@ -1292,7 +1424,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     if (!pageStageActive) return;
     var baseDuration = state.transitionDurationMs;
     var remaining = commit ? 1 - pageStageProgress : pageStageProgress;
-    var duration = Math.max(110, Math.round(baseDuration * Math.max(0.3, remaining)));
+    var duration = Math.max(Math.min(visualMillis(110), baseDuration), Math.round(baseDuration * Math.max(0.3, remaining)));
     if (pageStageDurationOverride > 0) {
       duration = Math.min(duration, pageStageDurationOverride);
       pageStageDurationOverride = 0;
@@ -1355,7 +1487,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       body.style.transition = 'none';
       body.style.opacity = '1';
       body.style.transform = '';
-      window.scrollTo(0, state.page * state.viewportHeight);
+      var metrics = scrollMetrics();
+      window.scrollTo(0, Math.min(metrics.maxScrollY, state.page * metrics.clientHeight));
     } else {
       var x = pageX(state.page);
       window.scrollTo(0, 0);
@@ -1411,7 +1544,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       window.scrollTo(0, 0);
     } else if (state.flow === 'scrolled') {
       body.style.transform = '';
-      window.scrollTo(0, state.page * state.viewportHeight);
+      var metrics = scrollMetrics();
+      window.scrollTo(0, Math.min(metrics.maxScrollY, state.page * metrics.clientHeight));
     } else {
       window.scrollTo(0, 0);
       body.style.transform = 'translate3d(' + pageX(state.page) + 'px,0,0)';
@@ -1425,12 +1559,13 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     });
   }
 
-  function turnByDirection(direction) {
+  function turnByDirection(direction, manual) {
+    if (manual) post('manualScroll', {});
     direction = Number(direction) < 0 ? -1 : 1;
     // Do not queue input behind a running transition. Finalize the already
     // committed page synchronously, then start the next adjacent animation.
     var interrupted = settleActivePageStageForInput(true);
-    if (interrupted) pageStageDurationOverride = state.transition === 'curl' ? 190 : 150;
+    if (interrupted) pageStageDurationOverride = visualMillis(state.transition === 'curl' ? 190 : 150);
     var target = state.page + direction;
     if (target >= 0 && target < state.total) moveToPage(target, true);
     else post('chapterTurn', { direction: direction });
@@ -1476,12 +1611,15 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       return;
     }
     var body = document.body;
-    body.style.transition = 'transform 190ms cubic-bezier(.2,.72,.2,1)';
+    body.style.transition = 'transform ' + visualMillis(190) + 'ms cubic-bezier(.2,.72,.2,1)';
     body.style.transform = 'translate3d(' + pageX(state.page) + 'px,0,0)';
     clearTimeout(state.animationTimer);
-    state.animationTimer = setTimeout(function () { body.style.transition = 'none'; }, 210);
+    state.animationTimer = setTimeout(function () { body.style.transition = 'none'; }, visualMillis(210));
   }
 
+"""
+
+    private const val READER_SCRIPT_PART_1B = """
   function settleMedia() {
     var imageJobs = Array.prototype.map.call(document.images || [], function (image) {
       if (image.complete) return Promise.resolve();
@@ -1590,12 +1728,13 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     // Only an image/gradient counts as the book's own background. A plain paper
     // color should not hide the reader background the user picked.
     state.publisherHasImageBackground = hasPublisherBackgroundImage(source);
-    if (!source) return;
     var computed = publisherBackgroundComputed(rootStyle, bodyStyle);
-    if (!computed) return;
     state.publisherBackground = {
       fromBody: source === bodyStyle,
       computed: computed,
+      rootPriority: Array.prototype.reduce.call(root.style, function (result, name) {
+        result[name] = root.style.getPropertyPriority(name); return result;
+      }, {}),
       rootInline: {
         backgroundColor: root.style.backgroundColor,
         backgroundImage: root.style.backgroundImage,
@@ -1641,9 +1780,12 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
   }
 
   function sizePublisherBackgroundLayer(layer) {
+    var backgroundHeight = !state.fixed && state.flow === 'scrolled'
+      ? Math.max(state.viewportHeight, window.innerHeight || 0)
+      : state.viewportHeight;
     var declarations = {
       position: 'fixed', top: '0px', right: 'auto', bottom: 'auto', left: '0px',
-      width: state.viewportWidth + 'px', height: state.viewportHeight + 'px',
+      width: state.viewportWidth + 'px', height: backgroundHeight + 'px',
       minWidth: '0px', minHeight: '0px', maxWidth: 'none', maxHeight: 'none',
       boxSizing: 'border-box', margin: '0px', padding: '0px', border: '0px',
       overflow: 'hidden', transform: 'none', pointerEvents: 'none', zIndex: '0'
@@ -1662,7 +1804,10 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     if (!saved) return;
     var root = document.documentElement;
     var body = document.body;
-    Object.keys(saved.rootInline).forEach(function (name) { root.style[name] = saved.rootInline[name]; });
+    Object.keys(saved.rootInline).forEach(function (name) {
+      var cssName = name.replace(/[A-Z]/g, function (c) { return '-' + c.toLowerCase(); });
+      restoreInlineProperty(root.style, cssName, saved.rootInline[name], saved.rootPriority[cssName]);
+    });
     restoreInlineProperty(body.style, 'background-color', saved.bodyInline.backgroundColor, saved.bodyPriority.backgroundColor);
     restoreInlineProperty(body.style, 'background-image', saved.bodyInline.backgroundImage, saved.bodyPriority.backgroundImage);
     restoreInlineProperty(body.style, 'position', saved.bodyInline.position, saved.bodyPriority.position);
@@ -1719,8 +1864,12 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       return { top: 0, right: 0, bottom: 0, left: 0 };
     }
     var box = state.publisherBox;
-    var publisherHorizontalInset = Math.max(0,
-      (box.marginLeft + box.paddingLeft + box.marginRight + box.paddingRight) / 2);
+    // Reflowable books use the reader's horizontal insets as their outer
+    // content boundary. Publisher html/body spacing varies between books and
+    // must not be added to an identical theme setting. Fixed layouts retain
+    // that spacing because it belongs to their authored design coordinates.
+    var publisherHorizontalInset = state.fixed ? Math.max(0,
+      (box.marginLeft + box.paddingLeft + box.marginRight + box.paddingRight) / 2) : 0;
     return {
       top: box.marginTop + box.paddingTop + state.insets.top,
       right: publisherHorizontalInset + state.insets.right,
@@ -1769,6 +1918,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
 
   function applyScrolledBox(body) {
     var inset = readerBox();
+    clearPublisherRootHorizontalInset();
     setInsetVariables(body, inset);
     body.style.removeProperty('--lumi-page-height');
     body.style.removeProperty('--lumi-column-gap');
@@ -1776,7 +1926,202 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     body.style.margin = '0px';
     body.style.padding = inset.top + 'px ' + inset.right + 'px ' + inset.bottom + 'px ' + inset.left + 'px';
     body.style.width = '100%';
-    body.style.minHeight = '100%';
+    // The fixed background layer and media-page rules provide viewport height
+    // where it is needed; ordinary short chapters should keep their real height.
+    body.style.minHeight = '0px';
+  }
+
+  function scrollMetrics() {
+    var root = document.scrollingElement || document.documentElement;
+    var clientHeight = Math.max(1,
+      root.clientHeight || document.documentElement.clientHeight || state.viewportHeight);
+    // Android WebView can retain a taller layout viewport after its host is
+    // resized. The root scrollHeight is then at least innerHeight even though
+    // there is no content to scroll. Subtract that layout viewport floor while
+    // keeping clientHeight as the visible-page size.
+    var layoutHeight = Math.max(clientHeight, window.innerHeight || 0);
+    var scrollHeight = Math.max(
+      root.scrollHeight || 0,
+      document.documentElement.scrollHeight || 0,
+      document.body ? document.body.scrollHeight || 0 : 0,
+      clientHeight
+    );
+    var tolerance = Math.max(2, Math.ceil(window.devicePixelRatio || 1));
+    var maxScrollY = Math.max(0, scrollHeight - layoutHeight);
+    var scrollY = Math.max(0, root.scrollTop || window.scrollY || 0);
+    var nonScrollable = maxScrollY <= tolerance;
+    return {
+      root: root,
+      clientHeight: clientHeight,
+      layoutHeight: layoutHeight,
+      scrollHeight: scrollHeight,
+      maxScrollY: maxScrollY,
+      scrollY: scrollY,
+      tolerance: tolerance,
+      nonScrollable: nonScrollable,
+      pageCount: Math.max(1, Math.ceil(
+        (maxScrollY + clientHeight - tolerance) / clientHeight
+      ))
+    };
+  }
+
+  function applyScrollability(metrics) {
+    if (metrics.nonScrollable) {
+      document.documentElement.style.setProperty('overflow-y', 'hidden', 'important');
+    } else {
+      document.documentElement.style.removeProperty('overflow-y');
+    }
+  }
+
+  var overflowFitProperties = [
+    'box-sizing', 'max-width', 'min-width', 'width', 'margin-left', 'margin-right',
+    'overflow-wrap', 'white-space'
+  ];
+
+  function rememberOverflowFit(element) {
+    if (element.__lumiOverflowFitOriginal) return;
+    var saved = {};
+    overflowFitProperties.forEach(function (name) {
+      saved[name] = {
+        value: element.style.getPropertyValue(name),
+        priority: element.style.getPropertyPriority(name)
+      };
+    });
+    element.__lumiOverflowFitOriginal = saved;
+    element.setAttribute('data-lumi-overflow-fit', 'true');
+  }
+
+  function clearOverflowFits() {
+    document.querySelectorAll('[data-lumi-overflow-fit="true"]').forEach(function (element) {
+      var saved = element.__lumiOverflowFitOriginal;
+      if (saved) {
+        overflowFitProperties.forEach(function (name) {
+          var original = saved[name] || { value: '', priority: '' };
+          restoreInlineProperty(element.style, name, original.value, original.priority);
+        });
+      }
+      try { delete element.__lumiOverflowFitOriginal; } catch (_) {
+        element.__lumiOverflowFitOriginal = null;
+      }
+      element.removeAttribute('data-lumi-overflow-fit');
+    });
+  }
+
+  function overflowFitRects(element) {
+    var rects = Array.prototype.slice.call(element.getClientRects()).filter(function (rect) {
+      return rect.width > 0 && rect.height > 0;
+    });
+    return rects.length ? rects : [element.getBoundingClientRect()];
+  }
+
+  function rectOverflowsReaderBox(rect, inset, availableWidth, tolerance) {
+    if (rect.width > availableWidth + tolerance) return true;
+    if (state.flow === 'scrolled') {
+      return rect.left < inset.left - tolerance ||
+        rect.right > state.viewportWidth - inset.right + tolerance;
+    }
+    var step = Math.max(1, state.pageStep || state.viewportWidth);
+    var localLeft = ((rect.left % step) + step) % step;
+    return localLeft < inset.left - tolerance ||
+      localLeft + rect.width > state.viewportWidth - inset.right + tolerance;
+  }
+
+  function shouldFitOverflowElement(element, style) {
+    if (!element || element === document.body || element.closest('[id^="lumi-"]')) return false;
+    if (element.closest('[data-lumi-bleed]') || element.closest('[data-lumi-cover-container="true"]') ||
+        element.closest('[data-lumi-media-only="true"]')) return false;
+    if (/^(SCRIPT|STYLE|LINK|META|IMG|SVG|VIDEO|CANVAS|PICTURE|SOURCE|IFRAME|MATH|TABLE|PRE|CODE|KBD|SAMP|TBODY|THEAD|TFOOT|TR|TD|TH)$/.test(
+        String(element.tagName || '').toUpperCase())) return false;
+    if (style.position === 'absolute' || style.position === 'fixed') return false;
+    return style.display !== 'inline' && style.display !== 'contents' &&
+      style.display !== 'table-row' && style.display !== 'table-cell' && style.display !== 'none';
+  }
+
+  function shouldFitOverflowText(element) {
+    var current = element;
+    while (current && current !== document.body) {
+      if (current.id && String(current.id).indexOf('lumi-') === 0) return false;
+      if (current.hasAttribute('data-lumi-bleed') ||
+          current.hasAttribute('data-lumi-cover-container') ||
+          current.hasAttribute('data-lumi-media-only')) return false;
+      if (/^(SCRIPT|STYLE|NOSCRIPT|PRE|CODE|KBD|SAMP|TABLE|TBODY|THEAD|TFOOT|TR|TD|TH|IMG|SVG|VIDEO|CANVAS|PICTURE|SOURCE|IFRAME|MATH)$/.test(
+          String(current.tagName || '').toUpperCase())) return false;
+      var style = window.getComputedStyle(current);
+      if (style.display === 'none' || style.position === 'absolute' || style.position === 'fixed') return false;
+      current = current.parentElement;
+    }
+    return true;
+  }
+
+  function overflowTextTarget(node) {
+    var current = node.parentElement;
+    var fallback = current;
+    while (current && current !== document.body) {
+      var style = window.getComputedStyle(current);
+      if (style.whiteSpace === 'nowrap') return current;
+      if (style.display !== 'inline' && style.display !== 'contents') return current;
+      current = current.parentElement;
+    }
+    return current || fallback;
+  }
+
+  function textNodeOverflowsReaderBox(node, inset, availableWidth, tolerance) {
+    var range = document.createRange();
+    try {
+      range.selectNodeContents(node);
+      return Array.prototype.some.call(range.getClientRects(), function (rect) {
+        return rect.width > 0 && rect.height > 0 &&
+          rectOverflowsReaderBox(rect, inset, availableWidth, tolerance);
+      });
+    } finally {
+      if (range.detach) range.detach();
+    }
+  }
+
+  function fitReflowableTextOverflow(inset, availableWidth, tolerance) {
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    var node;
+    while ((node = walker.nextNode())) {
+      if (!node.nodeValue || !node.nodeValue.trim()) continue;
+      var parent = node.parentElement;
+      if (!parent || !shouldFitOverflowText(parent)) continue;
+      if (!textNodeOverflowsReaderBox(node, inset, availableWidth, tolerance)) continue;
+      var target = overflowTextTarget(node);
+      if (!target || !shouldFitOverflowText(target)) continue;
+      rememberOverflowFit(target);
+      var style = window.getComputedStyle(target);
+      target.style.setProperty('overflow-wrap', 'anywhere', 'important');
+      if (style.whiteSpace === 'nowrap') {
+        target.style.setProperty('white-space', 'normal', 'important');
+      }
+    }
+  }
+
+  function fitReflowableHorizontalOverflow() {
+    clearOverflowFits();
+    if (state.fixed || !document.body || isMediaOnlyPage()) return;
+    var inset = readerBox();
+    var availableWidth = Math.max(1, state.viewportWidth - inset.left - inset.right);
+    var tolerance = Math.max(2, Math.ceil(window.devicePixelRatio || 1));
+    Array.prototype.forEach.call(document.body.querySelectorAll('*'), function (element) {
+      var style = window.getComputedStyle(element);
+      if (!shouldFitOverflowElement(element, style)) return;
+      var overflows = overflowFitRects(element).some(function (rect) {
+        return rectOverflowsReaderBox(rect, inset, availableWidth, tolerance);
+      });
+      if (!overflows) return;
+      rememberOverflowFit(element);
+      element.style.setProperty('box-sizing', 'border-box', 'important');
+      element.style.setProperty('max-width', '100%', 'important');
+      element.style.setProperty('min-width', '0px', 'important');
+      element.style.setProperty('margin-left', 'auto', 'important');
+      element.style.setProperty('margin-right', 'auto', 'important');
+      var stillOverflows = overflowFitRects(element).some(function (rect) {
+        return rect.width > availableWidth + tolerance;
+      });
+      if (stillOverflows) element.style.setProperty('width', '100%', 'important');
+    });
+    fitReflowableTextOverflow(inset, availableWidth, tolerance);
   }
 
   function collectOccupiedPages(maxPhysicalPage) {
@@ -1802,7 +2147,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     return Object.keys(occupied).map(Number).sort(function (a, b) { return a - b; });
   }
 
-  function paginate(restoreProgression) {
+  function paginate(restoreProgression, insetAnchor) {
     if (state.paginating) return;
     state.fixed = document.body.getAttribute('data-lumi-layout') === 'pre_paginated';
     if (state.fixed && state.nativeViewport &&
@@ -1812,9 +2157,14 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     state.stableLayoutRevision = -1;
     state.paginating = true;
     var body = document.body;
+    clearOverflowFits();
     applyPendingRuleStyles();
-    markFootnoteMarkers();
-    resolveFootnoteBodies();
+    // Insets cannot change footnote references or bodies. Keep document setup
+    // out of the live margin path, especially for chapters with many notes.
+    if (!insetAnchor) {
+      markFootnoteMarkers();
+      resolveFootnoteBodies();
+    }
     capturePublisherBox(body);
     capturePublisherBackground(body);
     restorePublisherBox(body);
@@ -1836,6 +2186,48 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     document.documentElement.classList.toggle('lumi-paginated', !state.fixed && state.flow === 'paginated');
     document.documentElement.classList.toggle('lumi-scrolled', !state.fixed && state.flow === 'scrolled');
     document.documentElement.classList.toggle('lumi-fixed-layout', state.fixed);
+    if (isMediaOnlyPage()) {
+      var svgMedia = body.querySelector('[data-lumi-cover-media="true"]');
+      if (!svgMedia) svgMedia = body.querySelector('svg');
+      if (!state.fixed && svgMedia) {
+        var scrollingImage = state.flow === 'scrolled';
+        var mediaWrapper = svgMedia.parentElement;
+        while (mediaWrapper && mediaWrapper !== body) {
+          mediaWrapper.style.setProperty('position', 'static', 'important');
+          mediaWrapper.style.setProperty('width', '100%', 'important');
+          mediaWrapper.style.setProperty('height', scrollingImage ? 'auto' : '100%', 'important');
+          mediaWrapper.style.setProperty('overflow', 'visible', 'important');
+          mediaWrapper.style.setProperty('transform', 'none', 'important');
+          mediaWrapper = mediaWrapper.parentElement;
+        }
+        svgMedia.style.setProperty('object-fit', state.imagePageCrop && !scrollingImage
+          ? 'cover' : 'contain', 'important');
+        svgMedia.style.setProperty('object-position', 'center center', 'important');
+        svgMedia.style.setProperty('position', scrollingImage ? 'static' : 'absolute', 'important');
+        svgMedia.style.setProperty('width', '100%', 'important');
+        svgMedia.style.setProperty('height', scrollingImage ? 'auto' : '100%', 'important');
+        svgMedia.style.setProperty('transform', 'none', 'important');
+      }
+      if (svgMedia && svgMedia.tagName.toLowerCase() === 'svg') {
+        var onlyImage = svgMedia.querySelectorAll('image').length === 1 &&
+          !svgMedia.querySelector('text, foreignObject, path, rect, circle, ellipse, polygon, polyline, line');
+        var innerImage = onlyImage ? svgMedia.querySelector('image') : null;
+        if (innerImage && !svgMedia.hasAttribute('viewBox')) {
+          var imageWidth = parseFloat(innerImage.getAttribute('width'));
+          var imageHeight = parseFloat(innerImage.getAttribute('height'));
+          if (imageWidth > 0 && imageHeight > 0 &&
+              !/%/.test(innerImage.getAttribute('width') + innerImage.getAttribute('height'))) {
+            svgMedia.setAttribute('viewBox', '0 0 ' + imageWidth + ' ' + imageHeight);
+          }
+        }
+        var aspect = state.imagePageCrop && !state.fixed && state.flow !== 'scrolled'
+          ? 'xMidYMid slice' : 'xMidYMid meet';
+        svgMedia.setAttribute('preserveAspectRatio', aspect);
+        svgMedia.querySelectorAll('image').forEach(function (image) {
+          image.setAttribute('preserveAspectRatio', aspect);
+        });
+      }
+    }
     if (state.fixed) {
       var viewport = document.querySelector('meta[name="viewport"]');
       var content = viewport ? viewport.getAttribute('content') || '' : '';
@@ -1850,6 +2242,25 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       }
       designWidth = state.fixedDesignSize.width;
       designHeight = state.fixedDesignSize.height;
+      if (isMediaOnlyPage() && svgMedia) {
+        var wrapper = svgMedia.parentElement;
+        while (wrapper && wrapper !== body) {
+          wrapper.style.setProperty('position', 'static', 'important');
+          wrapper.style.setProperty('width', '100%', 'important');
+          wrapper.style.setProperty('height', '100%', 'important');
+          wrapper.style.setProperty('overflow', 'visible', 'important');
+          wrapper.style.setProperty('transform', 'none', 'important');
+          wrapper = wrapper.parentElement;
+        }
+        svgMedia.style.setProperty('position', 'static', 'important');
+        svgMedia.style.setProperty('width', '100%', 'important');
+        svgMedia.style.setProperty('height', '100%', 'important');
+        svgMedia.style.setProperty('max-width', 'none', 'important');
+        svgMedia.style.setProperty('max-height', 'none', 'important');
+        svgMedia.style.setProperty('object-fit', 'contain', 'important');
+        svgMedia.style.setProperty('object-position', 'center center', 'important');
+        svgMedia.style.setProperty('transform', 'none', 'important');
+      }
       // 固定排版书籍也要尊重阅读器的页边距设置：先把整页缩放塞进“视口减去 insets”的盒子，
       // 再按 insets 偏移。整页图页（封面/插图页）的 insets 为 0，仍然满屏。
       var fixedInset = readerBox();
@@ -1901,15 +2312,18 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       body.style.transform = '';
       body.style.columnWidth = 'auto';
       body.style.columnGap = 'normal';
-      var scrollExtent = Math.max(body.scrollHeight, document.documentElement.scrollHeight, state.viewportHeight);
+      fitReflowableHorizontalOverflow();
+      var metrics = scrollMetrics();
+      applyScrollability(metrics);
       state.pageOffsets = [0];
-      state.total = Math.max(1, Math.ceil(scrollExtent / state.viewportHeight));
+      state.total = metrics.pageCount;
       moveToPage(typeof restoreProgression === 'number'
         ? Math.floor(restoreProgression * state.total + 0.000001) : state.page, false);
     } else {
       document.documentElement.style.overflow = 'hidden';
       applyPublisherBackgroundLayer();
       applyPaginationBox(body);
+      fitReflowableHorizontalOverflow();
       var extent = Math.max(document.documentElement.scrollWidth, body.scrollWidth, state.viewportWidth);
       var physicalTotal = Math.max(1, Math.ceil((extent - 1) / state.pageStep));
       state.pageOffsets = collectOccupiedPages(physicalTotal - 1);
@@ -1919,9 +2333,18 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
         : state.page;
       moveToPage(target, false);
     }
+    if (insetAnchor) {
+      if (insetAnchor.range && document.body.contains(insetAnchor.range.startContainer)) {
+        moveToPage(pageForRange(insetAnchor.range), false);
+      } else if (insetAnchor.locator) {
+        state.pendingLocator = insetAnchor.locator;
+      }
+      restoreComicImageScroll(insetAnchor.locator);
+    }
     // 早于分页到达的恢复锚点在这里生效：ready 载荷带回的才是最终页。
     applyPendingLocator();
     // 视口尺寸在分页时才最终确定，这里同步一次阅读器背景层（用户自设的背景图/底色）。
+    applyReaderPaperBackground(state.readerBackgroundActive);
     applyReaderPageBackgroundLayer(state.readerBackgroundActive);
     body.style.visibility = 'visible';
     // 分页完成后整页容器的尺寸才确定，这时再压制覆盖整页的纯色"纸张"背景。
@@ -2179,7 +2602,6 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     var existing = document.getElementById('lumi-reader-overrides');
     var family = config.fontFamily ? String(config.fontFamily) : '';
     var fontUrl = config.fontUrl ? String(config.fontUrl) : '';
-    var textColor = config.textColor ? String(config.textColor) : '';
     var bodyFontWeight = Math.max(100, Math.min(900, Math.round(Number(config.bodyFontWeight) || 400)));
     var textAlignment = String(config.textAlignment || '');
     // 原排版的「自然对齐」保留书籍 CSS（包括标题居中、段落继承和署名右对齐）。
@@ -2187,7 +2609,14 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     if (!/^(left|center|right|justify)$/.test(textAlignment)) textAlignment = '';
     var letterSpacingDp = Number(config.letterSpacingDp);
     var hasLetterSpacing = Number.isFinite(letterSpacingDp);
-    if (!family && !textColor && !textAlignment && bodyFontWeight === 400 && !hasLetterSpacing) {
+    var lineHeight = Number(config.lineHeight);
+    var hasLineHeight = config.lineHeight != null && Number.isFinite(lineHeight);
+    var paragraphSpacingDp = Number(config.paragraphSpacingDp);
+    var hasParagraphSpacing = config.paragraphSpacingDp != null && Number.isFinite(paragraphSpacingDp);
+    var firstLineIndent = Number(config.firstLineIndent);
+    var hasFirstLineIndent = config.firstLineIndent != null && Number.isFinite(firstLineIndent);
+    if (!family && !textAlignment && bodyFontWeight === 400 && !hasLetterSpacing &&
+        !hasLineHeight && !hasParagraphSpacing && !hasFirstLineIndent) {
       if (existing) existing.remove();
       return;
     }
@@ -2212,30 +2641,94 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       letterSpacingDp = Math.max(-8, Math.min(16, letterSpacingDp));
       rules += textSelector + '{letter-spacing:' + letterSpacingDp.toFixed(3) + 'px !important;}';
     }
-    if (textColor) rules += textSelector + '{color:' + textColor + ' !important;}';
+    if (hasLineHeight) {
+      lineHeight = Math.max(1, Math.min(2.5, lineHeight));
+      rules += textSelector + '{line-height:' + lineHeight.toFixed(3) + ' !important;}';
+    }
+    if (hasParagraphSpacing) {
+      paragraphSpacingDp = Math.max(0, Math.min(30, paragraphSpacingDp));
+      rules += 'p{margin-block-start:0 !important;margin-block-end:' + paragraphSpacingDp.toFixed(3) + 'px !important;}';
+    }
+    if (hasFirstLineIndent) {
+      firstLineIndent = Math.max(0, Math.min(4, firstLineIndent));
+      rules += 'p{text-indent:' + firstLineIndent.toFixed(3) + 'em !important;}';
+    }
     if (bodyFontWeight !== 400) rules += textSelector + '{font-weight:' + bodyFontWeight + ' !important;}';
     if (textAlignment) rules += textSelector + '{text-align:' + textAlignment + ' !important;}';
-    style.textContent = rules;
+    if (style.textContent !== rules) style.textContent = rules;
     if (!existing) document.head.appendChild(style);
   }
 
   /**
-   * Auto text color only applies where the reader background is visible; pages
-   * that paint the book's own image background keep the book's text color.
+   * Auto text color only applies where the reader background is visible.
+   * Both automatic and explicit reader colors replace dark neutral text only;
+   * publisher accent colors survive every theme, including custom backgrounds.
    */
-  function applyReaderAutoTextColor(config, readerBackgroundActive) {
+  var overriddenTextColors = new Map();
+
+  function restoreReaderTextColors() {
+    overriddenTextColors.forEach(function (saved, element) {
+      restoreInlineProperty(element.style, 'color', saved.value, saved.priority);
+    });
+    overriddenTextColors.clear();
     var existing = document.getElementById('lumi-reader-auto-text');
+    if (existing) existing.remove();
+  }
+
+  function applyReaderAutoTextColor(config, readerBackgroundActive) {
     var color = config && config.autoTextColor ? String(config.autoTextColor) : '';
     var explicit = config && config.textColor ? String(config.textColor) : '';
-    if (!readerBackgroundActive || !color || explicit) {
-      if (existing) existing.remove();
-      return;
+    if (!explicit && (!readerBackgroundActive || !color)) return;
+    // Read every publisher color before changing any ancestor's inheritance.
+    // Pin colored descendants to their original computed color so mixed text,
+    // nested emphasis, inline !important and stylesheet colors all survive.
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+    var elements = new Set();
+    var node;
+    while ((node = walker.nextNode())) {
+      var parent = node.parentElement;
+      if (!parent || !node.nodeValue || !node.nodeValue.trim() ||
+          parent.closest('script,style,noscript,svg,math,#lumi-page-stage,#lumi-footnote-popover')) continue;
+      elements.add(parent);
     }
-    var style = existing || document.createElement('style');
-    style.id = 'lumi-reader-auto-text';
-    style.textContent = 'body,p,div,section,article,aside,header,footer,nav,h1,h2,h3,h4,h5,h6,' +
-      'span,a,li,dt,dd,td,th,blockquote,figcaption,label{color:' + color + ' !important;}';
-    if (!existing) document.head.appendChild(style);
+    var replacements = [];
+    var publisherPaperCache = new Map();
+    elements.forEach(function (element) {
+      var publisherColor = getComputedStyle(element).color;
+      var match = String(publisherColor || '').match(/rgba?\(([^)]+)\)/i);
+      if (!match) return;
+      var channels = match[1].split(',').map(function (value) { return Number(value.trim()); });
+      if (channels.length < 3 || channels.some(function (value) { return !Number.isFinite(value); })) return;
+      var maximum = Math.max.apply(null, channels.slice(0, 3));
+      var spread = maximum - Math.min.apply(null, channels.slice(0, 3));
+      var luminance = channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+      var darkNeutral = spread <= 16 && spread <= maximum * 0.15 && luminance < 150 &&
+        (channels.length < 4 || channels[3] > 0);
+      // An image/gradient supplies its own paper and contrast, even when it is
+      // painted on a chapter container rather than on html/body.
+      var publisherPaper = false;
+      if (state.preservePublisherBackground && !explicit) {
+        var ancestors = [];
+        for (var ancestor = element; ancestor; ancestor = ancestor.parentElement) {
+          if (publisherPaperCache.has(ancestor)) {
+            publisherPaper = publisherPaperCache.get(ancestor); break;
+          }
+          ancestors.push(ancestor);
+          if (hasPublisherBackgroundImage(getComputedStyle(ancestor))) {
+            publisherPaper = true; break;
+          }
+        }
+        ancestors.forEach(function (ancestor) { publisherPaperCache.set(ancestor, publisherPaper); });
+      }
+      replacements.push([element, darkNeutral && !publisherPaper ? (explicit || color) : publisherColor]);
+    });
+    replacements.forEach(function (replacement) {
+      var element = replacement[0];
+      overriddenTextColors.set(element, {
+        value: element.style.getPropertyValue('color'), priority: element.style.getPropertyPriority('color')
+      });
+      element.style.setProperty('color', replacement[1], 'important');
+    });
   }
 
   /**
@@ -2247,6 +2740,13 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
    */
   function applyReaderPaperBackground(active) {
     var existing = document.getElementById('lumi-reader-paper');
+    if (active) {
+      document.documentElement.style.setProperty('background-color',
+        state.readerBackgroundHasImage ? 'transparent' : (state.readerBackgroundColor || '#ffffff'), 'important');
+      document.documentElement.style.setProperty('background-image', 'none', 'important');
+      document.body.style.setProperty('background-color', 'transparent', 'important');
+      document.body.style.setProperty('background-image', 'none', 'important');
+    }
     // 背景是图片时不能在文档层铺底色：底色会盖住 WebView 下方的图片层，
     // 页面就只剩纯色（表现为"设置了图片背景还是白色/纯色"）。
     var color = active && !state.readerBackgroundHasImage && state.readerBackgroundColor
@@ -2269,6 +2769,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
    * 应当让位给用户设置的背景。只处理覆盖整页、且背景是纯色（无图片/渐变）的元素，
    * 图片、渐变、以及书内局部色块都保留。
    */
+  var overriddenPagePaint = new Map();
   function neutralizeSolidPagePaint() {
     if (!state.readerBackgroundActive || !state.readerBackgroundColor) return;
     var body = document.body;
@@ -2282,25 +2783,34 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       var tag = String(element.tagName || '').toUpperCase();
       if (tag === 'IMG' || tag === 'SVG' || tag === 'VIDEO' || tag === 'CANVAS' ||
           tag === 'PICTURE' || tag === 'IFRAME') continue;
+      if (element.closest('svg,picture,video,canvas')) continue;
       if (element.id && element.id.indexOf('lumi-') === 0) continue;
       var style = window.getComputedStyle(element);
       var image = String(style.backgroundImage || 'none');
-      if (image !== 'none' && image !== '') continue;
+      if (state.preservePublisherBackground && image !== 'none' && image !== '') continue;
       var color = String(style.backgroundColor || '').replace(/\s+/g, '');
-      if (!isOpaqueBackgroundColor(color)) continue;
+      if (!isOpaqueBackgroundColor(color) && !(!state.preservePublisherBackground && image !== 'none')) continue;
       var rect = element.getBoundingClientRect();
       if (!(rect.width >= viewportWidth * 0.9) || !(rect.height >= viewportHeight * 0.9)) continue;
+      if (!overriddenPagePaint.has(element)) {
+        overriddenPagePaint.set(element, ['background-color', 'background-image'].map(function (name) {
+          return [name, element.style.getPropertyValue(name), element.style.getPropertyPriority(name)];
+        }));
+      }
       element.style.setProperty('background-color', 'transparent', 'important');
+      if (!state.preservePublisherBackground) element.style.setProperty('background-image', 'none', 'important');
       element.setAttribute('data-lumi-solid-page-paint', 'true');
     }
   }
 
   function restoreSolidPagePaint() {
-    var nodes = document.querySelectorAll('[data-lumi-solid-page-paint]');
-    for (var i = 0; i < nodes.length; i++) {
-      nodes[i].style.removeProperty('background-color');
-      nodes[i].removeAttribute('data-lumi-solid-page-paint');
-    }
+    overriddenPagePaint.forEach(function (properties, element) {
+      properties.forEach(function (property) {
+        restoreInlineProperty(element.style, property[0], property[1], property[2]);
+      });
+      element.removeAttribute('data-lumi-solid-page-paint');
+    });
+    overriddenPagePaint.clear();
   }
 
   /**
@@ -2330,7 +2840,9 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       document.documentElement.insertBefore(layer, document.body);
     }
     var width = state.viewportWidth || window.innerWidth;
-    var height = state.viewportHeight || window.innerHeight;
+    var height = !state.fixed && state.flow === 'scrolled'
+      ? Math.max(state.viewportHeight || 0, window.innerHeight || 0)
+      : (state.viewportHeight || window.innerHeight);
     layer.style.cssText = 'position:fixed !important;left:0 !important;top:0 !important;' +
       'width:' + width + 'px !important;height:' + height + 'px !important;' +
       'z-index:0 !important;pointer-events:none !important;overflow:hidden !important;' +
@@ -2365,38 +2877,138 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     if (!existing) document.head.appendChild(style);
   }
 
+  // Dim the original page as a whole without filters, which would change the
+  // containing block of fixed publisher backgrounds in scrolling documents.
+  // A sibling of body also stays outside fixed-layout scaling and page clones.
+  function applyPublisherNightShade(active) {
+    var shade = document.getElementById('lumi-publisher-night-shade');
+    if (!active) {
+      if (shade) shade.remove();
+      return;
+    }
+    if (!shade) {
+      shade = document.createElementNS(
+        document.documentElement.namespaceURI || 'http://www.w3.org/1999/xhtml', 'div');
+      shade.id = 'lumi-publisher-night-shade';
+      shade.setAttribute('aria-hidden', 'true');
+      document.documentElement.appendChild(shade);
+    }
+    shade.style.cssText = 'display:block !important;position:fixed !important;inset:0 !important;' +
+      'margin:0 !important;padding:0 !important;border:0 !important;' +
+      'width:auto !important;height:auto !important;min-width:0 !important;min-height:0 !important;' +
+      'max-width:none !important;max-height:none !important;box-sizing:border-box !important;' +
+      'transform:none !important;filter:none !important;opacity:1 !important;visibility:visible !important;' +
+      'background:rgba(0,0,0,0.45) !important;z-index:2147483647 !important;' +
+      'pointer-events:none !important;';
+  }
+
+  var lastGeometryConfig = null;
+  var lastNonInsetConfig = null;
+  function nonInsetConfigKey(config) {
+    var values = {};
+    Object.keys(config).sort().forEach(function (key) {
+      if (['configurationGeneration', 'insets', 'progressionValue', 'restoreProgressionInclusive'].indexOf(key) < 0) {
+        values[key] = config[key];
+      }
+    });
+    return JSON.stringify(values);
+  }
+
+  function configureInsets(insets) {
+    insets = insets || {};
+    state.insets = {
+      top: Math.max(0, Number(insets.top) || 0), right: Math.max(0, Number(insets.right) || 0),
+      bottom: Math.max(0, Number(insets.bottom) || 0), left: Math.max(0, Number(insets.left) || 0)
+    };
+  }
+  function geometryConfigKey(config) {
+    var geometry = {};
+    var paintKeys = ['configurationGeneration', 'theme', 'backgroundColor', 'autoTextColor', 'textColor',
+      'backgroundImage', 'backgroundUrl', 'coverBackgroundColor', 'publisherPaintOnly', 'preservePublisherBackground',
+      'progressionValue', 'restoreProgressionInclusive', 'transition', 'transitionDurationMs', 'visualDurationScale',
+      'edgeTapLeft', 'edgeTapRight', 'canTurnPrevious', 'canTurnNext'];
+    Object.keys(config).sort().forEach(function (key) {
+      if (paintKeys.indexOf(key) < 0) geometry[key] = config[key];
+    });
+    return JSON.stringify(geometry);
+  }
+
   function configure(config) {
     closeFootnotePopover(true);
     config = config || {};
     if (state.configured && config.configurationGeneration &&
         config.configurationGeneration === state.configurationGeneration) return;
+    // Paint-only suites keep the layout revision, but their pixels still need
+    // a new compositor fence. Never report the previous configuration as ready.
+    state.stableLayoutRevision = -1;
+    state.prepareSerial += 1;
+    var geometryKey = geometryConfigKey(config);
+    var geometryChanged = lastGeometryConfig !== geometryKey;
+    lastGeometryConfig = geometryKey;
+    var nonInsetKey = nonInsetConfigKey(config);
+    var insetsOnly = state.ready && geometryChanged && lastNonInsetConfig === nonInsetKey;
+    lastNonInsetConfig = nonInsetKey;
+    if (insetsOnly) {
+      // The DOM and typography are unchanged: retain a live Range rather than
+      // search and normalize the entire chapter again to restore the same text.
+      var anchor = currentLocator();
+      var node = nodeAtPath(anchor.domPath || []);
+      var range = null;
+      if (node && node.nodeType === Node.TEXT_NODE) {
+        range = document.createRange();
+        range.setStart(node, Math.min(anchor.textOffset || 0, node.nodeValue.length));
+        range.collapse(true);
+      }
+      var progression = state.total > 1 ? state.page / (state.total - 1) : 0;
+      state.configurationGeneration = Number(config.configurationGeneration) || state.configurationGeneration + 1;
+      state.restoreProgressionInclusive = config.restoreProgressionInclusive === true;
+      configureInsets(config.insets);
+      paginate(progression, { range: range, locator: anchor });
+      return;
+    }
+    // Work on a copy: publisher-only must win even if a caller supplies night colors.
+    config = Object.assign({}, config);
+    var palette = {night:['#111111','#e8e8ea'], sepia:['#f5e6d3','#3e2723'],
+      green:['#e8f5e9','#1b5e20'], sepia_dark:['#2b2118','#e8d5bc'], green_dark:['#142a1a','#c8e6c9']};
+    var publisherNightShade = config.publisherPaintOnly && config.theme === 'publisher_night';
+    if (config.publisherPaintOnly) {
+      config.theme = 'day'; config.textColor = null; config.autoTextColor = null;
+      config.backgroundColor = null; config.coverBackgroundColor = null;
+      config.backgroundImage = false; config.backgroundUrl = null;
+    } else {
+      var colors = palette[config.theme] || ['#ffffff','#333333'];
+      config.backgroundColor = config.backgroundColor || colors[0];
+      config.autoTextColor = config.autoTextColor || colors[1];
+    }
+    restoreSolidPagePaint();
+    restoreReaderTextColors();
+    document.documentElement.classList.remove('lumi-night', 'lumi-sepia', 'lumi-green', 'lumi-sepia-dark', 'lumi-green-dark');
     state.configurationGeneration = Number(config.configurationGeneration) || state.configurationGeneration + 1;
     state.fixed = document.body.getAttribute('data-lumi-layout') === 'pre_paginated';
     state.nativeViewport = config.viewport || null;
-    var liveLocator = state.ready ? currentLocator() : null;
+    var liveLocator = state.ready && geometryChanged ? currentLocator() : null;
     var liveProgression = state.ready && state.total > 1 ? state.page / (state.total - 1) : undefined;
     state.progression = config.progression === 'rtl' ? 'rtl' : 'ltr';
     state.flow = config.flow === 'scrolled' ? 'scrolled' : 'paginated';
     state.transition = config.transition === 'fade' ? 'fade' :
       (config.transition === 'none' ? 'none' : (config.transition === 'curl' ? 'curl' : 'slide'));
-    state.transitionDurationMs = Math.max(100, Math.min(1200,
+    state.visualDurationScale = Number(config.visualDurationScale) > 0 ? Number(config.visualDurationScale) : 1;
+    document.documentElement.style.setProperty('--lumi-motion-scale', String(state.visualDurationScale));
+    state.transitionDurationMs = Math.max(1, Math.min(1200,
       Math.round(Number(config.transitionDurationMs) || (state.transition === 'fade' ? 400 : (state.transition === 'curl' ? 800 : 260)))));
     state.nativePaging = config.nativePaging === true;
     state.edgeTapLeft = Number(config.edgeTapLeft) > 0 ? 1 : -1;
     state.edgeTapRight = Number(config.edgeTapRight) < 0 ? -1 : 1;
     state.canTurnPrevious = config.canTurnPrevious !== false;
     state.canTurnNext = config.canTurnNext !== false;
-    var insets = config.insets || {};
-    state.insets = {
-      top: Math.max(0, Number(insets.top) || 0), right: Math.max(0, Number(insets.right) || 0),
-      bottom: Math.max(0, Number(insets.bottom) || 0), left: Math.max(0, Number(insets.left) || 0)
-    };
+    configureInsets(config.insets);
     state.pendingProgression = typeof liveProgression === 'number' ? liveProgression :
       (typeof config.progressionValue === 'number' ? config.progressionValue : undefined);
     // 书籍原排版的进度分数按"页尾"保存（(pageIndex + 1) / totalPages），
     // 自研引擎用 ceil(f * N - ε) - 1 反解；这里同步这套语义，否则固定差一页。
     state.restoreProgressionInclusive = config.restoreProgressionInclusive === true;
-    state.preservePublisherBackground = config.preservePublisherBackground !== false;
+    state.preservePublisherBackground = config.publisherPaintOnly === true ||
+      config.preservePublisherBackground !== false;
     // 整页图页是否按屏幕比例裁切铺满（默认等比留白）。
     state.imagePageCrop = config.imagePageCrop === true;
     document.documentElement.classList.toggle('lumi-crop-page-image', state.imagePageCrop);
@@ -2426,19 +3038,36 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     }
     applyReaderPageBackgroundLayer(readerBackgroundActive);
     applyCoverBackgroundColor();
+    applyPublisherNightShade(publisherNightShade);
     applyReaderOverrides(config);
-    applyReaderAutoTextColor(config, readerBackgroundActive);
-    applyChineseConversion(config);
-    applyBionicReading(config.bionicReading === true);
-    document.documentElement.classList.remove('lumi-night', 'lumi-sepia', 'lumi-green', 'lumi-sepia-dark', 'lumi-green-dark');
-    if (config.theme === 'night') document.documentElement.classList.add('lumi-night');
-    if (config.theme === 'sepia') document.documentElement.classList.add('lumi-sepia');
-    if (config.theme === 'green') document.documentElement.classList.add('lumi-green');
-    if (config.theme === 'sepia_dark') document.documentElement.classList.add('lumi-sepia-dark');
-    if (config.theme === 'green_dark') document.documentElement.classList.add('lumi-green-dark');
-    if (state.ready || state.mediaSettled) {
+    if (geometryChanged) {
+      applyChineseConversion(config);
+      applyBionicReading(config.bionicReading === true);
+    }
+    applyReaderAutoTextColor(
+      publisherNightShade
+        ? Object.assign({}, config, { textColor: '#e8e8ea' })
+        : config,
+      readerBackgroundActive
+    );
+    if (readerBackgroundActive) {
+      if (config.theme === 'night') document.documentElement.classList.add('lumi-night');
+      if (config.theme === 'sepia') document.documentElement.classList.add('lumi-sepia');
+      if (config.theme === 'green') document.documentElement.classList.add('lumi-green');
+      if (config.theme === 'sepia_dark') document.documentElement.classList.add('lumi-sepia-dark');
+      if (config.theme === 'green_dark') document.documentElement.classList.add('lumi-green-dark');
+    }
+    if (geometryChanged && (state.ready || state.mediaSettled)) {
       paginate(state.pendingProgression);
       if (liveLocator) restore(liveLocator);
+    } else if (state.ready) {
+      applyPublisherBackgroundLayer();
+      applyReaderPaperBackground(readerBackgroundActive);
+      applyReaderPageBackgroundLayer(readerBackgroundActive);
+      applyCoverBackgroundColor();
+      // New configuration identity, same geometry; native still waits for compositor readiness.
+      post('page', currentPagePayload());
+      publishStableLayout();
     }
   }
 
@@ -2625,7 +3254,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       if (!state.searchHighlight) return;
       state.searchHighlight = null;
       rebuildHighlightLayer();
-    }, 2000);
+    }, visualMillis(2000));
     post('searchResult', {
       requestToken: Number(requestToken), found: true, pageIndex: page,
       pageCount: state.total, reverseAxis: state.reverseAxis, locator: currentLocator()
@@ -2751,11 +3380,11 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
   }
 
   function scrollBoundaryState() {
-    var root = document.scrollingElement || document.documentElement;
-    var extent = Math.max(root.scrollHeight, document.body.scrollHeight, state.viewportHeight);
+    var metrics = scrollMetrics();
     return {
-      atTop: window.scrollY <= 1,
-      atBottom: window.scrollY + state.viewportHeight >= extent - 2
+      atTop: metrics.nonScrollable || metrics.scrollY <= metrics.tolerance,
+      atBottom: metrics.nonScrollable ||
+        metrics.scrollY >= metrics.maxScrollY - metrics.tolerance
     };
   }
 
@@ -2765,14 +3394,14 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     var body = document.body;
     if (body) {
       body.style.transition = animate
-        ? 'transform 190ms cubic-bezier(.2,.72,.2,1), opacity 160ms ease-out'
+        ? 'transform ' + visualMillis(190) + 'ms cubic-bezier(.2,.72,.2,1), opacity ' + visualMillis(160) + 'ms ease-out'
         : 'none';
       if (!state.fixed) body.style.transform = '';
       body.style.opacity = '1';
       if (animate) {
         scrollChapterAnimationTimer = setTimeout(function () {
           if (body.isConnected) body.style.transition = 'none';
-        }, 210);
+        }, visualMillis(210));
       }
     }
     scrollChapterDragDirection = 0;
@@ -3181,7 +3810,25 @@ private const val READER_SCRIPT_PART_3 = """
     return true;
   }
 
-  function setTtsHighlight(start, end, color) {
+  function followTtsHighlight() {
+    if (state.flow !== 'scrolled' || state.fixed || !state.ttsHighlight || state.ttsFollowSuspended) return;
+    var tts = state.ttsHighlight;
+    var range = rangeAtOffsets(textIndex(), tts.start, tts.end);
+    if (!range) return;
+    var rects = Array.prototype.filter.call(range.getClientRects(), function (rect) {
+      return rect.width > 0 && rect.height > 0;
+    });
+    if (!rects.length) return;
+    var first = rects[0];
+    var last = rects[rects.length - 1];
+    var bottom = Math.max(1, viewportHeight() - 104);
+    if (last.bottom > bottom || first.top < 0) {
+      var targetBottom = last.bottom - first.top > bottom ? first.bottom : last.bottom;
+      window.scrollBy(0, targetBottom - bottom);
+    }
+  }
+
+  function setTtsHighlight(start, end, color, follow) {
     if (start == null && end == null && !state.ttsHighlight) return true;
     var previousKey = JSON.stringify(state.ttsHighlight);
     var index = textIndex();
@@ -3200,8 +3847,13 @@ private const val READER_SCRIPT_PART_3 = """
         color: normalizedColor
       };
     }
-    if (previousKey === JSON.stringify(state.ttsHighlight)) return true;
-    return rebuildHighlightLayer();
+    if (previousKey === JSON.stringify(state.ttsHighlight)) {
+      if (follow) followTtsHighlight();
+      return true;
+    }
+    var rebuilt = rebuildHighlightLayer();
+    if (follow) followTtsHighlight();
+    return rebuilt;
   }
 
   function clearDocumentSelection() {
@@ -3209,9 +3861,23 @@ private const val READER_SCRIPT_PART_3 = """
     var selection = window.getSelection && window.getSelection();
     if (!selection) return false;
     var hadSelection = !selection.isCollapsed && selection.rangeCount > 0;
-    try { selection.collapse(document.body || document.documentElement, 0); } catch (error) {}
+    if (!hadSelection) return false;
+    var windowX = window.pageXOffset || 0;
+    var windowY = window.pageYOffset || 0;
+    var scrollRoot = document.scrollingElement || document.documentElement || document.body;
+    var rootX = scrollRoot ? scrollRoot.scrollLeft : 0;
+    var rootY = scrollRoot ? scrollRoot.scrollTop : 0;
     if (selection.removeAllRanges) selection.removeAllRanges();
-    if (selection.empty) selection.empty();
+    else if (selection.empty) selection.empty();
+    var restoreSelectionScroll = function () {
+      if (scrollRoot) {
+        scrollRoot.scrollLeft = rootX;
+        scrollRoot.scrollTop = rootY;
+      }
+      if (window.scrollTo) window.scrollTo(windowX, windowY);
+    };
+    restoreSelectionScroll();
+    if (window.requestAnimationFrame) window.requestAnimationFrame(restoreSelectionScroll);
     return hadSelection;
   }
 
@@ -3546,7 +4212,7 @@ private const val READER_SCRIPT_PART_3 = """
       if (existing.isConnected) existing.remove();
     };
     existing.addEventListener('animationend', removePopover);
-    window.setTimeout(removePopover, 220);
+    window.setTimeout(removePopover, visualMillis(220));
   }
 
   function createFootnotePopover(anchor) {
@@ -3721,7 +4387,7 @@ private const val READER_SCRIPT_PART_3 = """
     );
     if (pageStageActive) {
       settleActivePageStageForInput(true);
-      pageStageDurationOverride = state.transition === 'curl' ? 210 : 170;
+      pageStageDurationOverride = visualMillis(state.transition === 'curl' ? 210 : 170);
     }
     touchBaseX = state.flow === 'paginated' ? pageX(state.page) : 0;
   }, { passive: true, capture: true });
@@ -3732,6 +4398,11 @@ private const val READER_SCRIPT_PART_3 = """
     var touch = event.touches[0];
     var dx = touch.clientX - touchStartX;
     var dy = touch.clientY - touchStartY;
+    if (state.flow === 'scrolled' && !state.fixed && !state.ttsFollowSuspended && Math.abs(dy) >= 12) {
+      // Stop locally before a queued highlight update or the native bridge can move the viewport.
+      state.ttsFollowSuspended = true;
+      post('manualScroll', {});
+    }
     if (Math.abs(dx) >= 12 || Math.abs(dy) >= 12) cancelImageLongPress();
     if (state.flow === 'scrolled' && !state.fixed) {
       if (scrollChapterTurnPending) {
@@ -3898,6 +4569,7 @@ private const val READER_SCRIPT_PART_3 = """
       return;
     }
     if (shouldTurn) {
+      post('manualScroll', {});
       var advances = state.reverseAxis ? dx > 0 : dx < 0;
       var target = state.page + (advances ? 1 : -1);
       if (target >= 0 && target < state.total) moveToPage(target, true);
@@ -3922,11 +4594,11 @@ private const val READER_SCRIPT_PART_3 = """
       var ratio = tapRatio;
       if (ratio < 0.3) {
         if (state.nativePaging) post('tap', { zone: 'left' });
-        else turnByDirection(state.edgeTapLeft);
+        else turnByDirection(state.edgeTapLeft, true);
       }
       else if (ratio > 0.7) {
         if (state.nativePaging) post('tap', { zone: 'right' });
-        else turnByDirection(state.edgeTapRight);
+        else turnByDirection(state.edgeTapRight, true);
       }
       else {
         pageStageDurationOverride = 0;
@@ -4004,11 +4676,11 @@ private const val READER_SCRIPT_PART_3 = """
     var ratio = event.clientX / viewportWidth();
     if (ratio < 0.3) {
       if (state.nativePaging) post('tap', { zone: 'left' });
-      else turnByDirection(state.edgeTapLeft);
+      else turnByDirection(state.edgeTapLeft, true);
     }
     else if (ratio > 0.7) {
       if (state.nativePaging) post('tap', { zone: 'right' });
-      else turnByDirection(state.edgeTapRight);
+      else turnByDirection(state.edgeTapRight, true);
     }
     else post('tap', { zone: 'center' });
   }, true);
@@ -4093,11 +4765,11 @@ private const val READER_SCRIPT_PART_3 = """
     if (state.flow === 'scrolled') {
       clearTimeout(scrollNotifyTimer);
       scrollNotifyTimer = setTimeout(function () {
-        var root = document.scrollingElement || document.documentElement;
-        var extent = Math.max(root.scrollHeight, document.body.scrollHeight, state.viewportHeight);
-        state.total = Math.max(1, Math.ceil(extent / Math.max(1, state.viewportHeight)));
+        var metrics = scrollMetrics();
+        applyScrollability(metrics);
+        state.total = metrics.pageCount;
         var nextPage = Math.max(0, Math.min(state.total - 1,
-          Math.floor((window.scrollY + state.viewportHeight * 0.42) / Math.max(1, state.viewportHeight))));
+          Math.floor((metrics.scrollY + metrics.clientHeight * 0.42) / metrics.clientHeight)));
         if (nextPage !== state.page) {
           state.page = nextPage;
           ++pageNotifySerial;
@@ -4155,6 +4827,7 @@ private const val READER_SCRIPT_PART_3 = """
     setHighlights: setHighlights,
     setDictionarySelection: setDictionarySelection,
     setTtsHighlight: setTtsHighlight,
+    setTtsFollowEnabled: function (enabled) { state.ttsFollowSuspended = !enabled; },
     findText: findText,
     clearSearchHighlight: clearSearchHighlight,
     cancelChapterTurn: function () { resetScrolledChapterDrag(true); },

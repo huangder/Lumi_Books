@@ -1,7 +1,5 @@
 package com.huangder.lumibooks.mineru
 
-import org.commonmark.parser.Parser
-import org.commonmark.renderer.html.HtmlRenderer
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -20,9 +18,6 @@ data class MineruEpubBuildResult(
 
 @Singleton
 class MineruEpubBuilder @Inject constructor() {
-    private val parser = Parser.builder().build()
-    private val renderer = HtmlRenderer.builder().escapeHtml(true).build()
-
     fun build(
         remoteResult: MineruRemoteResult,
         outputFile: File,
@@ -169,7 +164,7 @@ class MineruEpubBuilder @Inject constructor() {
     }
 
     private fun chapterXhtml(bookTitle: String, markdown: String): String {
-        val body = renderer.render(parser.parse(markdown))
+        val body = com.huangder.lumibooks.util.markdown.MarkdownRenderer.render(markdown).html
         return """<?xml version="1.0" encoding="UTF-8"?>
             |<!DOCTYPE html>
             |<html xmlns="http://www.w3.org/1999/xhtml">
@@ -177,11 +172,7 @@ class MineruEpubBuilder @Inject constructor() {
             |  <meta charset="UTF-8" />
             |  <title>${xml(bookTitle)}</title>
             |  <style>
-            |    body { line-height: 1.7; word-wrap: break-word; }
-            |    img { max-width: 100%; height: auto; }
-            |    table { border-collapse: collapse; max-width: 100%; }
-            |    th, td { border: 1px solid #999; padding: 0.35em; }
-            |    pre { white-space: pre-wrap; word-break: break-word; }
+            |    ${com.huangder.lumibooks.util.markdown.MarkdownRenderer.STYLE}
             |  </style>
             |</head>
             |<body>

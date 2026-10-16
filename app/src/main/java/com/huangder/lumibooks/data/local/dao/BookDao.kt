@@ -22,6 +22,9 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE id = :bookId")
     suspend fun getBookById(bookId: String): BookEntity?
 
+    @Query("UPDATE books SET coverPath = :newPath WHERE id = :bookId AND ((coverPath IS NULL AND :oldPath IS NULL) OR coverPath = :oldPath)")
+    suspend fun updateCoverIfUnchanged(bookId: String, oldPath: String?, newPath: String): Int
+
     @Query("SELECT * FROM books WHERE sourceDocumentKey = :key LIMIT 1")
     suspend fun getBookBySourceDocumentKey(key: String): BookEntity?
 

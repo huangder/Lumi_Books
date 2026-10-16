@@ -77,6 +77,7 @@ class ContinuousScrollReaderTest {
         background: androidx.compose.runtime.State<Int> = mutableStateOf(Color.WHITE),
         revision: androidx.compose.runtime.State<Long> = mutableStateOf(0L),
         fontSize: androidx.compose.runtime.State<Float> = mutableStateOf(18f),
+        bodyFontWeight: androidx.compose.runtime.State<Int> = mutableStateOf(400),
         lineHeight: Float = 1.5f,
         lineGuide: Boolean = false,
         bionic: Boolean = false,
@@ -86,6 +87,10 @@ class ContinuousScrollReaderTest {
         onSelection: (Int, ContinuousTextSelection) -> Unit = { _, _ -> },
         onSelectionCleared: () -> Unit = {},
         onMenuToggle: () -> Unit = {},
+        ttsSentence: androidx.compose.runtime.State<TtsSentencePosition?> = mutableStateOf(null),
+        ttsFollow: androidx.compose.runtime.State<Boolean> = mutableStateOf(true),
+        onManualScrollStarted: () -> Unit = {},
+        notes: List<com.huangder.lumibooks.domain.model.Note> = emptyList(),
         onChapterVisible: (Int, Float) -> Unit = { _, _ -> }
     ) {
         val reported = mutableStateOf(currentChapter to 0f)
@@ -99,7 +104,10 @@ class ContinuousScrollReaderTest {
                     initialCharacterOffset = initialOffset,
                     fontSize = fontSize.value, lineHeight = lineHeight, letterSpacingDp = 0f,
                     textAlignment = ReaderTextAlignment.NATURAL,
-                    readerTypeface = ResolvedReaderTypeface(Typeface.DEFAULT, false),
+                    readerTypeface = ResolvedReaderTypeface(
+                        Typeface.DEFAULT,
+                        bodyFontWeight.value >= 600
+                    ),
                     textColor = Color.BLACK, backgroundColor = background.value,
                     backgroundImagePath = null, backgroundImageOpacity = 0f, backgroundImageBlurDp = 0f,
                     marginLeft = leftMargin.value, marginRight = 16f, marginTop = verticalMargin, marginBottom = verticalMargin,
@@ -108,7 +116,7 @@ class ContinuousScrollReaderTest {
                     contentRevision = revision.value,
                     loadChapterText = { index, width -> loadChapter(index, width) },
                     onContentSizeChanged = { _, _ -> },
-                    notes = emptyList(), searchHighlight = null, scrollRequests = requests,
+                    notes = notes, searchHighlight = null, scrollRequests = requests,
                     onSearchHighlightFinished = {}, onMenuToggle = onMenuToggle,
                     onLinkClick = { _, _, _, _ -> },
                     onImageLongPress = { _, _ -> }, selectionController = selectionController,
@@ -120,7 +128,11 @@ class ContinuousScrollReaderTest {
                     },
                     onRestoreComplete = { restored = true }, onSentenceDoubleTap = { _, _ -> },
                     ttsSentenceJumpEnabled = false, comicModeEnabled = comicMode.value, listState = list,
-                    imageAdjustments = imageAdjustments.value
+                    imageAdjustments = imageAdjustments.value,
+                    bodyFontWeight = bodyFontWeight.value,
+                    ttsCurrentSentence = ttsSentence.value,
+                    ttsFollowEnabled = ttsFollow.value,
+                    onManualScrollStarted = onManualScrollStarted
                 )
             }
         }
@@ -147,6 +159,38 @@ class ContinuousScrollReaderTest {
             assertEquals(0, menuTaps)
             assertTrue(visibleTextView().lineGuideMode)
             assertNull(selectionController.currentSelection())
+        }
+    }
+
+    @Test fun plainTextTapTogglesReaderMenuExactlyOnce() {
+        currentChapter = 0
+        chapterCount = 1
+        var menuToggleCount = 0
+        show(onMenuToggle = { menuToggleCount++ })
+        compose.waitUntil(15_000) { restored }
+        compose.waitUntil(15_000) {
+            descendants(composeRoot.rootView)
+                .filterIsInstance<ContinuousSelectableTextView>()
+                .any { it.isAttachedToWindow && it.text.isNotEmpty() }
+        }
+        var target = Offset.Zero
+        compose.runOnIdle {
+            val view = visibleTextView()
+            val location = IntArray(2).also(view::getLocationOnScreen)
+            val rootLocation = IntArray(2).also(composeRoot::getLocationOnScreen)
+            target = Offset(
+                location[0] - rootLocation[0] + view.totalPaddingLeft +
+                    (view.readerHorizontalPosition(20) ?: view.layout.getPrimaryHorizontal(20)),
+                location[1] - rootLocation[1] + view.totalPaddingTop +
+                    (view.layout.getLineTop(1) + view.layout.getLineBottom(1)) / 2f
+            )
+        }
+
+        compose.onRoot().performTouchInput { down(target); up() }
+        compose.waitForIdle()
+
+        compose.runOnIdle {
+            assertEquals("one physical tap must toggle the reader chrome once", 1, menuToggleCount)
         }
     }
 
@@ -283,6 +327,130 @@ class ContinuousScrollReaderTest {
         }
     }
 
+    @Test fun tappingSavedUnderlineKeepsItsAnnotationMenuOpen() {
+        currentChapter = 0
+        chapterCount = 1
+        val annotation = com.huangder.lumibooks.domain.model.Note(
+            bookId = "book",
+            chapterIndex = 0,
+            startPosition = 0,
+            endPosition = 9,
+            selectedText = text.substring(0, 9),
+            note = "",
+            color = "#448AFF",
+            createdAt = 1L,
+            type = "underline"
+        )
+        var menuSelection: ContinuousTextSelection? = null
+        var clearCount = 0
+        var menuToggleCount = 0
+        show(
+            notes = listOf(annotation),
+            onSelection = { _, selection -> menuSelection = selection },
+            onSelectionCleared = { clearCount++ },
+            onMenuToggle = { menuToggleCount++ }
+        )
+        compose.waitUntil(15_000) { restored }
+        compose.waitUntil(15_000) { descendants(composeRoot.rootView)
+            .filterIsInstance<ContinuousSelectableTextView>()
+            .any { it.isAttachedToWindow && it.text.isNotEmpty() }
+        }
+        compose.runOnIdle { list.dispatchRawDelta(4f) }
+        compose.waitUntil(5_000) { list.firstVisibleItemScrollOffset > 0 }
+        var target = Offset.Zero
+        var scrollOffsetBeforeTap = 0
+        compose.runOnIdle {
+            val view = visibleTextView()
+            val location = IntArray(2).also(view::getLocationOnScreen)
+            val rootLocation = IntArray(2).also(composeRoot::getLocationOnScreen)
+            target = Offset(
+                location[0] - rootLocation[0] + view.totalPaddingLeft +
+                    (view.readerHorizontalPosition(4) ?: view.layout.getPrimaryHorizontal(4)),
+                location[1] - rootLocation[1] + view.totalPaddingTop + view.layout.getLineBottom(0) / 2f
+            )
+            scrollOffsetBeforeTap = list.firstVisibleItemScrollOffset
+        }
+
+        compose.onRoot().performTouchInput { down(target); up() }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertTrue("selection=$menuSelection clears=$clearCount toggles=$menuToggleCount target=$target",
+                menuSelection?.annotationOnly == true)
+            assertEquals(annotation.startPosition, menuSelection?.start)
+            assertEquals(annotation.endPosition, menuSelection?.end)
+            assertEquals("annotation tap must not enqueue a selection clear", 0, clearCount)
+            assertEquals("annotation tap must not toggle the reader chrome", 0, menuToggleCount)
+            assertEquals("opening the annotation menu must preserve the exact scroll offset",
+                scrollOffsetBeforeTap, list.firstVisibleItemScrollOffset)
+        }
+    }
+
+    @Test
+    @Config(shadows = [ContinuousSelectionMagnifierShadow::class])
+    fun longPressAndDragExtendsSelectionWithoutScrollingTheList() {
+        currentChapter = 0
+        chapterCount = 1
+        var menuSelection: ContinuousTextSelection? = null
+        show(onSelection = { _, selection -> menuSelection = selection })
+        compose.waitUntil(15_000) { restored }
+        var start = Offset.Zero
+        var target = Offset.Zero
+        var targetOffset = 0
+        var listOffset = 0
+        compose.runOnIdle {
+            val view = visibleTextView()
+            val location = IntArray(2).also(view::getLocationOnScreen)
+            val rootLocation = IntArray(2).also(composeRoot::getLocationOnScreen)
+            val originX = location[0] - rootLocation[0] + view.totalPaddingLeft
+            val originY = location[1] - rootLocation[1] + view.totalPaddingTop
+            val startOffset = 4
+            val targetLine = 5
+            targetOffset = view.layout.getLineStart(targetLine) + 6
+            start = Offset(
+                originX + (view.readerHorizontalPosition(startOffset)
+                    ?: view.layout.getPrimaryHorizontal(startOffset)),
+                originY + (view.layout.getLineTop(0) + view.layout.getLineBottom(0)) / 2f
+            )
+            target = Offset(
+                originX + (view.readerHorizontalPosition(targetOffset)
+                    ?: view.layout.getPrimaryHorizontal(targetOffset)),
+                originY + (view.layout.getLineTop(targetLine) + view.layout.getLineBottom(targetLine)) / 2f
+            )
+            listOffset = list.firstVisibleItemScrollOffset
+        }
+
+        compose.onRoot().performTouchInput { down(start) }
+        compose.runOnIdle {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(
+                java.time.Duration.ofMillis(android.view.ViewConfiguration.getLongPressTimeout() + 100L)
+            )
+        }
+        var initialEnd = 0
+        compose.runOnIdle {
+            initialEnd = selectionController.currentSelection()?.end ?: 0
+            assertTrue("long press must establish the initial word selection", initialEnd > 0)
+        }
+        compose.onRoot().performTouchInput { moveTo(target, delayMillis = 200); up() }
+        compose.runOnIdle {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idleFor(
+                java.time.Duration.ofMillis(300L)
+            )
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            val selection = selectionController.currentSelection()
+            assertNotNull("selection=$selection menu=$menuSelection initialEnd=$initialEnd target=$targetOffset " +
+                "native=${Selection.getSelectionStart(visibleTextView().text)}.." +
+                Selection.getSelectionEnd(visibleTextView().text), selection)
+            assertTrue("selection must follow the held finger", selection!!.end >= targetOffset)
+            assertTrue(selection.end > initialEnd)
+            assertEquals("the chapter must stay still during selection drag", listOffset,
+                list.firstVisibleItemScrollOffset)
+            assertEquals(selection.start, menuSelection?.start)
+            assertEquals(selection.end, menuSelection?.end)
+        }
+    }
+
     @Test fun revisionKeepsVisibleTextWhileReplacementDecodeIsBlocked() {
         currentChapter = 0
         chapterCount = 1
@@ -325,6 +493,41 @@ class ContinuousScrollReaderTest {
             val expected = layout.getLineTop(layout.getLineForOffset(character))
             assertTrue("expected=$expected actual=${list.firstVisibleItemScrollOffset}",
                 kotlin.math.abs(expected - list.firstVisibleItemScrollOffset) <= 2)
+        }
+    }
+
+    @Test fun fontSizeAndWeightChangesReachTheVisibleTextView() {
+        currentChapter = 0
+        chapterCount = 1
+        val font = mutableStateOf(18f)
+        val weight = mutableStateOf(400)
+        show(fontSize = font, bodyFontWeight = weight)
+        compose.waitUntil(15_000) { restored }
+        compose.waitUntil(15_000) {
+            runCatching { visibleTextView().text.isNotEmpty() }.getOrDefault(false)
+        }
+
+        val initialSize = compose.runOnIdle { visibleTextView().textSize }
+        compose.runOnIdle {
+            font.value = 24f
+            weight.value = 700
+        }
+
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        compose.runOnIdle {
+            val views = descendants(composeRoot.rootView)
+                .filterIsInstance<ContinuousSelectableTextView>()
+                .filter { it.isAttachedToWindow }
+                .toList()
+            assertTrue(
+                "initial=$initialSize attached=${views.map { it.textSize to it.text.length }}",
+                views.any { it.text.isNotEmpty() && it.textSize > initialSize }
+            )
+            assertTrue(
+                "attached=${views.map { it.paint.isFakeBoldText to it.text.length }}",
+                views.any { it.text.isNotEmpty() && it.paint.isFakeBoldText }
+            )
         }
     }
 
@@ -630,6 +833,60 @@ class ContinuousScrollReaderTest {
             assertNull(selectionController.activeView)
             assertNull(selectionController.selection)
             assertEquals(2, clearCount)
+        }
+    }
+
+    @Test fun manualDragKeepsViewportDuringTtsUpdatesUntilExplicitReturn() {
+        currentChapter = 0
+        chapterCount = 1
+        fun sentence(paragraph: Int): TtsSentencePosition {
+            val start = text.indexOf("Paragraph $paragraph:")
+            return TtsSentencePosition(0, start, text.indexOf('\n', start).takeIf { it >= 0 } ?: text.length)
+        }
+        val highlighted = mutableStateOf<TtsSentencePosition?>(sentence(70))
+        val following = mutableStateOf(true)
+        var dragStarts = 0
+        show(ttsSentence = highlighted, ttsFollow = following,
+            onManualScrollStarted = { dragStarts++ })
+        compose.waitUntil(15_000) { restored && list.firstVisibleItemScrollOffset > 1_000 }
+        compose.onRoot().performTouchInput {
+            down(center)
+            moveBy(Offset(0f, -100f), delayMillis = 100)
+        }
+        compose.waitForIdle()
+        var browsingOffset = 0
+        compose.runOnIdle {
+            assertTrue("manual navigation is reported before finger-up", dragStarts > 0)
+            browsingOffset = list.firstVisibleItemScrollOffset
+            highlighted.value = sentence(90)
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(browsingOffset, list.firstVisibleItemScrollOffset) }
+        compose.onRoot().performTouchInput {
+            repeat(3) { moveBy(Offset(0f, -30f), delayMillis = 60) }
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            browsingOffset = list.firstVisibleItemScrollOffset
+            highlighted.value = sentence(95)
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(browsingOffset, list.firstVisibleItemScrollOffset) }
+        compose.onRoot().performTouchInput { up() }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            browsingOffset = list.firstVisibleItemScrollOffset
+            highlighted.value = sentence(100)
+            following.value = false
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { assertEquals(browsingOffset, list.firstVisibleItemScrollOffset) }
+        compose.runOnIdle { following.value = true }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertTrue("Explicit return should advance from $browsingOffset toward paragraph 100; " +
+                "actual=${list.firstVisibleItemScrollOffset}, scrolling=${list.isScrollInProgress}",
+                list.firstVisibleItemScrollOffset > browsingOffset + 500)
         }
     }
 

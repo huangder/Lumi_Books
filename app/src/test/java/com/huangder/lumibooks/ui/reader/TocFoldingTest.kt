@@ -8,6 +8,19 @@ import org.junit.Test
 
 class TocFoldingTest {
     @Test
+    fun sameChapterAnchorsSelectTheirOwnEntryOrCollapsedAncestor() {
+        val entries = listOf(TocEntry("Parent", 1, 0, anchor = "parent"),
+            TocEntry("Child", 2, 0, anchor = "child"), TocEntry("Next", 1, 0, anchor = "next"))
+        val groups = findTocFoldGroups(entries)
+        assertEquals(1, currentTocVisibleIndex(entries, visibleTocEntries(entries, groups, emptySet()), groups,
+            emptySet(), 0, "child"))
+        assertEquals(0, currentTocVisibleIndex(entries, visibleTocEntries(entries, groups, setOf(0)), groups,
+            setOf(0), 0, "child"))
+        assertEquals(2, currentTocVisibleIndex(entries, visibleTocEntries(entries, groups, emptySet()), groups,
+            emptySet(), 0, "next"))
+    }
+
+    @Test
     fun anyEntryWithChildLevelCanBeCollapsed() {
         val entries = listOf(
             chapter("开端", 0, level = 1),

@@ -21,6 +21,20 @@ class TxtParserTest {
     val temporaryFolder = TemporaryFolder()
 
     @Test
+    fun recognizesFirstChapterWhenUtf8BomIsDecodedAsPartOfTheLine() {
+        val file = writeText(
+            "bom-heading.txt",
+            " \uFEFF第一章 开始\n正文一\n\n第二章 继续\n正文二",
+            Charsets.UTF_8
+        )
+        val parser = TxtParser()
+
+        val book = parser.parse(file.absolutePath)
+
+        assertEquals(listOf("第一章 开始", "第二章 继续"), book.chapters.map { it.title })
+    }
+
+    @Test
     fun parsesUtf8ChaptersWithoutStoringContentInMetadata() {
         val file = writeText(
             "utf8.txt",

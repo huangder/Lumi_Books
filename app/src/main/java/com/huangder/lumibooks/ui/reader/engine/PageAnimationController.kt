@@ -383,7 +383,8 @@ abstract class PageAnimationController(
             return
         }
         isRunning = true
-        scroller.startScroll(fromX, 0, dx, 0, BOUNCE_DURATION)
+        scroller.startScroll(fromX, 0, dx, 0,
+            com.huangder.lumibooks.ui.animation.VisualMotion.durationMillis(BOUNCE_DURATION))
         readView.postInvalidateOnAnimation()
     }
 

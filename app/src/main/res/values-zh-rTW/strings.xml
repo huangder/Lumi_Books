@@ -156,7 +156,7 @@
     <string name="dark_mode_light">淺色</string>
     <string name="dark_mode_dark">深色</string>
     <string name="label_reader_theme">預設閱讀主題</string>
-    <string name="theme_day">日間</string>
+    <string name="theme_day">預設</string>
     <string name="theme_night">夜間</string>
     <string name="theme_sepia">護眼</string>
     <string name="theme_green">綠色</string>
@@ -434,6 +434,7 @@
     <string name="line_guide_dim_low">低</string>
     <string name="line_guide_dim_medium">中</string>
     <string name="line_guide_dim_high">高</string>
+    <string name="line_guide_dim_very_high">超高</string>
     <string name="line_guide_close">關閉逐行導讀</string>
     <string name="bionic_reading_hint">加粗詞語的前半部分，幫助視線快速定位並提升閱讀專注度</string>
     <string name="reader_edge_tap_page_turn">點擊螢幕兩側翻頁</string>
@@ -451,7 +452,8 @@
     <string name="reader_corner_content_none">不顯示</string>
     <string name="reader_corner_content_chapter">章節資訊</string>
     <string name="reader_corner_content_book_progress">全書進度</string>
-    <string name="reader_corner_content_page_number">頁碼</string>
+    <string name="reader_corner_content_page_number">本章頁碼</string>
+    <string name="reader_corner_content_global_page_number">全局頁碼</string>
     <string name="reader_corner_content_battery">電量</string>
     <string name="reader_corner_content_time">時間</string>
     <string name="search_placeholder">輸入關鍵詞</string>
@@ -1157,6 +1159,7 @@
     <string name="motion_preference_reduced">減弱動態</string>
     <string name="motion_preference_standard">標準</string>
     <string name="book_open_transition_label">開啟書籍轉場</string>
+    <string name="cover_reading_progress_enabled">封面顯示閱讀進度</string>
     <string name="book_open_transition_hero">一鏡到底</string>
     <string name="book_open_transition_loading_page">載入頁</string>
     <string name="page_turn_module_label">翻頁</string>
@@ -1322,7 +1325,7 @@
     <string name="page_animation_curl_short">捲曲</string>
     <string name="reader_settings_preview_sample">第一章 光落在書頁上\n\n清晨的風越過窗台，紙張輕輕翻動。閱讀讓時間慢下來，也讓遙遠的聲音在此刻變得清晰。</string>
     <string name="exit_preview">結束預覽</string>
-    <string name="theme_suite_day_name">日間</string>
+    <string name="theme_suite_day_name">預設</string>
     <string name="theme_suite_night_name">夜間</string>
     <string name="theme_suite_sepia_name">羊皮紙</string>
     <string name="theme_suite_green_name">護眼</string>

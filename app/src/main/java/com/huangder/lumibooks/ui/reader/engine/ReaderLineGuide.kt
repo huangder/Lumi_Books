@@ -15,6 +15,7 @@ internal fun readerGuideDimAlpha(level: Int): Int = when (level) {
     0 -> 0
     1 -> 46
     3 -> 133
+    4 -> 177
     else -> 89
 }
 

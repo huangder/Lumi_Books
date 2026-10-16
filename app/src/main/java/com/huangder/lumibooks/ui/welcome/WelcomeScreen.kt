@@ -12,9 +12,10 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
+import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.delayMillis
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -332,7 +333,7 @@ private fun UpdatePreviewPage(
     var themeSwitchStage by rememberSaveable { mutableIntStateOf(0) }
 
     LaunchedEffect(preview, isEInkMode) {
-        if (animateEntrance) delay(40)
+        if (animateEntrance) delay(delayMillis(40L))
         hasEntered = true
     }
     LaunchedEffect(isLiquidGlass) {
@@ -691,16 +692,16 @@ private fun ThemeSwitchOverlay(
     onFinished: () -> Unit
 ) {
     LaunchedEffect(Unit) {
-        delay(260)
+        delay(delayMillis(260L))
         onStageChange(2)
-        delay(120)
+        delay(delayMillis(120L))
         onApplyTheme()
         onStageChange(3)
-        delay(1_000)
+        delay(delayMillis(1_000L))
         onStageChange(4)
-        delay(240)
+        delay(delayMillis(240L))
         onStageChange(5)
-        delay(900)
+        delay(delayMillis(900L))
         onFinished()
     }
 
@@ -1220,15 +1221,15 @@ private fun SupportProjectPage(
     var entranceStage by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
-        delay(70)
+        delay(delayMillis(70L))
         entranceStage = 1
-        delay(150)
+        delay(delayMillis(150L))
         entranceStage = 2
-        delay(160)
+        delay(delayMillis(160L))
         entranceStage = 3
-        delay(120)
+        delay(delayMillis(120L))
         entranceStage = 4
-        delay(150)
+        delay(delayMillis(150L))
         entranceStage = 5
     }
 

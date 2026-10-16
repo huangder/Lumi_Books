@@ -9,7 +9,7 @@ package com.huangder.lumibooks.ui.components
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.VisibilityThreshold
-import androidx.compose.animation.core.spring
+import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.Stable
@@ -58,7 +58,7 @@ internal class LiquidGlassButtonInteractionState(
         pressJob?.cancel()
         positionJob?.cancel()
         pressJob = animationScope.launch {
-            pressProgressAnimation.animateTo(1f, ButtonInteractionSpring)
+            pressProgressAnimation.animateTo(1f, buttonInteractionSpring())
         }
         positionJob = animationScope.launch {
             positionAnimation.snapTo(position)
@@ -76,21 +76,21 @@ internal class LiquidGlassButtonInteractionState(
         pressJob?.cancel()
         positionJob?.cancel()
         pressJob = animationScope.launch {
-            pressProgressAnimation.animateTo(0f, ButtonInteractionSpring)
+            pressProgressAnimation.animateTo(0f, buttonInteractionSpring())
         }
         positionJob = animationScope.launch {
-            positionAnimation.animateTo(startPosition, ButtonPositionSpring)
+            positionAnimation.animateTo(startPosition, buttonPositionSpring())
         }
     }
 }
 
-private val ButtonInteractionSpring = spring(
+private fun buttonInteractionSpring() = spring(
     dampingRatio = 0.5f,
     stiffness = 300f,
     visibilityThreshold = 0.001f
 )
 
-private val ButtonPositionSpring = spring(
+private fun buttonPositionSpring() = spring(
     dampingRatio = 0.5f,
     stiffness = 300f,
     visibilityThreshold = Offset.VisibilityThreshold

@@ -2,8 +2,8 @@ package com.huangder.lumibooks.ui.bookshelf
 
 import androidx.compose.animation.core.AnimationState
 import androidx.compose.animation.core.animateTo
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.spring
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -71,6 +71,13 @@ internal class CoverFlowState(initialPosition: Float = 0f, initialBookId: String
     fun dragBy(deltaInBooks: Float) {
         rawDragPosition += deltaInBooks
         position = CoverFlowPhysics.resist(rawDragPosition, ids.size)
+        focusedId = ids.getOrNull(focusedIndex)
+        isMoving = true
+    }
+
+    fun dragTo(positionInBooks: Float) {
+        rawDragPosition = positionInBooks.coerceIn(0f, (ids.size - 1).coerceAtLeast(0).toFloat())
+        position = rawDragPosition
         focusedId = ids.getOrNull(focusedIndex)
         isMoving = true
     }

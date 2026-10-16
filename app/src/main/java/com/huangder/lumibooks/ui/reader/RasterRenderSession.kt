@@ -152,7 +152,9 @@ internal class RasterRenderSession(
                 bitmap?.also {
                     val cache = when { thumbnail -> thumbnailCache; preview -> previewCache; else -> pageCache }
                     val budget = when { thumbnail -> THUMBNAIL_BYTES; preview -> PREVIEW_BYTES; else -> PAGE_BYTES }
-                    put(cache, budget, spec, it)
+                    // An OOM fallback may return fewer pixels than requested. Never let that
+                    // bitmap satisfy a later full-resolution cache lookup under the original key.
+                    put(cache, budget, spec.copy(width = it.width, height = it.height), it)
                 }
                 log("decode page=$page preview=$preview queueMs=${started - queuedAt} decodeMs=${SystemClock.elapsedRealtime() - started} bytes=${bitmap?.allocationByteCount ?: 0}")
                 bitmap

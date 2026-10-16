@@ -1,7 +1,8 @@
 package com.huangder.lumibooks.ui.animation
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.delayMillis
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,7 +51,7 @@ fun PageEntranceItem(
 
     LaunchedEffect(play) {
         if (!play) return@LaunchedEffect
-        delay((index * 4L).coerceAtMost(20L))
+        delay(delayMillis((index * 4L).coerceAtMost(20L)))
         coroutineScope {
             launch { alpha.animateTo(1f, tween(200, easing = AppEasing.Smooth)) }
             launch { offsetY.animateTo(0f, tween(220, easing = AppEasing.Decelerate)) }

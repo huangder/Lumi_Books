@@ -43,5 +43,6 @@ data class ReaderRenderConfig(
     val chineseMode: String,
     val pageTransition: String,
     val pageTransitionDurationMs: Int,
-    val edgeTapMode: ReaderEdgeTapMode
+    val edgeTapMode: ReaderEdgeTapMode,
+    val paginationContentIdentity: String = ""
 )

@@ -263,4 +263,10 @@ object DatabaseMigrations {
             db.execSQL("ALTER TABLE bookmarks ADD COLUMN tagsJson TEXT NOT NULL DEFAULT '[]'")
         }
     }
+    val MIGRATION_18_19 = object : Migration(18, 19) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE notes ADD COLUMN isStale INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE bookmarks ADD COLUMN isStale INTEGER NOT NULL DEFAULT 0")
+        }
+    }
 }

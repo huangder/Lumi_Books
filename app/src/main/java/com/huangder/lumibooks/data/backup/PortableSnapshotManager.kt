@@ -88,8 +88,9 @@ class PortableSnapshotManager @Inject constructor(
                 addSource(
                     "book",
                     book.id,
-                    BookFileAccess.displayName(context, book.filePath) ?: "${book.id}.${book.format.lowercase()}"
-                ) { BookFileAccess.openInputStream(context, book.filePath) }
+                    if (book.format == "MARKDOWN") "${book.id}.mdpack" else BookFileAccess.displayName(context, book.filePath) ?: "${book.id}.${book.format.lowercase()}"
+                ) { if (book.format == "MARKDOWN") com.huangder.lumibooks.util.markdown.MarkdownSnapshotStore.packageFile(File(book.filePath)).inputStream().buffered()
+                    else BookFileAccess.openInputStream(context, book.filePath) }
             } else null
             val coverId = book.coverPath?.let(::File)?.let { addFile("book_cover", book.id, it) }
             book.toPortable(bodyId, coverId)
@@ -186,8 +187,9 @@ class PortableSnapshotManager @Inject constructor(
                 val restoredBooks = snapshot.books.map { book ->
                     val existing = existingBooks[book.id]
                     book.toEntity(
-                        filePath = book.bodyAssetId?.let(assetPaths::get)
-                            ?: existing?.filePath.orEmpty().takeIf { !replaceAssetDirectories }.orEmpty(),
+                        filePath = book.bodyAssetId?.let(assetPaths::get)?.let { path ->
+                            if (book.format == "MARKDOWN") com.huangder.lumibooks.util.markdown.MarkdownSnapshotStore.unpack(context, book.id, File(path)).absolutePath else path
+                        } ?: existing?.filePath.orEmpty().takeIf { !replaceAssetDirectories }.orEmpty(),
                         coverPath = book.coverAssetId?.let(assetPaths::get)
                             ?: existing?.coverPath?.takeIf { !replaceAssetDirectories },
                         // 状态同步不携带书本体（replaceAssetDirectories=false）时，与 filePath/
@@ -195,7 +197,14 @@ class PortableSnapshotManager @Inject constructor(
                         // 快照用推导结果把已下载书籍翻回仅云端。
                         existingIsCloudOnly = existing?.isCloudOnly
                             ?.takeIf { !replaceAssetDirectories && book.bodyAssetId == null }
-                    )
+                    ).let { restored ->
+                        if (book.format == "MARKDOWN" && !replaceAssetDirectories && existing != null) {
+                            restored.copy(sourceUri = existing.sourceUri, sourceDocumentKey = existing.sourceDocumentKey,
+                                sourceParentUri = existing.sourceParentUri, sourceSha256 = existing.sourceSha256,
+                                sourceDisplayName = existing.sourceDisplayName, sourceLastModified = existing.sourceLastModified,
+                                isMissing = existing.isMissing)
+                        } else restored
+                    }
                 }
                 if (replace) {
                     syncDao.clearBookFolderLinks()

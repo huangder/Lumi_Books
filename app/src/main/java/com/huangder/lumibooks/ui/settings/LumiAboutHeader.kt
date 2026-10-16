@@ -1,7 +1,7 @@
 package com.huangder.lumibooks.ui.settings
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable

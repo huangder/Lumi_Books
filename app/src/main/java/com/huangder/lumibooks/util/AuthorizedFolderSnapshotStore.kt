@@ -83,6 +83,15 @@ class AuthorizedFolderSnapshotStore @Inject constructor(
         _snapshot.value = updated
     }
 
+    /** Forgets only this grant's scan; books and physical files are kept. */
+    suspend fun removeTree(treeUri: String) = mutex.withLock {
+        val current = loadLocked()
+        if (treeUri !in current.trees) return@withLock
+        val updated = AuthorizedFolderSnapshot(current.trees - treeUri)
+        writeLocked(updated)
+        _snapshot.value = updated
+    }
+
     private suspend fun loadLocked(): AuthorizedFolderSnapshot {
         if (loaded) return _snapshot.value
         val stored = withContext(Dispatchers.IO) {

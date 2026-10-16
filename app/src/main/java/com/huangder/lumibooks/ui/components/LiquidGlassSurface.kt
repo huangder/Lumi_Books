@@ -2,7 +2,7 @@ package com.huangder.lumibooks.ui.components
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -166,7 +166,7 @@ internal fun Modifier.liquidGlassBackdrop(
             if (transparency < 1f || blurBoostPx > 0f) {
                 blur((6.dp * (1f - transparency)).toPx() + blurBoostPx.coerceAtLeast(0f))
             }
-            if (lensSupported) {
+            if (lensSupported && shape !is ContinuousCornerBasedShape) {
                 if (buttonInteraction) {
                     lens(12.dp.toPx(), 24.dp.toPx())
                 } else {

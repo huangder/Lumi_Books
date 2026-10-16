@@ -78,10 +78,11 @@ data class SettingsUiState(
     val liquidGlassHdrHighlightEnabled: Boolean = false,
     val cardOutlinesEnabled: Boolean = false,
     val darkMode: String = "system",       // "system" / "light" / "dark"
-    val motionPreference: String = "standard", // "standard" / "reduced"
+    val motionPreference: String = "standard", // "standard" / "fast" / "reduced"
     val menuAnimationStyle: String = com.huangder.lumibooks.domain.model.MenuAnimationStyle.LIQUID.storedValue,
     val entranceAnimationsEnabled: Boolean = true,
     val bookOpenTransition: String = BookOpenTransition.HERO.storedValue, // "hero" / "loading_page"
+    val coverReadingProgressEnabled: Boolean = false,
     val eInkModeEnabled: Boolean = false,
     val twoPageSpreadEnabled: Boolean = true,
     val predictiveBackEnabled: Boolean = true,
@@ -97,6 +98,8 @@ data class SettingsUiState(
     val externalTtsSettings: com.huangder.lumibooks.tts.ExternalTtsSettings = com.huangder.lumibooks.tts.ExternalTtsSettings(),
     val externalTtsHasToken: Boolean = false,
     val externalTtsSettingsLoaded: Boolean = false,
+    val ttsStartChoice: com.huangder.lumibooks.tts.TtsStartChoice? = null,
+    val ttsReaderResumeChoice: com.huangder.lumibooks.tts.TtsReaderResumeChoice? = null,
     val ttsProviderSelection: com.huangder.lumibooks.tts.TtsProviderSelection =
         com.huangder.lumibooks.tts.TtsProviderSelection.SystemDefault,
     val installedTtsEngines: List<com.huangder.lumibooks.tts.InstalledTtsEngine> = emptyList(),

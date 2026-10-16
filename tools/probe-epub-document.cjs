@@ -11,7 +11,7 @@ const chapters = readdirSync(directory).filter(name => /^tutorial-[0-9]+[.]xhtml
 assert.ok(chapters.length > 0, 'Run EpubTutorialDocumentTest first');
 const currentScript = process.argv.includes('--current-script')
   ? Array.from(readFileSync(join(__dirname, '../app/src/main/java/com/huangder/lumibooks/util/epub/EpubDocumentTransformer.kt'), 'utf8')
-      .matchAll(/private const val READER_SCRIPT_PART_[123] = """([\s\S]*?)"""/g), match => match[1]).join('')
+      .matchAll(/private const val READER_SCRIPT_PART_(?:1B|[123]) = """([\s\S]*?)"""/g), match => match[1]).join('')
   : null;
 if(currentScript!==null) assert.ok(currentScript.includes('reportLayoutStatus: reportLayoutStatus'));
 const server = createServer((request, response) => {
