@@ -62,6 +62,54 @@ class NativeEpubChapterRendererTest {
             NativeEpubChapterRenderer.layout(document("<p>甲</p>", "p{font-size:160px}"), config.copy(height = 80)) { null }
         }
     }
+    @Test fun readerTextSpacingOverridesParagraphCssWhenCustomized() {
+        val doc = document("<p>${"甲乙丙丁戊己".repeat(20)}</p><p>${"庚辛壬癸子丑".repeat(20)}</p>",
+            "p{margin:0;text-indent:0;line-height:1.0}")
+        val tallConfig = config.copy(height = 1200)
+        val publisherLayout = NativeEpubChapterRenderer.layout(doc, tallConfig) { null }
+        val readerLayout = NativeEpubChapterRenderer.layout(doc, tallConfig.copy(
+            lineHeightOverride = 2f, paragraphSpacingPx = 24f, firstLineIndentChars = 1.5f
+        )) { null }
+        try {
+            val publisherItems = publisherLayout.pages.single().items.filterIsInstance<NativeEpubHorizontalItem>()
+            val readerItems = readerLayout.pages.single().items.filterIsInstance<NativeEpubHorizontalItem>()
+            assertEquals(2, publisherItems.size)
+            assertEquals(2, readerItems.size)
+            val publisherLineHeight = publisherItems.first().layout.getLineBottom(0) - publisherItems.first().layout.getLineTop(0)
+            val readerLineHeight = readerItems.first().layout.getLineBottom(0) - readerItems.first().layout.getLineTop(0)
+            assertTrue(readerLineHeight > publisherLineHeight)
+            val first = readerItems.first()
+            val second = readerItems.last()
+            val firstBottom = first.y + first.layout.getLineBottom(first.lastLine - 1) - first.layout.getLineTop(first.firstLine)
+            assertEquals(24f, second.y - firstBottom, 0.01f)
+            val indent = (readerItems.first().layout.text as android.text.Spanned)
+                .getSpans(0, readerItems.first().layout.text.length, android.text.style.LeadingMarginSpan::class.java)
+                .single()
+            assertEquals(30, indent.getLeadingMargin(true))
+        } finally {
+            publisherLayout.close()
+            readerLayout.close()
+        }
+    }
+    @Test fun publisherNightShadeDimsThePageWithoutChangingLayout() {
+        val doc = document("<p>Black text on white paper</p>", "body{background:#fff;color:#000}p{margin:0}")
+        val layout = NativeEpubChapterRenderer.layout(doc, config.copy(publisherNightShade = true)) { null }
+        try {
+            val text = layout.pages.single().items.filterIsInstance<NativeEpubHorizontalItem>().single().layout.text
+            val colors = (text as android.text.Spanned).getSpans(
+                0, text.length, android.text.style.ForegroundColorSpan::class.java
+            )
+            assertTrue(colors.any { it.foregroundColor == android.graphics.Color.rgb(0xE8, 0xE8, 0xEA) })
+            val bitmap = Bitmap.createBitmap(config.width, config.height, Bitmap.Config.ARGB_8888)
+            layout.draw(Canvas(bitmap), 0)
+            val paper = bitmap.getPixel(0, 0)
+            assertTrue(android.graphics.Color.red(paper) in 130..150)
+            assertEquals(1, layout.pages.size)
+            bitmap.recycle()
+        } finally {
+            layout.close()
+        }
+    }
     private fun bitmapPixels(bitmap: Bitmap): IntArray = IntArray(bitmap.width * bitmap.height).also {
         bitmap.getPixels(it, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height) }
 }

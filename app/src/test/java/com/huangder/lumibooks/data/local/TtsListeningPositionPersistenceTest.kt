@@ -59,7 +59,7 @@ class TtsListeningPositionPersistenceTest {
             assertEquals(TtsStartChoice.CURRENT_PAGE, reopened.ttsStartChoice.first())
         }
         manager.saveTtsStartChoice(TtsStartChoice.SAVED_POSITION)
-        assertEquals(TtsReaderResumeChoice.LISTENING_POSITION, manager.ttsReaderResumeChoice.first())
+        assertEquals(TtsReaderResumeChoice.FURTHEST_PROGRESS, manager.ttsReaderResumeChoice.first())
         manager.saveTtsReaderResumeChoice(null)
         assertNull(DataStoreManager(context).ttsReaderResumeChoice.first())
         assertEquals(TtsStartChoice.SAVED_POSITION, manager.ttsStartChoice.first())
@@ -71,7 +71,7 @@ class TtsListeningPositionPersistenceTest {
     fun oldRememberedOpeningChoicesResetOnceWithoutChangingAudioStartOrListeningAnchor() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val position = TtsListeningPosition("book", 9, 3, 456, 123456L)
-        for (legacy in TtsReaderResumeChoice.entries) {
+        for (legacy in listOf(TtsReaderResumeChoice.KEEP_READING, TtsReaderResumeChoice.LISTENING_POSITION)) {
             context.dataStore.edit { preferences ->
                 preferences.clear()
                 preferences[stringPreferencesKey("tts_reader_resume_choice")] = legacy.storedValue

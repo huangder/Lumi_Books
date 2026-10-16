@@ -3,6 +3,8 @@ package com.huangder.lumibooks.ui.reader
 import android.app.Application
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
+import com.huangder.lumibooks.domain.model.Book
+import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.domain.model.ReaderThemeSettings
 import com.huangder.lumibooks.domain.model.ReaderThemeSuite
 import org.junit.Assert.*
@@ -10,16 +12,34 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import com.huangder.lumibooks.util.epub.EpubRenderMode
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
 class ReaderPaperColorTest {
+    @Test fun `white opening paper is softened while dark paper stays unchanged`() {
+        assertEquals(0xFFF0F0F0.toInt(), readerTransitionPaperColor(0xFFFFFFFF.toInt()))
+        assertEquals(0xFFF0F0F0.toInt(), readerTransitionPaperColor(0xFFFBFBFC.toInt()))
+        assertEquals(0xFF111111.toInt(), readerTransitionPaperColor(0xFF111111.toInt()))
+    }
+
     @Test fun `preset paper is available before document and renderer load`() {
         val state = ReaderUiState(activeReaderLayoutThemeSuiteId = "sepia", readerDisplayMode = "day")
         assertNull(state.book)
         assertTrue(state.isLoading)
         assertEquals(0xFFF5E6D3.toInt(), state.resolveReaderPaperColor(false))
         assertEquals(0xFF2B2118.toInt(), state.copy(readerDisplayMode = "night").resolveReaderPaperColor(false))
+    }
+
+    @Test fun `publisher suite uses dark fallback paper in night mode`() {
+        val state = ReaderUiState(
+            book = Book("book", "title", "author", "book.epub", null, BookFormat.EPUB, 0L, 0f, createdAt = 0L),
+            renderMode = EpubRenderMode.BOOK_LAYOUT,
+            readerDisplayMode = "night"
+        )
+        assertTrue(state.keepsPublisherPaint())
+        assertEquals(0xFF111111.toInt(), state.resolveReaderPaperColor(false))
+        assertEquals(0xFFFBFBFC.toInt(), state.copy(readerDisplayMode = "day").resolveReaderPaperColor(false))
     }
 
     @Test fun `active suite mode and custom paper are resolved without content`() {

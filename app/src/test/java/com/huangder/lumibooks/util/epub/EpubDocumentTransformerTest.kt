@@ -10,6 +10,20 @@ import org.junit.Test
 
 class EpubDocumentTransformerTest {
     @Test
+    fun svgTextPageIsNotTreatedAsSingleImage() {
+        val resource = EpubResource("OPS/page.xhtml", "application/xhtml+xml",
+            "<html><body><svg viewBox='0 0 100 100'><image href='cover.jpg'/><text>Title</text></svg></body></html>".toByteArray())
+        assertFalse(EpubDocumentTransformer.isMediaOnlyPage(resource))
+    }
+
+    @Test
+    fun svgLetteringWithoutImageRemainsCoverArtwork() {
+        val resource = EpubResource("OPS/cover.xhtml", "application/xhtml+xml",
+            "<html><body><svg viewBox='0 0 100 100'><text>Title</text></svg></body></html>".toByteArray())
+        assertTrue(EpubDocumentTransformer.isMediaOnlyPage(resource))
+    }
+
+    @Test
     fun injectsIndependentLumiRuleStylingAndFallbackCleanup() {
         val output = EpubDocumentTransformer.transform(
             EpubResource(
@@ -270,7 +284,8 @@ class EpubDocumentTransformerTest {
 
         // 分页时整页图占满一屏，滚动阅读时按满宽 + 自然高度，避免中间大片空白。
         assertTrue(output.contains("html.lumi-scrolled body[data-lumi-media-only=\"true\"]"))
-        assertTrue(output.contains("html.lumi-crop-page-image body[data-lumi-media-only=\"true\"]"))
+        assertTrue(output.contains("html.lumi-paginated.lumi-crop-page-image body[data-lumi-media-only=\"true\"]"))
+        assertTrue(output.contains("html.lumi-scrolled.lumi-crop-page-image body[data-lumi-media-only=\"true\"]"))
         assertTrue(output.contains("state.imagePageCrop = config.imagePageCrop === true"))
     }
 
@@ -761,6 +776,7 @@ class EpubDocumentTransformerTest {
         )
         // 「原排版」套装下阅读器完全不参与配色。
         assertTrue(output.contains("state.publisherPaintOnly = config.publisherPaintOnly === true"))
+        assertTrue(output.contains("publisherNightShade\n        ? Object.assign({}, config, { textColor: '#e8e8ea' })"))
     }
 
     @Test

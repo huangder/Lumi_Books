@@ -9,6 +9,16 @@ import org.junit.Test
 class BookmarkPullGestureTrackerTest {
     private val tracker = BookmarkPullGestureTracker()
 
+    @Test fun statusBarPullDoesNotBecomeBookmark() {
+        tracker.start(x = 100f, y = 20f, density = 1f, enabled = true,
+            topExclusionPx = 32f)
+        assertNull(tracker.move(x = 100f, y = 120f))
+        assertFalse(tracker.finish(cancelled = false).commit)
+        tracker.start(x = 100f, y = 40f, density = 1f, enabled = true,
+            topExclusionPx = 32f)
+        assertTrue(tracker.move(x = 100f, y = 120f)!!.armed)
+    }
+
     @Test
     fun startOutsideTopRegionDoesNotClaim() {
         tracker.start(x = 100f, y = 161f, density = 1f, enabled = true)

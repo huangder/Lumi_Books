@@ -62,6 +62,15 @@ class TxtTocRulesTest {
     }
 
     @Test
+    fun multilingualBuiltInRuleCompilesAndMatchesChineseChapterAndVolumeTitles() {
+        val rule = TxtTocRuleBuiltIns.byId("builtin-multilingual")!!
+        val compiled = TxtTocRuleCompiler.compile(rule).getOrThrow()
+
+        assertEquals("第一章 初入江湖", compiled.match("第一章 初入江湖")?.title)
+        assertEquals(TxtTocHeadingRole.VOLUME, compiled.match("第一卷 风起")?.role)
+    }
+
+    @Test
     fun selectorChoosesSymbolPrefixedRule() {
         val (selected, diagnostics) = TxtTocRuleSelector.choose(
             TxtTocRuleBuiltIns.all,

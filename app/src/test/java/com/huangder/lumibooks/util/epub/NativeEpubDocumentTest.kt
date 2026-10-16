@@ -57,12 +57,32 @@ class NativeEpubDocumentTest {
         assertEquals(ChapterRenderEngine.NATIVE, compile("<p>A</p>", "p{padding:0;text-justify:inter-ideograph}").decision.engine)
         assertEquals(ChapterRenderEngine.NATIVE, compile("<p>A</p>").decision.engine)
     }
-    @Test fun screenMediaAndOptionalFontFacesUseNativeFlow() {
+    @Test fun screenMediaAndEmbeddedFontsUseNativeFlow() {
         assertEquals(ChapterRenderEngine.NATIVE,
             compile("<p>A</p>", "@charset 'UTF-8'; @media screen { p{color:red} }").decision.engine)
-        val fontFace = compile("<p>A</p>", "@font-face{font-family:book;src:url(book.ttf)} p{font-family:book}")
+        val source = NativeEpubSource(
+            "OPS/chapter.xhtml",
+            EpubResource("OPS/chapter.xhtml", "application/xhtml+xml",
+                "<html><body><p>A</p></body></html>".toByteArray()),
+            listOf("OPS/styles/book.css" to
+                "@font-face{font-family:'book face';src:url(../fonts/book.ttf);font-weight:700;font-style:italic}" +
+                    "p{font-family:'book face',serif}"),
+            EpubRenditionLayout.REFLOWABLE
+        )
+        val face = EpubResource("OPS/fonts/book.ttf", "font/ttf", byteArrayOf(1, 2, 3))
+        val fontFace = NativeEpubCompiler.compile(source) { path -> face.takeIf { it.path == path } }
         assertEquals(ChapterRenderEngine.NATIVE, fontFace.decision.engine)
-        assertEquals("serif", fontFace.document!!.runs.first().style.family)
+        assertEquals("book face", fontFace.document!!.blocks.single().style.family)
+        assertEquals(face, fontFace.document.embeddedFonts.single().resource)
+        assertEquals(700, fontFace.document.embeddedFonts.single().weight)
+        assertTrue(fontFace.document.embeddedFonts.single().italic)
+        val missingFont = NativeEpubCompiler.compile(source)
+        assertEquals(ChapterRenderEngine.WEBVIEW, missingFont.decision.engine)
+        assertTrue(missingFont.decision.reason!!.startsWith("missing embedded font"))
+        assertEquals(ChapterRenderEngine.WEBVIEW,
+            compile("<p>A</p>", "@media screen { @FONT-FACE {font-family:book;src:url(book.ttf)} }").decision.engine)
+        assertEquals(ChapterRenderEngine.NATIVE,
+            compile("<p>A</p>", "/* @font-face{font-family:book;src:url(book.ttf)} */").decision.engine)
     }
     @Test fun publisherMetadataAndZeroBoxesPreserveBodyAndFootnotes() {
         val result = compile("<div class='div'><h3>Heading<a class='zy'>1</a></h3><p class='a'>正文</p></div>",
