@@ -26,7 +26,7 @@ android {
         applicationId = "com.huangder.lumibooks"
         minSdk = 26
         targetSdk = 37
-        versionCode = 15
+        versionCode = 16
         versionName = "Dream"
 
         buildConfigField("boolean", "DIAGNOSTIC_BUILD", "false")
