@@ -867,6 +867,13 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         }
     }
 
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+        super.onWindowFocusChanged(hasWindowFocus)
+        if (!hasWindowFocus && bookmarkPullTracker.finish(cancelled = true).wasActive) {
+            callbacks?.onBookmarkPullFinished(false)
+        }
+    }
+
     fun setContentProvider(provider: suspend (Int) -> CharSequence?) {
         slotManager.clearContentCache()
         val formattedProvider: suspend (Int) -> CharSequence? = { chapterIndex ->
@@ -1702,7 +1709,11 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                         !animationController.isDragging &&
                         !isJumpSettling,
                     startRegionY = ev.y,
-                    gestureRegionHeight = height.toFloat()
+                    gestureRegionHeight = height.toFloat(),
+                    topExclusionPx = maxOf(32f * resources.displayMetrics.density,
+                        rootWindowInsets?.systemWindowInsetTop?.toFloat() ?: 0f,
+                        if (android.os.Build.VERSION.SDK_INT >= 28)
+                            rootWindowInsets?.displayCutout?.safeInsetTop?.toFloat() ?: 0f else 0f)
                 )
                 rvImageLongPressHandled = false
                 val hitView = pageViewAt(ev.x, ev.y)

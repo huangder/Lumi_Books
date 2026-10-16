@@ -45,6 +45,7 @@ import com.huangder.lumibooks.util.epub.EpubSearchMatch
 import com.huangder.lumibooks.util.epub.EpubTextSearch
 import com.huangder.lumibooks.util.epub.CachedEpubMetadata
 import com.huangder.lumibooks.util.epub.EpubMetadataCache
+import com.huangder.lumibooks.util.epub.EpubCoverCandidates
 import com.huangder.lumibooks.util.cache.WeightedLruCache
 
 /**
@@ -3494,89 +3495,32 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
 
     private fun extractCover(zipFile: ZipFile, opfContent: String, sourceKey: String): String? {
         val ctx = context ?: return null
-
-        try {
-            val coverIdRegex = """<meta\s+name="cover"\s+content="([^"]+)"""".toRegex()
-            val coverId = coverIdRegex.find(opfContent)?.groupValues?.get(1)
-
-            val manifestRegex = """<manifest[^>]*>(.*?)</manifest>""".toRegex(RegexOption.DOT_MATCHES_ALL)
-            val manifestContent = manifestRegex.find(opfContent)?.groupValues?.get(1) ?: ""
-
-            var coverHref: String? = null
-
-            // 方式1：<meta name="cover" content="ID"> → 在 manifest 中按 id 找 href
-            if (coverId != null) {
-                coverHref = extractHrefById(manifestContent, coverId)
-            }
-
-            // 方式2：EPUB 3 — <item properties="cover-image" href="...">
-            if (coverHref == null) {
-                val r1 = """<item[^>]*\bproperties="[^"]*\bcover-image\b[^"]*"[^>]*\bhref="([^"]+)"""".toRegex(RegexOption.IGNORE_CASE)
-                val r2 = """<item[^>]*\bhref="([^"]+)"[^>]*\bproperties="[^"]*\bcover-image\b[^"]*"""".toRegex(RegexOption.IGNORE_CASE)
-                coverHref = r1.find(manifestContent)?.groupValues?.get(1)
-                    ?: r2.find(manifestContent)?.groupValues?.get(1)
-            }
-
-            // 方式3：manifest item 的 id 含 "cover"（属性顺序不限）
-            if (coverHref == null) {
-                val coverIdPattern = """<item\b[^>]*\bid="([^"]*cover[^"]*)"[^>]*>""".toRegex(RegexOption.IGNORE_CASE)
-                coverIdPattern.find(manifestContent)?.groupValues?.get(1)?.let { id ->
-                    coverHref = extractHrefById(manifestContent, id)
+        val packagePath = zipFile.name
+        return runCatching {
+            val epubPackage = EpubPackageReader.read(packagePath)
+            val candidates = EpubCoverCandidates.paths(epubPackage, opfContent) { path ->
+                findEntry(zipFile, path)?.let { entry ->
+                    zipFile.getInputStream(entry).bufferedReader().use { it.readText() }
                 }
             }
-
-            // 方式4：href 本身含 "cover" 且是图片
-            if (coverHref == null) {
-                """<item\b[^>]*\bhref="([^"]*cover[^"]*\.(?:jpg|jpeg|png|webp))"""".toRegex(RegexOption.IGNORE_CASE)
-                    .find(manifestContent)?.let { coverHref = it.groupValues[1] }
+            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            for (path in candidates) {
+                val entry = findEntry(zipFile, path) ?: continue
+                if (entry.size > MAX_IMAGE_RESOURCE_BYTES) continue
+                val bytes = zipFile.getInputStream(entry).use { it.readBytes() }
+                if (bytes.isEmpty() || bytes.size > MAX_IMAGE_RESOURCE_BYTES) continue
+                options.outWidth = 0
+                options.outHeight = 0
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+                if (options.outWidth <= 0 || options.outHeight <= 0) continue
+                val coversDir = File(ctx.filesDir, "covers")
+                coversDir.mkdirs()
+                val coverFile = File(coversDir, "${sourceKey.hashCode()}.${path.substringAfterLast('.', "jpg").lowercase()}")
+                coverFile.writeBytes(bytes)
+                return@runCatching coverFile.absolutePath
             }
-
-            // 方式5：<meta name="cover"> 指向的是 HTML 章节，从该章节中提取第一张图片
-            if (coverHref == null && coverId != null) {
-                val htmlHref = extractHrefById(manifestContent, coverId)
-                if (htmlHref != null && (htmlHref.endsWith(".html", true) || htmlHref.endsWith(".xhtml", true) || htmlHref.endsWith(".htm", true))) {
-                    val htmlPath = if (basePath.isNotEmpty()) "$basePath/$htmlHref" else htmlHref
-                    val htmlEntry = findEntry(zipFile, htmlPath)
-                    if (htmlEntry != null) {
-                        val html = zipFile.getInputStream(htmlEntry).bufferedReader().readText()
-                        val imgSrc = """<img\b[^>]*\bsrc="([^"]+)"""".toRegex(RegexOption.IGNORE_CASE).find(html)?.groupValues?.get(1)
-                            ?: """xlink:href="([^"]+\.(?:jpg|jpeg|png|webp))"""".toRegex(RegexOption.IGNORE_CASE).find(html)?.groupValues?.get(1)
-                        if (imgSrc != null) {
-                            val imgPath = normalizePath(if (basePath.isNotEmpty()) "$basePath/$imgSrc" else imgSrc)
-                            if (findEntry(zipFile, imgPath) != null) coverHref = imgSrc
-                        }
-                    }
-                }
-            }
-
-            if (coverHref == null) {
-                zipFile.entries().toList().forEach { entry ->
-                    if (entry.name.contains("cover", ignoreCase = true) &&
-                        (entry.name.endsWith(".jpg", true) || entry.name.endsWith(".jpeg", true) ||
-                         entry.name.endsWith(".png", true) || entry.name.endsWith(".webp", true))) {
-                        coverHref = entry.name
-                        return@forEach
-                    }
-                }
-            }
-
-            val href = coverHref ?: return null
-
-            val fullPath = if (basePath.isNotEmpty()) "$basePath/$href" else href
-            val entry = findEntry(zipFile, fullPath) ?: return null
-            val bytes = zipFile.getInputStream(entry).readBytes()
-            if (bytes.isEmpty()) return null
-
-            val coversDir = File(ctx.filesDir, "covers")
-            coversDir.mkdirs()
-            val coverFile = File(coversDir, "${sourceKey.hashCode()}.jpg")
-            coverFile.writeBytes(bytes)
-
-            return coverFile.absolutePath
-        } catch (e: Exception) {
-            e.printStackTrace()
-            return null
-        }
+            null
+        }.getOrNull()
     }
 
     override fun extractCoverPath(filePath: String): String? {

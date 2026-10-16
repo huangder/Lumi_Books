@@ -92,10 +92,14 @@ internal object ExcerptRenderer {
         }
         val date = Date(request.createdAt)
         val artwork = when (style) {
-            ExcerptStyle.ILLUSTRATION -> "excerpt_character.png"
-            ExcerptStyle.ILLUSTRATION_EDGE -> "excerpt_reading.png"
+            ExcerptStyle.ILLUSTRATION -> BitmapFactory.decodeResource(
+                context.resources, R.drawable.lumi_chan_secondary_background
+            )
+            ExcerptStyle.ILLUSTRATION_EDGE -> context.assets.open("excerpt_reading.png").use {
+                BitmapFactory.decodeStream(it)
+            }
             else -> null
-        }?.let { name -> context.assets.open(name).use { BitmapFactory.decodeStream(it) } }
+        }
         val headerBottom: Float
         when (style) {
             ExcerptStyle.CALENDAR -> {

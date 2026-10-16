@@ -549,10 +549,16 @@ internal fun EpubWebViewReader(
     onNavigationStage: (operationId: Long, stage: EpubNavigationStage) -> Unit = { _, _ -> },
     onNavigationResult: (EpubNavigationResult) -> Unit = {},
     onRenderUnavailable: (EpubRenderFailure) -> Unit,
+    onRendererEngineResolved: (nativeCss: Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val nativeSession = session as? com.huangder.lumibooks.util.epub.EpubRenderSession
+    // A single-media page must use the same WebView geometry on both sides of the crop toggle.
+    val mediaOnlyPage by produceState<Boolean?>(null, session, chapterIndex) {
+        value = withContext(Dispatchers.IO) { session.isMediaOnlyPage(chapterIndex) }
+    }
     val nativeSettingsSupported = nativeCssEnabled && nativeSession != null && bookFormat == "EPUB" &&
+        mediaOnlyPage == false &&
         !continuousScroll && pageTransition in setOf("slide", "curl", "none") &&
         readerBackgroundImagePath == null && !bionicReadingEnabled && chineseMode == "original" &&
         textAlignment == ReaderTextAlignment.NATURAL && letterSpacingDp == 0f &&
@@ -579,7 +585,13 @@ internal fun EpubWebViewReader(
     val nativeCompilationState by produceState<Pair<Pair<BookRenderSession, Int>, com.huangder.lumibooks.util.epub.NativeEpubCompilation>?>(
         null, session, chapterIndex, nativeSettingsSupported) {
         if (nativeSettingsSupported) value = (session to chapterIndex) to withContext(Dispatchers.IO) {
-            val compilation = nativeSession!!.nativeChapterSource(chapterIndex)?.let(com.huangder.lumibooks.util.epub.NativeEpubCompiler::compile)
+            val compilation = nativeSession!!.let { renderSession ->
+                renderSession.nativeChapterSource(chapterIndex)?.let { source ->
+                    com.huangder.lumibooks.util.epub.NativeEpubCompiler.compile(
+                        source, renderSession::nativeResource
+                    )
+                }
+            }
                 ?: com.huangder.lumibooks.util.epub.NativeEpubCompilation(
                     com.huangder.lumibooks.util.epub.ChapterRenderDecision(com.huangder.lumibooks.util.epub.ChapterRenderEngine.WEBVIEW, "missing source"))
             android.util.Log.i("NativeEpub", "chapter=$chapterIndex engine=${compilation.decision.engine} reason=${compilation.decision.reason ?: "supported"}")
@@ -588,11 +600,21 @@ internal fun EpubWebViewReader(
     }
     val nativeCompilation = nativeCompilationState?.takeIf { it.first == session to chapterIndex }?.second
     var nativeLayoutFailed by remember(session, chapterIndex) { mutableStateOf(false) }
-    if (nativeSettingsSupported && nativeCompilation == null) return
+    val latestRendererEngineResolved = rememberUpdatedState(onRendererEngineResolved)
+    LaunchedEffect(session, chapterIndex, nativeSettingsSupported, nativeCompilation, nativeLayoutFailed) {
+        when {
+            !nativeSettingsSupported -> latestRendererEngineResolved.value(false)
+            nativeCompilation != null -> latestRendererEngineResolved.value(
+                nativeCompilation.document != null && !nativeLayoutFailed
+            )
+        }
+    }
     val nativeDocument = nativeCompilation?.document
     if (nativeSettingsSupported && nativeDocument != null && !nativeLayoutFailed) {
         var nativeImagePreview by remember(session, chapterIndex) { mutableStateOf<EpubImagePreviewRequest?>(null) }
-        val nativePaper = readerBackgroundColorOverride ?: when (theme) {
+        val nativePaper = if (publisherPaintOnly && theme == "publisher_night") {
+            Color.rgb(0x11, 0x11, 0x11)
+        } else if (publisherPaintOnly) Color.WHITE else readerBackgroundColorOverride ?: when (theme) {
             "night", "dark" -> Color.rgb(0x1C, 0x1C, 0x1E)
             "sepia" -> Color.rgb(0xF5, 0xE6, 0xD3)
             "green" -> Color.rgb(0xE8, 0xF5, 0xE9)
@@ -601,7 +623,9 @@ internal fun EpubWebViewReader(
         NativeEpubReader(nativeSession!!, nativeDocument, chapterIndex,
             NativeEpubReaderStyle(fontSizeSp, fontType, fontFilePath, bodyFontWeight,
                 textColorOverride ?: autoTextColor ?: if (publisherPaintOnly) null else if (theme in setOf("night", "dark")) Color.LTGRAY else null,
-                nativePaper, publisherPaintOnly || preservePublisherBackground, marginTopDp, marginRightDp, marginBottomDp, marginLeftDp),
+                nativePaper, publisherPaintOnly || preservePublisherBackground, marginTopDp, marginRightDp, marginBottomDp, marginLeftDp,
+                publisherNightShade = publisherPaintOnly && theme == "publisher_night",
+                textSpacing = textSpacing),
             pageTransition, pageTransitionDurationMs, edgeTapMode, restoreLocatorJson, restoreProgression, restoreProgressionInclusive, initialFragment,
             navigationRequest, searchRequest, locatorRequest, pageRequest, notes, ttsCurrentSentence, ttsFollowEnabled,
             ttsHighlightColor, selectionClearToken, bookmarkPullEnabled, paginationContentIdentity,
@@ -614,11 +638,7 @@ internal fun EpubWebViewReader(
             onDismissRequest = { nativeImagePreview = null }) }
         return
     }
-    // Source classification parses HTML; never perform it from AndroidView.update on the UI thread.
-    val mediaOnlyPage by produceState<Boolean?>(null, session, chapterIndex) {
-        value = withContext(Dispatchers.IO) { session.isMediaOnlyPage(chapterIndex) }
-    }
-    if (mediaOnlyPage == null) return
+    // Source classification above parses HTML off the UI thread.
     val backgroundPreparationEnabled = LocalReaderOpeningComplete.current
     val latestBackgroundPreparationEnabled = rememberUpdatedState(backgroundPreparationEnabled)
     val restorePreloads = remember(session) { mutableStateOf<(() -> Unit)?>(null) }
@@ -767,7 +787,22 @@ internal fun EpubWebViewReader(
             if ((context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
                 WebView.setWebContentsDebuggingEnabled(true)
             }
-            EpubPageTurnHost(context).apply {
+            val initialReaderBackground = if (publisherPaintOnly && theme == "publisher_night") {
+                Color.rgb(0x11, 0x11, 0x11)
+            } else readerBackgroundColorOverride ?: if (publisherPaintOnly) {
+                Color.rgb(0xFB, 0xFB, 0xFC)
+            } else when (theme) {
+                "night" -> Color.rgb(0x11, 0x11, 0x11)
+                "sepia_dark" -> Color.rgb(0x2B, 0x21, 0x18)
+                "green_dark" -> Color.rgb(0x14, 0x2A, 0x1A)
+                "sepia" -> Color.rgb(0xF5, 0xE6, 0xD3)
+                "green" -> Color.rgb(0xE8, 0xF5, 0xE9)
+                else -> Color.WHITE
+            }
+            val initialPageBackground = effectiveCoverBackgroundColor.takeUnless { publisherPaintOnly }
+                ?.takeIf { chapterIndex == 0 }
+                ?: initialReaderBackground
+            EpubPageTurnHost(context, initialPageBackground).apply {
                 val pageTurnHost = this
                 addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
                     hostViewportSize.value = (right - left) to (bottom - top)
@@ -2991,8 +3026,13 @@ internal fun EpubWebViewReader(
             }
             // The reader background is the base layer; the book's own paint
             // covers it wherever the document defines one.
-            val readerBackground = if (publisherPaintOnly) Color.WHITE
-                else readerBackgroundColorOverride ?: fallbackBackground
+            val readerBackground = if (publisherPaintOnly && theme == "publisher_night") {
+                Color.rgb(0x11, 0x11, 0x11)
+            } else readerBackgroundColorOverride ?: if (publisherPaintOnly) {
+                if (theme == "publisher_night") Color.rgb(0x11, 0x11, 0x11) else Color.rgb(0xFB, 0xFB, 0xFC)
+            } else {
+                fallbackBackground
+            }
             val pageBackground = effectiveCoverBackgroundColor.takeUnless { publisherPaintOnly }
                 ?.takeIf { chapterIndex == 0 }
                 ?: readerBackground

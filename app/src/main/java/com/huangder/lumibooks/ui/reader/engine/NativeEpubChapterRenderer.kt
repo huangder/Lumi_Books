@@ -5,12 +5,23 @@ import android.icu.text.BreakIterator
 import android.text.*
 import android.text.style.*
 import com.huangder.lumibooks.util.epub.*
+import java.io.File
 import java.util.Locale
 import kotlin.math.*
 
+internal data class NativeEpubResolvedFont(
+    val family: String,
+    val weight: Int,
+    val italic: Boolean,
+    val typeface: Typeface
+)
+
 internal data class NativeEpubRenderConfig(val width: Int, val height: Int, val fontPx: Float,
     val typeface: Typeface, val color: Int?, val paper: Int, val publisherColors: Boolean,
-    val left: Float, val top: Float, val right: Float, val bottom: Float)
+    val left: Float, val top: Float, val right: Float, val bottom: Float,
+    val lineHeightOverride: Float? = null, val paragraphSpacingPx: Float? = null,
+    val firstLineIndentChars: Float? = null, val publisherNightShade: Boolean = false,
+    val embeddedTypefaces: List<NativeEpubResolvedFont> = emptyList())
 internal data class NativeEpubHit(val start: Int, val end: Int, val bounds: RectF)
 internal sealed interface NativeEpubDrawItem {
     val start: Int
@@ -84,6 +95,9 @@ internal class NativeEpubChapterLayout(val document: NativeEpubDocument, val pag
         // Highlights are overlays, with alpha supplied by the annotation/TTS caller.
         highlights.forEach { (range, color) -> val paint = Paint().apply { this.color = color }
             pages[page].items.forEach { it.highlight(canvas, range.first, range.last + 1, paint) } }
+        if (config.publisherNightShade) {
+            canvas.drawColor(0x73000000)
+        }
     }
     @Synchronized override fun close() { closed = true; images.forEach { if (!it.isRecycled) it.recycle() } }
 }
@@ -130,8 +144,19 @@ internal object NativeEpubChapterRenderer {
         fun flush() { if (items.isNotEmpty()) { pages += NativeEpubPage(items.minOf { it.start }, items.maxOf { it.end }, items.toList()); items = mutableListOf() } }
         fun paint(style: NativeCssStyle): TextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
             textSize = style.size * scale
-            color = config.color ?: if (config.publisherColors) cssColor(style.color) ?: Color.BLACK else Color.BLACK
-            typeface = Typeface.create(if (style.family == "serif") config.typeface else Typeface.create(style.family, Typeface.NORMAL), style.weight, style.italic)
+            val publisherColor = config.color ?: if (config.publisherColors) cssColor(style.color) ?: Color.BLACK else Color.BLACK
+            color = if (config.publisherNightShade && isDarkNeutral(publisherColor)) {
+                Color.rgb(0xE8, 0xE8, 0xEA)
+            } else publisherColor
+            val embedded = config.embeddedTypefaces
+                .filter { it.family.equals(style.family, ignoreCase = true) }
+                .minByOrNull { (if (it.italic == style.italic) 0 else 1000) + abs(it.weight - style.weight) }
+            typeface = embedded?.let { Typeface.create(it.typeface, style.weight, style.italic) }
+                ?: Typeface.create(
+                    if (style.family == "serif") config.typeface else Typeface.create(style.family, Typeface.NORMAL),
+                    style.weight,
+                    style.italic
+                )
             letterSpacing = style.letterSpacing / style.size
             isUnderlineText = style.underline
         }
@@ -157,7 +182,13 @@ internal object NativeEpubChapterRenderer {
                         RectF(left + (right - left - w) / 2, top + (bottom - top - h) / 2, left + (right - left + w) / 2, top + (bottom - top + h) / 2))
                     flush()
                 } else if (!block.style.vertical) {
-                    val st = block.style
+                    val st = block.style.let { original ->
+                        if (!block.isParagraph) original else original.copy(
+                            marginTop = if (config.paragraphSpacingPx != null) 0f else original.marginTop,
+                            marginBottom = if (config.paragraphSpacingPx != null) 0f else original.marginBottom,
+                            indent = config.firstLineIndentChars?.times(original.size) ?: original.indent
+                        )
+                    }
                     val blockLeft = left + st.marginLeft * scale
                     val width = (right - blockLeft - st.marginRight * scale).toInt()
                     require(width > config.fontPx)
@@ -185,7 +216,7 @@ internal object NativeEpubChapterRenderer {
                         "end" -> Layout.Alignment.ALIGN_OPPOSITE; else -> Layout.Alignment.ALIGN_NORMAL }
                     val layout = StaticLayout.Builder.obtain(text, 0, text.length, paint(st), width)
                         .setAlignment(alignment).setTextDirection(if (st.direction == "rtl") TextDirectionHeuristics.RTL else TextDirectionHeuristics.LTR)
-                        .setIncludePad(false).setLineSpacing(0f, st.lineHeight)
+                        .setIncludePad(false).setLineSpacing(0f, config.lineHeightOverride ?: st.lineHeight)
                         .setBreakStrategy(Layout.BREAK_STRATEGY_HIGH_QUALITY)
                         .setJustificationMode(if (st.align == "justify") Layout.JUSTIFICATION_MODE_INTER_WORD else Layout.JUSTIFICATION_MODE_NONE).build()
                     y += max(previousMargin, st.marginTop * scale)
@@ -202,9 +233,16 @@ internal object NativeEpubChapterRenderer {
                         first = last
                         if (first < layout.lineCount) { flush(); y = top }
                     }
-                    previousMargin = st.marginBottom * scale
+                    previousMargin = config.paragraphSpacingPx?.takeIf { block.isParagraph }
+                        ?: st.marginBottom * scale
                 } else {
-                    val st = block.style
+                    val st = block.style.let { original ->
+                        if (!block.isParagraph) original else original.copy(
+                            marginTop = if (config.paragraphSpacingPx != null) 0f else original.marginTop,
+                            marginBottom = if (config.paragraphSpacingPx != null) 0f else original.marginBottom,
+                            indent = config.firstLineIndentChars?.times(original.size) ?: original.indent
+                        )
+                    }
                     require(st.align == "start" && st.direction == "ltr" && st.marginLeft == 0f && st.marginRight == 0f && st.background == null) { "Unsupported vertical block decoration" }
                     val runs = document.runs.filter { it.start < block.end && it.end > block.start }
                     val em = max(st.size, runs.maxOfOrNull { it.style.size } ?: st.size) * scale
@@ -247,12 +285,23 @@ internal object NativeEpubChapterRenderer {
                                 RectF(columnX + em, rtY + n * advance, columnX + em + advance, rtY + (n + 1) * advance), annotationPaint, shouldRotateVerticalCluster(glyph)) }
                         }
                     }
-                    columnX -= st.marginBottom * scale
+                    columnX -= config.paragraphSpacingPx?.takeIf { block.isParagraph }
+                        ?: st.marginBottom * scale
                 }
                 if (block.style.pageBreakAfter) { flush(); y = top; columnX = right; verticalY = top }
             }
             flush(); require(pages.isNotEmpty())
             return NativeEpubChapterLayout(document, pages, cfg, images)
         } catch (error: Exception) { images.forEach { it.recycle() }; throw error }
+    }
+
+    private fun isDarkNeutral(color: Int): Boolean {
+        val red = Color.red(color)
+        val green = Color.green(color)
+        val blue = Color.blue(color)
+        val maximum = maxOf(red, green, blue)
+        val minimum = minOf(red, green, blue)
+        val luminance = red * 0.2126 + green * 0.7152 + blue * 0.0722
+        return maximum - minimum <= 16 && luminance < 150
     }
 }

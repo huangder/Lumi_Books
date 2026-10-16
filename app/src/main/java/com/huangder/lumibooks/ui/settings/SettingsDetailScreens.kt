@@ -279,7 +279,8 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
     val listeningResumeOptions = listOf(
         null to stringResource(R.string.tts_listening_resume_show_prompt),
         TtsReaderResumeChoice.KEEP_READING to stringResource(R.string.tts_listening_resume_keep),
-        TtsReaderResumeChoice.LISTENING_POSITION to stringResource(R.string.tts_listening_resume_jump)
+        TtsReaderResumeChoice.LISTENING_POSITION to stringResource(R.string.tts_listening_resume_jump),
+        TtsReaderResumeChoice.FURTHEST_PROGRESS to stringResource(R.string.tts_listening_resume_furthest)
     )
 
     DetailCard {
@@ -1200,7 +1201,11 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
         SettingsDivider()
         SettingsSwitchRow(stringResource(R.string.cover_reading_progress_enabled), checked = uiState.coverReadingProgressEnabled, onCheckedChange = viewModel::saveCoverReadingProgressEnabled)
         SettingsDivider()
-        SettingsSwitchRow(stringResource(R.string.label_splash_screen), checked = uiState.splashEnabled, onCheckedChange = null)
+        SettingsSwitchRow(
+            stringResource(R.string.label_splash_screen),
+            checked = uiState.splashEnabled,
+            onCheckedChange = viewModel::saveSplashEnabled
+        )
         SettingsDivider()
         DropdownSettingRow(label = stringResource(R.string.label_reader_theme),
             options = themeOptions,

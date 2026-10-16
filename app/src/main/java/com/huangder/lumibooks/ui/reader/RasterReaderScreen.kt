@@ -138,7 +138,13 @@ import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.SwipeRevealItem
-import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuHost
+import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
+import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import com.huangder.lumibooks.ui.components.animateBottomSheetIn
 import com.huangder.lumibooks.ui.components.animateBottomSheetOut
 import com.huangder.lumibooks.ui.components.LiquidGlassColumnSheetContainer
@@ -1153,7 +1159,7 @@ fun RasterReaderScreen(
         onDismiss = viewModel::dismissTtsStart, onChoose = viewModel::chooseTtsStart
     )
     androidx.compose.runtime.CompositionLocalProvider(LocalRasterPagePrepared provides reportPagePrepared) {
-    ProvideLiquidGlassBackdrop(pdfGlassBackdrop.takeIf { capturePdfBackdrop }) {
+    LiquidGlassMenuHost(Modifier.fillMaxSize(), backdrop = pdfGlassBackdrop.takeIf { capturePdfBackdrop }) {
     Box(
         Modifier
             .fillMaxSize()
@@ -2682,6 +2688,14 @@ private fun PdfBottomMenu(
     onBookmarksClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val menuHost = LocalLiquidGlassMenuHost.current
+    val moreMenuId = remember { Any() }
+    var moreAnchorBounds by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
+    val moreExpanded = menuHost?.activeMenu?.sourceId == moreMenuId
+    val conversionLabel = stringResource(R.string.pdf_convert_action)
+    val menuSurfaceColor = AppColors.CardBg
+    val menuContentColor = AppColors.TextPrimary
+    val currentOnConversionClick by rememberUpdatedState(onConversionClick)
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -2719,7 +2733,7 @@ private fun PdfBottomMenu(
                     )
                 }
             }
-        } else {
+        } else if (conversionState is PdfConversionState.Running) {
             PdfConversionCapsule(
                 conversionState = conversionState,
                 glassContentScrimColor = glassContentScrimColor,
@@ -2760,6 +2774,37 @@ private fun PdfBottomMenu(
                 modifier = Modifier.weight(1f),
                 onClick = onImageAdjustmentsClick
             )
+            if (!isComic) {
+                LiquidGlassIconButton(
+                    imageVector = AppIcons.DotsThreeVertical,
+                    contentDescription = stringResource(R.string.more_options),
+                    contentColor = if (moreExpanded) AppColors.Accent else AppColors.TextPrimary,
+                    normalContainerColor = AppColors.BgGray,
+                    liquidContainerColor = AppColors.BgGray,
+                    liquidScrimColor = glassContentScrimColor,
+                    pressFeedbackEnabled = false,
+                    modifier = Modifier
+                        .liquidGlassMenuAnchor(moreMenuId)
+                        .onGloballyPositioned { moreAnchorBounds = it.boundsInWindow() },
+                    onClick = {
+                        if (moreAnchorBounds != androidx.compose.ui.geometry.Rect.Zero) {
+                            menuHost?.toggle(
+                                LiquidGlassMenuSpec(
+                                    anchorBounds = moreAnchorBounds,
+                                    sourceId = moreMenuId,
+                                    width = 208.dp,
+                                    preferAbove = true,
+                                    surfaceColor = menuSurfaceColor,
+                                    contentColor = menuContentColor,
+                                    items = listOf(LiquidGlassMenuItem(conversionLabel, AppIcons.Books) {
+                                        currentOnConversionClick()
+                                    })
+                                )
+                            )
+                        }
+                    }
+                )
+            }
         }
     }
 }

@@ -4,6 +4,7 @@
     <string name="tts_listening_resume_message">已恢復上次閱讀位置。你上次聽到「%1$s」，是否跳轉到聽書進度？</string>
     <string name="tts_listening_resume_jump">跳到聽書進度</string>
     <string name="tts_listening_resume_keep">保留閱讀位置</string>
+    <string name="tts_listening_resume_furthest">跳到更後面的進度</string>
     <string name="tts_listening_resume_setting">開啟書本時的位置</string>
     <string name="tts_start_title">聽書從哪裡開始？</string>
     <string name="tts_start_message">上次聽到「%1$s」。請選擇從目前頁面或原聽書進度讀起。</string>

@@ -566,6 +566,8 @@ internal fun shouldRecoverReaderAfterCacheClear(
     recoveryRunning: Boolean
 ): Boolean = hasLoadedBook && !recoveryRunning && currentGeneration != observedGeneration
 
+internal data class ContinuousChapterPreview(val text: CharSequence, val isComplete: Boolean)
+
 internal data class ReaderCacheRecoveryPosition(
     val readingProgress: Float,
     val locatorJson: String?
@@ -726,10 +728,17 @@ class ReaderViewModel @Inject constructor(
                 visibleEnd ?: page?.endCharOffset, allowPageFallback, visible, visibleChapters)) {
             val choice = dataStoreManager.ttsReaderResumeChoice.first()
             if (!listeningReaderSession.isCurrent(generation)) return
-            when (choice) {
-                null -> listeningReaderSession.offer(position!!)
-                TtsReaderResumeChoice.KEEP_READING -> keepReadingPosition()
-                TtsReaderResumeChoice.LISTENING_POSITION -> listeningReaderSession.requestJump(position!!)
+            val readingCharacter = visibleStart
+                ?: visible.firstOrNull { it.chapter == readingChapter }?.start
+                ?: readerLocatorCharacter(state.epubLocatorJson)
+                ?: page?.startCharOffset
+            if (choice == null) {
+                listeningReaderSession.offer(position!!)
+            } else if (choice.shouldUseListeningPosition(position!!, readingChapter,
+                    readingPage.takeIf { allowPageFallback }, readingCharacter)) {
+                listeningReaderSession.requestJump(position)
+            } else {
+                keepReadingPosition()
             }
         } else {
             enableListeningReaderFollow()
@@ -744,11 +753,15 @@ class ReaderViewModel @Inject constructor(
     fun chooseListeningResume(choice: TtsReaderResumeChoice, remember: Boolean) {
         val position = listeningResumePrompt.value ?: return
         if (remember) viewModelScope.launch { dataStoreManager.saveTtsReaderResumeChoice(choice) }
-        when (choice) {
-            TtsReaderResumeChoice.KEEP_READING -> keepReadingPosition()
-            TtsReaderResumeChoice.LISTENING_POSITION -> {
-                listeningReaderSession.requestJump(position)
-            }
+        val state = _uiState.value
+        val readingCharacter = nativeComicAnchor?.takeIf { it.chapter == state.currentChapterIndex }?.character
+            ?: readerLocatorCharacter(state.epubLocatorJson)
+            ?: pageLayoutEngine.getPageLayout(state.currentChapterIndex, state.currentPageIndex)?.startCharOffset
+        if (choice.shouldUseListeningPosition(position, state.currentChapterIndex,
+                state.currentPageIndex, readingCharacter)) {
+            listeningReaderSession.requestJump(position)
+        } else {
+            keepReadingPosition()
         }
     }
 
@@ -5141,15 +5154,20 @@ class ReaderViewModel @Inject constructor(
     fun getFrameworkDrawnChapterText(index: Int, contentWidthPx: Int? = null): CharSequence? =
         buildChapterText(index, contentWidthPx, contentHeightPx = 0, frameworkDrawsText = true)
 
-    /** Fast first-screen path for continuous EPUB reading. The complete chapter is loaded later. */
-    fun getFrameworkDrawnChapterPreview(index: Int, contentWidthPx: Int? = null): CharSequence? =
-        if (parser !is com.huangder.lumibooks.util.parser.EpubParser) null else buildChapterText(
+    /** Fast first-screen path for continuous EPUB reading. */
+    internal fun getFrameworkDrawnChapterPreview(index: Int, contentWidthPx: Int? = null): ContinuousChapterPreview? {
+        if (parser !is com.huangder.lumibooks.util.parser.EpubParser) return null
+        var isComplete = false
+        val text = buildChapterText(
             index,
             contentWidthPx,
             contentHeightPx = 0,
             frameworkDrawsText = true,
-            previewChars = 6_000
-        )
+            previewChars = 6_000,
+            onPreviewCompleteness = { isComplete = it }
+        ) ?: return null
+        return ContinuousChapterPreview(text, isComplete)
+    }
 
     private fun buildChapterText(
         index: Int,
@@ -5157,6 +5175,7 @@ class ReaderViewModel @Inject constructor(
         contentHeightPx: Int?,
         frameworkDrawsText: Boolean,
         previewChars: Int? = null,
+        onPreviewCompleteness: ((Boolean) -> Unit)? = null,
         backgroundPagination: Boolean = false
     ): CharSequence? {
         val activeParser = parser
@@ -5176,7 +5195,9 @@ class ReaderViewModel @Inject constructor(
                 activeParser.getChapterContentForPagination(index)
             } else if (continuousEpub != null) {
                 if (previewChars != null) {
-                    continuousEpub.getChapterContentPreview(index, contentWidthPx!!, 0, previewChars).text
+                    continuousEpub.getChapterContentPreview(index, contentWidthPx!!, 0, previewChars).also {
+                        onPreviewCompleteness?.invoke(it.isComplete)
+                    }.text
                 } else {
                     continuousEpub.getChapterContent(index, contentWidthPx!!, 0)
                 }

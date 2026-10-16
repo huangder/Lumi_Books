@@ -497,6 +497,7 @@ internal class ContinuousSelectionController {
 }
 
 internal class ContinuousSelectableTextView(context: Context) : RoundedHighlightTextView(context) {
+    var onReaderContentDrawn: (() -> Unit)? = null
     public override var readerImageBleed: Boolean = false
         set(value) { if (field != value) { field = value; invalidate() } }
     private val drawingWindow = ContinuousReaderDrawingWindow()
@@ -572,6 +573,12 @@ internal class ContinuousSelectableTextView(context: Context) : RoundedHighlight
             super.onDraw(canvas)
         } finally {
             canvas.restoreToCount(saved)
+        }
+        if (text.isNotEmpty()) {
+            onReaderContentDrawn?.let { callback ->
+                onReaderContentDrawn = null
+                post(callback)
+            }
         }
     }
 
@@ -1241,7 +1248,7 @@ fun ReaderScreen(
     // 「原排版」套装：阅读器不参与配色，原书自己的底色/背景图/文字颜色照原样渲染。
     // 墨水屏模式保持既有行为（强制日间、不渲染原书背景），不受该套装影响。
     val publisherPaintSuiteActive = uiState.keepsPublisherPaint() && !eInkMode
-    val publisherFallbackPaperColor = 0xFFFBFBFC.toInt()
+    val publisherFallbackPaperColor = publisherFallbackPaperColor(nightDisplay)
     val effectivePreserveEpubBackground = when {
         publisherPaintSuiteActive -> true
         eInkMode -> false
@@ -1393,11 +1400,13 @@ fun ReaderScreen(
         basePageTransition !in setOf("continuous", "scroll")
     val isBookLayoutContinuousScroll = isBookLayout &&
         uiState.readerWritingMode.usesContinuousScroll(basePageTransition, eInkMode)
-    // The native Markdown surface consumes the same operation request as the EPUB renderer.
-    // Keeping Markdown on the legacy pending-fragment/page-request path leaves TOC clicks and
-    // progress drags in state intended for the WebView, so the native surface never receives a
-    // destination and cannot move its virtualized scroll window.
-    val usesTransactionalEpubNavigation = isBookLayout || isMarkdownNative
+    var currentChapterRenderer by remember(bookId) { mutableStateOf(-1 to false) }
+    // EPUB navigation is staged only while the active chapter actually uses WebView.  The native
+    // CSS surface changes chapters directly and consumes its page request on the first layout.
+    // Markdown remains transactional because its single native surface consumes that request.
+    val usesTransactionalEpubNavigation = (isBookLayout &&
+        (!uiState.nativeEpubCssEnabled || currentChapterRenderer.first != uiState.currentChapterIndex ||
+            !currentChapterRenderer.second)) || isMarkdownNative
     val effectivePageTransition = if (isBookLayout &&
         basePageTransition == "continuous" &&
         !isBookLayoutContinuousScroll
@@ -1907,6 +1916,7 @@ fun ReaderScreen(
     val requestWriteSettingsPermission = rememberReaderWindowLifecycle(uiState, viewModel, readViewRef)
 
     var firstContentReported by remember(bookId) { mutableStateOf(false) }
+    var continuousFirstContentDrawn by remember(bookId) { mutableStateOf(false) }
     // pageReady is emitted after the renderer has populated its current page. Waiting for the
     // following frame makes the navigation transition follow visible content instead of parsing.
     LaunchedEffect(
@@ -1918,6 +1928,7 @@ fun ReaderScreen(
         uiState.currentChapterIndex,
         uiState.currentPageIndex,
         uiState.contentRevision,
+        continuousFirstContentDrawn,
         epubRenderFailure,
         bookId
     ) {
@@ -1928,6 +1939,7 @@ fun ReaderScreen(
             uiState.pendingPageFraction <= 0f
         if (!firstContentReported && (epubRenderFailure != null ||
             (restoreSettled && !uiState.isLoading &&
+                (!isContinuousScrollMode || continuousFirstContentDrawn) &&
                 (uiState.pageReady || uiState.error != null)))
         ) {
             ReaderOpenPerformance.updateState(
@@ -2586,6 +2598,7 @@ fun ReaderScreen(
         Color(ColorUtils.HSLToColor(hsl))
     } else {
         when (renderingTheme) {
+            "publisher_night" -> Color(0xFF303033)
             "night" -> Color(0xFF3A3A3C)
             "sepia_dark" -> Color(0xFF3A312A)
             "green_dark" -> Color(0xFF1E3527)
@@ -3217,6 +3230,9 @@ fun ReaderScreen(
                         linkReturnLocation = null
                         epubRenderFailure = failure
                     },
+                    onRendererEngineResolved = { nativeCss ->
+                        currentChapterRenderer = uiState.currentChapterIndex to nativeCss
+                    },
                     modifier = Modifier.fillMaxSize()
                 )
                 }
@@ -3368,6 +3384,7 @@ fun ReaderScreen(
                     },
                     onVisibleCharacters = { continuousVisibleCharacters = it },
                     onRestoreComplete = viewModel::clearPendingPageFraction,
+                    onFirstContentDrawn = { continuousFirstContentDrawn = true },
                     onSentenceDoubleTap = { chapterIndex, characterOffset ->
                         viewModel.seekTtsToSentence(chapterIndex, characterOffset)
                     },
@@ -7071,7 +7088,7 @@ private const val CONTINUOUS_REPORT_STABILITY_MAX_FRAMES = 30
 private const val CONTINUOUS_REPORT_STABLE_FRAMES = 2
 
 /** 同一章解码失败的重试上限（按章节数 / 排版参数分组，排版变化时重新计数）。 */
-private const val CONTINUOUS_CHAPTER_MAX_LOAD_ATTEMPTS = 16
+private const val CONTINUOUS_CHAPTER_MAX_LOAD_ATTEMPTS = 3
 
 /** 无实测样本时，未解码章节占位高度按视口高度的这个倍数估算。 */
 private const val CONTINUOUS_PLACEHOLDER_VIEWPORT_FACTOR = 1.4f
@@ -7152,7 +7169,7 @@ internal fun ContinuousScrollReader(
     lineGuideDimLevel: Int = 2,
     contentRevision: Long,
     loadChapterText: (Int, Int?) -> CharSequence?,
-    loadChapterPreviewText: ((Int, Int?) -> CharSequence?)? = null,
+    loadChapterPreviewText: ((Int, Int?) -> ContinuousChapterPreview?)? = null,
     onContentSizeChanged: (Int, Int) -> Unit,
     notes: List<com.huangder.lumibooks.domain.model.Note>,
     searchHighlight: ContinuousSearchHighlight?,
@@ -7170,6 +7187,7 @@ internal fun ContinuousScrollReader(
         origin: TtsPageChangeOrigin
     ) -> Unit,
     onRestoreComplete: () -> Unit,
+    onFirstContentDrawn: () -> Unit = {},
     onSentenceDoubleTap: (chapterIndex: Int, characterOffset: Int) -> Unit,
     ttsSentenceJumpEnabled: Boolean,
     chineseMode: String = "original",
@@ -7245,6 +7263,15 @@ internal fun ContinuousScrollReader(
     }
     val chapterTextComplete = remember(chapterCount) {
         mutableStateMapOf<Int, Boolean>()
+    }
+    val pendingFullChapterUpgrades = remember(chapterCount) {
+        mutableStateMapOf<Int, Pair<CharSequence, CharSequence>>()
+    }
+    fun publishFullChapter(index: Int, source: CharSequence, prepared: CharSequence, layoutKey: ContinuousLayoutKey) {
+        rawChapterTextCache[index] = source
+        preparedChapterTextCache[index] = prepared
+        chapterTextLayoutKeys[index] = layoutKey
+        chapterTextComplete[index] = true
     }
     val chapterLayoutKey = ContinuousLayoutKey(contentRevision, contentWidthPx, textContentWidthPx,
         comicModeEnabled, fontSize, bodyFontWeight, lineHeight, letterSpacingDp, paragraphSpacing, firstLineIndent,
@@ -7348,9 +7375,9 @@ internal fun ContinuousScrollReader(
                                 index,
                                 contentWidthPx.takeIf { it > 0 }
                             )
-                            var loaded = if (!requestedPreview.isNullOrEmpty()) {
-                                returnedPreview = true
-                                requestedPreview
+                            var loaded = if (requestedPreview != null && requestedPreview.text.isNotEmpty()) {
+                                returnedPreview = !requestedPreview.isComplete
+                                requestedPreview.text
                             } else {
                                 loadChapterText(index, contentWidthPx.takeIf { it > 0 })
                             }
@@ -7361,9 +7388,9 @@ internal fun ContinuousScrollReader(
                                 spanned.getSpans(0, spanned.length, ImageSpan::class.java).isNotEmpty()
                             ) {
                                 val alternatePreview = loadChapterPreviewText?.invoke(index, textContentWidthPx)
-                                loaded = if (!alternatePreview.isNullOrEmpty()) {
-                                    returnedPreview = true
-                                    alternatePreview
+                                loaded = if (alternatePreview != null && alternatePreview.text.isNotEmpty()) {
+                                    returnedPreview = !alternatePreview.isComplete
+                                    alternatePreview.text
                                 } else {
                                     loadChapterText(index, textContentWidthPx)
                                 }
@@ -7417,7 +7444,7 @@ internal fun ContinuousScrollReader(
 
     startFullChapterUpgrade = { index, layoutKey ->
         val requestKey = index to layoutKey
-        if (inFlightChapterUpgrades[requestKey] == null) {
+        if (inFlightChapterUpgrades[requestKey] == null && index !in pendingFullChapterUpgrades) {
           val pending = chapterLoadScope.async {
             chapterDecodePermits.withPermit {
                 val loaded = withContext(Dispatchers.IO) {
@@ -7445,10 +7472,11 @@ internal fun ContinuousScrollReader(
                     }
                 }
                 if (currentChapterLayoutKey == layoutKey && !loaded.isNullOrEmpty() && prepared != null) {
-                    rawChapterTextCache[index] = loaded
-                    preparedChapterTextCache[index] = prepared
-                    chapterTextLayoutKeys[index] = layoutKey
-                    chapterTextComplete[index] = true
+                    if (listState.layoutInfo.visibleItemsInfo.any { it.index == index }) {
+                        pendingFullChapterUpgrades[index] = loaded to prepared
+                    } else {
+                        publishFullChapter(index, loaded, prepared, layoutKey)
+                    }
                 }
             }
           }.also { pending ->
@@ -7532,6 +7560,38 @@ internal fun ContinuousScrollReader(
         listState.layoutInfo.visibleItemsInfo
             .firstOrNull { item -> item.offset + item.size > 0 }
             ?.let { item -> Triple(item.index, item.offset, item.size) }
+
+    LaunchedEffect(pendingFullChapterUpgrades.keys.toList(), listState.isScrollInProgress,
+        isRestoringPosition, initialRestoreCompleted, chapterLayoutKey) {
+        if (!initialRestoreCompleted || isRestoringPosition || listState.isScrollInProgress) return@LaunchedEffect
+        val index = pendingFullChapterUpgrades.keys.firstOrNull() ?: return@LaunchedEffect
+        val (source, prepared) = pendingFullChapterUpgrades[index] ?: return@LaunchedEffect
+        val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
+        val view = chapterTextViews[index]?.get()
+        val oldText = view?.text ?: rawChapterTextCache[index]
+        val anchor = if (item != null && oldText != null) {
+            val fullWidth = continuousChapterImages(oldText).isNotEmpty() &&
+                (comicModeEnabled || continuousChapterIsCover(oldText))
+            captureContinuousViewportAnchor(index, item.offset, oldText, view?.layout,
+                if (fullWidth) viewportWidthPx else contentWidthPx, imageGapPx,
+                if (comicModeEnabled) 0 else viewportHeightPx)
+        } else null
+        val scrollGeneration = userScrollGeneration
+        publishFullChapter(index, source, prepared, chapterLayoutKey)
+        pendingFullChapterUpgrades.remove(index)
+        if (anchor != null) {
+            repeat(2) { withFrameNanos { } }
+            if (scrollGeneration == userScrollGeneration && !listState.isScrollInProgress) {
+                val updatedView = chapterTextViews[index]?.get()
+                val fullWidth = continuousChapterImages(source).isNotEmpty() &&
+                    (comicModeEnabled || continuousChapterIsCover(source))
+                val offset = continuousViewportAnchorOffset(anchor, source, updatedView?.layout,
+                    if (fullWidth) viewportWidthPx else contentWidthPx, imageGapPx,
+                    if (comicModeEnabled) 0 else viewportHeightPx)
+                if (offset != null) listState.scrollToItem(index, offset.coerceAtLeast(0))
+            }
+        }
+    }
 
     val latestOnViewportAnchor by rememberUpdatedState(onViewportAnchor)
     val latestOnVisibleCharacters by rememberUpdatedState(onVisibleCharacters)
@@ -7824,10 +7884,12 @@ internal fun ContinuousScrollReader(
 
     LaunchedEffect(chapterLayoutKey) {
         if (contentWidthPx <= 0) return@LaunchedEffect
-        snapshotFlow { listState.firstVisibleItemIndex }.distinctUntilChanged().collect { index ->
-            listOf(index, index - 1, index + 1, index + 2)
+        snapshotFlow { listState.firstVisibleItemIndex to listState.isScrollInProgress }
+            .distinctUntilChanged().collectLatest { (index, scrolling) ->
+            if (scrolling) return@collectLatest
+            listOf(index, index + 1, index - 1)
                 .filter { it in 0 until chapterCount }
-                .forEach { neighbor -> chapterLoadScope.launch { loadChapterOnce(neighbor) } }
+                .forEach { neighbor -> loadChapterOnce(neighbor) }
         }
     }
 
@@ -8085,6 +8147,7 @@ internal fun ContinuousScrollReader(
                                 chapterIndex = chapterIndex,
                                 imageSpan = continuousImages.single(),
                                 imageAdjustments = imageAdjustments,
+                                onContentDrawn = if (chapterIndex == restoreTarget) onFirstContentDrawn else null,
                                 onReaderTap = { if (!lineGuideEnabled) dispatchMenuToggle() },
                                 onImageLongPress = { chapter, image ->
                                     if (!lineGuideEnabled) onImageLongPress(chapter, image)
@@ -8098,6 +8161,7 @@ internal fun ContinuousScrollReader(
                                     chapterIndex = chapterIndex,
                                     imageSpan = imageSpan,
                                     imageAdjustments = imageAdjustments,
+                                    onContentDrawn = if (chapterIndex == restoreTarget) onFirstContentDrawn else null,
                                     onReaderTap = { if (!lineGuideEnabled) dispatchMenuToggle() },
                                     onImageLongPress = { chapter, image ->
                                         if (!lineGuideEnabled) onImageLongPress(chapter, image)
@@ -8116,6 +8180,7 @@ internal fun ContinuousScrollReader(
                     },
                     update = { textView ->
                         chapterTextViews[chapterIndex] = java.lang.ref.WeakReference(textView)
+                        textView.onReaderContentDrawn = if (chapterIndex == restoreTarget) onFirstContentDrawn else null
                         textView.readerImageBleed = mixedComicChapter
                         val textLeft = if (mixedComicChapter) (marginLeft * readerDensity).roundToInt() else 0
                         val textRight = if (mixedComicChapter) (marginRight * readerDensity).roundToInt() else 0
@@ -8270,6 +8335,7 @@ private fun ContinuousSingleImage(
     chapterIndex: Int,
     imageSpan: ImageSpan,
     imageAdjustments: ReaderImageAdjustments,
+    onContentDrawn: (() -> Unit)? = null,
     onReaderTap: () -> Unit,
     onImageLongPress: (chapterIndex: Int, image: ReaderImageHit) -> Unit
 ) {
@@ -8285,13 +8351,25 @@ private fun ContinuousSingleImage(
 
     AndroidView(
         factory = { context ->
-            ImageView(context).apply {
+            object : ImageView(context) {
+                var contentDrawn: (() -> Unit)? = null
+                override fun onDraw(canvas: android.graphics.Canvas) {
+                    super.onDraw(canvas)
+                    if (drawable != null) {
+                        contentDrawn?.let { callback ->
+                            contentDrawn = null
+                            post(callback)
+                        }
+                    }
+                }
+            }.apply {
                 adjustViewBounds = false
                 scaleType = ImageView.ScaleType.FIT_CENTER
                 setBackgroundColor(android.graphics.Color.TRANSPARENT)
             }
         },
         update = { imageView ->
+            imageView.contentDrawn = onContentDrawn
             if (imageView.drawable !== drawable) imageView.setImageDrawable(drawable)
             drawable.update(imageAdjustments, scope) { imageView.invalidate() }
             imageView.setOnClickListener { onReaderTap() }

@@ -71,6 +71,7 @@ import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
+import com.huangder.lumibooks.ui.reader.readerTransitionPaperColor
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.abs
 import kotlin.math.hypot
@@ -1088,7 +1089,7 @@ internal fun BookHeroWindowOverlay(
 
     val context = LocalContext.current
     val density = LocalDensity.current
-    val pageColor = Color(transition.readerPaperColorArgb ?: 0xFFFBFBFC.toInt())
+    val pageColor = Color(readerTransitionPaperColor(transition.readerPaperColorArgb ?: 0xFFFBFBFC.toInt()))
     val heroShape = AppRoundedCornerShape(0.dp)
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val target = Rect(

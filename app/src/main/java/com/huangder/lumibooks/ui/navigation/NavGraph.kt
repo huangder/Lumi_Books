@@ -1197,7 +1197,8 @@ fun MainNavGraph(
         // Keep the transition host composed so the bar animates out for context menus
         // and animates back in after the menu returns to Idle.
         AnimatedVisibility(
-            visible = (heroBackdropVisible || tabBarVisible) && !bookshelfContextMenuVisible,
+            visible = (heroBackdropVisible || tabBarVisible) &&
+                !bookshelfContextMenuVisible && bookshelfOverlayProgress <= 0.01f,
             enter = if (eInkMode || heroTabTransition) {
                 EnterTransition.None
             } else if (useMainReturnTabBarTransition) {

@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.home
 
 import android.app.Application
+import android.graphics.BitmapFactory
 import java.io.File
 import android.content.Context
 import android.net.Uri
@@ -175,6 +176,9 @@ class HomeViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
     private val _downloadedBooks = MutableSharedFlow<Book>(extraBufferCapacity = 1)
+    private val coverRepairAttempted = mutableSetOf<String>()
+    private val pendingCoverRepairs = ArrayDeque<Book>()
+    private var coverRepairJob: Job? = null
     val downloadedBooks: SharedFlow<Book> = _downloadedBooks.asSharedFlow()
 
     // Importing several documents writes books and folder links one at a time. Defer preview
@@ -216,6 +220,33 @@ class HomeViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
                 bookRepository.getAllBooks().collectLatest { books ->
+                    val missingCovers = withContext(Dispatchers.IO) {
+                        books.filter { book ->
+                            book.format == BookFormat.EPUB && !book.isMissing &&
+                                !FileUtils.isCustomCover(book.coverPath) &&
+                                (book.coverPath.isNullOrBlank() || !File(book.coverPath).isFile ||
+                                    BitmapFactory.Options().apply { inJustDecodeBounds = true }.let { options ->
+                                        BitmapFactory.decodeFile(book.coverPath, options)
+                                        options.outWidth <= 0 || options.outHeight <= 0
+                                    })
+                        }
+                    }.filter { coverRepairAttempted.add(it.id) }
+                    if (missingCovers.isNotEmpty()) {
+                        pendingCoverRepairs.addAll(missingCovers)
+                        if (coverRepairJob?.isActive != true) coverRepairJob = viewModelScope.launch {
+                            while (pendingCoverRepairs.isNotEmpty()) {
+                                val book = pendingCoverRepairs.removeFirst()
+                                val path = try {
+                                    extractOriginalCover(application, book)
+                                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                    throw cancelled
+                                } catch (_: Exception) {
+                                    null
+                                } ?: continue
+                                database.bookDao().updateCoverIfUnchanged(book.id, book.coverPath, path)
+                            }
+                        }
+                    }
                     val sortedBooks = sortBooks(books, _uiState.value.sortBy)
                     _uiState.value = _uiState.value.copy(
                         books = sortedBooks,

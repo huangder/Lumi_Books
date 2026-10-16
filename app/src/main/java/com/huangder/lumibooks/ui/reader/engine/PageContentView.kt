@@ -1235,17 +1235,22 @@ class PageContentView(context: Context) : FrameLayout(context) {
         if (width > 0 && height > 0) {
             val widthSpec = View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY)
             val heightSpec = View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
-            listOf(textView, justifiedView, verticalTextView).forEach { child ->
+            // The cover starts GONE while the opening chapter loads, so it
+            // may never have been measured by the empty page's layout pass.
+            // Size it now as well, before drawing the first loaded frame.
+            listOf(coverImageView, textView, justifiedView, verticalTextView).forEach { child ->
                 child.forceLayout()
                 child.measure(widthSpec, heightSpec)
                 child.layout(0, 0, width, height)
             }
         } else {
+            coverImageView.requestLayout()
             textView.requestLayout()
             justifiedView.requestLayout()
             verticalTextView.requestLayout()
             requestLayout()
         }
+        coverImageView.invalidate()
         textView.invalidate()
         justifiedView.invalidate()
         verticalTextView.invalidate()

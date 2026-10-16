@@ -112,6 +112,11 @@ object EpubDocumentTransformer {
         val body = document.body()
         if (hasVisibleFlowText(body)) return false
 
+        // SVG lettering alone is still a single cover illustration. An SVG that
+        // overlays its image with independent text is a designed page.
+        if (body.select("svg image").isNotEmpty() &&
+            body.select("svg text, svg foreignObject").any { it.text().isNotBlank() }) return false
+
         return topLevelMedia(body).size == 1
     }
 
@@ -457,6 +462,7 @@ body[data-lumi-cover="true"] [data-lumi-cover-container="true"] {
   margin: 0 !important;
   padding: 0 !important;
   border: 0 !important;
+  transform: none !important;
 }
 body[data-lumi-cover="true"] [data-lumi-cover-media="true"] {
   position: absolute !important;
@@ -469,7 +475,9 @@ body[data-lumi-cover="true"] [data-lumi-cover-media="true"] {
   margin: 0 !important;
   padding: 0 !important;
   border: 0 !important;
+  transform: none !important;
   object-fit: contain !important;
+  object-position: center center !important;
 }
 body[data-lumi-layout="reflowable"] table,
 body[data-lumi-layout="reflowable"] pre {
@@ -534,8 +542,11 @@ html.lumi-scrolled body[data-lumi-media-only="true"] [data-lumi-cover-media="tru
   object-fit: contain !important;
 }
 /* 「整页图裁切填满」开启时整页图按屏幕比例裁切铺满，不再等比留白。 */
-html.lumi-crop-page-image body[data-lumi-media-only="true"] [data-lumi-cover-media="true"] {
+html.lumi-paginated.lumi-crop-page-image body[data-lumi-media-only="true"] [data-lumi-cover-media="true"] {
   object-fit: cover !important;
+}
+html.lumi-scrolled.lumi-crop-page-image body[data-lumi-media-only="true"] [data-lumi-cover-media="true"] {
+  object-fit: contain !important;
 }
 html.lumi-ignore-publisher-background:not(.lumi-night):not(.lumi-sepia):not(.lumi-green):not(.lumi-sepia-dark):not(.lumi-green-dark) {
   background-color: transparent !important;
@@ -2175,6 +2186,48 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     document.documentElement.classList.toggle('lumi-paginated', !state.fixed && state.flow === 'paginated');
     document.documentElement.classList.toggle('lumi-scrolled', !state.fixed && state.flow === 'scrolled');
     document.documentElement.classList.toggle('lumi-fixed-layout', state.fixed);
+    if (isMediaOnlyPage()) {
+      var svgMedia = body.querySelector('[data-lumi-cover-media="true"]');
+      if (!svgMedia) svgMedia = body.querySelector('svg');
+      if (!state.fixed && svgMedia) {
+        var scrollingImage = state.flow === 'scrolled';
+        var mediaWrapper = svgMedia.parentElement;
+        while (mediaWrapper && mediaWrapper !== body) {
+          mediaWrapper.style.setProperty('position', 'static', 'important');
+          mediaWrapper.style.setProperty('width', '100%', 'important');
+          mediaWrapper.style.setProperty('height', scrollingImage ? 'auto' : '100%', 'important');
+          mediaWrapper.style.setProperty('overflow', 'visible', 'important');
+          mediaWrapper.style.setProperty('transform', 'none', 'important');
+          mediaWrapper = mediaWrapper.parentElement;
+        }
+        svgMedia.style.setProperty('object-fit', state.imagePageCrop && !scrollingImage
+          ? 'cover' : 'contain', 'important');
+        svgMedia.style.setProperty('object-position', 'center center', 'important');
+        svgMedia.style.setProperty('position', scrollingImage ? 'static' : 'absolute', 'important');
+        svgMedia.style.setProperty('width', '100%', 'important');
+        svgMedia.style.setProperty('height', scrollingImage ? 'auto' : '100%', 'important');
+        svgMedia.style.setProperty('transform', 'none', 'important');
+      }
+      if (svgMedia && svgMedia.tagName.toLowerCase() === 'svg') {
+        var onlyImage = svgMedia.querySelectorAll('image').length === 1 &&
+          !svgMedia.querySelector('text, foreignObject, path, rect, circle, ellipse, polygon, polyline, line');
+        var innerImage = onlyImage ? svgMedia.querySelector('image') : null;
+        if (innerImage && !svgMedia.hasAttribute('viewBox')) {
+          var imageWidth = parseFloat(innerImage.getAttribute('width'));
+          var imageHeight = parseFloat(innerImage.getAttribute('height'));
+          if (imageWidth > 0 && imageHeight > 0 &&
+              !/%/.test(innerImage.getAttribute('width') + innerImage.getAttribute('height'))) {
+            svgMedia.setAttribute('viewBox', '0 0 ' + imageWidth + ' ' + imageHeight);
+          }
+        }
+        var aspect = state.imagePageCrop && !state.fixed && state.flow !== 'scrolled'
+          ? 'xMidYMid slice' : 'xMidYMid meet';
+        svgMedia.setAttribute('preserveAspectRatio', aspect);
+        svgMedia.querySelectorAll('image').forEach(function (image) {
+          image.setAttribute('preserveAspectRatio', aspect);
+        });
+      }
+    }
     if (state.fixed) {
       var viewport = document.querySelector('meta[name="viewport"]');
       var content = viewport ? viewport.getAttribute('content') || '' : '';
@@ -2189,6 +2242,25 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       }
       designWidth = state.fixedDesignSize.width;
       designHeight = state.fixedDesignSize.height;
+      if (isMediaOnlyPage() && svgMedia) {
+        var wrapper = svgMedia.parentElement;
+        while (wrapper && wrapper !== body) {
+          wrapper.style.setProperty('position', 'static', 'important');
+          wrapper.style.setProperty('width', '100%', 'important');
+          wrapper.style.setProperty('height', '100%', 'important');
+          wrapper.style.setProperty('overflow', 'visible', 'important');
+          wrapper.style.setProperty('transform', 'none', 'important');
+          wrapper = wrapper.parentElement;
+        }
+        svgMedia.style.setProperty('position', 'static', 'important');
+        svgMedia.style.setProperty('width', '100%', 'important');
+        svgMedia.style.setProperty('height', '100%', 'important');
+        svgMedia.style.setProperty('max-width', 'none', 'important');
+        svgMedia.style.setProperty('max-height', 'none', 'important');
+        svgMedia.style.setProperty('object-fit', 'contain', 'important');
+        svgMedia.style.setProperty('object-position', 'center center', 'important');
+        svgMedia.style.setProperty('transform', 'none', 'important');
+      }
       // 固定排版书籍也要尊重阅读器的页边距设置：先把整页缩放塞进“视口减去 insets”的盒子，
       // 再按 insets 偏移。整页图页（封面/插图页）的 insets 为 0，仍然满屏。
       var fixedInset = readerBox();
@@ -2972,7 +3044,12 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       applyChineseConversion(config);
       applyBionicReading(config.bionicReading === true);
     }
-    applyReaderAutoTextColor(config, readerBackgroundActive);
+    applyReaderAutoTextColor(
+      publisherNightShade
+        ? Object.assign({}, config, { textColor: '#e8e8ea' })
+        : config,
+      readerBackgroundActive
+    );
     if (readerBackgroundActive) {
       if (config.theme === 'night') document.documentElement.classList.add('lumi-night');
       if (config.theme === 'sepia') document.documentElement.classList.add('lumi-sepia');

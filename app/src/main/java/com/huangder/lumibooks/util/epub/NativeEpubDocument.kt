@@ -11,6 +11,12 @@ internal data class ChapterRenderDecision(val engine: ChapterRenderEngine, val r
 internal data class NativeEpubSource(val href: String, val resource: EpubResource,
     val stylesheets: List<Pair<String, String>>, val layout: EpubRenditionLayout,
     val unavailableReason: String? = null)
+internal data class NativeEpubFontFace(
+    val family: String,
+    val resource: EpubResource,
+    val weight: Int,
+    val italic: Boolean
+)
 
 internal data class NativeCssStyle(
     val size: Float = 16f, val weight: Int = 400, val italic: Boolean = false,
@@ -26,14 +32,14 @@ internal data class NativeCssStyle(
 internal data class NativeEpubRun(val start: Int, val end: Int, val style: NativeCssStyle, val href: String? = null)
 internal data class NativeEpubRuby(val start: Int, val end: Int, val annotation: String)
 internal data class NativeEpubBlock(val start: Int, val end: Int, val style: NativeCssStyle,
-    val imagePath: String? = null)
+    val imagePath: String? = null, val isParagraph: Boolean = false)
 internal data class NativeEpubTextNode(val rawStart: Int, val rawEnd: Int, val path: List<Int>)
 
 /** Offsets are UTF-16, just like DOM Range and the existing EPUB JavaScript. */
 internal class NativeEpubDocument(val href: String, val text: String, val rawText: String,
     val sourceOffsets: IntArray, val nodes: List<NativeEpubTextNode>, val runs: List<NativeEpubRun>,
     val ruby: List<NativeEpubRuby>, val blocks: List<NativeEpubBlock>, val anchors: Map<String, Int>,
-    val bodyStyle: NativeCssStyle) {
+    val bodyStyle: NativeCssStyle, val embeddedFonts: List<NativeEpubFontFace> = emptyList()) {
     fun sourcePosition(offset: Int): Int = sourceOffsets[offset.coerceIn(0, text.length)]
     fun visiblePosition(raw: Int): Int {
         var low = 0; var high = sourceOffsets.lastIndex
@@ -90,11 +96,11 @@ internal object NativeEpubCompiler {
         value.trim().split(Regex("\\s+")).all { it.matches(Regex("0(?:\\.0+)?(?:px|em|rem|pt|%)?", RegexOption.IGNORE_CASE)) }
     private val blockTags = setOf("p", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "div", "section", "article", "body")
     private val tags = blockTags + setOf("span", "a", "b", "strong", "i", "em", "u", "br", "img", "ruby", "rb", "rt", "rp", "html")
-    fun compile(source: NativeEpubSource): NativeEpubCompilation = try {
+    fun compile(source: NativeEpubSource, readResource: (String) -> EpubResource? = { null }): NativeEpubCompilation = try {
         if (source.layout != EpubRenditionLayout.REFLOWABLE) throw Unsupported("fixed layout")
         source.unavailableReason?.let { throw Unsupported(it) }
         val dom = Jsoup.parse(source.resource.bytes.toString(Charsets.UTF_8))
-        val sheets = source.stylesheets.map { (path, css) -> path to stripFontFaceRules(css) }
+        val sheets = source.stylesheets
         // Keep unconditional screen wrappers and EPUB metadata declarations.
         sheets.forEach { (_, css) ->
             val clean = css.replace(Regex("/\\*[\\s\\S]*?\\*/"), "")
@@ -102,11 +108,46 @@ internal object NativeEpubCompiler {
                 val name = match.groupValues[1].lowercase()
                 val prelude = match.groupValues[2].trim().lowercase()
                 when (name) {
+                    "font-face" -> Unit
                     "charset", "namespace", "page", "keyframes", "-webkit-keyframes" -> Unit
                     "media" -> if (prelude !in setOf("screen", "all"))
                         throw Unsupported("CSS at-rule @media $prelude")
                     else -> throw Unsupported("CSS at-rule @$name")
                 }
+            }
+        }
+        val fontFaces = mutableListOf<NativeEpubFontFace>()
+        val fontFamilies = mutableSetOf<String>()
+        val fontFaceRegex = Regex("@font-face\\s*\\{([^}]*)\\}", RegexOption.IGNORE_CASE)
+        sheets.forEach { (sheetPath, css) ->
+            fontFaceRegex.findAll(css.replace(Regex("/\\*[\\s\\S]*?\\*/"), "")).forEach { match ->
+                fun descriptor(name: String): String? = Regex(
+                    "(?:^|;)\\s*${Regex.escape(name)}\\s*:\\s*([^;]+)", RegexOption.IGNORE_CASE
+                ).find(match.groupValues[1])?.groupValues?.get(1)?.trim()
+                val family = descriptor("font-family")?.trim()?.trim('\'', '"')
+                    ?.takeIf(String::isNotBlank) ?: throw Unsupported("font-face family")
+                val url = EpubCssIndex.firstUrl(descriptor("src"))
+                    ?: throw Unsupported("font-face source")
+                val path = EpubPathResolver.resolve(sheetPath, url)
+                    ?: throw Unsupported("external embedded font")
+                val extension = path.substringAfterLast('.', "").lowercase()
+                if (extension !in setOf("ttf", "otf", "ttc")) {
+                    throw Unsupported("embedded font format $extension")
+                }
+                val resource = readResource(path) ?: throw Unsupported("missing embedded font $path")
+                if (resource.bytes.isEmpty() || resource.bytes.size > 64 * 1024 * 1024) {
+                    throw Unsupported("embedded font size limit")
+                }
+                val weightDescriptor = descriptor("font-weight").orEmpty().lowercase()
+                val weight = when (weightDescriptor) {
+                    "bold" -> 700
+                    "normal", "" -> 400
+                    else -> weightDescriptor.split(Regex("\\s+")).first().toIntOrNull()
+                        ?.takeIf { it in 100..900 } ?: 400
+                }
+                val italic = descriptor("font-style")?.trim()?.equals("italic", true) == true
+                fontFaces += NativeEpubFontFace(family, resource, weight, italic)
+                fontFamilies += family.lowercase()
             }
         }
         val rules = EpubCssIndex.parse(sheets).rules
@@ -162,7 +203,7 @@ internal object NativeEpubCompiler {
             if (el.normalName() !in tags) throw Unsupported("element ${el.normalName()}")
             if (el.attributes().any { it.key.startsWith("on", true) } || el.hasAttr("hidden")) throw Unsupported("dynamic/hidden element")
             val props = cascade(el)
-            val st = style(el, props, el.parent()?.let { styles[it] } ?: NativeCssStyle())
+            val st = style(el, props, el.parent()?.let { styles[it] } ?: NativeCssStyle(), fontFamilies)
             styles[el] = st
             computed[el] = props + mapOf("font-size" to "${st.size}px", "line-height" to st.lineHeight.toString(),
                 "letter-spacing" to "${st.letterSpacing}px", "text-indent" to "${st.indent}px", "font-weight" to st.weight.toString(),
@@ -217,7 +258,7 @@ internal object NativeEpubCompiler {
             if (block && text.length > start) {
                 val nested = blocks.any { it.start >= start && it.end <= text.length }
                 if (nested && runs.any { it.start >= start && it.end <= text.length && text.substring(it.start, it.end).isNotBlank() && blocks.none { b -> it.start >= b.start && it.end <= b.end } }) throw Unsupported("mixed block content")
-                if (!nested) blocks += NativeEpubBlock(start, text.length, st)
+                if (!nested) blocks += NativeEpubBlock(start, text.length, st, isParagraph = el.normalName() == "p")
                 else if (el != body && (st.marginTop != 0f || st.marginBottom != 0f || st.marginLeft != 0f || st.marginRight != 0f || st.background != null)) throw Unsupported("styled block container")
                 if (text.last() != '\n') { text.append('\n'); offsets += offsets.lastOrNull()?.plus(1) ?: 0 }
             }
@@ -230,18 +271,10 @@ internal object NativeEpubCompiler {
         // Synthetic breaks can bridge hidden ruby annotations. Keep the mapping monotonic.
         for (i in 1 until offsets.size) offsets[i] = offsets[i].coerceAtLeast(offsets[i - 1]).coerceAtMost(raw.length)
         NativeEpubCompilation(ChapterRenderDecision(ChapterRenderEngine.NATIVE), NativeEpubDocument(source.href,
-            text.toString(), raw.toString(), offsets.toIntArray(), textNodes, runs, ruby, sorted, anchors, styles[body]!!))
+            text.toString(), raw.toString(), offsets.toIntArray(), textNodes, runs, ruby, sorted, anchors,
+            styles[body]!!, fontFaces))
     } catch (e: Exception) {
         NativeEpubCompilation(ChapterRenderDecision(ChapterRenderEngine.WEBVIEW, e.message ?: "document error"))
-    }
-
-    /** Embedded EPUB fonts are optional for geometry.  Android's fallback font keeps
-     * the chapter usable while avoiding a WebView just because fonts.css has @font-face. */
-    private fun stripFontFaceRules(css: String): String {
-        var value = css
-        val rule = Regex("@font-face\\s*\\{[^{}]*\\}", RegexOption.IGNORE_CASE)
-        repeat(8) { value = value.replace(rule, "") }
-        return value
     }
 
     private fun length(value: String, em: Float, root: Float = 16f): Float {
@@ -251,7 +284,12 @@ internal object NativeEpubCompiler {
         if (!result.isFinite() || result > 1024f) throw Unsupported("length limit")
         return result
     }
-    private fun style(el: Element, p: Map<String, String>, parent: NativeCssStyle): NativeCssStyle {
+    private fun style(
+        el: Element,
+        p: Map<String, String>,
+        parent: NativeCssStyle,
+        embeddedFamilies: Set<String>
+    ): NativeCssStyle {
         fun enum(key: String, default: String, choices: Set<String>): String = p[key]?.lowercase()?.let {
             if (it !in choices) throw Unsupported("$key $it"); it } ?: default
         val size = p["font-size"]?.let { length(it, parent.size) }
@@ -265,10 +303,10 @@ internal object NativeEpubCompiler {
         } }
             ?: if (el.normalName() in setOf("b", "strong", "h1", "h2", "h3", "h4", "h5", "h6")) 700 else parent.weight
         val family = p["font-family"]?.trim()?.trim('\'', '"') ?: parent.family
-        // @font-face rules are stripped above; named families use the closest
-        // platform family instead of forcing the whole chapter into WebView.
-        val normalizedFamily = family.split(',').map { it.trim().trim('\'', '"').lowercase() }
-            .firstOrNull { it in setOf("serif", "sans-serif", "monospace") } ?: "serif"
+        val familyStack = family.split(',').map { it.trim().trim('\'', '"') }
+        val normalizedFamily = familyStack.firstOrNull { it.lowercase() in embeddedFamilies }
+            ?: familyStack.firstOrNull { it.lowercase() in setOf("serif", "sans-serif", "monospace") }
+            ?: "serif"
         val line = p["line-height"]?.let { v -> if (v == "normal") 1.5f else v.toFloatOrNull() ?: (length(v, resolvedSize) / resolvedSize.coerceAtLeast(1f)) } ?: parent.lineHeight
         if (!line.isFinite() || line !in 1f..4f || resolvedSize !in 4f..160f) throw Unsupported("font metrics")
         fun color(key: String): String? = p[key]?.let { value ->

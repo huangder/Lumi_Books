@@ -215,6 +215,7 @@ private class EpubSnapshotPageView(
  */
 internal class EpubPageTurnHost(
     context: Context,
+    initialPageBackgroundColor: Int = Color.WHITE,
     private val afterDetachedFrame: (View, () -> Unit) -> Unit = ::afterEpubDetachedFrame
 ) : FrameLayout(context) {
     companion object {
@@ -294,7 +295,9 @@ internal class EpubPageTurnHost(
     fun ensureWarmPage(): Boolean {
         if (released || warmReleasePending || SystemClock.uptimeMillis() < warmSuppressedUntil) return false
         if (warmWebView != null) return true
-        val view = EpubContentWebView(context)
+        val view = EpubContentWebView(context).apply {
+            setBackgroundColor(if (backgroundImagePath != null) Color.TRANSPARENT else pageBackgroundColor)
+        }
         warmWebView = view
         addView(view, 1, matchParentParams())
         onWarmViewCreated?.invoke(view)
@@ -506,7 +509,7 @@ internal class EpubPageTurnHost(
     private var nextPageCount = 1
     private var frozenPreviousTarget: EpubPageTarget? = null
     private var frozenNextTarget: EpubPageTarget? = null
-    private var pageBackgroundColor = Color.WHITE
+    private var pageBackgroundColor = initialPageBackgroundColor
     private var backgroundImagePath: String? = null
     private var backgroundImageOpacity = 1f
     private var backgroundImageBlurDp = 0f
@@ -532,6 +535,9 @@ internal class EpubPageTurnHost(
         clipChildren = true
         clipToPadding = true
         setWillNotDraw(false)
+        setBackgroundColor(pageBackgroundColor)
+        preloadMask.setBackgroundColor(pageBackgroundColor)
+        applyWebViewBackgroundColor()
 
         // Reader background sits below every page so publisher paint (an image
         // background in the book itself) always wins where it exists.
@@ -677,6 +683,13 @@ internal class EpubPageTurnHost(
         if (!enabled) {
             val finish = bookmarkPullTracker.finish(cancelled = true)
             if (finish.wasActive) onBookmarkPullFinished?.invoke(false)
+        }
+    }
+
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+        super.onWindowFocusChanged(hasWindowFocus)
+        if (!hasWindowFocus && bookmarkPullTracker.finish(cancelled = true).wasActive) {
+            onBookmarkPullFinished?.invoke(false)
         }
     }
 
@@ -1242,7 +1255,11 @@ internal class EpubPageTurnHost(
                     !busyTouchStream &&
                     !busySlideTouchStream,
                 startRegionY = event.y,
-                gestureRegionHeight = height.toFloat()
+                gestureRegionHeight = height.toFloat(),
+                topExclusionPx = maxOf(32f * resources.displayMetrics.density,
+                    rootWindowInsets?.systemWindowInsetTop?.toFloat() ?: 0f,
+                    if (android.os.Build.VERSION.SDK_INT >= 28)
+                        rootWindowInsets?.displayCutout?.safeInsetTop?.toFloat() ?: 0f else 0f)
             )
             MotionEvent.ACTION_MOVE -> {
                 bookmarkPullTracker.move(event.rawX, event.rawY)?.let { update ->

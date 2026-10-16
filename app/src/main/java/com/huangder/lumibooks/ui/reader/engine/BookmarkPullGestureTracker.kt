@@ -40,7 +40,8 @@ internal class BookmarkPullGestureTracker {
         density: Float,
         enabled: Boolean,
         startRegionY: Float = y,
-        gestureRegionHeight: Float? = null
+        gestureRegionHeight: Float? = null,
+        topExclusionPx: Float = 0f
     ) {
         reset()
         this.density = density.coerceAtLeast(0.1f)
@@ -50,7 +51,7 @@ internal class BookmarkPullGestureTracker {
             ?.takeIf { it > 0f }
             ?.times(START_REGION_HEIGHT_FRACTION)
             ?: (START_REGION_DP * this.density)
-        candidate = enabled && startRegionY in 0f..startRegionLimit
+        candidate = enabled && y >= topExclusionPx && startRegionY in 0f..startRegionLimit
     }
 
     fun move(x: Float, y: Float): BookmarkPullDragUpdate? {

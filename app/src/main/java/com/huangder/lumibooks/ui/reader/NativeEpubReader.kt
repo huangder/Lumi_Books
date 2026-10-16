@@ -13,6 +13,8 @@ import com.huangder.lumibooks.ui.reader.engine.*
 import com.huangder.lumibooks.util.epub.*
 import kotlinx.coroutines.*
 import org.json.JSONObject
+import java.io.File
+import java.security.MessageDigest
 import kotlin.math.*
 
 internal data class NativeEpubCallbacks(
@@ -36,7 +38,8 @@ internal data class NativeEpubCallbacks(
 )
 internal data class NativeEpubReaderStyle(val fontSizeSp: Float, val fontType: String, val fontPath: String?,
     val weight: Int, val color: Int?, val paper: Int, val publisherColors: Boolean,
-    val top: Float, val right: Float, val bottom: Float, val left: Float)
+    val top: Float, val right: Float, val bottom: Float, val left: Float,
+    val textSpacing: EpubTextSpacing, val publisherNightShade: Boolean = false)
 
 @Composable
 internal fun NativeEpubReader(session: EpubRenderSession, document: NativeEpubDocument, chapterIndex: Int,
@@ -190,7 +193,13 @@ internal class NativeEpubSurface(context: Context, private val session: EpubRend
         val metrics = resources.displayMetrics
         val face = resolveReaderTypeface(context, st.fontType, st.fontPath, st.weight).typeface
         val next = NativeEpubRenderConfig(width, height, st.fontSizeSp * metrics.scaledDensity, face, st.color, st.paper, st.publisherColors,
-            st.left * metrics.density, st.top * metrics.density, st.right * metrics.density, st.bottom * metrics.density)
+            st.left * metrics.density, st.top * metrics.density, st.right * metrics.density, st.bottom * metrics.density,
+            lineHeightOverride = st.textSpacing.lineHeight.takeUnless { abs(it - 1.5f) <= 0.001f },
+            paragraphSpacingPx = st.textSpacing.paragraphSpacingDp.takeUnless { abs(it - 2f) <= 0.001f }
+                ?.coerceIn(0f, 30f)?.times(metrics.density),
+            firstLineIndentChars = st.textSpacing.firstLineIndent.takeUnless { abs(it - 2f) <= 0.001f }
+                ?.coerceIn(0f, 4f),
+            publisherNightShade = st.publisherNightShade)
         if (next == config) return
         config = next; generation++; val token = generation
         val anchor = layout?.pages?.getOrNull(current)?.start
@@ -199,7 +208,10 @@ internal class NativeEpubSurface(context: Context, private val session: EpubRend
         layoutJob = scope.launch {
             try {
                 val built = withContext(Dispatchers.Default) {
-                    NativeEpubChapterRenderer.layout(document, next) { session.nativeResource(it)?.bytes }.also { candidate = it }
+                    val renderConfig = next.copy(embeddedTypefaces = loadEmbeddedTypefaces())
+                    NativeEpubChapterRenderer.layout(document, renderConfig) {
+                        session.nativeResource(it)?.bytes
+                    }.also { candidate = it }
                 }
                 if (released || token != generation) { built.close(); candidate = null; return@launch }
                 layout?.close(); layout = built; candidate = null
@@ -214,7 +226,36 @@ internal class NativeEpubSurface(context: Context, private val session: EpubRend
                 android.util.Log.i("NativeEpub", "Chapter fallback: ${e.message}"); events().failure() } }
         }
     }
+    private fun loadEmbeddedTypefaces(): List<NativeEpubResolvedFont> {
+        if (document.embeddedFonts.isEmpty()) return emptyList()
+        val directory = File(context.cacheDir, "epub-native-fonts").apply { mkdirs() }
+        return document.embeddedFonts.map { face ->
+            val extension = face.resource.path.substringAfterLast('.', "ttf").lowercase()
+            val digest = MessageDigest.getInstance("SHA-256").digest(face.resource.bytes)
+                .joinToString("") { byte -> "%02x".format(byte) }
+            val file = File(directory, "$digest.$extension")
+            if (!file.isFile || file.length() != face.resource.bytes.size.toLong()) {
+                val temporary = File(directory, "$digest.tmp")
+                temporary.writeBytes(face.resource.bytes)
+                if (file.exists()) file.delete()
+                check(temporary.renameTo(file)) { "Could not cache embedded font ${face.resource.path}" }
+            }
+            NativeEpubResolvedFont(
+                face.family,
+                face.weight,
+                face.italic,
+                Typeface.createFromFile(file)
+            )
+        }
+    }
     private fun initialPage(built: NativeEpubChapterLayout): Int {
+        pendingPage?.takeIf { it.chapterIndex == chapterIndex }?.let { request ->
+            return request.chapterFraction?.let { pageIndexForChapterFraction(it, built.pages.size) }
+                ?: request.pageIndex.coerceIn(0, built.pages.lastIndex)
+        }
+        pendingLocator?.takeIf { it.chapterIndex == chapterIndex }?.let { request ->
+            nativeLocatorFromJson(request.locatorJson)?.let(document::resolve)?.let(built::pageFor)?.let { return it }
+        }
         restoredFragment?.let { document.anchors[it]?.let { offset -> return built.pageFor(offset) } }
         nativeLocatorFromJson(restoredLocator)?.let { document.resolve(it)?.let { offset -> return built.pageFor(offset) } }
         val count = built.pages.size

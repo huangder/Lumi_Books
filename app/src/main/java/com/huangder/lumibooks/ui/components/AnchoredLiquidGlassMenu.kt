@@ -470,10 +470,10 @@ class LiquidGlassMenuHostState {
 
     internal fun source(spec: LiquidGlassMenuSpec): LiquidGlassMenuAnchor? = anchors[spec.sourceId]
     internal fun ownsDrawing(id: Any): Boolean = drawingSourceId == id
-    // The source stays hidden through the outgoing fade, even when reduced motion
-    // does not transfer its drawing to the morph renderer.
-    internal fun hidesSource(id: Any): Boolean = ownsDrawing(id) ||
-        activeMenu?.sourceId == id || displayedMenu?.sourceId == id
+    // Hide the source only after the overlay has taken ownership of its recorded layer.
+    // Keeping the real control visible during the handoff prevents a one-frame flash when
+    // a liquid menu is opened. Normal menus intentionally keep the source visible throughout.
+    internal fun hidesSource(id: Any): Boolean = ownsDrawing(id)
 
     internal fun sameSource(first: LiquidGlassMenuSpec?, second: LiquidGlassMenuSpec): Boolean =
         if (first?.sourceId != null || second.sourceId != null) first?.sourceId == second.sourceId
