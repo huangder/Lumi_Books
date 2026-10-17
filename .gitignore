@@ -49,6 +49,28 @@ lumi-window.xml
 /edge*.png
 /sel.png
 /testnew.png
+/phone-*.png
+/settings.preferences_pb
+/.local/
+
+# Local LUMI Dream promotional project (not part of the Android app or docs site)
+/00-START-HERE.txt
+/DELIVERY-CHECKLIST.md
+/PROJECT-COMPLETION-REPORT.md
+/PROJECT-SUMMARY.md
+/QUICK-START.txt
+/README-LUMI-DREAM.md
+/README-LUMI-DREAM-FINAL.md
+/index.html
+/lumi-dream-enhanced.html
+/lumi-dream-promo.html
+/lumi-tiktok-promo.html
+/start.bat
+/record-video.bat
+/add-music.bat
+/compress.bat
+/output/
+/bgm.mp3
 
 # Misc
 .DS_Store
