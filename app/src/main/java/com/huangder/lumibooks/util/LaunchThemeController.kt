@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import com.huangder.lumibooks.MainActivity
+import com.huangder.lumibooks.domain.model.AppFontSize
 import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
 import com.huangder.lumibooks.domain.model.AppIconStyle
 import com.huangder.lumibooks.domain.model.MenuAnimationStyle
@@ -17,6 +18,7 @@ data class LaunchThemeSnapshot(
     val easterEggUnlocked: Boolean = false,
     val appTheme: String = "lumi",
     val appAccentColor: String = DEFAULT_APP_ACCENT_HEX,
+    val appFontSize: AppFontSize = AppFontSize.STANDARD,
     val globalFontMode: String = "system",
     val liquidGlassTransparency: Float = 0.55f,
     val liquidGlassHdrHighlightEnabled: Boolean = false,
@@ -46,6 +48,7 @@ object LaunchThemeController {
     private const val EASTER_EGG_UNLOCKED = "lumi_easter_egg_unlocked"
     private const val APP_THEME = "app_theme"
     private const val APP_ACCENT_COLOR = "app_accent_color"
+    private const val APP_FONT_SIZE = "app_font_size"
     private const val GLOBAL_FONT_MODE = "global_font_mode"
     private const val LIQUID_GLASS_TRANSPARENCY = "liquid_glass_transparency"
     private const val LIQUID_GLASS_HDR_HIGHLIGHT_ENABLED = "liquid_glass_hdr_highlight_enabled"
@@ -92,6 +95,7 @@ object LaunchThemeController {
             ),
             appAccentColor = preferences.getString(APP_ACCENT_COLOR, DEFAULT_APP_ACCENT_HEX)
                 ?: DEFAULT_APP_ACCENT_HEX,
+            appFontSize = AppFontSize.fromStoredValue(preferences.getString(APP_FONT_SIZE, null)),
             globalFontMode = preferences.getString(GLOBAL_FONT_MODE, "system") ?: "system",
             liquidGlassTransparency = preferences.getFloat(LIQUID_GLASS_TRANSPARENCY, 0.55f),
             liquidGlassHdrHighlightEnabled = preferences.getBoolean(
@@ -139,6 +143,7 @@ object LaunchThemeController {
             .putBoolean(EASTER_EGG_UNLOCKED, snapshot.easterEggUnlocked)
             .putString(APP_THEME, com.huangder.lumibooks.domain.model.LumiEasterEgg.normalizeTheme(snapshot.appTheme, snapshot.easterEggUnlocked))
             .putString(APP_ACCENT_COLOR, snapshot.appAccentColor)
+            .putString(APP_FONT_SIZE, snapshot.appFontSize.storedValue)
             .putString(GLOBAL_FONT_MODE, snapshot.globalFontMode)
             .putFloat(LIQUID_GLASS_TRANSPARENCY, snapshot.liquidGlassTransparency)
             .putBoolean(

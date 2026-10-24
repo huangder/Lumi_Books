@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="label_app_font_size">App text size</string>
+    <string name="app_font_size_extra_small">Extra small</string>
+    <string name="app_font_size_small">Small</string>
+    <string name="app_font_size_standard">Standard</string>
+    <string name="app_font_size_medium">Medium</string>
+    <string name="app_font_size_large">Large</string>
+    <string name="app_font_size_extra_large">Extra large</string>
+    <string name="app_font_size_hint">Changes interface text only. Book text has its own size setting.</string>
+</resources>

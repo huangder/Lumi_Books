@@ -156,11 +156,6 @@ private data class PendingRemoteNotice(
     val message: String
 )
 
-enum class ReaderPageDirection {
-    PREVIOUS,
-    NEXT
-}
-
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
@@ -210,20 +205,13 @@ class MainActivity : ComponentActivity() {
      */
     var isInReaderScreen = false
 
-    /** 非空时由当前阅读页接管音量键；阅读页离开或设置关闭时恢复系统音量行为。 */
-    var readerVolumeKeyHandler: ((ReaderPageDirection) -> Unit)? = null
+    /** 当前阅读页可分别处理两个音量键；返回 false 时交给系统处理。 */
+    var readerVolumeKeyHandler: ((KeyEvent) -> Boolean)? = null
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        val handler = readerVolumeKeyHandler
-        val direction = when (event.keyCode) {
-            KeyEvent.KEYCODE_VOLUME_UP -> ReaderPageDirection.PREVIOUS
-            KeyEvent.KEYCODE_VOLUME_DOWN -> ReaderPageDirection.NEXT
-            else -> null
-        }
-        if (handler != null && direction != null) {
-            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
-                handler(direction)
-            }
+        val isVolumeKey = event.keyCode == KeyEvent.KEYCODE_VOLUME_UP ||
+            event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
+        if (isVolumeKey && readerVolumeKeyHandler?.invoke(event) == true) {
             return true
         }
         // 部分 ROM / 耳机把媒体按键投递给前台窗口而不是 MediaSession。
@@ -711,6 +699,7 @@ class MainActivity : ComponentActivity() {
         StartupTrace.event("main_splash_decision", mapOf("enabled" to splashEnabledAtLaunch, "source" to if (isExternalBookOpen) "external_book" else if (intent.hasExtra(LaunchThemeController.EXTRA_SPLASH_ENABLED)) "intent" else "cache", "snapshot" to LaunchThemeController.splashEnabledSnapshot(this)))
         val iconStyleAtLaunch = LaunchThemeController.iconStyleSnapshot(this)
 
+        val appFontLaunchSnapshot = com.huangder.lumibooks.util.LaunchThemeController.themeSnapshot(this)
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = LaunchThemeController.themeSnapshot(this).appTheme)
             val startupScreen by produceState<String?>(initialValue = null, dataStoreManager) {
@@ -720,6 +709,7 @@ class MainActivity : ComponentActivity() {
                 value = dataStoreManager.bookshelfLayoutMode.first()
             }
             val appAccentColor by dataStoreManager.appAccentColor.collectAsState(initial = DEFAULT_APP_ACCENT_HEX)
+            val appFontSize by dataStoreManager.appFontSize.collectAsState(initial = appFontLaunchSnapshot.appFontSize)
             val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "system")
             val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = 0.55f)
             val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = false)
@@ -803,6 +793,7 @@ class MainActivity : ComponentActivity() {
                 cardOutlinesEnabled = cardOutlinesEnabled,
                 coverReadingProgressEnabled = coverReadingProgressEnabled,
                 eInkMode = eInkModeEnabled,
+                appFontSize = appFontSize,
                 globalFontMode = globalFontMode,
                 motionPreference = MotionPreference.fromStoredValue(motionPreferenceValue)
             ) {

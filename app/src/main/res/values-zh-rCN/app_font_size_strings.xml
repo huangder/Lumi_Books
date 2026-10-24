@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="label_app_font_size">软件字号</string>
+    <string name="app_font_size_extra_small">极小</string>
+    <string name="app_font_size_small">小</string>
+    <string name="app_font_size_standard">标准</string>
+    <string name="app_font_size_medium">中</string>
+    <string name="app_font_size_large">大</string>
+    <string name="app_font_size_extra_large">超大</string>
+    <string name="app_font_size_hint">仅调整界面文字，阅读正文使用独立字号设置</string>
+</resources>
