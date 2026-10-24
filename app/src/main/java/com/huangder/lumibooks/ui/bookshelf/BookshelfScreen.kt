@@ -121,6 +121,7 @@ import com.huangder.lumibooks.domain.model.FolderPreviewPlanner
 import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.animation.PageEntranceItem
+import com.huangder.lumibooks.ui.animation.mainTabEntrance
 import com.huangder.lumibooks.ui.animation.BookCoverTitleColor
 import com.huangder.lumibooks.ui.animation.BookCoverTitleStyle
 import com.huangder.lumibooks.ui.animation.BookReaderTransitionPhase
@@ -1631,6 +1632,7 @@ internal fun BookshelfCollection(
             if (renderedMode == BookshelfLayout.CoverFlow) {
                 coverFlowStates.SaveableStateProvider(coverFlowStateKey) {
                     CoverFlowBookshelf(
+                        modifier = Modifier.mainTabEntrance(),
                         books = books, folders = folders, folderBookCounts = folderBookCounts,
                         tagNamesByBook = tagNamesByBook, isLoading = isLoading, isEditing = isEditing,
                         selectedBookIds = selectedBookIds, deletingBookIds = deletingBookIds,
@@ -1663,58 +1665,64 @@ internal fun BookshelfCollection(
                 ) {
                     folders.forEach { folder ->
                         item(key = "folder_list_${folder.id}") {
-                            FolderListItem(
-                                folder = folder,
-                                bookCount = folderBookCounts[folder.id] ?: 0,
-                                previewBooks = folderPreviewBooks[folder.id].orEmpty(),
-                                enabled = !isEditing,
-                                expanded = !isEditing && expandedListFolderId == folder.id,
-                                onClick = { onFolderClick(folder) },
-                                onLongClick = {
-                                    onHaptic()
-                                    onExpandedFolderChange(
-                                        if (expandedListFolderId == folder.id) null else folder.id
-                                    )
-                                },
-                                onRename = { onFolderRename(folder) },
-                                onDelete = { onFolderDelete(folder) },
-                                onSetCover = { onFolderSetCover(folder) },
-                                onRemoveCover = { onFolderRemoveCover(folder) },
-                                onMove = { onFolderMove(folder) }
-                            )
+                            Box(Modifier.mainTabEntrance()) {
+                                FolderListItem(
+                                    folder = folder,
+                                    bookCount = folderBookCounts[folder.id] ?: 0,
+                                    previewBooks = folderPreviewBooks[folder.id].orEmpty(),
+                                    enabled = !isEditing,
+                                    expanded = !isEditing && expandedListFolderId == folder.id,
+                                    onClick = { onFolderClick(folder) },
+                                    onLongClick = {
+                                        onHaptic()
+                                        onExpandedFolderChange(
+                                            if (expandedListFolderId == folder.id) null else folder.id
+                                        )
+                                    },
+                                    onRename = { onFolderRename(folder) },
+                                    onDelete = { onFolderDelete(folder) },
+                                    onSetCover = { onFolderSetCover(folder) },
+                                    onRemoveCover = { onFolderRemoveCover(folder) },
+                                    onMove = { onFolderMove(folder) }
+                                )
+                            }
                         }
                     }
                     lazyListItemsIndexed(books, key = { _, book -> "list_${book.id}" }) { _, book ->
-                        BookshelfSearchResultItem(
-                            book = book,
-                            tagNames = tagNamesByBook[book.id].orEmpty(),
-                            expanded = !isEditing && expandedListBookId == book.id,
-                            isDeleting = book.id in deletingBookIds,
-                            isSynced = book.id in syncedBookIds,
-                            downloadState = downloadStates[book.id],
-                            onExpandedChange = {
-                                onExpandedBookChange(
-                                    if (expandedListBookId == book.id) null else book.id
-                                )
-                            },
-                            onClick = { onBookClick(book, null) },
-                            onEditInfo = { onEditInfo(book) },
-                            onBookDetails = { onBookDetails(book) },
-                            onMoveToFolder = { onMoveToFolder(book) },
-                            onDelete = { onDelete(book) },
-                            onFavorite = { onFavorite(book) },
-                            onCustomCover = { onCustomCover(book) },
-                            onRemoveCustomCover = { onRemoveCustomCover(book) },
-                            onTags = { onTags(book) },
-                            onBookmarksNotes = { onBookmarksNotes(book) },
-                            selectionMode = isEditing,
-                            selected = book.id in selectedBookIds,
-                            onSelectionToggle = { onSelectionToggle(book) }
-                        )
+                        Box(Modifier.mainTabEntrance()) {
+                            BookshelfSearchResultItem(
+                                book = book,
+                                tagNames = tagNamesByBook[book.id].orEmpty(),
+                                expanded = !isEditing && expandedListBookId == book.id,
+                                isDeleting = book.id in deletingBookIds,
+                                isSynced = book.id in syncedBookIds,
+                                downloadState = downloadStates[book.id],
+                                onExpandedChange = {
+                                    onExpandedBookChange(
+                                        if (expandedListBookId == book.id) null else book.id
+                                    )
+                                },
+                                onClick = { onBookClick(book, null) },
+                                onEditInfo = { onEditInfo(book) },
+                                onBookDetails = { onBookDetails(book) },
+                                onMoveToFolder = { onMoveToFolder(book) },
+                                onDelete = { onDelete(book) },
+                                onFavorite = { onFavorite(book) },
+                                onCustomCover = { onCustomCover(book) },
+                                onRemoveCustomCover = { onRemoveCustomCover(book) },
+                                onTags = { onTags(book) },
+                                onBookmarksNotes = { onBookmarksNotes(book) },
+                                selectionMode = isEditing,
+                                selected = book.id in selectedBookIds,
+                                onSelectionToggle = { onSelectionToggle(book) }
+                            )
+                        }
                     }
                     if (showAddBook && !isLoading && !isEditing) {
                         item(key = "add_book_list") {
-                            AddBookListItem(onClick = onAddBook)
+                            Box(Modifier.mainTabEntrance()) {
+                                AddBookListItem(onClick = onAddBook)
+                            }
                         }
                     }
                 }
@@ -2063,7 +2071,7 @@ private fun BookshelfCapsuleHeader(
 
     if (layoutMode == BookshelfLayout.CoverFlow && !isEditing) {
         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalRippleConfiguration provides null) {
-        Column(modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
+        Column(modifier.mainTabEntrance().fillMaxWidth().windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
             .padding(horizontal = 16.dp, vertical = 6.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 BookshelfHeaderActions(layoutMode, isWebdavSyncing, onSyncClick, onRefreshClick,
@@ -2094,7 +2102,7 @@ private fun BookshelfCapsuleHeader(
         return
     }
 
-    val headerCapsuleHeight = 46.dp
+    val headerCapsuleHeight = maxOf(46.dp, with(LocalDensity.current) { AppType.BodySmall.toDp() } * 1.5f + 12.dp)
     val headerCapsuleShadow = Modifier.shadow(
         elevation = 8.dp,
         shape = CircleShape,
@@ -2105,6 +2113,7 @@ private fun BookshelfCapsuleHeader(
 
     Column(
         modifier = modifier
+            .mainTabEntrance()
             .fillMaxWidth()
             .then(
                 if (isLiquidGlass) Modifier else Modifier.background(AppColors.PageBg)
@@ -2124,11 +2133,13 @@ private fun BookshelfCapsuleHeader(
                 contentColor = AppColors.TextPrimary,
                 decorationModifier = headerCapsuleShadow,
                 modifier = Modifier
-                    .width(88.dp)
-                    .height(headerCapsuleHeight)
+                    .widthIn(min = 88.dp)
+                    .heightIn(min = headerCapsuleHeight)
             ) {
                 Text(
                     text = stringResource(if (isEditing) R.string.done else R.string.edit),
+                    maxLines = 1,
+                    softWrap = false,
                     color = AppColors.TextPrimary,
                     fontSize = AppType.BodySmall,
                     fontWeight = FontWeight.SemiBold
@@ -2303,13 +2314,16 @@ private fun BookshelfCapsuleHeader(
                     tintedColor = AppColors.Accent,
                     contentColor = AppColors.OnAccent,
                     prominentShadow = false,
-                    modifier = Modifier.height(40.dp)
+                    modifier = Modifier.heightIn(min = 40.dp)
                 ) {
                     Text(
                         text = stringResource(R.string.select_all),
                         color = AppColors.OnAccent,
                         fontSize = AppType.BodySmall,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 }
             }

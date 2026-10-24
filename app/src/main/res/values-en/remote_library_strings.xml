@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="import_dialog_remote_description">3. WebDAV / OPDS: browse your network libraries, view book details, then download and import.</string>
+
+    <string name="remote_library_webdav_title">WebDAV libraries</string>
+    <string name="remote_library_opds_title">OPDS libraries</string>
+    <string name="remote_library_empty">No libraries added yet</string>
+    <string name="remote_library_empty_detail_webdav">Connect a WebDAV drive such as a NAS, Jianguoyun or Nextcloud, then browse its folders and download books.</string>
+    <string name="remote_library_empty_detail_opds">Connect a self-hosted OPDS library such as Calibre, Kavita or Komga, then browse, search and download books.</string>
+    <string name="remote_library_legal_notice">Only add libraries you have the right to access. Lumi doesn\'t provide or recommend any book sources.</string>
+    <string name="remote_library_add">Add library</string>
+    <string name="remote_library_edit">Edit library</string>
+    <string name="remote_library_delete">Delete library</string>
+    <string name="remote_library_delete_confirm">Delete “%1$s”? Imported books won\'t be affected.</string>
+    <string name="remote_library_name_label">Name</string>
+    <string name="remote_library_name_hint">For example: Home NAS</string>
+    <string name="remote_library_url_label">Address</string>
+    <string name="remote_library_username_label">Username (optional)</string>
+    <string name="remote_library_password_label">Password (optional)</string>
+    <string name="remote_library_password_saved">Password saved; leave blank to keep it unchanged</string>
+    <string name="remote_library_use_sync_account">Use WebDAV sync account</string>
+    <string name="remote_library_test_and_save">Test connection and save</string>
+    <string name="remote_library_testing">Connecting…</string>
+    <string name="remote_library_http_warning">This address uses HTTP, so the username and password are sent in plain text.</string>
+    <string name="remote_library_search_placeholder">Search catalog</string>
+    <string name="remote_library_search_results">Search: %1$s</string>
+    <string name="remote_library_loading">Loading…</string>
+    <string name="remote_library_load_more">Load more</string>
+    <string name="remote_library_empty_folder">No books to import here</string>
+    <string name="remote_library_level_summary">Folders: %1$d · Books: %2$d</string>
+    <string name="remote_library_select">Select</string>
+    <string name="remote_library_selected_count">%1$d selected</string>
+    <string name="remote_library_download_selected">Download (%1$d)</string>
+    <string name="remote_library_queued">Queued</string>
+    <string name="remote_library_downloading">Downloading %1$d%%</string>
+    <string name="remote_library_downloading_indeterminate">Downloading…</string>
+    <string name="remote_library_importing">Importing…</string>
+    <string name="remote_library_failed">Download failed</string>
+
+    <string name="remote_book_details_title">Book details</string>
+    <string name="remote_book_format">Format</string>
+    <string name="remote_book_size">Size</string>
+    <string name="remote_book_publisher">Publisher</string>
+    <string name="remote_book_language">Language</string>
+    <string name="remote_book_published">Published</string>
+    <string name="remote_book_categories">Categories</string>
+    <string name="remote_book_path">Path</string>
+    <string name="remote_book_modified">Modified</string>
+    <string name="remote_book_source">Source</string>
+    <string name="remote_book_summary">Summary</string>
+    <string name="remote_book_unsupported_formats">Formats not supported yet: %1$s</string>
+    <string name="remote_book_read_info">Read book info</string>
+    <string name="remote_book_read_info_hint">WebDAV only provides file info. Reading book info shows the summary and cover, but downloads the book first.</string>
+    <string name="remote_book_reading_info">Reading book info…</string>
+    <string name="remote_book_download">Download</string>
+    <string name="remote_book_download_with_size">Download (%1$s)</string>
+    <string name="remote_book_cancel_download">Cancel download</string>
+    <string name="remote_book_open">Open book</string>
+    <string name="remote_book_already_in_library">This book is already in your library</string>
+    <string name="remote_book_imported">Imported to your library</string>
+    <string name="remote_book_no_downloadable_format">This book has no downloadable format</string>
+
+    <string name="remote_destination_title">Download to</string>
+    <string name="remote_destination_count">Books: %1$d</string>
+    <string name="remote_destination_app">App storage</string>
+    <string name="remote_destination_app_folder">App storage · “%1$s”</string>
+    <string name="remote_destination_app_detail">Copied into the app directory; no external files needed</string>
+    <string name="remote_destination_folder_detail">Saved to this authorized folder; read directly from the original file</string>
+    <string name="remote_destination_pick">Choose another folder…</string>
+    <string name="remote_destination_pick_detail">Authorize a new folder and save to it</string>
+
+    <string name="remote_download_summary">Imported %1$d · %2$d already in library · %3$d failed</string>
+
+    <string name="remote_error_auth">Authentication failed: check the username and password.</string>
+    <string name="remote_error_forbidden">Access denied: make sure the account has permission to access this address.</string>
+    <string name="remote_error_not_found">Address not found: check the library address.</string>
+    <string name="remote_error_server">The server isn\'t responding right now. Try again later.</string>
+    <string name="remote_error_network">Network connection failed: check the network, address, and port.</string>
+    <string name="remote_error_timeout">Connection timed out: check the network or server status.</string>
+    <string name="remote_error_tls">Certificate validation failed: the server certificate is invalid or self-signed.</string>
+    <string name="remote_error_invalid_url">Invalid address: it must start with http:// or https://</string>
+    <string name="remote_error_not_catalog">This address isn\'t a recognized library. Make sure it\'s an OPDS catalog or WebDAV folder address.</string>
+    <string name="remote_error_opds2">OPDS 2.0 (JSON) catalogs aren\'t supported yet. Use the OPDS 1.x address provided by the server.</string>
+    <string name="remote_error_too_large">The server response is too large</string>
+    <string name="remote_error_no_space">Not enough storage space</string>
+    <string name="remote_error_local_network">Local network permission is missing. Allow Lumi to access LAN libraries.</string>
+    <string name="remote_error_unsupported_format">Unsupported book format</string>
+    <string name="remote_error_invalid_file">The downloaded file is invalid: the login may have expired or the file may be damaged.</string>
+    <string name="remote_error_destination">Can\'t write to the selected folder. Please authorize it again.</string>
+    <string name="remote_error_unknown">Something went wrong. Please try again.</string>
+</resources>

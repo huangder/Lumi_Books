@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="import_dialog_remote_description">3. WebDAV / OPDS：ネットワーク上のライブラリを閲覧し、書籍の詳細を確認してからダウンロードしてインポートします。</string>
+
+    <string name="remote_library_webdav_title">WebDAV ライブラリ</string>
+    <string name="remote_library_opds_title">OPDS ライブラリ</string>
+    <string name="remote_library_empty">ライブラリがまだ追加されていません</string>
+    <string name="remote_library_empty_detail_webdav">NAS、Jianguoyun、Nextcloud などの WebDAV ストレージに接続し、フォルダ内の書籍を閲覧してダウンロードできます。</string>
+    <string name="remote_library_empty_detail_opds">Calibre、Kavita、Komga など OPDS カタログを提供する自前のライブラリに接続し、閲覧・検索・ダウンロードできます。</string>
+    <string name="remote_library_legal_notice">アクセス権限のあるライブラリのみ追加してください。Lumi は書源を提供・推奨しません。</string>
+    <string name="remote_library_add">ライブラリを追加</string>
+    <string name="remote_library_edit">ライブラリを編集</string>
+    <string name="remote_library_delete">ライブラリを削除</string>
+    <string name="remote_library_delete_confirm">「%1$s」を削除しますか？インポート済みの書籍には影響しません。</string>
+    <string name="remote_library_name_label">名前</string>
+    <string name="remote_library_name_hint">例：自宅の NAS</string>
+    <string name="remote_library_url_label">アドレス</string>
+    <string name="remote_library_username_label">ユーザー名（任意）</string>
+    <string name="remote_library_password_label">パスワード（任意）</string>
+    <string name="remote_library_password_saved">パスワードは保存済みです。空欄のままにすると変更されません</string>
+    <string name="remote_library_use_sync_account">WebDAV 同期アカウントを使用</string>
+    <string name="remote_library_test_and_save">接続をテストして保存</string>
+    <string name="remote_library_testing">接続中…</string>
+    <string name="remote_library_http_warning">このアドレスは HTTP を使用しているため、ユーザー名とパスワードは平文で送信されます。</string>
+    <string name="remote_library_search_placeholder">カタログを検索</string>
+    <string name="remote_library_search_results">検索：%1$s</string>
+    <string name="remote_library_loading">読み込み中…</string>
+    <string name="remote_library_load_more">さらに読み込む</string>
+    <string name="remote_library_empty_folder">ここにはインポートできる書籍がありません</string>
+    <string name="remote_library_level_summary">%1$d個のフォルダ · %2$d冊の書籍</string>
+    <string name="remote_library_select">選択</string>
+    <string name="remote_library_selected_count">%1$d冊選択中</string>
+    <string name="remote_library_download_selected">ダウンロード（%1$d）</string>
+    <string name="remote_library_queued">待機中</string>
+    <string name="remote_library_downloading">ダウンロード中 %1$d%%</string>
+    <string name="remote_library_downloading_indeterminate">ダウンロード中…</string>
+    <string name="remote_library_importing">インポート中…</string>
+    <string name="remote_library_failed">ダウンロードに失敗しました</string>
+
+    <string name="remote_book_details_title">書籍の詳細</string>
+    <string name="remote_book_format">形式</string>
+    <string name="remote_book_size">サイズ</string>
+    <string name="remote_book_publisher">出版社</string>
+    <string name="remote_book_language">言語</string>
+    <string name="remote_book_published">出版日</string>
+    <string name="remote_book_categories">カテゴリ</string>
+    <string name="remote_book_path">パス</string>
+    <string name="remote_book_modified">更新日時</string>
+    <string name="remote_book_source">ソース</string>
+    <string name="remote_book_summary">概要</string>
+    <string name="remote_book_unsupported_formats">未対応の形式：%1$s</string>
+    <string name="remote_book_read_info">書籍情報を読み込む</string>
+    <string name="remote_book_read_info_hint">WebDAV はファイル情報のみを提供します。読み込むと概要と表紙を表示できますが、先にこの書籍をダウンロードします。</string>
+    <string name="remote_book_reading_info">書籍情報を読み込み中…</string>
+    <string name="remote_book_download">ダウンロード</string>
+    <string name="remote_book_download_with_size">ダウンロード（%1$s）</string>
+    <string name="remote_book_cancel_download">ダウンロードをキャンセル</string>
+    <string name="remote_book_open">開いて読む</string>
+    <string name="remote_book_already_in_library">この書籍はすでにライブラリにあります</string>
+    <string name="remote_book_imported">ライブラリにインポートしました</string>
+    <string name="remote_book_no_downloadable_format">この書籍にはダウンロードできる形式がありません</string>
+
+    <string name="remote_destination_title">ダウンロード先</string>
+    <string name="remote_destination_count">合計%1$d冊</string>
+    <string name="remote_destination_app">アプリ内ストレージ</string>
+    <string name="remote_destination_app_folder">アプリ内ストレージ · 「%1$s」</string>
+    <string name="remote_destination_app_detail">アプリのディレクトリにコピーし、外部ファイルに依存しません</string>
+    <string name="remote_destination_folder_detail">このアクセス許可済みフォルダに保存し、元のファイルを直接読み取ります</string>
+    <string name="remote_destination_pick">別のフォルダを選択…</string>
+    <string name="remote_destination_pick_detail">新しいフォルダへのアクセスを許可して保存します</string>
+
+    <string name="remote_download_summary">インポート %1$d冊 · 既存 %2$d冊 · 失敗 %3$d冊</string>
+
+    <string name="remote_error_auth">認証に失敗しました：ユーザー名とパスワードを確認してください</string>
+    <string name="remote_error_forbidden">サーバーがアクセスを拒否しました：アカウントにこのアドレスへのアクセス権限があるか確認してください</string>
+    <string name="remote_error_not_found">アドレスが存在しません：ライブラリのアドレスを確認してください</string>
+    <string name="remote_error_server">サーバーが一時的に応答しません。しばらくしてから再試行してください</string>
+    <string name="remote_error_network">ネットワーク接続に失敗しました：ネットワーク、アドレス、ポートを確認してください</string>
+    <string name="remote_error_timeout">接続がタイムアウトしました：ネットワークまたはサーバーの状態を確認してください</string>
+    <string name="remote_error_tls">証明書の検証に失敗しました：サーバー証明書が無効か自己署名です</string>
+    <string name="remote_error_invalid_url">アドレスが無効です：http:// または https:// で始めてください</string>
+    <string name="remote_error_not_catalog">このアドレスは認識できるライブラリではありません。OPDS カタログまたは WebDAV フォルダのアドレスか確認してください</string>
+    <string name="remote_error_opds2">OPDS 2.0（JSON）カタログにはまだ対応していません。サーバーが提供する OPDS 1.x のアドレスを使用してください</string>
+    <string name="remote_error_too_large">サーバーから返された内容が大きすぎます</string>
+    <string name="remote_error_no_space">ストレージの空き容量が不足しています</string>
+    <string name="remote_error_local_network">ローカルネットワーク権限がありません：Lumi に LAN 内のライブラリへのアクセスを許可してください</string>
+    <string name="remote_error_unsupported_format">対応していない書籍形式です</string>
+    <string name="remote_error_invalid_file">ダウンロードしたファイルが無効です：ログインの有効期限が切れているか、ファイルが破損している可能性があります</string>
+    <string name="remote_error_destination">選択したフォルダに書き込めません。フォルダへのアクセスを再許可してください</string>
+    <string name="remote_error_unknown">操作に失敗しました。もう一度お試しください</string>
+</resources>

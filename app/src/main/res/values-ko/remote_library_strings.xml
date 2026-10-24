@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="import_dialog_remote_description">3. WebDAV / OPDS: 네트워크 서재를 둘러보고 책 상세 정보를 확인한 뒤 다운로드해 가져옵니다.</string>
+
+    <string name="remote_library_webdav_title">WebDAV 서재</string>
+    <string name="remote_library_opds_title">OPDS 서재</string>
+    <string name="remote_library_empty">아직 추가한 서재가 없습니다</string>
+    <string name="remote_library_empty_detail_webdav">NAS, Jianguoyun, Nextcloud 등 WebDAV 저장소에 연결해 폴더의 책을 둘러보고 다운로드할 수 있습니다.</string>
+    <string name="remote_library_empty_detail_opds">Calibre, Kavita, Komga 등 OPDS 카탈로그를 제공하는 자체 서재에 연결해 둘러보고 검색하고 다운로드할 수 있습니다.</string>
+    <string name="remote_library_legal_notice">접근 권한이 있는 서재만 추가하세요. Lumi는 어떤 서원도 제공하거나 추천하지 않습니다.</string>
+    <string name="remote_library_add">서재 추가</string>
+    <string name="remote_library_edit">서재 편집</string>
+    <string name="remote_library_delete">서재 삭제</string>
+    <string name="remote_library_delete_confirm">“%1$s”을(를) 삭제할까요? 가져온 책에는 영향이 없습니다.</string>
+    <string name="remote_library_name_label">이름</string>
+    <string name="remote_library_name_hint">예: 집 NAS</string>
+    <string name="remote_library_url_label">주소</string>
+    <string name="remote_library_username_label">사용자 이름(선택 사항)</string>
+    <string name="remote_library_password_label">비밀번호(선택 사항)</string>
+    <string name="remote_library_password_saved">비밀번호가 저장되어 있습니다. 비워 두면 변경되지 않습니다</string>
+    <string name="remote_library_use_sync_account">WebDAV 동기화 계정 사용</string>
+    <string name="remote_library_test_and_save">연결 테스트 후 저장</string>
+    <string name="remote_library_testing">연결 중…</string>
+    <string name="remote_library_http_warning">이 주소는 HTTP를 사용하므로 사용자 이름과 비밀번호가 평문으로 전송됩니다.</string>
+    <string name="remote_library_search_placeholder">카탈로그 검색</string>
+    <string name="remote_library_search_results">검색: %1$s</string>
+    <string name="remote_library_loading">불러오는 중…</string>
+    <string name="remote_library_load_more">더 불러오기</string>
+    <string name="remote_library_empty_folder">여기에는 가져올 수 있는 책이 없습니다</string>
+    <string name="remote_library_level_summary">폴더 %1$d개 · 책 %2$d권</string>
+    <string name="remote_library_select">선택</string>
+    <string name="remote_library_selected_count">%1$d권 선택됨</string>
+    <string name="remote_library_download_selected">다운로드(%1$d)</string>
+    <string name="remote_library_queued">대기 중</string>
+    <string name="remote_library_downloading">다운로드 중 %1$d%%</string>
+    <string name="remote_library_downloading_indeterminate">다운로드 중…</string>
+    <string name="remote_library_importing">가져오는 중…</string>
+    <string name="remote_library_failed">다운로드 실패</string>
+
+    <string name="remote_book_details_title">책 상세 정보</string>
+    <string name="remote_book_format">형식</string>
+    <string name="remote_book_size">크기</string>
+    <string name="remote_book_publisher">출판사</string>
+    <string name="remote_book_language">언어</string>
+    <string name="remote_book_published">출판일</string>
+    <string name="remote_book_categories">분류</string>
+    <string name="remote_book_path">경로</string>
+    <string name="remote_book_modified">수정 시간</string>
+    <string name="remote_book_source">출처</string>
+    <string name="remote_book_summary">소개</string>
+    <string name="remote_book_unsupported_formats">아직 지원하지 않는 형식: %1$s</string>
+    <string name="remote_book_read_info">책 정보 읽기</string>
+    <string name="remote_book_read_info_hint">WebDAV는 파일 정보만 제공합니다. 책 정보를 읽으면 소개와 표지를 볼 수 있으며, 먼저 이 책을 다운로드합니다.</string>
+    <string name="remote_book_reading_info">책 정보를 읽는 중…</string>
+    <string name="remote_book_download">다운로드</string>
+    <string name="remote_book_download_with_size">다운로드(%1$s)</string>
+    <string name="remote_book_cancel_download">다운로드 취소</string>
+    <string name="remote_book_open">열어서 읽기</string>
+    <string name="remote_book_already_in_library">이미 서재에 있는 책입니다</string>
+    <string name="remote_book_imported">서재로 가져왔습니다</string>
+    <string name="remote_book_no_downloadable_format">이 책은 다운로드할 수 있는 형식이 없습니다</string>
+
+    <string name="remote_destination_title">다운로드 위치</string>
+    <string name="remote_destination_count">총 %1$d권</string>
+    <string name="remote_destination_app">앱 내부 저장소</string>
+    <string name="remote_destination_app_folder">앱 내부 저장소 · “%1$s”</string>
+    <string name="remote_destination_app_detail">앱 디렉터리로 복사하며 외부 파일에 의존하지 않습니다</string>
+    <string name="remote_destination_folder_detail">이 권한이 있는 폴더에 저장하고 원본 파일을 직접 읽습니다</string>
+    <string name="remote_destination_pick">다른 폴더 선택…</string>
+    <string name="remote_destination_pick_detail">새 폴더에 접근 권한을 부여하고 그곳에 저장합니다</string>
+
+    <string name="remote_download_summary">%1$d권 가져옴 · %2$d권 이미 있음 · %3$d권 실패</string>
+
+    <string name="remote_error_auth">인증 실패: 사용자 이름과 비밀번호를 확인하세요</string>
+    <string name="remote_error_forbidden">서버가 접근을 거부했습니다: 계정에 이 주소에 대한 접근 권한이 있는지 확인하세요</string>
+    <string name="remote_error_not_found">주소를 찾을 수 없습니다: 서재 주소를 확인하세요</string>
+    <string name="remote_error_server">서버가 일시적으로 응답하지 않습니다. 잠시 후 다시 시도하세요</string>
+    <string name="remote_error_network">네트워크 연결 실패: 네트워크, 주소와 포트를 확인하세요</string>
+    <string name="remote_error_timeout">연결 시간 초과: 네트워크 또는 서버 상태를 확인하세요</string>
+    <string name="remote_error_tls">인증서 검증 실패: 서버 인증서가 유효하지 않거나 자체 서명입니다</string>
+    <string name="remote_error_invalid_url">주소가 올바르지 않습니다: http:// 또는 https://로 시작해야 합니다</string>
+    <string name="remote_error_not_catalog">인식할 수 있는 서재 주소가 아닙니다. OPDS 카탈로그 또는 WebDAV 폴더 주소를 입력했는지 확인하세요</string>
+    <string name="remote_error_opds2">OPDS 2.0(JSON) 카탈로그는 아직 지원하지 않습니다. 서버에서 제공하는 OPDS 1.x 주소를 사용하세요</string>
+    <string name="remote_error_too_large">서버가 반환한 내용이 너무 큽니다</string>
+    <string name="remote_error_no_space">저장 공간이 부족합니다</string>
+    <string name="remote_error_local_network">로컬 네트워크 권한이 없습니다: Lumi가 LAN 서재에 접근하도록 허용하세요</string>
+    <string name="remote_error_unsupported_format">지원하지 않는 책 형식입니다</string>
+    <string name="remote_error_invalid_file">다운로드한 파일이 올바르지 않습니다: 로그인이 만료되었거나 파일이 손상되었을 수 있습니다</string>
+    <string name="remote_error_destination">선택한 폴더에 쓸 수 없습니다. 이 폴더에 다시 권한을 부여해 주세요</string>
+    <string name="remote_error_unknown">작업에 실패했습니다. 다시 시도해 주세요</string>
+</resources>

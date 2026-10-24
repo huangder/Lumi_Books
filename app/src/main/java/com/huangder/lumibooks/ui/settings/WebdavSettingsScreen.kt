@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.settings
+import androidx.compose.foundation.layout.heightIn
 import com.huangder.lumibooks.ui.icons.AppIcons
 
 import com.huangder.lumibooks.ui.components.lumiCardSurface
@@ -411,13 +412,16 @@ private fun WebdavPrimaryButton(
         shape = AppRoundedCornerShape(25.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .height(50.dp)
+            .heightIn(min = 50.dp)
     ) {
         Text(
             label,
             fontSize = AppType.BodySmall,
             fontWeight = FontWeight.SemiBold,
-            color = if (enabled) Color.White else AppColors.TextSecondary
+            color = if (enabled) Color.White else AppColors.TextSecondary,
+            maxLines = 1,
+            softWrap = false,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
     }
 }

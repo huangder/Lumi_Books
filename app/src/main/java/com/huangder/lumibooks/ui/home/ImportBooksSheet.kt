@@ -39,6 +39,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items as lazyListItems
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -208,7 +210,9 @@ fun ImportBooksActionSheet(
     onDismiss: () -> Unit,
     onSelectFiles: () -> Unit,
     onAuthorizeDirectory: () -> Unit,
-    onOpenFolderBooks: () -> Unit
+    onOpenFolderBooks: () -> Unit,
+    onImportWebdav: () -> Unit,
+    onImportOpds: () -> Unit
 ) {
     ImportBooksContainer(
         expanded = false,
@@ -220,9 +224,20 @@ fun ImportBooksActionSheet(
             authorizedDirectoryUris = authorizedDirectoryUris,
             onSelectFiles = onSelectFiles,
             onAuthorizeDirectory = onAuthorizeDirectory,
-            onOpenFolderBooks = onOpenFolderBooks
+            onOpenFolderBooks = onOpenFolderBooks,
+            onImportWebdav = onImportWebdav,
+            onImportOpds = onImportOpds
         )
     }
+}
+
+/** Compact sheet in the import sheet's container, so follow-up choices match every theme. */
+@Composable
+fun ImportDestinationContainer(
+    onDismiss: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    ImportBooksContainer(expanded = false, onDismiss = onDismiss) { _ -> content() }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -321,12 +336,15 @@ private fun ImportActionsStage(
     authorizedDirectoryUris: List<String>,
     onSelectFiles: () -> Unit,
     onAuthorizeDirectory: () -> Unit,
-    onOpenFolderBooks: () -> Unit
+    onOpenFolderBooks: () -> Unit,
+    onImportWebdav: () -> Unit,
+    onImportOpds: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
             .padding(
                 start = 28.dp,
                 end = 28.dp,
@@ -342,7 +360,8 @@ private fun ImportActionsStage(
         )
         Spacer(Modifier.height(12.dp))
         Text(
-            text = stringResource(R.string.import_dialog_description),
+            text = stringResource(R.string.import_dialog_description) + "\n" +
+                stringResource(R.string.import_dialog_remote_description),
             color = AppColors.TextSecondary,
             fontSize = 13.sp,
             lineHeight = 19.sp
@@ -366,6 +385,25 @@ private fun ImportActionsStage(
             onClick = onOpenFolderBooks,
             enabled = !isPreparing
         )
+        Spacer(Modifier.height(12.dp))
+        // Same 12dp gap horizontally as vertically keeps the half-width pair on the full-width grid.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            ImportActionButton(
+                text = stringResource(R.string.import_webdav),
+                onClick = onImportWebdav,
+                enabled = !isPreparing,
+                modifier = Modifier.weight(1f)
+            )
+            ImportActionButton(
+                text = stringResource(R.string.import_opds),
+                onClick = onImportOpds,
+                enabled = !isPreparing,
+                modifier = Modifier.weight(1f)
+            )
+        }
         if (isPreparing) {
             Spacer(Modifier.height(18.dp))
             Row(
@@ -428,6 +466,7 @@ private fun formatAuthorizedDirectory(uriString: String, internalStorageLabel: S
 private fun ImportActionButton(
     text: String,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     primary: Boolean = false,
     enabled: Boolean = true,
     floatingShadow: Boolean = false
@@ -443,9 +482,9 @@ private fun ImportActionButton(
     LiquidGlassButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .height(58.dp)
+            .heightIn(min = 58.dp)
             .then(
                 if (floatingShadow && enabled) {
                     Modifier.shadow(
@@ -468,7 +507,10 @@ private fun ImportActionButton(
             text = text,
             color = labelColor,
             fontSize = 17.sp,
-            fontWeight = FontWeight.SemiBold
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            softWrap = false,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
     }
 }
@@ -531,7 +573,7 @@ private fun SelectedBooksStage(
                 Spacer(Modifier.width(10.dp))
                 LiquidGlassButton(
                     onClick = onSelectAll,
-                    modifier = Modifier.height(44.dp),
+                    modifier = Modifier.heightIn(min = 44.dp),
                     shape = AppRoundedCornerShape(50),
                     tintedColor = AppColors.Accent,
                     prominentShadow = false,
@@ -541,7 +583,10 @@ private fun SelectedBooksStage(
                         text = stringResource(R.string.import_select_all),
                         color = AppColors.OnAccent,
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 }
             }

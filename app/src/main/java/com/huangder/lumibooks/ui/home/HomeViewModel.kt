@@ -165,11 +165,11 @@ class HomeViewModel @Inject constructor(
     private val webdavSyncManager: com.huangder.lumibooks.data.sync.WebdavSyncManager,
     private val authorizedStorageManager: AuthorizedStorageManager,
     private val authorizedFolderSnapshotStore: AuthorizedFolderSnapshotStore,
-    private val database: AppDatabase
+    private val database: AppDatabase,
+    private val importPipeline: BookImportPipeline
 ) : ViewModel() {
 
     private companion object {
-        val SUPPORTED_BOOK_EXTENSIONS = setOf("epub", "pdf", "txt", "mobi", "cbz", "md", "markdown")
         const val READING_HISTORY_START_DATE = "1970-01-01"
     }
 
@@ -956,13 +956,7 @@ class HomeViewModel @Inject constructor(
     private suspend fun repairMissingSourceHashes(
         context: Context,
         books: List<Book>
-    ): List<Book> = backfillMissingSourceHashes(
-        books = books,
-        hashLocation = { location ->
-            runCatching { authorizedStorageManager.sha256(context, location) }.getOrNull()
-        },
-        persist = bookRepository::updateSourceSha256
-    )
+    ): List<Book> = importPipeline.repairMissingSourceHashes(context, books)
 
     private fun discoverBooks(
         context: Context,
@@ -1244,123 +1238,14 @@ class HomeViewModel @Inject constructor(
         targetFolderId: String?,
         groupByAuthorizedSource: Boolean
     ): ImportResult {
-        var imported = 0
-        var skipped = 0
-        var failed = 0
-        var knownBooks = bookRepository.getAllBooks().first()
-        var missingHashesChecked = false
-        documents.forEach { document ->
-            val extension = FileUtils.getFileExtension(document.name)
-            if (extension !in SUPPORTED_BOOK_EXTENSIONS) {
-                skipped++
-                return@forEach
-            }
-            val incomingKey = document.sourceDocumentKey
-                ?: authorizedStorageManager.documentKey(document.uri)
-            val incomingUri = document.uri.toString()
-            val incomingHash = runCatching {
-                authorizedStorageManager.sha256(context, incomingUri)
-            }.getOrNull()
-            val directDuplicate = findMatchingAuthorizedBook(
-                documentKey = incomingKey,
-                uri = incomingUri,
-                sha256 = null,
-                books = knownBooks
-            )
-            if (directDuplicate == null && incomingHash != null && !missingHashesChecked) {
-                knownBooks = repairMissingSourceHashes(context, knownBooks)
-                missingHashesChecked = true
-            }
-            val duplicate = directDuplicate ?: findMatchingAuthorizedBook(
-                documentKey = incomingKey,
-                uri = incomingUri,
-                sha256 = incomingHash,
-                books = knownBooks
-            )
-            if (duplicate != null) {
-                skipped++
-                return@forEach
-            }
-            var importedLocation: String? = null
-            var extractedCoverPath: String? = null
-            var insertedBook: Book? = null
-            runCatching {
-                val bookId = FileUtils.generateBookId()
-                val format = extension.toBookFormat()
-                if (format == BookFormat.MARKDOWN) {
-                    runCatching { context.contentResolver.takePersistableUriPermission(document.uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-                }
-                val location = if (format == BookFormat.MARKDOWN) {
-                    com.huangder.lumibooks.util.markdown.MarkdownSnapshotStore.create(context, bookId, incomingUri, document.sourceDirectoryDocumentUri).absolutePath
-                } else if (copyIntoApp) {
-                    FileUtils.copyFileToInternal(context, document.uri, document.name)?.absolutePath
-                        ?: error("Unable to copy ${document.name}")
-                } else {
-                    document.uri.toString()
-                }
-                importedLocation = location
-                val parser = BookParserFactory.createParser(format, context)
-                val coverPath = try {
-                    parser.extractCoverPath(location)
-                } catch (_: Exception) {
-                    null
-                } finally {
-                    runCatching { parser.close() }
-                }
-                extractedCoverPath = coverPath
-                val now = System.currentTimeMillis()
-                val markdownMetadata = if (format == BookFormat.MARKDOWN) com.huangder.lumibooks.util.markdown.MarkdownSnapshotStore.manifest(File(location)) else null
-                val book = Book(
-                        id = bookId,
-                        title = markdownMetadata?.optString("title")?.takeIf { it.isNotBlank() } ?: document.name.substringBeforeLast('.'),
-                        author = markdownMetadata?.optString("author")?.takeIf { it.isNotBlank() } ?: context.getString(R.string.book_author_unknown),
-                        filePath = location,
-                        coverPath = coverPath,
-                        format = format,
-                        lastReadTime = now,
-                        readingProgress = 0f,
-                        createdAt = now,
-                        sourceUri = incomingUri,
-                        sourceDocumentKey = incomingKey,
-                        sourceParentUri = document.sourceDirectoryDocumentUri,
-                        sourceSha256 = markdownMetadata?.optString("sourceSha256")?.takeIf { it.isNotBlank() } ?: incomingHash,
-                        sourceDisplayName = document.name,
-                        sourceLastModified = document.sourceLastModified,
-                        isMissing = false
-                    )
-                bookRepository.insertBook(book)
-                insertedBook = book
-                val destinationFolderId = if (groupByAuthorizedSource) {
-                    document.sourceDirectoryName
-                        ?.let(FolderNameValidator::clean)
-                        ?.take(FolderNameValidator.MAX_LENGTH)
-                        ?.takeIf(FolderNameValidator::isValid)
-                        ?.let {
-                            folderRepository.getOrCreateFolderPath(
-                                rootName = it,
-                                relativeDirectory = document.sourceRelativeDirectory,
-                                storageBindings = document.sourceDirectoryBindings
-                            ).id
-                        }
-                } else {
-                    targetFolderId
-                }
-                if (destinationFolderId != null) {
-                    folderRepository.moveBooks(setOf(bookId), destinationFolderId)
-                }
-            }.onSuccess {
-                imported++
-                insertedBook?.let { knownBooks = knownBooks + it }
-            }.onFailure {
-                failed++
-                insertedBook?.let { book -> runCatching { bookRepository.deleteBook(book) } }
-                if (copyIntoApp || extension in setOf("md", "markdown")) {
-                    importedLocation?.let { FileUtils.deleteAppManagedBookFile(context, it) }
-                }
-                FileUtils.deleteAppOwnedFile(context, extractedCoverPath)
-            }
-        }
-        return ImportResult(imported = imported, skipped = skipped, failed = failed)
+        val result = importPipeline.import(
+            context = context,
+            documents = documents.map { it.toPipelineDocument() },
+            copyIntoApp = copyIntoApp,
+            targetFolderId = targetFolderId,
+            groupByAuthorizedSource = groupByAuthorizedSource
+        )
+        return ImportResult(imported = result.imported, skipped = result.skipped, failed = result.failed)
     }
 
     private data class BookDocument(
@@ -1376,6 +1261,19 @@ class HomeViewModel @Inject constructor(
         val sourceDirectoryBindings: List<FolderRepository.StorageBinding> = emptyList()
     ) {
         fun toCandidate() = BookImportCandidate(
+            uri = uri,
+            name = name,
+            sourceDirectoryUri = sourceDirectoryUri,
+            sourceDirectoryName = sourceDirectoryName,
+            sourceRelativeDirectory = sourceRelativeDirectory,
+            sourceDirectoryDocumentUri = sourceDirectoryDocumentUri,
+            sourceDocumentKey = sourceDocumentKey,
+            sourceLastModified = sourceLastModified,
+            sourceSize = sourceSize,
+            sourceDirectoryBindings = sourceDirectoryBindings
+        )
+
+        fun toPipelineDocument() = BookImportPipeline.Document(
             uri = uri,
             name = name,
             sourceDirectoryUri = sourceDirectoryUri,
@@ -1432,15 +1330,6 @@ class HomeViewModel @Inject constructor(
             inaccessibleDirectories > 0 -> context.getString(R.string.import_directory_permission_lost)
             else -> context.getString(R.string.import_no_new_books)
         }
-    }
-
-    private fun String.toBookFormat(): BookFormat = when (this) {
-        "epub" -> BookFormat.EPUB
-        "pdf" -> BookFormat.PDF
-        "mobi" -> BookFormat.MOBI
-        "cbz" -> BookFormat.CBZ
-        "md", "markdown", "mdpack" -> BookFormat.MARKDOWN
-        else -> BookFormat.TXT
     }
 
     fun clearImportMessage() {

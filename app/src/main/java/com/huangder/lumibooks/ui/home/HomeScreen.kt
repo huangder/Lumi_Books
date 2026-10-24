@@ -31,11 +31,9 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
@@ -162,7 +160,7 @@ fun HomeScreen(
         uiState.books.sortedByDescending { it.lastReadTime }
     }
     val lastReadBook = booksByLastRead.firstOrNull()
-    val recentBooks = booksByLastRead
+    val recentBooks = booksByLastRead.take(6)
 
     // 顶部下拉「松手继续阅读」：只读取下拉位移，判定与回弹都由 OverscrollBounce 维持原样。
     val bounceState = remember { OverscrollBounceState() }
@@ -1013,12 +1011,9 @@ private fun BooksReadGrid(
         AppRadius.md.value
     }
     val bookBounds = remember { mutableMapOf<String, Rect>() }
-    LazyRow(
-        modifier = modifier.fillMaxWidth(),
-        // Keep the first card aligned with the sections above while allowing
-        // the final card to scroll all the way to the screen edge.
-        contentPadding = PaddingValues(start = AppSpace.lg),
-        horizontalArrangement = Arrangement.spacedBy(AppSpace.md)
+    RecentBooksRow(
+        itemWidth = if (useWideLayout) 120.dp else 96.dp,
+        modifier = modifier
     ) {
         items(books, key = { it.id }) { book ->
             Column(

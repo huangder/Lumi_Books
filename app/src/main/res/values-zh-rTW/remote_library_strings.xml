@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="import_dialog_remote_description">3. WebDAV / OPDS：瀏覽你的網路書庫，查看書籍詳情後再下載匯入。</string>
+
+    <string name="remote_library_webdav_title">WebDAV 書庫</string>
+    <string name="remote_library_opds_title">OPDS 書庫</string>
+    <string name="remote_library_empty">還沒有新增書庫</string>
+    <string name="remote_library_empty_detail_webdav">連接 NAS、堅果雲、Nextcloud 等 WebDAV 雲端硬碟，瀏覽資料夾中的書並下載匯入。</string>
+    <string name="remote_library_empty_detail_opds">連接 Calibre、Kavita、Komga 等提供 OPDS 書目的自架書庫，瀏覽、搜尋並下載匯入。</string>
+    <string name="remote_library_legal_notice">僅新增你有權存取的書庫。Lumi 不提供、不推薦任何書源。</string>
+    <string name="remote_library_add">新增書庫</string>
+    <string name="remote_library_edit">編輯書庫</string>
+    <string name="remote_library_delete">刪除書庫</string>
+    <string name="remote_library_delete_confirm">刪除「%1$s」？已匯入的書籍不會受影響。</string>
+    <string name="remote_library_name_label">名稱</string>
+    <string name="remote_library_name_hint">例如：家裡的 NAS</string>
+    <string name="remote_library_url_label">位址</string>
+    <string name="remote_library_username_label">使用者名稱（選填）</string>
+    <string name="remote_library_password_label">密碼（選填）</string>
+    <string name="remote_library_password_saved">已儲存密碼，留空則保持不變</string>
+    <string name="remote_library_use_sync_account">使用 WebDAV 同步帳號</string>
+    <string name="remote_library_test_and_save">測試連線並儲存</string>
+    <string name="remote_library_testing">正在連線…</string>
+    <string name="remote_library_http_warning">此位址使用 HTTP，使用者名稱和密碼會以明文傳輸。</string>
+    <string name="remote_library_search_placeholder">搜尋書目</string>
+    <string name="remote_library_search_results">搜尋：%1$s</string>
+    <string name="remote_library_loading">正在載入…</string>
+    <string name="remote_library_load_more">載入更多</string>
+    <string name="remote_library_empty_folder">這裡沒有可匯入的書籍</string>
+    <string name="remote_library_level_summary">%1$d 個資料夾 · %2$d 本書</string>
+    <string name="remote_library_select">選擇</string>
+    <string name="remote_library_selected_count">已選 %1$d 本</string>
+    <string name="remote_library_download_selected">下載（%1$d）</string>
+    <string name="remote_library_queued">等待中</string>
+    <string name="remote_library_downloading">下載中 %1$d%%</string>
+    <string name="remote_library_downloading_indeterminate">下載中…</string>
+    <string name="remote_library_importing">正在匯入…</string>
+    <string name="remote_library_failed">下載失敗</string>
+
+    <string name="remote_book_details_title">書籍詳情</string>
+    <string name="remote_book_format">格式</string>
+    <string name="remote_book_size">大小</string>
+    <string name="remote_book_publisher">出版社</string>
+    <string name="remote_book_language">語言</string>
+    <string name="remote_book_published">出版日期</string>
+    <string name="remote_book_categories">分類</string>
+    <string name="remote_book_path">路徑</string>
+    <string name="remote_book_modified">修改時間</string>
+    <string name="remote_book_source">來源</string>
+    <string name="remote_book_summary">簡介</string>
+    <string name="remote_book_unsupported_formats">暫不支援的格式：%1$s</string>
+    <string name="remote_book_read_info">讀取書籍資訊</string>
+    <string name="remote_book_read_info_hint">WebDAV 只提供檔案資訊。讀取後可顯示簡介和封面，會先下載這本書。</string>
+    <string name="remote_book_reading_info">正在讀取書籍資訊…</string>
+    <string name="remote_book_download">下載</string>
+    <string name="remote_book_download_with_size">下載（%1$s）</string>
+    <string name="remote_book_cancel_download">取消下載</string>
+    <string name="remote_book_open">開啟閱讀</string>
+    <string name="remote_book_already_in_library">書庫中已有這本書</string>
+    <string name="remote_book_imported">已匯入書庫</string>
+    <string name="remote_book_no_downloadable_format">這本書沒有可下載的格式</string>
+
+    <string name="remote_destination_title">下載到哪裡</string>
+    <string name="remote_destination_count">共 %1$d 本書</string>
+    <string name="remote_destination_app">應用程式內儲存空間</string>
+    <string name="remote_destination_app_folder">應用程式內儲存空間 · 「%1$s」</string>
+    <string name="remote_destination_app_detail">複製到應用程式目錄，不依賴外部檔案</string>
+    <string name="remote_destination_folder_detail">儲存到該授權資料夾，直接讀取原始檔案</string>
+    <string name="remote_destination_pick">選擇其他資料夾…</string>
+    <string name="remote_destination_pick_detail">授權一個新資料夾並儲存到其中</string>
+
+    <string name="remote_download_summary">匯入 %1$d 本 · 已存在 %2$d 本 · 失敗 %3$d 本</string>
+
+    <string name="remote_error_auth">認證失敗：請檢查使用者名稱和密碼</string>
+    <string name="remote_error_forbidden">伺服器拒絕存取：請確認帳號有權限存取該位址</string>
+    <string name="remote_error_not_found">位址不存在：請檢查書庫位址</string>
+    <string name="remote_error_server">伺服器暫時無法回應，請稍後重試</string>
+    <string name="remote_error_network">網路連線失敗：請檢查網路、位址與連接埠</string>
+    <string name="remote_error_timeout">連線逾時：請檢查網路或伺服器狀態</string>
+    <string name="remote_error_tls">憑證驗證失敗：伺服器憑證無效或為自簽憑證</string>
+    <string name="remote_error_invalid_url">位址無效：請以 http:// 或 https:// 開頭</string>
+    <string name="remote_error_not_catalog">這個位址不是可辨識的書庫，請確認填寫的是 OPDS 書目或 WebDAV 資料夾位址</string>
+    <string name="remote_error_opds2">暫不支援 OPDS 2.0（JSON）書目，請改用伺服器提供的 OPDS 1.x 位址</string>
+    <string name="remote_error_too_large">伺服器回傳的內容過大</string>
+    <string name="remote_error_no_space">儲存空間不足</string>
+    <string name="remote_error_local_network">缺少本機網路權限：請允許 Lumi 存取區域網路書庫</string>
+    <string name="remote_error_unsupported_format">不支援的書籍格式</string>
+    <string name="remote_error_invalid_file">下載的檔案無效：可能是登入已過期或檔案已損壞</string>
+    <string name="remote_error_destination">無法寫入所選資料夾，請重新授權該資料夾</string>
+    <string name="remote_error_unknown">操作失敗，請重試</string>
+</resources>
