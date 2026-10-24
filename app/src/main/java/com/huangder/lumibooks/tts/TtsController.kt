@@ -104,12 +104,16 @@ class TtsController(
      * user page change, restored by an explicit return to listening or a sentence seek.
      */
     private var followReaderPageTurns = true
+    private val _followUserPageTurns = MutableStateFlow(false)
+    val followUserPageTurns: StateFlow<Boolean> = _followUserPageTurns.asStateFlow()
     private var readerAttached = true
     private var lastListeningWriteNanos = 0L
 
     // Sleep timer
     private val _sleepTimerRemainingMs = MutableStateFlow<Long?>(null)
     val sleepTimerRemainingMs: StateFlow<Long?> = _sleepTimerRemainingMs.asStateFlow()
+    private val _sleepTimerDurationMs = MutableStateFlow<Long?>(null)
+    val sleepTimerDurationMs: StateFlow<Long?> = _sleepTimerDurationMs.asStateFlow()
     private var sleepTimerJob: Job? = null
 
     private data class CrossPageMergeState(
@@ -576,6 +580,14 @@ class TtsController(
             // Manual page turns and layout callbacks leave the listening position untouched.
             if (origin != TtsPageChangeOrigin.TTS_FOLLOW) {
                 if (origin == TtsPageChangeOrigin.USER) {
+                    if (_followUserPageTurns.value && location != _currentPage.value?.location) {
+                        followReaderPageTurns = true
+                        if (!moveToPage(location, startAtEnd = false, publishLocation = false)) {
+                            _errors.tryEmit(pageContentError ?: IllegalStateException("No readable text found"))
+                            stopInternal()
+                        }
+                        return@withLock
+                    }
                     // Passing the spoken page while browsing must not re-enable following.
                     followReaderPageTurns = followReaderPageTurns && _currentPage.value?.location == location
                 }
@@ -659,6 +671,11 @@ class TtsController(
             readerAttached && followReaderPageTurns &&
             request.location == _currentPage.value?.location &&
             _playbackState.value != TtsPlaybackState.IDLE
+
+    fun setFollowUserPageTurns(enabled: Boolean) {
+        _followUserPageTurns.value = enabled
+        if (enabled) followReaderPageTurns = true
+    }
 
     fun pageChangeOriginFor(
         bookId: String,
@@ -1415,6 +1432,7 @@ class TtsController(
         scope.launch {
             val targetMs = minutes * 60_000L
             _sleepTimerRemainingMs.value = targetMs
+            _sleepTimerDurationMs.value = targetMs
             sleepTimerJob?.cancel()
             sleepTimerJob = scope.launch {
                 val startTime = System.currentTimeMillis()
@@ -1439,6 +1457,7 @@ class TtsController(
         sleepTimerJob?.cancel()
         sleepTimerJob = null
         _sleepTimerRemainingMs.value = null
+        _sleepTimerDurationMs.value = null
     }
 
     private suspend fun stopInternal(

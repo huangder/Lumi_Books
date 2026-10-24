@@ -124,6 +124,38 @@ class TtsControllerTest {
     }
 
     @Test
+    fun userPageTurnsMovePlaybackOnlyWhenFollowPageTurnsIsEnabled() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val engine = FakePlaybackEngine()
+        val controller = controller(engine)
+        val source = FakePageSource(
+            page(0, "One.", next = TtsPageLocation(0, 1)),
+            page(1, "Two.", previous = TtsPageLocation(0, 0), next = TtsPageLocation(0, 2),
+                startCharacterOffset = 4),
+            page(2, "Three.", previous = TtsPageLocation(0, 1), startCharacterOffset = 8)
+        )
+        try {
+            controller.start("book", source, 0, 0)
+            runCurrent()
+
+            controller.onPageVisible("book", 0, 1, TtsPageChangeOrigin.USER)
+            runCurrent()
+            assertEquals(TtsPageLocation(0, 0), controller.currentPage.value?.location)
+            assertEquals("One.", engine.spokenTexts.last())
+
+            controller.setFollowUserPageTurns(true)
+            controller.onPageVisible("book", 0, 1, TtsPageChangeOrigin.USER)
+            runCurrent()
+            assertEquals(TtsPageLocation(0, 1), controller.currentPage.value?.location)
+            assertEquals("Two.", engine.spokenTexts.last())
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun mergedUtteranceSavesItsStartUntilPlaybackReachesTheLandingPage() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val engine = FakePlaybackEngine(canResumeWithoutRestart = true)

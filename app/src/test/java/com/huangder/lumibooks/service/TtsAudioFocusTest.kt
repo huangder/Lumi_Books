@@ -6,17 +6,21 @@ import org.junit.Test
 
 class TtsAudioFocusTest {
     @Test
-    fun everyFocusLossPausesPlayback() {
+    fun permanentAndExclusiveTransientLossPausePlayback() {
         assertEquals(
-            TtsAudioFocusAction.PAUSE_FOR_LOSS,
+            TtsAudioFocusAction.PAUSE_FOR_PERMANENT_LOSS,
             ttsAudioFocusActionForChange(AudioManager.AUDIOFOCUS_LOSS, pausedForLoss = false)
         )
         assertEquals(
-            TtsAudioFocusAction.PAUSE_FOR_LOSS,
+            TtsAudioFocusAction.PAUSE_FOR_TRANSIENT_LOSS,
             ttsAudioFocusActionForChange(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT, pausedForLoss = false)
         )
+    }
+
+    @Test
+    fun duckableFocusLossDoesNotPausePlayback() {
         assertEquals(
-            TtsAudioFocusAction.PAUSE_FOR_LOSS,
+            TtsAudioFocusAction.IGNORE,
             ttsAudioFocusActionForChange(
                 AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK,
                 pausedForLoss = false
