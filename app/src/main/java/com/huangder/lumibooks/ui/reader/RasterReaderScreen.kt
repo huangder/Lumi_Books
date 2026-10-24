@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.content.pm.PackageManager
 import android.widget.Toast
+import android.view.KeyEvent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -139,10 +140,6 @@ import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.SwipeRevealItem
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuHost
-import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
-import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
-import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
-import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import com.huangder.lumibooks.ui.components.animateBottomSheetIn
@@ -169,7 +166,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.huangder.lumibooks.MainActivity
-import com.huangder.lumibooks.ReaderPageDirection
+import com.huangder.lumibooks.domain.model.ReaderVolumeKeyAction
 import com.huangder.lumibooks.domain.model.Bookmark
 import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.domain.model.CbzReadingDirection
@@ -1074,7 +1071,9 @@ fun RasterReaderScreen(
             zoomPanDecayJob.value = null
         }
     }
-    val shouldHandleVolumePageTurn = uiState.volumeKeyPageTurnEnabled &&
+    val shouldHandleVolumeKeys =
+        (uiState.volumeKeyUpAction != ReaderVolumeKeyAction.SYSTEM_VOLUME ||
+            uiState.volumeKeyDownAction != ReaderVolumeKeyAction.SYSTEM_VOLUME) &&
         !showMenu &&
         !showPdfToc &&
         !annotationMode &&
@@ -1083,22 +1082,64 @@ fun RasterReaderScreen(
 
     DisposableEffect(
         activity,
-        shouldHandleVolumePageTurn,
+        shouldHandleVolumeKeys,
+        uiState.volumeKeyUpAction,
+        uiState.volumeKeyDownAction,
         pageMode,
         currentPage,
         pageCount
     ) {
-        if (!shouldHandleVolumePageTurn || activity == null) {
+        if (!shouldHandleVolumeKeys || activity == null) {
             return@DisposableEffect onDispose { }
         }
 
-        val handler: (ReaderPageDirection) -> Unit = handler@{ direction ->
-            val pageDelta = if (direction == ReaderPageDirection.PREVIOUS) -1 else 1
-            val targetPage = (currentPage + pageDelta).coerceIn(0, pageCount - 1)
-            if (targetPage == currentPage) return@handler
-
-            scope.launch {
-                scrollToPdfPage(targetPage, pageTurn = true)
+        val handler: (KeyEvent) -> Boolean = { event ->
+            val action = when (event.keyCode) {
+                KeyEvent.KEYCODE_VOLUME_UP -> uiState.volumeKeyUpAction
+                KeyEvent.KEYCODE_VOLUME_DOWN -> uiState.volumeKeyDownAction
+                else -> ReaderVolumeKeyAction.SYSTEM_VOLUME
+            }
+            val effectiveAction = resolveReaderVolumeKeyAction(action, supportsFontSize = false)
+            when {
+                effectiveAction == ReaderVolumeKeyAction.SYSTEM_VOLUME -> false
+                else -> {
+                    if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                        when (effectiveAction) {
+                            ReaderVolumeKeyAction.PREVIOUS_PAGE,
+                            ReaderVolumeKeyAction.NEXT_PAGE -> {
+                                val delta = if (action == ReaderVolumeKeyAction.PREVIOUS_PAGE) -1 else 1
+                                val targetPage = (currentPage + delta).coerceIn(0, pageCount - 1)
+                                if (targetPage != currentPage) {
+                                    scope.launch { scrollToPdfPage(targetPage, pageTurn = true) }
+                                }
+                            }
+                            ReaderVolumeKeyAction.BRIGHTNESS_DOWN,
+                            ReaderVolumeKeyAction.BRIGHTNESS_UP -> {
+                                viewModel.adjustBrightnessBy(
+                                    if (effectiveAction == ReaderVolumeKeyAction.BRIGHTNESS_UP) 0.05f else -0.05f
+                                )
+                            }
+                            ReaderVolumeKeyAction.TOGGLE_BOOKMARK -> {
+                                if (isCurrentPageBookmarked) {
+                                    bookmarks.firstOrNull { it.chapterIndex == currentPage }
+                                        ?.let(viewModel::deleteBookmark)
+                                } else {
+                                    val addedId = viewModel.addPdfBookmark(currentPage, book?.title ?: "")
+                                    if (addedId != null) quickTagTarget = addedId to true
+                                    if (uiState.bookmarkRemarkPromptEnabled) {
+                                        pendingBookmarkRemarkId = addedId
+                                        bookmarkRemarkText = ""
+                                        bookmarkRemarkTags = emptyList()
+                                    }
+                                }
+                            }
+                            ReaderVolumeKeyAction.SYSTEM_VOLUME,
+                            ReaderVolumeKeyAction.FONT_SIZE_DOWN,
+                            ReaderVolumeKeyAction.FONT_SIZE_UP -> Unit
+                        }
+                    }
+                    true
+                }
             }
         }
         activity.readerVolumeKeyHandler = handler
@@ -1875,6 +1916,8 @@ fun RasterReaderScreen(
                 pitchMode = ttsState.pitchMode,
                 usesAndroidTts = ttsState.usesAndroidTts,
                 sleepTimerRemainingMs = ttsState.sleepTimerRemainingMs,
+                sleepTimerDurationMs = ttsState.sleepTimerDurationMs,
+                followUserPageTurns = ttsState.followUserPageTurns,
                 onPlayPause = viewModel::toggleTtsPlayPause,
                 onStop = viewModel::stopTts,
                 onSkipForward = viewModel::ttsSkipForward,
@@ -1885,6 +1928,7 @@ fun RasterReaderScreen(
                 onPitchModeChange = viewModel::setTtsPitchMode,
                 onSetSleepTimer = viewModel::setSleepTimer,
                 onCancelSleepTimer = viewModel::cancelSleepTimer,
+                onFollowUserPageTurnsChange = viewModel::setTtsFollowUserPageTurns,
                 onReturnToProgress = {
                     viewModel.enableListeningReaderFollow()
                     ttsCurrentPage?.location?.chapterIndex?.let { targetPage ->
@@ -1948,12 +1992,14 @@ fun RasterReaderScreen(
             onDelete = viewModel::deleteBookmark,
             availableTags = availableAnnotationTags,
             onEditRemark = { bookmark, remark, tags -> viewModel.updateBookmarkRemarkAndTags(bookmark.syncId, remark, tags) },
+            onCreateTag = viewModel::createAnnotationTag,
             onEditTags = { tagEditorTarget = it.syncId to true },
             onDismiss = { showPdfBookmarks = false },
             eInkModeEnabled = eInkMode
         )
 
         ReaderBookmarkRemarkSheet(
+            onCreateTag = viewModel::createAnnotationTag,
             bookmarkId = pendingBookmarkRemarkId,
             text = bookmarkRemarkText,
             onTextChange = { bookmarkRemarkText = it },
@@ -2688,14 +2734,6 @@ private fun PdfBottomMenu(
     onBookmarksClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val menuHost = LocalLiquidGlassMenuHost.current
-    val moreMenuId = remember { Any() }
-    var moreAnchorBounds by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
-    val moreExpanded = menuHost?.activeMenu?.sourceId == moreMenuId
-    val conversionLabel = stringResource(R.string.pdf_convert_action)
-    val menuSurfaceColor = AppColors.CardBg
-    val menuContentColor = AppColors.TextPrimary
-    val currentOnConversionClick by rememberUpdatedState(onConversionClick)
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -2752,60 +2790,14 @@ private fun PdfBottomMenu(
             onProgressPageChange = onCatalogProgressPageChange,
             onProgressDragEnd = onCatalogProgressDragEnd
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            PdfActionCapsule(
-                icon = AppIcons.PencilSimple,
-                label = stringResource(R.string.pdf_annotation_tool),
-                modifier = Modifier.weight(1f),
-                onClick = onAnnotationClick
-            )
-            PdfActionCapsule(
-                icon = AppIcons.Bookmark.filled,
-                label = stringResource(R.string.reader_bookmark),
-                modifier = Modifier.weight(1f),
-                onClick = onBookmarksClick
-            )
-            PdfActionCapsule(
-                icon = AppIcons.Gear,
-                label = stringResource(R.string.reader_image_adjustment_entry),
-                modifier = Modifier.weight(1f),
-                onClick = onImageAdjustmentsClick
-            )
-            if (!isComic) {
-                LiquidGlassIconButton(
-                    imageVector = AppIcons.DotsThreeVertical,
-                    contentDescription = stringResource(R.string.more_options),
-                    contentColor = if (moreExpanded) AppColors.Accent else AppColors.TextPrimary,
-                    normalContainerColor = AppColors.BgGray,
-                    liquidContainerColor = AppColors.BgGray,
-                    liquidScrimColor = glassContentScrimColor,
-                    pressFeedbackEnabled = false,
-                    modifier = Modifier
-                        .liquidGlassMenuAnchor(moreMenuId)
-                        .onGloballyPositioned { moreAnchorBounds = it.boundsInWindow() },
-                    onClick = {
-                        if (moreAnchorBounds != androidx.compose.ui.geometry.Rect.Zero) {
-                            menuHost?.toggle(
-                                LiquidGlassMenuSpec(
-                                    anchorBounds = moreAnchorBounds,
-                                    sourceId = moreMenuId,
-                                    width = 208.dp,
-                                    preferAbove = true,
-                                    surfaceColor = menuSurfaceColor,
-                                    contentColor = menuContentColor,
-                                    items = listOf(LiquidGlassMenuItem(conversionLabel, AppIcons.Books) {
-                                        currentOnConversionClick()
-                                    })
-                                )
-                            )
-                        }
-                    }
-                )
-            }
-        }
+        RasterReaderActionRow(
+            isComic = isComic,
+            onAnnotationClick = onAnnotationClick,
+            onBookmarksClick = onBookmarksClick,
+            onImageAdjustmentsClick = onImageAdjustmentsClick,
+            onConversionClick = onConversionClick,
+            glassContentScrimColor = glassContentScrimColor
+        )
     }
 }
 
@@ -3584,36 +3576,6 @@ private fun PdfCatalogCapsule(
                     }
                 }
         )
-    }
-}
-
-@Composable
-private fun PdfActionCapsule(
-    icon: ImageVector,
-    label: String,
-    modifier: Modifier = Modifier,
-    active: Boolean = false,
-    onClick: () -> Unit
-) {
-    val contentColor = if (active) AppColors.Accent else AppColors.TextPrimary
-    LiquidGlassSurface(
-        controlEdge = true,
-        shape = AppRoundedCornerShape(22.dp),
-        fallbackColor = if (active) AppColors.Accent.copy(alpha = 0.14f) else AppColors.BgGray,
-        contentScrimColor = AppColors.WindowBg.copy(alpha = 0.18f),
-        modifier = modifier
-            .height(44.dp),
-        onClick = onClick
-    ) {
-        Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Icon(icon, null, tint = contentColor, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(6.dp))
-            Text(label, fontSize = 13.sp, color = contentColor)
-        }
     }
 }
 
@@ -4637,6 +4599,7 @@ private fun PdfBookmarksSheet(
     onDelete: (Bookmark) -> Unit,
     availableTags: List<String>,
     onEditRemark: (Bookmark, String, List<String>) -> Unit,
+    onCreateTag: (suspend (String) -> Unit)? = null,
     onEditTags: (Bookmark) -> Unit,
     onDismiss: () -> Unit,
     eInkModeEnabled: Boolean = false
@@ -4724,6 +4687,7 @@ private fun PdfBookmarksSheet(
         availableTags = availableTags,
         onTagsChange = { remarkTags = it },
         onConfirm = { editingRemark?.let { onEditRemark(it, remarkText, remarkTags) } },
+        onCreateTag = onCreateTag,
         onDismiss = { editingRemark = null; remarkText = "" },
         title = stringResource(R.string.bookmark_remark_title),
         placeholder = stringResource(R.string.bookmark_remark_placeholder),

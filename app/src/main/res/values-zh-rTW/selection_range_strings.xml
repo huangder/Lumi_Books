@@ -1,0 +1,9 @@
+<resources>
+    <string name="default_selection_range">預設選取範圍</string>
+    <string name="default_selection_range_description">長按文字時預設選取的範圍</string>
+    <string name="selection_range_paragraph">整段</string>
+    <string name="selection_range_line">整行</string>
+    <string name="selection_range_sentence">整句</string>
+    <string name="selection_range_character">字</string>
+    <string name="selection_range_word">詞</string>
+</resources>

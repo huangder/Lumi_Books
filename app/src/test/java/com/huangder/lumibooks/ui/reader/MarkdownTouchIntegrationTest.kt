@@ -117,14 +117,40 @@ class MarkdownTouchIntegrationTest {
             val downEvent = MotionEvent.obtain(down, down, MotionEvent.ACTION_DOWN, x, y, 0)
             try { surface.dispatchTouchEvent(downEvent) } finally { downEvent.recycle() }
             ShadowLooper.idleMainLooper(600, java.util.concurrent.TimeUnit.MILLISECONDS)
-            Selection.setSelection(text.text as Spannable, 0, 9)
-            ShadowLooper.idleMainLooper()
             val up = MotionEvent.obtain(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0)
             try { surface.dispatchTouchEvent(up) } finally { up.recycle() }
             ShadowLooper.idleMainLooper()
             assertNotNull(selected)
             assertFalse(selected!!.annotationOnly)
             assertEquals("Formatted", selected!!.text)
+        }
+    }
+
+    @Test fun realLongPressSelectsTextInCodeQuotesHeadingsAndTables() {
+        for (markdown in listOf("```kotlin\nval value = 10\n```", "> Quoted words", "# Heading words",
+            "| Heading | Value |\n| --- | --- |\n| Cell | Text |", "中文段落可以选择文字")) {
+            withSurface(markdown) { surface, text ->
+                var selected: EpubSelectionInfo? = null
+                var menuOpens = 0
+                surface.selected = { selected = it }
+                surface.menu = { menuOpens++ }
+                val position = IntArray(2); val origin = IntArray(2)
+                text.getLocationOnScreen(position); surface.getLocationOnScreen(origin)
+                val x = position[0] - origin[0] + text.totalPaddingLeft + text.layout.getPrimaryHorizontal(2)
+                val y = position[1] - origin[1] + text.totalPaddingTop + text.layout.getLineBottom(0) / 2f
+                val down = SystemClock.uptimeMillis()
+                val press = MotionEvent.obtain(down, down, MotionEvent.ACTION_DOWN, x, y, 0)
+                try { surface.dispatchTouchEvent(press) } finally { press.recycle() }
+                ShadowLooper.idleMainLooper(600, java.util.concurrent.TimeUnit.MILLISECONDS)
+                val up = MotionEvent.obtain(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0)
+                try { surface.dispatchTouchEvent(up) } finally { up.recycle() }
+                ShadowLooper.idleMainLooper()
+                assertNotNull("long press must select: $markdown", selected)
+                assertTrue(selected!!.text.isNotBlank())
+                assertEquals(selected!!.text, MarkdownNativeParser.parse(markdown).text.substring(
+                    selected!!.startPosition, selected!!.endPosition))
+                assertEquals("long press must not toggle the reader menu", 0, menuOpens)
+            }
         }
     }
 

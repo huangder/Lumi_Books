@@ -830,6 +830,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
   var touchStartX = 0;
   var touchStartY = 0;
   var touchStartTime = 0;
+  var initialSelectionRangeApplied = false;
+  var readerOwnsSelectionHandles = false;
   var touchLastX = 0;
   var touchLastTime = 0;
   var touchVelocityX = 0;
@@ -2926,7 +2928,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     var paintKeys = ['configurationGeneration', 'theme', 'backgroundColor', 'autoTextColor', 'textColor',
       'backgroundImage', 'backgroundUrl', 'coverBackgroundColor', 'publisherPaintOnly', 'preservePublisherBackground',
       'progressionValue', 'restoreProgressionInclusive', 'transition', 'transitionDurationMs', 'visualDurationScale',
-      'edgeTapLeft', 'edgeTapRight', 'canTurnPrevious', 'canTurnNext'];
+      'edgeTapLeft', 'edgeTapRight', 'canTurnPrevious', 'canTurnNext', 'longPressSelectionRange'];
     Object.keys(config).sort().forEach(function (key) {
       if (paintKeys.indexOf(key) < 0) geometry[key] = config[key];
     });
@@ -2999,6 +3001,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     state.nativePaging = config.nativePaging === true;
     state.edgeTapLeft = Number(config.edgeTapLeft) > 0 ? 1 : -1;
     state.edgeTapRight = Number(config.edgeTapRight) < 0 ? -1 : 1;
+    state.longPressSelectionRange = config.longPressSelectionRange || 'word';
     state.canTurnPrevious = config.canTurnPrevious !== false;
     state.canTurnNext = config.canTurnNext !== false;
     configureInsets(config.insets);
@@ -3857,6 +3860,7 @@ private const val READER_SCRIPT_PART_3 = """
   }
 
   function clearDocumentSelection() {
+    readerOwnsSelectionHandles = false;
     clearTimeout(selectionDispatchTimer);
     var selection = window.getSelection && window.getSelection();
     if (!selection) return false;
@@ -4358,6 +4362,8 @@ private const val READER_SCRIPT_PART_3 = """
   }
 
   document.addEventListener('touchstart', function (event) {
+    var existingSelection = window.getSelection();
+    initialSelectionRangeApplied = !!(existingSelection && !existingSelection.isCollapsed);
     cancelImageLongPress();
     imageLongPressTriggered = false;
     touchPaging = false;
@@ -4686,10 +4692,42 @@ private const val READER_SCRIPT_PART_3 = """
   }, true);
 
   document.addEventListener('selectionchange', function () {
+    var initialSelection = window.getSelection();
+    if (!initialSelectionRangeApplied && touchStartTime && Date.now() - touchStartTime >= 300 &&
+        Date.now() - touchStartTime < 1800 &&
+        initialSelection && !initialSelection.isCollapsed && initialSelection.rangeCount && initialSelection.modify) {
+      initialSelectionRangeApplied = true;
+      var scope = state.longPressSelectionRange || 'word';
+      if (scope !== 'word') {
+        // DOM Selection changes dismiss Chromium's native touch handles. The
+        // Android view draws and drags replacements using the DOM endpoints.
+        readerOwnsSelectionHandles = true;
+        var initialRange = initialSelection.getRangeAt(0).cloneRange();
+        var caret = document.caretRangeFromPoint ? document.caretRangeFromPoint(touchStartX, touchStartY) : null;
+        if (caret && document.body.contains(caret.startContainer)) {
+          try {
+            initialSelection.collapse(caret.startContainer, caret.startOffset);
+            if (scope === 'character') {
+              initialSelection.modify('extend', 'forward', 'character');
+            } else {
+              var boundary = scope + 'boundary';
+              initialSelection.modify('move', 'backward', boundary);
+              initialSelection.modify('extend', 'forward', boundary);
+            }
+            if (initialSelection.isCollapsed) {
+              initialSelection.removeAllRanges(); initialSelection.addRange(initialRange);
+            }
+          } catch (error) {
+            initialSelection.removeAllRanges(); initialSelection.addRange(initialRange);
+          }
+        }
+      }
+    }
     clearTimeout(selectionDispatchTimer);
     selectionDispatchTimer = setTimeout(function () {
       var selection = window.getSelection();
       if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+        readerOwnsSelectionHandles = false;
         post('selectionCleared', {});
         return;
       }
@@ -4737,10 +4775,45 @@ private const val READER_SCRIPT_PART_3 = """
         right: right,
         top: top,
         bottom: bottom,
+        handles: readerOwnsSelectionHandles ? selectionHandleAnchors(selectionIndex, selectionStart, selectionEnd) : null,
         pixelRatio: Math.max(1, window.devicePixelRatio || 1)
       });
     }, 160);
   });
+
+  function selectionHandleAnchors(index, start, end) {
+    function anchor(position, trailing) {
+      var glyph = rangeAtOffsets(index, trailing ? Math.max(start, position - 1) : position,
+        trailing ? position : Math.min(end, position + 1));
+      if (!glyph) return null;
+      var rects = glyph.getClientRects();
+      var rect = rects[trailing ? rects.length - 1 : 0];
+      if (!rect) return null;
+      var node = trailing ? glyph.endContainer : glyph.startContainer;
+      var element = node.nodeType === 1 ? node : node.parentElement;
+      var rtl = element && window.getComputedStyle(element).direction === 'rtl';
+      return { x: trailing !== !!rtl ? rect.right : rect.left, top: rect.top, bottom: rect.bottom };
+    }
+    return { start: anchor(start, false), end: anchor(end, true) };
+  }
+
+  function moveSelectionHandle(startHandle, x, y) {
+    var selection = window.getSelection();
+    if (!readerOwnsSelectionHandles || !selection || selection.isCollapsed || !selection.rangeCount) return false;
+    var caret = document.caretRangeFromPoint && document.caretRangeFromPoint(x, y);
+    if (!caret || !document.body.contains(caret.startContainer)) return false;
+    var index = textIndex();
+    var range = selection.getRangeAt(0);
+    var start = textOffsetForBoundary(index, range.startContainer, range.startOffset);
+    var end = textOffsetForBoundary(index, range.endContainer, range.endOffset);
+    var position = textOffsetForBoundary(index, caret.startContainer, caret.startOffset);
+    if (startHandle) start = Math.max(0, Math.min(end - 1, position));
+    else end = Math.min(index.text.length, Math.max(start + 1, position));
+    var updated = rangeAtOffsets(index, start, end);
+    if (!updated) return false;
+    selection.setBaseAndExtent(updated.startContainer, updated.startOffset, updated.endContainer, updated.endOffset);
+    return true;
+  }
 
   function scheduleRepagination() {
     if (!state.ready || state.paginating || pageStageActive || touchPaging) return;
@@ -4802,6 +4875,7 @@ private const val READER_SCRIPT_PART_3 = """
   }
 
   window.LumiReader = {
+    moveSelectionHandle: moveSelectionHandle,
     configure: configure,
     reportLayoutStatus: reportLayoutStatus,
     next: function () { turnByDirection(1); },

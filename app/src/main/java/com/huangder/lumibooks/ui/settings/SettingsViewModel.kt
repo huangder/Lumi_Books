@@ -10,8 +10,10 @@ import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.domain.model.normalizeAppAccentHex
+import com.huangder.lumibooks.domain.model.AppFontSize
 import com.huangder.lumibooks.domain.model.AppIconStyle
 import com.huangder.lumibooks.domain.model.BookOpenTransition
+import com.huangder.lumibooks.domain.model.LongPressSelectionRange
 import com.huangder.lumibooks.util.BookFileAccess
 import com.huangder.lumibooks.util.FileUtils
 import com.huangder.lumibooks.util.UpdateChecker
@@ -88,6 +90,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { dataStoreManager.saveSelectionMenuItems(items) }
     }
 
+    fun saveLongPressSelectionRange(range: LongPressSelectionRange) {
+        _uiState.update { it.copy(longPressSelectionRange = range) }
+        viewModelScope.launch { dataStoreManager.saveLongPressSelectionRange(range) }
+    }
+
     fun saveTxtTocCustomRules(rules: List<TxtTocRule>) {
         viewModelScope.launch { dataStoreManager.saveTxtTocCustomRules(rules) }
     }
@@ -148,6 +155,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.selectionMenuItems.collectLatest { items ->
                 _uiState.update { it.copy(selectionMenuItems = items) }
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.longPressSelectionRange.collectLatest { range ->
+                _uiState.update { it.copy(longPressSelectionRange = range) }
             }
         }
         viewModelScope.launch {
@@ -218,6 +230,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.appAccentColor.collectLatest { color ->
                 _uiState.value = _uiState.value.copy(appAccentColor = color)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.appFontSize.collectLatest { size ->
+                _uiState.update { it.copy(appFontSize = size) }
             }
         }
         viewModelScope.launch {
@@ -579,6 +596,13 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.saveAppAccentColor(normalized)
         }
+    }
+
+    fun saveAppFontSize(value: String) {
+        val size = AppFontSize.fromStoredValue(value)
+        if (_uiState.value.appFontSize == size) return
+        _uiState.update { it.copy(appFontSize = size) }
+        viewModelScope.launch { dataStoreManager.saveAppFontSize(size) }
     }
 
     fun saveGlobalFontMode(mode: String) {

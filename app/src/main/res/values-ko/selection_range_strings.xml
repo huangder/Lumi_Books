@@ -1,0 +1,9 @@
+<resources>
+    <string name="default_selection_range">기본 선택 범위</string>
+    <string name="default_selection_range_description">텍스트를 길게 누를 때 기본으로 선택할 범위</string>
+    <string name="selection_range_paragraph">문단</string>
+    <string name="selection_range_line">줄</string>
+    <string name="selection_range_sentence">문장</string>
+    <string name="selection_range_character">글자</string>
+    <string name="selection_range_word">단어</string>
+</resources>

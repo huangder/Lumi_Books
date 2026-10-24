@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.settings
 
 import com.huangder.lumibooks.data.local.DataStoreManager
+import com.huangder.lumibooks.domain.model.AppFontSize
 import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
 import com.huangder.lumibooks.domain.model.AppIconStyle
 import com.huangder.lumibooks.domain.model.BookOpenTransition
@@ -60,6 +61,8 @@ data class SettingsUiState(
     // 阅读设置
     val selectionMenuItems: com.huangder.lumibooks.domain.model.SelectionMenuSettings =
         com.huangder.lumibooks.domain.model.SelectionMenuSettings(),
+    val longPressSelectionRange: com.huangder.lumibooks.domain.model.LongPressSelectionRange =
+        com.huangder.lumibooks.domain.model.LongPressSelectionRange.DEFAULT,
     val fontSize: Float = 16f,
     val lineHeight: Float = 1.5f,
     val letterSpacing: Float = 0f,
@@ -73,6 +76,7 @@ data class SettingsUiState(
     val lumiEasterEggUnlocked: Boolean = false,
     val startupScreen: String = DataStoreManager.DEFAULT_STARTUP_SCREEN,
     val appAccentColor: String = DEFAULT_APP_ACCENT_HEX,
+    val appFontSize: AppFontSize = AppFontSize.STANDARD,
     val globalFontMode: String = "system", // "default" / "system"
     val liquidGlassTransparency: Float = 0.55f,
     val liquidGlassHdrHighlightEnabled: Boolean = false,

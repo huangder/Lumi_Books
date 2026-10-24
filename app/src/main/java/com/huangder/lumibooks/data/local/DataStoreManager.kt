@@ -1,6 +1,9 @@
 package com.huangder.lumibooks.data.local
 
+import com.huangder.lumibooks.domain.model.AppFontSize
 import com.huangder.lumibooks.domain.model.SelectionMenuSettings
+import com.huangder.lumibooks.domain.model.LongPressSelectionRange
+import com.huangder.lumibooks.domain.model.ReaderVolumeKeyAction
 import kotlinx.coroutines.launch
 
 import android.content.Context
@@ -136,7 +139,8 @@ data class ReaderPreferencesSnapshot(
     val showReaderChapterProgress: Boolean,
     val showReaderPageNumber: Boolean,
     val showReaderBattery: Boolean,
-    val volumeKeyPageTurnEnabled: Boolean,
+    val volumeKeyUpAction: ReaderVolumeKeyAction,
+    val volumeKeyDownAction: ReaderVolumeKeyAction,
     val bookmarkRemarkPromptEnabled: Boolean,
     val bionicReadingEnabled: Boolean,
     val comicModeEnabled: Boolean,
@@ -160,6 +164,7 @@ data class ReaderPreferencesSnapshot(
     val firstLineIndent: Float,
     val chineseMode: String,
     val selectionMenuItems: SelectionMenuSettings,
+    val longPressSelectionRange: LongPressSelectionRange = LongPressSelectionRange.DEFAULT,
     val customHighlightPalettes: List<HighlightPalette>,
     val activeHighlightPaletteId: String?,
     val renderMode: EpubRenderMode,
@@ -293,6 +298,7 @@ class DataStoreManager @Inject constructor(
         private val CUSTOM_HIGHLIGHT_PALETTES = stringPreferencesKey("custom_highlight_palettes")
         private val ACTIVE_HIGHLIGHT_PALETTE_ID = stringPreferencesKey("active_highlight_palette_id")
         private val SELECTION_MENU_ITEMS = stringPreferencesKey("selection_menu_items")
+        private val LONG_PRESS_SELECTION_RANGE = stringPreferencesKey("long_press_selection_range")
         private val TTS_FLOATING_WINDOW = booleanPreferencesKey("tts_floating_window")
         private val TTS_FLOATING_X_FRACTION = floatPreferencesKey("tts_floating_x_fraction")
         private val TTS_FLOATING_Y_FRACTION = floatPreferencesKey("tts_floating_y_fraction")
@@ -316,6 +322,8 @@ class DataStoreManager @Inject constructor(
         private val SHOW_READER_PAGE_NUMBER = booleanPreferencesKey("show_reader_page_number")
         private val SHOW_READER_BATTERY = booleanPreferencesKey("show_reader_battery")
         private val VOLUME_KEY_PAGE_TURN = booleanPreferencesKey("volume_key_page_turn")
+        private val VOLUME_KEY_UP_ACTION = stringPreferencesKey("volume_key_up_action")
+        private val VOLUME_KEY_DOWN_ACTION = stringPreferencesKey("volume_key_down_action")
         private val BOOKMARK_REMARK_PROMPT_ENABLED = booleanPreferencesKey("bookmark_remark_prompt_enabled")
         private val BIONIC_READING_ENABLED = booleanPreferencesKey("bionic_reading_enabled")
         private val COMIC_MODE = booleanPreferencesKey("comic_mode")
@@ -344,6 +352,7 @@ class DataStoreManager @Inject constructor(
         private val LUMI_EASTER_EGG_UNLOCKED = booleanPreferencesKey("lumi_easter_egg_unlocked")
         private val STARTUP_SCREEN = stringPreferencesKey("startup_screen")
         private val APP_ACCENT_COLOR = stringPreferencesKey("app_accent_color")
+        private val APP_FONT_SIZE = stringPreferencesKey("app_font_size")
         private val GLOBAL_FONT_MODE = stringPreferencesKey("global_font_mode")
         private val LIQUID_GLASS_TRANSPARENCY = floatPreferencesKey("liquid_glass_transparency")
         private val LIQUID_GLASS_HDR_HIGHLIGHT_ENABLED = booleanPreferencesKey("liquid_glass_hdr_highlight_enabled")
@@ -532,7 +541,12 @@ class DataStoreManager @Inject constructor(
                 showReaderChapterProgress = preferences[SHOW_READER_CHAPTER_PROGRESS] ?: true,
                 showReaderPageNumber = preferences[SHOW_READER_PAGE_NUMBER] ?: true,
                 showReaderBattery = preferences[SHOW_READER_BATTERY] ?: true,
-                volumeKeyPageTurnEnabled = preferences[VOLUME_KEY_PAGE_TURN] ?: false,
+                volumeKeyUpAction = preferences[VOLUME_KEY_UP_ACTION]?.let(ReaderVolumeKeyAction::fromStorage)
+                    ?: if (preferences[VOLUME_KEY_PAGE_TURN] == true) ReaderVolumeKeyAction.PREVIOUS_PAGE
+                    else ReaderVolumeKeyAction.SYSTEM_VOLUME,
+                volumeKeyDownAction = preferences[VOLUME_KEY_DOWN_ACTION]?.let(ReaderVolumeKeyAction::fromStorage)
+                    ?: if (preferences[VOLUME_KEY_PAGE_TURN] == true) ReaderVolumeKeyAction.NEXT_PAGE
+                    else ReaderVolumeKeyAction.SYSTEM_VOLUME,
                 bookmarkRemarkPromptEnabled = preferences[BOOKMARK_REMARK_PROMPT_ENABLED] ?: true,
                 bionicReadingEnabled = preferences[BIONIC_READING_ENABLED] ?: false,
                 comicModeEnabled = preferences[COMIC_MODE] ?: false,
@@ -566,6 +580,7 @@ class DataStoreManager @Inject constructor(
                 firstLineIndent = preferences[FIRST_LINE_INDENT] ?: 2f,
                 chineseMode = preferences[stringPreferencesKey("chinese_mode")] ?: "original",
                 selectionMenuItems = selectionItems,
+                longPressSelectionRange = LongPressSelectionRange.fromKey(preferences[LONG_PRESS_SELECTION_RANGE]),
                 customHighlightPalettes = decodeHighlightPalettes(preferences),
                 activeHighlightPaletteId = preferences[ACTIVE_HIGHLIGHT_PALETTE_ID],
                 renderMode = resolvedRenderMode,
@@ -718,6 +733,10 @@ class DataStoreManager @Inject constructor(
         decodeSelectionMenuSettings(preferences[SELECTION_MENU_ITEMS])
     }
 
+    val longPressSelectionRange: Flow<LongPressSelectionRange> = context.dataStore.data.map { preferences ->
+        LongPressSelectionRange.fromKey(preferences[LONG_PRESS_SELECTION_RANGE])
+    }
+
     val floatingSubtitleSettings: Flow<FloatingSubtitleSettings> = context.dataStore.data.map { preferences ->
         FloatingSubtitleSettings(
             enabled = preferences[TTS_FLOATING_WINDOW] ?: true,
@@ -833,8 +852,13 @@ class DataStoreManager @Inject constructor(
         preferences[SHOW_READER_BATTERY] ?: true
     }
 
-    val volumeKeyPageTurnEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[VOLUME_KEY_PAGE_TURN] ?: false
+    val volumeKeyActions: Flow<Pair<ReaderVolumeKeyAction, ReaderVolumeKeyAction>> = context.dataStore.data.map { preferences ->
+        val legacyPageTurnEnabled = preferences[VOLUME_KEY_PAGE_TURN] == true
+        val upAction = preferences[VOLUME_KEY_UP_ACTION]?.let(ReaderVolumeKeyAction::fromStorage)
+            ?: if (legacyPageTurnEnabled) ReaderVolumeKeyAction.PREVIOUS_PAGE else ReaderVolumeKeyAction.SYSTEM_VOLUME
+        val downAction = preferences[VOLUME_KEY_DOWN_ACTION]?.let(ReaderVolumeKeyAction::fromStorage)
+            ?: if (legacyPageTurnEnabled) ReaderVolumeKeyAction.NEXT_PAGE else ReaderVolumeKeyAction.SYSTEM_VOLUME
+        upAction to downAction
     }
 
     val bookmarkRemarkPromptEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
@@ -911,6 +935,10 @@ class DataStoreManager @Inject constructor(
     val appAccentColor: Flow<String> = context.dataStore.data.map { preferences ->
         normalizeAppAccentHex(preferences[APP_ACCENT_COLOR])
     }
+
+    val appFontSize: Flow<AppFontSize> = context.dataStore.data.map { preferences ->
+        AppFontSize.fromStoredValue(preferences[APP_FONT_SIZE])
+    }.distinctUntilChanged()
 
     val globalFontMode: Flow<String> = context.dataStore.data.map { preferences ->
         when (preferences[GLOBAL_FONT_MODE]) {
@@ -1028,6 +1056,7 @@ class DataStoreManager @Inject constructor(
             easterEggUnlocked = preferences[LUMI_EASTER_EGG_UNLOCKED] ?: false,
             appTheme = LumiEasterEgg.normalizeTheme(preferences[APP_THEME], preferences[LUMI_EASTER_EGG_UNLOCKED] == true),
             appAccentColor = normalizeAppAccentHex(preferences[APP_ACCENT_COLOR]),
+            appFontSize = AppFontSize.fromStoredValue(preferences[APP_FONT_SIZE]),
             globalFontMode = if (preferences[GLOBAL_FONT_MODE] == "default") "default" else "system",
             liquidGlassTransparency = preferences[LIQUID_GLASS_TRANSPARENCY] ?: 0.55f,
             liquidGlassHdrHighlightEnabled =
@@ -1440,6 +1469,10 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    suspend fun saveLongPressSelectionRange(range: LongPressSelectionRange) {
+        context.dataStore.edit { preferences -> preferences[LONG_PRESS_SELECTION_RANGE] = range.storageKey }
+    }
+
     suspend fun saveTtsFloatingWindow(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[TTS_FLOATING_WINDOW] = enabled
@@ -1555,9 +1588,11 @@ class DataStoreManager @Inject constructor(
         }
     }
 
-    suspend fun saveVolumeKeyPageTurnEnabled(enabled: Boolean) {
+    suspend fun saveVolumeKeyActions(up: ReaderVolumeKeyAction, down: ReaderVolumeKeyAction) {
         context.dataStore.edit { preferences ->
-            preferences[VOLUME_KEY_PAGE_TURN] = enabled
+            preferences[VOLUME_KEY_UP_ACTION] = up.storageValue
+            preferences[VOLUME_KEY_DOWN_ACTION] = down.storageValue
+            preferences.remove(VOLUME_KEY_PAGE_TURN)
         }
     }
 
@@ -1692,6 +1727,8 @@ class DataStoreManager @Inject constructor(
             preferences[SHOW_READER_PAGE_NUMBER] = true
             preferences[SHOW_READER_BATTERY] = true
             preferences[VOLUME_KEY_PAGE_TURN] = false
+            preferences[VOLUME_KEY_UP_ACTION] = ReaderVolumeKeyAction.SYSTEM_VOLUME.storageValue
+            preferences[VOLUME_KEY_DOWN_ACTION] = ReaderVolumeKeyAction.SYSTEM_VOLUME.storageValue
             preferences[BOOKMARK_REMARK_PROMPT_ENABLED] = true
             preferences[BIONIC_READING_ENABLED] = false
             preferences[SCREEN_SLEEP_TIMEOUT_SECONDS] = DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS
@@ -2481,6 +2518,12 @@ class DataStoreManager @Inject constructor(
     suspend fun saveAppAccentColor(color: String) {
         context.dataStore.edit { preferences ->
             preferences[APP_ACCENT_COLOR] = normalizeAppAccentHex(color)
+        }
+    }
+
+    suspend fun saveAppFontSize(size: AppFontSize) {
+        context.dataStore.edit { preferences ->
+            preferences[APP_FONT_SIZE] = size.storedValue
         }
     }
 

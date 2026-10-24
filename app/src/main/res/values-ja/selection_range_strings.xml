@@ -1,0 +1,9 @@
+<resources>
+    <string name="default_selection_range">既定の選択範囲</string>
+    <string name="default_selection_range_description">テキストを長押ししたときの選択範囲</string>
+    <string name="selection_range_paragraph">段落</string>
+    <string name="selection_range_line">行</string>
+    <string name="selection_range_sentence">文</string>
+    <string name="selection_range_character">文字</string>
+    <string name="selection_range_word">単語</string>
+</resources>

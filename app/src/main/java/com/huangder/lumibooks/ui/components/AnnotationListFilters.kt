@@ -3,9 +3,7 @@ package com.huangder.lumibooks.ui.components
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -21,6 +19,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
@@ -46,9 +45,11 @@ internal fun AnnotationListFilters(
     selectedLine: Int?, onLineSelected: (Int?) -> Unit, showLines: Boolean,
     modifier: Modifier = Modifier
 ) {
-    Row(modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(modifier.fillMaxWidth().padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically) {
         AnnotationFilterMenu(
+            modifier = Modifier.weight(1f),
             label = when (selectedTag) {
                 null -> stringResource(R.string.annotation_tag_all)
                 "" -> stringResource(R.string.annotation_tag_none)
@@ -58,6 +59,7 @@ internal fun AnnotationListFilters(
             onSelect = onTagSelected
         )
         if (colors.isNotEmpty()) AnnotationFilterMenu(
+            modifier = Modifier.weight(1f),
             label = stringResource(R.string.annotation_tag_color), selected = selectedColor,
             choices = listOf(null to stringResource(R.string.annotation_tag_all_colors)) + colors.mapIndexed { i, color -> color to stringResource(R.string.annotation_tag_color_number, i + 1) },
             onSelect = onColorSelected,
@@ -71,6 +73,7 @@ internal fun AnnotationListFilters(
                 HighlightRule.UNDERLINE_DASHED to stringResource(R.string.highlight_rule_underline_dashed)
             )
             AnnotationFilterMenu(
+                modifier = Modifier.weight(1f),
                 label = lines.firstOrNull { it.first == selectedLine }?.second ?: stringResource(R.string.annotation_tag_line),
                 selected = selectedLine,
                 choices = listOf(null to stringResource(R.string.annotation_tag_all_lines)) + lines,
@@ -83,7 +86,8 @@ internal fun AnnotationListFilters(
 @Composable
 private fun <T> AnnotationFilterMenu(
     label: String, selected: T?, choices: List<Pair<T?, String>>, onSelect: (T?) -> Unit,
-    colorFor: ((T?) -> Color?)? = null
+    colorFor: ((T?) -> Color?)? = null,
+    modifier: Modifier = Modifier
 ) {
     val host = LocalLiquidGlassMenuHost.current
     val sourceId = remember { Any() }
@@ -130,16 +134,20 @@ private fun <T> AnnotationFilterMenu(
     )
     LiquidGlassButton(
         onClick = { host?.toggle(spec) },
-        modifier = Modifier.liquidGlassMenuAnchor(sourceId)
+        modifier = modifier.liquidGlassMenuAnchor(sourceId)
             .onGloballyPositioned { bounds = it.boundsInRoot() }
             .animateContentSize(animationSpec = spring(stiffness = 400f, visibilityThreshold = IntSize(1, 1))),
         compact = true,
         tintedColor = if (selected != null) AppColors.Accent else null,
         contentColor = if (selected != null) AppColors.OnAccent else AppColors.TextPrimary
     ) {
-        selectedColor?.let { Box(Modifier.padding(end = 4.dp).size(12.dp).clip(CircleShape).background(it)) }
+        if (colorFor != null) {
+            Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) {
+                selectedColor?.let { Box(Modifier.size(12.dp).clip(CircleShape).background(it)) }
+            }
+        }
         Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            fontSize = 13.sp, modifier = Modifier.widthIn(max = 150.dp))
+            fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
         Spacer(Modifier.width(4.dp))
         Icon(AppIcons.CaretDown, null, modifier = Modifier.size(12.dp))
     }

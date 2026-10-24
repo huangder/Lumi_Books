@@ -7,7 +7,8 @@ import android.text.Spanned
 import android.text.style.*
 import android.util.Base64
 import android.util.LruCache
-import coil.imageLoader
+import coil.ImageLoader
+import coil.decode.SvgDecoder
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import com.huangder.lumibooks.util.markdown.MarkdownRenderer
@@ -17,6 +18,7 @@ import io.noties.prism4j.Prism4j
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.commonmark.node.*
@@ -45,6 +47,9 @@ class MarkwonBlockSource(
     }
     @Volatile private var closed = false
     private val prism = Prism4j(LumiCodeGrammars)
+    private val imageLoaderDelegate = lazy {
+        ImageLoader.Builder(context).components { add(SvgDecoder.Factory()) }.build()
+    }
 
     override suspend fun renderBlock(index: Int, style: MarkdownRenderStyle): Spanned = withContext(Dispatchers.Default) {
         check(!closed) { "Markdown document is closed" }
@@ -79,6 +84,7 @@ class MarkwonBlockSource(
                 if (end > start) text.setSpan(value, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
             if (block.kind == "heading") { span(StyleSpan(Typeface.BOLD)); span(RelativeSizeSpan(when (block.level) { 1 -> 1.7f; 2 -> 1.45f; 3 -> 1.25f; else -> 1.1f })) }
+            if (block.kind == "rule") span(MarkdownRuleSpan(style.width, style.color))
             if (block.kind == "paragraph" && block.level == 0 && style.firstLineIndent > 0 &&
                 (block.index == 0 || document.blocks[block.index - 1].sourceStart != block.sourceStart)) {
                 span(MarkdownParagraphIndentSpan((style.fontSize * style.firstLineIndent).toInt()))
@@ -133,11 +139,13 @@ class MarkwonBlockSource(
                     "image" -> {
                         val data: Any? = if (run.value.startsWith("data:image/", true)) {
                             runCatching { Base64.decode(run.value.substringAfter(','), Base64.DEFAULT) }.getOrNull()
+                        } else if (run.value.startsWith("https://", true) || run.value.startsWith("http://", true)) {
+                            run.value
                         } else MarkdownRenderer.safeRelativePath(run.value)?.let(assets::get)
                         val drawable = data?.let {
-                            (context.imageLoader.execute(ImageRequest.Builder(context).data(it)
+                            (withTimeoutOrNull(10_000) { imageLoaderDelegate.value.execute(ImageRequest.Builder(context).data(it)
                                 .size(style.width.coerceAtLeast(1), style.height.coerceAtLeast(1))
-                                .allowHardware(false).build()) as? SuccessResult)?.drawable
+                                .allowHardware(false).build()) } as? SuccessResult)?.drawable
                         }
                         if (drawable != null) {
                             val w = drawable.intrinsicWidth.coerceAtLeast(1)
@@ -168,7 +176,30 @@ class MarkwonBlockSource(
             text
         }
     }
-    override fun close() { closed = true; cache.evictAll() }
+    override fun close() {
+        closed = true; cache.evictAll()
+        if (imageLoaderDelegate.isInitialized()) imageLoaderDelegate.value.shutdown()
+    }
+}
+
+/** Occupies the reading column while retaining the rule's original text coordinates. */
+internal class MarkdownRuleSpan(private val width: Int, private val color: Int) : ReplacementSpan() {
+    override fun getSize(paint: android.graphics.Paint, text: CharSequence, start: Int, end: Int,
+        fm: android.graphics.Paint.FontMetricsInt?): Int {
+        if (fm != null) paint.getFontMetricsInt(fm)
+        return width.coerceAtLeast(1)
+    }
+    override fun draw(canvas: android.graphics.Canvas, text: CharSequence, start: Int, end: Int,
+        x: Float, top: Int, y: Int, bottom: Int, paint: android.graphics.Paint) {
+        val previousColor = paint.color
+        val previousWidth = paint.strokeWidth
+        paint.color = color
+        paint.strokeWidth = (paint.textSize / 16f).coerceAtLeast(1f)
+        val center = (top + bottom) / 2f
+        canvas.drawLine(x, center, x + width, center, paint)
+        paint.color = previousColor
+        paint.strokeWidth = previousWidth
+    }
 }
 
 class MarkdownParagraphIndentSpan(indent: Int) : LeadingMarginSpan.Standard(indent, 0)

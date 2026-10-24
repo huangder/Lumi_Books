@@ -109,7 +109,8 @@ internal fun readerLineOffsets(
  */
 internal class ReaderHighlightPainter(
     private val paint: Paint,
-    density: Float
+    density: Float,
+    private val keepCornersInsideLayout: Boolean = false
 ) {
     private val horizontalPadding = 3f * density
     private val glyphPadding = 2f * density
@@ -199,9 +200,9 @@ internal class ReaderHighlightPainter(
         if (bottom <= top) return
 
         bounds.set(
-            (segmentLeft - horizontalPadding).coerceAtLeast(-horizontalPadding),
+            (segmentLeft - horizontalPadding).coerceAtLeast(if (keepCornersInsideLayout) 0f else -horizontalPadding),
             top,
-            (segmentRight + horizontalPadding).coerceAtMost(layout.width + horizontalPadding),
+            (segmentRight + horizontalPadding).coerceAtMost(layout.width + if (keepCornersInsideLayout) 0f else horizontalPadding),
             bottom
         )
         val radius = minOf(cornerRadius, bounds.height() / 2f)

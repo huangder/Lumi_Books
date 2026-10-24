@@ -383,6 +383,7 @@ internal class EpubPageTurnHost(
     private val previousPage = EpubSnapshotPageView(context, bitmapLeases)
     private val currentPage = EpubSnapshotPageView(context, bitmapLeases)
     private val nextPage = EpubSnapshotPageView(context, bitmapLeases)
+    private val layoutPreviewPage = EpubSnapshotPageView(context, bitmapLeases)
     private var mediaOnlyNativePaging = false
 
     private val snapshotSurface = PageAnimationSurface(
@@ -549,6 +550,8 @@ internal class EpubPageTurnHost(
         addView(previousPage, matchParentParams())
         addView(currentPage, matchParentParams())
         addView(nextPage, matchParentParams())
+        addView(layoutPreviewPage, matchParentParams())
+        layoutPreviewPage.alpha = 0f
 
         previousWebView.alpha = 1f
         previousWebView.visibility = View.VISIBLE
@@ -858,6 +861,24 @@ internal class EpubPageTurnHost(
         previousReady = false
         nextReady = false
         invalidatePreloads()
+    }
+
+    /** Covers intermediate WebView reflow frames while live typography is previewed. */
+    fun beginLayoutPreview() {
+        if (released || layoutPreviewPage.alpha > 0f) return
+        val bitmap = snapshotNow(activeWebView, null) ?: return
+        layoutPreviewPage.setSnapshotBitmap(bitmap)
+        layoutPreviewPage.alpha = 1f
+        layoutPreviewPage.bringToFront()
+        invalidate()
+    }
+
+    fun endLayoutPreview() {
+        if (layoutPreviewPage.alpha == 0f) return
+        layoutPreviewPage.alpha = 0f
+        layoutPreviewPage.setSnapshotBitmap(null)
+        activeWebView.bringToFront()
+        invalidate()
     }
 
     fun invalidateImageAdjustmentSnapshots() {
@@ -1194,6 +1215,8 @@ internal class EpubPageTurnHost(
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (released) return true
+        // Owned selection handles take priority over page turns and bookmark pulls.
+        if (activeWebView.handleReaderSelectionTouch(event)) return true
         if (event.actionMasked == MotionEvent.ACTION_DOWN || event.actionMasked == MotionEvent.ACTION_CANCEL) {
             queuedSlideTurn = null
         }
@@ -1693,6 +1716,7 @@ internal class EpubPageTurnHost(
 
     private fun stopPageWork() {
         releaseHardwareCapture()
+        endLayoutPreview()
         chapterFade = null
         animate().cancel()
         ReaderPageTurnPerformance.cancel()

@@ -1,0 +1,9 @@
+<resources>
+    <string name="default_selection_range">Default selection range</string>
+    <string name="default_selection_range_description">Text selected by default when you long press</string>
+    <string name="selection_range_paragraph">Paragraph</string>
+    <string name="selection_range_line">Line</string>
+    <string name="selection_range_sentence">Sentence</string>
+    <string name="selection_range_character">Character</string>
+    <string name="selection_range_word">Word</string>
+</resources>

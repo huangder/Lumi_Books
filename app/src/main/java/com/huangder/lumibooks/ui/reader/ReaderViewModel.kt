@@ -2,6 +2,7 @@ package com.huangder.lumibooks.ui.reader
 import com.huangder.lumibooks.util.parser.MarkdownParser
 
 import com.huangder.lumibooks.domain.model.SelectionMenuSettings
+import com.huangder.lumibooks.domain.model.LongPressSelectionRange
 
 import com.huangder.lumibooks.util.epub.EpubComicIndex
 import com.huangder.lumibooks.util.epub.EpubComicPosition
@@ -44,6 +45,7 @@ import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.domain.model.ReaderPageAnimationSettings
 import com.huangder.lumibooks.domain.model.ReaderPageTransition
 import com.huangder.lumibooks.domain.model.ReaderTextAlignment
+import com.huangder.lumibooks.domain.model.ReaderVolumeKeyAction
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.domain.model.ReaderThemeSettings
 import com.huangder.lumibooks.domain.model.ReaderThemeSuite
@@ -372,7 +374,8 @@ data class ReaderUiState(
     val showReaderChapterProgress: Boolean = true,
     val showReaderPageNumber: Boolean = true,
     val showReaderBattery: Boolean = true,
-    val volumeKeyPageTurnEnabled: Boolean = false,
+    val volumeKeyUpAction: ReaderVolumeKeyAction = ReaderVolumeKeyAction.SYSTEM_VOLUME,
+    val volumeKeyDownAction: ReaderVolumeKeyAction = ReaderVolumeKeyAction.SYSTEM_VOLUME,
     val bookmarkRemarkPromptEnabled: Boolean = true,
     val bionicReadingEnabled: Boolean = false,
     val comicModeEnabled: Boolean = false,
@@ -416,7 +419,8 @@ data class ReaderUiState(
     /** 四角信息区（页眉/页脚）边距；空字段表示跟随正文 / 沿用旧版默认位置。 */
     val readerCornerMargins: ReaderCornerMargins = ReaderCornerMargins(),
     val contentRevision: Long = 0L,
-    val selectionMenuItems: SelectionMenuSettings = SelectionMenuSettings()
+    val selectionMenuItems: SelectionMenuSettings = SelectionMenuSettings(),
+    val longPressSelectionRange: LongPressSelectionRange = LongPressSelectionRange.DEFAULT
 )
 
 data class ReaderThemeImportReport(
@@ -433,7 +437,9 @@ data class ReaderTtsState(
     val usesAndroidTts: Boolean = true,
     val activeBookId: String? = null,
     val errorMessage: String? = null,
-    val sleepTimerRemainingMs: Long? = null
+    val sleepTimerRemainingMs: Long? = null,
+    val sleepTimerDurationMs: Long? = null,
+    val followUserPageTurns: Boolean = false
 )
 
 data class HighlightRuleImportResult(
@@ -786,6 +792,8 @@ class ReaderViewModel @Inject constructor(
         ttsController.setReaderAttached(bookId, true)
     }
 
+    fun setTtsFollowUserPageTurns(enabled: Boolean) = ttsController.setFollowUserPageTurns(enabled)
+
     private val _bookmarks = MutableStateFlow<List<Bookmark>>(emptyList())
     val bookmarks: StateFlow<List<Bookmark>> = _bookmarks.asStateFlow()
 
@@ -1027,6 +1035,16 @@ class ReaderViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            ttsController.sleepTimerDurationMs.collectLatest { duration ->
+                _ttsState.value = _ttsState.value.copy(sleepTimerDurationMs = duration)
+            }
+        }
+        viewModelScope.launch {
+            ttsController.followUserPageTurns.collectLatest { enabled ->
+                _ttsState.value = _ttsState.value.copy(followUserPageTurns = enabled)
+            }
+        }
+        viewModelScope.launch {
             // 收集 TTS 当前朗读句子的字符偏移，用于 UI 淡高亮
             ttsController.currentSentence.collectLatest { segment ->
                 val page = ttsController.currentPage.value
@@ -1228,7 +1246,8 @@ class ReaderViewModel @Inject constructor(
             showReaderChapterProgress = preferences.showReaderChapterProgress,
             showReaderPageNumber = preferences.showReaderPageNumber,
             showReaderBattery = preferences.showReaderBattery,
-            volumeKeyPageTurnEnabled = preferences.volumeKeyPageTurnEnabled,
+            volumeKeyUpAction = preferences.volumeKeyUpAction,
+            volumeKeyDownAction = preferences.volumeKeyDownAction,
             bookmarkRemarkPromptEnabled = preferences.bookmarkRemarkPromptEnabled,
             bionicReadingEnabled = preferences.bionicReadingEnabled,
             comicModeEnabled = preferences.comicModeEnabled,
@@ -1257,7 +1276,8 @@ class ReaderViewModel @Inject constructor(
             paragraphSpacing = preferences.paragraphSpacing,
             firstLineIndent = preferences.firstLineIndent,
             chineseMode = preferences.chineseMode,
-            selectionMenuItems = preferences.selectionMenuItems
+            selectionMenuItems = preferences.selectionMenuItems,
+            longPressSelectionRange = preferences.longPressSelectionRange
         )
         if (effectiveSuite != null) {
             nextState = nextState
@@ -1526,8 +1546,11 @@ class ReaderViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            dataStoreManager.volumeKeyPageTurnEnabled.collectLatest { enabled ->
-                _uiState.value = _uiState.value.copy(volumeKeyPageTurnEnabled = enabled)
+            dataStoreManager.volumeKeyActions.collectLatest { (up, down) ->
+                _uiState.value = _uiState.value.copy(
+                    volumeKeyUpAction = up,
+                    volumeKeyDownAction = down
+                )
             }
         }
         viewModelScope.launch {
@@ -1618,10 +1641,20 @@ class ReaderViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(selectionMenuItems = items)
             }
         }
+        viewModelScope.launch {
+            dataStoreManager.longPressSelectionRange.collectLatest { range ->
+                _uiState.value = _uiState.value.copy(longPressSelectionRange = range)
+            }
+        }
     }
 
     fun saveFontSize(size: Float) {
         updateCurrentThemeSettings { copy(fontSize = size) }
+    }
+
+    fun adjustFontSizeBy(delta: Int) {
+        if (delta == 0) return
+        saveFontSize((_uiState.value.fontSize + delta).coerceIn(12f, 28f))
     }
 
     fun previewFontSize(size: Float) {
@@ -1642,8 +1675,16 @@ class ReaderViewModel @Inject constructor(
         updateCurrentThemeSettings { copy(lineHeight = lh) }
     }
 
+    fun previewLineHeight(value: Float) {
+        previewCurrentThemeSettings { copy(lineHeight = value) }
+    }
+
     fun saveLetterSpacing(ls: Float) {
         updateCurrentThemeSettings { copy(letterSpacing = ls) }
+    }
+
+    fun previewLetterSpacing(value: Float) {
+        previewCurrentThemeSettings { copy(letterSpacing = value) }
     }
 
     fun saveTextAlignment(alignment: ReaderTextAlignment) {
@@ -1729,6 +1770,14 @@ class ReaderViewModel @Inject constructor(
 
     fun previewMarginBottom(value: Float) {
         previewCurrentThemeSettings { copy(marginBottom = value) }
+    }
+
+    fun previewParagraphSpacing(value: Float) {
+        previewCurrentThemeSettings { copy(paragraphSpacing = value) }
+    }
+
+    fun previewFirstLineIndent(value: Float) {
+        previewCurrentThemeSettings { copy(firstLineIndent = value) }
     }
 
     fun updateReaderContentWidth(widthPx: Int) {
@@ -2545,6 +2594,12 @@ class ReaderViewModel @Inject constructor(
     fun saveBrightness(value: Float) {
         _uiState.value = _uiState.value.copy(brightness = value)
         viewModelScope.launch { dataStoreManager.saveBrightness(value) }
+    }
+
+    fun adjustBrightnessBy(delta: Float) {
+        if (delta == 0f) return
+        val current = _uiState.value.brightness.takeIf { it >= 0f } ?: 0.8f
+        saveBrightness((current + delta).coerceIn(0f, 1f))
     }
 
     fun saveCustomFontPath(path: String?) {
@@ -3424,9 +3479,9 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch { dataStoreManager.saveShowReaderBattery(show) }
     }
 
-    fun saveVolumeKeyPageTurnEnabled(enabled: Boolean) {
-        _uiState.value = _uiState.value.copy(volumeKeyPageTurnEnabled = enabled)
-        viewModelScope.launch { dataStoreManager.saveVolumeKeyPageTurnEnabled(enabled) }
+    fun saveVolumeKeyActions(up: ReaderVolumeKeyAction, down: ReaderVolumeKeyAction) {
+        _uiState.value = _uiState.value.copy(volumeKeyUpAction = up, volumeKeyDownAction = down)
+        viewModelScope.launch { dataStoreManager.saveVolumeKeyActions(up, down) }
     }
 
     fun saveBookmarkRemarkPromptEnabled(enabled: Boolean) {
@@ -3644,7 +3699,8 @@ class ReaderViewModel @Inject constructor(
                 showReaderChapterProgress = true,
                 showReaderPageNumber = true,
                 showReaderBattery = true,
-                volumeKeyPageTurnEnabled = false,
+                volumeKeyUpAction = ReaderVolumeKeyAction.SYSTEM_VOLUME,
+                volumeKeyDownAction = ReaderVolumeKeyAction.SYSTEM_VOLUME,
                 bookmarkRemarkPromptEnabled = true,
                 bionicReadingEnabled = false,
                 screenSleepTimeoutSeconds = DataStoreManager.DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS,
@@ -3678,7 +3734,8 @@ class ReaderViewModel @Inject constructor(
             .withUpdatedActiveThemeSettings(ReaderLayoutTarget.BOOK_LAYOUT) { resetSettings }
             .withReaderThemeSettings(resetSettings)
             .copy(
-                volumeKeyPageTurnEnabled = false,
+                volumeKeyUpAction = ReaderVolumeKeyAction.SYSTEM_VOLUME,
+                volumeKeyDownAction = ReaderVolumeKeyAction.SYSTEM_VOLUME,
                 bookmarkRemarkPromptEnabled = true,
                 bionicReadingEnabled = false,
                 screenSleepTimeoutSeconds = DataStoreManager.DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS,
@@ -5910,30 +5967,36 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun updateBookmarkTags(syncId: String, tags: List<String>) {
-        viewModelScope.launch {
-            val bookmark = kotlinx.coroutines.withTimeoutOrNull(5_000L) {
-                readingRepository.getBookmarksByBookId(bookId).first { list ->
-                    list.any { it.syncId == syncId }
-                }.first { it.syncId == syncId }
-            } ?: return@launch
-            readingRepository.updateBookmarkTags(bookmark, tags)
-        }
+        viewModelScope.launch { saveBookmarkTags(syncId, tags) }
     }
 
     fun updateNoteTags(syncId: String, tags: List<String>) {
-        viewModelScope.launch {
-            val note = kotlinx.coroutines.withTimeoutOrNull(5_000L) {
-                readingRepository.getNotesByBookId(bookId).first { list ->
-                    list.any { it.syncId == syncId }
-                }.first { it.syncId == syncId }
-            } ?: return@launch
-            readingRepository.updateNoteTags(note, tags)
-        }
+        viewModelScope.launch { saveNoteTags(syncId, tags) }
+    }
+
+    suspend fun saveBookmarkTags(syncId: String, tags: List<String>) {
+        val bookmark = kotlinx.coroutines.withTimeoutOrNull(5_000L) {
+            readingRepository.getBookmarksByBookId(bookId).first { list ->
+                list.any { it.syncId == syncId }
+            }.first { it.syncId == syncId }
+        } ?: return
+        readingRepository.updateBookmarkTags(bookmark, tags)
+    }
+
+    suspend fun saveNoteTags(syncId: String, tags: List<String>) {
+        val note = kotlinx.coroutines.withTimeoutOrNull(5_000L) {
+            readingRepository.getNotesByBookId(bookId).first { list ->
+                list.any { it.syncId == syncId }
+            }.first { it.syncId == syncId }
+        } ?: return
+        readingRepository.updateNoteTags(note, tags)
     }
 
     fun renameAnnotationTag(old: String, new: String) {
         viewModelScope.launch { readingRepository.renameAnnotationTag(old, new) }
     }
+
+    suspend fun createAnnotationTag(name: String) = readingRepository.createAnnotationTag(name)
 
     fun deleteAnnotationTag(name: String) {
         viewModelScope.launch { readingRepository.deleteAnnotationTag(name) }

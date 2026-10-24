@@ -43,7 +43,10 @@ internal class MarkdownTouchSession(private val touchSlop: Int, private val long
         event.downTime == downTime && !moved && !cancelled && !startedDuringScroll &&
         event.eventTime - downTime < longPressTimeout
 
-    fun canStartSelection(now: Long, expectedDownTime: Long = downTime): Boolean = downTime >= 0 &&
+    fun isSelectionCandidate(expectedDownTime: Long = downTime): Boolean = downTime >= 0 &&
         expectedDownTime == downTime && selectionAllowed && !moved && !cancelled &&
-        !startedDuringScroll && (upTime ?: now) - downTime >= longPressTimeout
+        !startedDuringScroll
+
+    fun canStartSelection(now: Long, expectedDownTime: Long = downTime): Boolean =
+        isSelectionCandidate(expectedDownTime) && (upTime ?: now) - downTime >= longPressTimeout
 }

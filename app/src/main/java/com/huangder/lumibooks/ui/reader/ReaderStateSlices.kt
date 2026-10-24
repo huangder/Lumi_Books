@@ -12,6 +12,7 @@ import com.huangder.lumibooks.domain.model.ReaderLayoutTarget
 import com.huangder.lumibooks.domain.model.ReaderPageAnimationSettings
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
 import com.huangder.lumibooks.domain.model.ReaderTextAlignment
+import com.huangder.lumibooks.domain.model.ReaderVolumeKeyAction
 import com.huangder.lumibooks.domain.model.ReaderThemeSuite
 import com.huangder.lumibooks.domain.model.ReaderThemeSuites
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
@@ -105,7 +106,8 @@ data class ReaderControlsState(
     val showReaderChapterProgress: Boolean = true,
     val showReaderPageNumber: Boolean = true,
     val showReaderBattery: Boolean = true,
-    val volumeKeyPageTurnEnabled: Boolean = false,
+    val volumeKeyUpAction: ReaderVolumeKeyAction = ReaderVolumeKeyAction.SYSTEM_VOLUME,
+    val volumeKeyDownAction: ReaderVolumeKeyAction = ReaderVolumeKeyAction.SYSTEM_VOLUME,
     val comicModeEnabled: Boolean = false,
     val screenSleepTimeoutSeconds: Int = DataStoreManager.DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS,
     val readerTopLeftContent: ReaderCornerContent =
@@ -202,7 +204,8 @@ internal fun ReaderUiState.toControlsState() = ReaderControlsState(
     showReaderChapterProgress = showReaderChapterProgress,
     showReaderPageNumber = showReaderPageNumber,
     showReaderBattery = showReaderBattery,
-    volumeKeyPageTurnEnabled = volumeKeyPageTurnEnabled,
+    volumeKeyUpAction = volumeKeyUpAction,
+    volumeKeyDownAction = volumeKeyDownAction,
     comicModeEnabled = comicModeEnabled,
     screenSleepTimeoutSeconds = screenSleepTimeoutSeconds,
     readerTopLeftContent = readerTopLeftContent,

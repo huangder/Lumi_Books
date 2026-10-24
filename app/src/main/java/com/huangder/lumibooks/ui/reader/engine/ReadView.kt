@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.reader.engine
+import com.huangder.lumibooks.domain.model.LongPressSelectionRange
+import com.huangder.lumibooks.domain.model.selectionRangeAt
 import com.huangder.lumibooks.domain.model.ReaderImageAdjustments
 
 import android.content.Context
@@ -425,6 +427,12 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var contentSelection: ReaderContentSelection? = null
     /** 越界后等待下一帧接管手势流（先让系统选区安全退场，再翻页）。 */
     private var contentSelectionHandoffPending = false
+    private data class InitialSelectionExtension(
+        val view: PageContentView,
+        val selection: ReaderContentSelection,
+        val localRange: Pair<Int, Int>
+    )
+    private var initialSelectionExtension: InitialSelectionExtension? = null
     private var contentSelectionHandoffStartHandle = false
     /** 手势流已经归 ReadView 所有，后续 MOVE/UP 由跨页选区逻辑处理。 */
     private var contentSelectionDragActive = false
@@ -596,6 +604,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             prevPageRightView, curPageRightView, nextPageRightView
         )) {
             setupSelectionWatcher(pageView)
+            pageView.initialSelectionRangeProvider = { offset, line ->
+                resolveInitialSelectionRange(pageView, offset, line)
+            }
             pageView.suppressSystemToolbar()
             pageView.onReaderHandleDragBeyondEdge = { direction, draggingStartHandle ->
                 handleHandleDragBeyondEdge(direction, draggingStartHandle)
@@ -1316,6 +1327,41 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         setBodyFontWeight(if (enabled) 700 else 400)
     }
 
+    fun setLongPressSelectionRange(range: LongPressSelectionRange) {
+        contentSelectionViews().forEach { it.longPressSelectionRange = range }
+    }
+
+    private fun resolveInitialSelectionRange(view: PageContentView, offset: Int, line: IntRange): IntRange? {
+        if (!isContentSelectionSupported()) return null
+        val slot = slotManager.getSlotForView(view) ?: return null
+        val chapterIndex = chapterIndexForSpreadView(slot, view)
+        val chapterText = slotManager.cachedChapterText(chapterIndex) ?: return null
+        val pageStart = view.chapterStartOffset
+        val length = view.textView.text?.length ?: return null
+        val range = chapterText.selectionRangeAt(pageStart + offset, view.longPressSelectionRange,
+            pageStart + line.first..pageStart + line.last) ?: return null
+        val localStart = (range.first - pageStart).coerceIn(0, length)
+        val localEnd = (range.last + 1 - pageStart).coerceIn(localStart, length)
+        if (localEnd <= localStart) return null
+        initialSelectionExtension = if (range.first < pageStart || range.last + 1 > pageStart + length) {
+            InitialSelectionExtension(view, ReaderContentSelection(chapterIndex, chapterText.length,
+                range.first, range.last + 1), localStart to localEnd)
+        } else null
+        return localStart until localEnd
+    }
+
+    private fun finishInitialSelectionExtension() {
+        val pending = initialSelectionExtension ?: return
+        initialSelectionExtension = null
+        // Dragging after the long press deliberately changes the initial range.
+        if (pending.view.getSelectionRange() != pending.localRange) return
+        endNativeSelectionOnAllPages()
+        contentSelection = pending.selection
+        applyReaderSelectionToPages()
+        notifyReaderSelectionChanged()
+        invalidate()
+    }
+
     fun applyRenderConfig(config: ReaderRenderConfig) {
         val previous = lastRenderConfig
         if (previous == config) {
@@ -1602,6 +1648,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
      * - 长按（非卷曲模式 >500ms 或无明显移动）→ 不拦截，TextView 原生触发选词
      */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN || ev.actionMasked == MotionEvent.ACTION_CANCEL) {
+            initialSelectionExtension = null
+        }
         if (lineGuideEnabled) return handleLineGuideTouch(ev)
         // ── 自持跨页选区：整段手势（含交接帧）直接在 ReadView 处理 ──
         // 不依赖 ViewGroup 拦截：拦截会吞掉触发帧、还要等下一帧才生效，
@@ -1957,6 +2006,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
      */
     private fun dispatchTouchToChildren(ev: MotionEvent): Boolean {
         val handled = super.dispatchTouchEvent(ev)
+        if (ev.actionMasked == MotionEvent.ACTION_UP) finishInitialSelectionExtension()
         if (contentSelectionHandoffPending) {
             beginContentSelectionTakeover(ev)
         }
@@ -2927,6 +2977,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     /** 清除自持跨页选区（含瞬态高亮），并通知上层收起选区菜单。 */
     fun clearReaderSelection() {
+        initialSelectionExtension = null
         if (contentSelection == null && !contentSelectionHandoffPending && !contentSelectionDragActive) {
             pendingContentSelectionTurn = null
             return

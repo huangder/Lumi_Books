@@ -47,7 +47,8 @@ class MarkdownPageIndexRestoreTest {
         }
         val file = File.createTempFile("markdown-pages", ".md", context.filesDir).apply { writeText(input) }
         val book = Book("markdown-pages", "Title", "", file.path, null, BookFormat.MARKDOWN, 0, 0f, createdAt = 0)
-        val state = ReaderUiState(book = book, chapterCount = 1)
+        val state = ReaderUiState(book = book, chapterCount = 1,
+            textAlignment = com.huangder.lumibooks.domain.model.ReaderTextAlignment.LEFT)
         val metrics = context.resources.displayMetrics
         val render = MarkdownRenderStyle(
             600 - (state.marginLeftDp * metrics.density).toInt() - (state.marginRightDp * metrics.density).toInt(),

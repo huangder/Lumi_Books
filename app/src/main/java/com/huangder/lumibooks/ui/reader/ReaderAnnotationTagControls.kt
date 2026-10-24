@@ -73,10 +73,10 @@ internal fun BoxScope.ReaderAnnotationTagControls(
             backdrop = backdrop,
             selected = currentTags,
             available = availableTags,
+            onCreate = viewModel::createAnnotationTag,
             onSave = { tags ->
-                if (isBookmark) viewModel.updateBookmarkTags(syncId, tags)
-                else viewModel.updateNoteTags(syncId, tags)
-                onEditorDismiss()
+                if (isBookmark) viewModel.saveBookmarkTags(syncId, tags)
+                else viewModel.saveNoteTags(syncId, tags)
             },
             onDismiss = onEditorDismiss,
             onRename = viewModel::renameAnnotationTag,

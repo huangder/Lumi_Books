@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.reader
+import com.huangder.lumibooks.domain.model.LongPressSelectionRange
+import com.huangder.lumibooks.domain.model.selectionRangeAt
 
 import android.content.Context
 import android.graphics.Typeface
@@ -26,7 +28,7 @@ import kotlin.math.abs
 
 internal fun markdownPaginationSignature(identity: String, style: MarkdownPageStyle,
     density: Float, scaledDensity: Float): String = listOf(
-    "markdown", identity, style.render.width, style.render.height, style.render.fontSize,
+    "markdown-layout-2", identity, style.render.width, style.render.height, style.render.fontSize,
     style.render.paragraphSpacing, style.render.firstLineIndent, style.lineHeight,
     style.letterSpacing, style.alignment, style.justify, density, scaledDensity
 ).joinToString("|")
@@ -130,6 +132,64 @@ internal fun markdownTextOffsetAt(view: TextView, x: Float, y: Float): Int? {
     return layout.getOffsetForHorizontal(line, localX)
 }
 
+internal fun estimateMarkdownBlockHeight(block: MarkdownBlock, width: Int, fontSize: Float,
+    lineHeight: Float, paragraphSpacing: Int): Int {
+    val headingScale = if (block.kind == "heading") when (block.level) {
+        1 -> 1.7f
+        2 -> 1.45f
+        3 -> 1.25f
+        else -> 1.1f
+    } else 1f
+    val charScale = if (block.kind == "code") 0.6f else 1f
+    val size = (fontSize * headingScale).coerceAtLeast(1f)
+    val leadingMargin = when {
+        block.kind == "table" -> (width / block.tableColumnCount.coerceAtLeast(1)).toFloat()
+        block.kind == "quote" -> fontSize * 0.6f
+        block.kind == "paragraph" && block.label.isNotBlank() -> fontSize * 2f
+        block.level > 0 -> fontSize * block.level
+        else -> 0f
+    }
+    val available = (width - leadingMargin - fontSize * 0.5f).coerceAtLeast(size)
+    val lineWidth = available / size
+    var lines = 1
+    var used = 0f
+    var index = 0
+    while (index < block.text.length) {
+        val codePoint = Character.codePointAt(block.text, index)
+        index += Character.charCount(codePoint)
+        if (codePoint == '\n'.code) {
+            lines++
+            used = 0f
+            continue
+        }
+        val charWidth = when {
+            Character.isWhitespace(codePoint) -> 0.33f
+            codePoint < 128 -> if (Character.isUpperCase(codePoint)) 0.62f else 0.54f
+            Character.getType(codePoint) == Character.NON_SPACING_MARK.toInt() ||
+                Character.getType(codePoint) == Character.ENCLOSING_MARK.toInt() -> 0f
+            else -> 1f
+        } * charScale
+        if (used > 0f && used + charWidth > lineWidth) {
+            lines++
+            used = 0f
+        }
+        used += charWidth
+    }
+    val line = (size * lineHeight).toInt().coerceAtLeast(1)
+    return (lines * line + paragraphSpacing).coerceAtLeast(line)
+}
+
+internal fun markdownWordRange(text: CharSequence, offset: Int): IntRange? {
+    if (text.isEmpty()) return null
+    val at = offset.coerceIn(0, text.length - 1)
+    if (text[at].isWhitespace() || text[at] == '\uFFFC') return null
+    val breaker = android.icu.text.BreakIterator.getWordInstance()
+    breaker.setText(text.toString())
+    val start = breaker.preceding(at + 1).coerceAtLeast(0)
+    val end = breaker.following(at).takeIf { it >= 0 } ?: text.length
+    return (start until end).takeIf { end > start }
+}
+
 internal class MarkdownNativeSurface(context: Context, private val source: MarkdownBlockSource) : FrameLayout(context) {
     var selectionAccent: Int = android.graphics.Color.BLACK
     var paperColor: Int = android.graphics.Color.WHITE
@@ -200,7 +260,10 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
     private var syncingTableScroll = false
     private var selectionStartGlobal = -1
     private var selectionEndGlobal = -1
+    private var pendingSelectionLongPress: Runnable? = null
+    private var longPressSelectionRange = LongPressSelectionRange.DEFAULT
     private var draggingHandle = 0
+    private var selectionGestureActive = false
     private var handleGrabX = 0f
     private var handleGrabY = 0f
     private val selectionMagnifier = ReaderSelectionMagnifier(this)
@@ -209,8 +272,6 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
     private val handlePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
     private class SelectedRangeSpan(color: Int) : BackgroundColorSpan(color)
     private class ReadingRangeSpan(color: Int) : BackgroundColorSpan(color)
-    private class NoteHighlightSpan(color: Int) : BackgroundColorSpan(color)
-    private class NoteUnderlineSpan : android.text.style.UnderlineSpan()
 
     private data class SelectionAnchor(val point: android.graphics.PointF, val lineHeight: Float)
     private fun selectionAnchor(offset: Int, trailing: Boolean = false): SelectionAnchor? {
@@ -247,20 +308,12 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
     }
     private fun applySelection() {
         for ((view, start) in textOwners) {
-            if (config?.continuous == true && (!view.isAttachedToWindow || !isViewVisible(view))) continue
+            // Compose's AndroidViewsHandler can have an empty global visible rect
+            // while it draws this AndroidView normally. Refresh attached buffers,
+            // including RecyclerView's small cache, without querying that ancestor.
+            if (!view.isAttachedToWindow) continue
             val text = view.text as? android.text.Spannable ?: continue
-            text.getSpans(0, text.length, NoteHighlightSpan::class.java).forEach(text::removeSpan)
-            text.getSpans(0, text.length, NoteUnderlineSpan::class.java).forEach(text::removeSpan)
-            notes.filter { !it.isStale && it.startPosition < start + text.length && it.endPosition > start }
-                .forEach { note ->
-                    val a = (note.startPosition - start).coerceAtLeast(0)
-                    val b = (note.endPosition - start).coerceAtMost(text.length)
-                    if (a < b) text.setSpan(
-                        if (note.type == "underline") NoteUnderlineSpan()
-                        else NoteHighlightSpan(runCatching { android.graphics.Color.parseColor(note.color) }.getOrDefault(0x55ffca28)),
-                        a, b, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-                    )
-                }
+            applyMarkdownAnnotationSpans(text, start, notes)
             text.getSpans(0, text.length, SelectedRangeSpan::class.java).forEach(text::removeSpan)
             text.getSpans(0, text.length, ReadingRangeSpan::class.java).forEach(text::removeSpan)
             listOfNotNull(tts?.let { it.startOffset until it.endOffset }, searchRange).forEach { range ->
@@ -270,6 +323,7 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
             val a = maxOf(start, selectionStartGlobal)
             val b = minOf(start + text.length, selectionEndGlobal)
             if (a < b) text.setSpan(SelectedRangeSpan((selectionAccent and 0x00ffffff) or 0x55000000), a - start, b - start, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            view.invalidate()
         }
         invalidate()
     }
@@ -280,10 +334,6 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
             selectionRefreshPosted = false
             if (!scrolling) applySelection()
         }
-    }
-    private fun isViewVisible(view: View): Boolean {
-        val rect = android.graphics.Rect()
-        return view.getGlobalVisibleRect(rect) && rect.height() > 0 && rect.width() > 0
     }
     private fun publishSelection(annotationOnly: Boolean = false) {
         val start = selectionStartGlobal; val end = selectionEndGlobal
@@ -309,11 +359,63 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
     }
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         touchSession.record(event, scrolling || (recycler?.scrollState ?: RecyclerView.SCROLL_STATE_IDLE) != RecyclerView.SCROLL_STATE_IDLE)
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            selectionGestureActive = false
+            // Clear stale disallow-intercept flags before RecyclerView sees this gesture.
+            recycler?.requestDisallowInterceptTouchEvent(false)
+            // Keep Compose ancestors from taking over this AndroidView's vertical gesture;
+            // the nested RecyclerView still receives and arbitrates its own child events.
+            parent?.requestDisallowInterceptTouchEvent(true)
+        }
+        if (event.actionMasked in setOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN)) cancelSelectionLongPress()
+        if (event.actionMasked == MotionEvent.ACTION_MOVE && !touchSession.isSelectionCandidate() &&
+            !selectionGestureActive) {
+            cancelSelectionLongPress()
+            if (draggingHandle == 0) {
+                recycler?.requestDisallowInterceptTouchEvent(false)
+            }
+        }
         // TextView's Editor can keep disallow-intercept set after the native long
         // press. Owned handles must be captured before ViewGroup applies that flag.
         if (event.actionMasked == MotionEvent.ACTION_DOWN && beginHandleDrag(event)) return onTouchEvent(event)
         if (draggingHandle != 0) return onTouchEvent(event)
-        return super.dispatchTouchEvent(event)
+        val handled = super.dispatchTouchEvent(event)
+        if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            selectionGestureActive = false
+            parent?.requestDisallowInterceptTouchEvent(false)
+        }
+        return handled
+    }
+    private fun cancelSelectionLongPress() {
+        pendingSelectionLongPress?.let(::removeCallbacks)
+        pendingSelectionLongPress = null
+    }
+    private fun scheduleSelectionLongPress(view: TextView, offset: Int, x: Float, y: Float, downTime: Long) {
+        val local = markdownTextOffsetAt(view, x, y) ?: return
+        val touched = view.text.getOrNull(local) ?: return
+        if (touched.isWhitespace() || touched == '\uFFFC') return
+        val stamp = windowGeneration
+        val press = Runnable {
+            pendingSelectionLongPress = null
+            if (stamp != windowGeneration || !view.isAttachedToWindow || draggingHandle != 0 ||
+                !touchSession.canStartSelection(android.os.SystemClock.uptimeMillis(), downTime)) return@Runnable
+            val line = view.layout?.getLineForOffset(local)
+            val visualLine = line?.let { view.layout.getLineStart(it) + offset until view.layout.getLineEnd(it) + offset }
+            val range = source.document.text.selectionRangeAt(offset + local, longPressSelectionRange, visualLine) ?: return@Runnable
+            if (com.huangder.lumibooks.BuildConfig.DEBUG) android.util.Log.d("MarkdownNative", "long-press accepted range=${range.first}..${range.last}")
+            selectionStartGlobal = range.first
+            selectionEndGlobal = range.last + 1
+            selectionGestureActive = true
+            android.text.Selection.removeSelection(view.text as android.text.Spannable)
+            applySelection()
+            // Let RecyclerView own movement until a long press is actually accepted.
+            view.parent?.requestDisallowInterceptTouchEvent(true)
+            performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+            publishSelection()
+        }
+        pendingSelectionLongPress = press
+        postDelayed(press, ViewConfiguration.getLongPressTimeout().toLong())
     }
     private fun beginHandleDrag(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN && selectionStartGlobal >= 0) {
@@ -470,6 +572,7 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
     }
 
     fun configure(state: ReaderUiState, typeface: Typeface, color: Int, dark: Boolean, continuous: Boolean) {
+        longPressSelectionRange = state.longPressSelectionRange
         paginationBook = state.book
         val previousIdentity = paginationIdentity
         paginationIdentity = state.paginationContentKey() + "|" +
@@ -486,6 +589,7 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
     }
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) { super.onSizeChanged(w, h, oldw, oldh); if (w != oldw || h != oldh) rebuild() }
     private fun rebuild(preservePagination: Boolean = false) {
+        cancelSelectionLongPress()
         finishHandleDrag()
         selectionMagnifier.dismiss()
         val c = config ?: return
@@ -512,7 +616,8 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
             else -> android.text.Layout.Alignment.ALIGN_NORMAL
         }
         provider = MarkdownPageProvider(source, MarkdownPageStyle(style, c.typeface, c.lineHeight, c.spacing * density / style.fontSize,
-            alignment, c.alignment == com.huangder.lumibooks.domain.model.ReaderTextAlignment.JUSTIFY))
+            alignment, c.alignment in setOf(com.huangder.lumibooks.domain.model.ReaderTextAlignment.NATURAL,
+                com.huangder.lumibooks.domain.model.ReaderTextAlignment.JUSTIFY)))
         if (initialRestore) {
             current = locatorOffset(savedRestore) ?: (savedFraction * source.document.text.length).toInt()
             initialRestore = false
@@ -891,8 +996,11 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
                         MarkdownTableRow(rowBlock, cells)
                     }
                     if (!stillCurrent()) return@launch
-                    val height = rows.sumOf { row -> row.cells.maxOf { it.layout.height } + engine.style.render.fontSize.toInt() + engine.style.render.paragraphSpacing }
-                    holder.frame.addView(tableGroupView(rows), LayoutParams(LayoutParams.MATCH_PARENT, height))
+                    val view = tableGroupView(rows)
+                    view.measure(MeasureSpec.makeMeasureSpec(engine.style.render.width, MeasureSpec.EXACTLY),
+                        MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+                    val height = view.measuredHeight
+                    holder.frame.addView(view, LayoutParams(LayoutParams.MATCH_PARENT, height))
                     if (!stillCurrent()) return@launch
                     applyRenderedHeight(holder, height)
                     if (stillCurrent() && !scrolling) scheduleSelectionRefresh()
@@ -910,9 +1018,15 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
                     if (!stillCurrent()) return@launch
                     applyRenderedHeight(holder, height + engine.style.render.paragraphSpacing)
                 } else {
-                    holder.frame.addView(blockView(text, block.start, block), LayoutParams(LayoutParams.MATCH_PARENT, layout.height))
+                    val view = blockView(text, block.start, block)
+                    // TextView includes font fallback metrics and heading padding that the
+                    // pagination layout does not. Size the scroll block from the actual view.
+                    view.measure(MeasureSpec.makeMeasureSpec(engine.style.render.width, MeasureSpec.EXACTLY),
+                        MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+                    val contentHeight = maxOf(layout.height, view.measuredHeight)
+                    holder.frame.addView(view, LayoutParams(LayoutParams.MATCH_PARENT, contentHeight))
                     if (!stillCurrent()) return@launch
-                    applyRenderedHeight(holder, layout.height + engine.style.render.paragraphSpacing)
+                    applyRenderedHeight(holder, contentHeight + engine.style.render.paragraphSpacing)
                 }
                 if (!stillCurrent()) return@launch
                 holder.frame.setPadding(0, 0, 0, engine.style.render.paragraphSpacing)
@@ -966,11 +1080,8 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
     }
 
     private fun estimateBlockHeight(block: MarkdownBlock, engine: MarkdownPageProvider): Int {
-        val width = engine.style.render.width.coerceAtLeast(1)
-        val charsPerLine = (width / (engine.style.render.fontSize * 0.52f)).toInt().coerceAtLeast(8)
-        val lines = (block.text.length.toFloat() / charsPerLine).toInt().coerceAtLeast(1)
-        val line = (engine.style.render.fontSize * engine.style.lineHeight).toInt().coerceAtLeast(1)
-        return (lines * line + engine.style.render.paragraphSpacing).coerceAtLeast(line)
+        return estimateMarkdownBlockHeight(block, engine.style.render.width.coerceAtLeast(1),
+            engine.style.render.fontSize, engine.style.lineHeight, engine.style.render.paragraphSpacing)
     }
 
     private fun applyRenderedHeight(holder: BlockHolder, height: Int) {
@@ -981,7 +1092,7 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
         // Start restoration/counting only after the first visible block has rendered.
         if (paginationBook != null && countJob == null && pageStarts.isEmpty()) provider?.let(::buildPageIndex)
         holder.frame.minimumHeight = height
-        if (old > 0 && abs(old - height) <= (8 * resources.displayMetrics.density).toInt()) return
+        if (old == height) return
         holder.frame.layoutParams = (holder.frame.layoutParams ?: RecyclerView.LayoutParams(-1, height)).also { it.height = height }
         holder.frame.requestLayout()
     }
@@ -1023,11 +1134,10 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
         val engine = provider!!
         val content = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         rows.forEach { row ->
-            val rowHeight = row.cells.maxOf { it.layout.height } + engine.style.render.fontSize.toInt()
             val line = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-            row.cells.forEach { cell ->
-                val end = cell.end.coerceAtMost(row.block.text.length)
-                val value = row.block.text.subSequence(cell.start.coerceAtLeast(0), end)
+            val cells = row.cells.map { cell ->
+                // StaticLayout retains the cell's image, emphasis and other document spans.
+                val value = cell.layout.text
                 val tv = blockView(value, row.block.start + cell.start, row.block, true)
                 val pad = (engine.style.render.fontSize / 4).toInt()
                 tv.setPadding(pad, pad, pad, pad)
@@ -1035,8 +1145,12 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
                     setColor(android.graphics.Color.TRANSPARENT)
                     setStroke(1, (config!!.color and 0x00ffffff) or 0x44000000)
                 }
-                line.addView(tv, LinearLayout.LayoutParams(cell.width, rowHeight))
+                tv.measure(MeasureSpec.makeMeasureSpec(cell.width, MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+                tv to cell.width
             }
+            val rowHeight = cells.maxOf { it.first.measuredHeight }
+            cells.forEach { (view, width) -> line.addView(view, LinearLayout.LayoutParams(width, rowHeight)) }
             content.addView(line, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, rowHeight))
         }
         return object : HorizontalScrollView(context) {
@@ -1055,12 +1169,9 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
         val c = config!!
         val text = SpannableStringBuilder(content)
         if (offset > block.start) text.getSpans(0, text.length, MarkdownParagraphIndentSpan::class.java).forEach(text::removeSpan)
-        notes.filter { !it.isStale && it.startPosition < offset + text.length && it.endPosition > offset }.forEach { note ->
-            text.setSpan(if (note.type == "underline") NoteUnderlineSpan() else NoteHighlightSpan(runCatching { android.graphics.Color.parseColor(note.color) }.getOrDefault(0x55ffca28)),
-                (note.startPosition - offset).coerceAtLeast(0), (note.endPosition - offset).coerceAtMost(text.length), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        }
+        applyMarkdownAnnotationSpans(text, offset, notes)
         var selectionTouchDownTime = -1L
-        val tv = object : TextView(context) {
+        val tv = object : MarkdownAnnotationTextView(context) {
             override fun onSelectionChanged(selStart: Int, selEnd: Int) {
                 super.onSelectionChanged(selStart, selEnd)
                 if (selStart >= 0 && selEnd > selStart && selEnd <= text.length) post {
@@ -1093,8 +1204,13 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
             }
             justificationMode = if (engine.style.justify) android.text.Layout.JUSTIFICATION_MODE_INTER_WORD else android.text.Layout.JUSTIFICATION_MODE_NONE
             val headingPad = if (block.kind == "heading") (engine.style.render.fontSize * 0.12f).toInt() else 0
-            setPadding(0, headingPad, 0, headingPad)
+            // Each Markdown block is a separate TextView. Unlike a whole EPUB
+            // chapter, its last line has no following line box for the underline.
+            setPadding(0, headingPad, 0, headingPad + (4f * resources.displayMetrics.density).toInt())
             setTextIsSelectable(true)
+            // The surface owns selection and handles. Native Editor timing varies by ROM
+            // and can create/clear its range before our long-press guard accepts it.
+            setOnLongClickListener { true }
             // Android's selectable TextView otherwise emits LONG_PRESS feedback before the
             // surface knows whether the gesture produced a valid range (notably in code blocks).
             // MarkdownNativeSurface emits feedback after accepting a genuine selection.
@@ -1108,18 +1224,24 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
             setText(text, TextView.BufferType.SPANNABLE)
             setOnTouchListener { view, event ->
                 when (event.actionMasked) {
+                    MotionEvent.ACTION_MOVE -> {
+                        if (!touchSession.isSelectionCandidate()) view.parent?.requestDisallowInterceptTouchEvent(false)
+                    }
+                    MotionEvent.ACTION_CANCEL -> view.parent?.requestDisallowInterceptTouchEvent(false)
                     MotionEvent.ACTION_DOWN -> {
                         selectionTouchDownTime = event.downTime
                         downX = event.x; downY = event.y
                         touchSession.selectionAllowed = markdownTextOffsetAt(view as TextView, event.x, event.y) != null
+                        if (block.kind != "rule") scheduleSelectionLongPress(view, offset, event.x, event.y, event.downTime)
                         // Special blocks still belong to the reader surface.  They must not turn
                         // a normal tap into an annotation menu, but they also must not swallow
                         // the reader's global capsule toggle (especially in code-only documents).
                         touchSession.menuAllowed = true
                     }
                     MotionEvent.ACTION_UP -> {
+                        view.parent?.requestDisallowInterceptTouchEvent(false)
                         if (touchSession.canStartSelection(event.eventTime, event.downTime)) {
-                            return@setOnTouchListener false
+                            return@setOnTouchListener true
                         }
                         if (!touchSession.isTap(event)) return@setOnTouchListener true
                         val annotation = markdownAnnotationAt(view as TextView, offset, notes, event.x, event.y)
@@ -1161,7 +1283,9 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
                         }
                     }
                 }
-                false
+                // The surface owns the entire selection gesture. Letting Editor
+                // process DOWN/UP can cancel or replace its accepted custom range.
+                true
             }
         }
         textOwners[tv] = offset
@@ -1243,12 +1367,15 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
     fun setNotes(value: List<Note>) {
         if (notes == value) return
         notes = value
+        if (com.huangder.lumibooks.BuildConfig.DEBUG) android.util.Log.d("MarkdownNative",
+            "notes-updated count=${value.size} attached=${textOwners.keys.count { it.isAttachedToWindow }}")
         applySelection()
     }
     fun setTts(value: TtsSentencePosition?) { if (tts != value) { tts = value; applySelection() } }
     fun clearSelection(token: Int) {
         if (selectionToken == token) return
         selectionToken = token
+        cancelSelectionLongPress()
         finishHandleDrag()
         selectionMagnifier.dismiss()
         selectionStartGlobal = -1; selectionEndGlobal = -1; draggingHandle = 0
@@ -1260,10 +1387,12 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
         applySelection()
     }
     override fun onDetachedFromWindow() {
+        cancelSelectionLongPress()
         removeCallbacks(progressPublisher); progressPostPending = false
         finishHandleDrag(); selectionMagnifier.dismiss(); super.onDetachedFromWindow()
     }
     fun release() {
+        cancelSelectionLongPress()
         closePageIndex()
         generation++
         restoreFrame?.let(::removeCallbacks); restoreFrame = null

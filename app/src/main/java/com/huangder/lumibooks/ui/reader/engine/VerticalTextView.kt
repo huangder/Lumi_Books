@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.reader.engine
+import com.huangder.lumibooks.domain.model.LongPressSelectionRange
+import com.huangder.lumibooks.domain.model.selectionRangeAt
 
 import android.content.Context
 import android.graphics.Canvas
@@ -27,6 +29,7 @@ import kotlin.math.abs
 import kotlin.math.min
 
 internal class VerticalTextView(context: Context) : View(context) {
+    var longPressSelectionRange = LongPressSelectionRange.DEFAULT
     private val paint = TextPaint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
     private var defaultTextSize = 56f
     private var defaultTextColor = 0xFF333333.toInt()
@@ -447,18 +450,14 @@ internal class VerticalTextView(context: Context) : View(context) {
         val glyph = glyphAt(x, y) ?: return
         val offset = (glyph.startOffset - chapterStartOffset).coerceIn(0, spannable.length - 1)
         val value = spannable.toString()
-        val c = value[offset]
-        val cjk = c.code in 0x3400..0x4DBF || c.code in 0x4E00..0x9FFF
-        var start = offset
-        var end = (glyph.endOffset - chapterStartOffset).coerceAtMost(value.length)
-        if (cjk) {
-            start = (start - 2).coerceAtLeast(0)
-            end = (end + 2).coerceAtMost(value.length)
-        } else {
-            fun separator(char: Char): Boolean = char.isWhitespace() || (!char.isLetterOrDigit() && char != '\'' && char != '-')
-            while (start > 0 && !separator(value[start - 1])) start--
-            while (end < value.length && !separator(value[end])) end++
+        val column = geometry?.glyphs.orEmpty().filter { it.columnIndex == glyph.columnIndex }
+        val line = column.takeIf { it.isNotEmpty() }?.let {
+            (it.minOf { item -> item.startOffset } - chapterStartOffset) until
+                (it.maxOf { item -> item.endOffset } - chapterStartOffset)
         }
+        val range = value.selectionRangeAt(offset, longPressSelectionRange, line) ?: return
+        val start = range.first
+        val end = range.last + 1
         if (end > start) {
             Selection.setSelection(spannable, start, end)
             invalidate()

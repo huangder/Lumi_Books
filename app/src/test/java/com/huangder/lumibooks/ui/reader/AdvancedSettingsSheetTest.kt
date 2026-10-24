@@ -88,6 +88,51 @@ class AdvancedSettingsSheetTest {
         compose.runOnIdle { assertEquals(1, commitCount) }
     }
 
+    @Test fun typographyPreviewShowsOnlyTheActiveSliderAndCommitsOnRelease() {
+        var previewCount = 0
+        var commitCount = 0
+        var latestPreview = 1.5f
+        val context = RuntimeEnvironment.getApplication()
+        compose.setContent {
+            AdvancedSettingsSheet(
+                visible = true, previewText = "Live typography preview text.",
+                currentLineHeight = latestPreview, currentLetterSpacing = 0f,
+                currentFontType = "system", currentBackgroundSelection = "day", customBackgrounds = emptyList(),
+                currentMarginLeft = 38f, currentMarginRight = 38f,
+                currentMarginTop = 64f, currentMarginBottom = 64f,
+                currentBgColor = Color.White, currentBackgroundImagePath = null,
+                currentTextColor = Color.Black, currentTextColorOverride = null, currentFontSizeSp = 16f,
+                preservePublisherLayout = true, eInkModeEnabled = true,
+                onLineHeightChange = { latestPreview = it; commitCount++ },
+                onLineHeightPreview = { latestPreview = it; previewCount++ },
+                onLetterSpacingChange = {}, onFontTypeChange = {},
+                onBackgroundSelect = {}, onAddBackgroundColor = { _, _ -> },
+                onAddBackgroundImage = { _, _ -> }, onDeleteBackground = {},
+                onMarginLeftChange = {}, onMarginRightChange = {}, onMarginTopChange = {}, onMarginBottomChange = {},
+                readerTopLeftContent = ReaderCornerContent.NONE, readerTopRightContent = ReaderCornerContent.NONE,
+                readerBottomLeftContent = ReaderCornerContent.NONE, readerBottomRightContent = ReaderCornerContent.NONE,
+                onReaderCornerContentChange = { _, _ -> }, onTextColorChange = {}, onResetSettings = {}, onDismiss = {}
+            )
+        }
+        compose.onNodeWithText(context.getString(R.string.reader_settings_text_spacing))
+            .performScrollTo().performClick()
+        val lineSliderMatcher = SemanticsMatcher("line height slider") {
+            it.config.getOrNull(SemanticsProperties.ProgressBarRangeInfo)?.range == 1f..2.5f
+        }
+        val lineSlider = compose.onNode(lineSliderMatcher).performScrollTo()
+        lineSlider.performTouchInput { down(center); moveBy(Offset(120f, 0f)) }
+        compose.runOnIdle {
+            assertTrue("Dragging should update the reader before release", previewCount > 0)
+            assertEquals(0, commitCount)
+        }
+        assertEquals(2, compose.onAllNodes(lineSliderMatcher).fetchSemanticsNodes().size)
+        compose.onAllNodes(lineSliderMatcher)[0].performTouchInput { up() }
+        compose.runOnIdle {
+            assertEquals(1, commitCount)
+        }
+        assertEquals(1, compose.onAllNodes(lineSliderMatcher).fetchSemanticsNodes().size)
+    }
+
     private fun verifyBookSpacing() {
         val lineHeight = mutableFloatStateOf(1.5f)
         val context = RuntimeEnvironment.getApplication()

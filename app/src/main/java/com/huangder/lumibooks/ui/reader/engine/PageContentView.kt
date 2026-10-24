@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.reader.engine
 import com.huangder.lumibooks.domain.model.ReaderImageAdjustments
+import com.huangder.lumibooks.domain.model.LongPressSelectionRange
+import com.huangder.lumibooks.domain.model.selectionRangeAt
 import com.huangder.lumibooks.ui.reader.adjustedReaderImages
 import com.huangder.lumibooks.ui.reader.AdjustedReaderDrawable
 import kotlinx.coroutines.*
@@ -74,6 +76,13 @@ private class PagedSelectableTextView(context: Context) : RoundedHighlightTextVi
  * 来自不同排版结果而产生累计偏移。
  */
 class PageContentView(context: Context) : FrameLayout(context) {
+    internal var initialSelectionRangeProvider: ((Int, IntRange) -> IntRange?)? = null
+    var longPressSelectionRange: LongPressSelectionRange = LongPressSelectionRange.DEFAULT
+        set(value) {
+            field = value
+            (textView as? RoundedHighlightTextView)?.longPressSelectionRange = value
+            verticalTextView.longPressSelectionRange = value
+        }
 
     companion object {
         private const val TAG = "PageContentView"
@@ -132,6 +141,9 @@ class PageContentView(context: Context) : FrameLayout(context) {
     }
 
     init {
+        (textView as? RoundedHighlightTextView)?.initialSelectionRangeProvider = { offset, line ->
+            initialSelectionRangeProvider?.invoke(offset, line)
+        }
         isClickable = false
         isFocusable = false
         isLongClickable = false
@@ -1100,20 +1112,12 @@ class PageContentView(context: Context) : FrameLayout(context) {
             ?: layout.getOffsetForHorizontal(line, tx)
         val safeOffset = offset.coerceIn(0, spannable.length - 1)
 
-        // 扩词：CJK 左2右3，英文到词边界
         val text = spannable.toString()
-        var start = safeOffset
-        var end = safeOffset
-        val charCode = text[safeOffset].code
-        val isCJK = charCode in 0x4E00..0x9FFF || charCode in 0x3400..0x4DBF
-        if (isCJK) {
-            start = (safeOffset - 2).coerceAtLeast(0)
-            end = (safeOffset + 3).coerceAtMost(text.length)
-        } else {
-            fun isWordSep(c: Char): Boolean = c.isWhitespace() || (!c.isLetterOrDigit() && c != '\'' && c != '-')
-            while (start > 0 && !isWordSep(text[start - 1])) start--
-            while (end < text.length && !isWordSep(text[end])) end++
-        }
+        val visualLine = layout.getLineStart(line) until layout.getLineEnd(line)
+        val range = initialSelectionRangeProvider?.invoke(safeOffset, visualLine)
+            ?: text.selectionRangeAt(safeOffset, longPressSelectionRange, visualLine) ?: return null
+        val start = range.first
+        val end = range.last + 1
 
         if (end <= start) {
             Log.d(TAG, "selectWordAt: word range invalid start=$start end=$end")

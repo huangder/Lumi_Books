@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.reader
+import com.huangder.lumibooks.domain.model.LongPressSelectionRange
 
 import android.annotation.SuppressLint
 import android.graphics.Canvas
@@ -68,6 +69,21 @@ private const val EPUB_ALLOWED_ORIGIN = "https://appassets.androidplatform.net"
 private const val EPUB_INITIAL_PAGE_READY_TIMEOUT_MS = 8_000L
 
 internal class EpubContentWebView(context: android.content.Context) : WebView(context) {
+    private val readerSelectionHandles = WebViewSelectionHandles(this) { start, x, y ->
+        evaluateJavascript("window.LumiReader&&window.LumiReader.moveSelectionHandle($start,$x,$y)", null)
+    }
+
+    internal fun updateReaderSelectionHandles(payload: JSONObject) {
+        readerSelectionHandles.update(payload.optJSONObject("handles"),
+            payload.optDouble("pixelRatio", resources.displayMetrics.density.toDouble()).toFloat().coerceAtLeast(1f))
+    }
+
+    internal fun handleReaderSelectionTouch(event: android.view.MotionEvent): Boolean =
+        readerSelectionHandles.onTouch(event)
+
+    override fun onTouchEvent(event: android.view.MotionEvent): Boolean =
+        handleReaderSelectionTouch(event) || super.onTouchEvent(event)
+
     var pageIndexSignature: String = ""
     var released = false
         private set
@@ -157,6 +173,7 @@ internal class EpubContentWebView(context: android.content.Context) : WebView(co
 
     override fun loadUrl(url: String) {
         if (released) return
+        readerSelectionHandles.clear()
         configurationUpdates.reset()
         // Invalidate queued compositor callbacks immediately, before onPageStarted.
         documentLifecycle.beginDocument()
@@ -240,6 +257,7 @@ internal class EpubContentWebView(context: android.content.Context) : WebView(co
     override fun onDraw(canvas: Canvas) {
         if (released) return
         super.onDraw(canvas)
+        readerSelectionHandles.draw(canvas)
         if (pendingDrawCallbacks.isEmpty()) return
 
         val completed = mutableListOf<() -> Unit>()
@@ -259,12 +277,13 @@ internal class EpubContentWebView(context: android.content.Context) : WebView(co
     }
 
     override fun onDetachedFromWindow() {
+        readerSelectionHandles.clear()
         pendingDrawCallbacks.clear()
         cancelRecoverableLoad()
         super.onDetachedFromWindow()
     }
 
-    fun hasSelectionUi(): Boolean = selectionActionMode != null
+    fun hasSelectionUi(): Boolean = selectionActionMode != null || readerSelectionHandles.isVisible
 
     fun clearTextSelection() {
         dismissSelectionUi()
@@ -296,6 +315,7 @@ internal class EpubContentWebView(context: android.content.Context) : WebView(co
     }
 
     fun dismissSelectionUi() {
+        readerSelectionHandles.clear()
         removeCallbacks(hideSelectionToolbar)
         selectionActionMode?.finish()
         selectionActionMode = null
@@ -468,6 +488,7 @@ internal data class EpubTextSpacing(
 @Composable
 internal fun EpubWebViewReader(
     session: BookRenderSession,
+    layoutPreviewActive: Boolean = false,
     imageAdjustments: com.huangder.lumibooks.domain.model.ReaderImageAdjustments = com.huangder.lumibooks.domain.model.ReaderImageAdjustments(),
     chapterIndex: Int,
     nativeCssEnabled: Boolean = false,
@@ -513,6 +534,7 @@ internal fun EpubWebViewReader(
     marginBottomDp: Float = 0f,
     marginLeftDp: Float = 0f,
     edgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT,
+    longPressSelectionRange: LongPressSelectionRange = LongPressSelectionRange.DEFAULT,
     notes: List<Note> = emptyList(),
     ttsCurrentSentence: TtsSentencePosition? = null,
     ttsFollowEnabled: Boolean = true,
@@ -625,7 +647,7 @@ internal fun EpubWebViewReader(
                 textColorOverride ?: autoTextColor ?: if (publisherPaintOnly) null else if (theme in setOf("night", "dark")) Color.LTGRAY else null,
                 nativePaper, publisherPaintOnly || preservePublisherBackground, marginTopDp, marginRightDp, marginBottomDp, marginLeftDp,
                 publisherNightShade = publisherPaintOnly && theme == "publisher_night",
-                textSpacing = textSpacing),
+                textSpacing = textSpacing, longPressSelectionRange = longPressSelectionRange),
             pageTransition, pageTransitionDurationMs, edgeTapMode, restoreLocatorJson, restoreProgression, restoreProgressionInclusive, initialFragment,
             navigationRequest, searchRequest, locatorRequest, pageRequest, notes, ttsCurrentSentence, ttsFollowEnabled,
             ttsHighlightColor, selectionClearToken, bookmarkPullEnabled, paginationContentIdentity,
@@ -711,6 +733,7 @@ internal fun EpubWebViewReader(
     val latestTtsCurrentSentence = rememberUpdatedState(ttsCurrentSentence)
     val latestTtsFollowEnabled = rememberUpdatedState(ttsFollowEnabled)
     val latestTtsHighlightColor = rememberUpdatedState(ttsHighlightColor)
+    val latestLayoutPreviewActive = rememberUpdatedState(layoutPreviewActive)
     val latestSearchRequest = rememberUpdatedState(searchRequest)
     val latestLocatorRequest = rememberUpdatedState(locatorRequest)
     val latestPageRequest = rememberUpdatedState(pageRequest)
@@ -722,6 +745,14 @@ internal fun EpubWebViewReader(
     val webViewState = remember(session) { mutableStateOf<WebView?>(null) }
     val ttsPageViewByChapter = remember(session) { mutableStateOf<Map<Int, WebView>>(emptyMap()) }
     val pageTurnHostState = remember(session) { mutableStateOf<EpubPageTurnHost?>(null) }
+    LaunchedEffect(layoutPreviewActive, pageTurnHostState.value) {
+        if (!layoutPreviewActive) {
+            pageTurnHostState.value?.activeWebView?.evaluateJavascript(
+                "window.LumiReader&&window.LumiReader.reportLayoutStatus();",
+                null
+            )
+        }
+    }
     val navigationStartHandler = remember(session) {
         mutableStateOf<((EpubNavigationRequest) -> Unit)?>(null)
     }
@@ -2216,6 +2247,9 @@ internal fun EpubWebViewReader(
                                             )
                                             view.markRecoverableLoadReady(messageChapterIndex)
                                             revealStableDocument(view, generation, revision)
+                                            if (!latestLayoutPreviewActive.value) {
+                                                pageTurnHost.endLayoutPreview()
+                                            }
                                         }
                                         when {
                                             pageTurnHost.isAwaitingPreparedActivePage(
@@ -2327,6 +2361,7 @@ internal fun EpubWebViewReader(
                             latestSelectionCleared.value()
                         }
                         "selection" -> {
+                            view.updateReaderSelectionHandles(payload)
                             val selectedText = payload.optString("text")
                             val start = payload.optJSONObject("start") ?: return
                             val end = payload.optJSONObject("end") ?: return
@@ -3081,6 +3116,7 @@ internal fun EpubWebViewReader(
                 ),
                 pageTransitionDurationMs = pageTransitionDurationMs,
                 edgeTapMode = edgeTapMode,
+                longPressSelectionRange = longPressSelectionRange,
                 marginTopDp = marginTopDp,
                 marginRightDp = marginRightDp,
                 marginBottomDp = marginBottomDp,
@@ -3125,6 +3161,14 @@ internal fun EpubWebViewReader(
                         .start()
                 }
             } else if (!chapterLoadPending.value && configuredKey.value != nextConfigKey) {
+                val currentLifecycle = webView.documentLifecycle
+                if (latestLayoutPreviewActive.value && currentLifecycle.isStable(
+                        currentLifecycle.configurationGeneration,
+                        currentLifecycle.layoutRevision
+                    )
+                ) {
+                    pageTurnHost.beginLayoutPreview()
+                }
                 val layoutChanged = configureReader(
                     view = webView,
                     paginationSignature = paginationSignature,
@@ -3157,6 +3201,7 @@ internal fun EpubWebViewReader(
                     pageTransition = pagingMode.transition,
                     pageTransitionDurationMs = pageTransitionDurationMs,
                     edgeTapMode = edgeTapMode,
+                    longPressSelectionRange = longPressSelectionRange,
                     marginTopDp = marginTopDp,
                     marginRightDp = marginRightDp,
                     marginBottomDp = marginBottomDp,
@@ -3448,6 +3493,7 @@ private fun configKey(
     pageTransition: String,
     pageTransitionDurationMs: Int,
     edgeTapMode: ReaderEdgeTapMode,
+    longPressSelectionRange: LongPressSelectionRange = LongPressSelectionRange.DEFAULT,
     marginTopDp: Float,
     marginRightDp: Float,
     marginBottomDp: Float,
@@ -3484,6 +3530,7 @@ private fun configKey(
     pageTransitionDurationMs,
     VisualMotion.durationScale,
     edgeTapMode.key,
+    longPressSelectionRange.storageKey,
     marginTopDp,
     marginRightDp,
     marginBottomDp,
@@ -3526,6 +3573,7 @@ private fun configureReader(
     pageTransitionDurationMs: Int,
     edgeTapMode: ReaderEdgeTapMode,
     marginTopDp: Float,
+    longPressSelectionRange: LongPressSelectionRange = LongPressSelectionRange.DEFAULT,
     marginRightDp: Float,
     marginBottomDp: Float,
     marginLeftDp: Float,
@@ -3614,6 +3662,7 @@ private fun configureReader(
         .put("visualDurationScale", VisualMotion.durationScale)
         .put("edgeTapLeft", edgeTapMode.leftAction.toEpubTurnDirection())
         .put("edgeTapRight", edgeTapMode.rightAction.toEpubTurnDirection())
+        .put("longPressSelectionRange", longPressSelectionRange.storageKey)
         .put("canTurnPrevious", chapterIndex > 0)
         .put("canTurnNext", chapterIndex + 1 < session.chapterCount)
         .put(

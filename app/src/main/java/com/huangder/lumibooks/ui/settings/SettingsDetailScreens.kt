@@ -3,6 +3,7 @@ package com.huangder.lumibooks.ui.settings
 import com.huangder.lumibooks.ui.components.lumiCardSurface
 import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
 import com.huangder.lumibooks.ui.icons.AppIcons
+import com.huangder.lumibooks.domain.model.LongPressSelectionRange
 
 import android.content.Intent
 import android.net.Uri
@@ -37,7 +38,9 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -63,6 +66,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -102,8 +106,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import com.huangder.lumibooks.domain.model.AppFontSize
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
@@ -239,7 +246,20 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     LaunchedEffect(Unit) { viewModel.refreshInstalledTtsEngines() }
+    var showSelectionRangeDialog by rememberSaveable { mutableStateOf(false) }
+    val selectionRanges = listOf(
+        LongPressSelectionRange.PARAGRAPH to stringResource(R.string.selection_range_paragraph),
+        LongPressSelectionRange.LINE to stringResource(R.string.selection_range_line),
+        LongPressSelectionRange.SENTENCE to stringResource(R.string.selection_range_sentence),
+        LongPressSelectionRange.CHARACTER to stringResource(R.string.selection_range_character),
+        LongPressSelectionRange.WORD to stringResource(R.string.selection_range_word)
+    )
     DetailCard {
+        SettingsNavigationRow(
+            stringResource(R.string.default_selection_range),
+            selectionRanges.first { it.first == uiState.longPressSelectionRange }.second
+        ) { showSelectionRangeDialog = true }
+        SettingsDivider()
         Row(
             Modifier.fillMaxWidth().clickable {
                 context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "selection_menu"))
@@ -269,6 +289,28 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
             ?: stringResource(R.string.tts_engine_unavailable)
     }
     var showEngineDialog by remember { mutableStateOf(false) }
+    if (showSelectionRangeDialog) {
+        LiquidGlassAlertDialog(
+            onDismissRequest = { showSelectionRangeDialog = false },
+            title = { Text(stringResource(R.string.default_selection_range), color = AppColors.TextPrimary) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.default_selection_range_description), color = AppColors.TextSecondary)
+                    selectionRanges.forEach { (range, label) ->
+                        TtsProviderOptionRow(title = label, selected = uiState.longPressSelectionRange == range,
+                            onClick = {
+                                viewModel.saveLongPressSelectionRange(range)
+                                showSelectionRangeDialog = false
+                            })
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                LiquidGlassTextButton(text = stringResource(R.string.cancel), onClick = { showSelectionRangeDialog = false })
+            }
+        )
+    }
     var showTtsStartDialog by remember { mutableStateOf(false) }
     var showListeningResumeDialog by remember { mutableStateOf(false) }
     val ttsStartOptions = listOf(
@@ -764,6 +806,7 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
 }
 
 @Composable
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 private fun TxtTocRulesManagerRow(viewModel: SettingsViewModel) {
     val context = LocalContext.current
     val rules by viewModel.txtTocCustomRules.collectAsState(initial = emptyList())
@@ -886,7 +929,7 @@ private fun TxtTocRulesManagerRow(viewModel: SettingsViewModel) {
                             }) { Icon(AppIcons.TrashSimple, "删除", tint = AppColors.TextSecondary) }
                         }
                     }
-                    Row {
+                    FlowRow {
                         TextButton(onClick = {
                             viewModel.importTxtTocCompatibilityPreset { result ->
                                 val message = result.fold(
@@ -913,15 +956,15 @@ private fun TxtTocRulesManagerRow(viewModel: SettingsViewModel) {
                 }
             },
             confirmButton = {
-                Row {
-                    TextButton(onClick = { importLauncher.launch(arrayOf("application/json", "text/*")) }) { Text("导入") }
+                FlowRow {
+                    TextButton(onClick = { importLauncher.launch(arrayOf("application/json", "text/*")) }) { Text("导入", maxLines = 1, softWrap = false) }
                     TextButton(onClick = {
                         viewModel.exportTxtTocRules { payload ->
                             pendingExport = payload
                             exportLauncher.launch("lumi-txt-toc-rules.json")
                         }
-                    }) { Text("导出") }
-                    TextButton(onClick = { dialogVisible = false }) { Text("完成") }
+                    }) { Text("导出", maxLines = 1, softWrap = false) }
+                    TextButton(onClick = { dialogVisible = false }) { Text("完成", maxLines = 1, softWrap = false) }
                 }
             }
         )
@@ -1111,6 +1154,26 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
         SettingsDivider()
         DropdownSettingRow(label = stringResource(R.string.label_global_font), options = globalFontOptions,
             selected = uiState.globalFontMode, onSelect = viewModel::saveGlobalFontMode)
+        SettingsDivider()
+        DropdownSettingRow(
+            label = stringResource(R.string.label_app_font_size),
+            options = listOf(
+                AppFontSize.EXTRA_SMALL.storedValue to stringResource(R.string.app_font_size_extra_small),
+                AppFontSize.SMALL.storedValue to stringResource(R.string.app_font_size_small),
+                AppFontSize.STANDARD.storedValue to stringResource(R.string.app_font_size_standard),
+                AppFontSize.MEDIUM.storedValue to stringResource(R.string.app_font_size_medium),
+                AppFontSize.LARGE.storedValue to stringResource(R.string.app_font_size_large),
+                AppFontSize.EXTRA_LARGE.storedValue to stringResource(R.string.app_font_size_extra_large)
+            ),
+            selected = uiState.appFontSize.storedValue,
+            onSelect = viewModel::saveAppFontSize
+        )
+        Text(
+            stringResource(R.string.app_font_size_hint),
+            fontSize = AppType.Caption,
+            color = AppColors.TextSecondary,
+            modifier = Modifier.padding(start = AppSpace.md, end = AppSpace.md, bottom = AppSpace.md)
+        )
         SettingsDivider()
         SettingsSwitchRow(stringResource(R.string.label_card_outlines), checked = uiState.cardOutlinesEnabled,
             onCheckedChange = viewModel::saveCardOutlinesEnabled)
@@ -2818,7 +2881,7 @@ fun HighlightColorDetail(viewModel: SettingsViewModel) {
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp),
+                        .heightIn(min = 52.dp),
                     shape = g2CardShape,
                     tintedColor = AppColors.Accent,
                     prominentShadow = true,
@@ -2834,7 +2897,10 @@ fun HighlightColorDetail(viewModel: SettingsViewModel) {
                     Text(
                         stringResource(R.string.highlight_create_palette),
                         color = Color.White,
-                        fontSize = AppType.BodySmall
+                        fontSize = AppType.BodySmall,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 }
             }
@@ -3418,105 +3484,136 @@ internal fun DropdownSettingRow(
     selected: String,
     onSelect: (String) -> Unit
 ) {
+    val density = LocalDensity.current
+    val measurer = rememberTextMeasurer()
+    val optionStyle = LocalTextStyle.current.copy(fontSize = AppType.BodySmall)
+    val labelStyle = LocalTextStyle.current.copy(fontSize = AppType.Body)
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(AppSpace.md)) {
+        val optionWidth = options.maxOfOrNull { (_, display) ->
+            measurer.measure(display, optionStyle, softWrap = false).size.width
+        } ?: 0
+        val selectorWidth = maxOf(138.dp, with(density) { optionWidth.toDp() } + 48.dp)
+            .coerceAtMost(maxWidth)
+        val labelWidth = with(density) {
+            measurer.measure(label, labelStyle, softWrap = false).size.width.toDp()
+        } + if (icon != null) 22.dp + AppSpace.md else 0.dp
+        val labelContent: @Composable () -> Unit = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (icon != null) {
+                    Icon(icon, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(AppSpace.md))
+                }
+                Text(label, fontSize = AppType.Body, color = AppColors.TextPrimary)
+            }
+        }
+        if (labelWidth + AppSpace.md + selectorWidth > maxWidth) {
+            Column(verticalArrangement = Arrangement.spacedBy(AppSpace.sm)) {
+                labelContent()
+                SettingsDropdownControl(options, selected, selectorWidth, onSelect)
+            }
+        } else {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween) {
+                labelContent()
+                SettingsDropdownControl(options, selected, selectorWidth, onSelect)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsDropdownControl(
+    options: List<Pair<String, String>>,
+    selected: String,
+    selectorWidth: androidx.compose.ui.unit.Dp,
+    onSelect: (String) -> Unit
+) {
     var expanded by remember { mutableStateOf(false) }
     var menuAnchorBounds by remember { mutableStateOf(Rect.Zero) }
     val selectedLabel = options.firstOrNull { it.first == selected }?.second.orEmpty()
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val liquidMenuHost = LocalLiquidGlassMenuHost.current
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(AppSpace.md),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (icon != null) {
-            Icon(icon, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
-            Spacer(Modifier.width(AppSpace.md))
-        }
-        Text(
-            label,
-            fontSize = AppType.Body,
-            color = AppColors.TextPrimary,
-            modifier = Modifier.weight(1f)
-        )
-        Box {
-            Row(
-                modifier = Modifier
-                    .width(138.dp)
-                    .height(42.dp)
-                    .liquidGlassMenuAnchor(cornerRadius = 14.dp)
-                    .clip(AppRoundedCornerShape(14.dp))
-                    .background(AppColors.PageBg)
-                    .border(1.dp, AppColors.Divider, AppRoundedCornerShape(14.dp))
-                    .onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
-                    .clickable {
-                        if (liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
-                            liquidMenuHost.toggle(
-                                LiquidGlassMenuSpec(
-                                    anchorBounds = menuAnchorBounds,
-                                    width = 138.dp,
-                                    anchorCornerRadius = 14.dp,
-                                    items = options.map { (key, display) ->
-                                        LiquidGlassMenuItem(
-                                            label = display,
-                                            selected = key == selected,
-                                            onClick = { onSelect(key) }
-                                        )
-                                    }
-                                )
+    Box(Modifier.width(selectorWidth)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 42.dp)
+                .liquidGlassMenuAnchor(cornerRadius = 14.dp)
+                .clip(AppRoundedCornerShape(14.dp))
+                .background(AppColors.PageBg)
+                .border(1.dp, AppColors.Divider, AppRoundedCornerShape(14.dp))
+                .onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
+                .clickable {
+                    if (liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
+                        liquidMenuHost.toggle(
+                            LiquidGlassMenuSpec(
+                                anchorBounds = menuAnchorBounds,
+                                width = selectorWidth,
+                                anchorCornerRadius = 14.dp,
+                                items = options.map { (key, display) ->
+                                    LiquidGlassMenuItem(
+                                        label = display,
+                                        selected = key == selected,
+                                        onClick = { onSelect(key) }
+                                    )
+                                }
                             )
-                        } else {
-                            expanded = true
-                        }
+                        )
+                    } else {
+                        expanded = true
                     }
-                    .padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    selectedLabel,
-                    fontSize = AppType.BodySmall,
-                    color = AppColors.TextPrimary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.weight(1f)
-                )
-                Icon(
-                    AppIcons.CaretDown,
-                    contentDescription = null,
-                    tint = AppColors.TextSecondary,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false },
-                modifier = Modifier.width(138.dp),
-                shape = AppRoundedCornerShape(16.dp),
-                containerColor = AppColors.WindowBg,
-                border = BorderStroke(1.dp, AppColors.Divider),
-                shadowElevation = 0.dp,
-                tonalElevation = 0.dp
-            ) {
-                options.forEach { (key, display) ->
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                display,
-                                modifier = Modifier.fillMaxWidth(),
-                                color = if (key == selected) AppColors.Accent else AppColors.TextPrimary,
-                                fontSize = AppType.BodySmall,
-                                fontWeight = if (key == selected) FontWeight.SemiBold else FontWeight.Normal,
-                                textAlign = TextAlign.Center
-                            )
-                        },
-                        onClick = {
-                            onSelect(key)
-                            expanded = false
-                        }
-                    )
                 }
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Text(
+                selectedLabel,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+                fontSize = AppType.BodySmall,
+                color = AppColors.TextPrimary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f)
+            )
+            Icon(
+                AppIcons.CaretDown,
+                contentDescription = null,
+                tint = AppColors.TextSecondary,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.width(selectorWidth),
+            shape = AppRoundedCornerShape(16.dp),
+            containerColor = AppColors.WindowBg,
+            border = BorderStroke(1.dp, AppColors.Divider),
+            shadowElevation = 0.dp,
+            tonalElevation = 0.dp
+        ) {
+            options.forEach { (key, display) ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            display,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.fillMaxWidth(),
+                            color = if (key == selected) AppColors.Accent else AppColors.TextPrimary,
+                            fontSize = AppType.BodySmall,
+                            fontWeight = if (key == selected) FontWeight.SemiBold else FontWeight.Normal,
+                            textAlign = TextAlign.Center
+                        )
+                    },
+                    onClick = {
+                        onSelect(key)
+                        expanded = false
+                    }
+                )
             }
         }
     }

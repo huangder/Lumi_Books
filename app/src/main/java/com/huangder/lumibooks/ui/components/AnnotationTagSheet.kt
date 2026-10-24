@@ -35,15 +35,17 @@ import com.huangder.lumibooks.ui.icons.AppIcons
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppType
 import com.kyant.backdrop.Backdrop
+import kotlinx.coroutines.launch
 
 @Composable
 fun AnnotationTagSheet(
     selected: List<String>, available: List<String>,
-    onSave: (List<String>) -> Unit, onDismiss: () -> Unit,
+    onSave: suspend (List<String>) -> Unit, onDismiss: () -> Unit,
     onRename: ((String, String) -> Unit)? = null,
     onDelete: ((String) -> Unit)? = null,
     managementOnly: Boolean = false,
-    backdrop: Backdrop? = null
+    backdrop: Backdrop? = null,
+    onCreate: (suspend (String) -> Unit)? = null
 ) {
     // Preserve the unsaved selection when global operations update the Room flow.
     var chosen by remember { mutableStateOf(selected.toSet()) }
@@ -51,20 +53,33 @@ fun AnnotationTagSheet(
     var renaming by remember { mutableStateOf<String?>(null) }
     var renameText by remember { mutableStateOf("") }
     var deleting by remember { mutableStateOf<String?>(null) }
-    val names = (available + chosen).distinct().sorted()
+    var created by remember { mutableStateOf(emptySet<String>()) }
+    var isCreating by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val names = (available + chosen + created).distinct().sorted()
     val screenHeight = LocalConfiguration.current.screenHeightDp
     val compactHeight = screenHeight < 480
     val sheetOffset = remember { Animatable(1f) }
     var isClosing by remember { mutableStateOf(false) }
     var pendingSave by remember { mutableStateOf<List<String>?>(null) }
     val secondary = renaming != null || deleting != null
-    val dismiss = { if (secondary) { renaming = null; deleting = null } else { isClosing = true } }
+    val dismiss = {
+        if (pendingSave == null && !isCreating) {
+            if (secondary) { renaming = null; deleting = null } else { isClosing = true }
+        }
+    }
     val predictiveBackProgress = ConfigurableBottomSheetBackHandler(onBack = dismiss)
     LaunchedEffect(Unit) { sheetOffset.animateBottomSheetIn() }
     LaunchedEffect(isClosing) {
         if (isClosing) {
             sheetOffset.animateBottomSheetOut()
-            pendingSave?.let(onSave) ?: onDismiss()
+            onDismiss()
+        }
+    }
+    LaunchedEffect(pendingSave) {
+        pendingSave?.let { tags ->
+            onSave(tags)
+            isClosing = true
         }
     }
 
@@ -115,12 +130,25 @@ fun AnnotationTagSheet(
                                     onRename = onRename?.let { { renaming = name; renameText = name } },
                                     onDelete = onDelete?.let { { deleting = name } })
                             }
-                            if (!managementOnly) {
+                            if (!managementOnly || onCreate != null) {
                                 AnnotationTagNameField(newName, { newName = it }, stringResource(R.string.annotation_tag_new))
                                 LiquidGlassTextButton(
                                     text = stringResource(R.string.annotation_tag_add),
-                                    enabled = newName.isNotBlank(),
-                                    onClick = { chosen = chosen + newName.trim(); newName = "" }
+                                    enabled = newName.isNotBlank() && !isCreating && pendingSave == null,
+                                    onClick = {
+                                        val name = newName.trim()
+                                        isCreating = true
+                                        scope.launch {
+                                            try {
+                                                onCreate?.invoke(name)
+                                                created = created + name
+                                                if (!managementOnly) chosen = chosen + name
+                                                newName = ""
+                                            } finally {
+                                                isCreating = false
+                                            }
+                                        }
+                                    }
                                 )
                             }
                         }
@@ -132,7 +160,7 @@ fun AnnotationTagSheet(
                     LiquidGlassTextButton(
                         text = stringResource(if (deleting != null) R.string.delete else R.string.confirm),
                         modifier = Modifier.weight(1f), tintedColor = AppColors.Accent,
-                        enabled = renaming == null || renameText.isNotBlank(),
+                        enabled = pendingSave == null && !isCreating && !isClosing && (renaming == null || renameText.isNotBlank()),
                         onClick = {
                             val old = renaming
                             val removed = deleting
@@ -141,16 +169,20 @@ fun AnnotationTagSheet(
                                     val next = renameText.trim()
                                     if (next != old) {
                                         chosen = AnnotationTags.rename(chosen.toList(), old, next).toSet()
+                                        created = AnnotationTags.rename(created.toList(), old, next).toSet()
                                         onRename?.invoke(old, next)
                                     }
                                     renaming = null
                                 }
                                 removed != null -> {
                                     chosen = chosen - removed
+                                    created = created - removed
                                     onDelete?.invoke(removed)
                                     deleting = null
                                 }
-                                else -> { pendingSave = AnnotationTags.normalize(chosen + newName); isClosing = true }
+                                else -> {
+                                    pendingSave = AnnotationTags.normalize(chosen + newName)
+                                }
                             }
                         }
                     )

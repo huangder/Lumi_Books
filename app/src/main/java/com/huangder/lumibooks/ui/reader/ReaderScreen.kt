@@ -33,6 +33,7 @@ import android.text.style.ImageSpan
 import android.text.style.URLSpan
 import android.util.Log
 import android.view.ContextThemeWrapper
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.graphics.Bitmap
 import android.webkit.WebChromeClient
@@ -182,6 +183,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import com.huangder.lumibooks.ui.theme.LocalAppBaseDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -305,7 +307,7 @@ import com.huangder.lumibooks.util.parser.TxtTocRuleBuiltIns
 import com.huangder.lumibooks.util.parser.TxtTocRuleCompiler
 import com.huangder.lumibooks.util.parser.TxtTocRuleDiagnostics
 import com.huangder.lumibooks.MainActivity
-import com.huangder.lumibooks.ReaderPageDirection
+import com.huangder.lumibooks.domain.model.ReaderVolumeKeyAction
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.R
@@ -1317,6 +1319,7 @@ fun ReaderScreen(
         viewModel.dismissMarkdownSourceMessage()
     }
     var pendingExportThemeId by remember { mutableStateOf<String?>(null) }
+    var epubLayoutPreviewActive by remember { mutableStateOf(false) }
     val exportThemeLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -1434,7 +1437,7 @@ fun ReaderScreen(
             uiState.bodyFontWeight, uiState.lineHeight, uiState.letterSpacing,
             uiState.marginLeftDp, uiState.marginRightDp, uiState.marginTopDp, uiState.marginBottomDp,
             LocalConfiguration.current.screenWidthDp, LocalConfiguration.current.screenHeightDp,
-            density.density, density.fontScale)
+            density.density, (LocalAppBaseDensity.current ?: density).fontScale)
     val setOriginalPaginationSignature: (String) -> Unit = { signature ->
         if (originalPaginationSignature != signature) {
             originalPaginationSignature = signature
@@ -1935,12 +1938,8 @@ fun ReaderScreen(
         // pageReady can describe the renderer's first page before the saved locator
         // has been applied. Never reveal that page: it is the chapter opening and
         // causes a visible flash before the real reading position appears.
-        val restoreSettled = uiState.pendingReaderPosition == null &&
-            uiState.pendingPageFraction <= 0f
         if (!firstContentReported && (epubRenderFailure != null ||
-            (restoreSettled && !uiState.isLoading &&
-                (!isContinuousScrollMode || continuousFirstContentDrawn) &&
-                (uiState.pageReady || uiState.error != null)))
+            readerFirstContentReady(uiState, isContinuousScrollMode, continuousFirstContentDrawn))
         ) {
             ReaderOpenPerformance.updateState(
                 bookId = bookId,
@@ -2287,7 +2286,9 @@ fun ReaderScreen(
     val latestBookmarkPullStart = rememberUpdatedState(onBookmarkPullStart)
     val latestBookmarkPullProgress = rememberUpdatedState(onBookmarkPullProgress)
     val latestBookmarkPullFinished = rememberUpdatedState(onBookmarkPullFinished)
-    val bookmarkContentOffsetPx = if (bookmarkPullActive) {
+    val bookmarkContentOffsetPx = if (isBookLayout) {
+        0f
+    } else if (bookmarkPullActive) {
         bookmarkPullDistancePx
     } else {
         bookmarkSettleAnimation?.value ?: 0f
@@ -2334,7 +2335,9 @@ fun ReaderScreen(
         }
     }
 
-    val shouldHandleVolumePageTurn = uiState.volumeKeyPageTurnEnabled &&
+    val shouldHandleVolumeKeys =
+        (uiState.volumeKeyUpAction != ReaderVolumeKeyAction.SYSTEM_VOLUME ||
+            uiState.volumeKeyDownAction != ReaderVolumeKeyAction.SYSTEM_VOLUME) &&
         !uiState.isMenuVisible &&
         !isAnySheetOpen &&
         epubNavigationRequest == null &&
@@ -2342,24 +2345,57 @@ fun ReaderScreen(
 
     DisposableEffect(
         activity,
-        shouldHandleVolumePageTurn,
+        shouldHandleVolumeKeys,
+        uiState.volumeKeyUpAction,
+        uiState.volumeKeyDownAction,
         isBookLayout,
         epubPageTurnHandler
     ) {
-        if (!shouldHandleVolumePageTurn || activity == null) {
+        if (!shouldHandleVolumeKeys || activity == null) {
             return@DisposableEffect onDispose { }
         }
 
-        val handler: (ReaderPageDirection) -> Unit = { direction ->
-            beginManualReaderBrowsing()
-            if (isBookLayout) {
-                val delta = if (direction == ReaderPageDirection.NEXT) 1 else -1
-                epubPageTurnHandler?.invoke(delta)
+        val handler: (KeyEvent) -> Boolean = { event ->
+            val action = when (event.keyCode) {
+                KeyEvent.KEYCODE_VOLUME_UP -> uiState.volumeKeyUpAction
+                KeyEvent.KEYCODE_VOLUME_DOWN -> uiState.volumeKeyDownAction
+                else -> ReaderVolumeKeyAction.SYSTEM_VOLUME
+            }
+            val effectiveAction = resolveReaderVolumeKeyAction(action, supportsFontSize = true)
+            if (effectiveAction == ReaderVolumeKeyAction.SYSTEM_VOLUME) {
+                false
             } else {
-                when (direction) {
-                    ReaderPageDirection.PREVIOUS -> readViewRef.value?.turnToPreviousPage()
-                    ReaderPageDirection.NEXT -> readViewRef.value?.turnToNextPage()
+                if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                    when (effectiveAction) {
+                        ReaderVolumeKeyAction.PREVIOUS_PAGE,
+                        ReaderVolumeKeyAction.NEXT_PAGE -> {
+                            beginManualReaderBrowsing()
+                            val next = action == ReaderVolumeKeyAction.NEXT_PAGE
+                            if (isBookLayout) {
+                                epubPageTurnHandler?.invoke(if (next) 1 else -1)
+                            } else if (next) {
+                                readViewRef.value?.turnToNextPage()
+                            } else {
+                                readViewRef.value?.turnToPreviousPage()
+                            }
+                        }
+                        ReaderVolumeKeyAction.BRIGHTNESS_DOWN,
+                        ReaderVolumeKeyAction.BRIGHTNESS_UP -> {
+                            viewModel.adjustBrightnessBy(
+                                if (effectiveAction == ReaderVolumeKeyAction.BRIGHTNESS_UP) 0.05f else -0.05f
+                            )
+                        }
+                        ReaderVolumeKeyAction.FONT_SIZE_DOWN,
+                        ReaderVolumeKeyAction.FONT_SIZE_UP -> {
+                            viewModel.adjustFontSizeBy(
+                                if (effectiveAction == ReaderVolumeKeyAction.FONT_SIZE_UP) 1 else -1
+                            )
+                        }
+                        ReaderVolumeKeyAction.TOGGLE_BOOKMARK -> toggleBookmarkForCurrentPage(false)
+                        ReaderVolumeKeyAction.SYSTEM_VOLUME -> Unit
+                    }
                 }
+                true
             }
         }
         activity.readerVolumeKeyHandler = handler
@@ -2870,7 +2906,7 @@ fun ReaderScreen(
             val markdownSource = viewModel.getMarkdownBlockSource()
             if (uiState.book?.format?.name == "MARKDOWN" && markdownSource != null) {
                 // Native offsets refer to visible Markdown text, not the old DOM/source positions.
-                val markdownNotes = remember(readerNotes, currentRulePreviewNotes, knownHighlightRuleIds) {
+                val markdownNotes = remember(readerNotes, currentRulePreviewNotes, knownHighlightRuleIds, activeHighlightPalette) {
                     readerNotes.filterNot { it.isGeneratedByHighlightRule && it.sourceRuleId in knownHighlightRuleIds }
                         .map { it.copy(color = resolveReaderHighlightColor(it.color)) } + currentRulePreviewNotes
                 }
@@ -2933,6 +2969,7 @@ fun ReaderScreen(
                 androidx.compose.runtime.key(epubRetryToken) {
                 EpubWebViewReader(
                     session = activeEpubSession,
+                    layoutPreviewActive = epubLayoutPreviewActive,
                     onReleaseHandlerReady = { epubReleaseHandler = it },
                     imageAdjustments = uiState.imageAdjustments.forDisplay(eInkMode),
                     chapterIndex = uiState.currentChapterIndex,
@@ -2987,6 +3024,7 @@ fun ReaderScreen(
                     marginBottomDp = uiState.marginBottomDp,
                     marginLeftDp = uiState.marginLeftDp,
                     edgeTapMode = uiState.readerEdgeTapMode,
+                    longPressSelectionRange = uiState.longPressSelectionRange,
                     // Keep all notes available; each EPUB WebView routes them by loaded chapter.
                     notes = renderedEpubNotes,
                     ttsCurrentSentence = ttsCurrentSentence,
@@ -3392,6 +3430,7 @@ fun ReaderScreen(
                         ttsState.playbackState != TtsPlaybackState.IDLE,
                     chineseMode = uiState.chineseMode,
                     ttsCurrentSentence = ttsCurrentSentence,
+                    longPressSelectionRange = uiState.longPressSelectionRange,
                     comicModeEnabled = uiState.comicModeEnabled,
                     ttsFollowEnabled = ttsReaderFollowEnabled,
                     onManualScrollStarted = ::beginManualReaderBrowsing,
@@ -3662,6 +3701,7 @@ fun ReaderScreen(
                         uiState.lineGuideDimLevel)
                     readView.setImageAdjustments(uiState.imageAdjustments.forDisplay(eInkMode))
                     readView.setBookmarkPullEnabled(bookmarkPullEnabled)
+                    readView.setLongPressSelectionRange(uiState.longPressSelectionRange)
                     val fontSizePx = uiState.fontSize * density.density
                     val pageTransition = if (isContinuousScrollMode) lastPagedTransition else effectivePageTransition
                     readView.applyRenderConfig(
@@ -4397,6 +4437,8 @@ fun ReaderScreen(
                     pitchMode = ttsState.pitchMode,
                     usesAndroidTts = ttsState.usesAndroidTts,
                     sleepTimerRemainingMs = ttsState.sleepTimerRemainingMs,
+                    sleepTimerDurationMs = ttsState.sleepTimerDurationMs,
+                    followUserPageTurns = ttsState.followUserPageTurns,
                     onPlayPause = viewModel::toggleTtsPlayPause,
                     onStop = viewModel::stopTts,
                     onSkipForward = viewModel::ttsSkipForward,
@@ -4407,6 +4449,7 @@ fun ReaderScreen(
                     onPitchModeChange = viewModel::setTtsPitchMode,
                     onSetSleepTimer = viewModel::setSleepTimer,
                     onCancelSleepTimer = viewModel::cancelSleepTimer,
+                    onFollowUserPageTurnsChange = viewModel::setTtsFollowUserPageTurns,
                     onReturnToProgress = returnToTtsProgress,
                     onStartFromCurrentPage = { startTtsFromCurrentPage(false) },
                     canReturnToProgress = !ttsReaderFollowEnabled || ttsCurrentPage?.location?.let { location ->
@@ -4526,6 +4569,7 @@ fun ReaderScreen(
                 availableTags = availableAnnotationTags,
                 onEditBookmarkTags = annotationTagState::editBookmark,
                 onEditBookmarkRemark = { bm, remark, tags -> viewModel.updateBookmarkRemarkAndTags(bm.syncId, remark, tags) },
+                onCreateTag = viewModel::createAnnotationTag,
                 onDismiss = { showToc = false; requestCloseToc = false }
             )
 
@@ -4566,6 +4610,7 @@ fun ReaderScreen(
                 editingDark = uiState.themeEditingDark,
                 onFontSizeChange = { viewModel.saveFontSize(it) },
                 onFontSizePreview = viewModel::previewFontSize,
+                onLayoutPreviewActiveChange = { epubLayoutPreviewActive = it },
                 onThemeChange = { viewModel.saveReaderTheme(it) },
                 onModeThemeChange = viewModel::saveReaderThemeForMode,
                 onModeChange = viewModel::selectThemeEditMode,
@@ -4814,7 +4859,9 @@ fun ReaderScreen(
                 fontDownloadKey = uiState.fontDownloadKey,
                 fontDownloadFailed = uiState.fontDownloadFailed,
                 onLineHeightChange = { viewModel.saveLineHeight(it) },
+                onLineHeightPreview = viewModel::previewLineHeight,
                 onLetterSpacingChange = { viewModel.saveLetterSpacing(it) },
+                onLetterSpacingPreview = viewModel::previewLetterSpacing,
                 onTextAlignmentChange = viewModel::saveTextAlignment,
                 onFontTypeChange = { viewModel.saveFontType(it) },
                 onImportFont = { uri, displayName ->
@@ -4847,19 +4894,23 @@ fun ReaderScreen(
                 currentParagraphSpacing = editorThemeSettings.paragraphSpacing,
                 currentFirstLineIndent = editorThemeSettings.firstLineIndent,
                 onParagraphSpacingChange = { viewModel.saveParagraphSpacing(it) },
+                onParagraphSpacingPreview = viewModel::previewParagraphSpacing,
                 onFirstLineIndentChange = { viewModel.saveFirstLineIndent(it) },
+                onFirstLineIndentPreview = viewModel::previewFirstLineIndent,
+                onLayoutPreviewActiveChange = { epubLayoutPreviewActive = it },
                 readerTopLeftContent = uiState.readerTopLeftContent,
                 readerTopRightContent = uiState.readerTopRightContent,
                 readerBottomLeftContent = uiState.readerBottomLeftContent,
                 readerBottomRightContent = uiState.readerBottomRightContent,
-                volumeKeyPageTurnEnabled = uiState.volumeKeyPageTurnEnabled,
+                volumeKeyUpAction = uiState.volumeKeyUpAction,
+                volumeKeyDownAction = uiState.volumeKeyDownAction,
                 bookmarkRemarkPromptEnabled = uiState.bookmarkRemarkPromptEnabled,
                 bionicReadingEnabled = uiState.bionicReadingEnabled,
                 comicModeEnabled = uiState.comicModeEnabled,
                 screenSleepTimeoutSeconds = uiState.screenSleepTimeoutSeconds,
                 readerEdgeTapMode = uiState.readerEdgeTapMode,
                 onReaderCornerContentChange = viewModel::saveReaderCornerContent,
-                onVolumeKeyPageTurnEnabledChange = { viewModel.saveVolumeKeyPageTurnEnabled(it) },
+                onVolumeKeyActionsChange = { up, down -> viewModel.saveVolumeKeyActions(up, down) },
                 onBookmarkRemarkPromptEnabledChange = viewModel::saveBookmarkRemarkPromptEnabled,
                 onBionicReadingEnabledChange = viewModel::saveBionicReadingEnabled,
                 onComicModeChange = viewModel::saveComicMode,
@@ -4958,6 +5009,7 @@ fun ReaderScreen(
         visible = showNotesList,
         requestClose = requestCloseNotesList,
         glassBackdrop = activeReaderGlassBackdrop,
+        forceSolid = isBookLayout,
         notes = viewModel.notes.collectAsState().value,
         onNoteClick = noteClick@ { note ->
             if (note.isStale) {
@@ -5041,7 +5093,7 @@ fun ReaderScreen(
     fun selectionForAction(): SelectionState? {
         val menu = selectionState ?: return null
         if (menu.annotationOnly) return menu
-        if (!isContinuousScrollMode) return menu
+        if (!isContinuousScrollMode || isMarkdownNative) return menu
         val current = continuousSelectionController.currentSelection()
         val text = continuousSelectionController.activeView?.text
         if (current == null || text == null || current.chapterIndex != menu.chapterIndex) {
@@ -5222,6 +5274,7 @@ fun ReaderScreen(
                 updateUnderlineStyle(viewModel, selection, mode)
             }
             selectionState = null
+            clearActiveTextSelection()
         },
         onDeleteHighlight = {
             removeSelectedAnnotation("highlight")
@@ -5362,6 +5415,7 @@ fun ReaderScreen(
         visible = showNoteInput,
         requestClose = requestCloseNoteInput,
         glassBackdrop = activeReaderGlassBackdrop,
+        keepReaderViewport = isBookLayout,
         noteText = noteInputText,
         onTextChange = { noteInputText = it },
         editingNote = editingNote,
@@ -5384,9 +5438,11 @@ fun ReaderScreen(
     )
 
     ReaderBookmarkRemarkSheet(
+        onCreateTag = viewModel::createAnnotationTag,
         bookmarkId = pendingBookmarkRemarkId,
         text = bookmarkRemarkText,
         backdrop = activeReaderGlassBackdrop,
+        keepReaderViewport = isBookLayout,
         onTextChange = { bookmarkRemarkText = it },
         tags = bookmarkRemarkTags,
         availableTags = availableAnnotationTags,
@@ -7033,7 +7089,7 @@ private fun CatalogChapterButton(
 }
 
 @Composable
-private fun ActionCapsule(
+internal fun ActionCapsule(
     icon: ImageVector,
     label: String,
     bgColor: Color,
@@ -7044,6 +7100,11 @@ private fun ActionCapsule(
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
+    val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
+    val labelWidth = with(density) {
+        textMeasurer.measure(label, LocalTextStyle.current.copy(fontSize = 13.sp), softWrap = false).size.width.toDp()
+    }
     LiquidGlassSurface(
         controlEdge = true,
         shape = AppRoundedCornerShape(22.dp),
@@ -7051,21 +7112,27 @@ private fun ActionCapsule(
         contentScrimColor = glassContentScrimColor,
         forceFallback = forceSolid,
         modifier = modifier
-            .height(44.dp),
+            .heightIn(min = 44.dp),
         // 菜单隐藏时父级仅用 graphicsLayer alpha=0 淡出，节点仍在命中测试中；
         // 必须卸载 clickable 才能让触摸穿透回正文
         onClick = if (enabled) onClick else null
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(6.dp))
-            Text(label, fontSize = 13.sp, color = contentColor)
+        BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp)) {
+            if (labelWidth + 24.dp > maxWidth) {
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(18.dp))
+                    Text(label, fontSize = 13.sp, color = contentColor, maxLines = 1,
+                        softWrap = false, overflow = TextOverflow.Ellipsis)
+                }
+            } else {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center) {
+                    Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(label, fontSize = 13.sp, color = contentColor, maxLines = 1, softWrap = false)
+                }
+            }
         }
     }
 }
@@ -7190,6 +7257,8 @@ internal fun ContinuousScrollReader(
     onFirstContentDrawn: () -> Unit = {},
     onSentenceDoubleTap: (chapterIndex: Int, characterOffset: Int) -> Unit,
     ttsSentenceJumpEnabled: Boolean,
+    longPressSelectionRange: com.huangder.lumibooks.domain.model.LongPressSelectionRange =
+        com.huangder.lumibooks.domain.model.LongPressSelectionRange.DEFAULT,
     chineseMode: String = "original",
     ttsCurrentSentence: TtsSentencePosition? = null,
     comicModeEnabled: Boolean = false,
@@ -7276,7 +7345,7 @@ internal fun ContinuousScrollReader(
     val chapterLayoutKey = ContinuousLayoutKey(contentRevision, contentWidthPx, textContentWidthPx,
         comicModeEnabled, fontSize, bodyFontWeight, lineHeight, letterSpacingDp, paragraphSpacing, firstLineIndent,
         textAlignment, readerTypeface, chineseMode, bionicReadingEnabled, marginTop, marginBottom,
-        readerDensity, LocalDensity.current.fontScale)
+        readerDensity, (LocalAppBaseDensity.current ?: LocalDensity.current).fontScale)
     val currentChapterLayoutKey by rememberUpdatedState(chapterLayoutKey)
     // Keep the viewport mode stable while the visible chapter is being re-decoded after a
     // setting change. Deriving this directly from a cache that is being rebuilt briefly adds
@@ -8191,6 +8260,7 @@ internal fun ContinuousScrollReader(
                         textView.onReaderTap = dispatchMenuToggle
                         textView.savedAnnotations = notes.filter { it.chapterIndex == chapterIndex }
                         textView.ttsJumpEnabled = ttsSentenceJumpEnabled
+                        textView.longPressSelectionRange = longPressSelectionRange
                         textView.onSentenceDoubleTap = { characterOffset ->
                             onSentenceDoubleTap(chapterIndex, characterOffset)
                         }
@@ -8493,6 +8563,7 @@ private fun TocSheet(
     onDeleteBookmark: (com.huangder.lumibooks.domain.model.Bookmark) -> Unit = {},
     availableTags: List<String> = emptyList(),
     onEditBookmarkRemark: (com.huangder.lumibooks.domain.model.Bookmark, String, List<String>) -> Unit = { _, _, _ -> },
+    onCreateTag: (suspend (String) -> Unit)? = null,
     onEditBookmarkTags: (com.huangder.lumibooks.domain.model.Bookmark) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -8984,6 +9055,7 @@ private fun TocSheet(
         availableTags = availableTags,
         onTagsChange = { remarkTags = it },
         onConfirm = { editingRemark?.let { onEditBookmarkRemark(it, remarkText, remarkTags) } },
+        onCreateTag = onCreateTag,
         onDismiss = { editingRemark = null; remarkText = "" },
         title = stringResource(R.string.bookmark_remark_title),
         placeholder = stringResource(R.string.bookmark_remark_placeholder)
@@ -9733,7 +9805,7 @@ private fun SearchSheet(
                     Spacer(Modifier.width(12.dp))
                     Box(
                         modifier = Modifier
-                            .height(48.dp)
+                            .heightIn(min = 48.dp)
                             .clip(AppRoundedCornerShape(24.dp))
                             .background(if (query.isNotBlank()) AccentColor else LightBgGray)
                             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { if (query.isNotBlank()) onSearch() }
@@ -9743,7 +9815,7 @@ private fun SearchSheet(
                         if (isSearching) {
                             CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = AppColors.OnAccent)
                         } else {
-                            Text(stringResource(R.string.reader_search), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = if (query.isNotBlank()) AppColors.OnAccent else LightTextSecondary)
+                            Text(stringResource(R.string.reader_search), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false, color = if (query.isNotBlank()) AppColors.OnAccent else LightTextSecondary)
                         }
                     }
                 }
@@ -10129,6 +10201,7 @@ private fun ReaderSelectionNoteSheet(
     visible: Boolean,
     requestClose: Boolean,
     glassBackdrop: Backdrop?,
+    keepReaderViewport: Boolean,
     noteText: String,
     onTextChange: (String) -> Unit,
     editingNote: com.huangder.lumibooks.domain.model.Note?,
@@ -10143,11 +10216,13 @@ private fun ReaderSelectionNoteSheet(
         visible = visible,
         requestClose = requestClose,
         glassBackdrop = glassBackdrop,
+        keepReaderViewport = keepReaderViewport,
         initialText = noteText,
         onTextChange = onTextChange,
         tags = tags,
         availableTags = availableTags,
         onTagsChange = { tags = it },
+        onCreateTag = viewModel::createAnnotationTag,
         onConfirm = {
             if (editingNote != null) {
                 if (editingNote.note != noteText) {
@@ -11130,7 +11205,7 @@ private fun ReplaceInputSheet(
                         },
                         modifier = Modifier
                             .weight(1f)
-                            .height(52.dp),
+                            .heightIn(min = 52.dp),
                         shape = AppRoundedCornerShape(26.dp),
                         tintedColor = Color.White,
                         prominentShadow = true,
@@ -11140,7 +11215,10 @@ private fun ReplaceInputSheet(
                             text = stringResource(R.string.replace_all),
                             fontSize = 16.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = replaceAllTextColor
+                            color = replaceAllTextColor,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
                     }
                     Spacer(Modifier.width(12.dp))
@@ -11151,7 +11229,7 @@ private fun ReplaceInputSheet(
                         },
                         modifier = Modifier
                             .weight(1f)
-                            .height(52.dp),
+                            .heightIn(min = 52.dp),
                         shape = AppRoundedCornerShape(26.dp),
                         tintedColor = AppColors.Accent,
                         prominentShadow = true,
@@ -11162,7 +11240,10 @@ private fun ReplaceInputSheet(
                             text = stringResource(R.string.replace_this),
                             fontSize = 16.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = AppColors.OnAccent
+                            color = AppColors.OnAccent,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -11418,7 +11499,9 @@ internal fun ReaderBookmarkRemarkSheet(
     tags: List<String> = emptyList(),
     availableTags: List<String> = emptyList(),
     onTagsChange: (List<String>) -> Unit = {},
+    onCreateTag: (suspend (String) -> Unit)? = null,
     backdrop: Backdrop? = null,
+    keepReaderViewport: Boolean = false,
     onTextChange: (String) -> Unit,
     onConfirm: (String, String) -> Unit,
     onDismiss: () -> Unit
@@ -11426,11 +11509,13 @@ internal fun ReaderBookmarkRemarkSheet(
     NoteInputSheet(
         visible = bookmarkId != null,
         glassBackdrop = backdrop,
+        keepReaderViewport = keepReaderViewport,
         initialText = text,
         onTextChange = onTextChange,
         tags = tags,
         availableTags = availableTags,
         onTagsChange = onTagsChange,
+        onCreateTag = onCreateTag,
         onConfirm = { bookmarkId?.let { onConfirm(it, text) } },
         onDismiss = onDismiss,
         title = stringResource(R.string.bookmark_remark_title),
@@ -11444,6 +11529,7 @@ internal fun NoteInputSheet(
     visible: Boolean,
     requestClose: Boolean = false,
     glassBackdrop: Backdrop? = null,
+    keepReaderViewport: Boolean = false,
     initialText: String,
     onTextChange: (String) -> Unit,
     tags: List<String> = emptyList(),
@@ -11453,10 +11539,56 @@ internal fun NoteInputSheet(
     onDismiss: () -> Unit,
     title: String? = null,
     placeholder: String? = null,
-    footer: String? = null
+    footer: String? = null,
+    onCreateTag: (suspend (String) -> Unit)? = null
 ) {
     if (!visible) return
 
+    var windowCloseRequested by remember { mutableStateOf(false) }
+    val sheetContent: @Composable () -> Unit = {
+        NoteInputSheetContent(
+            requestClose = requestClose || windowCloseRequested,
+            glassBackdrop = glassBackdrop,
+            forceSolid = keepReaderViewport,
+            initialText = initialText,
+            onTextChange = onTextChange,
+            tags = tags,
+            availableTags = availableTags,
+            onTagsChange = onTagsChange,
+            onConfirm = onConfirm,
+            onDismiss = onDismiss,
+            title = title,
+            placeholder = placeholder,
+            footer = footer,
+            onCreateTag = onCreateTag
+        )
+    }
+    if (keepReaderViewport) {
+        ReaderNoteWindow(onDismissRequest = { windowCloseRequested = true }) {
+            sheetContent()
+        }
+    } else {
+        sheetContent()
+    }
+}
+
+@Composable
+private fun NoteInputSheetContent(
+    requestClose: Boolean,
+    glassBackdrop: Backdrop?,
+    forceSolid: Boolean,
+    initialText: String,
+    onTextChange: (String) -> Unit,
+    tags: List<String>,
+    availableTags: List<String>,
+    onTagsChange: (List<String>) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    title: String?,
+    placeholder: String?,
+    footer: String?,
+    onCreateTag: (suspend (String) -> Unit)?
+) {
     val sheetOffset = remember { Animatable(1f) }
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -11464,13 +11596,11 @@ internal fun NoteInputSheet(
     var showTagSheet by remember { mutableStateOf(false) }
     val predictiveBackProgress = ConfigurableBottomSheetBackHandler { isClosing = true }
 
-    LaunchedEffect(visible) {
-        if (visible) {
-            sheetOffset.snapTo(1f)
-            sheetOffset.animateBottomSheetIn()
-            focusRequester.requestFocus()
-            keyboard?.show()
-        }
+    LaunchedEffect(Unit) {
+        sheetOffset.snapTo(1f)
+        sheetOffset.animateBottomSheetIn()
+        focusRequester.requestFocus()
+        keyboard?.show()
     }
 
     LaunchedEffect(requestClose) {
@@ -11480,6 +11610,7 @@ internal fun NoteInputSheet(
     LaunchedEffect(isClosing) {
         if (isClosing) {
             sheetOffset.animateBottomSheetOut()
+            keyboard?.hide()
             onDismiss()
         }
     }
@@ -11510,7 +11641,8 @@ internal fun NoteInputSheet(
                 .padding(AppSpace.lg),
             fallbackColor = AppColors.CardBg,
             shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            backdrop = glassBackdrop
+            backdrop = glassBackdrop,
+            forceFallback = forceSolid
         ) {
             Column(Modifier.fillMaxSize().padding(top = 2.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -11568,9 +11700,10 @@ internal fun NoteInputSheet(
         if (showTagSheet) {
             AnnotationTagSheet(
                 selected = tags,
+                onCreate = onCreateTag,
                 backdrop = glassBackdrop,
                 available = availableTags,
-                onSave = { onTagsChange(it); showTagSheet = false },
+                onSave = { onTagsChange(it) },
                 onDismiss = { showTagSheet = false }
             )
         }
@@ -11592,6 +11725,7 @@ internal fun NotesListSheet(
     visible: Boolean,
     requestClose: Boolean = false,
     glassBackdrop: Backdrop? = null,
+    forceSolid: Boolean = false,
     notes: List<com.huangder.lumibooks.domain.model.Note>,
     onNoteClick: (com.huangder.lumibooks.domain.model.Note) -> Unit,
     onShareNote: (com.huangder.lumibooks.domain.model.Note) -> Unit,
@@ -11670,7 +11804,8 @@ internal fun NotesListSheet(
                 .padding(start = 20.dp, top = if (compactHeight) 12.dp else 20.dp, end = 20.dp),
             fallbackColor = LightCardBg,
             shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            backdrop = glassBackdrop
+            backdrop = glassBackdrop,
+            forceFallback = forceSolid
         ) {
             // 标题栏
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

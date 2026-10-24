@@ -22,7 +22,7 @@ internal data class NativeEpubRenderConfig(val width: Int, val height: Int, val 
     val lineHeightOverride: Float? = null, val paragraphSpacingPx: Float? = null,
     val firstLineIndentChars: Float? = null, val publisherNightShade: Boolean = false,
     val embeddedTypefaces: List<NativeEpubResolvedFont> = emptyList())
-internal data class NativeEpubHit(val start: Int, val end: Int, val bounds: RectF)
+internal data class NativeEpubHit(val start: Int, val end: Int, val bounds: RectF, val lineRange: IntRange? = null)
 internal sealed interface NativeEpubDrawItem {
     val start: Int
     val end: Int
@@ -49,7 +49,9 @@ internal class NativeEpubHorizontalItem(override val start: Int, override val en
         val local = layout.getOffsetForHorizontal(line, px)
         return NativeEpubHit(start + local - layout.getLineStart(firstLine), start + local - layout.getLineStart(firstLine) + 1,
             RectF(this.x + layout.getPrimaryHorizontal(local), this.y + layout.getLineTop(line) - firstY,
-                this.x + layout.getPrimaryHorizontal((local + 1).coerceAtMost(layout.text.length)), this.y + layout.getLineBottom(line) - firstY))
+                this.x + layout.getPrimaryHorizontal((local + 1).coerceAtMost(layout.text.length)), this.y + layout.getLineBottom(line) - firstY),
+            (start + layout.getLineStart(line) - layout.getLineStart(firstLine)) until
+                (start + layout.getLineEnd(line) - layout.getLineStart(firstLine)))
     }
     override fun highlight(canvas: Canvas, from: Int, to: Int, paint: Paint) {
         val blockStart = start - layout.getLineStart(firstLine)
@@ -61,7 +63,7 @@ internal class NativeEpubHorizontalItem(override val start: Int, override val en
     }
 }
 internal class NativeEpubGlyphItem(override val start: Int, override val end: Int,
-    private val value: String, private val bounds: RectF, private val paint: TextPaint,
+    private val value: String, val bounds: RectF, private val paint: TextPaint,
     private val rotate: Boolean) : NativeEpubDrawItem {
     override fun draw(canvas: Canvas) {
         canvas.save()

@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.reader
+import com.huangder.lumibooks.domain.model.LongPressSelectionRange
+import com.huangder.lumibooks.domain.model.selectionRangeAt
 
 import android.content.Context
 import android.graphics.*
@@ -39,7 +41,8 @@ internal data class NativeEpubCallbacks(
 internal data class NativeEpubReaderStyle(val fontSizeSp: Float, val fontType: String, val fontPath: String?,
     val weight: Int, val color: Int?, val paper: Int, val publisherColors: Boolean,
     val top: Float, val right: Float, val bottom: Float, val left: Float,
-    val textSpacing: EpubTextSpacing, val publisherNightShade: Boolean = false)
+    val textSpacing: EpubTextSpacing, val publisherNightShade: Boolean = false,
+    val longPressSelectionRange: LongPressSelectionRange = LongPressSelectionRange.DEFAULT)
 
 @Composable
 internal fun NativeEpubReader(session: EpubRenderSession, document: NativeEpubDocument, chapterIndex: Int,
@@ -378,14 +381,23 @@ internal class NativeEpubSurface(context: Context, private val session: EpubRend
         listOf(previousSlot, currentSlot, nextSlot).forEach { bitmapPool.retire(it.bitmap); it.bitmap = null }
         updateSlots()
     }
-    private fun hit(x: Float, y: Float) = layout?.pages?.getOrNull(current)?.items?.firstNotNullOfOrNull { it.hit(x, y) }
+    private fun hit(x: Float, y: Float): NativeEpubHit? {
+        val items = layout?.pages?.getOrNull(current)?.items ?: return null
+        for (item in items) {
+            val hit = item.hit(x, y) ?: continue
+            if (item !is NativeEpubGlyphItem) return hit
+            val column = items.filterIsInstance<NativeEpubGlyphItem>()
+                .filter { abs(it.bounds.left - item.bounds.left) < 0.5f }
+            return hit.copy(lineRange = column.minOf { it.start } until column.maxOf { it.end })
+        }
+        return null
+    }
     private fun selectWord(x: Float, y: Float) {
         val hit = hit(x, y) ?: return
         if (document.text.getOrNull(hit.start) == '\uFFFC') return
-        val breaker = android.icu.text.BreakIterator.getWordInstance(); breaker.setText(document.text)
-        val start = breaker.preceding((hit.start + 1).coerceAtMost(document.text.length)).coerceAtLeast(0)
-        val end = breaker.following(hit.start).takeIf { it >= 0 } ?: document.text.length
-        selectedRange = start until end; refreshDecorations(); invalidateFrames(); emitSelection(hit.bounds)
+        selectedRange = document.text.selectionRangeAt(hit.start, style?.longPressSelectionRange ?: LongPressSelectionRange.DEFAULT,
+            hit.lineRange)
+        refreshDecorations(); invalidateFrames(); emitSelection(hit.bounds)
     }
     private fun emitSelection(bounds: RectF) {
         val range = selectedRange ?: return

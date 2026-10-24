@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.reader
 
+import androidx.compose.foundation.layout.heightIn
 import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
 import com.huangder.lumibooks.ui.icons.AppIcons
 import com.huangder.lumibooks.ui.icons.IconPair
@@ -62,7 +63,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -139,6 +142,7 @@ import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
 import com.huangder.lumibooks.domain.model.ReaderCornerMargins
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
+import com.huangder.lumibooks.domain.model.ReaderVolumeKeyAction
 import com.huangder.lumibooks.domain.model.ReaderTextAlignment
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.domain.model.ReaderPageCorner
@@ -231,6 +235,7 @@ fun ThemeSettingsSheet(
     eInkModeEnabled: Boolean = false,
     onFontSizeChange: (Float) -> Unit,
     onFontSizePreview: (Float) -> Unit = {},
+    onLayoutPreviewActiveChange: (Boolean) -> Unit = {},
     onThemeChange: (String) -> Unit,
     onModeThemeChange: (Boolean, String) -> Unit = { _, value -> onThemeChange(value) },
     onModeChange: (Boolean) -> Unit = {},
@@ -285,6 +290,12 @@ fun ThemeSettingsSheet(
 
     var isClosing by remember { mutableStateOf(false) }
     var showExportConfirm by remember { mutableStateOf(false) }
+    var fontSliderPreview by remember { mutableStateOf<ReaderSliderPreview?>(null) }
+    var fontSizeSliderBounds by remember { mutableStateOf<Rect?>(null) }
+    var weightSliderBounds by remember { mutableStateOf<Rect?>(null) }
+    val fontSliderSheetAlpha = if (fontSliderPreview == null) 1f else 0f
+    SideEffect { onLayoutPreviewActiveChange(fontSliderPreview != null) }
+    DisposableEffect(Unit) { onDispose { onLayoutPreviewActiveChange(false) } }
     val predictiveBackProgress = ConfigurableBottomSheetBackHandler { isClosing = true }
 
     // 监听 requestClose 状态，触发动画关闭
@@ -315,7 +326,8 @@ fun ThemeSettingsSheet(
             Modifier.fillMaxSize()
                 .background(
                     AppColors.Scrim.copy(
-                        alpha = sheetScrimAlpha * (1f - sheetOffset.value.coerceIn(0f, 1f))
+                        alpha = sheetScrimAlpha * fontSliderSheetAlpha *
+                            (1f - sheetOffset.value.coerceIn(0f, 1f))
                     )
                 )
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { isClosing = true }
@@ -327,6 +339,7 @@ fun ThemeSettingsSheet(
                 .fillMaxWidth()
                 .fillMaxHeight(if (isLiquidGlass) 0.64f else 0.60f)
                 .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
+                .graphicsLayer { alpha = fontSliderSheetAlpha }
         ) {
             Box(
                 modifier = Modifier
@@ -419,8 +432,20 @@ fun ThemeSettingsSheet(
                 onValueChange = onFontSizeChange,
                 valueRange = 12f..28f,
                 step = 1f,
-                onDragValueChange = onFontSizePreview,
-                modifier = Modifier.padding(horizontal = 24.dp)
+                onDragValueChange = { value ->
+                    fontSliderPreview = fontSliderPreview?.takeIf { it.key == "font-size" }
+                        ?.copy(value = value)
+                        ?: fontSizeSliderBounds?.let {
+                            ReaderSliderPreview("font-size", it, value, 12f..28f, 1f)
+                        }
+                    onFontSizePreview(value)
+                },
+                onInteractionChange = { active ->
+                    if (!active && fontSliderPreview?.key == "font-size") fontSliderPreview = null
+                },
+                modifier = Modifier
+                    .padding(horizontal = 24.dp)
+                    .onGloballyPositioned { fontSizeSliderBounds = it.boundsInRoot() }
             )
             if (showFontSizeDialog) {
                 SliderValueInputDialog(
@@ -456,10 +481,20 @@ fun ThemeSettingsSheet(
                     onDragValueChange = {
                         previewWeight = it.toInt()
                         onBodyFontWeightPreview(previewWeight)
+                        fontSliderPreview = fontSliderPreview?.takeIf { preview -> preview.key == "font-weight" }
+                            ?.copy(value = it)
+                            ?: weightSliderBounds?.let { bounds ->
+                                ReaderSliderPreview("font-weight", bounds, it, range, 1f)
+                            }
+                    },
+                    onInteractionChange = { active ->
+                        if (!active && fontSliderPreview?.key == "font-weight") fontSliderPreview = null
                     },
                     valueRange = range,
                     step = 1f,
-                    modifier = Modifier.padding(horizontal = 24.dp)
+                    modifier = Modifier
+                        .padding(horizontal = 24.dp)
+                        .onGloballyPositioned { weightSliderBounds = it.boundsInRoot() }
                 )
                 Spacer(Modifier.height(16.dp))
             }
@@ -909,6 +944,22 @@ fun ThemeSettingsSheet(
         }
     }
     }
+        fontSliderPreview?.let { preview ->
+            val density = LocalDensity.current
+            com.huangder.lumibooks.ui.components.PillSlider(
+                value = preview.value,
+                onValueChange = {},
+                valueRange = preview.range,
+                step = preview.step,
+                modifier = Modifier
+                    .width(with(density) { preview.bounds.width.toDp() })
+                    .offset {
+                        androidx.compose.ui.unit.IntOffset(
+                            preview.bounds.left.toInt(), preview.bounds.top.toInt()
+                        )
+                    }
+            )
+        }
     }
     if (showExportConfirm) {
         val suite = readerThemeSuites.firstOrNull { it.id == activeReaderThemeSuiteId }
@@ -1869,7 +1920,7 @@ private fun CustomBackgroundDialog(
                     onClick = { onPickPhoto(name.trim()) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(44.dp)
+                        .heightIn(min = 44.dp)
                         .border(1.dp, LightDivider, AppRoundedCornerShape(22.dp))
                 ) {
                         Icon(
@@ -1882,7 +1933,10 @@ private fun CustomBackgroundDialog(
                         Text(
                             text = stringResource(R.string.background_choose_photo),
                             color = AppColors.TextPrimary,
-                            fontSize = 14.sp
+                            fontSize = 14.sp,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
                 }
             }
@@ -1961,19 +2015,23 @@ private fun ModeButton(
 ) {
     Box(
         modifier = modifier
-            .height(44.dp)
+            .heightIn(min = 44.dp)
             .clip(AppRoundedCornerShape(12.dp))
             .then(
                 if (isSelected) Modifier.border(1.5.dp, AppColors.TextPrimary, AppRoundedCornerShape(12.dp))
                 else Modifier
             )
             .background(if (isSelected) LightBgGray else AppColors.CardBg)
-            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() },
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
+            .padding(horizontal = 4.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             label,
             fontSize = 14.sp,
+            maxLines = 1,
+            softWrap = false,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
             color = AppColors.TextPrimary
         )
@@ -1994,8 +2052,8 @@ private enum class ReaderMarginControl {
     CORNER_RIGHT
 }
 
-private data class ReaderMarginPreview(
-    val control: ReaderMarginControl,
+private data class ReaderSliderPreview(
+    val key: String,
     val bounds: Rect,
     val value: Float,
     val range: ClosedFloatingPointRange<Float>,
@@ -2408,7 +2466,9 @@ fun AdvancedSettingsSheet(
     fontDownloadKey: String? = null,
     fontDownloadFailed: Boolean = false,
     onLineHeightChange: (Float) -> Unit,
+    onLineHeightPreview: (Float) -> Unit = onLineHeightChange,
     onLetterSpacingChange: (Float) -> Unit,
+    onLetterSpacingPreview: (Float) -> Unit = onLetterSpacingChange,
     onTextAlignmentChange: (ReaderTextAlignment) -> Unit = {},
     onFontTypeChange: (String) -> Unit,
     onImportFont: (android.net.Uri, String) -> Unit = { _, _ -> },
@@ -2440,19 +2500,22 @@ fun AdvancedSettingsSheet(
     currentParagraphSpacing: Float = 0f,
     currentFirstLineIndent: Float = 0f,
     onParagraphSpacingChange: (Float) -> Unit = {},
+    onParagraphSpacingPreview: (Float) -> Unit = onParagraphSpacingChange,
     onFirstLineIndentChange: (Float) -> Unit = {},
+    onFirstLineIndentPreview: (Float) -> Unit = onFirstLineIndentChange,
     readerTopLeftContent: ReaderCornerContent,
     readerTopRightContent: ReaderCornerContent,
     readerBottomLeftContent: ReaderCornerContent,
     readerBottomRightContent: ReaderCornerContent,
-    volumeKeyPageTurnEnabled: Boolean = false,
+    volumeKeyUpAction: ReaderVolumeKeyAction = ReaderVolumeKeyAction.SYSTEM_VOLUME,
+    volumeKeyDownAction: ReaderVolumeKeyAction = ReaderVolumeKeyAction.SYSTEM_VOLUME,
     bookmarkRemarkPromptEnabled: Boolean = true,
     bionicReadingEnabled: Boolean = false,
     comicModeEnabled: Boolean = false,
     screenSleepTimeoutSeconds: Int = DataStoreManager.DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS,
     readerEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT,
     onReaderCornerContentChange: (ReaderPageCorner, ReaderCornerContent) -> Unit,
-    onVolumeKeyPageTurnEnabledChange: (Boolean) -> Unit = {},
+    onVolumeKeyActionsChange: (ReaderVolumeKeyAction, ReaderVolumeKeyAction) -> Unit = { _, _ -> },
     onBookmarkRemarkPromptEnabledChange: (Boolean) -> Unit = {},
     onBionicReadingEnabledChange: (Boolean) -> Unit = {},
     onComicModeChange: (Boolean) -> Unit = {},
@@ -2460,18 +2523,17 @@ fun AdvancedSettingsSheet(
     onReaderEdgeTapModeChange: (ReaderEdgeTapMode) -> Unit = {},
     onTextColorChange: (Int?) -> Unit,
     onResetSettings: () -> Unit,
+    onLayoutPreviewActiveChange: (Boolean) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     if (!visible) return
 
     val sheetOffset = remember { Animatable(1f) }
     val settingsScrollState = rememberScrollState()
-    var marginPreview by remember { mutableStateOf<ReaderMarginPreview?>(null) }
-    val marginSheetAlpha by animateFloatAsState(
-        targetValue = if (marginPreview == null) 1f else 0f,
-        animationSpec = tween(if (eInkModeEnabled) 0 else 140),
-        label = "marginSheetAlpha"
-    )
+    var marginPreview by remember { mutableStateOf<ReaderSliderPreview?>(null) }
+    val marginSheetAlpha = if (marginPreview == null) 1f else 0f
+    SideEffect { onLayoutPreviewActiveChange(marginPreview != null) }
+    DisposableEffect(Unit) { onDispose { onLayoutPreviewActiveChange(false) } }
     val expandedGroups = remember { mutableStateMapOf<String, Boolean>() }
     fun isGroupExpanded(key: String, defaultExpanded: Boolean = false): Boolean =
         expandedGroups[key] ?: defaultExpanded
@@ -2900,30 +2962,50 @@ fun AdvancedSettingsSheet(
                     onExpandedChange = { expandedGroups["text_spacing"] = it },
                     eInkModeEnabled = eInkModeEnabled
                 ) {
-                    SettingSlider(stringResource(R.string.label_line_height), currentLineHeight, 1.0f..2.5f, 0.1f, { String.format("%.1fx", it) }, onLineHeightChange)
+                    PreviewableSettingSlider(
+                        key = "line-height", label = stringResource(R.string.label_line_height),
+                        value = currentLineHeight, range = 1f..2.5f, step = 0.1f,
+                        format = { String.format("%.1fx", it) }, onChange = onLineHeightChange,
+                        onPreview = onLineHeightPreview, activePreview = marginPreview,
+                        onActivePreviewChange = { marginPreview = it }
+                    )
                     Spacer(Modifier.height(12.dp))
-                    SettingSlider(stringResource(R.string.label_letter_spacing), currentLetterSpacing, 0f..10f, 0.5f, { String.format("%.1f sp", it) }, onLetterSpacingChange)
+                    PreviewableSettingSlider(
+                        key = "letter-spacing", label = stringResource(R.string.label_letter_spacing),
+                        value = currentLetterSpacing, range = 0f..10f, step = 0.5f,
+                        format = { String.format("%.1f sp", it) }, onChange = onLetterSpacingChange,
+                        onPreview = onLetterSpacingPreview, activePreview = marginPreview,
+                        onActivePreviewChange = { marginPreview = it }
+                    )
                     Spacer(Modifier.height(12.dp))
-                    SettingSlider(
-                        stringResource(R.string.label_paragraph_spacing),
-                        currentParagraphSpacing,
-                        0f..30f,
-                        0.5f,
-                        {
+                    PreviewableSettingSlider(
+                        key = "paragraph-spacing",
+                        label = stringResource(R.string.label_paragraph_spacing),
+                        value = currentParagraphSpacing,
+                        range = 0f..30f,
+                        step = 0.5f,
+                        format = {
                             if (it % 1f == 0f) "${it.toInt()} dp"
                             else String.format("%.1f dp", it)
                         },
-                        onParagraphSpacingChange
+                        onChange = onParagraphSpacingChange,
+                        onPreview = onParagraphSpacingPreview,
+                        activePreview = marginPreview,
+                        onActivePreviewChange = { marginPreview = it }
                     )
                     Spacer(Modifier.height(12.dp))
                     val characterUnit = stringResource(R.string.reader_unit_character)
-                    SettingSlider(
-                        stringResource(R.string.label_first_line_indent),
-                        currentFirstLineIndent,
-                        0f..4f,
-                        0.5f,
-                        { "$it $characterUnit" },
-                        onFirstLineIndentChange
+                    PreviewableSettingSlider(
+                        key = "first-line-indent",
+                        label = stringResource(R.string.label_first_line_indent),
+                        value = currentFirstLineIndent,
+                        range = 0f..4f,
+                        step = 0.5f,
+                        format = { "$it $characterUnit" },
+                        onChange = onFirstLineIndentChange,
+                        onPreview = onFirstLineIndentPreview,
+                        activePreview = marginPreview,
+                        onActivePreviewChange = { marginPreview = it }
                     )
                 }
                 Spacer(Modifier.height(12.dp))
@@ -3083,11 +3165,11 @@ fun AdvancedSettingsSheet(
                         onSelected = onScreenSleepTimeoutChange
                     )
                     Spacer(Modifier.height(16.dp))
-                    AdvancedToggleRow(
-                        title = stringResource(R.string.volume_key_page_turn),
-                        hint = stringResource(R.string.volume_key_page_turn_hint),
-                        checked = volumeKeyPageTurnEnabled,
-                        onCheckedChange = onVolumeKeyPageTurnEnabledChange
+                    VolumeKeyActionsSetting(
+                        upAction = volumeKeyUpAction,
+                        downAction = volumeKeyDownAction,
+                        forceSolidMenu = preservePublisherLayout,
+                        onSelected = onVolumeKeyActionsChange
                     )
                     Spacer(Modifier.height(16.dp))
                     AdvancedToggleRow(
@@ -3175,8 +3257,8 @@ private fun MarginSettingSlider(
     format: (Float) -> String,
     onChange: (Float) -> Unit,
     onPreview: (Float) -> Unit,
-    activePreview: ReaderMarginPreview?,
-    onActivePreviewChange: (ReaderMarginPreview?) -> Unit
+    activePreview: ReaderSliderPreview?,
+    onActivePreviewChange: (ReaderSliderPreview?) -> Unit
 ) {
     var bounds by remember { mutableStateOf<Rect?>(null) }
     SettingSlider(
@@ -3186,22 +3268,56 @@ private fun MarginSettingSlider(
         step = step,
         format = format,
         onChange = { changed ->
-            onActivePreviewChange(activePreview?.takeIf { it.control == control }?.copy(value = changed))
+            onActivePreviewChange(activePreview?.takeIf { it.key == control.name }?.copy(value = changed))
             onChange(changed)
         },
         onPreview = { changed ->
             // Only reveal the full page after a horizontal drag is confirmed.
             // Touching a slider to scroll the sheet must not hide and show it.
-            val preview = activePreview?.takeIf { it.control == control }?.copy(value = changed)
-                ?: bounds?.let { ReaderMarginPreview(control, it, changed, range, step) }
+            val preview = activePreview?.takeIf { it.key == control.name }?.copy(value = changed)
+                ?: bounds?.let { ReaderSliderPreview(control.name, it, changed, range, step) }
             onActivePreviewChange(preview)
             onPreview(changed)
         },
         sliderModifier = Modifier.onGloballyPositioned { bounds = it.boundsInRoot() },
         onInteractionChange = { active ->
-            if (!active && activePreview?.control == control) {
+            if (!active && activePreview?.key == control.name) {
                 onActivePreviewChange(null)
             }
+        }
+    )
+}
+
+@Composable
+private fun PreviewableSettingSlider(
+    key: String,
+    label: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    step: Float,
+    format: (Float) -> String,
+    onChange: (Float) -> Unit,
+    onPreview: (Float) -> Unit,
+    activePreview: ReaderSliderPreview?,
+    onActivePreviewChange: (ReaderSliderPreview?) -> Unit
+) {
+    var bounds by remember { mutableStateOf<Rect?>(null) }
+    SettingSlider(
+        label = label,
+        value = value,
+        range = range,
+        step = step,
+        format = format,
+        onChange = onChange,
+        onPreview = { changed ->
+            val preview = activePreview?.takeIf { it.key == key }?.copy(value = changed)
+                ?: bounds?.let { ReaderSliderPreview(key, it, changed, range, step) }
+            onActivePreviewChange(preview)
+            onPreview(changed)
+        },
+        sliderModifier = Modifier.onGloballyPositioned { bounds = it.boundsInRoot() },
+        onInteractionChange = { active ->
+            if (!active && activePreview?.key == key) onActivePreviewChange(null)
         }
     )
 }
@@ -3742,6 +3858,147 @@ private fun ReaderEdgeTapModeSetting(
         }
     }
 }
+
+@Composable
+private fun VolumeKeyActionsSetting(
+    upAction: ReaderVolumeKeyAction,
+    downAction: ReaderVolumeKeyAction,
+    forceSolidMenu: Boolean,
+    onSelected: (ReaderVolumeKeyAction, ReaderVolumeKeyAction) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        VolumeKeyActionDropdown(
+            label = stringResource(R.string.volume_key_up),
+            selected = upAction,
+            forceSolidMenu = forceSolidMenu,
+            onSelected = { onSelected(it, downAction) }
+        )
+        VolumeKeyActionDropdown(
+            label = stringResource(R.string.volume_key_down),
+            selected = downAction,
+            forceSolidMenu = forceSolidMenu,
+            onSelected = { onSelected(upAction, it) }
+        )
+    }
+}
+
+@Composable
+private fun VolumeKeyActionDropdown(
+    label: String,
+    selected: ReaderVolumeKeyAction,
+    forceSolidMenu: Boolean,
+    onSelected: (ReaderVolumeKeyAction) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var menuAnchorBounds by remember { mutableStateOf(Rect.Zero) }
+    val labeledOptions = ReaderVolumeKeyAction.entries.map { it to readerVolumeKeyActionLabel(it) }
+    val menuSurfaceColor = LightCardBg
+    val liquidMenuHost = LocalLiquidGlassMenuHost.current
+    Box {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(40.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                label,
+                fontSize = 13.sp,
+                color = AppColors.TextPrimary,
+                modifier = Modifier.weight(1f)
+            )
+            Box {
+                Box(
+                    modifier = Modifier
+                        .width(158.dp)
+                        .height(36.dp)
+                        .liquidGlassMenuAnchor(cornerRadius = 14.dp)
+                        .clip(AppRoundedCornerShape(14.dp))
+                        .background(LightBgGray)
+                        .onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
+                        .clickable {
+                            if (liquidMenuHost != null && menuAnchorBounds != Rect.Zero) {
+                                liquidMenuHost.toggle(
+                                    LiquidGlassMenuSpec(
+                                        anchorBounds = menuAnchorBounds,
+                                        width = 158.dp,
+                                        anchorCornerRadius = 14.dp,
+                                        forceSolid = forceSolidMenu,
+                                        surfaceColor = menuSurfaceColor,
+                                        items = labeledOptions.map { (action, actionLabel) ->
+                                            LiquidGlassMenuItem(
+                                                label = actionLabel,
+                                                selected = action == selected,
+                                                onClick = { onSelected(action) }
+                                            )
+                                        }
+                                    )
+                                )
+                            } else {
+                                expanded = true
+                            }
+                        }
+                        .padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = readerVolumeKeyActionLabel(selected),
+                        fontSize = 12.sp,
+                        color = AppColors.TextPrimary,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        modifier = Modifier.fillMaxWidth().padding(end = 16.dp)
+                    )
+                    Icon(
+                        imageVector = AppIcons.CaretDown,
+                        contentDescription = null,
+                        tint = LightTextSecondary,
+                        modifier = Modifier.align(Alignment.CenterEnd).size(16.dp)
+                    )
+                }
+                DropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                    shape = AppRoundedCornerShape(18.dp),
+                    containerColor = LightCardBg,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp
+                ) {
+                    labeledOptions.forEach { (action, actionLabel) ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = actionLabel,
+                                    fontSize = 13.sp,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            },
+                            onClick = {
+                                expanded = false
+                                onSelected(action)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun readerVolumeKeyActionLabel(action: ReaderVolumeKeyAction): String = stringResource(
+    when (action) {
+        ReaderVolumeKeyAction.SYSTEM_VOLUME -> R.string.volume_action_system
+        ReaderVolumeKeyAction.PREVIOUS_PAGE -> R.string.volume_action_previous_page
+        ReaderVolumeKeyAction.NEXT_PAGE -> R.string.volume_action_next_page
+        ReaderVolumeKeyAction.BRIGHTNESS_DOWN -> R.string.volume_action_brightness_down
+        ReaderVolumeKeyAction.BRIGHTNESS_UP -> R.string.volume_action_brightness_up
+        ReaderVolumeKeyAction.FONT_SIZE_DOWN -> R.string.volume_action_font_size_down
+        ReaderVolumeKeyAction.FONT_SIZE_UP -> R.string.volume_action_font_size_up
+        ReaderVolumeKeyAction.TOGGLE_BOOKMARK -> R.string.volume_action_toggle_bookmark
+    }
+)
 
 @Composable
 private fun ScreenSleepTimeoutSetting(
