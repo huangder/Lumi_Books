@@ -63,7 +63,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Rect
@@ -81,6 +80,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.draw.shadow
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.animation.AppEasing
@@ -1356,11 +1356,9 @@ private fun FolderBooksConfirmButton(
             .fillMaxWidth()
             .heightIn(min = 58.dp)
             .then(
-                if (enabled) {
+                if (enabled && LocalAppTheme.current != "liquid_glass") {
                     Modifier.shadow(
-                        elevation = 28.dp,
-                        shape = shape,
-                        clip = false,
+                        elevation = 28.dp, shape = shape, clip = false,
                         ambientColor = Color.Black.copy(alpha = 0.10f),
                         spotColor = Color.Black.copy(alpha = 0.08f)
                     )

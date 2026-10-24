@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="annotation_feed_title">すべてのハイライトとメモ</string>
+    <string name="annotation_feed_tab_all">すべて</string>
+    <string name="annotation_feed_search_hint">抜粋・メモ・書名を検索</string>
+    <string name="annotation_feed_rule_hidden">ルールハイライト %d 件を非表示</string>
+    <string name="annotation_feed_rule_shown">ルールハイライト %d 件を表示中</string>
+    <string name="annotation_feed_rule_show">表示</string>
+    <string name="annotation_feed_rule_hide">非表示</string>
+    <string name="annotation_feed_today">今日</string>
+    <string name="annotation_feed_yesterday">昨日</string>
+    <string name="statistics_annotations_title">ハイライトとメモ</string>
+    <string name="statistics_annotations_view_all">すべて見る</string>
+    <string name="statistics_top_tags">よく使うタグ</string>
+    <string name="statistics_tag_count">%1$s · %2$d</string>
+    <string name="statistics_goal_days">目標達成日数</string>
+    <string name="statistics_streak_title">連続読書</string>
+    <string name="statistics_streak_current">現在</string>
+    <string name="statistics_streak_longest">最長</string>
+    <string name="statistics_streak_goal_hint">1日 %d 分以上読むと連続に数えます</string>
+    <string name="statistics_streak_any_hint">少しでも読んだ日は連続に数えます</string>
+</resources>

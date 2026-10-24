@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reduce_transparency_label">透明度を下げる</string>
+    <string name="reduce_transparency_description">段階的なぼかしと画面の装飾的なぼかしをオフにします。リキッドグラスの基本的なすりガラス効果は残し、屈折をオフにします。</string>
+</resources>

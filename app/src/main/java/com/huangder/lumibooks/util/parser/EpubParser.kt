@@ -94,7 +94,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         // 多看/掌阅等导出器会把注释锚点拼成 footnotebookmark，单词边界
         // 不在 footnote 后面，因此不能只依赖上面的通用边界表达式。
         private val COMPOUND_FOOTNOTE_HINT_REGEX = Regex(
-            """(?:footnotebookmark|duokan[-_]footnote)""",
+            """(?:footnotebookmark|duokan[-_]footnote|jzyy_[A-Za-z0-9_-]+)""",
             RegexOption.IGNORE_CASE
         )
         private val FOOTNOTE_BACKLINK_HINT_REGEX = Regex(
@@ -147,6 +147,10 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             if (fragment.isBlank()) return false
             // 多看注释正文中的链接指回正文锚点（*_start_*），它不是新的注释引用。
             if (FOOTNOTE_BACKLINK_HINT_REGEX.containsMatchIn(fragment)) return false
+            val sourceId = tagAttribute(openTag, "id").orEmpty()
+            if (sourceId.matches(Regex("""jz_[A-Za-z0-9_-]+""", RegexOption.IGNORE_CASE)) &&
+                fragment.matches(Regex("""jzyy_[A-Za-z0-9_-]+""", RegexOption.IGNORE_CASE))
+            ) return false
 
             val semantics = listOf("epub:type", "role", "rel")
                 .mapNotNull { tagAttribute(openTag, it) }
@@ -374,7 +378,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         /** 语义上明确是注释正文的块（`epub:type="footnote"`、`class="...footnote..."` 等）。 */
         private val FOOTNOTE_SEMANTIC_BODY_REGEX = Regex(
             """<($FOOTNOTE_BLOCK_TAGS)\b[^>]*(?:epub:type|role|class)\s*=\s*["'][^"']*""" +
-                """(?:footnote|endnote|rearnote)[^"']*["'][^>]*>""",
+                """(?:footnote|endnote|rearnote|fnContent)[^"']*["'][^>]*>""",
             RegexOption.IGNORE_CASE
         )
 
@@ -444,7 +448,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
          */
         internal fun alignFootnoteReferences(html: String, idPrefix: String): FootnoteAlignment {
             // 绝大多数章节没有注释，先做一次廉价判断，避免整章多次正则扫描。
-            val mentionsNotes = listOf("footnote", "noteref", "endnote", "rearnote", "epub:type")
+            val mentionsNotes = listOf("footnote", "noteref", "endnote", "rearnote", "epub:type", "jzyy_")
                 .any { html.contains(it, ignoreCase = true) }
             if (!mentionsNotes) {
                 return FootnoteAlignment(html, emptySet(), emptyMap())

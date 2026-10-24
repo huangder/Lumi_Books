@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.components
 
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.runtime.Composable
@@ -20,6 +21,9 @@ fun Modifier.lumiCardSurface(
     shape: Shape = RectangleShape,
     controlEdge: Boolean = false
 ): Modifier {
+    if (LocalReduceTransparency.current &&
+        com.huangder.lumibooks.ui.theme.LocalAppTheme.current != "liquid_glass"
+    ) return background(color, shape)
     val backdrop = LocalLumiBackgroundBackdrop.current ?: return background(color, shape)
     val tint = if (LocalIsDarkTheme.current) Color(0xFF151518).copy(alpha = 0.42f)
         else Color.White.copy(alpha = 0.42f)
@@ -30,7 +34,10 @@ fun Modifier.lumiCardSurface(
         highlight = null,
         onDrawSurface = { drawRect(tint) }
     ).then(
-        if (controlEdge) Modifier.liquidGlassControlEdge(
+        if (controlEdge && (
+            com.huangder.lumibooks.ui.theme.LocalAppTheme.current != "liquid_glass" ||
+                LocalLiquidGlassControlEdgeEnabled.current
+        )) Modifier.liquidGlassControlEdge(
             shape, color, LocalIsDarkTheme.current, LocalLiquidGlassControlEdgeForceCanvas.current
         ) else Modifier.border(0.5.dp, Color.White.copy(alpha = 0.38f), shape)
     )

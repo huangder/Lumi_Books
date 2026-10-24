@@ -325,6 +325,28 @@ fun ThirdPartyServicesDetail(viewModel: SettingsViewModel) {
         ) {
             context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "webdav"))
         }
+        SettingsGroupDivider()
+        CategoryItem(
+            icon = AppIcons.Globe,
+            label = stringResource(R.string.remote_library_opds_title),
+            supportingText = stringResource(R.string.remote_library_settings_opds_summary),
+            grouped = true
+        ) {
+            context.startActivity(com.huangder.lumibooks.ui.home.remote.RemoteLibraryActivity.createIntent(
+                context, com.huangder.lumibooks.data.remote.RemoteSourceType.OPDS, null
+            ))
+        }
+        SettingsGroupDivider()
+        CategoryItem(
+            icon = AppIcons.Cloud,
+            label = stringResource(R.string.remote_library_webdav_title),
+            supportingText = stringResource(R.string.remote_library_settings_webdav_summary),
+            grouped = true
+        ) {
+            context.startActivity(com.huangder.lumibooks.ui.home.remote.RemoteLibraryActivity.createIntent(
+                context, com.huangder.lumibooks.data.remote.RemoteSourceType.WEBDAV, null
+            ))
+        }
     }
 }
 

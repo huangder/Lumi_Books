@@ -1242,7 +1242,7 @@ class ReaderViewModel @Inject constructor(
             globalActiveBookLayoutThemeSuiteId = suiteState.activeBookLayoutSuiteId,
             readerThemeSuiteBookScoped = preferences.readerThemeSuiteBookScoped,
             readerButtonContrastEnabled = preferences.readerButtonContrastEnabled,
-            pdfPageMode = if (preferences.eInkModeEnabled) "horizontal" else preferences.pdfPageMode,
+            pdfPageMode = preferences.pdfPageMode,
             showReaderChapterProgress = preferences.showReaderChapterProgress,
             showReaderPageNumber = preferences.showReaderPageNumber,
             showReaderBattery = preferences.showReaderBattery,
@@ -4002,7 +4002,7 @@ class ReaderViewModel @Inject constructor(
                         ?: preferences.firstLineIndent
                     val textAlignment = effectiveThemeSettings?.textAlignment
                         ?: preferences.textAlignment
-                    val pdfPageMode = if (eInkModeEnabled) "horizontal" else preferences.pdfPageMode
+                    val pdfPageMode = preferences.pdfPageMode
                     val serializedReaderPosition = book.locatorJson
                         ?.let(ReaderPositionLocator::fromJson)
                         ?.takeIf { renderMode == EpubRenderMode.READER_LAYOUT }

@@ -15,6 +15,9 @@
     <string name="app_accent_color_hex">カラーコード (#RRGGBB)</string>
     <string name="app_accent_color_invalid">6桁の有効なカラーコードを入力してください</string>
     <string name="app_accent_color_reset">Lumi ピンクに戻す</string>
+    <string name="liquid_glass_style">ガラススタイル</string>
+    <string name="liquid_glass_style_default">デフォルト</string>
+    <string name="liquid_glass_style_original">オリジナル</string>
     <string name="liquid_glass_transparency">ガラスの透明度</string>
     <string name="liquid_glass_hdr_highlight">HDR タッチハイライト</string>
     <string name="app_name">LUMI</string>

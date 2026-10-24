@@ -37,7 +37,7 @@ internal val ControlEdgeDarkWidth = 0.4.dp
 internal val ControlEdgeLightWidth = 0.5.dp
 private val ControlEdgeReflectionWidth = 1.3.dp
 
-/** Internal overrides for side-by-side debug fixtures; never persisted as user preferences. */
+/** Resolved by the app theme; debug fixtures can override it for side-by-side comparisons. */
 internal val LocalLiquidGlassControlEdgeEnabled = staticCompositionLocalOf { true }
 internal val LocalLiquidGlassControlEdgeForceCanvas = staticCompositionLocalOf { false }
 

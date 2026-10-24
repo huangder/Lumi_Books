@@ -2,6 +2,7 @@
 
 package com.huangder.lumibooks.ui.navigation
 
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import com.huangder.lumibooks.ui.theme.LumiBackgroundHost
 import com.huangder.lumibooks.ui.theme.LumiBackgroundScene
 import com.huangder.lumibooks.ui.theme.LocalAppThemeVariant
@@ -317,6 +318,7 @@ fun MainNavGraph(
     val tabNavigationScope = rememberCoroutineScope()
     val mainTabSelection = remember { MainTabSelection() }
     var tabNavigationJob by remember { mutableStateOf<Job?>(null) }
+    val reduceTransparency = LocalReduceTransparency.current
     val motionEnabled = LocalMotionEnabled.current
     val selectTab: (Int) -> Unit = { index ->
         tabNavigationJob?.cancel()
@@ -447,21 +449,16 @@ fun MainNavGraph(
                     selectedImportBookUris = files.mapTo(linkedSetOf()) { it.uri.toString() }
                     importCopiesIntoApp = false
                     importRequestFolderId = null
+                    showImportActions = false
                     showImportDestination = true
                 }
             }
         }
     }
-    // Remote libraries import on their own pages; the action sheet closes so returning lands on
-    // the library, where finished downloads already appear.
+    // Keep the import sheet in place underneath the remote page so returning restores the same
+    // import choices without an intermediate dismissal.
     val openRemoteLibrary: (com.huangder.lumibooks.data.remote.RemoteSourceType) -> Unit = { type ->
         val folderId = importRequestFolderId
-        importPreparationGeneration++
-        isPreparingImport = false
-        selectedImportBooks = emptyList()
-        selectedImportBookUris = emptySet()
-        showImportActions = false
-        importRequestFolderId = null
         context.startActivity(
             com.huangder.lumibooks.ui.home.remote.RemoteLibraryActivity.createIntent(context, type, folderId)
         )
@@ -808,7 +805,7 @@ fun MainNavGraph(
                     .then(
                         if (canCaptureNavigationBackdrop && isLiquidGlass && !isLumiChan) {
                             Modifier.layerBackdrop(liquidGlassBackdrop)
-                        } else if (canCaptureNavigationBackdrop && !eInkMode) {
+                        } else if (canCaptureNavigationBackdrop && !eInkMode && !reduceTransparency) {
                             Modifier.haze(hazeState)
                         } else {
                             Modifier
@@ -1128,7 +1125,7 @@ fun MainNavGraph(
                             bookReaderTransition.coverFlowProgressSnapshot.value)
                     }
                     renderEffect = if (
-                        !eInkMode &&
+                        !eInkMode && !reduceTransparency &&
                         bookshelfOverlayProgress > 0.01f &&
                         android.os.Build.VERSION.SDK_INT >= 31
                     ) {
@@ -1268,11 +1265,6 @@ fun MainNavGraph(
                     if (homeUiState.authorizedBookDirectories.isEmpty()) {
                         transientMessage = context.getString(R.string.import_no_authorized_directory)
                     } else {
-                        importPreparationGeneration++
-                        isPreparingImport = false
-                        selectedImportBooks = emptyList()
-                        selectedImportBookUris = emptySet()
-                        showImportActions = false
                         folderBooksLauncher.launch(
                             AuthorizedFolderBooksActivity.createIntent(context)
                         )

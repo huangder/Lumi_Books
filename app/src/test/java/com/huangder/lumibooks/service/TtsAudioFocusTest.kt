@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.service
 
 import android.media.AudioManager
+import com.huangder.lumibooks.tts.TtsPlaybackState
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -46,6 +47,34 @@ class TtsAudioFocusTest {
         assertEquals(
             TtsAudioFocusAction.IGNORE,
             ttsAudioFocusActionForChange(change = 99, pausedForLoss = true)
+        )
+    }
+
+    @Test
+    fun focusRemainsHeldWhilePlaybackIsPausedForTransientLoss() {
+        assertEquals(
+            true,
+            shouldHoldTtsAudioFocus(
+                playbackState = TtsPlaybackState.PAUSED,
+                usesSystemEngine = true,
+                pausedForLoss = true
+            )
+        )
+        assertEquals(
+            false,
+            shouldHoldTtsAudioFocus(
+                playbackState = TtsPlaybackState.PAUSED,
+                usesSystemEngine = true,
+                pausedForLoss = false
+            )
+        )
+        assertEquals(
+            false,
+            shouldHoldTtsAudioFocus(
+                playbackState = TtsPlaybackState.PLAYING,
+                usesSystemEngine = false,
+                pausedForLoss = true
+            )
         )
     }
 }

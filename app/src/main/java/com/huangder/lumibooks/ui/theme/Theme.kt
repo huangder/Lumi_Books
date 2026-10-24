@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.huangder.lumibooks.ui.components.LocalLiquidGlassControlEdgeEnabled
 import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
 import com.huangder.lumibooks.domain.model.AppFontSize
 import com.huangder.lumibooks.domain.model.appAccentContentArgb
@@ -27,6 +28,7 @@ import com.huangder.lumibooks.domain.model.blendAppAccentArgb
 import com.huangder.lumibooks.domain.model.deriveDarkAppAccentArgb
 import com.huangder.lumibooks.domain.model.normalizeAppAccentHex
 import com.huangder.lumibooks.domain.model.parseAppAccentArgb
+import com.huangder.lumibooks.domain.model.LiquidGlassStyle
 import com.huangder.lumibooks.ui.animation.VisualMotion
 
 private val LightColorScheme = lightColorScheme(
@@ -135,6 +137,8 @@ fun EBookReaderTheme(
     dynamicColor: Boolean = false,
     appTheme: String = "lumi",
     appAccentColor: String = DEFAULT_APP_ACCENT_HEX,
+    reduceTransparencyEnabled: Boolean = LocalReduceTransparency.current,
+    liquidGlassStyle: LiquidGlassStyle = LocalLiquidGlassStyle.current,
     liquidGlassTransparency: Float = 0.55f,
     liquidGlassHdrHighlightEnabled: Boolean = false,
     cardOutlinesEnabled: Boolean = false,
@@ -225,6 +229,9 @@ fun EBookReaderTheme(
         LocalMotionPreference provides motionPreference,
         LocalMenuAnimationStyle provides menuAnimationStyle,
         LocalGlobalFontMode provides GlobalFontMode.normalize(globalFontMode),
+        LocalReduceTransparency provides reduceTransparencyEnabled,
+        LocalLiquidGlassStyle provides liquidGlassStyle,
+        LocalLiquidGlassControlEdgeEnabled provides (liquidGlassStyle == LiquidGlassStyle.DEFAULT),
         LocalLiquidGlassTransparency provides liquidGlassTransparency.coerceIn(0f, 1f),
         LocalLiquidGlassHdrHighlightEnabled provides hdrHighlightActive,
         LocalCardOutlinesEnabled provides cardOutlinesEnabled,

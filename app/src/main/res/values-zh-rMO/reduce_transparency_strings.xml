@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reduce_transparency_label">降低透明度</string>
+    <string name="reduce_transparency_description">關閉漸進模糊與介面裝飾性模糊；液態玻璃保留基本磨砂效果，關閉折射。</string>
+</resources>

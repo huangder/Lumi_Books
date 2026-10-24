@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.settings
 
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import com.huangder.lumibooks.ui.icons.directionalIcon
 import com.huangder.lumibooks.ui.icons.AppIcons
 
@@ -100,8 +101,8 @@ internal fun CollapsingSettingsScaffold(
 ) {
     val capability = LocalLiquidGlassCapability.current
     val eInkMode = LocalEInkMode.current
-    val blurEnabled = progressiveBlurEnabled(capability.supported, eInkMode)
-    val scrimEnabled = progressiveTopScrimEnabled(capability.supported, eInkMode)
+    val blurEnabled = progressiveBlurEnabled(capability.supported, eInkMode, LocalReduceTransparency.current)
+    val scrimEnabled = progressiveTopScrimEnabled(capability.supported, eInkMode, LocalReduceTransparency.current)
     val tint = AppColors.WindowBg
     val tintAlpha = if (LocalIsDarkTheme.current) {
         PROGRESSIVE_BLUR_TINT_ALPHA_DARK

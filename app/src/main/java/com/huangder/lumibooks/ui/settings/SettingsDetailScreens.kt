@@ -163,6 +163,7 @@ import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
 import com.huangder.lumibooks.domain.model.appAccentHex
 import com.huangder.lumibooks.domain.model.normalizeAppAccentHex
 import com.huangder.lumibooks.domain.model.parseAppAccentArgb
+import com.huangder.lumibooks.domain.model.LiquidGlassStyle
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.cardOutline
 import com.huangder.lumibooks.ui.animation.AppEasing
@@ -246,7 +247,6 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     LaunchedEffect(Unit) { viewModel.refreshInstalledTtsEngines() }
-    var showSelectionRangeDialog by rememberSaveable { mutableStateOf(false) }
     val selectionRanges = listOf(
         LongPressSelectionRange.PARAGRAPH to stringResource(R.string.selection_range_paragraph),
         LongPressSelectionRange.LINE to stringResource(R.string.selection_range_line),
@@ -255,10 +255,15 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
         LongPressSelectionRange.WORD to stringResource(R.string.selection_range_word)
     )
     DetailCard {
-        SettingsNavigationRow(
-            stringResource(R.string.default_selection_range),
-            selectionRanges.first { it.first == uiState.longPressSelectionRange }.second
-        ) { showSelectionRangeDialog = true }
+        DropdownSettingRow(
+            label = stringResource(R.string.default_selection_range),
+            options = selectionRanges.map { (range, label) -> range.storageKey to label },
+            selected = uiState.longPressSelectionRange.storageKey,
+            onSelect = { viewModel.saveLongPressSelectionRange(LongPressSelectionRange.fromKey(it)) }
+        )
+        Text(stringResource(R.string.default_selection_range_description),
+            fontSize = AppType.Caption, color = AppColors.TextSecondary,
+            modifier = Modifier.padding(start = AppSpace.md, end = AppSpace.md, bottom = AppSpace.sm))
         SettingsDivider()
         Row(
             Modifier.fillMaxWidth().clickable {
@@ -289,28 +294,6 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
             ?: stringResource(R.string.tts_engine_unavailable)
     }
     var showEngineDialog by remember { mutableStateOf(false) }
-    if (showSelectionRangeDialog) {
-        LiquidGlassAlertDialog(
-            onDismissRequest = { showSelectionRangeDialog = false },
-            title = { Text(stringResource(R.string.default_selection_range), color = AppColors.TextPrimary) },
-            text = {
-                Column {
-                    Text(stringResource(R.string.default_selection_range_description), color = AppColors.TextSecondary)
-                    selectionRanges.forEach { (range, label) ->
-                        TtsProviderOptionRow(title = label, selected = uiState.longPressSelectionRange == range,
-                            onClick = {
-                                viewModel.saveLongPressSelectionRange(range)
-                                showSelectionRangeDialog = false
-                            })
-                    }
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                LiquidGlassTextButton(text = stringResource(R.string.cancel), onClick = { showSelectionRangeDialog = false })
-            }
-        )
-    }
     var showTtsStartDialog by remember { mutableStateOf(false) }
     var showListeningResumeDialog by remember { mutableStateOf(false) }
     val ttsStartOptions = listOf(
@@ -1199,6 +1182,11 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             Spacer(Modifier.height(12.dp))
             DetailCard {
                 Column(Modifier.padding(vertical = 5.dp)) {
+                    LiquidGlassStyleSettingRow(
+                        selected = uiState.liquidGlassStyle,
+                        onSelect = viewModel::saveLiquidGlassStyle
+                    )
+                    SettingsDivider()
                     SettingsSliderItem(
                         label = stringResource(R.string.liquid_glass_transparency),
                         value = uiState.liquidGlassTransparency,
@@ -1232,6 +1220,13 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
         SettingsSwitchRow(stringResource(R.string.label_two_page_spread), stringResource(R.string.two_page_spread_description), uiState.twoPageSpreadEnabled, viewModel::saveTwoPageSpreadEnabled)
         SettingsDivider()
         SettingsSwitchRow(stringResource(R.string.label_predictive_back), checked = uiState.predictiveBackEnabled, onCheckedChange = viewModel::savePredictiveBackEnabled)
+        SettingsDivider()
+        SettingsSwitchRow(
+            label = stringResource(R.string.reduce_transparency_label),
+            supportingText = stringResource(R.string.reduce_transparency_description),
+            checked = uiState.reduceTransparencyEnabled,
+            onCheckedChange = viewModel::saveReduceTransparencyEnabled
+        )
         SettingsDivider()
         DropdownSettingRow(label = stringResource(R.string.motion_preference_label),
             options = listOf(
@@ -3474,6 +3469,19 @@ private fun AppThemeGridSettingRow(
             }
         }
     }
+}
+
+@Composable
+internal fun LiquidGlassStyleSettingRow(selected: LiquidGlassStyle, onSelect: (String) -> Unit) {
+    DropdownSettingRow(
+        label = stringResource(R.string.liquid_glass_style),
+        options = listOf(
+            LiquidGlassStyle.DEFAULT.storedValue to stringResource(R.string.liquid_glass_style_default),
+            LiquidGlassStyle.ORIGINAL.storedValue to stringResource(R.string.liquid_glass_style_original)
+        ),
+        selected = selected.storedValue,
+        onSelect = onSelect
+    )
 }
 
 @Composable

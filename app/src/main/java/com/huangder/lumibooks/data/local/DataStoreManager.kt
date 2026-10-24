@@ -55,6 +55,7 @@ import com.huangder.lumibooks.domain.model.ReaderPageAnimationSettings
 import com.huangder.lumibooks.domain.model.ReaderPageTransition
 import com.huangder.lumibooks.domain.model.ReaderFirstOpenHintPolicy
 import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
+import com.huangder.lumibooks.domain.model.LiquidGlassStyle
 import com.huangder.lumibooks.util.LaunchThemeController
 import com.huangder.lumibooks.util.LaunchThemeSnapshot
 import com.huangder.lumibooks.util.WelcomeLaunchSnapshot
@@ -229,6 +230,24 @@ class DataStoreManager @Inject constructor(
             it[stringPreferencesKey("raster_manual_crop_$bookId")] = crop.normalized().encode()
         }
     }
+
+    fun bookReview(bookId: String): Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[stringPreferencesKey("book_review_$bookId")].orEmpty()
+    }.distinctUntilChanged()
+
+    fun bookReviewRating(bookId: String): Flow<Float> = context.dataStore.data.map { preferences ->
+        (preferences[floatPreferencesKey("book_review_rating_$bookId")] ?: 0f).coerceIn(0f, 5f)
+    }.distinctUntilChanged()
+
+    suspend fun saveBookReview(bookId: String, review: String, rating: Float) {
+        val reviewKey = stringPreferencesKey("book_review_$bookId")
+        val ratingKey = floatPreferencesKey("book_review_rating_$bookId")
+        context.dataStore.edit { preferences ->
+            if (review.isBlank()) preferences.remove(reviewKey) else preferences[reviewKey] = review
+            preferences[ratingKey] = rating.coerceIn(0f, 5f)
+        }
+    }
+
     private val readerMigrationMutex = Mutex()
     @Volatile private var readerMigrationsComplete = false
     private val deviceSupportsHdr: Boolean by lazy {
@@ -354,6 +373,8 @@ class DataStoreManager @Inject constructor(
         private val APP_ACCENT_COLOR = stringPreferencesKey("app_accent_color")
         private val APP_FONT_SIZE = stringPreferencesKey("app_font_size")
         private val GLOBAL_FONT_MODE = stringPreferencesKey("global_font_mode")
+        private val REDUCE_TRANSPARENCY_ENABLED = booleanPreferencesKey("reduce_transparency_enabled")
+        private val LIQUID_GLASS_STYLE = stringPreferencesKey("liquid_glass_style")
         private val LIQUID_GLASS_TRANSPARENCY = floatPreferencesKey("liquid_glass_transparency")
         private val LIQUID_GLASS_HDR_HIGHLIGHT_ENABLED = booleanPreferencesKey("liquid_glass_hdr_highlight_enabled")
         private val CARD_OUTLINES_ENABLED = booleanPreferencesKey("card_outlines_enabled")
@@ -947,6 +968,14 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    val reduceTransparencyEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[REDUCE_TRANSPARENCY_ENABLED] ?: false
+    }.distinctUntilChanged()
+
+    val liquidGlassStyle: Flow<LiquidGlassStyle> = context.dataStore.data.map { preferences ->
+        LiquidGlassStyle.fromStoredValue(preferences[LIQUID_GLASS_STYLE])
+    }.distinctUntilChanged()
+
     val liquidGlassTransparency: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[LIQUID_GLASS_TRANSPARENCY] ?: 0.55f
     }
@@ -1058,6 +1087,8 @@ class DataStoreManager @Inject constructor(
             appAccentColor = normalizeAppAccentHex(preferences[APP_ACCENT_COLOR]),
             appFontSize = AppFontSize.fromStoredValue(preferences[APP_FONT_SIZE]),
             globalFontMode = if (preferences[GLOBAL_FONT_MODE] == "default") "default" else "system",
+            reduceTransparencyEnabled = preferences[REDUCE_TRANSPARENCY_ENABLED] ?: false,
+            liquidGlassStyle = LiquidGlassStyle.fromStoredValue(preferences[LIQUID_GLASS_STYLE]),
             liquidGlassTransparency = preferences[LIQUID_GLASS_TRANSPARENCY] ?: 0.55f,
             liquidGlassHdrHighlightEnabled =
                 preferences[LIQUID_GLASS_HDR_HIGHLIGHT_ENABLED] ?: deviceSupportsHdr,
@@ -2540,6 +2571,25 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    suspend fun saveReduceTransparencyEnabled(enabled: Boolean) {
+        val saved = context.dataStore.edit { preferences ->
+            preferences[REDUCE_TRANSPARENCY_ENABLED] = enabled
+        }
+        LaunchThemeController.updateReduceTransparencySnapshot(
+            context, saved[REDUCE_TRANSPARENCY_ENABLED] ?: false
+        )
+    }
+
+    suspend fun saveLiquidGlassStyle(style: LiquidGlassStyle) {
+        val saved = context.dataStore.edit { preferences ->
+            preferences[LIQUID_GLASS_STYLE] = style.storedValue
+        }
+        // Keep the first frame correct even when the process exits before the app collector runs.
+        LaunchThemeController.updateLiquidGlassStyleSnapshot(
+            context, LiquidGlassStyle.fromStoredValue(saved[LIQUID_GLASS_STYLE])
+        )
+    }
+
     suspend fun saveLiquidGlassTransparency(transparency: Float) {
         context.dataStore.edit { preferences ->
             preferences[LIQUID_GLASS_TRANSPARENCY] = transparency.coerceIn(0f, 1f)
@@ -3032,7 +3082,7 @@ class DataStoreManager @Inject constructor(
 
     suspend fun applyPortablePreferences(entries: List<PortablePreference>) {
         if (entries.isEmpty()) return
-        context.dataStore.edit { preferences ->
+        val saved = context.dataStore.edit { preferences ->
             val alreadyUnlocked = preferences[LUMI_EASTER_EGG_UNLOCKED] == true
             val metadata = JSONObject(preferences[PORTABLE_PREFERENCE_METADATA] ?: "{}")
             for (entry in entries) {
@@ -3070,6 +3120,9 @@ class DataStoreManager @Inject constructor(
             preferences[APP_THEME] = LumiEasterEgg.normalizeTheme(preferences[APP_THEME], unlocked)
             preferences[APP_ICON_STYLE] = AppIconStyle.normalize(preferences[APP_ICON_STYLE], unlocked)
         }
+        LaunchThemeController.updateReduceTransparencySnapshot(
+            context, saved[REDUCE_TRANSPARENCY_ENABLED] ?: false
+        )
     }
 
     suspend fun replacePortablePreferences(entries: List<PortablePreference>, deviceId: String) {
@@ -3262,6 +3315,7 @@ class DataStoreManager @Inject constructor(
     /** 清除所有偏好设置 */
     suspend fun clearAll() {
         context.dataStore.edit { it.clear() }
+        LaunchThemeController.updateReduceTransparencySnapshot(context, false)
         LaunchThemeController.updateWelcomeSnapshot(
             context = context,
             completedInstallTime = 0L,

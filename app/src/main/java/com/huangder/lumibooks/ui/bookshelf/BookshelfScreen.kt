@@ -2,6 +2,7 @@
 
 package com.huangder.lumibooks.ui.bookshelf
 
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
 import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
 import com.huangder.lumibooks.ui.icons.AppIcons
@@ -452,6 +453,8 @@ fun BookshelfScreen(
                 }
                 PendingBookMenuActionType.BookDetails ->
                     BookDetailsActivity.start(context, currentBook.id)
+                PendingBookMenuActionType.ToggleReadStatus ->
+                    viewModel.updateBook(currentBook.copy(readingProgress = if (currentBook.isReadingFinished) 0f else 1f))
                 PendingBookMenuActionType.MoveToFolder -> moveTargetBook = currentBook
             }
         }
@@ -757,7 +760,7 @@ fun BookshelfScreen(
             searchBlurProgress
         )
     }
-    val contentBlurRadius = if (eInkMode) {
+    val contentBlurRadius = if (eInkMode || LocalReduceTransparency.current) {
         0f
     } else {
         maxOf(
@@ -1135,6 +1138,10 @@ fun BookshelfScreen(
                     expandedSearchBookId = null
                     openBookNotes(book)
                 },
+                onToggleReadStatus = { book ->
+                    expandedSearchBookId = null
+                    viewModel.updateBook(book.copy(readingProgress = if (book.isReadingFinished) 0f else 1f))
+                },
                 launcherBounds = searchLauncherBounds,
                 modifier = Modifier.zIndex(2.6f)
             )
@@ -1169,6 +1176,9 @@ fun BookshelfScreen(
             },
             onBookDetails = { book ->
                 pendingContextMenuAction = PendingBookMenuAction(PendingBookMenuActionType.BookDetails, book)
+            },
+            onToggleReadStatus = { book ->
+                pendingContextMenuAction = PendingBookMenuAction(PendingBookMenuActionType.ToggleReadStatus, book)
             },
             onMoveToFolder = { book ->
                 pendingContextMenuAction = PendingBookMenuAction(PendingBookMenuActionType.MoveToFolder, book)
@@ -2103,13 +2113,6 @@ private fun BookshelfCapsuleHeader(
     }
 
     val headerCapsuleHeight = maxOf(46.dp, with(LocalDensity.current) { AppType.BodySmall.toDp() } * 1.5f + 12.dp)
-    val headerCapsuleShadow = Modifier.shadow(
-        elevation = 8.dp,
-        shape = CircleShape,
-        clip = false,
-        ambientColor = Color.Black.copy(alpha = 0.06f),
-        spotColor = Color.Black.copy(alpha = 0.08f)
-    )
 
     Column(
         modifier = modifier
@@ -2131,7 +2134,7 @@ private fun BookshelfCapsuleHeader(
                 onClick = onEditToggle,
                 tintedColor = AppColors.CardBg.takeUnless { isLiquidGlass },
                 contentColor = AppColors.TextPrimary,
-                decorationModifier = headerCapsuleShadow,
+                decorationModifier = Modifier,
                 modifier = Modifier
                     .widthIn(min = 88.dp)
                     .heightIn(min = headerCapsuleHeight)
@@ -2205,7 +2208,7 @@ private fun BookshelfCapsuleHeader(
                     shape = CircleShape,
                     fallbackColor = AppColors.CardBg,
                     contentScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
-                    decorationModifier = headerCapsuleShadow,
+                    decorationModifier = Modifier,
                     modifier = Modifier
                         .liquidGlassMenuAnchor(kind = com.huangder.lumibooks.ui.components.LiquidGlassMenuAnchorKind.Embedded)
                         .onGloballyPositioned { browseAnchorBounds = it.boundsInRoot() }
@@ -2386,6 +2389,7 @@ private enum class PendingBookMenuActionType {
     Tags,
     EditInfo,
     BookDetails,
+    ToggleReadStatus,
     MoveToFolder
 }
 
@@ -2736,13 +2740,7 @@ private fun FolderListItem(
             contentScrimColor = AppColors.CardBg.copy(alpha = 0.76f),
             interactive = false,
             effectPadding = 1.dp,
-            decorationModifier = Modifier.shadow(
-                elevation = 17.dp,
-                shape = shape,
-                clip = false,
-                ambientColor = Color.Black.copy(alpha = 0.10f),
-                spotColor = Color.Black.copy(alpha = 0.14f)
-            ),
+            decorationModifier = Modifier,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(116.dp)
@@ -2957,13 +2955,7 @@ private fun AddBookListItem(onClick: () -> Unit) {
         contentScrimColor = AppColors.CardBg.copy(alpha = 0.76f),
         onClick = onClick,
         effectPadding = 1.dp,
-        decorationModifier = Modifier.shadow(
-            elevation = 12.dp,
-            shape = shape,
-            clip = false,
-            ambientColor = Color.Black.copy(alpha = 0.08f),
-            spotColor = Color.Black.copy(alpha = 0.10f)
-        ),
+        decorationModifier = Modifier,
         modifier = Modifier
             .fillMaxWidth()
             .height(84.dp)

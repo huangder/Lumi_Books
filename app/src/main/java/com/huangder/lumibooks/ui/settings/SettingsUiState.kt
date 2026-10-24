@@ -5,6 +5,7 @@ import com.huangder.lumibooks.domain.model.AppFontSize
 import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
 import com.huangder.lumibooks.domain.model.AppIconStyle
 import com.huangder.lumibooks.domain.model.BookOpenTransition
+import com.huangder.lumibooks.domain.model.LiquidGlassStyle
 
 /** 单本书的文件大小明细 */
 data class BookSizeItem(
@@ -78,6 +79,8 @@ data class SettingsUiState(
     val appAccentColor: String = DEFAULT_APP_ACCENT_HEX,
     val appFontSize: AppFontSize = AppFontSize.STANDARD,
     val globalFontMode: String = "system", // "default" / "system"
+    val reduceTransparencyEnabled: Boolean = false,
+    val liquidGlassStyle: LiquidGlassStyle = LiquidGlassStyle.DEFAULT,
     val liquidGlassTransparency: Float = 0.55f,
     val liquidGlassHdrHighlightEnabled: Boolean = false,
     val cardOutlinesEnabled: Boolean = false,

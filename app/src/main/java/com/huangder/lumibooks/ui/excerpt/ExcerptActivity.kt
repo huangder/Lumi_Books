@@ -153,6 +153,8 @@ class ExcerptActivity : ComponentActivity() {
                 else -> isSystemInDarkTheme()
             }
             EBookReaderTheme(
+                liquidGlassStyle = theme.liquidGlassStyle,
+                reduceTransparencyEnabled = theme.reduceTransparencyEnabled,
                 darkTheme = dark,
                 dynamicColor = theme.appTheme == "material3",
                 appTheme = theme.appTheme,

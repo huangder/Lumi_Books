@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
 import com.huangder.lumibooks.domain.model.parseAppAccentArgb
+import com.huangder.lumibooks.domain.model.LiquidGlassStyle
 import com.huangder.lumibooks.util.DownloadedFonts
 
 /** 全局深色模式状态，由 MainActivity 根据 DataStore 设置注入 */
@@ -27,6 +28,9 @@ val LocalAppThemeVariant = staticCompositionLocalOf { "lumi" }
 val LocalAppAccentHex = staticCompositionLocalOf { DEFAULT_APP_ACCENT_HEX }
 val LocalAppAccentColor = staticCompositionLocalOf { Color(parseAppAccentArgb(DEFAULT_APP_ACCENT_HEX)) }
 val LocalOnAppAccentColor = staticCompositionLocalOf { Color.White }
+/** Disables decorative blur and optical distortion while preserving glass frosting. */
+val LocalReduceTransparency = staticCompositionLocalOf { false }
+val LocalLiquidGlassStyle = staticCompositionLocalOf { LiquidGlassStyle.DEFAULT }
 val LocalLiquidGlassTransparency = staticCompositionLocalOf { 0.55f }
 val LocalLiquidGlassHdrHighlightEnabled = staticCompositionLocalOf { false }
 val LocalLiquidGlassCapability = staticCompositionLocalOf {

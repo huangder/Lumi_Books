@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.reader
 
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import com.huangder.lumibooks.domain.model.SelectionMenuAction
 import com.huangder.lumibooks.domain.model.SelectionMenuSettings
 import com.huangder.lumibooks.ui.components.SelectionMenuSettingsDialog
@@ -2868,7 +2869,7 @@ fun ReaderScreen(
             footnoteBubble = null
         }
         val modeTransitionActive = readerModeTransitionProgress.value < 0.999f
-        val imagePreviewBlurActive = !eInkMode && readerImagePreviewProgress.value > 0.001f
+        val imagePreviewBlurActive = !eInkMode && !LocalReduceTransparency.current && readerImagePreviewProgress.value > 0.001f
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -5010,7 +5011,7 @@ fun ReaderScreen(
         requestClose = requestCloseNotesList,
         glassBackdrop = activeReaderGlassBackdrop,
         forceSolid = isBookLayout,
-        notes = viewModel.notes.collectAsState().value,
+        notes = viewModel.notes.collectAsState().value.let { all -> remember(all) { all.filterNot { it.isInkStroke } } },
         onNoteClick = noteClick@ { note ->
             if (note.isStale) {
                 Toast.makeText(context, R.string.markdown_original_changed, Toast.LENGTH_SHORT).show()
@@ -6665,6 +6666,7 @@ private fun FloatingReaderMenu(
         Box(modifier = Modifier.graphicsLayer {
             alpha = alpha0.value
             translationY = offset0.value
+            compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
         }) {
             CatalogCapsule(
                 title = chapterTitle,
@@ -6707,16 +6709,19 @@ private fun FloatingReaderMenu(
         ) {
             Box(modifier = Modifier.weight(1f).graphicsLayer {
                 alpha = alpha1.value; translationY = offset1.value
+                compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
             }) {
                 ActionCapsule(AppIcons.Bookmark.filled, stringResource(R.string.reader_notes), capsuleBgColor, capsuleContentColor, glassContentScrimColor, forceSolidCapsules, Modifier.fillMaxWidth(), enabled = visible, onBookmarkClick)
             }
             Box(modifier = Modifier.weight(1f).graphicsLayer {
                 alpha = alpha2.value; translationY = offset2.value
+                compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
             }) {
                 ActionCapsule(AppIcons.MagnifyingGlass, stringResource(R.string.reader_search), capsuleBgColor, capsuleContentColor, glassContentScrimColor, forceSolidCapsules, Modifier.fillMaxWidth(), enabled = visible, onSearchClick)
             }
             Box(modifier = Modifier.weight(1f).graphicsLayer {
                 alpha = alpha3.value; translationY = offset3.value
+                compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
             }) {
                 ActionCapsule(AppIcons.Gear, stringResource(R.string.reader_theme), capsuleBgColor, capsuleContentColor, glassContentScrimColor, forceSolidCapsules, Modifier.fillMaxWidth(), enabled = visible, onThemeClick)
             }
@@ -11289,7 +11294,6 @@ private fun SelectionMenuPill(
     enterDelayMillis: Long = 0L,
     content: @Composable () -> Unit
 ) {
-    val density = LocalDensity.current
     // Entry animation for initial display and after handle dragging ends.
     val enterAlpha = remember(reappearKey) { Animatable(0f) }
     val enterScale = remember(reappearKey) { Animatable(0.75f) }
@@ -11318,9 +11322,6 @@ private fun SelectionMenuPill(
                 translationY = enterTranslateY.value
                 alpha = enterAlpha.value
                 shape = pillShape
-                shadowElevation = with(density) { 20.dp.toPx() }
-                ambientShadowColor = Color.Black.copy(alpha = 0.08f)
-                spotShadowColor = Color.Black.copy(alpha = 0.13f)
                 clip = false
                 transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
             },
@@ -12208,14 +12209,7 @@ private fun ReaderFootnoteBubbleOverlay(
                     fallbackColor = backgroundColor,
                     modifier = sizeModifier
                         .widthIn(min = 200.dp, max = maxWidthDp)
-                        .heightIn(max = maxHeightDp)
-                        .shadow(
-                            elevation = 20.dp,
-                            shape = bubbleShape,
-                            clip = false,
-                            ambientColor = Color.Black.copy(alpha = 0.14f),
-                            spotColor = Color.Black.copy(alpha = 0.20f)
-                        ),
+                        .heightIn(max = maxHeightDp),
                     backdrop = glassBackdrop,
                     contentScrimColor = backgroundColor.copy(alpha = 0.52f)
                 ) {

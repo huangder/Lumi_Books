@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.components
 
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,7 +22,8 @@ import com.kyant.backdrop.effects.blur
 
 /**
  * Keeps the legacy color fade for regular themes and renders only sampled blur
- * for liquid glass. The source backdrop must be a sibling below this overlay.
+ * for liquid glass. Reduced transparency uses a readable scrim and still exports
+ * its completed backdrop for glass controls above it.
  */
 @Composable
 fun StatusGradientOverlay(
@@ -33,7 +35,27 @@ fun StatusGradientOverlay(
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val activeBackdrop = com.huangder.lumibooks.ui.theme.LocalLumiBackgroundBackdrop.current ?: backdrop
-    if (isLiquidGlass && activeBackdrop != null) {
+    if (isLiquidGlass && activeBackdrop != null && LocalReduceTransparency.current) {
+        val bgColor = AppColors.WindowBg
+        val solidStop = solidFraction.coerceIn(0.55f, 0.82f)
+        Box(
+            Modifier.fillMaxWidth().height(height).drawPlainBackdrop(
+                backdrop = activeBackdrop,
+                shape = { RectangleShape },
+                effects = {},
+                exportedBackdrop = exportedBackdrop,
+                onDrawSurface = {
+                    drawRect(Brush.verticalGradient(
+                        0f to bgColor,
+                        solidStop to bgColor,
+                        1f to bgColor.copy(alpha = 0f)
+                    ))
+                }
+            )
+        )
+        return
+    }
+    if (isLiquidGlass && activeBackdrop != null && !LocalReduceTransparency.current) {
         ProgressiveBlurOverlay(
             backdrop = activeBackdrop,
             exportedBackdrop = exportedBackdrop,

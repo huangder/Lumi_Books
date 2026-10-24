@@ -142,7 +142,8 @@ data class RemoteBookItem(
 data class RemoteFolder(
     val title: String,
     val url: String,
-    val subtitle: String? = null
+    val subtitle: String? = null,
+    val coverUrl: String? = null
 )
 
 /** One listing page of a remote library. */

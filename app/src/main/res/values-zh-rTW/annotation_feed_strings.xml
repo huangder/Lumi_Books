@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="annotation_feed_title">全部高亮與筆記</string>
+    <string name="annotation_feed_tab_all">全部</string>
+    <string name="annotation_feed_search_hint">搜尋摘錄、筆記或書名</string>
+    <string name="annotation_feed_rule_hidden">已隱藏 %d 條規則高亮</string>
+    <string name="annotation_feed_rule_shown">已顯示 %d 條規則高亮</string>
+    <string name="annotation_feed_rule_show">顯示</string>
+    <string name="annotation_feed_rule_hide">隱藏</string>
+    <string name="annotation_feed_today">今天</string>
+    <string name="annotation_feed_yesterday">昨天</string>
+    <string name="statistics_annotations_title">高亮與筆記</string>
+    <string name="statistics_annotations_view_all">查看全部</string>
+    <string name="statistics_top_tags">常用標籤</string>
+    <string name="statistics_tag_count">%1$s · %2$d</string>
+    <string name="statistics_goal_days">達標天數</string>
+    <string name="statistics_streak_title">連續閱讀</string>
+    <string name="statistics_streak_current">目前連續</string>
+    <string name="statistics_streak_longest">最長連續</string>
+    <string name="statistics_streak_goal_hint">每天讀滿 %d 分鐘計入連續</string>
+    <string name="statistics_streak_any_hint">有閱讀的日子都計入連續</string>
+</resources>

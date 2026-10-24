@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.components
 
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import com.huangder.lumibooks.ui.animation.VisualMotion.tween
@@ -139,6 +140,7 @@ internal fun Modifier.liquidGlassBackdrop(
     buttonInteractionState: LiquidGlassButtonInteractionState? = null,
     buttonInteraction: Boolean = false,
     motionEnabled: Boolean = true,
+    reduceTransparency: Boolean = false,
     /** Extra blur on top of the transparency-derived amount, for animated glass. */
     blurBoostPx: Float = 0f,
     shadowRadius: Dp = 24.dp,
@@ -148,7 +150,8 @@ internal fun Modifier.liquidGlassBackdrop(
     controlEdgeColor: Color = tintColor ?: contentScrimColor,
     controlEdgeForceCanvas: Boolean = false
 ): Modifier {
-    val lensSupported = supportsLiquidGlassLens(lensShape)
+    val lensSupported = !reduceTransparency && supportsLiquidGlassLens(lensShape)
+    val effectiveBlurBoostPx = if (reduceTransparency) 0f else blurBoostPx.coerceAtLeast(0f)
     val nativeOutlineSupported = supportsLiquidGlassHighlight(shape)
     val surfaceColor = if (isDark) {
         Color(0xFF101012).copy(alpha = 0.34f - transparency * 0.24f)
@@ -163,8 +166,8 @@ internal fun Modifier.liquidGlassBackdrop(
         shape = { lensShape },
         effects = {
             vibrancy()
-            if (transparency < 1f || blurBoostPx > 0f) {
-                blur((6.dp * (1f - transparency)).toPx() + blurBoostPx.coerceAtLeast(0f))
+            if (transparency < 1f || effectiveBlurBoostPx > 0f) {
+                blur((6.dp * (1f - transparency)).toPx() + effectiveBlurBoostPx)
             }
             if (lensSupported && shape !is ContinuousCornerBasedShape) {
                 if (buttonInteraction) {
@@ -292,6 +295,7 @@ fun Modifier.liquidGlassSheetSurface(
                 shape = floatingShape,
                 isDark = isDark,
                 transparency = sheetTransparency,
+                reduceTransparency = LocalReduceTransparency.current,
                 contentScrimColor = fallbackColor.copy(alpha = scrimAlpha),
                 contrastScrimColor = contrastScrim,
                 scaleOnPress = false
@@ -518,6 +522,7 @@ fun LiquidGlassSurface(
             lensShape = lensShape,
             isDark = isDark,
             transparency = transparency,
+            reduceTransparency = LocalReduceTransparency.current,
             contentScrimColor = contentScrimColor,
             contrastScrimColor = contrastScrim,
             tintColor = tintColor,
@@ -543,7 +548,7 @@ fun LiquidGlassSurface(
         }
         Modifier
             .then(
-                if (useControlEdge && handlesButtonGesture) Modifier.graphicsLayer {
+                if (controlEdge && handlesButtonGesture) Modifier.graphicsLayer {
                     val transform = liquidGlassButtonLayerTransform(
                         width = size.width,
                         height = size.height,
@@ -599,23 +604,11 @@ fun LiquidGlassSurface(
         Modifier
     }
 
-    // The standard outline establishes the glass edge; this restrained shadow adds depth.
-    // Callers that pass their own decorationModifier stay in full control of elevation.
-    val defaultGlassShadow = if (isLiquidGlass) {
-        Modifier.shadow(
-            elevation = 10.dp,
-            shape = shape,
-            clip = false,
-            ambientColor = Color.Black.copy(alpha = if (isDark) 0.24f else 0.12f),
-            spotColor = Color.Black.copy(alpha = if (isDark) 0.34f else 0.18f)
-        )
-    } else {
-        Modifier
-    }
-
+    // Elevation assumes an opaque caster. Under transparent glass its displaced
+    // shadow cutout shows through as a pale patch; the glass outline supplies depth.
     Box(
         modifier = modifier
-            .then(decorationModifier ?: defaultGlassShadow)
+            .then(decorationModifier ?: Modifier)
             .graphicsLayer {
                 scaleX = pressScale
                 scaleY = pressScale
@@ -667,10 +660,6 @@ fun LiquidGlassSurface(
                             tonalHighlight.copy(alpha = 0f)
                         )
                     }
-                    drawRect(
-                        color = Color.White.copy(alpha = 0.08f * pressProgress),
-                        blendMode = BlendMode.Plus
-                    )
                     drawCircle(
                         brush = Brush.radialGradient(
                             colors = highlightColors,

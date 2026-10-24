@@ -44,6 +44,30 @@ class EpubFootnoteAnchorTest {
     }
 
     @Test
+    fun `nietzsche jzyy references open their fnContent note and leave backlinks alone`() {
+        val html = """
+            <h3>正文<a id="jzyy_1_2" href="text00009.html#jz_1_2"><sup>(1)</sup></a></h3>
+            <p class="fnContent-1"><a id="jz_1_2" href="text00009.html#jzyy_1_2">(1)</a>此处第一节文字参看《快乐的科学》，第342节。——编注</p>
+        """.trimIndent()
+
+        assertTrue(classify("""<a id="jzyy_1_2" href="text00009.html#jz_1_2">""", "<sup>(1)</sup>"))
+        assertFalse(classify("""<a id="jz_1_2" href="text00009.html#jzyy_1_2">""", "(1)"))
+
+        val aligned = EpubParser.alignFootnoteReferences(html, "lumi-footnote-0-")
+        assertTrue(aligned.hrefs.contains("#lumi-footnote-0-1"))
+        assertTrue(aligned.textByHref["#lumi-footnote-0-1"].orEmpty().contains("此处第一节文字"))
+        assertTrue(aligned.html.contains("class=\"fnContent-1\""))
+        assertFalse(
+            EpubParser.stripFootnoteBodies(aligned.html, aligned.hrefs.map { it.substringAfter('#') }.toSet())
+                .contains("此处第一节文字")
+        )
+
+        val text = EpubParser.extractFootnoteElementText(html, "jz_1_2")
+        assertNotNull(text)
+        assertTrue(text!!.contains("此处第一节文字参看《快乐的科学》"))
+    }
+
+    @Test
     fun `recognizes compound duokan footnote bookmarks and excludes backlinks`() {
         assertTrue(
             classify(

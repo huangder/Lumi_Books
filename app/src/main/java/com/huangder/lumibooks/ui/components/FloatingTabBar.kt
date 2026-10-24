@@ -1,6 +1,7 @@
 @file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package com.huangder.lumibooks.ui.components
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
 import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -178,6 +179,7 @@ fun FloatingTabBar(
     val isDark = LocalIsDarkTheme.current
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val transparency = LocalLiquidGlassTransparency.current
+    val reduceTransparency = LocalReduceTransparency.current
     val motionEnabled = LocalMotionEnabled.current
     val density = LocalDensity.current
     val labelMeasurer = rememberTextMeasurer()
@@ -247,7 +249,7 @@ fun FloatingTabBar(
     } else {
         SolidColor(Color.White.copy(alpha = 0.58f))
     }
-    val hazeModifier = hazeState?.let { state ->
+    val hazeModifier = hazeState?.takeIf { !reduceTransparency }?.let { state ->
         Modifier.hazeChild(state) {
             backgroundColor = if (isDark) Color(0xFF1C1C1E) else Color.White
             tints = listOf(
@@ -288,7 +290,9 @@ fun FloatingTabBar(
                 if (transparency < 1f) {
                     blur((6.dp * (1f - transparency)).toPx())
                 }
-                lens(16.dp.toPx(), 28.dp.toPx())
+                if (!reduceTransparency) {
+                    lens(16.dp.toPx(), 28.dp.toPx())
+                }
             },
             highlight = if (LocalLiquidGlassControlEdgeEnabled.current) null else { { liquidGlassHighlight() } },
             onDrawSurface = { drawRect(liquidSurfaceColor) }
@@ -486,10 +490,12 @@ fun FloatingTabBar(
                                 if (transparency < 1f) {
                                     blur((6.dp * (1f - transparency)).toPx())
                                 }
-                                lens(
-                                    16.dp.toPx() * progress,
-                                    20.dp.toPx() * progress
-                                )
+                                if (!reduceTransparency) {
+                                    lens(
+                                        16.dp.toPx() * progress,
+                                        20.dp.toPx() * progress
+                                    )
+                                }
                             },
                             highlight = null,
                             onDrawSurface = { drawRect(liquidSurfaceColor) }
@@ -556,11 +562,13 @@ fun FloatingTabBar(
                         effects = {
                             val opticalProgress =
                                 if (motionEnabled) dragState.pressProgress else 0f
-                            lens(
-                                14.dp.toPx() * opticalProgress,
-                                18.dp.toPx() * opticalProgress,
-                                chromaticAberration = opticalProgress > 0.05f
-                            )
+                            if (!reduceTransparency) {
+                                lens(
+                                    14.dp.toPx() * opticalProgress,
+                                    18.dp.toPx() * opticalProgress,
+                                    chromaticAberration = opticalProgress > 0.05f
+                                )
+                            }
                         },
                         highlight = null,
                         shadow = {

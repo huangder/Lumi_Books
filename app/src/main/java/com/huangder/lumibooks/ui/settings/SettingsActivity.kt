@@ -73,7 +73,13 @@ class SettingsActivity : ComponentActivity() {
 
             val eInkMode by dataStoreManager.eInkModeEnabled.collectAsState(initial = launchTheme.eInkModeEnabled)
             val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = launchTheme.menuAnimationStyle)
+            val liquidGlassStyle by dataStoreManager.liquidGlassStyle
+                .collectAsState(initial = launchTheme.liquidGlassStyle)
+            val reduceTransparencyEnabled by dataStoreManager.reduceTransparencyEnabled
+                .collectAsState(initial = launchTheme.reduceTransparencyEnabled)
             EBookReaderTheme(
+                liquidGlassStyle = liquidGlassStyle,
+                reduceTransparencyEnabled = reduceTransparencyEnabled,
                 menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
                 eInkMode = eInkMode,
                 darkTheme = isDark,

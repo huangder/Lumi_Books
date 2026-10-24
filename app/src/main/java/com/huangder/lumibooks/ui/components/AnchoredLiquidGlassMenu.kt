@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.components
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import android.os.Build
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
@@ -1037,6 +1038,7 @@ private fun AnchoredLiquidGlassMenu(
         else -> LiquidGlassMenuMorph.containerAlpha(phase())
     } }
     val alignment = LiquidGlassMenuMorph.nearAlignment(sourceRect, targetRect)
+    val reduceTransparency = LocalReduceTransparency.current
     val contentOptics = if (droplet) rememberMenuOptics() else null
     val panelContentBackdrop = rememberLayerBackdrop()
     val transparency = LocalLiquidGlassTransparency.current
@@ -1087,7 +1089,7 @@ private fun AnchoredLiquidGlassMenu(
             color = color,
             backdrop = menuBackdrop,
             isDark = isDark, isLiquidGlass = isLiquidGlass, forceSolid = spec.forceSolid,
-            blurBoost = { if (motionEnabled && !normalMotion) LiquidGlassMenuMorph.blurBoostDp(phase()).dp else 0.dp },
+            blurBoost = { if (!reduceTransparency && motionEnabled && !normalMotion) LiquidGlassMenuMorph.blurBoostDp(phase()).dp else 0.dp },
             modifier = Modifier.matchParentSize()
                 .then(if (fadeOnlyPanel) Modifier.layerBackdrop(panelContentBackdrop) else Modifier)
                 .graphicsLayer { this.alpha = 1f - sourceAlpha() }
@@ -1131,7 +1133,7 @@ private fun AnchoredLiquidGlassMenu(
                         hostState.measured = true
                     }
                     .graphicsLayer {
-                        val blur = if (motionEnabled && !normalMotion) LiquidGlassMenuMorph.contentBlurDp(reveal()).dp else 0.dp
+                        val blur = if (!reduceTransparency && motionEnabled && !normalMotion) LiquidGlassMenuMorph.contentBlurDp(reveal()).dp else 0.dp
                         renderEffect = if (Build.VERSION.SDK_INT >= 31 && blur > 0.1.dp) {
                             BlurEffect(blur.toPx(), blur.toPx(), TileMode.Clamp)
                         } else null

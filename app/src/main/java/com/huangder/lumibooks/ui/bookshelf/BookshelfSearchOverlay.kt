@@ -63,7 +63,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -127,13 +126,7 @@ internal fun BookshelfSearchLauncher(
         onClick = onClick.takeIf { isLiquidGlass },
         interactive = isLiquidGlass,
         effectPadding = 1.dp,
-        decorationModifier = Modifier.shadow(
-            elevation = 16.dp,
-            shape = shape,
-            clip = false,
-            ambientColor = Color.Black.copy(alpha = 0.10f),
-            spotColor = Color.Black.copy(alpha = 0.13f)
-        ),
+        decorationModifier = Modifier,
         modifier = modifier
             .fillMaxWidth()
             .height(48.dp)
@@ -193,6 +186,7 @@ internal fun BookshelfSearchOverlay(
     onRemoveCustomCover: (Book) -> Unit,
     onTags: (Book) -> Unit,
     onBookmarksNotes: (Book) -> Unit,
+    onToggleReadStatus: (Book) -> Unit,
     launcherBounds: Rect,
     modifier: Modifier = Modifier
 ) {
@@ -378,7 +372,8 @@ internal fun BookshelfSearchOverlay(
                                     onCustomCover = { onCustomCover(book) },
                                     onRemoveCustomCover = { onRemoveCustomCover(book) },
                                     onTags = { onTags(book) },
-                                    onBookmarksNotes = { onBookmarksNotes(book) }
+            onBookmarksNotes = { onBookmarksNotes(book) },
+            onToggleReadStatus = { onToggleReadStatus(book) }
                                 )
                             }
                         }
@@ -409,13 +404,7 @@ private fun ActiveBookshelfSearchField(
         fallbackColor = AppColors.CardBg,
         contentScrimColor = AppColors.CardBg.copy(alpha = 0.78f),
         effectPadding = 1.dp,
-        decorationModifier = Modifier.shadow(
-            elevation = 20.dp,
-            shape = shape,
-            clip = false,
-            ambientColor = Color.Black.copy(alpha = 0.12f),
-            spotColor = Color.Black.copy(alpha = 0.16f)
-        ),
+        decorationModifier = Modifier,
         modifier = modifier
             .fillMaxWidth()
             .height(height)
@@ -491,6 +480,7 @@ internal fun BookshelfSearchResultItem(
     onRemoveCustomCover: () -> Unit,
     onTags: () -> Unit,
     onBookmarksNotes: () -> Unit,
+    onToggleReadStatus: () -> Unit = {},
     selectionMode: Boolean = false,
     selected: Boolean = false,
     onSelectionToggle: () -> Unit = {},
@@ -581,7 +571,8 @@ internal fun BookshelfSearchResultItem(
                     onCustomCover = onCustomCover,
                     onRemoveCustomCover = onRemoveCustomCover,
                     onTags = onTags,
-                    onBookmarksNotes = onBookmarksNotes
+                    onBookmarksNotes = onBookmarksNotes,
+                    onToggleReadStatus = onToggleReadStatus
                 )
             }
         }
@@ -608,13 +599,7 @@ private fun BookshelfSearchResultCard(
         contentScrimColor = AppColors.CardBg.copy(alpha = 0.76f),
         interactive = false,
         effectPadding = 1.dp,
-        decorationModifier = Modifier.shadow(
-            elevation = 17.dp,
-            shape = shape,
-            clip = false,
-            ambientColor = Color.Black.copy(alpha = 0.10f),
-            spotColor = Color.Black.copy(alpha = 0.14f)
-        ),
+        decorationModifier = Modifier,
         modifier = modifier
             .fillMaxWidth()
             .height(116.dp)
@@ -776,7 +761,8 @@ private fun SearchResultActionRow(
     onCustomCover: () -> Unit,
     onRemoveCustomCover: () -> Unit,
     onTags: () -> Unit,
-    onBookmarksNotes: () -> Unit
+    onBookmarksNotes: () -> Unit,
+    onToggleReadStatus: () -> Unit
 ) {
     val hasCustomCover = FileUtils.isCustomCover(book.coverPath)
     val favoritePink = if (LocalIsDarkTheme.current) Color(0xFFFF8A80) else Color(0xFFE85D5D)
@@ -865,6 +851,15 @@ private fun SearchResultActionRow(
             visible = visible,
             animationIndex = if (hasCustomCover) 7 else 6,
             onClick = onBookmarksNotes
+        )
+        SearchActionButton(
+            icon = AppIcons.BookOpen,
+            contentDescription = stringResource(if (book.isReadingFinished) R.string.book_unmark_read else R.string.book_mark_read),
+            label = stringResource(if (book.isReadingFinished) R.string.book_unmark_read else R.string.book_mark_read),
+            width = 124.dp,
+            visible = visible,
+            animationIndex = if (hasCustomCover) 8 else 7,
+            onClick = onToggleReadStatus
         )
         SearchActionButton(
             icon = AppIcons.FolderSimple,
@@ -1012,13 +1007,7 @@ internal fun SearchActionButton(
         onClick = onClick.takeIf { isLiquidGlass },
         interactive = isLiquidGlass,
         effectPadding = 1.dp,
-        decorationModifier = Modifier.shadow(
-            elevation = 12.dp,
-            shape = shape,
-            clip = false,
-            ambientColor = Color.Black.copy(alpha = 0.10f),
-            spotColor = Color.Black.copy(alpha = 0.13f)
-        ),
+        decorationModifier = Modifier,
         modifier = Modifier
             .width(width)
             .height(36.dp)

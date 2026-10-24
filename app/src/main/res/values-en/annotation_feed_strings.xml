@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="annotation_feed_title">All Highlights &amp; Notes</string>
+    <string name="annotation_feed_tab_all">All</string>
+    <string name="annotation_feed_search_hint">Search excerpts, notes or titles</string>
+    <string name="annotation_feed_rule_hidden">Rule highlights hidden: %d</string>
+    <string name="annotation_feed_rule_shown">Rule highlights shown: %d</string>
+    <string name="annotation_feed_rule_show">Show</string>
+    <string name="annotation_feed_rule_hide">Hide</string>
+    <string name="annotation_feed_today">Today</string>
+    <string name="annotation_feed_yesterday">Yesterday</string>
+    <string name="statistics_annotations_title">Highlights &amp; Notes</string>
+    <string name="statistics_annotations_view_all">View all</string>
+    <string name="statistics_top_tags">Top tags</string>
+    <string name="statistics_tag_count">%1$s · %2$d</string>
+    <string name="statistics_goal_days">Goal days</string>
+    <string name="statistics_streak_title">Reading streak</string>
+    <string name="statistics_streak_current">Current</string>
+    <string name="statistics_streak_longest">Longest</string>
+    <string name="statistics_streak_goal_hint">Days with %d+ minutes of reading count</string>
+    <string name="statistics_streak_any_hint">Any day with reading counts</string>
+</resources>

@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.home.remote
 
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -54,14 +55,14 @@ internal fun BoxScope.RemoteBottomBar(
             .align(Alignment.BottomCenter)
             .fillMaxWidth()
     ) {
-        if (blurBackdrop != null && progressiveBlurEnabled(supported, eInkMode)) {
+        if (blurBackdrop != null && progressiveBlurEnabled(supported, eInkMode, LocalReduceTransparency.current)) {
             ProgressiveBottomBlur(
                 backdrop = blurBackdrop,
                 bandHeight = bandHeight,
                 tint = tint.copy(alpha = tintAlpha * 4f),
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
-        } else if (progressiveTopScrimEnabled(supported, eInkMode)) {
+        } else if (progressiveTopScrimEnabled(supported, eInkMode, LocalReduceTransparency.current)) {
             ProgressiveBottomScrim(
                 bandHeight = bandHeight,
                 tint = tint,

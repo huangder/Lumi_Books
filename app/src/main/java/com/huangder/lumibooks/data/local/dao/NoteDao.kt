@@ -19,6 +19,19 @@ interface NoteDao {
     @Query("SELECT * FROM notes")
     suspend fun getAllNotes(): List<NoteEntity>
 
+    /** Highlights, underlines and notes of every book; ink strokes share this table and are skipped. */
+    @Query(
+        "SELECT * FROM notes WHERE type NOT LIKE 'pdf_ink_%' AND type NOT LIKE 'epub_comic_ink_%' " +
+            "ORDER BY createdAt DESC, id DESC"
+    )
+    fun observeTextNotes(): Flow<List<NoteEntity>>
+
+    @Query(
+        "SELECT * FROM notes WHERE createdAt >= :startMs AND createdAt < :endMs " +
+            "AND type NOT LIKE 'pdf_ink_%' AND type NOT LIKE 'epub_comic_ink_%'"
+    )
+    fun observeTextNotesCreatedBetween(startMs: Long, endMs: Long): Flow<List<NoteEntity>>
+
     @Query("SELECT tagsJson FROM notes")
     fun observeTagLists(): Flow<List<String>>
 

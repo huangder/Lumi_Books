@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.reader
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import com.huangder.lumibooks.domain.model.LongPressSelectionRange
 
 import android.annotation.SuppressLint
@@ -3227,7 +3228,7 @@ internal fun EpubWebViewReader(
         },
         modifier = Modifier
             .fillMaxSize()
-            .blur((12f * imagePreviewProgress.value).dp)
+            .blur(if (LocalReduceTransparency.current) 0.dp else (12f * imagePreviewProgress.value).dp)
     )
 
         imagePreview?.let { request ->

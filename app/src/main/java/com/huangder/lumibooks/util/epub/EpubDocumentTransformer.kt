@@ -4016,7 +4016,7 @@ private const val READER_SCRIPT_PART_3 = """
   function hasFootnoteHint(value) {
     var candidate = String(value || '');
     return /(^|[\s_#./-])(footnotes?|endnotes?|rearnotes?|notes?|fn|en)([\s_./-]|\d|$)/i.test(candidate) ||
-      /(?:footnotebookmark|duokan[-_]footnote)/i.test(candidate);
+      /(?:footnotebookmark|duokan[-_]footnote|jzyy_[a-z0-9_-]+)/i.test(candidate);
   }
 
   function isFootnoteBacklinkHint(value) {
@@ -4064,6 +4064,7 @@ private const val READER_SCRIPT_PART_3 = """
     if (!fragment) return false;
     // Duokan footnote bodies link back to the source marker via *_start_*.
     if (isFootnoteBacklinkHint(fragment)) return false;
+    if (/^jz_[a-z0-9_-]+$/i.test(anchor.id || '') && /^jzyy_[a-z0-9_-]+$/i.test(fragment)) return false;
     if (hasFootnoteSemantics(anchor, true)) return true;
     if (hasFootnoteMarkerLabel(anchor)) return true;
     if (hasFootnoteHint(anchor.className) || hasFootnoteHint(anchor.id) ||

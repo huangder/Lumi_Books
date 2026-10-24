@@ -12,6 +12,7 @@ import com.huangder.lumibooks.domain.model.AppFontSize
 import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
 import com.huangder.lumibooks.domain.model.AppIconStyle
 import com.huangder.lumibooks.domain.model.MenuAnimationStyle
+import com.huangder.lumibooks.domain.model.LiquidGlassStyle
 
 data class LaunchThemeSnapshot(
     val iconStyle: String = AppIconStyle.LUMI_2.storedValue,
@@ -20,6 +21,8 @@ data class LaunchThemeSnapshot(
     val appAccentColor: String = DEFAULT_APP_ACCENT_HEX,
     val appFontSize: AppFontSize = AppFontSize.STANDARD,
     val globalFontMode: String = "system",
+    val reduceTransparencyEnabled: Boolean = false,
+    val liquidGlassStyle: LiquidGlassStyle = LiquidGlassStyle.DEFAULT,
     val liquidGlassTransparency: Float = 0.55f,
     val liquidGlassHdrHighlightEnabled: Boolean = false,
     val cardOutlinesEnabled: Boolean = false,
@@ -50,6 +53,8 @@ object LaunchThemeController {
     private const val APP_ACCENT_COLOR = "app_accent_color"
     private const val APP_FONT_SIZE = "app_font_size"
     private const val GLOBAL_FONT_MODE = "global_font_mode"
+    private const val REDUCE_TRANSPARENCY_ENABLED = "reduce_transparency_enabled"
+    private const val LIQUID_GLASS_STYLE = "liquid_glass_style"
     private const val LIQUID_GLASS_TRANSPARENCY = "liquid_glass_transparency"
     private const val LIQUID_GLASS_HDR_HIGHLIGHT_ENABLED = "liquid_glass_hdr_highlight_enabled"
     private const val CARD_OUTLINES_ENABLED = "card_outlines_enabled"
@@ -97,6 +102,8 @@ object LaunchThemeController {
                 ?: DEFAULT_APP_ACCENT_HEX,
             appFontSize = AppFontSize.fromStoredValue(preferences.getString(APP_FONT_SIZE, null)),
             globalFontMode = preferences.getString(GLOBAL_FONT_MODE, "system") ?: "system",
+            reduceTransparencyEnabled = preferences.getBoolean(REDUCE_TRANSPARENCY_ENABLED, false),
+            liquidGlassStyle = LiquidGlassStyle.fromStoredValue(preferences.getString(LIQUID_GLASS_STYLE, null)),
             liquidGlassTransparency = preferences.getFloat(LIQUID_GLASS_TRANSPARENCY, 0.55f),
             liquidGlassHdrHighlightEnabled = preferences.getBoolean(
                 LIQUID_GLASS_HDR_HIGHLIGHT_ENABLED,
@@ -136,6 +143,11 @@ object LaunchThemeController {
             preferences.contains(HAS_COMPLETED_WELCOME_LANGUAGE_SETUP)
     }
 
+    fun updateLiquidGlassStyleSnapshot(context: Context, style: LiquidGlassStyle) {
+        context.getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
+            .edit().putString(LIQUID_GLASS_STYLE, style.storedValue).apply()
+    }
+
     fun updateThemeSnapshot(context: Context, snapshot: LaunchThemeSnapshot) {
         context.getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
             .edit()
@@ -145,6 +157,8 @@ object LaunchThemeController {
             .putString(APP_ACCENT_COLOR, snapshot.appAccentColor)
             .putString(APP_FONT_SIZE, snapshot.appFontSize.storedValue)
             .putString(GLOBAL_FONT_MODE, snapshot.globalFontMode)
+            .putBoolean(REDUCE_TRANSPARENCY_ENABLED, snapshot.reduceTransparencyEnabled)
+            .putString(LIQUID_GLASS_STYLE, snapshot.liquidGlassStyle.storedValue)
             .putFloat(LIQUID_GLASS_TRANSPARENCY, snapshot.liquidGlassTransparency)
             .putBoolean(
                 LIQUID_GLASS_HDR_HIGHLIGHT_ENABLED,
@@ -156,6 +170,13 @@ object LaunchThemeController {
             .putString(MENU_ANIMATION_STYLE, MenuAnimationStyle.normalize(snapshot.menuAnimationStyle))
             .putBoolean(E_INK_MODE_ENABLED, snapshot.eInkModeEnabled)
             .putBoolean(PREDICTIVE_BACK_ENABLED, snapshot.predictiveBackEnabled)
+            .apply()
+    }
+
+    fun updateReduceTransparencySnapshot(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(REDUCE_TRANSPARENCY_ENABLED, enabled)
             .apply()
     }
 

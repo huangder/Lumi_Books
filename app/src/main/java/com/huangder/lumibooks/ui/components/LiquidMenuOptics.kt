@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.components
 
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
 import android.os.Build
@@ -81,7 +82,7 @@ internal fun LiquidMenuSurface(
     )
 }
 
-// The debug rim override is not part of the animated glass path.
+// The original outline follows the animated glass path without the optical rim.
 @Composable
 private fun menuFallbackBorder(shape: () -> Shape): Modifier = Modifier.border(
     0.5.dp,
@@ -90,10 +91,15 @@ private fun menuFallbackBorder(shape: () -> Shape): Modifier = Modifier.border(
 )
 
 @Composable
-internal fun rememberMenuOptics(): LiquidMenuOptics? = remember {
-    if (Build.VERSION.SDK_INT >= 33) runCatching { LiquidMenuOptics() }
-        .onFailure { Log.w("LiquidMenuOptics", "Menu refraction unavailable; keeping shape and blur", it) }
-        .getOrNull() else null
+internal fun rememberMenuOptics(): LiquidMenuOptics? {
+    val reduceTransparency = LocalReduceTransparency.current
+    return remember(reduceTransparency) {
+        if (!reduceTransparency && Build.VERSION.SDK_INT >= 33) {
+            runCatching { LiquidMenuOptics() }
+                .onFailure { Log.w("LiquidMenuOptics", "Menu refraction unavailable; keeping shape and blur", it) }
+                .getOrNull()
+        } else null
+    }
 }
 
 @RequiresApi(33)

@@ -134,7 +134,10 @@ internal fun RemoteLibraryRoute(
                     })
                 },
                 onEdit = { openForm(it) },
-                onDelete = viewModel::deleteSource
+                onDelete = viewModel::deleteSource,
+                onFeedback = {
+                    context.startActivity(android.content.Intent(context, com.huangder.lumibooks.ui.settings.FeedbackActivity::class.java))
+                }
             )
             RemoteScreen.Browse -> {
                 val books = state.levels.lastOrNull()?.page?.books.orEmpty()

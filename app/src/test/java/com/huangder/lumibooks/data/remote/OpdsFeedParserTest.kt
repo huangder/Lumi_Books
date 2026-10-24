@@ -18,6 +18,7 @@ class OpdsFeedParserTest {
         assertEquals(2, page.folders.size)
         assertEquals("https://books.example.com/opds/new", page.folders[0].url)
         assertEquals("Newest books", page.folders[0].subtitle)
+        assertEquals("https://books.example.com/covers/newest.jpg", page.folders[0].coverUrl)
         assertEquals("https://books.example.com/authors", page.folders[1].url)
         assertTrue(page.books.isEmpty())
     }
@@ -107,6 +108,7 @@ class OpdsFeedParserTest {
     <id>new</id>
     <content type="text">Newest books</content>
     <link rel="subsection" href="new" type="application/atom+xml;profile=opds-catalog;kind=acquisition"/>
+    <link rel="http://opds-spec.org/image/thumbnail" href="/covers/newest.jpg" type="image/jpeg"/>
   </entry>
   <entry>
     <title>Authors</title>

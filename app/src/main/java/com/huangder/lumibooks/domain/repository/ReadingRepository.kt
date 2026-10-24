@@ -17,12 +17,18 @@ interface ReadingRepository {
     suspend fun getRecordByBookAndDate(bookId: String, date: String): ReadingRecord?
     suspend fun updateRecordDuration(recordId: Long, additionalDuration: Long, endTime: Long)
     fun getBookmarksByBookId(bookId: String): Flow<List<Bookmark>>
+    /** Every book's bookmarks, newest first. */
+    fun observeAllBookmarks(): Flow<List<Bookmark>>
+    fun observeBookmarksCreatedBetween(startMs: Long, endMs: Long): Flow<List<Bookmark>>
     suspend fun insertBookmark(bookmark: Bookmark)
     suspend fun updateBookmark(bookmark: Bookmark)
     suspend fun updateBookmarkTags(bookmark: Bookmark, tags: List<String>)
     suspend fun deleteBookmark(bookmark: Bookmark)
     suspend fun deleteAllBookmarksByBookId(bookId: String)
     fun getNotesByBookId(bookId: String): Flow<List<Note>>
+    /** Every book's highlights, underlines and notes (no ink strokes), newest first. */
+    fun observeTextNotes(): Flow<List<Note>>
+    fun observeTextNotesCreatedBetween(startMs: Long, endMs: Long): Flow<List<Note>>
     suspend fun insertNote(note: Note)
     suspend fun updateNote(note: Note)
     suspend fun updateNoteTags(note: Note, tags: List<String>)
@@ -39,7 +45,7 @@ interface ReadingRepository {
     )
     suspend fun deleteAllNotesByBookId(bookId: String)
     suspend fun deleteLegacyPdfAnnotationsByBookId(bookId: String)
-    fun getMostReadBooks(limit: Int = 5): Flow<List<BookDuration>>
+    fun getMostReadBooksBetween(startDate: String, endDate: String, limit: Int = 5): Flow<List<BookDuration>>
     fun getDailyTotalsBetween(startDate: String, endDate: String): Flow<List<DailyTotal>>
     fun getTotalDurationByBookId(bookId: String): Flow<Long?>
     fun getActiveDaysByBookId(bookId: String): Flow<Int>

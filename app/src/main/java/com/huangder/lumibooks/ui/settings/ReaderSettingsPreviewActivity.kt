@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.settings
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import com.huangder.lumibooks.ui.icons.directionalIcon
 import com.huangder.lumibooks.ui.icons.AppIcons
 import com.huangder.lumibooks.ui.icons.IconPair
@@ -208,7 +209,13 @@ class ReaderSettingsPreviewActivity : ComponentActivity() {
             }
 
             val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = launchTheme.menuAnimationStyle)
+            val liquidGlassStyle by dataStoreManager.liquidGlassStyle
+                .collectAsState(initial = launchTheme.liquidGlassStyle)
+            val reduceTransparencyEnabled by dataStoreManager.reduceTransparencyEnabled
+                .collectAsState(initial = launchTheme.reduceTransparencyEnabled)
             EBookReaderTheme(
+                liquidGlassStyle = liquidGlassStyle,
+                reduceTransparencyEnabled = reduceTransparencyEnabled,
                 menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
                 darkTheme = isDark,
                 dynamicColor = resolvedAppTheme == "material3",
@@ -481,8 +488,8 @@ private fun ThemeSuiteListScreen(
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val topBandHeight = statusBarHeight + 112.dp
     val listBackdrop = com.huangder.lumibooks.ui.components.LocalLiquidGlassBackdrop.current
-    val blurEnabled = progressiveBlurEnabled(capability.supported, eInkMode)
-    val scrimEnabled = progressiveTopScrimEnabled(capability.supported, eInkMode)
+    val blurEnabled = progressiveBlurEnabled(capability.supported, eInkMode, LocalReduceTransparency.current)
+    val scrimEnabled = progressiveTopScrimEnabled(capability.supported, eInkMode, LocalReduceTransparency.current)
     val listState = rememberLazyListState()
     val blurStrength by remember(listState) {
         derivedStateOf {

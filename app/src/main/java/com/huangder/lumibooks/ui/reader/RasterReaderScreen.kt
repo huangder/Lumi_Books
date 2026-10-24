@@ -546,7 +546,7 @@ fun RasterReaderScreen(
         )
     }
     val motionEnabled = LocalMotionEnabled.current
-    val effectivePdfPageMode = if (eInkMode) "horizontal" else uiState.pdfPageMode
+    val effectivePdfPageMode = uiState.pdfPageMode
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkMode
     LaunchedEffect(ttsState.errorMessage) {
         val message = ttsState.errorMessage ?: return@LaunchedEffect
@@ -1655,17 +1655,15 @@ fun RasterReaderScreen(
                     ttsState.playbackState != TtsPlaybackState.IDLE,
                 onBack = exitReader,
                 onPageModeToggle = {
-                    if (!eInkMode) {
-                        pendingModePage = currentPage
-                        scale = if (uiState.rasterZoomLocked) {
-                            uiState.rasterZoomScale.coerceIn(1f, 5f)
-                        } else {
-                            1f
-                        }
-                        offsetX = 0f
-                        offsetY = 0f
-                        viewModel.togglePdfPageMode()
+                    pendingModePage = currentPage
+                    scale = if (uiState.rasterZoomLocked) {
+                        uiState.rasterZoomScale.coerceIn(1f, 5f)
+                    } else {
+                        1f
                     }
+                    offsetX = 0f
+                    offsetY = 0f
+                    viewModel.togglePdfPageMode()
                 },
                 onRenderModeToggle = viewModel::togglePageRenderMode,
                 onZoomLockToggle = {
@@ -2615,35 +2613,32 @@ private fun PdfTopBar(
                 verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.Top),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                if (!eInkMode) {
-                    LiquidGlassSurface(
-                        controlEdge = true,
-                        shape = CircleShape,
-                        fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
-                        contentScrimColor = glassContentScrimColor,
-                        modifier = Modifier
-                            .size(36.dp),
-                        onClick = onPageModeToggle,
-                        contentAlignment = Alignment.Center
-                    ) {
-                        val nextPageMode = pageMode.next()
-                        Icon(
-                            when (pageMode) {
-                                PdfPageMode.HORIZONTAL_PAGING -> AppIcons.Cards
-                                PdfPageMode.VERTICAL_PAGING -> AppIcons.Rows
-                                PdfPageMode.VERTICAL_SCROLL -> AppIcons.Rows
-                            },
-                            contentDescription = stringResource(
-                                when (nextPageMode) {
-                                    PdfPageMode.HORIZONTAL_PAGING -> R.string.pdf_switch_to_horizontal
-                                    PdfPageMode.VERTICAL_PAGING -> R.string.pdf_switch_to_vertical_paging
-                                    PdfPageMode.VERTICAL_SCROLL -> R.string.pdf_switch_to_vertical
-                                }
-                            ),
-                            tint = AppColors.TextPrimary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
+                LiquidGlassSurface(
+                    controlEdge = true,
+                    shape = CircleShape,
+                    fallbackColor = AppColors.BgGray.copy(alpha = 0.8f),
+                    contentScrimColor = glassContentScrimColor,
+                    modifier = Modifier.size(36.dp),
+                    onClick = onPageModeToggle,
+                    contentAlignment = Alignment.Center
+                ) {
+                    val nextPageMode = pageMode.next()
+                    Icon(
+                        when (pageMode) {
+                            PdfPageMode.HORIZONTAL_PAGING -> AppIcons.Cards
+                            PdfPageMode.VERTICAL_PAGING -> AppIcons.Rows
+                            PdfPageMode.VERTICAL_SCROLL -> AppIcons.Rows
+                        },
+                        contentDescription = stringResource(
+                            when (nextPageMode) {
+                                PdfPageMode.HORIZONTAL_PAGING -> R.string.pdf_switch_to_horizontal
+                                PdfPageMode.VERTICAL_PAGING -> R.string.pdf_switch_to_vertical_paging
+                                PdfPageMode.VERTICAL_SCROLL -> R.string.pdf_switch_to_vertical
+                            }
+                        ),
+                        tint = AppColors.TextPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
                 LiquidGlassSurface(
                     controlEdge = true,
@@ -3885,7 +3880,7 @@ private fun PdfPageItem(
                 source = tiled,
                 zoomScale = zoomScale,
                 foreground = visible,
-                fallback = renderedPage,
+                fallback = renderedPage.takeUnless { tileLoaded },
                 crop = crop,
                 fitToViewport = fitToViewport,
                 adjustments = imageAdjustments,

@@ -87,7 +87,8 @@ object OpdsFeedParser {
                 url = href,
                 subtitle = entry.childText("content").ifBlank { entry.childText("summary") }
                     .let(::plainText)
-                    .takeIf(String::isNotBlank)
+                    .takeIf(String::isNotBlank),
+                coverUrl = imageUrl(links, entryBase)
             )
         }
         return RemotePage(
@@ -139,11 +140,8 @@ object OpdsFeedParser {
         val summary = entry.childrenAnyNs("content").firstOrNull()?.let(::entryText)
             ?.takeIf(String::isNotBlank)
             ?: entry.childrenAnyNs("summary").firstOrNull()?.let(::entryText)?.takeIf(String::isNotBlank)
-        val image = links.firstOrNull { it.getAttribute("rel") == REL_IMAGE || it.getAttribute("rel") == "x-stanza-cover-image" }
-            ?.let { resolve(base, it.getAttribute("href")) }
-        val thumbnail = links.firstOrNull {
-            it.getAttribute("rel") == REL_THUMBNAIL || it.getAttribute("rel") == "x-stanza-cover-image-thumbnail"
-        }?.let { resolve(base, it.getAttribute("href")) }
+        val image = imageUrl(links, base)
+        val thumbnail = thumbnailUrl(links, base)
         val id = entry.childText("id").ifBlank { formats.firstOrNull()?.url ?: title }
         return RemoteBookItem(
             sourceId = sourceId,
@@ -165,6 +163,17 @@ object OpdsFeedParser {
             formats = formats
         )
     }
+
+    private fun imageUrl(links: List<Element>, base: HttpUrl): String? =
+        links.firstOrNull {
+            it.getAttribute("rel") == REL_IMAGE || it.getAttribute("rel") == "x-stanza-cover-image"
+        }?.let { resolve(base, it.getAttribute("href")) }
+            ?: thumbnailUrl(links, base)
+
+    private fun thumbnailUrl(links: List<Element>, base: HttpUrl): String? =
+        links.firstOrNull {
+            it.getAttribute("rel") == REL_THUMBNAIL || it.getAttribute("rel") == "x-stanza-cover-image-thumbnail"
+        }?.let { resolve(base, it.getAttribute("href")) }
 
     private fun isAcquisition(link: Element): Boolean {
         val rel = link.getAttribute("rel")

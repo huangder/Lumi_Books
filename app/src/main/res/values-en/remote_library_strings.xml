@@ -8,6 +8,14 @@
     <string name="remote_library_empty_detail_webdav">Connect a WebDAV drive such as a NAS, Jianguoyun or Nextcloud, then browse its folders and download books.</string>
     <string name="remote_library_empty_detail_opds">Connect a self-hosted OPDS library such as Calibre, Kavita or Komga, then browse, search and download books.</string>
     <string name="remote_library_legal_notice">Only add libraries you have the right to access. Lumi doesn\'t provide or recommend any book sources.</string>
+    <string name="remote_library_legal_title">Remote library notice</string>
+    <string name="remote_library_legal_message">Make sure you are authorized to access this library and to browse, download, and import its works. Follow applicable laws, copyright, and service terms. Do not import or distribute infringing, unlawful, or unauthorized content. You provide and manage the address and its contents. Lumi does not provide or review library sources and is not responsible for their legality, accuracy, or availability. By continuing, you confirm that this library and its use are lawful and accept responsibility for your actions.</string>
+    <string name="remote_library_legal_confirm_wait">Please read this notice (%1$d s)</string>
+    <string name="remote_library_legal_confirm">I have read and agree</string>
+    <string name="remote_library_feedback">Report a problem</string>
+    <string name="remote_library_feedback_hint">Report a problem or an illegal library with the button below.</string>
+    <string name="remote_library_settings_opds_summary">Browse and manage OPDS libraries</string>
+    <string name="remote_library_settings_webdav_summary">Browse and manage WebDAV libraries</string>
     <string name="remote_library_add">Add library</string>
     <string name="remote_library_edit">Edit library</string>
     <string name="remote_library_delete">Delete library</string>

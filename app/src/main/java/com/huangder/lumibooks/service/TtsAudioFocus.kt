@@ -30,6 +30,16 @@ internal fun ttsAudioFocusActionForChange(
     else -> TtsAudioFocusAction.IGNORE
 }
 
+internal fun shouldHoldTtsAudioFocus(
+    playbackState: TtsPlaybackState,
+    usesSystemEngine: Boolean,
+    pausedForLoss: Boolean
+): Boolean = usesSystemEngine && (
+    playbackState == TtsPlaybackState.PLAYING ||
+        playbackState == TtsPlaybackState.INITIALIZING ||
+        pausedForLoss
+    )
+
 /**
  * 系统 TTS 引擎播放时自身不持有音频焦点，部分机型因此把耳机媒体按键路由给“上次播放音频的应用”。
  * 听书（系统引擎）播放期间由本控制器持有可 duck 焦点，让背景音乐可继续播放；
@@ -79,7 +89,6 @@ internal class TtsAudioFocusController(
             }
             TtsAudioFocusAction.RESUME_AFTER_LOSS -> {
                 if (pausedForLoss) {
-                    pausedForLoss = false
                     ttsController.resume()
                 }
             }
@@ -90,9 +99,11 @@ internal class TtsAudioFocusController(
     /** 按当前会话状态与引擎类型同步焦点持有状态。 */
     fun update(playbackState: TtsPlaybackState, usesSystemEngine: Boolean) {
         if (playbackState == TtsPlaybackState.PLAYING) pausedForLoss = false
-        val shouldHold = usesSystemEngine &&
-            (playbackState == TtsPlaybackState.PLAYING ||
-                playbackState == TtsPlaybackState.INITIALIZING)
+        val shouldHold = shouldHoldTtsAudioFocus(
+            playbackState = playbackState,
+            usesSystemEngine = usesSystemEngine,
+            pausedForLoss = pausedForLoss
+        )
         logTtsServiceEvent(
             event = "audio_focus_policy_evaluated",
             controller = ttsController,
@@ -101,6 +112,7 @@ internal class TtsAudioFocusController(
                 "usesSystemEngine" to usesSystemEngine,
                 "shouldHold" to shouldHold,
                 "currentlyHolding" to holding,
+                "pausedForLoss" to pausedForLoss,
                 "outputTypes" to outputDeviceTypes()
             )
         )

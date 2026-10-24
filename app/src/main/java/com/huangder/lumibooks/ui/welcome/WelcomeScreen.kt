@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.welcome
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import com.huangder.lumibooks.ui.icons.AppIcons
 
 import androidx.compose.animation.AnimatedContent
@@ -402,7 +403,7 @@ private fun UpdatePreviewPage(
                 .fillMaxWidth()
                 .fillMaxHeight()
                 .align(Alignment.TopCenter)
-                .blur(contentBlurRadius),
+                .blur(if (LocalReduceTransparency.current) 0.dp else contentBlurRadius),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Column(
@@ -1372,7 +1373,6 @@ private fun SupportWelcomeButton(
     } else {
         glassColor.copy(alpha = if (isDark) 0.28f else 0.48f)
     }
-    val shadowColor = if (primary) AccentColor else Color.Black
     val contentColor = when {
         primary -> AppColors.OnAccent
         isDark -> Color.White
@@ -1391,13 +1391,7 @@ private fun SupportWelcomeButton(
             transparencyOverride = 0.65f,
             enabled = enabled,
             onClick = onClick,
-            decorationModifier = Modifier.shadow(
-                elevation = if (primary) 22.dp else 18.dp,
-                shape = shape,
-                clip = false,
-                ambientColor = shadowColor.copy(alpha = if (primary) 0.22f else 0.10f),
-                spotColor = shadowColor.copy(alpha = if (primary) 0.16f else 0.07f)
-            ),
+            decorationModifier = Modifier,
             modifier = modifier.graphicsLayer { alpha = if (enabled) 1f else 0.48f }
         ) {
             Text(
@@ -1633,13 +1627,6 @@ private fun WelcomeStartButton(
                 scaleX = scale
                 scaleY = scale
             }
-            .shadow(
-                elevation = if (isEInkMode) 0.dp else 20.dp,
-                shape = shape,
-                clip = false,
-                ambientColor = AccentColor.copy(alpha = 0.18f),
-                spotColor = AccentColor.copy(alpha = 0.18f)
-            )
             .clip(shape)
             .background(containerColor)
             .border(1.dp, borderColor, shape)

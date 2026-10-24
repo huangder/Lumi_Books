@@ -14,8 +14,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.ui.components.*
@@ -45,7 +49,10 @@ class GlassControlEdgePreviewActivity : ComponentActivity() {
                         dark = dark,
                         background = intent.getStringExtra("background") ?: "white",
                         noBackdrop = intent.getBooleanExtra("noBackdrop", false),
-                        artwork = intent.getBooleanExtra("artwork", false)
+                        artwork = intent.getBooleanExtra("artwork", false),
+                        shadowComparison = intent.getBooleanExtra("shadowComparison", false),
+                        reverseComparison = intent.getBooleanExtra("reverseComparison", false),
+                        noShadowBaseline = intent.getBooleanExtra("noShadowBaseline", false)
                     )
                 }
             }
@@ -54,7 +61,7 @@ class GlassControlEdgePreviewActivity : ComponentActivity() {
 }
 
 @Composable
-private fun Samples(dark: Boolean, background: String, noBackdrop: Boolean, artwork: Boolean) {
+private fun Samples(dark: Boolean, background: String, noBackdrop: Boolean, artwork: Boolean, shadowComparison: Boolean, reverseComparison: Boolean, noShadowBaseline: Boolean) {
     val backdrop = rememberLayerBackdrop()
     val foreground = if (dark) Color.White else Color(0xFF17171A)
     val surface = if (dark) Color(0xFF202023) else Color(0xFFF7F7F9)
@@ -82,6 +89,43 @@ private fun Samples(dark: Boolean, background: String, noBackdrop: Boolean, artw
             ) {
                 Text("Glass controls · " + (if (LocalLiquidGlassControlEdgeEnabled.current) "New" else "Before") +
                     (if (LocalLiquidGlassControlEdgeForceCanvas.current) " · Canvas" else ""), color = foreground)
+                if (shadowComparison) {
+                Spacer(Modifier.height(130.dp))
+                // Same glass fill and outline; only the shadow pass changes. Log bounds
+                // so device screenshots can be compared pixel-for-pixel inside each shape.
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val treatments = if (reverseComparison) listOf("Default", "None", "Native") else listOf("Native", "None", "Default")
+                    treatments.forEach { treatment ->
+                        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(treatment, color = foreground, fontSize = 12.sp)
+                            Spacer(Modifier.height(12.dp))
+                            val ambient = Color.Black.copy(alpha = if (dark) 0.24f else 0.12f)
+                            val spot = Color.Black.copy(alpha = if (dark) 0.34f else 0.18f)
+                            fun decoration(shape: Shape) = when (treatment) {
+                                "Native" -> Modifier.shadow(10.dp, shape, false, ambient, spot)
+                                "Default" -> if (noShadowBaseline) Modifier else null
+                                else -> Modifier
+                            }
+                            fun bounds(kind: String) = Modifier.onGloballyPositioned {
+                                android.util.Log.i("LumiGlassStatic", "$kind/$treatment ${it.boundsInWindow()}")
+                            }
+                            val shape = AppRoundedCornerShape(28.dp)
+                            LiquidGlassButton(
+                                onClick = click, shape = shape,
+                                modifier = Modifier.fillMaxWidth().height(52.dp).then(bounds("pill")),
+                                decorationModifier = decoration(shape), contentColor = foreground
+                            ) { Text("上一步", fontSize = 14.sp) }
+                            Spacer(Modifier.height(28.dp))
+                            LiquidGlassSurface(
+                                shape = CircleShape, fallbackColor = surface,
+                                contentScrimColor = surface.copy(alpha = 0.24f), controlEdge = true,
+                                onClick = click, modifier = Modifier.size(48.dp).then(bounds("circle")),
+                                decorationModifier = decoration(CircleShape)
+                            ) { Text("+", color = foreground, fontSize = 20.sp) }
+                        }
+                    }
+                }
+                }
                 LiquidGlassSurface(
                     shape = CircleShape, fallbackColor = surface,
                     contentScrimColor = surface.copy(alpha = 0.58f), controlEdge = true,

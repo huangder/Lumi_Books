@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.components
 
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -97,13 +98,19 @@ internal fun quantizeBlurStrength(strength: Float, steps: Int = PROGRESSIVE_BLUR
     return ((clamped * steps).roundToInt().toFloat() / steps).coerceIn(0f, 1f)
 }
 
-/** Whether the progressive blur can run at all. E-ink always opts out, even on capable devices. */
-internal fun progressiveBlurEnabled(supported: Boolean, eInkMode: Boolean): Boolean =
-    supported && !eInkMode
+/** Progressive blur is optional; e-ink always opts out of blur and its fallback scrim. */
+internal fun progressiveBlurEnabled(
+    supported: Boolean,
+    eInkMode: Boolean,
+    reduceTransparency: Boolean = false
+): Boolean = supported && !eInkMode && !reduceTransparency
 
 /** Whether the blur-free readability scrim should be used instead of the blur band. */
-internal fun progressiveTopScrimEnabled(supported: Boolean, eInkMode: Boolean): Boolean =
-    !supported && !eInkMode
+internal fun progressiveTopScrimEnabled(
+    supported: Boolean,
+    eInkMode: Boolean,
+    reduceTransparency: Boolean = false
+): Boolean = (!supported || reduceTransparency) && !eInkMode
 
 private fun smoothStep(value: Float): Float {
     val x = value.coerceIn(0f, 1f)
@@ -228,6 +235,15 @@ private fun ProgressiveBlurBand(
     tint: Color?,
     fromBottom: Boolean
 ) {
+    if (LocalReduceTransparency.current) {
+        val fallbackTint = (tint ?: com.huangder.lumibooks.ui.theme.AppColors.WindowBg).copy(alpha = 1f)
+        if (fromBottom) {
+            ProgressiveBottomScrim(modifier, bandHeight, fallbackTint)
+        } else {
+            ProgressiveTopScrim(strength, modifier, bandHeight, fallbackTint)
+        }
+        return
+    }
     val resolvedStrength = quantizeBlurStrength(strength)
     if (resolvedStrength <= 0f) return
 

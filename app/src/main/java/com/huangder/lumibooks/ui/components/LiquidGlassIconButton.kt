@@ -8,7 +8,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -89,13 +88,7 @@ fun LiquidGlassIconButton(
         enabled = enabled,
         onClick = onClick,
         modifier = resolvedModifier.size(size),
-        decorationModifier = Modifier.shadow(
-            elevation = 10.dp,
-            shape = CircleShape,
-            clip = false,
-            ambientColor = Color.Black.copy(alpha = if (isDark) 0.24f else 0.12f),
-            spotColor = Color.Black.copy(alpha = if (isDark) 0.34f else 0.18f)
-        )
+        decorationModifier = Modifier
     ) {
         Icon(
             imageVector = imageVector,

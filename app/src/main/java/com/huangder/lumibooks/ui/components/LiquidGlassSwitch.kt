@@ -7,6 +7,7 @@ package com.huangder.lumibooks.ui.components
  * Source: https://github.com/Kyant0/AndroidLiquidGlass
  */
 
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -114,6 +115,7 @@ fun LiquidGlassSwitch(
 
     val isDark = LocalIsDarkTheme.current
     val transparency = LocalLiquidGlassTransparency.current
+    val reduceTransparency = LocalReduceTransparency.current
     val motionEnabled = LocalMotionEnabled.current
     val backdrop = LocalLiquidGlassBackdrop.current
     val density = LocalDensity.current
@@ -276,11 +278,13 @@ fun LiquidGlassSwitch(
                     val blurRadius = 8.dp.toPx() *
                         (1f - transparency) * (1f - opticalProgress)
                     if (blurRadius > 0f) blur(blurRadius)
-                    lens(
-                        5.dp.toPx() * opticalProgress,
-                        10.dp.toPx() * opticalProgress,
-                        chromaticAberration = opticalProgress > 0.05f
-                    )
+                    if (!reduceTransparency) {
+                        lens(
+                            5.dp.toPx() * opticalProgress,
+                            10.dp.toPx() * opticalProgress,
+                            chromaticAberration = opticalProgress > 0.05f
+                        )
+                    }
                 },
                 highlight = {
                     Highlight.Ambient.copy(alpha = pressProgress)

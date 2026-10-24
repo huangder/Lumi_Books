@@ -2,6 +2,7 @@
 
 package com.huangder.lumibooks.ui.home
 
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
 import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -467,6 +468,7 @@ private fun ContinueReadingCard(
     val context = LocalContext.current
     val blurRadiusPx = with(LocalDensity.current) { 24.dp.roundToPx() }
     val useCoverBackground = book.coverPath != null && !LocalEInkMode.current &&
+        !LocalReduceTransparency.current &&
         !com.huangder.lumibooks.ui.theme.LocalLumiBackgroundPresent.current
     val primaryContentColor = if (useCoverBackground) Color.White else AppColors.TextPrimary
     val secondaryContentColor = if (useCoverBackground) {
@@ -474,8 +476,8 @@ private fun ContinueReadingCard(
     } else {
         AppColors.TextSecondary
     }
-    val blurredCoverRequest = remember(book.id, book.coverPath, blurRadiusPx) {
-        book.coverPath?.let { coverPath ->
+    val blurredCoverRequest = remember(book.id, book.coverPath, blurRadiusPx, useCoverBackground) {
+        book.coverPath?.takeIf { useCoverBackground }?.let { coverPath ->
             ImageRequest.Builder(context)
                 .data(coverPath)
                 .allowHardware(false)

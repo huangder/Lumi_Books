@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.components
 
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import androidx.compose.animation.core.AnimationSpec
 import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 import com.huangder.lumibooks.ui.animation.VisualMotion.tween
@@ -236,6 +237,7 @@ fun LiquidGlassSegmentedControl(
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
     val isDark = LocalIsDarkTheme.current
     val transparency = LocalLiquidGlassTransparency.current
+    val reduceTransparency = LocalReduceTransparency.current
     val motionEnabled = LocalMotionEnabled.current
     val animationScope = rememberCoroutineScope()
     val safeSelectedIndex = selectedIndex.coerceIn(0, itemCount - 1)
@@ -339,7 +341,9 @@ fun LiquidGlassSegmentedControl(
             effects = {
                 vibrancy()
                 if (transparency < 1f) blur((6.dp * (1f - transparency)).toPx())
-                lens(10.dp.toPx(), 18.dp.toPx())
+                if (!reduceTransparency) {
+                    lens(10.dp.toPx(), 18.dp.toPx())
+                }
             },
             highlight = { liquidGlassHighlight() },
             exportedBackdrop = trackSurfaceBackdrop,
@@ -358,11 +362,13 @@ fun LiquidGlassSegmentedControl(
             effects = {
                 if (transparency < 1f) blur((3.dp * (1f - transparency)).toPx())
                 val opticalProgress = if (motionEnabled) motionState.pressProgress else 0f
-                lens(
-                    2.dp.toPx() * opticalProgress,
-                    4.dp.toPx() * opticalProgress,
-                    chromaticAberration = false
-                )
+                if (!reduceTransparency) {
+                    lens(
+                        2.dp.toPx() * opticalProgress,
+                        4.dp.toPx() * opticalProgress,
+                        chromaticAberration = false
+                    )
+                }
             },
             highlight = null,
             shadow = null,

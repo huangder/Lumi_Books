@@ -39,6 +39,9 @@
     <string name="app_accent_color_hex">颜色值 (#RRGGBB)</string>
     <string name="app_accent_color_invalid">请输入有效的六位十六进制颜色值</string>
     <string name="app_accent_color_reset">恢复 Lumi 粉</string>
+    <string name="liquid_glass_style">玻璃风格</string>
+    <string name="liquid_glass_style_default">默认</string>
+    <string name="liquid_glass_style_original">初始</string>
     <string name="liquid_glass_transparency">玻璃通透度</string>
     <string name="liquid_glass_hdr_highlight">HDR 按压高光</string>
     <string name="app_name">LUMI</string>
@@ -479,6 +482,17 @@
     <string name="book_detail_unknown">未知</string>
     <string name="book_detail_none">无</string>
     <string name="book_detail_edit">编辑</string>
+    <string name="book_mark_read">标记为已读</string>
+    <string name="book_unmark_read">撤销已读</string>
+    <string name="book_review">我的书评</string>
+    <string name="book_review_subtitle">读完这本书，留下你的感受</string>
+    <string name="book_review_rating_label">我的评分</string>
+    <string name="book_review_count">%1$d / 2000</string>
+    <string name="book_review_open">查看与编辑</string>
+    <string name="book_review_hint">写下这本书带给你的感受…</string>
+    <string name="book_review_save">保存</string>
+    <string name="book_review_saved">书评已保存</string>
+    <string name="book_review_score_unit">/ 5.0 分</string>
     <string name="add_tag">添加标签</string>
     <string name="tag_sheet_title">标签</string>
     <string name="tag_name_hint">输入新标签名称</string>

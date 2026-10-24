@@ -78,6 +78,12 @@ class ReadingRepositoryImpl @Inject constructor(
         }
     }
 
+    override fun observeAllBookmarks(): Flow<List<Bookmark>> =
+        bookmarkDao.observeAllBookmarks().map { entities -> entities.map { it.toDomain() } }
+
+    override fun observeBookmarksCreatedBetween(startMs: Long, endMs: Long): Flow<List<Bookmark>> =
+        bookmarkDao.observeBookmarksCreatedBetween(startMs, endMs).map { entities -> entities.map { it.toDomain() } }
+
     override suspend fun insertBookmark(bookmark: Bookmark) {
         val now = System.currentTimeMillis()
         database.withTransaction {
@@ -125,6 +131,12 @@ class ReadingRepositoryImpl @Inject constructor(
             entities.map { it.toDomain() }
         }
     }
+
+    override fun observeTextNotes(): Flow<List<Note>> =
+        noteDao.observeTextNotes().map { entities -> entities.map { it.toDomain() } }
+
+    override fun observeTextNotesCreatedBetween(startMs: Long, endMs: Long): Flow<List<Note>> =
+        noteDao.observeTextNotesCreatedBetween(startMs, endMs).map { entities -> entities.map { it.toDomain() } }
 
     override suspend fun insertNote(note: Note) {
         val now = System.currentTimeMillis()
@@ -282,9 +294,8 @@ class ReadingRepositoryImpl @Inject constructor(
         noteDao.deleteLegacyPdfAnnotationsByBookId(bookId)
     }
 
-    override fun getMostReadBooks(limit: Int): Flow<List<BookDuration>> {
-        return readingRecordDao.getMostReadBooks(limit)
-    }
+    override fun getMostReadBooksBetween(startDate: String, endDate: String, limit: Int): Flow<List<BookDuration>> =
+        readingRecordDao.getMostReadBooksBetween(startDate, endDate, limit)
 
     override fun getDailyTotalsBetween(startDate: String, endDate: String): Flow<List<DailyTotal>> {
         return readingRecordDao.getDailyTotalsBetween(startDate, endDate)

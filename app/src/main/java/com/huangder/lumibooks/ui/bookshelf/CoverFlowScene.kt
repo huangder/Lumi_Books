@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.bookshelf
 
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -114,6 +115,7 @@ internal fun CoverFlowScene(
 ) {
     val density = LocalDensity.current
     val context = LocalContext.current
+    val reduceTransparency = LocalReduceTransparency.current
     val eInk = LocalEInkMode.current
     val entrance = LocalCoverFlowEntrance.current
     val coversLayer = rememberGraphicsLayer()
@@ -155,8 +157,8 @@ internal fun CoverFlowScene(
         }
         val range = remember(center, books.size) { CoverFlowPhysics.visibleRange(center.toFloat(), books.size) }
         val order = remember(range, orderBucket) { range.sortedByDescending { abs(it - (orderBucket / 2f + 0.25f)) } }
-        val blurEffects = remember(density, motionEnabled) {
-            if (Build.VERSION.SDK_INT >= 31 && motionEnabled) {
+        val blurEffects = remember(density, motionEnabled, reduceTransparency) {
+            if (Build.VERSION.SDK_INT >= 31 && motionEnabled && !reduceTransparency) {
                 List(13) { step ->
                     if (step == 0) null else android.graphics.RenderEffect.createBlurEffect(
                         step * 0.25f * density.density, step * 0.25f * density.density,

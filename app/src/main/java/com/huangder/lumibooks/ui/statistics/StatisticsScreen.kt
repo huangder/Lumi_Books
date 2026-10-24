@@ -40,8 +40,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import com.huangder.lumibooks.ui.theme.drawAppShape
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -68,6 +69,10 @@ import coil.compose.AsyncImage
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.animation.cardPressEffect
+import com.huangder.lumibooks.ui.animation.pressEffect
+import com.huangder.lumibooks.ui.bookshelf.AnnotationFeedActivity
+import com.huangder.lumibooks.ui.bookshelf.BookDetailsActivity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
 import com.huangder.lumibooks.ui.components.LiquidGlassSegmentedControl
@@ -109,6 +114,7 @@ fun StatisticsScreen(
         120.dp
     }
     val motionEnabled = LocalMotionEnabled.current
+    val context = LocalContext.current
     val chartAnimationsPlayed = remember { mutableStateListOf(false, false, false) }
     val selectedPeriod = uiState.selectedTab.coerceIn(0, 2)
     val playChartAnimation = remember(selectedPeriod) {
@@ -212,19 +218,34 @@ fun StatisticsScreen(
                     }
                 }
 
-                item(key = "most_read") {
+                item(key = "annotations") {
                     PageEntranceItem(play = playEntranceAnimation, index = 3) {
                         Column {
-                            MostReadBooks(uiState.mostReadBooks)
+                            AnnotationsOverview(
+                                summary = uiState.annotationSummary,
+                                onOpen = { AnnotationFeedActivity.start(context) }
+                            )
                             Spacer(Modifier.height(AppSpace.lg))
                         }
                     }
                 }
 
-                item(key = "completion") {
+                item(key = "most_read") {
                     PageEntranceItem(play = playEntranceAnimation, index = 4) {
                         Column {
-                            CompletionProgress(uiState)
+                            MostReadBooks(
+                                books = uiState.mostReadBooks,
+                                onOpen = { bookId -> BookDetailsActivity.start(context, bookId) }
+                            )
+                            Spacer(Modifier.height(AppSpace.lg))
+                        }
+                    }
+                }
+
+                item(key = "streak") {
+                    PageEntranceItem(play = playEntranceAnimation, index = 5) {
+                        Column {
+                            ReadingStreakCard(uiState)
                             Spacer(Modifier.height(bottomContentPadding))
                         }
                     }
@@ -328,12 +349,15 @@ private fun StatisticsSummary(uiState: StatisticsUiState, selectedPeriod: Int) {
     val hours = totalMinutes / 60
     val minutes = totalMinutes % 60
     val activeDays = durations.count { it > 0L }
+    val hasGoal = uiState.dailyGoal > 0
+    val goalMs = uiState.dailyGoal * 60 * 1000L
+    val goalDays = durations.count { it >= goalMs }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg),
-        horizontalArrangement = Arrangement.spacedBy(AppSpace.xl)
+        horizontalArrangement = Arrangement.spacedBy(if (hasGoal) AppSpace.lg else AppSpace.xl)
     ) {
         StatisticValue(
             value = stringResource(R.string.statistics_duration_value, hours, minutes),
@@ -344,6 +368,12 @@ private fun StatisticsSummary(uiState: StatisticsUiState, selectedPeriod: Int) {
             value = stringResource(R.string.statistics_active_days_value, activeDays),
             label = stringResource(R.string.statistics_active_days)
         )
+        if (hasGoal) {
+            StatisticValue(
+                value = stringResource(R.string.statistics_active_days_value, goalDays),
+                label = stringResource(R.string.statistics_goal_days)
+            )
+        }
     }
 }
 
@@ -930,7 +960,7 @@ private fun YearlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewM
 }
 
 @Composable
-private fun MostReadBooks(books: List<MostReadBook>) {
+private fun MostReadBooks(books: List<MostReadBook>, onOpen: (String) -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -939,7 +969,6 @@ private fun MostReadBooks(books: List<MostReadBook>) {
             .cardOutline(AppRoundedCornerShape(AppRadius.lg))
             .clip(AppRoundedCornerShape(AppRadius.lg))
             .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
-            .cardPressEffect()
             .padding(AppSpace.md)
     ) {
         Text(stringResource(R.string.most_read_books), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(KaiTi), color = AppColors.TextPrimary)
@@ -953,7 +982,14 @@ private fun MostReadBooks(books: List<MostReadBook>) {
                     Box(Modifier.fillMaxWidth().height(0.5.dp).background(AppColors.Divider))
                 }
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = AppSpace.md),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pressEffect()
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { onOpen(book.bookId) }
+                        .padding(vertical = AppSpace.md),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // 封面
@@ -980,6 +1016,13 @@ private fun MostReadBooks(books: List<MostReadBook>) {
                         color = AppColors.Accent,
                         fontWeight = FontWeight.SemiBold
                     )
+                    Spacer(Modifier.width(AppSpace.xs))
+                    Icon(
+                        imageVector = directionalIcon(AppIcons.CaretRight, AppIcons.CaretLeft),
+                        contentDescription = null,
+                        tint = AppColors.TextSecondary,
+                        modifier = Modifier.size(14.dp)
+                    )
                 }
             }
         }
@@ -987,10 +1030,43 @@ private fun MostReadBooks(books: List<MostReadBook>) {
 }
 
 @Composable
-private fun CompletionProgress(uiState: StatisticsUiState) {
-    val totalMinutes = (uiState.todayReadingTime / 1000 / 60).toInt()
-    val goalMinutes = uiState.dailyGoal
+private fun ReadingStreakCard(uiState: StatisticsUiState) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppSpace.lg)
+            .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .cardOutline(AppRoundedCornerShape(AppRadius.lg))
+            .clip(AppRoundedCornerShape(AppRadius.lg))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
+            .padding(AppSpace.md)
+    ) {
+        Text(stringResource(R.string.statistics_streak_title), fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(KaiTi), color = AppColors.TextPrimary)
+        Spacer(Modifier.height(AppSpace.md))
+        Row(horizontalArrangement = Arrangement.spacedBy(AppSpace.xl)) {
+            StatisticValue(
+                value = stringResource(R.string.streak_days, uiState.currentStreak),
+                label = stringResource(R.string.statistics_streak_current)
+            )
+            StatisticValue(
+                value = stringResource(R.string.streak_days, uiState.longestStreak),
+                label = stringResource(R.string.statistics_streak_longest)
+            )
+        }
+        Spacer(Modifier.height(AppSpace.sm))
+        Text(
+            text = if (uiState.dailyGoal > 0) stringResource(R.string.statistics_streak_goal_hint, uiState.dailyGoal)
+            else stringResource(R.string.statistics_streak_any_hint),
+            fontSize = AppType.Caption,
+            color = AppColors.TextSecondary
+        )
+    }
+}
 
+/** Marks made in the selected period; the whole card opens the cross-book feed. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AnnotationsOverview(summary: AnnotationPeriodSummary, onOpen: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1000,32 +1076,59 @@ private fun CompletionProgress(uiState: StatisticsUiState) {
             .clip(AppRoundedCornerShape(AppRadius.lg))
             .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
             .cardPressEffect()
-            .padding(AppSpace.lg)
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onOpen)
+            .padding(AppSpace.md)
     ) {
-        Text(stringResource(R.string.today_goal), fontSize = AppType.Body, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
-        Spacer(Modifier.height(AppSpace.xs))
-        Text(
-            text = stringResource(R.string.goal_progress_format, totalMinutes, goalMinutes),
-            fontSize = AppType.BodySmall,
-            color = AppColors.TextSecondary
-        )
-        Spacer(Modifier.height(AppSpace.sm))
-        LinearProgressIndicator(
-            progress = { uiState.goalProgress },
-            modifier = Modifier.fillMaxWidth().height(6.dp).clip(AppRoundedCornerShape(3.dp)),
-            color = AppColors.Accent,
-            trackColor = AppColors.Divider
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                stringResource(R.string.statistics_annotations_title),
+                fontSize = AppType.Section, fontWeight = FontWeight.Bold,
+                fontFamily = resolveAppFontFamily(KaiTi), color = AppColors.TextPrimary,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Text(stringResource(R.string.statistics_annotations_view_all), fontSize = AppType.Caption, color = AppColors.Accent)
+            Icon(
+                imageVector = directionalIcon(AppIcons.CaretRight, AppIcons.CaretLeft),
+                contentDescription = null,
+                tint = AppColors.Accent,
+                modifier = Modifier.size(14.dp)
+            )
+        }
+        Spacer(Modifier.height(AppSpace.md))
+        Row(modifier = Modifier.fillMaxWidth()) {
+            AnnotationCount(summary.highlights, stringResource(R.string.tab_highlights), Modifier.weight(1f))
+            AnnotationCount(summary.underlines, stringResource(R.string.tab_underline), Modifier.weight(1f))
+            AnnotationCount(summary.notes, stringResource(R.string.tab_notes), Modifier.weight(1f))
+            AnnotationCount(summary.bookmarks, stringResource(R.string.tab_bookmarks), Modifier.weight(1f))
+        }
+        if (summary.topTags.isNotEmpty()) {
+            Spacer(Modifier.height(AppSpace.md))
+            Text(stringResource(R.string.statistics_top_tags), fontSize = AppType.Caption, color = AppColors.TextSecondary)
+            Spacer(Modifier.height(AppSpace.xs))
+            val chipAlpha = if (LocalAppTheme.current == "liquid_glass") 0.14f else 0.08f
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                summary.topTags.forEach { (tag, count) ->
+                    Text(
+                        text = stringResource(R.string.statistics_tag_count, tag, count),
+                        fontSize = AppType.Caption, color = AppColors.TextPrimary,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .widthIn(max = 200.dp)
+                            .clip(AppRoundedCornerShape(12.dp))
+                            .background(AppColors.Accent.copy(alpha = chipAlpha))
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+            }
+        }
+    }
+}
 
-        Spacer(Modifier.height(AppSpace.lg))
-
-        val monthlyHours = (uiState.monthlyReadingTime / 1000 / 60 / 60).toInt()
-        Text(stringResource(R.string.monthly_reading_label), fontSize = AppType.Body, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
-        Spacer(Modifier.height(AppSpace.xs))
-        Text(
-            text = stringResource(R.string.monthly_hours_format, monthlyHours),
-            fontSize = AppType.BodySmall,
-            color = AppColors.TextSecondary
-        )
+@Composable
+private fun AnnotationCount(value: Int, label: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Text("$value", fontSize = AppType.Title, fontWeight = FontWeight.Bold, color = AppColors.TextPrimary, maxLines = 1)
+        Text(label, fontSize = AppType.Caption, color = AppColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

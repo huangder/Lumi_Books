@@ -63,6 +63,7 @@ import com.huangder.lumibooks.ui.components.LiquidGlassSurface
  */
 sealed class ContextMenuAction {
     data object BookDetails : ContextMenuAction()
+    data object ToggleReadStatus : ContextMenuAction()
     data object MoveToFolder : ContextMenuAction()
     data object Delete : ContextMenuAction()
     data object Favorite : ContextMenuAction()
@@ -95,6 +96,7 @@ fun BookContextMenuOverlay(
     onTags: (Book) -> Unit = {},
     onEditInfo: (Book) -> Unit = {},
     onBookDetails: (Book) -> Unit = {},
+    onToggleReadStatus: (Book) -> Unit = {},
     onMoveToFolder: (Book) -> Unit = {}
 ) {
     if (state.phase == ContextMenuPhase.Idle) return
@@ -147,6 +149,7 @@ fun BookContextMenuOverlay(
                     state.dismiss()
                     when (action) {
                         is ContextMenuAction.BookDetails -> onBookDetails(book)
+                        is ContextMenuAction.ToggleReadStatus -> onToggleReadStatus(book)
                         is ContextMenuAction.MoveToFolder -> onMoveToFolder(book)
                         is ContextMenuAction.Delete -> onDelete(book)
                         is ContextMenuAction.Favorite -> onFavorite(book)
@@ -322,6 +325,7 @@ private fun ContextMenuLayout(
             isFavorite = book.isFavorite,
             isPinned = book.isPinned,
             hasCustomCover = com.huangder.lumibooks.util.FileUtils.isCustomCover(book.coverPath),
+            isReadingFinished = book.isReadingFinished,
             onAction = onAction
         )
         }
@@ -423,6 +427,7 @@ private fun MenuActionsPanel(
     isFavorite: Boolean = false,
     isPinned: Boolean = false,
     hasCustomCover: Boolean = false,
+    isReadingFinished: Boolean = false,
     onAction: (ContextMenuAction) -> Unit
 ) {
     val shape = AppRoundedCornerShape(
@@ -432,9 +437,11 @@ private fun MenuActionsPanel(
     val favoriteIcon = AppIcons.Heart.resolve(isFavorite)
     val favoriteLabel = if (isFavorite) stringResource(R.string.remove_favorite_short) else stringResource(R.string.favorite)
     val pinLabel = if (isPinned) stringResource(R.string.book_unpin) else stringResource(R.string.book_pin)
+    val readStatusLabel = if (isReadingFinished) stringResource(R.string.book_unmark_read) else stringResource(R.string.book_mark_read)
     data class MenuItem(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val action: ContextMenuAction)
     val menuItems = buildList {
         add(MenuItem(stringResource(R.string.book_details), AppIcons.Info, ContextMenuAction.BookDetails))
+        add(MenuItem(readStatusLabel, AppIcons.BookOpen, ContextMenuAction.ToggleReadStatus))
         add(MenuItem(favoriteLabel, favoriteIcon, ContextMenuAction.Favorite))
         add(MenuItem(pinLabel, AppIcons.PushPin, ContextMenuAction.Pin))
         add(MenuItem(stringResource(R.string.add_tag), AppIcons.Tag, ContextMenuAction.Tags))

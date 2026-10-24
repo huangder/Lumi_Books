@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.bookshelf
 
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import android.os.Build
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
@@ -75,8 +76,9 @@ internal fun CoverFlowReflection(
 ) {
     val density = LocalDensity.current
     val dark = LocalIsDarkTheme.current
-    val blur = remember(density, blurEnabled) {
-        if (Build.VERSION.SDK_INT >= 31 && blurEnabled) {
+    val allowBlur = blurEnabled && !LocalReduceTransparency.current
+    val blur = remember(density, allowBlur) {
+        if (Build.VERSION.SDK_INT >= 31 && allowBlur) {
             val radius = with(density) { 2.2.dp.toPx() }
             android.graphics.RenderEffect.createBlurEffect(radius, radius,
                 android.graphics.Shader.TileMode.DECAL).asComposeRenderEffect()

@@ -263,6 +263,16 @@ class ProgressiveTopBlurTest {
         assertFalse(progressiveTopScrimEnabled(supported = true, eInkMode = true))
     }
 
+    @Test
+    fun reducedTransparencyReplacesSupportedAndUnsupportedBlurWithAScrimExceptInEInk() {
+        for (supported in listOf(false, true)) {
+            assertFalse(progressiveBlurEnabled(supported, eInkMode = false, reduceTransparency = true))
+            assertTrue(progressiveTopScrimEnabled(supported, eInkMode = false, reduceTransparency = true))
+            assertFalse(progressiveBlurEnabled(supported, eInkMode = true, reduceTransparency = true))
+            assertFalse(progressiveTopScrimEnabled(supported, eInkMode = true, reduceTransparency = true))
+        }
+    }
+
     /**
      * 脚手架实际使用的映射：滚动位移经大标题折叠进度换算成模糊强度，
      * 与标题过渡共用同一进度源。

@@ -35,7 +35,10 @@ internal data class CbzIndex(
  * global page order plus the chapter boundaries the table of contents needs.
  */
 internal object CbzPageIndex {
-    private val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "avif")
+    private val IMAGE_EXTENSIONS = setOf(
+        "jpg", "jpeg", "jpe", "jfif", "png", "webp", "gif", "bmp", "avif",
+        "tif", "tiff", "heic", "heif"
+    )
     private val SKIPPED_FILE_NAMES = setOf(".ds_store", "thumbs.db", "desktop.ini")
     private const val MACOS_METADATA_DIRECTORY = "__macosx"
 

@@ -15,6 +15,9 @@
     <string name="app_accent_color_hex">색상 값 (#RRGGBB)</string>
     <string name="app_accent_color_invalid">유효한 6자리 16진수 색상을 입력하세요</string>
     <string name="app_accent_color_reset">Lumi 핑크로 재설정</string>
+    <string name="liquid_glass_style">유리 스타일</string>
+    <string name="liquid_glass_style_default">기본</string>
+    <string name="liquid_glass_style_original">초기</string>
     <string name="liquid_glass_transparency">유리 투명도</string>
     <string name="liquid_glass_hdr_highlight">HDR 터치 하이라이트</string>
     <string name="app_name">LUMI</string>

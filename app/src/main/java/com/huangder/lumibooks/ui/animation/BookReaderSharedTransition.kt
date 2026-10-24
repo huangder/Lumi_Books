@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.animation
 
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import android.graphics.RenderEffect
 import android.graphics.Shader
 import android.graphics.BitmapFactory
@@ -972,8 +973,9 @@ internal fun Modifier.bookReaderLibraryLayer(
     transition: BookReaderTransitionState,
     blurEnabled: Boolean
 ): Modifier {
-    val effects = remember(transition, LocalDensity.current.density) {
-        arrayOfNulls<androidx.compose.ui.graphics.RenderEffect>(37)
+    val allowBlur = blurEnabled && !LocalReduceTransparency.current
+    val effects = remember(transition, LocalDensity.current.density, allowBlur) {
+        if (allowBlur) arrayOfNulls<androidx.compose.ui.graphics.RenderEffect>(37) else emptyArray()
     }
     return graphicsLayer {
         val active = transition.phase != BookReaderTransitionPhase.Library
@@ -988,7 +990,7 @@ internal fun Modifier.bookReaderLibraryLayer(
         scaleY = scale
         // Half-dp steps reuse effects in both directions instead of allocating one per frame.
         val step = (BookReaderMotion.LIBRARY_BLUR_DP * 2f * progress).roundToInt().coerceIn(0, 36)
-        renderEffect = if (blurEnabled && step > 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        renderEffect = if (allowBlur && step > 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             effects[step] ?: RenderEffect.createBlurEffect(
                 step * 0.5f * density, step * 0.5f * density, Shader.TileMode.CLAMP
             ).asComposeRenderEffect().also { effects[step] = it }

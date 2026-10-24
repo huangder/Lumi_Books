@@ -29,6 +29,10 @@ data class Note(
     val isGeneratedByHighlightRule: Boolean
         get() = origin == ORIGIN_HIGHLIGHT_RULE && sourceRuleId != null && sourceMatchKey != null
 
+    /** PDF/comic ink strokes share the notes table but are drawings, not text marks. */
+    val isInkStroke: Boolean
+        get() = type.startsWith(PDF_INK_TYPE_PREFIX) || type.startsWith(EPUB_COMIC_INK_TYPE_PREFIX)
+
     fun detachFromHighlightRule(): Note = copy(
         origin = ORIGIN_MANUAL,
         sourceRuleId = null,
@@ -38,5 +42,7 @@ data class Note(
     companion object {
         const val ORIGIN_MANUAL = "manual"
         const val ORIGIN_HIGHLIGHT_RULE = "highlight_rule"
+        const val PDF_INK_TYPE_PREFIX = "pdf_ink_"
+        const val EPUB_COMIC_INK_TYPE_PREFIX = "epub_comic_ink_"
     }
 }

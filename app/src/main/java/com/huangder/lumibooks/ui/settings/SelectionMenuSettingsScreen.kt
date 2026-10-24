@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.settings
 
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -35,7 +36,7 @@ internal fun SelectionMenuSettingsScreen(
     val navigationBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val capability = LocalLiquidGlassCapability.current
     val eInk = LocalEInkMode.current
-    val blurEnabled = progressiveBlurEnabled(capability.supported, eInk)
+    val blurEnabled = progressiveBlurEnabled(capability.supported, eInk, LocalReduceTransparency.current)
     val blurStrength by remember(listState) {
         derivedStateOf {
             if (listState.firstVisibleItemIndex > 0) 1f
@@ -65,7 +66,7 @@ internal fun SelectionMenuSettingsScreen(
                     bandHeight = statusBarHeight + 112.dp,
                     tint = AppColors.WindowBg.copy(alpha = if (LocalIsDarkTheme.current)
                         PROGRESSIVE_BLUR_TINT_ALPHA_DARK else PROGRESSIVE_BLUR_TINT_ALPHA))
-            } else if (!dragging && progressiveTopScrimEnabled(capability.supported, eInk)) {
+            } else if (!dragging && progressiveTopScrimEnabled(capability.supported, eInk, LocalReduceTransparency.current)) {
                 ProgressiveTopScrim(blurStrength, Modifier.align(Alignment.TopCenter),
                     bandHeight = statusBarHeight + 112.dp, tint = AppColors.WindowBg)
             }

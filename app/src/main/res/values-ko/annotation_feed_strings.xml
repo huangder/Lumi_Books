@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="annotation_feed_title">모든 하이라이트와 메모</string>
+    <string name="annotation_feed_tab_all">전체</string>
+    <string name="annotation_feed_search_hint">발췌, 메모 또는 책 제목 검색</string>
+    <string name="annotation_feed_rule_hidden">규칙 하이라이트 %d개 숨김</string>
+    <string name="annotation_feed_rule_shown">규칙 하이라이트 %d개 표시 중</string>
+    <string name="annotation_feed_rule_show">표시</string>
+    <string name="annotation_feed_rule_hide">숨기기</string>
+    <string name="annotation_feed_today">오늘</string>
+    <string name="annotation_feed_yesterday">어제</string>
+    <string name="statistics_annotations_title">하이라이트와 메모</string>
+    <string name="statistics_annotations_view_all">모두 보기</string>
+    <string name="statistics_top_tags">자주 쓰는 태그</string>
+    <string name="statistics_tag_count">%1$s · %2$d</string>
+    <string name="statistics_goal_days">목표 달성일</string>
+    <string name="statistics_streak_title">연속 독서</string>
+    <string name="statistics_streak_current">현재 연속</string>
+    <string name="statistics_streak_longest">최장 연속</string>
+    <string name="statistics_streak_goal_hint">하루 %d분 이상 읽으면 연속으로 계산돼요</string>
+    <string name="statistics_streak_any_hint">조금이라도 읽은 날은 연속으로 계산돼요</string>
+</resources>

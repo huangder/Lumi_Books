@@ -79,6 +79,7 @@ class WebdavLibraryClient @Inject constructor() {
                                 sizeBytes = entry.sizeBytes
                             )
                         ),
+                        coverUrl = siblingCoverUrl(entry.name, entries),
                         fileName = entry.name,
                         remotePath = "/$relative",
                         lastModified = entry.lastModified
@@ -128,5 +129,16 @@ class WebdavLibraryClient @Inject constructor() {
   </D:prop>
 </D:propfind>
 """
+    }
+
+    private fun siblingCoverUrl(bookName: String, entries: List<WebdavListingEntry>): String? {
+        val stem = bookName.substringBeforeLast('.', bookName).lowercase()
+        val imageExtensions = listOf("jpg", "jpeg", "png", "webp")
+        return imageExtensions.firstNotNullOfOrNull { extension ->
+            entries.firstOrNull { image ->
+                !image.isCollection && image.name.substringAfterLast('.', "").equals(extension, ignoreCase = true) &&
+                    image.name.substringBeforeLast('.', image.name).equals(stem, ignoreCase = true)
+            }?.url?.toString()
+        }
     }
 }

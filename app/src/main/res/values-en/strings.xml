@@ -38,6 +38,9 @@
     <string name="app_accent_color_hex">Color value (#RRGGBB)</string>
     <string name="app_accent_color_invalid">Enter a valid six-digit hex color</string>
     <string name="app_accent_color_reset">Reset to Lumi Pink</string>
+    <string name="liquid_glass_style">Glass style</string>
+    <string name="liquid_glass_style_default">Default</string>
+    <string name="liquid_glass_style_original">Original</string>
     <string name="liquid_glass_transparency">Glass clarity</string>
     <string name="liquid_glass_hdr_highlight">HDR touch highlight</string>
     <string name="app_name">LUMI</string>
@@ -461,6 +464,17 @@
     <string name="book_detail_unknown">Unknown</string>
     <string name="book_detail_none">None</string>
     <string name="book_detail_edit">Edit</string>
+    <string name="book_mark_read">Mark as read</string>
+    <string name="book_unmark_read">Undo read status</string>
+    <string name="book_review">My review</string>
+    <string name="book_review_subtitle">A few thoughts after reading</string>
+    <string name="book_review_rating_label">My rating</string>
+    <string name="book_review_count">%1$d / 2000</string>
+    <string name="book_review_open">View and edit</string>
+    <string name="book_review_hint">Write what this book made you think and feel…</string>
+    <string name="book_review_save">Save</string>
+    <string name="book_review_saved">Review saved</string>
+    <string name="book_review_score_unit">/ 5.0</string>
     <string name="add_tag">Add tag</string>
     <string name="tag_sheet_title">Tags</string>
     <string name="tag_name_hint">Enter a new tag</string>

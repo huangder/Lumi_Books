@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reduce_transparency_label">투명도 줄이기</string>
+    <string name="reduce_transparency_description">점진적 흐림과 화면 장식용 흐림을 끕니다. 리퀴드 글래스의 기본 반투명 효과는 유지하고 굴절을 끕니다.</string>
+</resources>

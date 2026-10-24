@@ -50,7 +50,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -145,7 +144,13 @@ class BookDetailsActivity : ComponentActivity() {
             val resolvedTheme = effectiveAppTheme(appTheme, capability)
             val motion by dataStoreManager.motionPreference.collectAsState(initial = launchTheme.motionPreference)
             val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = launchTheme.menuAnimationStyle)
+            val liquidGlassStyle by dataStoreManager.liquidGlassStyle
+                .collectAsState(initial = launchTheme.liquidGlassStyle)
+            val reduceTransparencyEnabled by dataStoreManager.reduceTransparencyEnabled
+                .collectAsState(initial = launchTheme.reduceTransparencyEnabled)
             EBookReaderTheme(
+                liquidGlassStyle = liquidGlassStyle,
+                reduceTransparencyEnabled = reduceTransparencyEnabled,
                 menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
                 motionPreference = com.huangder.lumibooks.ui.theme.MotionPreference.fromStoredValue(motion),
                 darkTheme = isDark,
@@ -213,7 +218,7 @@ class BookDetailsViewModel @Inject constructor(
                 readingRepository.getActiveDaysByBookId(bookId),
                 readingRepository.getBookmarksByBookId(bookId),
                 readingRepository.getNotesByBookId(bookId)
-            ) { books, duration, days, bookmarks, notes -> BookDetailsUiState(books.firstOrNull { it.id == bookId }, duration ?: 0L, days, bookmarks.size, notes.size, false) }
+            ) { books, duration, days, bookmarks, notes -> BookDetailsUiState(books.firstOrNull { it.id == bookId }, duration ?: 0L, days, bookmarks.size, notes.count { !it.isInkStroke }, false) }
                 .collect { _uiState.value = it }
         }
     }
@@ -301,7 +306,15 @@ fun BookDetailsScreen(
                 MetricGrid(book, details.totalReadingTime, details.activeDays, details.bookmarkCount, details.noteCount)
             }
             item {
-                InfoCard(book, folderName, tags.joinToString { it.name }, onEdit = { editing = true }, onTags = { tagsOpen = true }, onMove = { moveOpen = true })
+                InfoCard(
+                    book,
+                    folderName,
+                    tags.joinToString { it.name },
+                    onEdit = { editing = true },
+                    onTags = { tagsOpen = true },
+                    onMove = { moveOpen = true },
+                    onReview = { BookReviewActivity.start(context, book.id, book.title, book.coverPath) }
+                )
             }
         }
         FloatingDetailTag(
@@ -382,7 +395,7 @@ fun BookDetailsScreen(
     }
 }
 
-@Composable private fun InfoCard(book: Book, folder: String, tags: String, onEdit: () -> Unit, onTags: () -> Unit, onMove: () -> Unit) {
+@Composable private fun InfoCard(book: Book, folder: String, tags: String, onEdit: () -> Unit, onTags: () -> Unit, onMove: () -> Unit, onReview: () -> Unit) {
     val context = LocalContext.current
     LiquidGlassSurface(AppRoundedCornerShape(AppRadius.lg), AppColors.CardBg, Modifier.fillMaxWidth(), contentScrimColor = Color.Transparent) {
         Column {
@@ -398,6 +411,7 @@ fun BookDetailsScreen(
             DetailRow(stringResource(R.string.book_detail_format), book.format.name, false)
             DetailRow(stringResource(R.string.book_detail_folder), folder, true, onMove)
             DetailRow(stringResource(R.string.add_tag), tags.ifBlank { stringResource(R.string.book_detail_none) }, true, onTags)
+            DetailRow(stringResource(R.string.book_review), stringResource(R.string.book_review_open), true, onReview, showChevron = true)
             DetailRow(
                 stringResource(R.string.book_detail_storage),
                 when {
@@ -440,7 +454,7 @@ fun BookDetailsScreen(
     }
 }
 
-@Composable internal fun DetailRow(label: String, value: String, clickable: Boolean, onClick: () -> Unit = {}) {
+@Composable internal fun DetailRow(label: String, value: String, clickable: Boolean, onClick: () -> Unit = {}, showChevron: Boolean = false) {
     val textMeasurer = rememberTextMeasurer()
     val density = androidx.compose.ui.platform.LocalDensity.current
     val labelStyle = TextStyle(fontSize = AppType.Body)
@@ -456,12 +470,13 @@ fun BookDetailsScreen(
         val labelWidthPx = remember(label, labelStyle) {
             textMeasurer.measure(label, style = labelStyle, maxLines = 1).size.width.toFloat()
         }
-        val valueWidthPx = remember(value, valueStyle) {
+        val valueWidthPx = remember(value, valueStyle, showChevron) {
             textMeasurer.measure(value, style = valueStyle, maxLines = 1).size.width.toFloat()
         }
+        val chevronWidthPx = if (showChevron) with(density) { 20.dp.toPx() } else 0f
         val stack = shouldStackDetailRow(
             labelWidthPx = labelWidthPx,
-            valueWidthPx = valueWidthPx,
+            valueWidthPx = valueWidthPx + chevronWidthPx,
             availableWidthPx = availableWidthPx,
             gapWidthPx = with(density) { gap.toPx() }
         )
@@ -469,23 +484,33 @@ fun BookDetailsScreen(
             Column(Modifier.fillMaxWidth()) {
                 Text(label, style = labelStyle, color = AppColors.TextPrimary)
                 Spacer(Modifier.height(6.dp))
-                Text(
-                    value,
-                    style = valueStyle,
-                    color = AppColors.TextSecondary,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(value, style = valueStyle, color = AppColors.TextSecondary, modifier = Modifier.weight(1f))
+                    if (showChevron) {
+                        Icon(
+                            AppIcons.CaretRight,
+                            contentDescription = null,
+                            tint = AppColors.TextSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
             }
         } else {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(label, style = labelStyle, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
                 Spacer(Modifier.width(gap))
-                Text(
-                    value,
-                    style = valueStyle,
-                    color = AppColors.TextSecondary,
-                    maxLines = 1
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(value, style = valueStyle, color = AppColors.TextSecondary, maxLines = 1)
+                    if (showChevron) {
+                        Icon(
+                            AppIcons.CaretRight,
+                            contentDescription = null,
+                            tint = AppColors.TextSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
             }
         }
     }
@@ -504,12 +529,7 @@ internal fun shouldStackDetailRow(
     LiquidGlassSurface(
         shape,
         AppColors.CardBg,
-        modifier.shadow(
-            elevation = 18.dp,
-            shape = shape,
-            ambientColor = Color.Black.copy(alpha = if (isDark) 0.34f else 0.18f),
-            spotColor = Color.Black.copy(alpha = if (isDark) 0.40f else 0.24f)
-        ),
+        modifier.clip(shape),
         controlEdge = true,
         contentScrimColor = if (isDark) Color.Black.copy(alpha = .22f) else Color.White.copy(alpha = .28f)
     ) {

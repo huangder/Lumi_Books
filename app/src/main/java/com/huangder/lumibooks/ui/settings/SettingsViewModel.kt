@@ -14,6 +14,7 @@ import com.huangder.lumibooks.domain.model.AppFontSize
 import com.huangder.lumibooks.domain.model.AppIconStyle
 import com.huangder.lumibooks.domain.model.BookOpenTransition
 import com.huangder.lumibooks.domain.model.LongPressSelectionRange
+import com.huangder.lumibooks.domain.model.LiquidGlassStyle
 import com.huangder.lumibooks.util.BookFileAccess
 import com.huangder.lumibooks.util.FileUtils
 import com.huangder.lumibooks.util.UpdateChecker
@@ -240,6 +241,16 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.globalFontMode.collectLatest { mode ->
                 _uiState.value = _uiState.value.copy(globalFontMode = mode)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.reduceTransparencyEnabled.collectLatest { enabled ->
+                _uiState.update { it.copy(reduceTransparencyEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.liquidGlassStyle.collectLatest { style ->
+                _uiState.update { it.copy(liquidGlassStyle = style) }
             }
         }
         viewModelScope.launch {
@@ -612,6 +623,20 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.saveGlobalFontMode(normalized)
         }
+    }
+
+    fun saveReduceTransparencyEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(reduceTransparencyEnabled = enabled) }
+        viewModelScope.launch {
+            dataStoreManager.saveReduceTransparencyEnabled(enabled)
+        }
+    }
+
+    fun saveLiquidGlassStyle(value: String) {
+        val style = LiquidGlassStyle.fromStoredValue(value)
+        if (_uiState.value.liquidGlassStyle == style) return
+        _uiState.update { it.copy(liquidGlassStyle = style) }
+        viewModelScope.launch { dataStoreManager.saveLiquidGlassStyle(style) }
     }
 
     fun saveLiquidGlassTransparency(transparency: Float) {

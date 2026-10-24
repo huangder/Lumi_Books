@@ -17,6 +17,12 @@ interface BookmarkDao {
     @Query("SELECT * FROM bookmarks")
     suspend fun getAllBookmarks(): List<BookmarkEntity>
 
+    @Query("SELECT * FROM bookmarks ORDER BY createdAt DESC, id DESC")
+    fun observeAllBookmarks(): Flow<List<BookmarkEntity>>
+
+    @Query("SELECT * FROM bookmarks WHERE createdAt >= :startMs AND createdAt < :endMs")
+    fun observeBookmarksCreatedBetween(startMs: Long, endMs: Long): Flow<List<BookmarkEntity>>
+
     @Query("SELECT tagsJson FROM bookmarks")
     fun observeTagLists(): Flow<List<String>>
 

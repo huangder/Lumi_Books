@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.components
 
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import com.huangder.lumibooks.ui.theme.drawAppShape
 
@@ -100,6 +101,7 @@ fun PillSlider(
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current && !forceNonGlass
     val isDark = LocalIsDarkTheme.current
     val transparency = LocalLiquidGlassTransparency.current
+    val reduceTransparency = LocalReduceTransparency.current
     val motionEnabled = LocalMotionEnabled.current
     val backdrop = LocalLiquidGlassBackdrop.current
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
@@ -348,11 +350,13 @@ fun PillSlider(
                     val opticalProgress = if (motionEnabled) pressProgress else 0f
                     val blurRadius = 8.dp.toPx() * (1f - transparency) * (1f - opticalProgress)
                     if (blurRadius > 0f) blur(blurRadius)
-                    lens(
-                        10.dp.toPx() * opticalProgress,
-                        14.dp.toPx() * opticalProgress,
-                        chromaticAberration = opticalProgress > 0.05f
-                    )
+                    if (!reduceTransparency) {
+                        lens(
+                            10.dp.toPx() * opticalProgress,
+                            14.dp.toPx() * opticalProgress,
+                            chromaticAberration = opticalProgress > 0.05f
+                        )
+                    }
                 },
                 highlight = { Highlight.Ambient.copy(alpha = pressProgress) },
                 shadow = { Shadow(radius = 4.dp, color = Color.Black.copy(alpha = 0.05f)) },

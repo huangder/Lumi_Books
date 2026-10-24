@@ -77,7 +77,8 @@ class BookNotesViewModel @Inject constructor(
     private fun loadNotes() {
         viewModelScope.launch {
             readingRepository.getNotesByBookId(bookId).collectLatest { notes ->
-                _uiState.value = _uiState.value.copy(notes = notes)
+                // Ink strokes are drawings, not marks: keep them out of lists, filters and export.
+                _uiState.value = _uiState.value.copy(notes = notes.filterNot { it.isInkStroke })
             }
         }
     }

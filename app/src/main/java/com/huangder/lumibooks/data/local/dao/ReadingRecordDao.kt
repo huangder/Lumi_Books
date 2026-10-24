@@ -41,8 +41,12 @@ interface ReadingRecordDao {
     )
     suspend fun updateRecordDuration(recordId: Long, additionalDuration: Long, endTime: Long)
 
-    @Query("SELECT bookId, SUM(duration) as totalDuration FROM reading_records GROUP BY bookId ORDER BY totalDuration DESC LIMIT :limit")
-    fun getMostReadBooks(limit: Int = 5): Flow<List<BookDuration>>
+    @Query(
+        "SELECT bookId, SUM(duration) as totalDuration FROM reading_records " +
+            "WHERE date BETWEEN :startDate AND :endDate GROUP BY bookId " +
+            "HAVING totalDuration > 0 ORDER BY totalDuration DESC LIMIT :limit"
+    )
+    fun getMostReadBooksBetween(startDate: String, endDate: String, limit: Int = 5): Flow<List<BookDuration>>
 
     @Query("SELECT date, SUM(duration) as totalDuration FROM reading_records WHERE date BETWEEN :startDate AND :endDate GROUP BY date")
     fun getDailyTotalsBetween(startDate: String, endDate: String): Flow<List<DailyTotal>>

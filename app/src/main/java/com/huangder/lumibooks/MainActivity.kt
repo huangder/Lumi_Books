@@ -782,7 +782,13 @@ class MainActivity : ComponentActivity() {
             }
 
             val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = com.huangder.lumibooks.util.LaunchThemeController.themeSnapshot(this).menuAnimationStyle)
+            val liquidGlassStyle by dataStoreManager.liquidGlassStyle
+                .collectAsState(initial = appFontLaunchSnapshot.liquidGlassStyle)
+            val reduceTransparencyEnabled by dataStoreManager.reduceTransparencyEnabled
+                .collectAsState(initial = appFontLaunchSnapshot.reduceTransparencyEnabled)
             EBookReaderTheme(
+                liquidGlassStyle = liquidGlassStyle,
+                reduceTransparencyEnabled = reduceTransparencyEnabled,
                 menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
                 darkTheme = isDark,
                 dynamicColor = effectiveAppTheme == "material3",

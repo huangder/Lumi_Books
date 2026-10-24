@@ -11,6 +11,9 @@ class CbzPageIndexTest {
         assertTrue(CbzPageIndex.isImageEntry("001.jpg"))
         assertTrue(CbzPageIndex.isImageEntry("Chapter 1/page-002.PNG"))
         assertTrue(CbzPageIndex.isImageEntry("a/b/003.webp"))
+        assertTrue(CbzPageIndex.isImageEntry("004.jfif"))
+        assertTrue(CbzPageIndex.isImageEntry("005.tiff"))
+        assertTrue(CbzPageIndex.isImageEntry("006.heic"))
 
         assertFalse(CbzPageIndex.isImageEntry("Chapter 1/"))
         assertFalse(CbzPageIndex.isImageEntry("__MACOSX/._001.jpg"))

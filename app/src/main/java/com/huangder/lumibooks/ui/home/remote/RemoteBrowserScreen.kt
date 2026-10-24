@@ -46,7 +46,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -59,6 +58,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.draw.shadow
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.remote.RemoteBookFiles
 import com.huangder.lumibooks.data.remote.RemoteBookItem
@@ -371,14 +371,27 @@ private fun LoadMoreFooter(loadingMore: Boolean, onLoadMore: () -> Unit) {
 }
 
 @Composable
-private fun RemoteFolderThumb(modifier: Modifier = Modifier, iconSize: androidx.compose.ui.unit.Dp = 24.dp) {
-    Box(
-        modifier = modifier
-            .clip(AppRoundedCornerShape(AppRadius.sm))
-            .background(AppColors.BgGray),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(AppIcons.Folder, contentDescription = null, tint = AppColors.Accent, modifier = Modifier.size(iconSize))
+private fun RemoteFolderThumb(
+    folder: RemoteFolder,
+    modifier: Modifier = Modifier,
+    iconSize: androidx.compose.ui.unit.Dp = 24.dp
+) {
+    if (folder.coverUrl != null) {
+        RemoteBookCover(
+            model = folder.coverUrl,
+            extension = null,
+            title = folder.title,
+            shape = AppRoundedCornerShape(AppRadius.sm),
+            placeholderFontSize = AppType.Caption,
+            modifier = modifier
+        )
+    } else {
+        Box(
+            modifier = modifier.clip(AppRoundedCornerShape(AppRadius.sm)).background(AppColors.BgGray),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(AppIcons.Folder, contentDescription = null, tint = AppColors.Accent, modifier = Modifier.size(iconSize))
+        }
     }
 }
 
@@ -395,7 +408,7 @@ private fun RemoteFolderRow(folder: RemoteFolder, enabled: Boolean, onClick: () 
             .padding(AppSpace.sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        RemoteFolderThumb(modifier = Modifier.width(40.dp).height(56.dp))
+        RemoteFolderThumb(folder, modifier = Modifier.width(40.dp).height(56.dp))
         Spacer(Modifier.width(AppSpace.sm))
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -432,6 +445,7 @@ private fun RemoteFolderTile(folder: RemoteFolder, compact: Boolean, enabled: Bo
             .padding(AppSpace.sm)
     ) {
         RemoteFolderThumb(
+            folder = folder,
             modifier = Modifier.fillMaxWidth().aspectRatio(0.72f),
             iconSize = if (compact) 28.dp else 34.dp
         )
@@ -694,11 +708,9 @@ internal fun RemotePrimaryButton(
             .fillMaxWidth()
             .heightIn(min = 58.dp)
             .then(
-                if (floating && enabled) {
+                if (floating && enabled && LocalAppTheme.current != "liquid_glass") {
                     Modifier.shadow(
-                        elevation = 28.dp,
-                        shape = shape,
-                        clip = false,
+                        elevation = 28.dp, shape = shape, clip = false,
                         ambientColor = Color.Black.copy(alpha = 0.10f),
                         spotColor = Color.Black.copy(alpha = 0.08f)
                     )
