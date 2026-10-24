@@ -6,6 +6,7 @@ import com.huangder.lumibooks.data.local.dao.BookDao
 import com.huangder.lumibooks.data.local.dao.BookmarkDao
 import com.huangder.lumibooks.data.local.dao.FolderDao
 import com.huangder.lumibooks.data.local.dao.NoteDao
+import com.huangder.lumibooks.data.local.dao.AnnotationTagDao
 import com.huangder.lumibooks.data.local.dao.ReadingRecordDao
 import com.huangder.lumibooks.data.local.dao.TagDao
 import com.huangder.lumibooks.data.local.dao.SyncStateDao
@@ -15,6 +16,7 @@ import com.huangder.lumibooks.data.local.entity.BookmarkEntity
 import com.huangder.lumibooks.data.local.entity.BookFolderCrossRefEntity
 import com.huangder.lumibooks.data.local.entity.FolderEntity
 import com.huangder.lumibooks.data.local.entity.NoteEntity
+import com.huangder.lumibooks.data.local.entity.AnnotationTagEntity
 import com.huangder.lumibooks.data.local.entity.ReadingRecordEntity
 import com.huangder.lumibooks.data.local.entity.TagEntity
 import com.huangder.lumibooks.data.local.entity.SyncStateEntity
@@ -35,6 +37,7 @@ import com.huangder.lumibooks.data.local.dao.HighlightRuleDao
         ReadingRecordEntity::class,
         BookmarkEntity::class,
         NoteEntity::class,
+        AnnotationTagEntity::class,
         SyncStateEntity::class,
         SyncTombstoneEntity::class,
         HighlightRuleEntity::class,
@@ -42,7 +45,7 @@ import com.huangder.lumibooks.data.local.dao.HighlightRuleDao
         BookHighlightSettingsEntity::class,
         HighlightRuleExclusionEntity::class
     ],
-    version = 19,
+    version = 20,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -50,6 +53,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun readingRecordDao(): ReadingRecordDao
     abstract fun bookmarkDao(): BookmarkDao
     abstract fun noteDao(): NoteDao
+    abstract fun annotationTagDao(): AnnotationTagDao
     abstract fun tagDao(): TagDao
     abstract fun folderDao(): FolderDao
     abstract fun syncStateDao(): SyncStateDao

@@ -27,6 +27,7 @@ interface ReadingRepository {
     suspend fun updateNote(note: Note)
     suspend fun updateNoteTags(note: Note, tags: List<String>)
     fun observeAnnotationTags(): Flow<List<String>>
+    suspend fun createAnnotationTag(name: String)
     suspend fun renameAnnotationTag(old: String, new: String)
     suspend fun deleteAnnotationTag(name: String)
     suspend fun deleteNote(note: Note)

@@ -8,6 +8,7 @@ import com.huangder.lumibooks.data.local.entity.NoteEntity
 import com.huangder.lumibooks.data.local.entity.ReadingRecordEntity
 import com.huangder.lumibooks.data.local.entity.SyncTombstoneEntity
 import com.huangder.lumibooks.data.local.entity.TagEntity
+import com.huangder.lumibooks.data.local.entity.AnnotationTagEntity
 import com.huangder.lumibooks.data.local.entity.HighlightRuleEntity
 import com.huangder.lumibooks.data.local.entity.BookHighlightRuleStateEntity
 import com.huangder.lumibooks.data.local.entity.BookHighlightSettingsEntity
@@ -65,7 +66,8 @@ data class PortableSnapshot(
     val highlightRules: List<HighlightRuleEntity> = emptyList(),
     val bookHighlightRuleStates: List<BookHighlightRuleStateEntity> = emptyList(),
     val bookHighlightSettings: List<BookHighlightSettingsEntity> = emptyList(),
-    val highlightRuleExclusions: List<HighlightRuleExclusionEntity> = emptyList()
+    val highlightRuleExclusions: List<HighlightRuleExclusionEntity> = emptyList(),
+    val annotationTags: List<AnnotationTagEntity> = emptyList()
 ) {
     fun toJson(): String = JSONObject().apply {
         put("schemaVersion", schemaVersion)
@@ -76,6 +78,9 @@ data class PortableSnapshot(
         put("folders", folders.toJsonArray(::folderToJson))
         put("bookFolderLinks", bookFolderLinks.toJsonArray(::bookFolderLinkToJson))
         put("tags", tags.toJsonArray(::tagToJson))
+        put("annotationTags", annotationTags.toJsonArray { item -> JSONObject().apply {
+            put("name", item.name); put("updatedAt", item.updatedAt); put("isDeleted", item.isDeleted)
+        } })
         put("bookTagLinks", bookTagLinks.toJsonArray(::bookTagLinkToJson))
         put("readingRecords", readingRecords.toJsonArray(::readingRecordToJson))
         put("bookmarks", bookmarks.toJsonArray(::bookmarkToJson))
@@ -104,6 +109,9 @@ data class PortableSnapshot(
                 folders = root.array("folders").mapObjects(::folderFromJson),
                 bookFolderLinks = root.array("bookFolderLinks").mapObjects(::bookFolderLinkFromJson),
                 tags = root.array("tags").mapObjects(::tagFromJson),
+                annotationTags = root.array("annotationTags").mapObjects {
+                    AnnotationTagEntity(it.getString("name"), it.optLong("updatedAt"), it.optBoolean("isDeleted"))
+                },
                 bookTagLinks = root.array("bookTagLinks").mapObjects(::bookTagLinkFromJson),
                 readingRecords = root.array("readingRecords").mapObjects(::readingRecordFromJson),
                 bookmarks = root.array("bookmarks").mapObjects(::bookmarkFromJson),

@@ -2,8 +2,24 @@ package com.huangder.lumibooks.data.local.database
 
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.huangder.lumibooks.domain.model.AnnotationTags
 
 object DatabaseMigrations {
+    val MIGRATION_19_20 = object : Migration(19, 20) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS annotation_tags (name TEXT NOT NULL PRIMARY KEY, updatedAt INTEGER NOT NULL, isDeleted INTEGER NOT NULL DEFAULT 0)")
+            // Android SQLite versions do not all provide json_each; decode in Kotlin.
+            db.query("SELECT tagsJson, updatedAt FROM notes UNION ALL SELECT tagsJson, updatedAt FROM bookmarks").use { cursor ->
+                while (cursor.moveToNext()) {
+                    AnnotationTags.decode(cursor.getString(0)).forEach { name ->
+                        db.execSQL("INSERT OR IGNORE INTO annotation_tags (name, updatedAt, isDeleted) VALUES (?, ?, 0)",
+                            arrayOf<Any>(name, cursor.getLong(1)))
+                    }
+                }
+            }
+        }
+    }
+
     val MIGRATION_1_2 = object : Migration(1, 2) {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("ALTER TABLE books ADD COLUMN isFavorite INTEGER NOT NULL DEFAULT 0")

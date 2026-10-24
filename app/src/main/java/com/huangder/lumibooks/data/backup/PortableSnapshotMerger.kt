@@ -71,6 +71,10 @@ object PortableSnapshotMerger {
             folders = folders,
             bookFolderLinks = folderLinks,
             tags = tags,
+            annotationTags = mergeLatest(
+                local.annotationTags, remote.annotationTags, { it.name }, { it.updatedAt },
+                { if (it.isDeleted) "1" else "0" }
+            ).distinctByLatest({ it.name }, { it.updatedAt }),
             bookTagLinks = tagLinks,
             readingRecords = mergeReadingRecords(local.readingRecords, remote.readingRecords)
                 .filter { it.bookId in validBookIds },

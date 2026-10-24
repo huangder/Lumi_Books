@@ -6,6 +6,7 @@ import com.huangder.lumibooks.data.local.dao.NoteDao
 import com.huangder.lumibooks.data.local.dao.ReadingRecordDao
 import com.huangder.lumibooks.data.local.database.AppDatabase
 import com.huangder.lumibooks.data.local.entity.BookmarkEntity
+import com.huangder.lumibooks.data.local.entity.AnnotationTagEntity
 import com.huangder.lumibooks.data.local.entity.NoteEntity
 import com.huangder.lumibooks.data.local.entity.ReadingRecordEntity
 import com.huangder.lumibooks.domain.model.AnnotationEditPlan
@@ -79,20 +80,32 @@ class ReadingRepositoryImpl @Inject constructor(
 
     override suspend fun insertBookmark(bookmark: Bookmark) {
         val now = System.currentTimeMillis()
-        bookmarkDao.insertBookmark(
-            bookmark.copy(
-                syncId = bookmark.syncId.ifBlank { UUID.randomUUID().toString() },
-                updatedAt = maxOf(bookmark.updatedAt, now)
-            ).toEntity()
-        )
+        database.withTransaction {
+            rememberAnnotationTags(bookmark.tags, now)
+            bookmarkDao.insertBookmark(
+                bookmark.copy(
+                    syncId = bookmark.syncId.ifBlank { UUID.randomUUID().toString() },
+                    updatedAt = maxOf(bookmark.updatedAt, now)
+                ).toEntity()
+            )
+        }
     }
 
     override suspend fun updateBookmark(bookmark: Bookmark) {
-        bookmarkDao.updateBookmark(bookmark.copy(updatedAt = System.currentTimeMillis()).toEntity())
+        database.withTransaction {
+            val now = System.currentTimeMillis()
+            rememberAnnotationTags(bookmark.tags, now)
+            bookmarkDao.updateBookmark(bookmark.copy(updatedAt = now).toEntity())
+        }
     }
 
     override suspend fun updateBookmarkTags(bookmark: Bookmark, tags: List<String>) {
-        if (bookmark.id > 0L) bookmarkDao.updateTags(bookmark.id, AnnotationTags.encode(tags), System.currentTimeMillis())
+        database.withTransaction {
+            val now = System.currentTimeMillis()
+            rememberAnnotationTags(bookmark.tags, now)
+            rememberAnnotationTags(tags, now, revive = true)
+            if (bookmark.id > 0L) bookmarkDao.updateTags(bookmark.id, AnnotationTags.encode(tags), now)
+        }
     }
 
     override suspend fun deleteBookmark(bookmark: Bookmark) {
@@ -115,26 +128,56 @@ class ReadingRepositoryImpl @Inject constructor(
 
     override suspend fun insertNote(note: Note) {
         val now = System.currentTimeMillis()
-        noteDao.insertNote(
-            note.copy(
-                syncId = note.syncId.ifBlank { UUID.randomUUID().toString() },
-                updatedAt = maxOf(note.updatedAt, now)
-            ).toEntity()
-        )
+        database.withTransaction {
+            rememberAnnotationTags(note.tags, now)
+            noteDao.insertNote(
+                note.copy(
+                    syncId = note.syncId.ifBlank { UUID.randomUUID().toString() },
+                    updatedAt = maxOf(note.updatedAt, now)
+                ).toEntity()
+            )
+        }
     }
 
     override suspend fun updateNote(note: Note) {
-        noteDao.updateNote(note.copy(updatedAt = System.currentTimeMillis()).toEntity())
+        database.withTransaction {
+            val now = System.currentTimeMillis()
+            rememberAnnotationTags(note.tags, now)
+            noteDao.updateNote(note.copy(updatedAt = now).toEntity())
+        }
     }
 
     override suspend fun updateNoteTags(note: Note, tags: List<String>) {
-        if (note.id > 0L) noteDao.updateTags(note.id, AnnotationTags.encode(tags), System.currentTimeMillis())
+        database.withTransaction {
+            val now = System.currentTimeMillis()
+            rememberAnnotationTags(note.tags, now)
+            rememberAnnotationTags(tags, now, revive = true)
+            if (note.id > 0L) noteDao.updateTags(note.id, AnnotationTags.encode(tags), now)
+        }
     }
 
     override fun observeAnnotationTags(): Flow<List<String>> = combine(
-        noteDao.observeTagLists(), bookmarkDao.observeTagLists()
-    ) { notes, bookmarks ->
-        (notes + bookmarks).flatMap(AnnotationTags::decode).distinct().sorted()
+        database.annotationTagDao().observeTags(), noteDao.observeTagLists(), bookmarkDao.observeTagLists()
+    ) { catalog, notes, bookmarks ->
+        val deleted = catalog.filter { it.isDeleted }.mapTo(mutableSetOf()) { it.name }
+        (catalog.filterNot { it.isDeleted }.map { it.name } + (notes + bookmarks).flatMap(AnnotationTags::decode))
+            .filterNot { it in deleted }.distinct().sorted()
+    }
+
+    override suspend fun createAnnotationTag(name: String) {
+        database.withTransaction {
+            rememberAnnotationTags(listOf(name), System.currentTimeMillis(), revive = true)
+        }
+    }
+
+    private suspend fun rememberAnnotationTags(tags: List<String>, updatedAt: Long, revive: Boolean = false) {
+        val existing = if (revive) database.annotationTagDao().getAllTags().associateBy { it.name } else emptyMap()
+        val entries = AnnotationTags.normalize(tags).map { name ->
+            AnnotationTagEntity(name, maxOf(updatedAt, (existing[name]?.updatedAt ?: 0L) + 1))
+        }
+        if (entries.isEmpty()) return
+        if (revive) database.annotationTagDao().upsertTags(entries)
+        else database.annotationTagDao().ensureTags(entries)
     }
 
     override suspend fun renameAnnotationTag(old: String, new: String) {
@@ -142,7 +185,10 @@ class ReadingRepositoryImpl @Inject constructor(
         val to = new.trim()
         if (from.isEmpty() || to.isEmpty() || from == to) return
         database.withTransaction {
-            val now = System.currentTimeMillis()
+            val now = nextAnnotationTagTime(setOf(from, to))
+            database.annotationTagDao().upsertTags(listOf(
+                AnnotationTagEntity(from, now, isDeleted = true), AnnotationTagEntity(to, now)
+            ))
             noteDao.getAllNotes().forEach { item ->
                 val tags = AnnotationTags.decode(item.tagsJson)
                 if (from in tags) noteDao.updateTags(item.id, AnnotationTags.encode(AnnotationTags.rename(tags, from, to)), now)
@@ -158,7 +204,8 @@ class ReadingRepositoryImpl @Inject constructor(
         val target = name.trim()
         if (target.isEmpty()) return
         database.withTransaction {
-            val now = System.currentTimeMillis()
+            val now = nextAnnotationTagTime(setOf(target))
+            database.annotationTagDao().upsertTags(listOf(AnnotationTagEntity(target, now, isDeleted = true)))
             noteDao.getAllNotes().forEach { item ->
                 val tags = AnnotationTags.decode(item.tagsJson)
                 if (target in tags) noteDao.updateTags(item.id, AnnotationTags.encode(tags - target), now)
@@ -177,6 +224,11 @@ class ReadingRepositoryImpl @Inject constructor(
         )
         noteDao.deleteNote(note.toEntity())
     }
+
+    private suspend fun nextAnnotationTagTime(names: Set<String>): Long = maxOf(
+        System.currentTimeMillis(),
+        (database.annotationTagDao().getAllTags().filter { it.name in names }.maxOfOrNull { it.updatedAt } ?: 0L) + 1
+    )
 
     override suspend fun applyAnnotationEdit(plan: AnnotationEditPlan) {
         val now = System.currentTimeMillis()

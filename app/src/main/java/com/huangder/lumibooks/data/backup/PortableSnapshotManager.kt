@@ -5,6 +5,8 @@ import androidx.room.withTransaction
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.data.local.database.AppDatabase
 import com.huangder.lumibooks.data.local.entity.BookEntity
+import com.huangder.lumibooks.data.local.entity.AnnotationTagEntity
+import com.huangder.lumibooks.domain.model.AnnotationTags
 import com.huangder.lumibooks.data.sync.SyncIdentityStore
 import com.huangder.lumibooks.mineru.MineruTokenStore
 import com.huangder.lumibooks.tts.ExternalTtsTokenStore
@@ -128,6 +130,7 @@ class PortableSnapshotManager @Inject constructor(
                 folders = portableFolders,
                 bookFolderLinks = syncDao.getAllBookFolderLinks(),
                 tags = syncDao.getAllTags(),
+                annotationTags = database.annotationTagDao().getAllTags(),
                 bookTagLinks = syncDao.getAllBookTagLinks(),
                 readingRecords = syncDao.getAllReadingRecords(),
                 bookmarks = syncDao.getAllBookmarks(),
@@ -214,6 +217,7 @@ class PortableSnapshotManager @Inject constructor(
                     syncDao.clearReadingRecords()
                     syncDao.clearFolders()
                     syncDao.clearTags()
+                    database.annotationTagDao().clearTags()
                     bookDao.clearBooks()
                     syncDao.clearTombstones()
                     database.highlightRuleDao().clearBookStates()
@@ -243,10 +247,31 @@ class PortableSnapshotManager @Inject constructor(
                     it.copy(id = if (replace) 0 else existingRecords[key]?.id ?: 0)
                 })
                 if (snapshot.bookmarks.isNotEmpty()) syncDao.upsertBookmarks(snapshot.bookmarks.map {
-                    it.copy(id = if (replace) 0 else existingBookmarks[it.syncId]?.id ?: 0)
+                    val existing = existingBookmarks[it.syncId]
+                    // A sync payload may have been captured before the user edited tags
+                    // while network requests were in flight. Recheck under the write lock.
+                    if (!replace && existing != null && existing.updatedAt > it.updatedAt) existing
+                    else it.copy(id = if (replace) 0 else existing?.id ?: 0)
                 })
                 if (snapshot.notes.isNotEmpty()) syncDao.upsertNotes(snapshot.notes.map {
-                    it.copy(id = if (replace) 0 else existingNotes[it.syncId]?.id ?: 0)
+                    val existing = existingNotes[it.syncId]
+                    if (!replace && existing != null && existing.updatedAt > it.updatedAt) existing
+                    else it.copy(id = if (replace) 0 else existing?.id ?: 0)
+                })
+                val tagDao = database.annotationTagDao()
+                val existingAnnotationTags = tagDao.getAllTags().associateBy { it.name }
+                // Backfill labels from older backups that have no independent catalog.
+                tagDao.ensureTags((snapshot.notes.flatMap { note ->
+                    AnnotationTags.decode(note.tagsJson).map { AnnotationTagEntity(it, note.updatedAt) }
+                } + snapshot.bookmarks.flatMap { bookmark ->
+                    AnnotationTags.decode(bookmark.tagsJson).map { AnnotationTagEntity(it, bookmark.updatedAt) }
+                }).distinctBy { it.name })
+                tagDao.upsertTags(snapshot.annotationTags.map { incoming ->
+                    val existing = existingAnnotationTags[incoming.name]
+                    if (!replace && existing != null && (
+                        existing.updatedAt > incoming.updatedAt ||
+                            (existing.updatedAt == incoming.updatedAt && existing.isDeleted)
+                    )) existing else incoming
                 })
                 if (snapshot.tombstones.isNotEmpty()) syncDao.upsertTombstones(snapshot.tombstones)
                 if (snapshot.highlightRules.isNotEmpty()) {
@@ -346,6 +371,8 @@ class PortableSnapshotManager @Inject constructor(
         require(snapshot.books.map { it.id }.distinct().size == snapshot.books.size) { "Duplicate book IDs" }
         require(snapshot.folders.map { it.id }.distinct().size == snapshot.folders.size) { "Duplicate folder IDs" }
         require(snapshot.tags.map { it.id }.distinct().size == snapshot.tags.size) { "Duplicate tag IDs" }
+        require(snapshot.annotationTags.map { it.name }.distinct().size == snapshot.annotationTags.size) { "Duplicate annotation tags" }
+        require(snapshot.annotationTags.all { it.name.isNotBlank() && it.name == it.name.trim() }) { "Invalid annotation tag" }
         require(snapshot.bookmarks.all { it.syncId.isNotBlank() }) { "Bookmark without stable ID" }
         require(snapshot.bookmarks.map { it.syncId }.distinct().size == snapshot.bookmarks.size) {
             "Duplicate bookmark stable IDs"

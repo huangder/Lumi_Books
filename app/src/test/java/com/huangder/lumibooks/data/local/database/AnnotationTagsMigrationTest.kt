@@ -14,6 +14,31 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
 class AnnotationTagsMigrationTest {
+    @Test fun backfillsPersistentCatalogFromExistingAnnotations() {
+        val config = SupportSQLiteOpenHelper.Configuration.builder(RuntimeEnvironment.getApplication())
+            .callback(object : SupportSQLiteOpenHelper.Callback(19) {
+                override fun onCreate(db: SupportSQLiteDatabase) {
+                    db.execSQL("CREATE TABLE notes (tagsJson TEXT NOT NULL, updatedAt INTEGER NOT NULL)")
+                    db.execSQL("CREATE TABLE bookmarks (tagsJson TEXT NOT NULL, updatedAt INTEGER NOT NULL)")
+                }
+                override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+            }).build()
+        FrameworkSQLiteOpenHelperFactory().create(config).use { helper ->
+            val db = helper.writableDatabase
+            db.execSQL("INSERT INTO notes VALUES ('[\"复习\",\"人物\"]', 10)")
+            db.execSQL("INSERT INTO bookmarks VALUES ('[\"人物\",\"引文\"]', 20)")
+            DatabaseMigrations.MIGRATION_19_20.migrate(db)
+            db.query("SELECT name, isDeleted FROM annotation_tags").use { cursor ->
+                val names = mutableSetOf<String>()
+                while (cursor.moveToNext()) {
+                    names += cursor.getString(0)
+                    assertEquals(0, cursor.getInt(1))
+                }
+                assertEquals(setOf("复习", "人物", "引文"), names)
+            }
+        }
+    }
+
     @Test fun addsEmptyTagsWithoutChangingOldAnnotations() {
         val config = SupportSQLiteOpenHelper.Configuration.builder(RuntimeEnvironment.getApplication())
             .callback(object : SupportSQLiteOpenHelper.Callback(17) {

@@ -1584,9 +1584,20 @@ class WebdavSyncManager @Inject constructor(
         // Sync bookmarks: clear local, re-insert from remote
         if (config.syncBookmarks && root.has("bookmarks")) {
             val bookmarksArr = root.optJSONArray("bookmarks") ?: JSONArray()
+            val localTagsBySyncId = readingRepository.getBookmarksByBookId(bookId).first()
+                .associate { it.syncId to it.tags }
             readingRepository.deleteAllBookmarksByBookId(bookId)
             for (i in 0 until bookmarksArr.length()) {
                 val b = bookmarksArr.getJSONObject(i)
+                val syncId = b.optString("syncId").ifBlank {
+                    legacyAnnotationSyncId(
+                        "bookmark",
+                        bookId,
+                        b.optInt("chapterIndex").toString(),
+                        b.optDouble("position").toString(),
+                        b.optLong("createdAt").toString()
+                    )
+                }
                 readingRepository.insertBookmark(Bookmark(
                     id = 0,
                     bookId = bookId,
@@ -1595,18 +1606,14 @@ class WebdavSyncManager @Inject constructor(
                     locatorJson = b.optString("locatorJson", null),
                     title = b.getString("title"),
                     remark = b.optString("remark"),
-                    tags = com.huangder.lumibooks.domain.model.AnnotationTags.decode(b.optJSONArray("tags")?.toString()),
+                    tags = resolveSyncedAnnotationTags(
+                        hasRemoteTags = b.has("tags"),
+                        remoteTagsJson = b.optJSONArray("tags")?.toString(),
+                        localTags = localTagsBySyncId[syncId].orEmpty()
+                    ),
                     isStale = b.optBoolean("isStale", false),
                     createdAt = b.getLong("createdAt"),
-                    syncId = b.optString("syncId").ifBlank {
-                        legacyAnnotationSyncId(
-                            "bookmark",
-                            bookId,
-                            b.optInt("chapterIndex").toString(),
-                            b.optDouble("position").toString(),
-                            b.optLong("createdAt").toString()
-                        )
-                    },
+                    syncId = syncId,
                     updatedAt = b.optLong("updatedAt", b.optLong("createdAt"))
                 ))
             }
@@ -1614,9 +1621,21 @@ class WebdavSyncManager @Inject constructor(
 
         if (config.syncNotes && root.has("notes")) {
             val notesArr = root.optJSONArray("notes") ?: JSONArray()
+            val localTagsBySyncId = readingRepository.getNotesByBookId(bookId).first()
+                .associate { it.syncId to it.tags }
             readingRepository.deleteAllNotesByBookId(bookId)
             for (i in 0 until notesArr.length()) {
                 val n = notesArr.getJSONObject(i)
+                val syncId = n.optString("syncId").ifBlank {
+                    legacyAnnotationSyncId(
+                        "note",
+                        bookId,
+                        n.optInt("chapterIndex").toString(),
+                        n.optInt("startPosition").toString(),
+                        n.optInt("endPosition").toString(),
+                        n.optLong("createdAt").toString()
+                    )
+                }
                 readingRepository.insertNote(Note(
                     id = 0,
                     bookId = bookId,
@@ -1632,22 +1651,17 @@ class WebdavSyncManager @Inject constructor(
                     createdAt = n.getLong("createdAt"),
                     type = n.optString("type", "highlight"),
                     isNote = n.optBoolean("isNote", n.optString("note").isNotBlank() || n.optString("type") == "note"),
-                    syncId = n.optString("syncId").ifBlank {
-                        legacyAnnotationSyncId(
-                            "note",
-                            bookId,
-                            n.optInt("chapterIndex").toString(),
-                            n.optInt("startPosition").toString(),
-                            n.optInt("endPosition").toString(),
-                            n.optLong("createdAt").toString()
-                        )
-                    },
+                    syncId = syncId,
                     updatedAt = n.optLong("updatedAt", n.optLong("createdAt")),
                     origin = n.optString("origin", Note.ORIGIN_MANUAL),
                     sourceRuleId = n.optString("sourceRuleId", null),
                     sourceMatchKey = n.optString("sourceMatchKey", null),
                     styleSnapshotJson = n.optString("styleSnapshotJson", null),
-                    tags = com.huangder.lumibooks.domain.model.AnnotationTags.decode(n.optJSONArray("tags")?.toString())
+                    tags = resolveSyncedAnnotationTags(
+                        hasRemoteTags = n.has("tags"),
+                        remoteTagsJson = n.optJSONArray("tags")?.toString(),
+                        localTags = localTagsBySyncId[syncId].orEmpty()
+                    )
                 ))
             }
         }
