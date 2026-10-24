@@ -837,13 +837,16 @@ private fun ExternalTtsPrimaryButton(
         shape = AppRoundedCornerShape(25.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .height(50.dp)
+            .heightIn(min = 50.dp)
     ) {
         Text(
             label,
             fontSize = AppType.BodySmall,
             fontWeight = FontWeight.SemiBold,
-            color = if (forceWhiteContent || enabled) Color.White else AppColors.TextSecondary
+            color = if (forceWhiteContent || enabled) Color.White else AppColors.TextSecondary,
+            maxLines = 1,
+            softWrap = false,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
     }
 }
@@ -868,12 +871,12 @@ private fun ExternalTtsSecondaryButton(
         contentColor = color,
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp)
+            .heightIn(min = 48.dp)
             .border(1.dp, AppColors.Divider, AppRoundedCornerShape(AppRadius.md))
     ) {
         Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
         Spacer(Modifier.size(AppSpace.sm))
-        Text(label, fontSize = AppType.BodySmall, color = color, fontWeight = FontWeight.SemiBold)
+        Text(label, fontSize = AppType.BodySmall, color = color, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
     }
 }
 
@@ -1025,13 +1028,16 @@ private fun ExternalTtsConsentSheet(
                 tintedColor = if (isLiquidGlass) null else AppColors.BgGray,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp)
+                    .heightIn(min = 50.dp)
             ) {
                 Text(
                     text = stringResource(R.string.cancel),
                     fontSize = AppType.BodySmall,
                     fontWeight = FontWeight.SemiBold,
-                    color = AppColors.TextPrimary
+                    color = AppColors.TextPrimary,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
         }
@@ -1137,13 +1143,16 @@ private fun ExternalTtsHttpWarningSheet(
                 tintedColor = if (isLiquidGlass) null else AppColors.BgGray,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp)
+                    .heightIn(min = 50.dp)
             ) {
                 Text(
                     text = stringResource(R.string.cancel),
                     fontSize = AppType.BodySmall,
                     fontWeight = FontWeight.SemiBold,
-                    color = AppColors.TextPrimary
+                    color = AppColors.TextPrimary,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
         }

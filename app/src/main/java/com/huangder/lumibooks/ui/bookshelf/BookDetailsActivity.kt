@@ -133,6 +133,7 @@ class BookDetailsActivity : ComponentActivity() {
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = launchTheme.appTheme)
             val accent by dataStoreManager.appAccentColor.collectAsState(initial = launchTheme.appAccentColor)
+            val appFontSize by dataStoreManager.appFontSize.collectAsState(initial = launchTheme.appFontSize)
             val font by dataStoreManager.globalFontMode.collectAsState(initial = launchTheme.globalFontMode)
             val transparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = launchTheme.liquidGlassTransparency)
             val hdr by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = launchTheme.liquidGlassHdrHighlightEnabled)
@@ -155,6 +156,7 @@ class BookDetailsActivity : ComponentActivity() {
                 liquidGlassTransparency = transparency,
                 liquidGlassHdrHighlightEnabled = hdr && !eInk,
                 eInkMode = eInk,
+                appFontSize = appFontSize,
                 globalFontMode = font
             ) {
                 ConfigurableActivityBack(predictiveBackEnabled = predictiveBack, onBack = { finish() })

@@ -103,6 +103,7 @@ class FeedbackActivity : ComponentActivity() {
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = launchTheme.appTheme)
             val appAccentColor by dataStoreManager.appAccentColor.collectAsState(initial = launchTheme.appAccentColor)
+            val appFontSize by dataStoreManager.appFontSize.collectAsState(initial = launchTheme.appFontSize)
             val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = launchTheme.globalFontMode)
             val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = launchTheme.liquidGlassTransparency)
             val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = launchTheme.liquidGlassHdrHighlightEnabled)
@@ -130,6 +131,7 @@ class FeedbackActivity : ComponentActivity() {
                 appAccentColor = appAccentColor,
                 liquidGlassTransparency = liquidGlassTransparency,
                 liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled,
+                appFontSize = appFontSize,
                 globalFontMode = globalFontMode
             ) {
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
@@ -400,9 +402,9 @@ fun DiagnosticPage(
                         tintedColor = AppColors.Accent,
                         contentColor = Color.White,
                         shape = AppRoundedCornerShape(AppRadius.capsule),
-                        modifier = Modifier.height(52.dp)
+                        modifier = Modifier.heightIn(min = 52.dp)
                     ) {
-                        Text(stringResource(R.string.diagnostic_consent_agree), color = Color.White)
+                        Text(stringResource(R.string.diagnostic_consent_agree), color = Color.White, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                     }
                 },
                 dismissButton = {
@@ -410,9 +412,9 @@ fun DiagnosticPage(
                         onClick = { showConsent = false },
                         contentColor = AppColors.TextPrimary,
                         shape = AppRoundedCornerShape(AppRadius.capsule),
-                        modifier = Modifier.height(52.dp)
+                        modifier = Modifier.heightIn(min = 52.dp)
                     ) {
-                        Text(stringResource(R.string.diagnostic_consent_decline), color = AppColors.TextPrimary)
+                        Text(stringResource(R.string.diagnostic_consent_decline), color = AppColors.TextPrimary, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                     }
                 }
             )
@@ -536,11 +538,11 @@ private fun DiagnosticComposer(
             tintedColor = AppColors.BgGray,
             contentColor = AppColors.TextPrimary,
             shape = AppRoundedCornerShape(AppRadius.capsule),
-            modifier = Modifier.fillMaxWidth().height(52.dp)
+            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
         ) {
             Icon(AppIcons.ImageSquare, contentDescription = null)
             Spacer(Modifier.width(AppSpace.xs))
-            Text("${stringResource(R.string.diagnostic_add_screenshot)} ($screenshotCount/3)")
+            Text("${stringResource(R.string.diagnostic_add_screenshot)} ($screenshotCount/3)", maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
         if (hasPreviousCrash) Text(stringResource(R.string.diagnostic_previous_crash), fontSize = AppType.Caption, color = AppColors.TextSecondary)
         if (hasRecordingNote) Text(stringResource(R.string.diagnostic_recording_note), fontSize = AppType.Caption, color = AppColors.TextSecondary)
@@ -558,11 +560,11 @@ private fun DiagnosticComposer(
                     contentColor = Color.White,
                     shape = AppRoundedCornerShape(AppRadius.capsule),
                     prominentShadow = true,
-                    modifier = Modifier.fillMaxWidth().height(52.dp)
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
                 ) {
                     Icon(AppIcons.Play, contentDescription = null, tint = Color.White)
                     Spacer(Modifier.width(AppSpace.xs))
-                    Text(stringResource(R.string.diagnostic_start), color = Color.White)
+                    Text(stringResource(R.string.diagnostic_start), color = Color.White, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
             } else {
                 LiquidGlassButton(
@@ -572,11 +574,11 @@ private fun DiagnosticComposer(
                     contentColor = Color.White,
                     shape = AppRoundedCornerShape(AppRadius.capsule),
                     prominentShadow = true,
-                    modifier = Modifier.fillMaxWidth().height(52.dp)
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
                 ) {
                     Icon(AppIcons.Stop, contentDescription = null, tint = Color.White)
                     Spacer(Modifier.width(AppSpace.xs))
-                    Text(stringResource(R.string.diagnostic_stop), color = Color.White)
+                    Text(stringResource(R.string.diagnostic_stop), color = Color.White, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
             }
             if (hasPreviousCrash && !hasActiveSession) {
@@ -586,8 +588,8 @@ private fun DiagnosticComposer(
                     tintedColor = AppColors.BgGray,
                     contentColor = AppColors.TextPrimary,
                     shape = AppRoundedCornerShape(AppRadius.capsule),
-                    modifier = Modifier.fillMaxWidth().height(52.dp)
-                ) { Text(stringResource(R.string.diagnostic_previous_crash)) }
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
+                ) { Text(stringResource(R.string.diagnostic_previous_crash), maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
             }
         }
         LiquidGlassButton(
@@ -596,9 +598,9 @@ private fun DiagnosticComposer(
             tintedColor = AppColors.BgGray,
             contentColor = AppColors.TextPrimary,
             shape = AppRoundedCornerShape(AppRadius.capsule),
-            modifier = Modifier.fillMaxWidth().height(52.dp)
+            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
         ) {
-            Text(stringResource(R.string.diagnostic_export_recent))
+            Text(stringResource(R.string.diagnostic_export_recent), maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
         if (isGenerating) Text(stringResource(R.string.diagnostic_generating), color = AppColors.TextSecondary)
         if (hasGeneratedFile) {
@@ -608,7 +610,7 @@ private fun DiagnosticComposer(
             ) {
                 LiquidGlassButton(
                     onClick = onShare,
-                    modifier = Modifier.weight(1f).height(52.dp),
+                    modifier = Modifier.weight(1f).heightIn(min = 52.dp),
                     tintedColor = AppColors.BgGray,
                     contentColor = AppColors.TextPrimary,
                     shape = AppRoundedCornerShape(AppRadius.capsule)
@@ -619,7 +621,7 @@ private fun DiagnosticComposer(
                 }
                 LiquidGlassButton(
                     onClick = onSave,
-                    modifier = Modifier.weight(1f).height(52.dp),
+                    modifier = Modifier.weight(1f).heightIn(min = 52.dp),
                     tintedColor = AppColors.BgGray,
                     contentColor = AppColors.TextPrimary,
                     shape = AppRoundedCornerShape(AppRadius.capsule)

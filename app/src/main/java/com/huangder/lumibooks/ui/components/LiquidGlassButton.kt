@@ -16,6 +16,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -44,15 +45,18 @@ fun LiquidGlassButton(
     content: @Composable RowScope.() -> Unit
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    val textHeight = with(LocalDensity.current) { AppType.BodySmall.toDp() }
+    val minHeight = maxOf(if (compact) 32.dp else 44.dp, textHeight * 1.5f + if (compact) 8.dp else 12.dp)
+    val minWidth = if (compact) 0.dp else maxOf(72.dp, textHeight * 2f + 24.dp)
+    val horizontalPadding = if (compact) 10.dp else 12.dp
+    val verticalPadding = if (compact) 4.dp else 6.dp
 
     if (!isLiquidGlass) {
         TextButton(
             onClick = onClick,
             enabled = enabled,
-            modifier = modifier.heightIn(min = if (compact) 32.dp else 44.dp)
-                .widthIn(min = if (compact) 0.dp else 72.dp),
-            contentPadding = if (compact) PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                else ButtonDefaults.TextButtonContentPadding,
+            modifier = modifier.heightIn(min = minHeight).widthIn(min = minWidth),
+            contentPadding = PaddingValues(horizontal = horizontalPadding, vertical = verticalPadding),
             shape = shape,
             colors = ButtonDefaults.textButtonColors(
                 containerColor = tintedColor ?: Color.Transparent,
@@ -98,16 +102,15 @@ fun LiquidGlassButton(
         onClick = onClick,
         decorationModifier = decorationModifier ?: shadowDecoration,
         modifier = modifier
-            .heightIn(min = if (compact) 32.dp else 44.dp)
-            .widthIn(min = if (compact) 0.dp else 72.dp)
+            .heightIn(min = minHeight)
+            .widthIn(min = minWidth)
             .alpha(if (enabled) 1f else 0.48f)
     ) {
         CompositionLocalProvider(LocalContentColor provides contentColor) {
             Row(
                 modifier = Modifier
-                    .heightIn(min = if (compact) 32.dp else 40.dp)
-                    .padding(horizontal = if (compact) 10.dp else 16.dp,
-                        vertical = if (compact) 4.dp else 0.dp),
+                    .heightIn(min = minHeight)
+                    .padding(horizontal = horizontalPadding, vertical = verticalPadding),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
                 content = content

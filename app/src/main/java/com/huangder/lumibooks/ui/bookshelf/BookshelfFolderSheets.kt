@@ -442,7 +442,7 @@ internal fun FolderMoveSheet(
                 contentColor = AppColors.OnAccent,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp)
+                    .heightIn(min = 52.dp)
             ) {
                 Text(
                     text = if (browseFolderId == null) {
@@ -451,7 +451,10 @@ internal fun FolderMoveSheet(
                         stringResource(R.string.move_to_here)
                     },
                     color = AppColors.OnAccent,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
         }
@@ -617,7 +620,7 @@ internal fun FolderRelocationSheet(
                 contentColor = AppColors.OnAccent,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp)
+                    .heightIn(min = 52.dp)
             ) {
                 Text(
                     text = if (browseFolderId == null) {
@@ -626,7 +629,10 @@ internal fun FolderRelocationSheet(
                         stringResource(R.string.move_to_here)
                     },
                     color = AppColors.OnAccent,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
         }

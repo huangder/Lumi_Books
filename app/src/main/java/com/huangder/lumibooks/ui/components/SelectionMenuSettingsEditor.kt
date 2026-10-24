@@ -307,7 +307,8 @@ internal fun SelectionMenuCapsuleButton(
         Row(Modifier.padding(horizontal = AppSpace.md, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AppSpace.sm)) {
             Icon(icon, null, tint = foreground, modifier = Modifier.size(17.dp))
-            Text(text, color = foreground, fontSize = AppType.Caption, fontWeight = FontWeight.SemiBold)
+            Text(text, color = foreground, fontSize = AppType.Caption, fontWeight = FontWeight.SemiBold,
+                maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
     }
 }

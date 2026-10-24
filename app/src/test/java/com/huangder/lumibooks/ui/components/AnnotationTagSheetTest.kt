@@ -16,6 +16,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.R
+import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -31,6 +32,45 @@ import org.robolectric.annotation.GraphicsMode
 class AnnotationTagSheetTest {
     @get:Rule val compose = createComposeRule()
     private fun label(id: Int) = RuntimeEnvironment.getApplication().getString(id)
+
+    @Test fun managementCreatesTagsWithoutAttachingThem() {
+        val available = mutableStateOf(emptyList<String>())
+        var dismissed = false
+        compose.setContent {
+            EBookReaderTheme(appTheme = "lumi", darkTheme = false) {
+                AnnotationTagSheet(emptyList(), available.value, {}, { dismissed = true },
+                    managementOnly = true, onCreate = { available.value = available.value + it })
+            }
+        }
+        compose.onNodeWithText(label(R.string.annotation_tag_new)).performTextInput("Unused")
+        compose.onNodeWithText(label(R.string.annotation_tag_add)).performClick()
+        compose.runOnIdle { assertEquals(listOf("Unused"), available.value) }
+        compose.onNodeWithText("Unused").assertIsDisplayed()
+        compose.onNodeWithText(label(R.string.confirm)).performClick()
+        compose.waitUntil { dismissed }
+    }
+
+    @Test fun confirmWaitsForPersistenceBeforeDismissing() {
+        val committed = CompletableDeferred<Unit>()
+        var saves = 0
+        var dismissed = false
+        compose.setContent {
+            EBookReaderTheme(appTheme = "lumi", darkTheme = false) {
+                CompositionLocalProvider(LocalMotionEnabled provides false) {
+                    AnnotationTagSheet(listOf("Alpha"), listOf("Alpha"), {
+                        saves++
+                        committed.await()
+                    }, { dismissed = true })
+                }
+            }
+        }
+        compose.onNodeWithText(label(R.string.confirm)).performClick()
+        compose.onNodeWithText(label(R.string.confirm)).assertIsNotEnabled()
+        compose.onNodeWithText(label(R.string.cancel)).performClick()
+        compose.runOnIdle { assertEquals(1, saves); assertFalse(dismissed) }
+        compose.runOnIdle { committed.complete(Unit) }
+        compose.waitUntil { dismissed }
+    }
 
     @Test
     @Config(qualifiers = "en-w360dp-h800dp-mdpi")

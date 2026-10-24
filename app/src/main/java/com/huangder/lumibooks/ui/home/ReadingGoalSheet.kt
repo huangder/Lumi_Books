@@ -423,7 +423,7 @@ private fun TodayReadingContent(
         onClick = onChangeGoal,
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp),
+            .heightIn(min = 48.dp),
         shape = AppRoundedCornerShape(28.dp),
         tintedColor = bgGray.takeUnless { isLiquidGlass },
         contentColor = textPrimary
@@ -432,7 +432,10 @@ private fun TodayReadingContent(
             text = stringResource(R.string.edit_daily_goal),
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
-            color = textPrimary
+            color = textPrimary,
+            maxLines = 1,
+            softWrap = false,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
     }
 
@@ -548,12 +551,12 @@ private fun GoalPicker(
         onClick = onCancel,
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp),
+            .heightIn(min = 48.dp),
         shape = AppRoundedCornerShape(28.dp),
         tintedColor = bgGray.takeUnless { LocalAppTheme.current == "liquid_glass" },
         contentColor = textSecondary
     ) {
-        Text(stringResource(R.string.cancel), fontSize = 16.sp, color = textSecondary)
+        Text(stringResource(R.string.cancel), fontSize = 16.sp, color = textSecondary, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
     }
 }
 
@@ -621,7 +624,7 @@ private fun CustomGoalInputPanel(
             LiquidGlassButton(
                 onClick = onConfirm,
                 enabled = isValid,
-                modifier = Modifier.height(36.dp),
+                modifier = Modifier.heightIn(min = 36.dp),
                 shape = AppRoundedCornerShape(18.dp),
                 tintedColor = if (isValid) AppColors.Accent else bgGray,
                 contentColor = if (isValid) AppColors.OnAccent else textSecondary
@@ -630,7 +633,10 @@ private fun CustomGoalInputPanel(
                     text = stringResource(R.string.confirm),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = if (isValid) AppColors.OnAccent else textSecondary
+                    color = if (isValid) AppColors.OnAccent else textSecondary,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
         }

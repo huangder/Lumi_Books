@@ -169,6 +169,7 @@ class CoverSearchActivity : ComponentActivity() {
         }
 
         setContent {
+            val appFontSize by dataStoreManager.appFontSize.collectAsState(initial = launchTheme.appFontSize)
             val capability = rememberLiquidGlassCapability(view = LocalView.current)
             val resolvedAppTheme = effectiveAppTheme(launchTheme.appTheme, capability)
             val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = launchTheme.menuAnimationStyle)
@@ -183,6 +184,7 @@ class CoverSearchActivity : ComponentActivity() {
                 appAccentColor = launchTheme.appAccentColor,
                 liquidGlassTransparency = launchTheme.liquidGlassTransparency,
                 liquidGlassHdrHighlightEnabled = launchTheme.liquidGlassHdrHighlightEnabled,
+                appFontSize = appFontSize,
                 globalFontMode = launchTheme.globalFontMode
             ) {
                 LiquidGlassDialogHost(modifier = Modifier.fillMaxSize()) {

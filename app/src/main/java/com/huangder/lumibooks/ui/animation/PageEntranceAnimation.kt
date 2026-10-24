@@ -60,7 +60,7 @@ fun PageEntranceItem(
     }
 
     Box(
-        modifier = modifier.graphicsLayer {
+        modifier = modifier.mainTabEntrance().graphicsLayer {
             this.alpha = alpha.value
             translationY = offsetY.value
             scaleX = scale.value

@@ -51,6 +51,7 @@ class BookshelfCategoryBooksActivity : ComponentActivity() {
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = launchTheme.appTheme)
             val appAccentColor by dataStoreManager.appAccentColor.collectAsState(initial = launchTheme.appAccentColor)
+            val appFontSize by dataStoreManager.appFontSize.collectAsState(initial = launchTheme.appFontSize)
             val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = launchTheme.globalFontMode)
             val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = launchTheme.liquidGlassTransparency)
             val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = launchTheme.liquidGlassHdrHighlightEnabled)
@@ -80,6 +81,7 @@ class BookshelfCategoryBooksActivity : ComponentActivity() {
                 liquidGlassTransparency = liquidGlassTransparency,
                 liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled && !eInkMode,
                 eInkMode = eInkMode,
+                appFontSize = appFontSize,
                 globalFontMode = globalFontMode
             ) {
                 ConfigurableActivityBack(

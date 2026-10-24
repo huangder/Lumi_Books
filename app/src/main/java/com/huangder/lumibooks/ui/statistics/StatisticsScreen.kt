@@ -79,6 +79,7 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.Backdrop
 import com.huangder.lumibooks.ui.animation.PageEntranceItem
+import com.huangder.lumibooks.ui.animation.mainTabEntrance
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
@@ -196,7 +197,7 @@ fun StatisticsScreen(
                         },
                         label = "statisticsPeriod"
                     ) { period ->
-                        Column {
+                        Column(Modifier.mainTabEntrance()) {
                             when (period) {
                                 0 -> WeeklyOverview(
                                     uiState = uiState,

@@ -360,6 +360,7 @@ fun BookNotesScreen(
             tags = bookmarkRemarkTags,
             availableTags = uiState.availableTags,
             onTagsChange = { bookmarkRemarkTags = it },
+            onCreateTag = viewModel::createTag,
             onConfirm = {
                 editingBookmarkRemark?.let {
                     viewModel.updateBookmarkRemarkAndTags(it, bookmarkRemarkText, bookmarkRemarkTags)
@@ -375,7 +376,8 @@ fun BookNotesScreen(
                 backdrop = glassBackdrop.takeIf { isLiquidGlass },
                 selected = uiState.notes.firstOrNull { it.id == note.id }?.tags ?: note.tags,
                 available = uiState.availableTags,
-                onSave = { viewModel.updateNoteTags(note, it); editingNoteTags = null },
+                onSave = { viewModel.updateNoteTags(note, it) },
+                onCreate = viewModel::createTag,
                 onDismiss = { editingNoteTags = null },
                 onRename = renameTag,
                 onDelete = deleteTag
@@ -386,7 +388,8 @@ fun BookNotesScreen(
                 backdrop = glassBackdrop.takeIf { isLiquidGlass },
                 selected = uiState.bookmarks.firstOrNull { it.id == bookmark.id }?.tags ?: bookmark.tags,
                 available = uiState.availableTags,
-                onSave = { viewModel.updateBookmarkTags(bookmark, it); editingBookmarkTags = null },
+                onSave = { viewModel.updateBookmarkTags(bookmark, it) },
+                onCreate = viewModel::createTag,
                 onDismiss = { editingBookmarkTags = null },
                 onRename = renameTag,
                 onDelete = deleteTag
@@ -396,7 +399,8 @@ fun BookNotesScreen(
             backdrop = glassBackdrop.takeIf { isLiquidGlass },
             selected = emptyList(),
             available = uiState.availableTags,
-            onSave = { managingTags = false },
+            onSave = { names -> names.forEach { viewModel.createTag(it) } },
+            onCreate = viewModel::createTag,
             onDismiss = { managingTags = false },
             onRename = renameTag,
             onDelete = deleteTag,
