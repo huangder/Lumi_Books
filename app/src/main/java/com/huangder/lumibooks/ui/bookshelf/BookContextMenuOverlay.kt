@@ -73,6 +73,7 @@ sealed class ContextMenuAction {
     data object BookmarksNotes : ContextMenuAction()
     data object Tags : ContextMenuAction()
     data object EditInfo : ContextMenuAction()
+    data object ToggleHidden : ContextMenuAction()
 }
 
 /**
@@ -97,7 +98,11 @@ fun BookContextMenuOverlay(
     onEditInfo: (Book) -> Unit = {},
     onBookDetails: (Book) -> Unit = {},
     onToggleReadStatus: (Book) -> Unit = {},
-    onMoveToFolder: (Book) -> Unit = {}
+    onMoveToFolder: (Book) -> Unit = {},
+    /** Shows「隐藏」, or「取消隐藏」in the hidden library; null leaves the item out. */
+    onToggleHidden: ((Book) -> Unit)? = null,
+    /** The hidden library drops shelf-organising actions (favourite, pin, tags, folders). */
+    hiddenLibrary: Boolean = false
 ) {
     if (state.phase == ContextMenuPhase.Idle) return
 
@@ -157,10 +162,13 @@ fun BookContextMenuOverlay(
                         is ContextMenuAction.CustomCover -> onCustomCover(book)
                         is ContextMenuAction.RemoveCustomCover -> onRemoveCustomCover(book)
                         is ContextMenuAction.BookmarksNotes -> onBookmarksNotes(book)
-                        is ContextMenuAction.Tags -> onTags(book) 
+                        is ContextMenuAction.Tags -> onTags(book)
                         is ContextMenuAction.EditInfo -> onEditInfo(book)
+                        is ContextMenuAction.ToggleHidden -> onToggleHidden?.invoke(book)
                     }
                 },
+                hiddenLibrary = hiddenLibrary,
+                canToggleHidden = onToggleHidden != null,
                 onEditInfo = {
                     state.dismiss()
                     onEditInfo(book)
@@ -251,6 +259,8 @@ private fun ContextMenuLayout(
     actionsAlpha: Float,
     coverBounds: Rect,
     onAction: (ContextMenuAction) -> Unit,
+    hiddenLibrary: Boolean,
+    canToggleHidden: Boolean,
     onEditInfo: () -> Unit
 ) {
     val density = LocalDensity.current
@@ -326,6 +336,8 @@ private fun ContextMenuLayout(
             isPinned = book.isPinned,
             hasCustomCover = com.huangder.lumibooks.util.FileUtils.isCustomCover(book.coverPath),
             isReadingFinished = book.isReadingFinished,
+            hiddenLibrary = hiddenLibrary,
+            canToggleHidden = canToggleHidden,
             onAction = onAction
         )
         }
@@ -428,6 +440,8 @@ private fun MenuActionsPanel(
     isPinned: Boolean = false,
     hasCustomCover: Boolean = false,
     isReadingFinished: Boolean = false,
+    hiddenLibrary: Boolean = false,
+    canToggleHidden: Boolean = false,
     onAction: (ContextMenuAction) -> Unit
 ) {
     val shape = AppRoundedCornerShape(
@@ -442,13 +456,24 @@ private fun MenuActionsPanel(
     val menuItems = buildList {
         add(MenuItem(stringResource(R.string.book_details), AppIcons.Info, ContextMenuAction.BookDetails))
         add(MenuItem(readStatusLabel, AppIcons.BookOpen, ContextMenuAction.ToggleReadStatus))
-        add(MenuItem(favoriteLabel, favoriteIcon, ContextMenuAction.Favorite))
-        add(MenuItem(pinLabel, AppIcons.PushPin, ContextMenuAction.Pin))
-        add(MenuItem(stringResource(R.string.add_tag), AppIcons.Tag, ContextMenuAction.Tags))
-        add(MenuItem(stringResource(R.string.move_to_folder), AppIcons.FolderSimple, ContextMenuAction.MoveToFolder))
+        if (!hiddenLibrary) {
+            add(MenuItem(favoriteLabel, favoriteIcon, ContextMenuAction.Favorite))
+            add(MenuItem(pinLabel, AppIcons.PushPin, ContextMenuAction.Pin))
+            add(MenuItem(stringResource(R.string.add_tag), AppIcons.Tag, ContextMenuAction.Tags))
+            add(MenuItem(stringResource(R.string.move_to_folder), AppIcons.FolderSimple, ContextMenuAction.MoveToFolder))
+        }
         add(MenuItem(stringResource(R.string.bookmarks_notes), AppIcons.Bookmark.regular, ContextMenuAction.BookmarksNotes))
         add(MenuItem(stringResource(R.string.custom_cover), AppIcons.Image, ContextMenuAction.CustomCover))
         if (hasCustomCover) add(MenuItem(stringResource(R.string.remove_custom_cover), AppIcons.ArrowCounterClockwise, ContextMenuAction.RemoveCustomCover))
+        if (canToggleHidden) {
+            add(
+                MenuItem(
+                    stringResource(if (hiddenLibrary) R.string.hidden_library_unhide else R.string.hidden_library_hide),
+                    if (hiddenLibrary) AppIcons.Eye else AppIcons.EyeSlash,
+                    ContextMenuAction.ToggleHidden
+                )
+            )
+        }
         add(MenuItem(stringResource(R.string.delete), AppIcons.Trash, ContextMenuAction.Delete))
     }
     LiquidGlassSurface(

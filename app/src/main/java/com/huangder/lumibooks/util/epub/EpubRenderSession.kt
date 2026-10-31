@@ -40,6 +40,9 @@ class EpubRenderSession private constructor(
     private val mediaOnlyByChapter = java.util.concurrent.ConcurrentHashMap<Int, Boolean>()
     private val missingResourceLog = mutableSetOf<String>()
     private val documentCache = EpubDocumentCache()
+    // Images, fonts and styles are requested again by every WebView that loads a chapter;
+    // keep their inflated bytes so a repeat request skips the ZIP and the session lock.
+    private val resourceCache = EpubDocumentCache(maximumBytes = 24 * 1024 * 1024)
     private val documentPreparationLock = Any()
     @Volatile private var closed = false
 
@@ -47,22 +50,27 @@ class EpubRenderSession private constructor(
         .setDomain(ASSET_DOMAIN)
         .addPathHandler("/epub/$sessionToken/", WebViewAssetLoader.PathHandler { requestedPath ->
             val resource = logicalChapterIndex(requestedPath)?.let(::readLogicalChapter)
-                ?: read(requestedPath)
+                ?: readSubresource(requestedPath)
                 ?: run {
                     logMissingResource(requestedPath)
                     return@PathHandler null
                 }
-            val isTransformedDocument = resource.bytes.containsReaderScript()
+            // Only (X)HTML can carry the reader script; never decode image or font bytes as text.
+            val isTransformedDocument = resource.mediaType.contains("html", ignoreCase = true) &&
+                resource.bytes.containsReaderScript()
             WebResourceResponse(
                 resource.mediaType,
                 if (isTransformedDocument) "UTF-8" else null,
                 ByteArrayInputStream(resource.bytes)
             ).apply {
-                responseHeaders = mapOf(
-                    "Content-Security-Policy" to CONTENT_SECURITY_POLICY,
-                    "X-Content-Type-Options" to "nosniff",
-                    "Referrer-Policy" to "no-referrer"
-                )
+                responseHeaders = buildMap {
+                    put("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+                    put("X-Content-Type-Options", "nosniff")
+                    put("Referrer-Policy", "no-referrer")
+                    // URLs carry this session's token and the book cannot change underneath
+                    // it, so WebView may reuse subresources instead of requesting them again.
+                    if (!isTransformedDocument) put("Cache-Control", "private, max-age=86400, immutable")
+                }
             }
         })
         .addPathHandler("/reader-font/$sessionToken/", WebViewAssetLoader.PathHandler { requestedPath ->
@@ -263,6 +271,15 @@ class EpubRenderSession private constructor(
         val normalized = EpubPathResolver.normalize(path) ?: return null
         if (logicalChapterIndex(normalized) != null) return null
         return readPhysical(normalized)
+    }
+
+    /** [read] with an in-memory copy of non-document resources; hits skip the session lock. */
+    private fun readSubresource(path: String): EpubResource? {
+        val key = EpubPathResolver.normalize(path) ?: return null
+        resourceCache[key]?.let { return it }
+        val resource = read(path) ?: return null
+        if (closed || resource.mediaType.contains("html", ignoreCase = true)) return resource
+        return resourceCache.put(key, resource)
     }
 
     /** 书籍里引用了但压缩包中没有的资源记一条日志，方便区分「书本身缺图」和「没画出来」。 */
@@ -512,6 +529,7 @@ class EpubRenderSession private constructor(
         if (closed) return
         closed = true
         documentCache.clear()
+        resourceCache.clear()
         mediaOnlyByChapter.clear()
         missingResourceLog.clear()
         cssIndexByChapterPath.clear()

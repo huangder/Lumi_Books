@@ -85,7 +85,7 @@ internal fun RemoteSortButton(
             imageVector = AppIcons.SortAscending,
             contentDescription = stringResource(R.string.import_sort),
             onClick = {
-                if (menuHost != null && anchor != Rect.Zero) {
+                if (isLiquidGlass && menuHost != null && anchor != Rect.Zero) {
                     if (expanded) {
                         menuHost.dismiss()
                     } else {

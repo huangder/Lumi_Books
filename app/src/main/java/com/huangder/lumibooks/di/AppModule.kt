@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.di
 
+import com.huangder.lumibooks.reading.ReadingActivityTracker
 import android.content.Context
 import androidx.room.Room
 import com.huangder.lumibooks.data.local.DataStoreManager
@@ -76,7 +77,13 @@ object AppModule {
             DatabaseMigrations.MIGRATION_16_17,
             DatabaseMigrations.MIGRATION_17_18,
             DatabaseMigrations.MIGRATION_18_19,
-            DatabaseMigrations.MIGRATION_19_20
+            DatabaseMigrations.MIGRATION_19_20,
+            DatabaseMigrations.MIGRATION_20_21,
+            DatabaseMigrations.MIGRATION_21_22,
+            DatabaseMigrations.MIGRATION_22_23,
+            DatabaseMigrations.MIGRATION_23_24,
+            DatabaseMigrations.MIGRATION_24_25,
+            DatabaseMigrations.MIGRATION_25_26
         )
             .build()
     }
@@ -203,8 +210,9 @@ object AppModule {
         systemTtsEngine: TtsEngine,
         externalTtsEngine: ExternalTtsEngine,
         textExtractor: TtsTextExtractor,
-        dataStoreManager: DataStoreManager
+        dataStoreManager: DataStoreManager,
+        activityTracker: ReadingActivityTracker
     ): TtsController {
-        return TtsController(systemTtsEngine, externalTtsEngine, textExtractor, dataStoreManager)
+        return TtsController(systemTtsEngine, externalTtsEngine, textExtractor, dataStoreManager, activityTracker::setListeningBook)
     }
 }

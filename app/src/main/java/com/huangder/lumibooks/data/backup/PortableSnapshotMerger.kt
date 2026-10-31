@@ -10,7 +10,23 @@ import com.huangder.lumibooks.data.local.entity.SyncTombstoneEntity
 import com.huangder.lumibooks.data.local.entity.TagEntity
 
 object PortableSnapshotMerger {
-    fun merge(local: PortableSnapshot, remote: PortableSnapshot): PortableSnapshot {
+    fun merge(localSnapshot: PortableSnapshot, remoteSnapshot: PortableSnapshot): PortableSnapshot {
+        val local = localSnapshot.flattenLegacyTagHierarchy()
+        val remote = remoteSnapshot.flattenLegacyTagHierarchy()
+        val groups = mergeLatest(local.tagGroups, remote.tagGroups, { it.id }, { it.updatedAt },
+            { if (it.isDeleted) "1" else "0" })
+        val bookGroups = groups.filter { !it.isDeleted && it.type == "book" }.mapTo(mutableSetOf()) { it.id }
+        val annotationGroups = groups.filter { !it.isDeleted && it.type == "annotation" }.mapTo(mutableSetOf()) { it.id }
+        val knownBookAssignments = mergeLatest(
+            local.tags.filter { local.hasTagGroups && it.id !in local.bookTagsWithoutGroupId },
+            remote.tags.filter { remote.hasTagGroups && it.id !in remote.bookTagsWithoutGroupId },
+            { it.id }, { it.updatedAt }, { "" }
+        ).associateBy { it.id }
+        val knownAnnotationAssignments = mergeLatest(
+            local.annotationTags.filter { local.hasTagGroups && it.name !in local.annotationTagsWithoutGroupId },
+            remote.annotationTags.filter { remote.hasTagGroups && it.name !in remote.annotationTagsWithoutGroupId },
+            { it.name }, { it.updatedAt }, { if (it.isDeleted) "1" else "0" }
+        ).associateBy { it.name }
         val tombstones = mergeLatest(
             local.tombstones,
             remote.tombstones,
@@ -26,7 +42,10 @@ object PortableSnapshotMerger {
             { it.id },
             { it.updatedAt },
             tombstoneMap
-        ).distinctByLatest({ it.normalizedName }, { it.updatedAt })
+        ).distinctByLatest({ it.normalizedName }, { it.updatedAt }).map { tag ->
+            val groupId = knownBookAssignments[tag.id]?.groupId
+            tag.copy(groupId = groupId?.takeIf { it in bookGroups })
+        }
         val validTagIds = tags.mapTo(mutableSetOf()) { it.id }
         val folders = mergeLive(
             local.folders,
@@ -71,10 +90,20 @@ object PortableSnapshotMerger {
             folders = folders,
             bookFolderLinks = folderLinks,
             tags = tags,
+            tagGroups = groups,
+            hasTagGroups = local.hasTagGroups || remote.hasTagGroups,
+            bookTagsWithoutGroupId = if (!local.hasTagGroups && !remote.hasTagGroups) emptySet() else
+                tags.filterNot { it.id in knownBookAssignments }.mapTo(mutableSetOf()) { it.id },
+            annotationTagsWithoutGroupId = if (!local.hasTagGroups && !remote.hasTagGroups) emptySet() else
+                (local.annotationTags + remote.annotationTags)
+                    .filterNot { it.name in knownAnnotationAssignments }.mapTo(mutableSetOf()) { it.name },
             annotationTags = mergeLatest(
                 local.annotationTags, remote.annotationTags, { it.name }, { it.updatedAt },
                 { if (it.isDeleted) "1" else "0" }
-            ).distinctByLatest({ it.name }, { it.updatedAt }),
+            ).distinctByLatest({ it.name }, { it.updatedAt }).map { tag ->
+                val groupId = knownAnnotationAssignments[tag.name]?.groupId
+                tag.copy(groupId = groupId?.takeIf { it in annotationGroups })
+            },
             bookTagLinks = tagLinks,
             readingRecords = mergeReadingRecords(local.readingRecords, remote.readingRecords)
                 .filter { it.bookId in validBookIds },
@@ -137,6 +166,8 @@ object PortableSnapshotMerger {
                     metadataWinner.copy(
                         lastReadTime = progressWinner.lastReadTime,
                         readingProgress = progressWinner.readingProgress,
+                        isManuallyMarkedRead = progressWinner.isManuallyMarkedRead,
+                        isHidden = metadataWinner.isHidden,
                         locatorJson = progressWinner.locatorJson,
                         bodyAssetId = localBook.bodyAssetId ?: remoteBook.bodyAssetId,
                         isCloudOnly = localBook.bodyAssetId == null && remoteBook.bodyAssetId == null,
@@ -167,6 +198,7 @@ object PortableSnapshotMerger {
                 merged[key] = latest.copy(
                     id = 0,
                     duration = maxOf(old.duration, item.duration),
+                    listeningDuration = maxOf(old.listeningDuration, item.listeningDuration),
                     startTime = minOf(old.startTime, item.startTime),
                     endTime = maxOf(old.endTime, item.endTime),
                     updatedAt = maxOf(old.updatedAt, item.updatedAt)

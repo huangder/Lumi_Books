@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hidden_library_title">Hidden Library</string>
+    <plurals name="hidden_library_book_count">
+        <item quantity="one">%d book</item>
+        <item quantity="other">%d books</item>
+    </plurals>
+    <string name="hidden_library_empty_title">No hidden books yet</string>
+    <string name="hidden_library_empty_body">Long-press a book in your library and choose Hide.</string>
+    <string name="hidden_library_hide">Hide</string>
+    <string name="hidden_library_unhide">Unhide</string>
+    <plurals name="hidden_library_hidden_message">
+        <item quantity="one">%d book hidden. Pull down at the top of the library to see it.</item>
+        <item quantity="other">%d books hidden. Pull down at the top of the library to see them.</item>
+    </plurals>
+    <plurals name="hidden_library_unhidden_message">
+        <item quantity="one">%d book moved back to the library</item>
+        <item quantity="other">%d books moved back to the library</item>
+    </plurals>
+
+    <string name="passcode_title_enter">Enter Passcode</string>
+    <string name="passcode_title_current">Enter Current Passcode</string>
+    <string name="passcode_title_create">Set a Passcode</string>
+    <string name="passcode_title_new">Set a New Passcode</string>
+    <string name="passcode_title_confirm">Confirm Passcode</string>
+    <string name="passcode_subtitle_create">Choose a 6-digit passcode for the hidden library.</string>
+    <string name="passcode_subtitle_create_for_hide">Set a 6-digit passcode first. You\'ll use it to open the hidden library.</string>
+    <plurals name="passcode_error_wrong">
+        <item quantity="one">Wrong passcode. %d attempt left.</item>
+        <item quantity="other">Wrong passcode. %d attempts left.</item>
+    </plurals>
+    <string name="passcode_error_mismatch">Passcodes didn\'t match. Try again.</string>
+    <string name="passcode_locked_out">Too many attempts. Try again in %1$s.</string>
+    <string name="passcode_forgot">Forgot passcode?</string>
+    <string name="passcode_reset_prompt_title">Verify it\'s you to reset the passcode</string>
+    <string name="passcode_reset_unavailable">Set a screen lock in system settings first, then reset the passcode.</string>
+    <string name="passcode_backspace">Delete</string>
+    <string name="passcode_digits_entered">%1$d of %2$d digits entered</string>
+    <string name="passcode_use_biometric">Unlock with fingerprint or face</string>
+    <string name="passcode_changed">Passcode updated</string>
+
+    <string name="biometric_prompt_title">Unlock Hidden Library</string>
+    <string name="biometric_prompt_use_passcode">Use Passcode</string>
+    <string name="biometric_offer_title">Use fingerprint or face?</string>
+    <string name="biometric_offer_body">Open the hidden library without typing. You can still use the passcode if it fails.</string>
+    <string name="biometric_offer_enable">Turn On</string>
+    <string name="biometric_offer_skip">Not Now</string>
+
+    <string name="category_privacy">Privacy</string>
+    <string name="privacy_hidden_library_summary">You can also pull down at the top of the library.</string>
+    <string name="privacy_hidden_library_no_passcode">Set a passcode the first time you open it.</string>
+    <string name="privacy_section_access">Access</string>
+    <string name="privacy_change_passcode">Change Passcode</string>
+    <string name="privacy_biometric_unlock">Fingerprint or Face Unlock</string>
+    <string name="privacy_biometric_unlock_summary">Try biometrics first when opening the hidden library.</string>
+    <string name="privacy_hidden_footer">Hidden books don\'t appear in the library, home, search, widgets, statistics or the notes overview. Their reading time doesn\'t count toward daily goals or streaks, and storage counts them under Other.</string>
+
+    <string name="storage_other">Other</string>
+</resources>

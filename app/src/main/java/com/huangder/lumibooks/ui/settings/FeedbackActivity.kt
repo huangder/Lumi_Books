@@ -1,4 +1,7 @@
 package com.huangder.lumibooks.ui.settings
+
+import com.huangder.lumibooks.ui.components.AppDialogAction
+import com.huangder.lumibooks.ui.components.AppDialogActionRole
 import com.huangder.lumibooks.ui.icons.AppIcons
 
 import com.huangder.lumibooks.ui.components.lumiCardSurface
@@ -338,7 +341,7 @@ fun DiagnosticPage(
         if (showPreview) {
             LiquidGlassAlertDialog(
                 onDismissRequest = { showPreview = false },
-                title = { Text(stringResource(R.string.diagnostic_title)) },
+                titleText = stringResource(R.string.diagnostic_title),
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(AppSpace.sm)) {
                         Text(stringResource(R.string.diagnostic_preview))
@@ -367,19 +370,25 @@ fun DiagnosticPage(
                         }
                     }
                 },
-                confirmButton = {
-                    TextButton(onClick = { showPreview = false; generate() }, enabled = !isGenerating) {
-                        Text(stringResource(R.string.diagnostic_stop))
-                    }
-                },
-                dismissButton = { TextButton(onClick = { showPreview = false }) { Text(stringResource(android.R.string.cancel)) } }
-            )
+                actions = listOf(
+                    AppDialogAction(
+                        text = stringResource(R.string.diagnostic_stop),
+                        onClick = { showPreview = false; generate() },
+                        role = AppDialogActionRole.Primary,
+                        enabled = !isGenerating
+                    ),
+                    AppDialogAction(
+                        text = stringResource(android.R.string.cancel),
+                        onClick = { showPreview = false },
+                        role = AppDialogActionRole.Cancel
+                    )
+                ))
         }
 
         if (showConsent) {
             LiquidGlassAlertDialog(
                 onDismissRequest = { showConsent = false },
-                title = { Text(stringResource(R.string.diagnostic_consent_title)) },
+                titleText = stringResource(R.string.diagnostic_consent_title),
                 text = {
                     Column(
                         modifier = Modifier
@@ -399,31 +408,24 @@ fun DiagnosticPage(
                         )
                     }
                 },
-                confirmButton = {
-                    LiquidGlassButton(
+                actions = listOf(
+                    AppDialogAction(
+                        text = stringResource(R.string.diagnostic_consent_agree),
                         onClick = {
                         activeSessionId = diagnosticSessionManager.start(issueType).id
                         showConsent = false
                         },
+                        role = AppDialogActionRole.Primary,
                         tintedColor = AppColors.Accent,
-                        contentColor = Color.White,
-                        shape = AppRoundedCornerShape(AppRadius.capsule),
-                        modifier = Modifier.heightIn(min = 52.dp)
-                    ) {
-                        Text(stringResource(R.string.diagnostic_consent_agree), color = Color.White, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                    }
-                },
-                dismissButton = {
-                    LiquidGlassButton(
+                        contentColor = Color.White
+                    ),
+                    AppDialogAction(
+                        text = stringResource(R.string.diagnostic_consent_decline),
                         onClick = { showConsent = false },
-                        contentColor = AppColors.TextPrimary,
-                        shape = AppRoundedCornerShape(AppRadius.capsule),
-                        modifier = Modifier.heightIn(min = 52.dp)
-                    ) {
-                        Text(stringResource(R.string.diagnostic_consent_decline), color = AppColors.TextPrimary, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                    }
-                }
-            )
+                        role = AppDialogActionRole.Cancel,
+                        contentColor = AppColors.TextPrimary
+                    )
+                ))
         }
 
     }

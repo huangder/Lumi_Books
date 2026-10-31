@@ -67,6 +67,7 @@ class LegacyBackupImporter @Inject constructor(
                     createdAt = cursor.long("createdAt"),
                     isFavorite = cursor.boolean("isFavorite"),
                     isPinned = cursor.boolean("isPinned"),
+                    isManuallyMarkedRead = cursor.float("readingProgress") >= 1f,
                     isCloudOnly = cursor.boolean("isCloudOnly") && bodyId == null,
                     metadataUpdatedAt = cursor.long("metadataUpdatedAt", cursor.long("createdAt")),
                     bodyAssetId = bodyId,
@@ -158,8 +159,9 @@ class LegacyBackupImporter @Inject constructor(
                     bookmarks = bookmarks,
                     notes = notes,
                     tombstones = emptyList(),
-                    assets = assets.values.toList()
-                ),
+                    assets = assets.values.toList(),
+                    hasTagGroups = false
+                ).flattenLegacyTagHierarchy(),
                 assetFiles
             )
         }

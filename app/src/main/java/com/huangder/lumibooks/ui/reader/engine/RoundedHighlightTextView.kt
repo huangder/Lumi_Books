@@ -38,7 +38,7 @@ internal class ReaderSearchHighlightSpan(var alpha: Int) : CharacterStyle(), Upd
 }
 
 /** A saved highlight rendered by [RoundedHighlightTextView] instead of a square background span. */
-internal class ReaderHighlightSpan(val color: Int) : CharacterStyle(), UpdateAppearance {
+internal class ReaderHighlightSpan(val color: Int, val outline: Boolean = false) : CharacterStyle(), UpdateAppearance {
     override fun updateDrawState(textPaint: TextPaint) = Unit
 }
 
@@ -502,6 +502,15 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         ReaderLineGeometry(textLayout, spanned, readerJustificationMode, readerForceLastLineJustification)
 
     override fun onDraw(canvas: Canvas) {
+        // Replacing Editor's selection buffer can clear Layout without resizing
+        // the view. Our custom drawing bypasses TextView.onDraw's assumeLayout().
+        if (layout == null && width > 0 && height > 0) {
+            forceLayout()
+            measure(
+                View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+            )
+        }
         updateSelectionHandleOffsets()
         if (readerSelectionOnly) {
             drawReaderSelection(canvas)
@@ -1310,7 +1319,8 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
             ),
             start = spanStart,
             end = spanEnd,
-            color = color
+            color = color,
+            outline = (span as? ReaderHighlightSpan)?.outline == true
         )
     }
 

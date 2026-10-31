@@ -1,5 +1,8 @@
 package com.huangder.lumibooks.ui.components
 
+import com.huangder.lumibooks.ui.components.AppDialogAction
+import com.huangder.lumibooks.ui.components.AppDialogActionRole
+
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
@@ -23,14 +26,7 @@ fun OverlayPermissionDialog(
 
     LiquidGlassAlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = stringResource(R.string.floating_subtitle_permission_title),
-                fontSize = AppType.Body,
-                fontWeight = FontWeight.Bold,
-                color = AppColors.TextPrimary
-            )
-        },
+        titleText = stringResource(R.string.floating_subtitle_permission_title),
         text = {
             Text(
                 text = stringResource(R.string.floating_subtitle_permission_message),
@@ -42,19 +38,19 @@ fun OverlayPermissionDialog(
                 lineHeight = AppType.Body
             )
         },
-        confirmButton = {
-            LiquidGlassTextButton(
+        actions = listOf(
+            AppDialogAction(
                 text = stringResource(R.string.floating_subtitle_permission_open_settings),
-                tintedColor = AppColors.Accent,
-                onClick = onGoSettings
-            )
-        },
-        dismissButton = {
-            LiquidGlassTextButton(
+                onClick = onGoSettings,
+                role = AppDialogActionRole.Primary,
+                tintedColor = AppColors.Accent
+            ),
+            AppDialogAction(
                 text = stringResource(R.string.cancel),
-                onClick = onDismiss
+                onClick = onDismiss,
+                role = AppDialogActionRole.Cancel
             )
-        },
+        ),
         contentScrimColor = AppColors.CardBg.copy(alpha = if (isLiquidGlass) 0.74f else 0.92f)
     )
 }

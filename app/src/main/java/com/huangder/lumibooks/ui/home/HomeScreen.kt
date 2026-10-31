@@ -18,6 +18,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,7 +34,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -78,6 +78,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import java.util.Calendar
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -90,6 +91,8 @@ import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.animation.OverscrollBounceState
 import com.huangder.lumibooks.ui.animation.cardPressEffect
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
+import com.huangder.lumibooks.ui.components.LocalMainNavigationInsets
+import com.huangder.lumibooks.ui.components.LumiImportFab
 import com.huangder.lumibooks.ui.components.BookCoverStatusBadge
 import com.huangder.lumibooks.ui.components.BookProgressStatus
 import com.huangder.lumibooks.ui.components.CloudAwareBookDeleteDialog
@@ -138,14 +141,18 @@ fun HomeScreen(
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val isMaterial3 = LocalUseMaterial3Theme.current
     val useWideLayout = currentAdaptiveWindowInfo().isMediumWidthOrLarger
+    val navigationInsets = LocalMainNavigationInsets.current
     val topBlurBackdrop = rememberLayerBackdrop()
     val statusBarTopPadding = WindowInsets.statusBarsIgnoringVisibility
         .asPaddingValues()
         .calculateTopPadding()
-    val bottomContentPadding = if (isMaterial3) {
-        WindowInsets.navigationBarsIgnoringVisibility.asPaddingValues().calculateBottomPadding() + 96.dp
-    } else {
-        120.dp
+    val bottomContentPadding = when {
+        // The side rail frees the bottom edge; only the system bar remains.
+        !navigationInsets.bottomBar ->
+            WindowInsets.navigationBarsIgnoringVisibility.asPaddingValues().calculateBottomPadding() + AppSpace.lg
+        isMaterial3 ->
+            WindowInsets.navigationBarsIgnoringVisibility.asPaddingValues().calculateBottomPadding() + 96.dp
+        else -> 120.dp
     }
     val context = LocalContext.current
     var localShowGoalSheet by remember { mutableStateOf(false) }
@@ -161,7 +168,7 @@ fun HomeScreen(
         uiState.books.sortedByDescending { it.lastReadTime }
     }
     val lastReadBook = booksByLastRead.firstOrNull()
-    val recentBooks = booksByLastRead.take(6)
+    val recentBooks = booksByLastRead.take(12)
 
     // 顶部下拉「松手继续阅读」：只读取下拉位移，判定与回弹都由 OverscrollBounce 维持原样。
     val bounceState = remember { OverscrollBounceState() }
@@ -178,13 +185,21 @@ fun HomeScreen(
         }
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(AppColors.PageBg)
             .semantics { testTagsAsResourceId = true }
             .testTag(HOME_SCREEN_TAG)
     ) {
+        // Inset individual cards, not the scrolling viewport: the book row must reach under
+        // the floating rail all the way to the window edge while keeping its initial alignment.
+        val availableWidth = (maxWidth - navigationInsets.start).coerceAtLeast(0.dp)
+        val contentWidth = if (useWideLayout) minOf(availableWidth, 840.dp) else availableWidth
+        val centeredMargin = (availableWidth - contentWidth) / 2
+        val contentStart = navigationInsets.start + centeredMargin
+        val contentEnd = centeredMargin
+        val contentInsets = Modifier.padding(start = contentStart, end = contentEnd)
         OverscrollBounce(
             modifier = Modifier
                 .fillMaxSize()
@@ -195,14 +210,11 @@ fun HomeScreen(
             onTopPullRelease = onTopPullRelease
         ) {
             LazyColumn(
-                modifier = Modifier
-                    .then(if (useWideLayout) Modifier.widthIn(max = 840.dp) else Modifier)
-                    .fillMaxWidth()
-                    .then(if (useWideLayout) Modifier.align(Alignment.TopCenter) else Modifier)
+                modifier = Modifier.fillMaxWidth()
             ) {
                 item(key = "header") {
                     Spacer(Modifier.height(statusBarTopPadding + AppSpace.md))
-                    PageEntranceItem(play = playEntranceAnimation, index = 0) {
+                    PageEntranceItem(play = playEntranceAnimation, index = 0, modifier = contentInsets) {
                         HomeHeader(
                             avatarUri = uiState.avatarUri,
                             onAvatarClick = {
@@ -217,7 +229,7 @@ fun HomeScreen(
 
                 if (uiState.books.isEmpty()) {
                     item(key = "empty_library") {
-                        PageEntranceItem(play = playEntranceAnimation, index = 1) {
+                        PageEntranceItem(play = playEntranceAnimation, index = 1, modifier = contentInsets) {
                             ImportHint(onImportClick = onImportClick)
                         }
                         Spacer(Modifier.height(AppSpace.lg))
@@ -226,7 +238,7 @@ fun HomeScreen(
 
                 if (lastReadBook != null) {
                     item(key = "continue_reading") {
-                        PageEntranceItem(play = playEntranceAnimation, index = 2) {
+                        PageEntranceItem(play = playEntranceAnimation, index = 2, modifier = contentInsets) {
                             ContinueReadingCard(
                                 book = lastReadBook,
                                 downloadState = uiState.downloadStates[lastReadBook.id],
@@ -244,12 +256,16 @@ fun HomeScreen(
                     item(key = "recently_read") {
                         PageEntranceItem(play = playEntranceAnimation, index = 3) {
                             Column {
-                                SectionHeader(stringResource(R.string.section_recently_read))
+                                Box(contentInsets) {
+                                    SectionHeader(stringResource(R.string.section_recently_read))
+                                }
                                 Spacer(Modifier.height(AppSpace.md))
                                 BooksReadGrid(
                                     books = recentBooks,
                                     downloadStates = uiState.downloadStates,
                                     useWideLayout = useWideLayout,
+                                    contentStartInset = contentStart,
+                                    contentEndInset = contentEnd,
                                     onBookClick = { book, bounds ->
                                         onNavigateToReader(book, bounds)
                                     }
@@ -261,7 +277,7 @@ fun HomeScreen(
                 }
 
                 item(key = "reading_goal") {
-                    PageEntranceItem(play = playEntranceAnimation, index = 4) {
+                    PageEntranceItem(play = playEntranceAnimation, index = 4, modifier = contentInsets) {
                         ReadingGoalCard(
                             readingTime = uiState.todayReadingTime,
                             dailyGoal = uiState.dailyGoal,
@@ -332,17 +348,7 @@ fun HomeScreen(
                         )
                     }
                 } else {
-                    Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .shadow(8.dp, CircleShape, ambientColor = AppColors.Shadow)
-                            .clip(CircleShape)
-                            .background(Color.Black)
-                            .clickable(onClick = onImportClick),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(AppIcons.Plus, stringResource(R.string.import_books), tint = Color.White, modifier = Modifier.size(24.dp))
-                    }
+                    LumiImportFab(onClick = onImportClick)
                 }
             }
         }
@@ -887,6 +893,10 @@ private fun ReadingGoalCard(
             )
         }
 
+        if (hasGoal) {
+            Text(stringResource(R.string.activity_includes_listening), fontSize = AppType.Caption,
+                color = AppColors.TextSecondary)
+        }
         Spacer(Modifier.height(AppSpace.lg))
 
         // 星期打卡
@@ -1002,6 +1012,8 @@ private fun BooksReadGrid(
     downloadStates: Map<String, BookDownloadState>,
     modifier: Modifier = Modifier,
     useWideLayout: Boolean = false,
+    contentStartInset: Dp = 0.dp,
+    contentEndInset: Dp = 0.dp,
     onBookClick: (Book, Rect?) -> Unit
 ) {
     val coverShape = AppRoundedCornerShape(
@@ -1015,7 +1027,12 @@ private fun BooksReadGrid(
     val bookBounds = remember { mutableMapOf<String, Rect>() }
     RecentBooksRow(
         itemWidth = if (useWideLayout) 120.dp else 96.dp,
-        modifier = modifier
+        modifier = modifier,
+        startUnderlap = LocalMainNavigationInsets.current.start,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            start = contentStartInset + AppSpace.lg,
+            end = contentEndInset + AppSpace.lg
+        )
     ) {
         items(books, key = { it.id }) { book ->
             Column(

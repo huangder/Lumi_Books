@@ -1,5 +1,18 @@
 package com.huangder.lumibooks.ui.reader
 
+import java.util.Locale
+
+internal fun readerScrollPageLabel(chapter: Int, chapterFraction: Float): String =
+    String.format(Locale.ROOT, "%d-%.1f%%", chapter + 1,
+        (if (chapterFraction.isFinite()) chapterFraction else 0f).coerceIn(0f, 1f) * 100f)
+
+internal fun readerScrollChapterFraction(page: Int, count: Int, locator: String? = null): Float {
+    val progression = locator?.let {
+        runCatching { org.json.JSONObject(it).optDouble("progression", Double.NaN) }.getOrNull()
+    }?.takeIf { it.isFinite() }?.toFloat()
+    return (progression ?: (page.toFloat() / count.coerceAtLeast(1))).coerceIn(0f, 1f)
+}
+
 /** Only confirmed counts participate in book numbering; an empty chapter is known as zero. */
 internal data class ReaderBookPages(
     val generation: Long = 0,

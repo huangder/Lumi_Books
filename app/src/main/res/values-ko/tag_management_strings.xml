@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tag_management_invalid_name">올바른 이름을 입력하세요. 도서 태그와 그룹 이름은 최대 20자입니다.</string>
+</resources>

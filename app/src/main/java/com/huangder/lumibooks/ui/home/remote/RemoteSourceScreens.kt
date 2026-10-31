@@ -1,5 +1,9 @@
 package com.huangder.lumibooks.ui.home.remote
 
+import com.huangder.lumibooks.ui.components.AppDialogAction
+import com.huangder.lumibooks.ui.components.AppDialogActionRole
+
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -55,6 +60,7 @@ import com.huangder.lumibooks.data.remote.RemoteSourceType
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassButton
 import com.huangder.lumibooks.ui.components.LiquidGlassDialog
+import com.huangder.lumibooks.ui.components.usesCardSheets
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 import com.huangder.lumibooks.ui.components.SwipeRevealItem
@@ -176,22 +182,24 @@ internal fun RemoteSourceListScreen(
     pendingDelete?.let { source ->
         LiquidGlassAlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text(stringResource(R.string.remote_library_delete)) },
+            titleText = stringResource(R.string.remote_library_delete),
             text = { Text(stringResource(R.string.remote_library_delete_confirm, source.name)) },
-            confirmButton = {
-                LiquidGlassTextButton(
+            actions = listOf(
+                AppDialogAction(
                     text = stringResource(R.string.delete),
-                    tintedColor = androidx.compose.ui.graphics.Color(0xFFD92D3A),
                     onClick = {
                         pendingDelete = null
                         onDelete(source)
-                    }
+                    },
+                    role = AppDialogActionRole.Destructive,
+                    tintedColor = androidx.compose.ui.graphics.Color(0xFFD92D3A)
+                ),
+                AppDialogAction(
+                    text = stringResource(R.string.cancel),
+                    onClick = { pendingDelete = null },
+                    role = AppDialogActionRole.Cancel
                 )
-            },
-            dismissButton = {
-                LiquidGlassTextButton(text = stringResource(R.string.cancel), onClick = { pendingDelete = null })
-            }
-        )
+            ))
     }
 }
 
@@ -319,6 +327,7 @@ internal fun RemoteSourceFormScreen(
     onSaved: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var name by rememberSaveable { mutableStateOf(existing?.name.orEmpty()) }
     var url by rememberSaveable { mutableStateOf(existing?.url.orEmpty()) }
     var username by rememberSaveable { mutableStateOf(existing?.username.orEmpty()) }
@@ -362,7 +371,13 @@ internal fun RemoteSourceFormScreen(
                 scope.launch {
                     val result = onTestAndSave(name, trimmed, username, password)
                     testing = false
-                    if (result == null) onSaved() else error = result
+                    if (result == null) {
+                        onSaved()
+                    } else if (result == RemoteErrorKind.REPORTED_BLOCKED) {
+                        Toast.makeText(context, context.getString(R.string.remote_error_reported_blocked), Toast.LENGTH_LONG).show()
+                    } else {
+                        error = result
+                    }
                 }
             },
             { error = RemoteErrorKind.LOCAL_NETWORK_PERMISSION }
@@ -578,7 +593,8 @@ private fun RemoteLibraryLegalSheet(
         }
     }
 
-    if (isLiquidGlass) {
+    val cardSheets = usesCardSheets()
+    if (isLiquidGlass || cardSheets) {
         LiquidGlassDialog(
             onDismissRequest = onDismiss,
             alignment = Alignment.BottomCenter,

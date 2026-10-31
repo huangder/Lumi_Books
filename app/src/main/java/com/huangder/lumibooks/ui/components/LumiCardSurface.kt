@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.AppSurfaceRole
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalLumiBackgroundBackdrop
 import com.kyant.backdrop.drawBackdrop
@@ -19,8 +20,11 @@ import com.kyant.backdrop.effects.blur
 fun Modifier.lumiCardSurface(
     color: Color = AppColors.CardBg,
     shape: Shape = RectangleShape,
-    controlEdge: Boolean = false
+    controlEdge: Boolean = false,
+    role: AppSurfaceRole = if (controlEdge) AppSurfaceRole.Control else AppSurfaceRole.Content
 ): Modifier {
+    // Content groups are a stable reading plane. Only controls sample the artwork.
+    if (role == AppSurfaceRole.Content) return background(color, shape)
     if (LocalReduceTransparency.current &&
         com.huangder.lumibooks.ui.theme.LocalAppTheme.current != "liquid_glass"
     ) return background(color, shape)

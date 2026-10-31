@@ -1,5 +1,8 @@
 package com.huangder.lumibooks.ui.components
 
+import com.huangder.lumibooks.ui.components.AppDialogAction
+import com.huangder.lumibooks.ui.components.AppDialogActionRole
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -45,15 +48,8 @@ fun AppUpdateDialog(
 
     LiquidGlassAlertDialog(
         onDismissRequest = {},
-        title = {
-            Text(
-                text = updateTitle.ifBlank {
-                    stringResource(if (force) R.string.app_update_required_title else R.string.app_update_default_title)
-                },
-                fontSize = AppType.Body,
-                fontWeight = FontWeight.Bold,
-                color = AppColors.TextPrimary
-            )
+        titleText = updateTitle.ifBlank {
+            stringResource(if (force) R.string.app_update_required_title else R.string.app_update_default_title)
         },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -87,27 +83,16 @@ fun AppUpdateDialog(
                 )
             }
         },
-        confirmButton = {
-            LiquidGlassTextButton(
+        actions = buildList {
+            add(AppDialogAction(
                 text = stringResource(if (force) R.string.app_update_download_new_version else R.string.app_update_download),
-                tintedColor = AppColors.Accent,
                 onClick = onDownload
-            )
-        },
-        dismissButton = if (force) null else {
-            {
+            ))
+            if (!force) {
                 onIgnoreVersion?.let { ignore ->
-                    LiquidGlassTextButton(
-                        text = stringResource(R.string.app_update_ignore_version),
-                        contentColor = AppColors.TextSecondary,
-                        onClick = ignore
-                    )
+                    add(AppDialogAction(stringResource(R.string.app_update_ignore_version), ignore, AppDialogActionRole.Secondary))
                 }
-                LiquidGlassTextButton(
-                    text = stringResource(R.string.later),
-                    contentColor = AppColors.TextSecondary,
-                    onClick = onLater
-                )
+                add(AppDialogAction(stringResource(R.string.later), onLater, AppDialogActionRole.Cancel))
             }
         },
         properties = DialogProperties(

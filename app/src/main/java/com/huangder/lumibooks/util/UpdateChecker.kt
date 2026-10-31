@@ -6,6 +6,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
 
 /**
@@ -52,7 +53,8 @@ object UpdateChecker {
         val termsVersion: Int,
         val privacyVersion: Int,
         val notice: NoticeConfig?,
-        val remoteFonts: List<RemoteFontConfig> = emptyList()
+        val remoteFonts: List<RemoteFontConfig> = emptyList(),
+        val blockedOpdsUrls: List<String> = emptyList()
     )
 
     /** Remote downloadable font config (docs/app-config.json "fonts" section). */
@@ -132,13 +134,37 @@ object UpdateChecker {
                 termsVersion = json.optInt("terms_version", 0),
                 privacyVersion = json.optInt("privacy_version", 0),
                 notice = parseNotice(noticeJson),
-                remoteFonts = parseRemoteFonts(json.optJSONArray("fonts"))
+                remoteFonts = parseRemoteFonts(json.optJSONArray("fonts")),
+                blockedOpdsUrls = json.optJSONArray("blocked_opds_urls")?.let { array ->
+                    (0 until array.length()).mapNotNull { index ->
+                        array.optString(index).trim().takeIf(String::isNotBlank)
+                    }
+                }.orEmpty()
             )
         } catch (e: Exception) {
             Log.w(TAG, "Failed to fetch update config: ${e.message}")
             null
         }
     }
+
+    /** URL block checks share the update config so admins can block reported OPDS catalogs. */
+    fun isOpdsUrlBlocked(url: String, blockedUrls: List<String>): Boolean {
+        val candidate = normalizeCatalogUrl(url) ?: return false
+        return blockedUrls.any { normalizeCatalogUrl(it) == candidate }
+    }
+
+    private fun normalizeCatalogUrl(value: String): String? = runCatching {
+        val uri = URI(value.trim()).normalize()
+        val scheme = uri.scheme?.lowercase() ?: return null
+        val host = uri.host?.lowercase() ?: return null
+        val port = when {
+            uri.port == 80 && scheme == "http" -> -1
+            uri.port == 443 && scheme == "https" -> -1
+            else -> uri.port
+        }
+        val path = uri.rawPath.orEmpty().trimEnd('/').ifEmpty { "/" }
+        URI(scheme, null, host, port, path, uri.rawQuery, null).toASCIIString()
+    }.getOrNull()
 
     private fun parseNotice(json: JSONObject?): NoticeConfig? {
         if (json == null) return null

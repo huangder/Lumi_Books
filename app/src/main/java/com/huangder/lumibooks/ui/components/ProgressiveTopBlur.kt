@@ -4,8 +4,10 @@ import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -16,7 +18,9 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawPlainBackdrop
@@ -340,6 +344,31 @@ fun ProgressiveBottomScrim(
     )
 }
 
+/** Start-edge dissolve for content scrolling into a side navigation rail. Never captures the rail. */
+@Composable
+internal fun ProgressiveStartBlur(
+    backdrop: Backdrop?,
+    tint: Color,
+    modifier: Modifier = Modifier,
+    bandWidth: Dp = 40.dp,
+    maxBlurRadius: Dp = 18.dp
+) {
+    val reverse = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val masks = remember(reverse) { ProgressiveBlurMasks(reverse, horizontal = true) }
+    val radiusPx = with(LocalDensity.current) { maxBlurRadius.toPx() }
+    Box(modifier.fillMaxHeight().width(bandWidth)) {
+        if (backdrop != null && !LocalReduceTransparency.current) {
+            ProgressiveBlurLevel(backdrop, masks.light, radiusPx * PROGRESSIVE_BLUR_LIGHT_RADIUS_RATIO)
+            ProgressiveBlurLevel(backdrop, masks.medium, radiusPx * PROGRESSIVE_BLUR_MEDIUM_RADIUS_RATIO)
+            ProgressiveBlurLevel(backdrop, masks.heavy, radiusPx * PROGRESSIVE_BLUR_HEAVY_RADIUS_RATIO)
+        }
+        // Keep sampled content visible beneath the rail; tint dissolves towards the clear page.
+        Box(Modifier.fillMaxSize().background(remember(tint, reverse) {
+            tintBrush(tint, reverse, horizontal = true)
+        }))
+    }
+}
+
 @Composable
 private fun ProgressiveBlurLevel(
     backdrop: Backdrop,
@@ -363,10 +392,10 @@ private fun ProgressiveBlurLevel(
     )
 }
 
-private class ProgressiveBlurMasks(fromBottom: Boolean) {
-    val light: Brush = maskBrush(PROGRESSIVE_BLUR_LEVEL_LIGHT, fromBottom)
-    val medium: Brush = maskBrush(PROGRESSIVE_BLUR_LEVEL_MEDIUM, fromBottom)
-    val heavy: Brush = maskBrush(PROGRESSIVE_BLUR_LEVEL_HEAVY, fromBottom)
+private class ProgressiveBlurMasks(fromBottom: Boolean, horizontal: Boolean = false) {
+    val light: Brush = maskBrush(PROGRESSIVE_BLUR_LEVEL_LIGHT, fromBottom, horizontal)
+    val medium: Brush = maskBrush(PROGRESSIVE_BLUR_LEVEL_MEDIUM, fromBottom, horizontal)
+    val heavy: Brush = maskBrush(PROGRESSIVE_BLUR_LEVEL_HEAVY, fromBottom, horizontal)
 }
 
 /** Distance from the strong edge: the top edge normally, the bottom edge for bottom bands. */
@@ -375,16 +404,18 @@ private fun edgeFraction(index: Int, fromBottom: Boolean): Float {
     return if (fromBottom) 1f - fraction else fraction
 }
 
-private fun maskBrush(level: Int, fromBottom: Boolean): Brush = Brush.verticalGradient(
-    colorStops = Array(MASK_SAMPLE_COUNT + 1) { index ->
+private fun maskBrush(level: Int, fromBottom: Boolean, horizontal: Boolean = false): Brush {
+    val stops = Array(MASK_SAMPLE_COUNT + 1) { index ->
         val fraction = index.toFloat() / MASK_SAMPLE_COUNT
         fraction to Color.Black.copy(alpha = progressiveBlurLevelAlpha(level, edgeFraction(index, fromBottom)))
     }
-)
+    return if (horizontal) Brush.horizontalGradient(*stops) else Brush.verticalGradient(*stops)
+}
 
-private fun tintBrush(tint: Color, fromBottom: Boolean): Brush = Brush.verticalGradient(
-    colorStops = Array(MASK_SAMPLE_COUNT + 1) { index ->
+private fun tintBrush(tint: Color, fromBottom: Boolean, horizontal: Boolean = false): Brush {
+    val stops = Array(MASK_SAMPLE_COUNT + 1) { index ->
         val fraction = index.toFloat() / MASK_SAMPLE_COUNT
         fraction to tint.copy(alpha = tint.alpha * progressiveTintAlpha(edgeFraction(index, fromBottom)))
     }
-)
+    return if (horizontal) Brush.horizontalGradient(*stops) else Brush.verticalGradient(*stops)
+}

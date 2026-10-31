@@ -119,7 +119,9 @@ class DetailActivity : ComponentActivity() {
                     when (category) {
                         "reading" -> DetailPage(stringResource(R.string.title_reading_settings), onBack) { ReadingSettingsDetail(viewModel) }
                         "selection_menu" -> SelectionMenuSettingsScreen(
-                            uiState.selectionMenuItems, viewModel::saveSelectionMenuItems, onBack
+                            settings = uiState.selectionMenuItems,
+                            onChange = viewModel::saveSelectionMenuItems,
+                            onBack = onBack
                         )
                         "floating_subtitle" -> DetailPage(stringResource(R.string.title_floating_subtitle_settings), onBack) {
                             FloatingSubtitleSettingsDetail(viewModel)
@@ -128,6 +130,7 @@ class DetailActivity : ComponentActivity() {
                         "icon_style" -> DetailPage(stringResource(R.string.icon_style_title), onBack) { AppIconStyleDetail(viewModel) }
                         "language" -> DetailPage(stringResource(R.string.title_language), onBack) { LanguageDetailScreen(viewModel) }
                         "goal" -> DetailPage(stringResource(R.string.title_reading_goal), onBack) { ReadingGoalDetail(viewModel) }
+                        "privacy" -> PrivacySettingsRoute(onBack = onBack)
                         "storage" -> DetailPage(
                             title = stringResource(R.string.title_storage),
                             onBack = onBack

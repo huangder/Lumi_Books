@@ -13,4 +13,9 @@ class ReaderOpeningPlaceholderTest {
         assertTrue(shouldMountReaderContent(ReaderDocumentState(error = "missing book")))
         assertTrue(shouldMountReaderContent(ReaderDocumentState(isLoading = false)))
     }
+
+    @Test fun `nothing mounts while the hero window is still moving`() {
+        assertFalse(shouldMountReaderContent(ReaderDocumentState(error = "missing book"), windowReady = false))
+        assertFalse(shouldMountReaderContent(ReaderDocumentState(isLoading = false), windowReady = false))
+    }
 }

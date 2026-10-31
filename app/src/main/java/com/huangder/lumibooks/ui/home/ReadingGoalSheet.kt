@@ -64,6 +64,7 @@ import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.animateBottomSheetIn
 import com.huangder.lumibooks.ui.components.animateBottomSheetOut
 import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
+import com.huangder.lumibooks.ui.components.adaptiveSheetFrame
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
@@ -182,7 +183,7 @@ fun ReadingGoalSheet(
                 maxSheetHeight = maxSheetHeight,
                 scrollState = summaryScrollState,
                 onClose = onDismiss,
-                modifier = Modifier.align(Alignment.BottomCenter)
+                modifier = adaptiveSheetFrame(maxHeight = maxSheetHeight)
             ) {
                 TodayReadingContent(
                     totalMinutes = totalMinutes,
@@ -204,7 +205,7 @@ fun ReadingGoalSheet(
                 maxSheetHeight = maxSheetHeight,
                 scrollState = pickerScrollState,
                 onClose = { closeGoalPicker() },
-                modifier = Modifier.align(Alignment.BottomCenter)
+                modifier = adaptiveSheetFrame(maxHeight = maxSheetHeight)
             ) {
                 GoalPicker(
                     currentMinutes = dailyGoal,
@@ -230,9 +231,8 @@ private fun ReadingGoalContainer(
     LiquidGlassColumnSheetContainer(
         fallbackColor = AppColors.CardBg,
         shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        // The caller's adaptiveSheetFrame positions and sizes the sheet (card on tablets).
         modifier = modifier
-            .fillMaxWidth()
-            .heightIn(max = maxSheetHeight)
             .materialBottomSheetMotion(entryOffset, predictiveBackProgress),
         contentModifier = Modifier
             .then(
@@ -298,6 +298,8 @@ private fun TodayReadingContent(
         fontFamily = resolveAppFontFamily(KaiTi),
         color = textPrimary
     )
+
+    Text(stringResource(R.string.activity_includes_listening), fontSize = 12.sp, color = textSecondary)
 
     Spacer(modifier = Modifier.height(32.dp))
 
@@ -650,6 +652,7 @@ private fun CustomGoalInputPanel(
 
     if (isLiquidGlass) {
         LiquidGlassSurface(
+            role = com.huangder.lumibooks.ui.theme.AppSurfaceRole.Content,
             shape = shape,
             fallbackColor = bgGray,
             contentScrimColor = bgGray.copy(alpha = 0.34f),

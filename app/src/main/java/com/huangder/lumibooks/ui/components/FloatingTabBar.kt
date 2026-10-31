@@ -49,15 +49,23 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.ui.unit.Dp
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -174,7 +182,9 @@ fun FloatingTabBar(
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
     liquidGlassBackdrop: Backdrop? = null,
-    reserveImportButtonSpace: Boolean = false
+    reserveImportButtonSpace: Boolean = false,
+    /** Landscape windows: a vertical capsule docked to the start edge (positioned by the caller). */
+    vertical: Boolean = false
 ) {
     val isDark = LocalIsDarkTheme.current
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
@@ -183,11 +193,12 @@ fun FloatingTabBar(
     val motionEnabled = LocalMotionEnabled.current
     val density = LocalDensity.current
     val labelMeasurer = rememberTextMeasurer()
-    val labelStyle = LocalTextStyle.current.copy(fontSize = 11.sp, lineHeight = 13.sp, fontWeight = FontWeight.Medium)
+    val labelStyle = tabLabelStyle()
     val labelHeightPx = tabs.maxOf { tab ->
         val layout = labelMeasurer.measure(stringResource(tab.titleRes), labelStyle, maxLines = 1, softWrap = false)
         maxOf(layout.size.height, kotlin.math.ceil(layout.getLineBottom(0)).toInt())
     }
+    val railThickness = floatingTabRailThickness()
     // CJK glyph metrics can exceed the requested line height at accessibility sizes.
     val barHeight = if (isLiquidGlass) {
         // Icon + gap + padding, with room for the label's font ascent/descent.
@@ -245,9 +256,9 @@ fun FloatingTabBar(
         SolidColor(Color.White.copy(alpha = 0.80f))
     }
     val fallbackBorderBrush = if (isDark) {
-        SolidColor(Color.White.copy(alpha = 0.22f))
+        SolidColor(Color.White.copy(alpha = 0.10f))
     } else {
-        SolidColor(Color.White.copy(alpha = 0.58f))
+        SolidColor(Color.Black.copy(alpha = 0.08f))
     }
     val hazeModifier = hazeState?.takeIf { !reduceTransparency }?.let { state ->
         Modifier.hazeChild(state) {
@@ -318,41 +329,61 @@ fun FloatingTabBar(
         else -> Modifier.border(0.8.dp, fallbackBorderBrush, glassShape)
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
-            .padding(
-                // Leave enough room for the 28dp drop shadow; otherwise the outer
-                // layout bounds clip it and create a hard horizontal seam.
-                top = 32.dp,
-                bottom = if (isLiquidGlass) 10.dp else 14.dp
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        Box(
-            modifier = Modifier
-                .widthIn(max = if (isLiquidGlass) 480.dp else 430.dp)
-                .padding(
-                    start = horizontalPadding,
-                    end = endPadding
-                )
-        ) {
+    // The vertical rail is sized here and positioned (with shadow room) by the caller;
+    // the horizontal capsule keeps its own centered, inset wrapper.
+    val barFrame: @Composable (content: @Composable () -> Unit) -> Unit = if (vertical) {
+        { content -> Box(modifier = modifier) { content() } }
+    } else {
+        { content ->
+            Box(
+                modifier = modifier
+                    .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.navigationBarsIgnoringVisibility)
+                    .padding(
+                        // Leave enough room for the 28dp drop shadow; otherwise the outer
+                        // layout bounds clip it and create a hard horizontal seam.
+                        top = 32.dp,
+                        bottom = if (isLiquidGlass) 10.dp else 14.dp
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .widthIn(max = if (isLiquidGlass) 480.dp else 430.dp)
+                        .padding(
+                            start = horizontalPadding,
+                            end = endPadding
+                        )
+                ) { content() }
+            }
+        }
+    }
+
+    barFrame {
         BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(barHeight),
+            modifier = if (vertical) {
+                // One bar-height cell per tab along the rail, as the bottom bar's row is one cell tall.
+                Modifier
+                    .width(railThickness)
+                    .height(barHeight * tabs.size + (if (isLiquidGlass) 8.dp else 0.dp))
+            } else {
+                Modifier
+                    .fillMaxWidth()
+                    .height(barHeight)
+            },
         ) {
             // Keep the original three-column rhythm, with only a subtle inset.
+            // "Width" values below run along the tab axis, which is vertical for the rail.
             val contentPadding = if (isLiquidGlass) 4.dp else 0.dp
             val contentPaddingPx = with(density) { contentPadding.toPx() }
-            val contentWidth = maxWidth - contentPadding * 2
+            val contentWidth = (if (vertical) maxHeight else maxWidth) - contentPadding * 2
             val contentWidthPx = with(density) { contentWidth.toPx() }
             val indicatorWidth = contentWidth / tabs.size
             val indicatorWidthPx = with(density) { indicatorWidth.toPx() }
             val indicatorExtraWidth = contentPadding * 2
             val indicatorExtraWidthPx = with(density) { indicatorExtraWidth.toPx() }
-            val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
+            // Tabs always run top to bottom on the rail; only the horizontal bar mirrors for RTL.
+            val isLtr = vertical || LocalLayoutDirection.current == LayoutDirection.Ltr
             var currentIndex by remember { mutableIntStateOf(selectedIndex) }
             val dragState = remember(animationScope, indicatorWidthPx, motionEnabled) {
                 LiquidGlassTabMotionState(
@@ -377,21 +408,29 @@ fun FloatingTabBar(
                 dragState,
                 indicatorWidthPx,
                 isLtr,
+                vertical,
                 motionEnabled
             ) {
                 LiquidGlassTabInteractiveHighlight(
                     animationScope = animationScope,
                     motionEnabled = motionEnabled
                 ) { size, _ ->
-                    Offset(
-                        x = if (isLtr) {
-                            (dragState.value + 0.5f) * indicatorWidthPx + panelOffsetPx
-                        } else {
-                            size.width - (dragState.value + 0.5f) * indicatorWidthPx +
-                                panelOffsetPx
-                        },
-                        y = size.height / 2f
-                    )
+                    if (vertical) {
+                        Offset(
+                            x = size.width / 2f,
+                            y = (dragState.value + 0.5f) * indicatorWidthPx + panelOffsetPx
+                        )
+                    } else {
+                        Offset(
+                            x = if (isLtr) {
+                                (dragState.value + 0.5f) * indicatorWidthPx + panelOffsetPx
+                            } else {
+                                size.width - (dragState.value + 0.5f) * indicatorWidthPx +
+                                    panelOffsetPx
+                            },
+                            y = size.height / 2f
+                        )
+                    }
                 }
             }
 
@@ -421,9 +460,10 @@ fun FloatingTabBar(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        translationX = panelOffsetPx
-                        val scale = if (motionEnabled && size.width > 0f) {
-                            1f + 16.dp.toPx() / size.width * dragState.pressProgress
+                        val barLength = if (vertical) size.height else size.width
+                        if (vertical) translationY = panelOffsetPx else translationX = panelOffsetPx
+                        val scale = if (motionEnabled && barLength > 0f) {
+                            1f + 16.dp.toPx() / barLength * dragState.pressProgress
                         } else {
                             1f
                         }
@@ -467,7 +507,8 @@ fun FloatingTabBar(
                     }
                 },
                 liquidGlass = isLiquidGlass,
-                interactive = true
+                interactive = true,
+                vertical = vertical
             )
             }
 
@@ -475,12 +516,19 @@ fun FloatingTabBar(
                 Box(
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .fillMaxWidth()
-                        .height(barHeight - 8.dp)
+                        .then(
+                            if (vertical) {
+                                Modifier.fillMaxHeight().width(railThickness - 8.dp)
+                            } else {
+                                Modifier.fillMaxWidth().height(barHeight - 8.dp)
+                            }
+                        )
                         .clearAndSetSemantics {}
                         .alpha(0f)
                         .layerBackdrop(tabsBackdrop)
-                        .graphicsLayer { translationX = panelOffsetPx }
+                        .graphicsLayer {
+                            if (vertical) translationY = panelOffsetPx else translationX = panelOffsetPx
+                        }
                         .drawBackdrop(
                             backdrop = liquidGlassBackdrop,
                             shape = { glassShape },
@@ -510,6 +558,7 @@ fun FloatingTabBar(
                         onTabSelected = {},
                         liquidGlass = true,
                         interactive = false,
+                        vertical = vertical,
                         itemScale = {
                             if (motionEnabled) {
                                 1f + 0.2f * dragState.pressProgress
@@ -523,8 +572,13 @@ fun FloatingTabBar(
 
             if (isLiquidGlass) {
                 val prismGestureModifier = Modifier
-                    .width(indicatorWidth + indicatorExtraWidth)
-                    .fillMaxHeight()
+                    .then(
+                        if (vertical) {
+                            Modifier.height(indicatorWidth + indicatorExtraWidth).fillMaxWidth()
+                        } else {
+                            Modifier.width(indicatorWidth + indicatorExtraWidth).fillMaxHeight()
+                        }
+                    )
                     .offset {
                         val baseTranslation = if (isLtr) {
                             contentPaddingPx - indicatorExtraWidthPx / 2f +
@@ -534,7 +588,8 @@ fun FloatingTabBar(
                                 (dragState.value + 1f) * indicatorWidthPx -
                                 indicatorExtraWidthPx / 2f
                         }
-                        IntOffset((baseTranslation + panelOffsetPx).roundToInt(), 0)
+                        val translation = (baseTranslation + panelOffsetPx).roundToInt()
+                        if (vertical) IntOffset(0, translation) else IntOffset(translation, 0)
                     }
                     .padding(4.dp)
                     .then(interactiveHighlight.gestureModifier)
@@ -542,13 +597,14 @@ fun FloatingTabBar(
                         state = dragState,
                         onDrag = { _, dragAmount ->
                             val direction = if (isLtr) 1f else -1f
+                            val dragAlongTabs = if (vertical) dragAmount.y else dragAmount.x
                             dragState.updateValue(
                                 dragState.targetValue +
-                                    dragAmount.x / indicatorWidthPx * direction
+                                    dragAlongTabs / indicatorWidthPx * direction
                             )
                             animationScope.launch {
                                 panelOffsetAnimation.snapTo(
-                                    panelOffsetAnimation.value + dragAmount.x
+                                    panelOffsetAnimation.value + dragAlongTabs
                                 )
                             }
                         },
@@ -582,8 +638,14 @@ fun FloatingTabBar(
                             scaleX = dragState.scaleX
                             scaleY = dragState.scaleY
                             val velocity = dragState.velocity / 10f
-                            scaleX /= 1f - (velocity * 0.75f).coerceIn(-0.2f, 0.2f)
-                            scaleY *= 1f - (velocity * 0.25f).coerceIn(-0.2f, 0.2f)
+                            // Stretch along the direction of travel, squash across it.
+                            if (vertical) {
+                                scaleY /= 1f - (velocity * 0.75f).coerceIn(-0.2f, 0.2f)
+                                scaleX *= 1f - (velocity * 0.25f).coerceIn(-0.2f, 0.2f)
+                            } else {
+                                scaleX /= 1f - (velocity * 0.75f).coerceIn(-0.2f, 0.2f)
+                                scaleY *= 1f - (velocity * 0.25f).coerceIn(-0.2f, 0.2f)
+                            }
                         },
                         onDrawSurface = {
                             val progress = dragState.pressProgress
@@ -611,6 +673,113 @@ fun FloatingTabBar(
             }
             }
     }
+}
+
+@Composable
+private fun tabLabelStyle() =
+    LocalTextStyle.current.copy(fontSize = 11.sp, lineHeight = 13.sp, fontWeight = FontWeight.Medium)
+
+/** Cross-axis size of the vertical tab rail: the widest tab label must fit without ellipsis. */
+@Composable
+internal fun floatingTabRailThickness(): Dp {
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    // The plain bar draws icons only, so it keeps the bottom bar's 56dp thickness.
+    if (!isLiquidGlass) return 56.dp
+    val labelMeasurer = rememberTextMeasurer()
+    val labelStyle = tabLabelStyle()
+    val density = LocalDensity.current
+    val widestLabelPx = tabs.maxOf { tab ->
+        labelMeasurer.measure(stringResource(tab.titleRes), labelStyle, maxLines = 1, softWrap = false).size.width
+    }
+    // 4dp content inset + 5dp item inset on each side, plus room for the pressed prism.
+    return maxOf(LiquidTabBarHeight, with(density) { widestLabelPx.toDp() } + 26.dp)
+}
+
+/** Space the vertical rail claims from the start edge of the window, including its margin. */
+@Composable
+internal fun verticalTabRailReserve(useMaterial3Navigation: Boolean): Dp =
+    if (useMaterial3Navigation) {
+        MATERIAL3_NAVIGATION_RAIL_WIDTH
+    } else {
+        VERTICAL_TAB_RAIL_START_PADDING + maxOf(floatingTabRailThickness(), LiquidTabBarHeight) +
+            VERTICAL_TAB_RAIL_CONTENT_GAP
+    }
+
+/** Gap between the window's start edge and the floating vertical rail. */
+internal val VERTICAL_TAB_RAIL_START_PADDING = 16.dp
+private val VERTICAL_TAB_RAIL_CONTENT_GAP = 8.dp
+private val MATERIAL3_NAVIGATION_RAIL_WIDTH = 80.dp
+
+/**
+ * Where the main tab pages must leave room for navigation chrome. The bottom bar keeps the
+ * pages' own bottom spacing; the side rail asks for start padding instead.
+ */
+data class MainNavigationInsets(
+    val start: Dp = 0.dp,
+    val bottomBar: Boolean = true
+)
+
+val LocalMainNavigationInsets = staticCompositionLocalOf { MainNavigationInsets() }
+
+/** Material 3 counterpart of the floating vertical rail, with import as the header FAB. */
+@Composable
+fun Material3NavigationRail(
+    selectedIndex: Int,
+    onTabSelected: (Int) -> Unit,
+    onImportClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    NavigationRail(
+        modifier = modifier
+            .fillMaxHeight()
+            .semantics { testTagsAsResourceId = true },
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        header = {
+            FloatingActionButton(
+                onClick = onImportClick,
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+            ) {
+                Icon(AppIcons.Plus, contentDescription = stringResource(R.string.import_books))
+            }
+        },
+        windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical + WindowInsetsSides.Start)
+    ) {
+        Spacer(Modifier.weight(1f))
+        tabs.forEachIndexed { index, tab ->
+            NavigationRailItem(
+                modifier = Modifier.testTag(tab.testTag),
+                selected = selectedIndex == index,
+                onClick = { onTabSelected(index) },
+                icon = {
+                    Icon(
+                        imageVector = tab.icons.resolve(selectedIndex == index),
+                        contentDescription = stringResource(tab.titleRes)
+                    )
+                },
+                label = { Text(stringResource(tab.titleRes), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis) },
+                alwaysShowLabel = true
+            )
+        }
+        Spacer(Modifier.weight(1f))
+    }
+}
+
+/** The default theme's import button; shared by the home page and the vertical rail. */
+@Composable
+fun LumiImportFab(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .size(56.dp)
+            .clip(CircleShape)
+            .background(Color.Black)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(AppIcons.Plus, stringResource(R.string.import_books), tint = Color.White, modifier = Modifier.size(24.dp))
     }
 }
 
@@ -675,28 +844,43 @@ private fun FixedTabItems(
     onTabSelected: (Int) -> Unit,
     liquidGlass: Boolean = true,
     interactive: Boolean = true,
+    vertical: Boolean = false,
     itemScale: () -> Float = { 1f },
     modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = contentPadding),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        tabs.forEachIndexed { index, tab ->
-            TabItemView(
-                tab = tab,
-                isSelected = index == currentIndex,
-                liquidGlass = liquidGlass,
-                contentColor = contentColor,
-                selectedContentColor = selectedContentColor,
-                interactive = interactive,
-                itemScale = itemScale,
-                onClick = { onTabSelected(index) },
-                modifier = Modifier.weight(1f)
-            )
+    val item: @Composable (index: Int, tab: TabItem, itemModifier: Modifier) -> Unit = { index, tab, itemModifier ->
+        TabItemView(
+            tab = tab,
+            isSelected = index == currentIndex,
+            liquidGlass = liquidGlass,
+            contentColor = contentColor,
+            selectedContentColor = selectedContentColor,
+            interactive = interactive,
+            vertical = vertical,
+            itemScale = itemScale,
+            onClick = { onTabSelected(index) },
+            modifier = itemModifier
+        )
+    }
+    if (vertical) {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(vertical = contentPadding),
+            verticalArrangement = Arrangement.SpaceEvenly,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            tabs.forEachIndexed { index, tab -> item(index, tab, Modifier.weight(1f)) }
+        }
+    } else {
+        Row(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(horizontal = contentPadding),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            tabs.forEachIndexed { index, tab -> item(index, tab, Modifier.weight(1f)) }
         }
     }
 }
@@ -709,6 +893,7 @@ private fun TabItemView(
     contentColor: Color,
     selectedContentColor: Color,
     interactive: Boolean = true,
+    vertical: Boolean = false,
     itemScale: () -> Float = { 1f },
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -717,7 +902,8 @@ private fun TabItemView(
         Column(
             modifier = modifier
                 .fillMaxSize()
-                .padding(vertical = 5.dp)
+                // Inset across the bar, matching the prism's 4dp gutter on either axis.
+                .then(if (vertical) Modifier.padding(horizontal = 5.dp) else Modifier.padding(vertical = 5.dp))
                 .clip(CircleShape)
                 .semantics {
                     role = Role.Tab

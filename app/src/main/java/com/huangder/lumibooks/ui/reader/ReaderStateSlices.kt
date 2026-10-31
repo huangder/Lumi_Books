@@ -1,8 +1,7 @@
 package com.huangder.lumibooks.ui.reader
 
-import com.huangder.lumibooks.domain.model.SelectionMenuSettings
-
 import com.huangder.lumibooks.data.local.DataStoreManager
+import com.huangder.lumibooks.domain.model.SelectionMenuSettings
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.CustomFontPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
@@ -118,6 +117,7 @@ data class ReaderControlsState(
         defaultReaderCornerContent(ReaderPageCorner.BOTTOM_LEFT),
     val readerBottomRightContent: ReaderCornerContent =
         defaultReaderCornerContent(ReaderPageCorner.BOTTOM_RIGHT),
+    /** Text selection menu order and visibility, shared by every reader engine. */
     val selectionMenuItems: SelectionMenuSettings = SelectionMenuSettings()
 )
 
@@ -274,6 +274,7 @@ internal fun ReaderUiState.withActiveThemeSettingsForMode(dark: Boolean): Reader
         marginRightDp = settings.marginRight,
         marginTopDp = settings.marginTop,
         marginBottomDp = settings.marginBottom,
+        readerCornerMargins = settings.cornerMargins,
         paragraphSpacing = settings.paragraphSpacing,
         firstLineIndent = settings.firstLineIndent,
         bodyFontWeight = settings.bodyFontWeight,
@@ -303,5 +304,6 @@ private fun ReaderUiState.currentThemeSettingsFallback() = com.huangder.lumibook
     marginLeft = marginLeftDp,
     marginRight = marginRightDp,
     marginTop = marginTopDp,
-    marginBottom = marginBottomDp
+    marginBottom = marginBottomDp,
+    cornerMargins = readerCornerMargins
 )

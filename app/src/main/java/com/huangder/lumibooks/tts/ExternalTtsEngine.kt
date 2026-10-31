@@ -74,6 +74,8 @@ class ExternalTtsEngine @Inject constructor(
     private var listener: TtsPlaybackListener? = null
     private var sessionJob: Job? = null
     private var progressJob: Job? = null
+    private var activityJob: Job? = null
+    private var renderActivity: RenderedAudioActivity? = null
     private var currentSessionId = 0L
     private var prefetchJob: Job? = null
     private var prefetchedKey: String? = null
@@ -140,6 +142,8 @@ class ExternalTtsEngine @Inject constructor(
 
                 audioPlayer.setOnFocusLost {
                     reportActiveProgressAsync()
+                    renderActivity?.pause()
+                    activeUtteranceId?.let { listener?.onPlaybackActivity(it, false) }
                     scope.launch { listener?.onPlaybackInterrupted() }
                 }
                 activeUtteranceId = utteranceId
@@ -230,7 +234,9 @@ class ExternalTtsEngine @Inject constructor(
         if (!audioInit) return
         withContext(engineDispatcher) {
             pauseRequested = true
+            renderActivity?.pause()
             audioPlayer.pause()
+            activeUtteranceId?.let { listener?.onPlaybackActivity(it, false) }
             reportActiveProgress()
         }
     }
@@ -328,6 +334,18 @@ class ExternalTtsEngine @Inject constructor(
                 )
             }
             if (pauseRequested) audioPlayer.pause()
+            val activity = RenderedAudioActivity(android.os.SystemClock::elapsedRealtime, audioPlayer.renderedFrameOffset())
+            renderActivity = activity
+            activityJob = scope.launch {
+                while (currentSessionId == sessionId) {
+                    activity.update(audioPlayer.renderedFrameOffset(), pauseRequested)?.let { active ->
+                        withContext(Dispatchers.Main) {
+                            if (currentSessionId == sessionId) listener?.onPlaybackActivity(utteranceId, active)
+                        }
+                    }
+                    delay(10)
+                }
+            }
             var chunkCount = 0
             pcmFlow.collect { chunk ->
                 if (currentSessionId != sessionId) throw CancellationException("TTS session superseded")
@@ -367,6 +385,10 @@ class ExternalTtsEngine @Inject constructor(
 
     private fun finishSession(sessionId: Long) {
         if (currentSessionId != sessionId) return
+        activityJob?.cancel()
+        activityJob = null
+        renderActivity = null
+        activeUtteranceId?.let { listener?.onPlaybackActivity(it, false) }
         progressJob?.cancel()
         progressJob = null
         sessionJob = null
@@ -418,6 +440,10 @@ class ExternalTtsEngine @Inject constructor(
         dataStoreManager.externalTtsCacheLimitMb.first().toLong() * BYTES_PER_MEBIBYTE
 
     private fun cancelCurrentSession() {
+        activityJob?.cancel()
+        activityJob = null
+        renderActivity = null
+        activeUtteranceId?.let { listener?.onPlaybackActivity(it, false) }
         progressJob?.cancel()
         progressJob = null
         sessionJob?.cancel()

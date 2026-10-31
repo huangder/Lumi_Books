@@ -18,7 +18,12 @@ class BuiltinGuideSeederTest {
         assertEquals("lumi", BuiltinGuideSeeder.FOLDER_NAME)
         assertEquals("builtin/lumi/folder_cover.png", BuiltinGuideSeeder.FOLDER_COVER_ASSET_PATH)
         assertTrue(BuiltinGuideSeeder.FOLDER_COVER_VERSION >= 1)
-        assertTrue(BuiltinGuideSeeder.CONTENT_VERSION >= 4)
+        assertTrue(BuiltinGuideSeeder.CONTENT_VERSION >= 5)
+        assertEquals(
+            BuiltinGuideSeeder.CONTENT_VERSION,
+            BuiltinGuideSeeder.GUIDE_MANIFEST.maxOf { it.contentVersion }
+        )
+        assertTrue(BuiltinGuideSeeder.GUIDE_MANIFEST.single { it.language == "zh-CN" }.contentVersion > 4)
         assertEquals(
             mapOf(
                 "zh-CN" to "builtin/lumi/covers/SC.webp",
@@ -37,7 +42,7 @@ class BuiltinGuideSeederTest {
             assertTrue(guide.coverAssetPath.startsWith("builtin/lumi/covers/"))
             assertTrue(guide.coverFileName.startsWith("builtin_guide_"))
             assertTrue(guide.bookId.startsWith("builtin-guide-"))
-            assertTrue(guide.contentVersion >= BuiltinGuideSeeder.CONTENT_VERSION)
+            assertTrue(guide.contentVersion in 1..BuiltinGuideSeeder.CONTENT_VERSION)
         }
     }
 }

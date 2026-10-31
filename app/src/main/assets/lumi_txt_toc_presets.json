@@ -1,0 +1,110 @@
+[
+  {
+    "id": 10280001,
+    "name": "中文章节",
+    "rule": "^[\\p{Zs}\\t]*第[\\p{Zs}\\t]*[0-9０-９零〇一二三四五六七八九十百千万两]+[\\p{Zs}\\t]*[章节回話话節][^\\r\\n]{0,90}$",
+    "example": "第一章 山间来信",
+    "enable": true,
+    "serialNumber": 0,
+    "replacement": ""
+  },
+  {
+    "id": 10280002,
+    "name": "中文分卷",
+    "rule": "^[\\p{Zs}\\t]*(?:第[\\p{Zs}\\t]*[0-9０-９零〇一二三四五六七八九十百千万两]+[\\p{Zs}\\t]*[卷部篇集]|[卷部篇][\\p{Zs}\\t]*[0-9０-９零〇一二三四五六七八九十百千万两]+)[^\\r\\n]{0,90}$",
+    "example": "第二卷 星河",
+    "enable": true,
+    "serialNumber": 1,
+    "replacement": ""
+  },
+  {
+    "id": 10280003,
+    "name": "序与后记",
+    "rule": "^[\\p{Zs}\\t]*(?:序言|序章|前言|引子|楔子|终章|尾声|后记|跋|番外)[：:\\p{Zs}\\t]?[^\\r\\n]{0,80}$",
+    "example": "序章 启程",
+    "enable": true,
+    "serialNumber": 2,
+    "replacement": ""
+  },
+  {
+    "id": 10280004,
+    "name": "阿拉伯数字标题",
+    "rule": "^[\\p{Zs}\\t]*[0-9０-９]{1,6}[\\p{Zs}\\t]*[.．、:：][\\p{Zs}\\t]*\\S[^\\r\\n]{0,80}$",
+    "example": "12. 林中小屋",
+    "enable": true,
+    "serialNumber": 3,
+    "replacement": ""
+  },
+  {
+    "id": 10280005,
+    "name": "中文数字标题",
+    "rule": "^[\\p{Zs}\\t]*[0-9０-９零〇一二三四五六七八九十百千万两]+[\\p{Zs}\\t]*[、.．：:][\\p{Zs}\\t]*\\S[^\\r\\n]{0,80}$",
+    "example": "十二、晨光",
+    "enable": true,
+    "serialNumber": 4,
+    "replacement": ""
+  },
+  {
+    "id": 10280006,
+    "name": "独立数字章节",
+    "rule": "^[\\p{Zs}\\t]*[0-9０-９]{1,6}[\\p{Zs}\\t]*$",
+    "example": "12",
+    "enable": false,
+    "serialNumber": 5,
+    "replacement": ""
+  },
+  {
+    "id": 10280007,
+    "name": "方括号标题",
+    "rule": "^[\\p{Zs}\\t]*(?:【[^【】\\r\\n]{1,70}】|\\[[^\\[\\]\\r\\n]{1,70}\\])[\\p{Zs}\\t]*$",
+    "example": "【远行】",
+    "enable": false,
+    "serialNumber": 6,
+    "replacement": ""
+  },
+  {
+    "id": 10280008,
+    "name": "英文章节",
+    "rule": "(?i)^[\\p{Zs}\\t]*(?:chapter|section|episode)[\\p{Zs}\\t]+(?:[0-9]+|[ivxlcdm]+)(?:\\b[^\\r\\n]{0,90})$",
+    "example": "Chapter IV A New Day",
+    "enable": true,
+    "serialNumber": 7,
+    "replacement": ""
+  },
+  {
+    "id": 10280009,
+    "name": "英文分卷",
+    "rule": "(?i)^[\\p{Zs}\\t]*(?:part|book|volume|vol\\.)[\\p{Zs}\\t]+(?:[0-9]+|[ivxlcdm]+)(?:\\b[^\\r\\n]{0,90})$",
+    "example": "Part II The Journey",
+    "enable": true,
+    "serialNumber": 8,
+    "replacement": ""
+  },
+  {
+    "id": 10280010,
+    "name": "日文章节",
+    "rule": "^[\\p{Zs}\\t]*第[\\p{Zs}\\t]*[0-9０-９零〇一二三四五六七八九十百千万两]+[\\p{Zs}\\t]*[話章節巻][^\\r\\n]{0,80}$",
+    "example": "第十二話 新しい朝",
+    "enable": true,
+    "serialNumber": 9,
+    "replacement": ""
+  },
+  {
+    "id": 10280011,
+    "name": "韩文章节",
+    "rule": "^[\\p{Zs}\\t]*제[\\p{Zs}\\t]*[0-9０-９]+[\\p{Zs}\\t]*[장화권][^\\r\\n]{0,80}$",
+    "example": "제12장 아침",
+    "enable": true,
+    "serialNumber": 10,
+    "replacement": ""
+  },
+  {
+    "id": 10280012,
+    "name": "符号标题",
+    "rule": "^[\\p{Zs}\\t]*[◆◇★☆][\\p{Zs}\\t]+\\S[^\\r\\n]{0,70}$",
+    "example": "◆ 星光",
+    "enable": false,
+    "serialNumber": 11,
+    "replacement": ""
+  }
+]

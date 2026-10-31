@@ -31,6 +31,27 @@ class AnnotationFilterSizingTest {
     @get:Rule val compose = createComposeRule()
     private fun label(id: Int) = RuntimeEnvironment.getApplication().getString(id)
 
+    @Test fun largeTagMenuOnlyComposesVisibleRowsAndSelectsTheLastTag() {
+        val tags = (1..500).map { "Tag %03d".format(it) }
+        val selected = mutableStateOf<String?>(null)
+        compose.setContent {
+            EBookReaderTheme(appTheme = "lumi", darkTheme = false) {
+                CompositionLocalProvider(LocalMotionEnabled provides false) {
+                    LiquidGlassMenuHost(Modifier.fillMaxSize()) {
+                        AnnotationListFilters(tags, selected.value, { selected.value = it },
+                            emptyList(), null, {}, null, {}, false)
+                    }
+                }
+            }
+        }
+        compose.onNodeWithText(label(R.string.annotation_tag_all)).performClick()
+        compose.onNodeWithText(tags.first()).assertIsDisplayed()
+        compose.onNodeWithText(tags.last()).assertDoesNotExist()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(tags.last()))
+        compose.onNodeWithText(tags.last()).performClick()
+        compose.runOnIdle { assertEquals(tags.last(), selected.value) }
+    }
+
     @Test fun compactFiltersKeepTheirSizeDuringMenuReturn() {
         val glass = mutableStateOf(false)
         val tag = mutableStateOf<String?>(null)

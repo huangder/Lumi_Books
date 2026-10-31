@@ -35,34 +35,35 @@ class TagRepositoryImpl @Inject constructor(
 
         val name = TagNameValidator.clean(rawName)
         val normalizedName = TagNameValidator.normalized(name)
-        // 名字全局唯一：若同名标签归属不同父级，返回 null 让调用方提示，避免静默把别处的标签关联过来
-        val existing = tagDao.getTagByNormalizedName(normalizedName)
-        if (existing != null && existing.parentId != parentId) {
-            return null
-        }
-        return tagDao.createAndAssignTag(
+        val stored = tagDao.createAndAssignTag(
             bookId = bookId,
             tag = TagEntity(
                 id = UUID.randomUUID().toString(),
                 name = name,
                 normalizedName = normalizedName,
                 createdAt = System.currentTimeMillis(),
-                parentId = parentId
+                parentId = null
             )
-        ).toDomain()
+        )
+        assignTag(bookId, stored.id)
+        return stored.toDomain()
     }
 
     override suspend fun assignTag(bookId: String, tagId: String) {
-        tagDao.insertBookTagLink(BookTagCrossRefEntity(bookId = bookId, tagId = tagId))
+        val linkTime = tagDao.getAllBookTagLinksSnapshot().find { it.bookId == bookId && it.tagId == tagId }?.updatedAt ?: 0L
+        val deletionTime = syncStateDao.getAllTombstones().find { it.namespace == "book_tag" && it.itemId == "$bookId:$tagId" }?.deletedAt ?: 0L
+        tagDao.upsertBookTagLink(BookTagCrossRefEntity(bookId, tagId, maxOf(System.currentTimeMillis(), linkTime + 1, deletionTime + 1)))
     }
 
     override suspend fun removeTagFromBook(bookId: String, tagId: String) {
+        val linkTime = tagDao.getAllBookTagLinksSnapshot().find { it.bookId == bookId && it.tagId == tagId }?.updatedAt ?: 0L
+        val deletionTime = syncStateDao.getAllTombstones().find { it.namespace == "book_tag" && it.itemId == "$bookId:$tagId" }?.deletedAt ?: 0L
         syncStateDao.upsertTombstones(
             listOf(
                 SyncTombstoneEntity(
                     "book_tag",
                     "$bookId:$tagId",
-                    System.currentTimeMillis(),
+                    maxOf(System.currentTimeMillis(), linkTime + 1, deletionTime + 1),
                     syncIdentityStore.deviceId()
                 )
             )
@@ -78,12 +79,17 @@ class TagRepositoryImpl @Inject constructor(
         val existing = tagDao.getTagByNormalizedName(normalizedName)
         if (existing != null && existing.id != tagId) return false
 
-        tagDao.updateTagName(tagId, name, normalizedName, System.currentTimeMillis())
+        val current = tagDao.getAllTagsSnapshot().find { it.id == tagId } ?: return false
+        tagDao.updateTagName(tagId, name, normalizedName, maxOf(System.currentTimeMillis(), current.updatedAt + 1))
         return true
     }
 
     override suspend fun deleteTag(tagId: String, deleteChildren: Boolean) {
-        val now = System.currentTimeMillis()
+        val now = maxOf(
+            System.currentTimeMillis(),
+            (tagDao.getAllTagsSnapshot().maxOfOrNull { it.updatedAt } ?: 0L) + 1,
+            (tagDao.getAllBookTagLinksSnapshot().maxOfOrNull { it.updatedAt } ?: 0L) + 1
+        )
         val deviceId = syncIdentityStore.deviceId()
         val tags = tagDao.getTagAndChildren(tagId).let { if (deleteChildren) it else it.filter { item -> item.id == tagId } }
         val links = tagDao.getLinksForTagTree(tagId).let {
@@ -101,7 +107,8 @@ class TagRepositoryImpl @Inject constructor(
         name = name,
         createdAt = createdAt,
         parentId = parentId,
-        updatedAt = updatedAt
+        updatedAt = updatedAt,
+        groupId = groupId
     )
 
     private fun BookTagCrossRefEntity.toDomain() = BookTagLink(

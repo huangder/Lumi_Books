@@ -31,7 +31,7 @@ internal const val READER_RETURN_HINT_TIMEOUT_MS = 15_000L
 /** The outline is 24dp tall; the surrounding hit area stays at least 48dp. */
 @Composable
 internal fun ReaderReturnChip(
-    pageNumber: Int?,
+    pageLabel: String?,
     side: ReaderReturnSide,
     headphones: Boolean,
     paperColor: Color,
@@ -77,8 +77,8 @@ internal fun ReaderReturnChip(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                if (side == ReaderReturnSide.RIGHT && pageNumber != null) {
-                    Text(pageNumber.toString(), color = ink, fontSize = 12.sp, modifier = Modifier.padding(start = 3.dp))
+                if (side == ReaderReturnSide.RIGHT && pageLabel != null) {
+                    Text(pageLabel, color = ink, fontSize = 12.sp, modifier = Modifier.padding(start = 3.dp))
                 }
                 Box(Modifier.size(18.dp).background(ink, CircleShape), contentAlignment = Alignment.Center) {
                     Icon(if (headphones) AppIcons.Headphones else AppIcons.ArrowLeft,
@@ -87,8 +87,8 @@ internal fun ReaderReturnChip(
                             if (side == ReaderReturnSide.RIGHT) scaleX = -1f
                         })
                 }
-                if (side == ReaderReturnSide.LEFT && pageNumber != null) {
-                    Text(pageNumber.toString(), color = ink, fontSize = 12.sp, modifier = Modifier.padding(end = 3.dp))
+                if (side == ReaderReturnSide.LEFT && pageLabel != null) {
+                    Text(pageLabel, color = ink, fontSize = 12.sp, modifier = Modifier.padding(end = 3.dp))
                 }
             }
         }

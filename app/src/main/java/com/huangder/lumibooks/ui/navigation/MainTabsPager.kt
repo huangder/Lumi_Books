@@ -162,7 +162,9 @@ internal fun MainTabsPager(
             key(mainTabRoutes[page]) {
                 MainTabPage(
                     state, page, isLtr,
-                    motion.takeIf { motionEnabled && selection?.running != true }, selection, content
+                    // Selection resets the motion above. Keep the item modifier layers
+                    // attached through the fade so retained pages keep their display lists.
+                    motion.takeIf { motionEnabled }, selection, content
                 )
             }
         }

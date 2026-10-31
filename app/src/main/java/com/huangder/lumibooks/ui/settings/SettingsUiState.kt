@@ -6,6 +6,7 @@ import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
 import com.huangder.lumibooks.domain.model.AppIconStyle
 import com.huangder.lumibooks.domain.model.BookOpenTransition
 import com.huangder.lumibooks.domain.model.LiquidGlassStyle
+import com.huangder.lumibooks.domain.model.SelectionMenuSettings
 
 /** 单本书的文件大小明细 */
 data class BookSizeItem(
@@ -25,7 +26,9 @@ data class StorageInfo(
     val coversSizeBytes: Long = 0,
     val externalTtsCacheSizeBytes: Long = 0,
     val externalTtsCacheLimitMb: Int = com.huangder.lumibooks.tts.ExternalTtsConfig.DEFAULT_AUDIO_CACHE_LIMIT_MB,
-    val bookDetails: List<BookSizeItem> = emptyList()
+    val bookDetails: List<BookSizeItem> = emptyList(),
+    /** Files of hidden books; shown only as「其他」so the overview never names them. */
+    val otherSizeBytes: Long = 0
 )
 
 /**
@@ -60,8 +63,7 @@ data class SettingsUiState(
     val nickname: String = "",
 
     // 阅读设置
-    val selectionMenuItems: com.huangder.lumibooks.domain.model.SelectionMenuSettings =
-        com.huangder.lumibooks.domain.model.SelectionMenuSettings(),
+    val selectionMenuItems: SelectionMenuSettings = SelectionMenuSettings(),
     val longPressSelectionRange: com.huangder.lumibooks.domain.model.LongPressSelectionRange =
         com.huangder.lumibooks.domain.model.LongPressSelectionRange.DEFAULT,
     val fontSize: Float = 16f,

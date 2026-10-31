@@ -136,6 +136,10 @@ fun TxtEditorScreen(
     var occluderTopPx by remember { mutableStateOf(0f) }
     var showDiscardDialog by remember { mutableStateOf(false) }
     var showReplaceAllDialog by remember { mutableStateOf(false) }
+    val searchGlassSnapshot = com.huangder.lumibooks.ui.components.rememberWindowGlassSnapshot(
+        enabled = LocalAppTheme.current == "liquid_glass" && uiState.sheetMode != null,
+        identity = uiState.sheetMode
+    )
     var initialRevealVisible by remember { mutableStateOf(false) }
     val initialRevealAlpha = remember { Animatable(0f) }
 
@@ -528,11 +532,13 @@ fun TxtEditorScreen(
             )
         }
 
-        uiState.sheetMode?.let { mode ->
+        uiState.sheetMode?.takeIf {
+            LocalAppTheme.current != "liquid_glass" || searchGlassSnapshot.ready
+        }?.let { mode ->
             TxtEditorSearchSheet(
                 mode = mode,
                 uiState = uiState,
-                backdrop = backdrop,
+                backdrop = searchGlassSnapshot.backdrop ?: backdrop,
                 onTopChanged = { occluderTopPx = it },
                 onQueryChange = viewModel::setSearchQuery,
                 onReplacementChange = viewModel::setReplacementText,
@@ -797,12 +803,20 @@ private fun TxtEditorSearchSheet(
                 .background(AppColors.Scrim.copy(alpha = 0.18f * (1f - sheetOffset.value)))
         )
         val sheetShape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
-        Box(
+        LiquidGlassSurface(
+            shape = sheetShape,
+            fallbackColor = AppColors.CardBg,
+            backdrop = backdrop,
+            contentScrimColor = AppColors.CardBg.copy(alpha = 0.64f),
+            fallbackBlurRadius = com.huangder.lumibooks.ui.theme.AppPresentation.OverlayFallbackBlur,
+            role = com.huangder.lumibooks.ui.theme.AppSurfaceRole.Overlay,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .onGloballyPositioned { onTopChanged(it.boundsInWindow().top) }
-                .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
+                // Find/replace stays docked above the keyboard on tablets too: the editor scrolls
+                // matches above this panel's top edge, which a centered card would cover.
+                .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress, centeredCard = false)
                 .shadow(
                     elevation = 20.dp,
                     shape = sheetShape,
@@ -810,12 +824,9 @@ private fun TxtEditorSearchSheet(
                     ambientColor = Color.Black.copy(alpha = 0.14f),
                     spotColor = Color.Black.copy(alpha = 0.20f)
                 )
-                .clip(sheetShape)
-                .background(AppColors.CardBg)
-                .navigationBarsPadding()
-                .padding(horizontal = 22.dp, vertical = 18.dp)
         ) {
-            Column(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().navigationBarsPadding()
+                .padding(horizontal = 22.dp, vertical = 18.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         stringResource(

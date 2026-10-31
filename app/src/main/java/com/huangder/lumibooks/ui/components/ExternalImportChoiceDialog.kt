@@ -57,12 +57,7 @@ fun ExternalImportChoiceDialog(
                 .padding(horizontal = 22.dp, vertical = 22.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(
-                text = stringResource(R.string.external_import_title),
-                color = AppColors.TextPrimary,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
+            AppSheetHeader(title = stringResource(R.string.external_import_title), onClose = onDismiss)
             Text(
                 text = if (fileCount > 1) {
                     stringResource(R.string.external_import_message_multiple, fileCount)

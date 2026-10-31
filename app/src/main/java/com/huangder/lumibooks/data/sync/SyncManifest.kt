@@ -39,7 +39,9 @@ data class SyncBookMetadata(
     val createdAt: Long,
     val isFavorite: Boolean,
     val updatedAt: Long,
-    val isPinned: Boolean = false
+    val isPinned: Boolean = false,
+    /** Null when the sender predates the hidden library; receivers then keep their own value. */
+    val isHidden: Boolean? = null
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("title", title)
@@ -49,6 +51,7 @@ data class SyncBookMetadata(
         put("isFavorite", isFavorite)
         put("updatedAt", updatedAt)
         put("isPinned", isPinned)
+        isHidden?.let { put("isHidden", it) }
     }
 
     companion object {
@@ -59,7 +62,8 @@ data class SyncBookMetadata(
             createdAt = json.optLong("createdAt"),
             isFavorite = json.optBoolean("isFavorite"),
             updatedAt = json.optLong("updatedAt", json.optLong("createdAt")),
-            isPinned = json.optBoolean("isPinned", false)
+            isPinned = json.optBoolean("isPinned", false),
+            isHidden = if (json.has("isHidden")) json.optBoolean("isHidden") else null
         )
     }
 }

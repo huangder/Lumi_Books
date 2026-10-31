@@ -14,10 +14,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import com.huangder.lumibooks.ui.theme.AppPresentation
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.drawPlainBackdrop
 import com.kyant.backdrop.effects.blur
@@ -33,15 +39,21 @@ internal fun LiquidMenuSurface(
     baseColor: Color,
     isDark: Boolean,
     transparency: Float,
+    blurBoost: () -> Dp = { 0.dp },
     modifier: Modifier = Modifier
 ) {
     val optics = rememberMenuOptics()
+    val reduceTransparency = LocalReduceTransparency.current
+    val refractionState = remember { GlassRefractionState() }
+    // Both rims resolve the animated outline while drawing, so the morph never recomposes here.
+    val drawnShape = remember(shape) { DrawTimeShape(shape) }
     val edge = if (LocalLiquidGlassControlEdgeEnabled.current) {
         Modifier.liquidGlassControlEdge(
-            shape, baseColor, isDark, LocalLiquidGlassControlEdgeForceCanvas.current
+            drawnShape, baseColor, isDark, LocalLiquidGlassControlEdgeForceCanvas.current
         )
     } else {
-        menuFallbackBorder(shape)
+        // Without the optical rim, a plain hairline still traces the animated outline.
+        Modifier.border(0.5.dp, MenuHairlineBrush, drawnShape)
     }
     // Like sheet containers, derive frosting from the user's transparency with
     // a readability offset. Menus use 15 percentage points (70% becomes 55%).
@@ -58,11 +70,19 @@ internal fun LiquidMenuSurface(
             backdrop = backdrop,
             shape = shape,
             effects = {
+                val extraBlur = menuSurfaceBlurBoostPx(reduceTransparency, blurBoost().toPx())
                 vibrancy()
-                blur((6.dp * (1f - menuTransparency)).toPx())
-                if (Build.VERSION.SDK_INT >= 33) {
-                    optics?.effect(frame(), padding, density, content = false)?.let { effect(it) }
-                }
+                val baseEffect = renderEffect
+                val basePadding = padding
+                refractionState.render(
+                    supported = Build.VERSION.SDK_INT >= 33 && optics != null,
+                    normalBlurPx = liquidGlassBlurRadius(menuTransparency).dp.toPx() + extraBlur,
+                    fallbackBlurPx = AppPresentation.OverlayFallbackBlur.toPx() + extraBlur,
+                    resetEffects = { renderEffect = baseEffect; padding = basePadding },
+                    blur = { radius -> blur(radius) },
+                    refract = { optics!!.effect(frame(), padding, density, content = false).let { effect(it) } },
+                    onFailure = { Log.w("LiquidMenuOptics", "Refraction unavailable; using blur fallback", it) }
+                )
             },
             onDrawSurface = {
                 drawRect(scrim)
@@ -73,22 +93,37 @@ internal fun LiquidMenuSurface(
         Modifier.background(baseColor.copy(alpha = 0.92f)).background(contrastScrim)
     }
     Box(
-        modifier.graphicsLayer {
-            shadowElevation = 16.dp.toPx()
-            this.shape = shape()
-            ambientShadowColor = Color.Black.copy(alpha = if (isDark) 0.24f else 0.12f)
-            spotShadowColor = Color.Black.copy(alpha = if (isDark) 0.30f else 0.16f)
-        }.graphicsLayer { this.shape = shape(); clip = true }.then(surface).then(edge)
+        modifier
+            .graphicsLayer {
+                // An elevation shadow is cast outside the outline clip, so one layer
+                // carries both the shadow and the clip of the animated outline.
+                this.shape = shape()
+                clip = true
+                shadowElevation = 16.dp.toPx()
+                ambientShadowColor = Color.Black.copy(alpha = if (isDark) 0.24f else 0.12f)
+                spotShadowColor = Color.Black.copy(alpha = if (isDark) 0.30f else 0.16f)
+            }
+            .then(surface)
+            .then(edge)
     )
 }
 
-// The original outline follows the animated glass path without the optical rim.
-@Composable
-private fun menuFallbackBorder(shape: () -> Shape): Modifier = Modifier.border(
-    0.5.dp,
-    Brush.linearGradient(listOf(Color.White.copy(alpha = 0.58f), Color.White.copy(alpha = 0.10f))),
-    shape()
+internal fun menuSurfaceBlurBoostPx(reduceTransparency: Boolean, requestedPx: Float): Float =
+    if (reduceTransparency) 0f else requestedPx.coerceAtLeast(0f)
+
+private val MenuHairlineBrush = Brush.linearGradient(
+    listOf(Color.White.copy(alpha = 0.58f), Color.White.copy(alpha = 0.10f))
 )
+
+/**
+ * Defers to [resolve] whenever an outline is requested. Modifiers that build their outline in a
+ * draw cache (border, the control rim) then follow an animated shape by redrawing alone.
+ * Not for modifiers that cache outlines by shape identity, such as background(shape).
+ */
+internal class DrawTimeShape(private val resolve: () -> Shape) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline =
+        resolve().createOutline(size, layoutDirection, density)
+}
 
 @Composable
 internal fun rememberMenuOptics(): LiquidMenuOptics? {

@@ -43,7 +43,7 @@ class AnnotationTagSheetTest {
             }
         }
         compose.onNodeWithText(label(R.string.annotation_tag_new)).performTextInput("Unused")
-        compose.onNodeWithText(label(R.string.annotation_tag_add)).performClick()
+        compose.onNodeWithContentDescription(label(R.string.annotation_tag_add)).performClick()
         compose.runOnIdle { assertEquals(listOf("Unused"), available.value) }
         compose.onNodeWithText("Unused").assertIsDisplayed()
         compose.onNodeWithText(label(R.string.confirm)).performClick()
@@ -66,7 +66,7 @@ class AnnotationTagSheetTest {
         }
         compose.onNodeWithText(label(R.string.confirm)).performClick()
         compose.onNodeWithText(label(R.string.confirm)).assertIsNotEnabled()
-        compose.onNodeWithText(label(R.string.cancel)).performClick()
+        compose.onNodeWithText(label(R.string.cancel)).assertIsNotEnabled()
         compose.runOnIdle { assertEquals(1, saves); assertFalse(dismissed) }
         compose.runOnIdle { committed.complete(Unit) }
         compose.waitUntil { dismissed }
@@ -74,7 +74,7 @@ class AnnotationTagSheetTest {
 
     @Test
     @Config(qualifiers = "en-w360dp-h800dp-mdpi")
-    fun shortTagListWrapsContentAndUsesCompactMoreButtons() {
+    fun shortTagListWrapsContentAndKeepsMoreButtonsComfortableToTap() {
         compose.setContent {
             EBookReaderTheme(appTheme = "liquid_glass", darkTheme = false) {
                 CompositionLocalProvider(LocalAppTheme provides "liquid_glass",
@@ -87,7 +87,7 @@ class AnnotationTagSheetTest {
         // Two labels should occupy their content height, not the old 82% viewport.
         assertTrue("A short sheet should leave the upper half of this screen free: $top", top > 400.dp)
         compose.onAllNodesWithContentDescription(label(R.string.annotation_tag_manage))
-            .onFirst().assertHeightIsEqualTo(24.dp)
+            .onFirst().assertHeightIsEqualTo(44.dp)
         compose.onNodeWithText(label(R.string.confirm)).assertIsDisplayed()
     }
 
@@ -103,7 +103,8 @@ class AnnotationTagSheetTest {
         }
         compose.onNodeWithText(label(R.string.confirm)).assertIsDisplayed()
         compose.onNodeWithText(tags.first()).performClick()
-        compose.onNodeWithText(label(R.string.annotation_tag_new)).performScrollTo().performTextInput(" New tag ")
+        compose.onNodeWithTag("annotation-tag-choices").performScrollToNode(hasText(label(R.string.annotation_tag_new)))
+        compose.onNodeWithText(label(R.string.annotation_tag_new)).performTextInput(" New tag ")
         compose.onNodeWithText(label(R.string.confirm)).assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals(listOf("New tag"), saved) }
     }
@@ -123,11 +124,49 @@ class AnnotationTagSheetTest {
                 }
             }
         }
-        compose.onNodeWithText(label(R.string.annotation_tag_new)).performScrollTo().performTextInput("Draft")
+        compose.onNodeWithTag("annotation-tag-choices").performScrollToNode(hasText(label(R.string.annotation_tag_new)))
+        compose.onNodeWithText(label(R.string.annotation_tag_new)).performTextInput("Draft")
         compose.onNodeWithText(label(R.string.confirm)).assertIsDisplayed()
         compose.onAllNodes(isDialog()).assertCountEquals(0)
         compose.onNodeWithText(label(R.string.cancel)).assertIsDisplayed().performClick()
         compose.runOnIdle { assertTrue(dismissed); assertEquals(0, saves) }
+    }
+
+    @Test fun largeCatalogOnlyComposesVisibleTagsAndKeepsSelectionAfterRecycling() {
+        val tags = (1..500).map { "Tag %03d".format(it) }
+        var saved: List<String>? = null
+        compose.setContent {
+            EBookReaderTheme(appTheme = "lumi", darkTheme = false) {
+                CompositionLocalProvider(LocalMotionEnabled provides false) {
+                    AnnotationTagSheet(emptyList(), tags, { saved = it }, {})
+                }
+            }
+        }
+        compose.onNodeWithText(tags.first()).performClick()
+        compose.onNodeWithText(tags.last()).assertDoesNotExist()
+        val list = compose.onNodeWithTag("annotation-tag-choices")
+        list.performScrollToNode(hasText(tags.last()))
+        compose.onNodeWithText(tags.last()).performClick()
+        list.performScrollToNode(hasText(tags.first()))
+        compose.onNodeWithText(tags.first()).assertIsOn()
+        compose.onNodeWithText(label(R.string.confirm)).performClick()
+        compose.runOnIdle { assertEquals(listOf(tags.first(), tags.last()), saved) }
+    }
+
+    @Test fun heavilyTaggedNoteKeepsEveryTagReachableWithoutComposingThemAll() {
+        val tags = (1..500).map { "Note tag $it" }
+        var edits = 0
+        compose.setContent {
+            EBookReaderTheme(appTheme = "lumi", darkTheme = false) {
+                AnnotationTagChips(tags, onEdit = { edits++ })
+            }
+        }
+        compose.onNodeWithText(tags.first()).assertIsDisplayed()
+        compose.onNodeWithText(tags.last()).assertDoesNotExist()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(tags.last()))
+        compose.onNodeWithText(tags.last()).assertIsDisplayed()
+        compose.onNodeWithContentDescription(label(R.string.annotation_tags)).performClick()
+        compose.runOnIdle { assertEquals(1, edits) }
     }
 
     @Test fun globalRenameAndDeleteKeepTheCurrentDraftConsistent() {

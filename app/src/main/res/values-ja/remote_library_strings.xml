@@ -88,4 +88,5 @@
     <string name="remote_error_invalid_file">ダウンロードしたファイルが無効です：ログインの有効期限が切れているか、ファイルが破損している可能性があります</string>
     <string name="remote_error_destination">選択したフォルダに書き込めません。フォルダへのアクセスを再許可してください</string>
     <string name="remote_error_unknown">操作に失敗しました。もう一度お試しください</string>
+    <string name="remote_error_reported_blocked">この OPDS URL は通報によりブロックされているため追加できません</string>
 </resources>

@@ -22,6 +22,12 @@ interface AnnotationTagDao {
     @Upsert
     suspend fun upsertTags(tags: List<AnnotationTagEntity>)
 
+    @Query("UPDATE annotation_tags SET groupId = :groupId, updatedAt = :updatedAt WHERE name IN (:names) AND isDeleted = 0")
+    suspend fun moveTags(names: List<String>, groupId: String?, updatedAt: Long)
+
+    @Query("UPDATE annotation_tags SET groupId = NULL, updatedAt = :updatedAt WHERE groupId = :groupId")
+    suspend fun clearGroup(groupId: String, updatedAt: Long)
+
     @Query("DELETE FROM annotation_tags")
     suspend fun clearTags()
 }

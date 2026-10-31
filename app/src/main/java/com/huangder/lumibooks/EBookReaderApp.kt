@@ -51,6 +51,12 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
     @Inject
     lateinit var diagnosticLogger: DiagnosticLogger
 
+    @Inject
+    lateinit var hiddenLibrarySession: com.huangder.lumibooks.privacy.HiddenLibrarySession
+
+    @Inject
+    lateinit var editionAccess: dagger.Lazy<com.huangder.lumibooks.edition.PremiumAccess>
+
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)
@@ -114,6 +120,8 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
         StartupTrace.activity(activity, "activity_stopped")
         startedActivityCount = (startedActivityCount - 1).coerceAtLeast(0)
         if (startedActivityCount == 0 && !activity.isChangingConfigurations) {
+            // Home, recents, screen off or another app: the hidden library needs the passcode again.
+            hiddenLibrarySession.lock()
             floatingSubtitleOverlayController.setAppInForeground(false)
             LaunchThemeController.applyPendingSplashSetting(this)
             webdavAutoSyncScheduler.onAppBackgrounded()
@@ -130,9 +138,11 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
         if (!postFirstFrameStarted.compareAndSet(false, true)) return
         activity.window.decorView.post {
             activity.window.decorView.post {
+                com.huangder.lumibooks.util.performance.ReaderClassWarmup.start(classLoader)
                 applicationScope.launch {
                     PDFBoxResourceLoader.init(this@EBookReaderApp)
                     widgetRefreshCoordinator.start()
+                    editionAccess.get().start()
                 }
             }
         }

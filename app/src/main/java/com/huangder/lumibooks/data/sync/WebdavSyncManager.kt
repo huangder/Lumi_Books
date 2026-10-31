@@ -979,7 +979,8 @@ class WebdavSyncManager @Inject constructor(
         createdAt = createdAt,
         isFavorite = isFavorite,
         updatedAt = metadataUpdatedAt,
-        isPinned = isPinned
+        isPinned = isPinned,
+        isHidden = isHidden
     )
 
     private fun mergeRemoteBook(
@@ -1013,6 +1014,7 @@ class WebdavSyncManager @Inject constructor(
             createdAt = metadata?.createdAt ?: remoteEntry.lastModified,
             isFavorite = metadata?.isFavorite ?: false,
             isPinned = metadata?.isPinned ?: false,
+            isHidden = metadata?.isHidden ?: false,
             isCloudOnly = true,
             metadataUpdatedAt = metadata?.updatedAt ?: 0L
         )
@@ -1028,6 +1030,7 @@ class WebdavSyncManager @Inject constructor(
             createdAt = if (remoteMetadataWins) metadata?.createdAt ?: base.createdAt else base.createdAt,
             isFavorite = if (remoteMetadataWins) metadata?.isFavorite ?: base.isFavorite else base.isFavorite,
             isPinned = if (remoteMetadataWins) metadata?.isPinned ?: base.isPinned else base.isPinned,
+            isHidden = if (remoteMetadataWins) metadata?.isHidden ?: base.isHidden else base.isHidden,
             metadataUpdatedAt = if (remoteMetadataWins) metadata?.updatedAt ?: base.metadataUpdatedAt else base.metadataUpdatedAt,
             remoteLibraryKey = libraryKey,
             remoteFileName = remoteEntry.fileName,
@@ -1484,6 +1487,7 @@ class WebdavSyncManager @Inject constructor(
             }
             if (config.syncReadingRecords && book != null) {
                 put("readingProgress", book.readingProgress.toDouble())
+                put("isManuallyMarkedRead", book.isManuallyMarkedRead)
                 if (book.locatorJson != null) put("locatorJson", book.locatorJson) else remove("locatorJson")
                 put("lastReadTime", book.lastReadTime)
             }
@@ -1565,6 +1569,7 @@ class WebdavSyncManager @Inject constructor(
                     createdAt = appliedMetadata.createdAt.takeIf { it > 0L } ?: localBook.createdAt,
                     isFavorite = appliedMetadata.isFavorite,
                     isPinned = appliedMetadata.isPinned,
+                    isHidden = appliedMetadata.isHidden ?: localBook.isHidden,
                     metadataUpdatedAt = appliedMetadata.updatedAt
                 )
                 bookRepository.updateBook(updatedBook)
@@ -1576,6 +1581,13 @@ class WebdavSyncManager @Inject constructor(
             val locator = root.optString("locatorJson", null)
             val lastReadTime = root.optLong("lastReadTime", book.lastReadTime)
             bookRepository.updateReadingProgress(bookId, progress, locator)
+            if (root.has("isManuallyMarkedRead")) {
+                bookRepository.getBookById(bookId)?.let { latestBook ->
+                    bookRepository.updateBook(
+                        latestBook.copy(isManuallyMarkedRead = root.optBoolean("isManuallyMarkedRead"))
+                    )
+                }
+            }
             if (lastReadTime > book.lastReadTime) {
                 bookRepository.updateLastReadTime(bookId, lastReadTime)
             }

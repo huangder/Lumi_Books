@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tag_picker_uncategorized">未分類</string>
+    <string name="tag_picker_group_count">タグ %1$d 個 · %2$d 個選択中</string>
+    <string name="tag_picker_save_failed">タグを保存できませんでした。再試行してください。</string>
+</resources>

@@ -38,12 +38,34 @@ suspend fun Animatable<Float, AnimationVector1D>.animateBottomSheetOut() {
 fun Modifier.materialBottomSheetMotion(
     entryOffset: Float,
     predictiveBackProgress: Float,
-    alpha: Float = 1f
+    alpha: Float = 1f,
+    /** Tablet card sheets (see adaptiveSheetFrame); panels that stay docked pass false. */
+    centeredCard: Boolean = usesCardSheets()
 ): Modifier {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val motionEnabled = LocalMotionEnabled.current
     return graphicsLayer {
         val progress = predictiveBackProgress.coerceIn(0f, 1f)
+        if (centeredCard && motionEnabled) {
+            // Centered cards rise a short distance and fade like hosted dialogs instead of
+            // travelling their full height from the screen edge.
+            val entry = entryOffset.coerceIn(0f, 1f)
+            translationY = entry * size.height * 0.10f + min(24.dp.toPx(), size.height) * progress
+            this.alpha = alpha.coerceIn(0f, 1f) * (1f - entry)
+            val entryScale = 1f - entry * 0.10f
+            scaleX = if (size.width > 0f) {
+                entryScale * (1f - min(48.dp.toPx(), size.width) * progress / size.width)
+            } else {
+                entryScale
+            }
+            scaleY = if (size.height > 0f) {
+                entryScale * (1f - min(24.dp.toPx(), size.height) * progress / size.height)
+            } else {
+                entryScale
+            }
+            transformOrigin = TransformOrigin.Center
+            return@graphicsLayer
+        }
         if (!motionEnabled) {
             translationY = 0f
             this.alpha = alpha.coerceIn(0f, 1f) *

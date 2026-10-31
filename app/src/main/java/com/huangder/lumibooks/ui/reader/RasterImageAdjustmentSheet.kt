@@ -41,8 +41,7 @@ internal fun RasterImageAdjustmentSheet(
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { closing = true })
         LiquidGlassColumnSheetContainer(
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                .heightIn(max = LocalConfiguration.current.screenHeightDp.dp * 0.65f)
+            modifier = adaptiveSheetFrame(maxHeight = LocalConfiguration.current.screenHeightDp.dp * 0.65f)
                 .materialBottomSheetMotion(offset.value, backProgress),
             contentModifier = Modifier.navigationBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
             fallbackColor = AppColors.CardBg,

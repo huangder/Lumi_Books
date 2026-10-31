@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tag_management_invalid_name">请输入有效名称，书籍标签和分组名称最多 20 个字符。</string>
+</resources>

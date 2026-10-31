@@ -174,6 +174,9 @@ class WebdavPortableStateSync @Inject constructor(
             bookFolderLinks = if (config.syncLibraryOrganization) merged.bookFolderLinks else remote.bookFolderLinks,
             tags = if (config.syncLibraryOrganization) merged.tags else remote.tags,
             annotationTags = if (config.syncReadingData) merged.annotationTags else remote.annotationTags,
+            tagGroups = chooseWebdavTagGroups(merged, remote, config.syncLibraryOrganization, config.syncReadingData),
+            bookTagsWithoutGroupId = if (config.syncLibraryOrganization) merged.bookTagsWithoutGroupId else remote.unknownBookGroupIds(),
+            annotationTagsWithoutGroupId = if (config.syncReadingData) merged.annotationTagsWithoutGroupId else remote.unknownAnnotationGroupNames(),
             bookTagLinks = if (config.syncLibraryOrganization) merged.bookTagLinks else remote.bookTagLinks,
             readingRecords = if (config.syncReadingData) merged.readingRecords else remote.readingRecords,
             bookmarks = if (config.syncReadingData) merged.bookmarks else remote.bookmarks,
@@ -206,6 +209,9 @@ class WebdavPortableStateSync @Inject constructor(
         bookFolderLinks = if (config.syncLibraryOrganization) remotePayload.bookFolderLinks else local.bookFolderLinks,
         tags = if (config.syncLibraryOrganization) remotePayload.tags else local.tags,
         annotationTags = if (config.syncReadingData) remotePayload.annotationTags else local.annotationTags,
+        tagGroups = chooseWebdavTagGroups(remotePayload, local, config.syncLibraryOrganization, config.syncReadingData),
+        bookTagsWithoutGroupId = if (config.syncLibraryOrganization) remotePayload.unknownBookGroupIds() else local.unknownBookGroupIds(),
+        annotationTagsWithoutGroupId = if (config.syncReadingData) remotePayload.unknownAnnotationGroupNames() else local.unknownAnnotationGroupNames(),
         bookTagLinks = if (config.syncLibraryOrganization) remotePayload.bookTagLinks else local.bookTagLinks,
         readingRecords = if (config.syncReadingData) remotePayload.readingRecords else local.readingRecords,
         bookmarks = if (config.syncReadingData) remotePayload.bookmarks else local.bookmarks,
@@ -287,6 +293,7 @@ class WebdavPortableStateSync @Inject constructor(
             bookFolderLinks = snapshot.bookFolderLinks.sortedBy { it.bookId },
             tags = snapshot.tags.sortedBy { it.id },
             annotationTags = snapshot.annotationTags.sortedBy { it.name },
+            tagGroups = snapshot.tagGroups.sortedBy { it.id },
             bookTagLinks = snapshot.bookTagLinks.sortedBy { "${it.bookId}:${it.tagId}" },
             readingRecords = snapshot.readingRecords.sortedBy { "${it.bookId}:${it.date}:${it.sourceDeviceId}" },
             bookmarks = snapshot.bookmarks.sortedBy { it.syncId },
@@ -313,6 +320,17 @@ internal fun stripHighlightRuleLibraryForWebdav(snapshot: PortableSnapshot): Por
     bookHighlightRuleStates = emptyList(),
     bookHighlightSettings = emptyList()
 )
+
+internal fun chooseWebdavTagGroups(
+    merged: PortableSnapshot,
+    fallback: PortableSnapshot,
+    syncLibraryOrganization: Boolean,
+    syncReadingData: Boolean
+) = (if (syncLibraryOrganization) merged.tagGroups else fallback.tagGroups).filter { it.type == "book" } +
+    (if (syncReadingData) merged.tagGroups else fallback.tagGroups).filter { it.type == "annotation" }
+
+private fun PortableSnapshot.unknownBookGroupIds() = if (hasTagGroups) bookTagsWithoutGroupId else tags.mapTo(mutableSetOf()) { it.id }
+private fun PortableSnapshot.unknownAnnotationGroupNames() = if (hasTagGroups) annotationTagsWithoutGroupId else annotationTags.mapTo(mutableSetOf()) { it.name }
 
 /**
  * 选取应用到本机（[forLocal]=true）或写回服务器 state.json（[forLocal]=false）的书籍列表。

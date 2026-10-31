@@ -84,6 +84,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -118,6 +120,7 @@ import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
@@ -146,6 +149,7 @@ import com.huangder.lumibooks.ui.components.animateBottomSheetIn
 import com.huangder.lumibooks.ui.components.animateBottomSheetOut
 import com.huangder.lumibooks.ui.components.LiquidGlassColumnSheetContainer
 import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
+import com.huangder.lumibooks.ui.components.adaptiveSheetFrame
 import com.huangder.lumibooks.ui.components.ReaderSystemBarStyle
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppType
@@ -489,6 +493,11 @@ fun RasterReaderScreen(
     val book = uiState.book
     val filePath = book?.filePath
     val comicIndex = uiState.epubComicIndex
+    val pdfText = rememberPdfTextAnnotations(context, filePath, book?.format == BookFormat.PDF, uiState.contentRevision)
+    SideEffect {
+        pdfText?.notes = notes
+        pdfText?.range = uiState.longPressSelectionRange
+    }
     val pageCount = comicIndex?.pages?.size ?: uiState.chapterCount
     val bookmarkedPages = remember(bookmarks) {
         bookmarks.mapTo(mutableSetOf()) { it.chapterIndex }
@@ -525,7 +534,7 @@ fun RasterReaderScreen(
         viewModel.stopTts()
         onOpenBook(targetBookId)
     }
-    val isAnySheetOpen = tagEditorTarget != null || showPdfToc || showPdfBookmarks || pendingBookmarkRemarkId != null || conversionSheet != null || showImageAdjustments
+    val isAnySheetOpen = tagEditorTarget != null || showPdfToc || showPdfBookmarks || pendingBookmarkRemarkId != null || conversionSheet != null || showImageAdjustments || pdfText?.editing == true || pdfText?.showNotes == true || pdfText?.actionSheetOpen == true || pdfText?.selection != null
     // 返回手势只负责触发退出：不走"内容跟随手指"的预见式动画，避免与阅读页既有的退出动画叠加。
     ConfigurableBackHandler(
         enabled = !isAnySheetOpen,
@@ -656,11 +665,6 @@ fun RasterReaderScreen(
     val pageHorizontalCrops = remember(pageSource) { mutableStateMapOf<Int, RasterHorizontalCrop>() }
     val pageOriginalWidths = remember(pageSource) { mutableStateMapOf<Int, Int>() }
 
-    // The raster experiment intentionally owns PDF annotations. Remove legacy text
-    // annotations once while preserving any strokes created by this branch.
-    LaunchedEffect(bookId) {
-        if (book?.format == BookFormat.PDF) viewModel.clearLegacyPdfAnnotations(bookId)
-    }
     val inkStrokes = remember(notes, comicIndex) {
         val decoded = notes.asSequence()
             .filter { if (comicIndex != null) isEpubComicInk(it.type) else it.type == PdfInkPenType || it.type == PdfInkHighlighterType }
@@ -690,6 +694,16 @@ fun RasterReaderScreen(
             ?: restoredRasterPageIndex(book.readingProgress, pageCount)
     }
     val pageMode = PdfPageMode.fromKey(effectivePdfPageMode)
+    SideEffect {
+        pdfText?.enabled = !annotationMode && !showPdfToc && !showPdfBookmarks &&
+            pdfText.editing != true && pdfText.showNotes != true && pdfText.actionSheetOpen != true && tagEditorTarget == null &&
+            conversionSheet == null && !showImageAdjustments
+        pdfText?.onSelectionStarted = { showMenu = false }
+    }
+    LaunchedEffect(pageMode, annotationMode, uiState.rasterHorizontalCropEnabled,
+        uiState.rasterManualCropEnabled, uiState.rasterManualCrop) {
+        pdfText?.clear()
+    }
     // 解码清晰度档位（正常 / 高清 / 原图）：跟随全局设置，在顶部栏直接切换。
     val renderMode = PageRenderMode.fromKey(uiState.pageRenderMode)
     val imageAdjustments = uiState.imageAdjustments.forDisplay(eInkMode)
@@ -707,13 +721,13 @@ fun RasterReaderScreen(
     val isHorizontal = pageMode == PdfPageMode.HORIZONTAL_PAGING
     val isVerticalPaging = pageMode == PdfPageMode.VERTICAL_PAGING
 
-    // 漫画：翻页方向只影响横向翻页；双页对开仅在大屏/横屏的横向翻页下生效。
+    // 漫画：双页对开在宽屏或接近正方形的内屏窗口下生效，仍要求横向翻页。
     val isComic = book?.format == BookFormat.CBZ || uiState.epubComicReader
     val readingDirection = CbzReadingDirection.fromKey(uiState.cbzReadingDirection)
         ?: CbzReadingDirection.LEFT_TO_RIGHT
     val isRightToLeft = isComic && readingDirection.isRightToLeft
     val spreadEnabled = isComic && isHorizontal && uiState.twoPageSpreadEnabled &&
-        currentAdaptiveWindowInfo().isWideLandscape
+        currentAdaptiveWindowInfo().usesWideLayout
     // 分屏（display）序号即阅读顺序序号；从右往左只翻转 HorizontalPager 的排布方向，
     // 页序本身不镜像，这样手绘批注坐标、页码与书签始终是同一套逻辑页号。
     val displayCount = if (spreadEnabled) {
@@ -892,6 +906,7 @@ fun RasterReaderScreen(
         // 页面还没准备好时（pageCount 为 0）不能做 coerceIn，否则会抛出空区间异常。
         if (pageCount <= 0) return
         if (manual) {
+            pdfText?.clear()
             if (pageTurn) beginManualRasterBrowsing() else beginManualRasterNavigation()
         }
         val page = targetPage.coerceIn(0, pageCount - 1)
@@ -1015,6 +1030,10 @@ fun RasterReaderScreen(
     var scale by remember { mutableStateOf(1f) }
     var offsetX by remember { mutableStateOf(0f) }
     var offsetY by remember { mutableStateOf(0f) }
+    SideEffect { pdfText?.viewportTransform = Triple(scale, offsetX, offsetY) }
+    LaunchedEffect(currentPage, spreadEnabled) {
+        if (pageMode != PdfPageMode.VERTICAL_SCROLL && pdfText?.dragging != true) pdfText?.clear()
+    }
     // A locked zoom is restored when the book opens and retained across paged navigation.
     LaunchedEffect(bookId, uiState.rasterZoomLocked, uiState.rasterZoomScale) {
         if (uiState.rasterZoomLocked) {
@@ -1199,7 +1218,9 @@ fun RasterReaderScreen(
         eInkMode = eInkMode, backdrop = pdfGlassBackdrop.takeIf { capturePdfBackdrop },
         onDismiss = viewModel::dismissTtsStart, onChoose = viewModel::chooseTtsStart
     )
-    androidx.compose.runtime.CompositionLocalProvider(LocalRasterPagePrepared provides reportPagePrepared) {
+    val inkPageLayouts = remember(pageSource) { mutableStateMapOf<Int, LayoutCoordinates>() }
+    CompositionLocalProvider(LocalRasterPagePrepared provides reportPagePrepared, LocalPdfTextAnnotations provides pdfText,
+        LocalRasterInkPages provides inkPageLayouts) {
     LiquidGlassMenuHost(Modifier.fillMaxSize(), backdrop = pdfGlassBackdrop.takeIf { capturePdfBackdrop }) {
     Box(
         Modifier
@@ -1241,6 +1262,42 @@ fun RasterReaderScreen(
                         }
                     }
                 }
+                .drawWithContent {
+                    drawContent()
+                    if (uiState.pageTransition == "wave" && !eInkMode &&
+                        (isHorizontal || isVerticalPaging)
+                    ) {
+                        val progress = (if (isHorizontal) pagerState.currentPageOffsetFraction
+                            else verticalPagerState.currentPageOffsetFraction).coerceIn(-1f, 1f)
+                        if (kotlin.math.abs(progress) > 0.001f) {
+                            val horizontal = isHorizontal
+                            val extent = if (horizontal) size.width else size.height
+                            val edge = if (progress < 0f) extent * (1f + progress)
+                                else extent * progress
+                            val amplitude = (if (horizontal) size.height else size.width) * 0.018f
+                            val wavelength = (if (horizontal) size.height else size.width) * 0.72f
+                            val path = androidx.compose.ui.graphics.Path()
+                            val steps = 24
+                            for (step in 0..steps) {
+                                val cross = (if (horizontal) size.height else size.width) * step / steps
+                                val wave = kotlin.math.sin(cross / wavelength.coerceAtLeast(1f) * (Math.PI * 2.0)).toFloat() * amplitude
+                                val x = if (horizontal) edge + wave else cross
+                                val y = if (horizontal) cross else edge + wave
+                                if (step == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                            }
+                            drawPath(
+                                path,
+                                Color.Black.copy(alpha = 0.28f * kotlin.math.abs(progress)),
+                                style = Stroke(width = 12.dp.toPx())
+                            )
+                            drawPath(
+                                path,
+                                Color.White.copy(alpha = 0.38f * kotlin.math.abs(progress)),
+                                style = Stroke(width = 1.5.dp.toPx())
+                            )
+                        }
+                    }
+                }
         ) {
             when {
                 pageSourceFailed -> {
@@ -1259,7 +1316,7 @@ fun RasterReaderScreen(
                 isHorizontal -> {
                     HorizontalPager(
                         state = pagerState,
-                        userScrollEnabled = !annotationMode,
+                        userScrollEnabled = !annotationMode && pdfText?.dragging != true,
                         // 从右往左阅读时整条页序反向排布，使"向右滑动 = 向后翻页"。
                         reverseLayout = isRightToLeft,
                         modifier = Modifier.fillMaxSize()
@@ -1328,7 +1385,7 @@ fun RasterReaderScreen(
                 isVerticalPaging -> {
                     VerticalPager(
                         state = verticalPagerState,
-                        userScrollEnabled = !annotationMode,
+                        userScrollEnabled = !annotationMode && pdfText?.dragging != true,
                         modifier = Modifier.fillMaxSize()
                     ) { pageIndex ->
                         PdfPagerPage(
@@ -1389,11 +1446,14 @@ fun RasterReaderScreen(
                                         ?: releaseUptimeMillis
                                     releaseUptimeMillis = eventUptimeMillis
                                     val pressed = event.changes.count { it.pressed }
-                                    if (pressed >= 2) transformGesture = true
+                                    if (pressed >= 2) {
+                                        transformGesture = true
+                                        pdfText?.clear()
+                                    }
                                     if (pressed == 0) {
                                         break
-                                    } else if (transformGesture ||
-                                        (!annotationMode && gestureScale > PDF_ZOOM_EPSILON)
+                                    } else if (pdfText?.dragging != true && pdfText?.holding != true && (transformGesture ||
+                                        (!annotationMode && gestureScale > PDF_ZOOM_EPSILON))
                                     ) {
                                         val pan = event.calculatePan()
                                         val zoom = event.calculateZoom()
@@ -1464,7 +1524,7 @@ fun RasterReaderScreen(
                                             pendingZoom = 1f
                                         }
                                         event.changes.forEach { change ->
-                                            if (change.positionChanged()) change.consume()
+                                            if (gestureMode != PdfMultiTouchMode.UNDECIDED && change.positionChanged()) change.consume()
                                         }
                                     }
                                 }
@@ -1521,7 +1581,7 @@ fun RasterReaderScreen(
                 ) {
                     LazyColumn(
                         state = listState,
-                        userScrollEnabled = !annotationMode,
+                        userScrollEnabled = !annotationMode && pdfText?.dragging != true,
                         modifier = Modifier.fillMaxSize()
                     ) {
                         items(pageCount) {
@@ -1597,7 +1657,7 @@ fun RasterReaderScreen(
         ListeningResumeHintExpiry(returnPage?.let { it to returnPageToken },
             cornerVisible && returnPage != null, { returnPage = null })
         if (cornerVisible) {
-            ReaderReturnChip(pageNumber = cornerTarget?.plus(1), side = targetSide ?: ReaderReturnSide.LEFT,
+            ReaderReturnChip(pageLabel = cornerTarget?.plus(1)?.toString(), side = targetSide ?: ReaderReturnSide.LEFT,
                 headphones = listeningTarget != null, paperColor = rasterBackgroundColor,
                 contentColor = AppColors.TextPrimary, eInkMode = eInkMode,
                 description = stringResource(if (listeningTarget != null)
@@ -1800,6 +1860,11 @@ fun RasterReaderScreen(
                         inkColorExpanded = false
                         showMenu = true
                     },
+                    onNotesClick = pdfText?.let { controller -> {
+                        controller.clear()
+                        controller.showNotes = true
+                        showMenu = false
+                    } },
                     onBookmarksClick = {
                         showMenu = false
                         showPdfBookmarks = true
@@ -1847,7 +1912,7 @@ fun RasterReaderScreen(
             )
         }
         val annotationBottomPadding by animateDpAsState(
-            targetValue = if (showMenu) 206.dp else 24.dp,
+            targetValue = if (showMenu) 190.dp else 8.dp,
             animationSpec = tween(300, easing = AppEasing.Smooth),
             label = "pdfAnnotationToolBottomPadding"
         )
@@ -1944,7 +2009,7 @@ fun RasterReaderScreen(
                         )
                     }
                 },
-                canReturnToProgress = !ttsReaderFollowEnabled || ttsCurrentPage?.location?.chapterIndex != currentPage,
+                canReturnToProgress = ttsCurrentPage?.location?.let { it.chapterIndex != currentPage } == true,
                 readerMenuVisible = showMenu,
                 readerBackgroundColor = rasterBackgroundColor,
                 readerContentColor = AppColors.TextPrimary
@@ -1952,6 +2017,39 @@ fun RasterReaderScreen(
         }
 
         // ── PDF 目录缩略图 Sheet ──
+        pdfText?.let { controller ->
+            PdfTextAnnotationOverlays(controller, viewModel, uiState.selectionMenuItems, availableAnnotationTags,
+                pdfGlassBackdrop.takeIf { capturePdfBackdrop }, pageCount = pageCount,
+                onEditTags = { tagEditorTarget = it.syncId to false },
+                onJump = { note ->
+                    controller.showNotes = false
+                    controller.clear()
+                    scope.launch {
+                        scale = 1f
+                        offsetX = 0f
+                        offsetY = 0f
+                        scrollToPdfPage(note.chapterIndex.coerceIn(0, (pageCount - 1).coerceAtLeast(0)), animate = false)
+                        val locator = PdfTextLocator.decode(note.startLocatorJson)
+                        val model = try { if (locator != null) controller.session.page(note.chapterIndex) else null }
+                            catch (cancelled: CancellationException) { throw cancelled }
+                            catch (_: Exception) { null }
+                        if (model != null && locator?.matches(model) == true) {
+                            if (pageMode == PdfPageMode.VERTICAL_SCROLL) {
+                                androidx.compose.runtime.withFrameNanos { }
+                                val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == note.chapterIndex }
+                                if (item != null) {
+                                    val top = locator.quads.minOf { it.top }
+                                    listState.scrollBy(top * item.size - scrollViewportHeightPx * 0.3f)
+                                }
+                            }
+                            controller.flash = note
+                            delay(1600)
+                            if (controller.flash == note) controller.flash = null
+                        }
+                    }
+                })
+        }
+
         PdfTocSheet(
             visible = showPdfToc,
             pageSource = pageSource,
@@ -2124,6 +2222,7 @@ private fun PdfPagerPage(
     onStrokeErased: (PdfInkStroke) -> Unit,
     onManualNavigation: () -> Unit
 ) {
+    val textAnnotations = LocalPdfTextAnnotations.current
     val latestScale = rememberUpdatedState(scale)
     val latestOffsetX = rememberUpdatedState(offsetX)
     val latestOffsetY = rememberUpdatedState(offsetY)
@@ -2159,8 +2258,11 @@ private fun PdfPagerPage(
                             ?: releaseUptimeMillis
                         releaseUptimeMillis = eventUptimeMillis
                         val pressedCount = event.changes.count { it.pressed }
-                        if (pressedCount >= 2) transformGesture = true
-                        if (transformGesture || (!annotationMode && gestureScale > PDF_ZOOM_EPSILON)) {
+                        if (pressedCount >= 2) {
+                            transformGesture = true
+                            textAnnotations?.clear()
+                        }
+                        if (textAnnotations?.dragging != true && textAnnotations?.holding != true && (transformGesture || (!annotationMode && gestureScale > PDF_ZOOM_EPSILON))) {
                             val pan = event.calculatePan()
                             val zoom = event.calculateZoom()
                             velocityEstimator.addPan(eventUptimeMillis, pan)
@@ -2223,7 +2325,7 @@ private fun PdfPagerPage(
                                 pendingZoom = 1f
                             }
                             event.changes.forEach { change ->
-                                if (change.positionChanged()) change.consume()
+                                if (gestureMode != PdfMultiTouchMode.UNDECIDED && change.positionChanged()) change.consume()
                             }
                         }
                         pointersPressed = event.changes.any { it.pressed }
@@ -2726,6 +2828,7 @@ private fun PdfBottomMenu(
     onCatalogProgressPageChange: ((Int) -> Unit)? = null,
     onCatalogProgressDragEnd: ((Float) -> Unit)? = null,
     onAnnotationClick: () -> Unit,
+    onNotesClick: (() -> Unit)? = null,
     onBookmarksClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -2788,6 +2891,7 @@ private fun PdfBottomMenu(
         RasterReaderActionRow(
             isComic = isComic,
             onAnnotationClick = onAnnotationClick,
+            onNotesClick = onNotesClick,
             onBookmarksClick = onBookmarksClick,
             onImageAdjustmentsClick = onImageAdjustmentsClick,
             onConversionClick = onConversionClick,
@@ -2919,10 +3023,7 @@ private fun PdfConversionBottomSheet(
                 ) { dismissForCurrentState() }
         )
         LiquidGlassColumnSheetContainer(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .heightIn(max = LocalConfiguration.current.screenHeightDp.dp * 0.85f)
+            modifier = adaptiveSheetFrame(maxHeight = LocalConfiguration.current.screenHeightDp.dp * 0.85f)
                 .materialBottomSheetMotion(offset.value, predictiveBackProgress),
             contentModifier = Modifier
                 .navigationBarsPadding()
@@ -3942,11 +4043,12 @@ private fun PdfPageItem(
                 onStrokeErased = onStrokeErased
             )
         }
+        PdfPageTextLayer(pageIndex, visible, crop, fullRatio ?: 1f, fitToViewport, zoomScale)
     }
 }
 
 @Composable
-private fun BoxScope.PdfPageInkCanvas(
+internal fun BoxScope.PdfPageInkCanvas(
     pageIndex: Int,
     crop: RasterHorizontalCrop,
     fullRatio: Float,
@@ -3958,6 +4060,13 @@ private fun BoxScope.PdfPageInkCanvas(
     onStrokeCommitted: (PdfInkStroke) -> Unit,
     onStrokeErased: (PdfInkStroke) -> Unit
 ) {
+    val pageLayouts = LocalRasterInkPages.current
+    val ownLayout = remember(pageIndex) { arrayOfNulls<LayoutCoordinates>(1) }
+    DisposableEffect(pageLayouts, pageIndex) {
+        onDispose {
+            if (pageLayouts?.get(pageIndex) === ownLayout[0]) pageLayouts?.remove(pageIndex)
+        }
+    }
     var canvasSize by remember(pageIndex) { mutableStateOf(IntSize.Zero) }
     var livePoints by remember(pageIndex) { mutableStateOf<List<PdfInkPoint>>(emptyList()) }
     val pageStrokes = remember(strokes, pageIndex) { strokes.filter { it.page == pageIndex } }
@@ -4042,6 +4151,10 @@ private fun BoxScope.PdfPageInkCanvas(
         modifier = Modifier
             .matchParentSize()
             .onSizeChanged { canvasSize = it }
+            .onGloballyPositioned {
+                ownLayout[0] = it
+                pageLayouts?.set(pageIndex, it)
+            }
             .then(gestureModifier)
     ) {
         pageStrokes.forEach { stroke ->
@@ -4067,7 +4180,7 @@ private fun BoxScope.PdfPageInkCanvas(
  * aligned after relayout, zoom, or reopening the document.
  */
 @Composable
-private fun BoxScope.PdfDocumentInkCanvas(
+internal fun BoxScope.PdfDocumentInkCanvas(
     pageCount: Int,
     listState: androidx.compose.foundation.lazy.LazyListState,
     horizontalCrops: androidx.compose.runtime.snapshots.SnapshotStateMap<Int, RasterHorizontalCrop>,
@@ -4078,6 +4191,8 @@ private fun BoxScope.PdfDocumentInkCanvas(
     onStrokeCommitted: (PdfInkStroke) -> Unit,
     onStrokeErased: (PdfInkStroke) -> Unit
 ) {
+    val pageLayouts = LocalRasterInkPages.current
+    var documentLayout by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     var liveSegments by remember { mutableStateOf<Map<Int, List<PdfInkPoint>>>(emptyMap()) }
 
@@ -4095,6 +4210,14 @@ private fun BoxScope.PdfDocumentInkCanvas(
         return (crop.left + x * crop.width).coerceIn(0f, 1f)
     }
 
+    fun geometry(page: Int): RasterDocumentInkPage? {
+        val document = documentLayout?.takeIf { it.isAttached } ?: return null
+        val layout = pageLayouts?.get(page)?.takeIf { it.isAttached } ?: return null
+        if (layout.size.width <= 0 || layout.size.height <= 0) return null
+        return RasterDocumentInkPage(document.localPositionOf(layout, Offset.Zero),
+            layout.size.width.toFloat(), layout.size.height.toFloat(), pageCrop(page))
+    }
+
     fun locate(position: Offset): Pair<Int, PdfInkPoint>? {
         val visibleItems = listState.layoutInfo.visibleItemsInfo
         val item = visibleItems.firstOrNull {
@@ -4102,19 +4225,15 @@ private fun BoxScope.PdfDocumentInkCanvas(
         } ?: visibleItems.minByOrNull {
             kotlin.math.abs(position.y - (it.offset + it.size / 2f))
         } ?: return null
-        val width = canvasSize.width.coerceAtLeast(1)
-        val height = item.size.coerceAtLeast(1)
         val page = item.index.coerceIn(0, pageCount - 1)
-        return page to PdfInkPoint(
-            originalX(page, (position.x / width).coerceIn(0f, 1f)),
-            ((position.y - item.offset) / height).coerceIn(0f, 1f)
-        )
+        return page to (geometry(page)?.toOriginal(position) ?: return null)
     }
 
     Canvas(
         modifier = Modifier
             .matchParentSize()
             .onSizeChanged { canvasSize = it }
+            .onGloballyPositioned { documentLayout = it }
             .pointerInput(pageCount, activeTool, activeColor, canvasSize, horizontalCropEnabled) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
@@ -4238,8 +4357,7 @@ private fun BoxScope.PdfDocumentInkCanvas(
                         color = activeColor,
                         width = if (activeTool == PdfInkTool.HIGHLIGHTER) 0.018f else 0.006f
                     ),
-                    listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == page },
-                    pageCrop(page)
+                    geometry(page).takeIf { listState.layoutInfo.visibleItemsInfo.any { it.index == page } }
                 )
             }
         }
@@ -4248,15 +4366,13 @@ private fun BoxScope.PdfDocumentInkCanvas(
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawDocumentInkStroke(
     stroke: PdfInkStroke,
-    item: androidx.compose.foundation.lazy.LazyListItemInfo?,
-    crop: RasterHorizontalCrop
+    page: RasterDocumentInkPage?
 ) {
-    if (item == null || stroke.points.isEmpty()) return
+    if (page == null || stroke.points.isEmpty()) return
     val path = Path()
     stroke.points.forEachIndexed { index, point ->
-        val x = (point.x - crop.left) / crop.width * size.width
-        val y = item.offset + point.y * item.size
-        if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        val position = page.toDisplay(point)
+        if (index == 0) path.moveTo(position.x, position.y) else path.lineTo(position.x, position.y)
     }
     val parsedColor = runCatching {
         Color(android.graphics.Color.parseColor(resolveReaderHighlightColor(stroke.color)))
@@ -4269,7 +4385,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawDocumentInkStro
             parsedColor.copy(alpha = 0.94f)
         },
         style = Stroke(
-            width = (stroke.width * size.width).coerceAtLeast(2f),
+            width = (stroke.width * page.width).coerceAtLeast(2f),
             cap = StrokeCap.Round,
             join = StrokeJoin.Round
         )
@@ -4469,12 +4585,9 @@ private fun PdfTocSheet(
                 }
         )
 
-        // Sheet 面板（70% 屏幕高度）
+        // Sheet 面板（70% 屏幕高度）；平板为居中卡片
         LiquidGlassColumnSheetContainer(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .fillMaxHeight(0.7f)
+            modifier = adaptiveSheetFrame(heightFraction = 0.7f)
                 .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress),
             contentModifier = Modifier
                 .fillMaxSize()
@@ -4626,8 +4739,7 @@ private fun PdfBookmarksSheet(
                 closing = true
             })
         LiquidGlassColumnSheetContainer(
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                .fillMaxHeight(0.8f)
+            modifier = adaptiveSheetFrame(heightFraction = 0.8f)
                 .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress),
             contentModifier = Modifier.fillMaxSize().navigationBarsPadding()
                 .padding(horizontal = 24.dp, vertical = 24.dp),

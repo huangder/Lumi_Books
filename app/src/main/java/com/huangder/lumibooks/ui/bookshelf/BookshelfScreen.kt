@@ -2,6 +2,9 @@
 
 package com.huangder.lumibooks.ui.bookshelf
 
+import com.huangder.lumibooks.ui.components.AppDialogAction
+import com.huangder.lumibooks.ui.components.AppDialogActionRole
+
 import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
 import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
@@ -64,13 +67,12 @@ import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 import androidx.compose.animation.core.snap
 import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -130,6 +132,7 @@ import com.huangder.lumibooks.ui.animation.LocalBookReaderAnchorScope
 import com.huangder.lumibooks.ui.animation.bookCoverTransitionAnchor
 import com.huangder.lumibooks.ui.layout.currentAdaptiveWindowInfo
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
+import com.huangder.lumibooks.ui.components.LocalMainNavigationInsets
 import com.huangder.lumibooks.ui.components.BookCoverStatusBadge
 import com.huangder.lumibooks.ui.components.BookProgressStatus
 import com.huangder.lumibooks.ui.components.CloudAwareBookDeleteDialog
@@ -164,6 +167,7 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -177,11 +181,14 @@ fun BookshelfScreen(
     onMessage: (String) -> Unit = {},
     onRefreshAuthorizedDirectories: () -> Unit = {},
     onOverlayProgressChange: (Float) -> Unit = {},
+    onSearchActiveChange: (Boolean) -> Unit = {},
     onContextMenuVisibleChange: (Boolean) -> Unit = {},
     onFolderOpenChange: (Boolean) -> Unit = {},
+    onCurrentFolderChange: (String?) -> Unit = {},
     onHeaderBottomChange: (Float) -> Unit = {},
     onEnterCoverFlow: (((() -> Unit)) -> Unit)? = null,
     onNavigateToReaderCoverFlow: ((Book, Rect?) -> Unit)? = null,
+    onOpenHiddenLibrary: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -205,6 +212,7 @@ fun BookshelfScreen(
     var folderNavigationForward by remember { mutableStateOf(true) }
     LaunchedEffect(currentFolderId, requestedFolderId) {
         onFolderOpenChange(currentFolderId != null || requestedFolderId != null)
+        onCurrentFolderChange(requestedFolderId ?: currentFolderId)
     }
     val folderTransitionAlpha = remember { Animatable(1f) }
     val folderTransitionOffset = remember { Animatable(0f) }
@@ -216,10 +224,14 @@ fun BookshelfScreen(
     val eInkMode = LocalEInkMode.current
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !eInkMode
     val isMaterial3 = LocalUseMaterial3Theme.current
-    val collectionBottomPadding = if (isMaterial3) {
-        WindowInsets.navigationBarsIgnoringVisibility.asPaddingValues().calculateBottomPadding() + 96.dp
-    } else {
-        24.dp
+    val navigationInsets = LocalMainNavigationInsets.current
+    val collectionBottomPadding = when {
+        // The side rail frees the bottom edge; only the system bar remains.
+        !navigationInsets.bottomBar ->
+            WindowInsets.navigationBarsIgnoringVisibility.asPaddingValues().calculateBottomPadding() + 24.dp
+        isMaterial3 ->
+            WindowInsets.navigationBarsIgnoringVisibility.asPaddingValues().calculateBottomPadding() + 96.dp
+        else -> 24.dp
     }
     val density = LocalDensity.current
     val bookshelfBackdrop = rememberLayerBackdrop()
@@ -247,6 +259,44 @@ fun BookshelfScreen(
     var deleteFolder by remember { mutableStateOf<LibraryFolder?>(null) }
     var relocateFolder by remember { mutableStateOf<LibraryFolder?>(null) }
     var folderCoverTarget by remember { mutableStateOf<LibraryFolder?>(null) }
+    // Hidden library: pull past the top for the passcode panel; hiding sets the passcode first.
+    val hiddenPullState = com.huangder.lumibooks.ui.privacy.rememberHiddenLibraryPullState()
+    val shelfBounceState = remember { com.huangder.lumibooks.ui.animation.OverscrollBounceState() }
+    val gateMotion = com.huangder.lumibooks.ui.privacy.rememberGateMotionState()
+    var gateVisible by remember { mutableStateOf(false) }
+    var gateAnchor by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
+    var booksAwaitingPasscode by remember { mutableStateOf(emptySet<String>()) }
+    /** Books playing their exit animation before they move into the hidden library. */
+    var hidingBookIds by remember { mutableStateOf(emptySet<String>()) }
+    val hideScope = rememberCoroutineScope()
+    val lockViewModel: com.huangder.lumibooks.ui.privacy.HiddenLibraryLockViewModel = hiltViewModel()
+    // Hidden books leave with the same shrink-and-fade as deleted ones, then move to the vault.
+    // Covers stay faded until the write lands, so they never flash back for a frame.
+    val startHide: (Set<String>) -> Unit = { ids ->
+        hidingBookIds = hidingBookIds + ids
+        hideScope.launch {
+            kotlinx.coroutines.delay(350)
+            if (contextMenuState.selectedBook?.id in ids && contextMenuState.phase != ContextMenuPhase.Idle) {
+                snapshotFlow { contextMenuState.phase }.first { it == ContextMenuPhase.Idle }
+            }
+            viewModel.setBooksHidden(ids, hidden = true) {
+                hidingBookIds = hidingBookIds - ids
+                selectedBookIds = selectedBookIds - ids
+                if (selectedBookIds.isEmpty()) isEditing = false
+            }
+        }
+    }
+    val requestHideBooks: (Set<String>) -> Unit = { ids ->
+        if (ids.isNotEmpty()) {
+            if (lockViewModel.lockState.value.hasPasscode) {
+                startHide(ids)
+            } else {
+                booksAwaitingPasscode = ids
+                gateAnchor = null
+                gateVisible = true
+            }
+        }
+    }
     val motionEnabled = LocalMotionEnabled.current
     val liquidCollectionTopPadding = if (bookshelfHeaderHeightPx > 0) {
         with(density) { bookshelfHeaderHeightPx.toDp() } +
@@ -454,8 +504,9 @@ fun BookshelfScreen(
                 PendingBookMenuActionType.BookDetails ->
                     BookDetailsActivity.start(context, currentBook.id)
                 PendingBookMenuActionType.ToggleReadStatus ->
-                    viewModel.updateBook(currentBook.copy(readingProgress = if (currentBook.isReadingFinished) 0f else 1f))
+                    viewModel.updateBook(currentBook.toggleReadStatus())
                 PendingBookMenuActionType.MoveToFolder -> moveTargetBook = currentBook
+                PendingBookMenuActionType.Hide -> requestHideBooks(setOf(currentBook.id))
             }
         }
         pendingContextMenuAction = null
@@ -497,23 +548,28 @@ fun BookshelfScreen(
     val currentPath = remember(uiState.folders, renderedFolderId) {
         folderPath(uiState.folders, renderedFolderId)
     }
-    val currentLevelBooks = remember(uiState.books, uiState.bookFolderLinks, renderedFolderId) {
-        booksAtFolderLevel(uiState.books, uiState.bookFolderLinks, renderedFolderId)
+    // Folder membership of visible books only: counts and cover collages must not reveal hidden books.
+    val shelfFolderLinks = remember(uiState.books, uiState.bookFolderLinks) {
+        val visibleIds = uiState.books.mapTo(HashSet()) { it.id }
+        uiState.bookFolderLinks.filter { it.bookId in visibleIds }
+    }
+    val currentLevelBooks = remember(uiState.books, shelfFolderLinks, renderedFolderId) {
+        booksAtFolderLevel(uiState.books, shelfFolderLinks, renderedFolderId)
     }
     val layoutBooks = remember(
         uiState.books,
-        uiState.bookFolderLinks,
+        shelfFolderLinks,
         renderedFolderId,
         effectiveLayoutMode
     ) {
         if (effectiveLayoutMode == BookshelfLayout.CoverFlow) {
-            booksForCoverFlow(uiState.books, uiState.bookFolderLinks, renderedFolderId)
+            booksForCoverFlow(uiState.books, shelfFolderLinks, renderedFolderId)
         } else {
             currentLevelBooks
         }
     }
-    val allFolderCounts = remember(uiState.folders, uiState.bookFolderLinks) {
-        folderBookCounts(uiState.folders, uiState.bookFolderLinks)
+    val allFolderCounts = remember(uiState.folders, shelfFolderLinks) {
+        folderBookCounts(uiState.folders, shelfFolderLinks)
     }
     val matchingBookIds = remember(uiState.books, tagIdsByBook, selectedFilter) {
         when (val filter = selectedFilter) {
@@ -531,10 +587,18 @@ fun BookshelfScreen(
     }
     val displayedFolderCounts = remember(
         uiState.folders,
-        uiState.bookFolderLinks,
+        shelfFolderLinks,
         matchingBookIds
     ) {
-        folderBookCounts(uiState.folders, uiState.bookFolderLinks, matchingBookIds)
+        folderBookCounts(uiState.folders, shelfFolderLinks, matchingBookIds)
+    }
+    val finishedBookIds = remember(uiState.books, matchingBookIds) {
+        uiState.books.asSequence()
+            .filter { it.isReadingFinished && (matchingBookIds == null || it.id in matchingBookIds) }
+            .mapTo(mutableSetOf()) { it.id }
+    }
+    val displayedFolderFinishedCounts = remember(uiState.folders, shelfFolderLinks, finishedBookIds) {
+        folderBookCounts(uiState.folders, shelfFolderLinks, finishedBookIds)
     }
     val visibleFolders = remember(
         uiState.folders,
@@ -550,23 +614,23 @@ fun BookshelfScreen(
         )
     }
     val booksById = remember(uiState.books) { uiState.books.associateBy { it.id } }
-    val folderPreviewBookIds = remember(uiState.folders, uiState.bookFolderLinks) {
+    val folderPreviewBookIds = remember(uiState.folders, shelfFolderLinks) {
         uiState.folders.associate { folder ->
-            folder.id to uiState.bookFolderLinks
+            folder.id to shelfFolderLinks
                 .asSequence()
                 .filter { it.folderId in descendantFolderIds(uiState.folders, folder.id) }
                 .map { it.bookId }
                 .toSet()
         }
     }
-    val folderPreviewBooks = remember(uiState.folders, uiState.books, uiState.bookFolderLinks) {
+    val folderPreviewBooks = remember(uiState.folders, uiState.books, shelfFolderLinks) {
         uiState.folders.associate { folder ->
             // Prefer the live folder membership so a newly moved/imported book appears in the
             // collage immediately, while the persisted snapshot is refreshed in the background.
             val livePreviewIds = FolderPreviewPlanner.selectBookIds(
                 booksInLibraryOrder = uiState.books,
                 folders = uiState.folders,
-                links = uiState.bookFolderLinks,
+                links = shelfFolderLinks,
                 folderId = folder.id
             )
             folder.id to FolderPreviewPlanner.slots(
@@ -757,17 +821,31 @@ fun BookshelfScreen(
         maxOf(
             contextMenuState.scrimAlpha.value,
             folderContextMenuState.scrimAlpha.value,
-            searchBlurProgress
+            searchBlurProgress,
+            gateMotion.presence
         )
     }
-    val contentBlurRadius = if (eInkMode || LocalReduceTransparency.current) {
+    val reduceTransparency = LocalReduceTransparency.current
+    val contentBlurRadius = if (eInkMode) {
         0f
     } else {
         maxOf(
-            20f * contextMenuState.scrimAlpha.value,
-            20f * folderContextMenuState.scrimAlpha.value,
-            with(density) { 34.dp.toPx() } * searchBlurProgress
+            if (reduceTransparency) 0f else 20f * contextMenuState.scrimAlpha.value,
+            if (reduceTransparency) 0f else 20f * folderContextMenuState.scrimAlpha.value,
+            with(density) { 34.dp.toPx() } * searchBlurProgress,
+            if (reduceTransparency) 0f else with(density) { 28.dp.toPx() } * gateMotion.presence
         )
+    }
+    // The pull lives on the scrolling layouts; Cover Flow scrolls sideways and has no top edge.
+    val hiddenPullEnabled = effectiveLayoutMode != BookshelfLayout.CoverFlow && !isEditing &&
+        !isSearchActive && !gateVisible && contextMenuState.phase == ContextMenuPhase.Idle &&
+        folderContextMenuState.phase == ContextMenuPhase.Idle
+    val onShelfPullRelease: (Float) -> Unit = { offset ->
+        if (hiddenPullEnabled && hiddenPullState.release(offset)) {
+            gateAnchor = hiddenPullState.anchorAt(offset)
+            booksAwaitingPasscode = emptySet()
+            gateVisible = true
+        }
     }
     // Read the phases during composition so changes invalidate this screen and the
     // navigation host can reliably restore the bottom bar after dismissal completes.
@@ -776,11 +854,13 @@ fun BookshelfScreen(
             folderContextMenuState.phase != ContextMenuPhase.Idle
     SideEffect {
         onOverlayProgressChange(overlayProgress)
+        onSearchActiveChange(isSearchActive && !eInkMode)
         onContextMenuVisibleChange(contextMenuVisible)
     }
     DisposableEffect(Unit) {
         onDispose {
             onOverlayProgressChange(0f)
+            onSearchActiveChange(false)
             onContextMenuVisibleChange(false)
         }
     }
@@ -816,7 +896,12 @@ fun BookshelfScreen(
                 .background(AppColors.PageBg)
         ) {
             if (isLiquidGlass) {
-                OverscrollBounce(modifier = Modifier.fillMaxSize()) {
+                OverscrollBounce(
+                    modifier = Modifier.fillMaxSize(),
+                    state = shelfBounceState,
+                    onTopPullRelease = onShelfPullRelease,
+                    onTopPullDrag = { offset, delta -> hiddenPullState.onDrag(offset, delta) }
+                ) {
                     BookshelfCollection(
                         layoutMode = effectiveLayoutMode,
                         coverFlowStateKey = "${renderedFolderId.orEmpty()}:$selectedFilter",
@@ -825,11 +910,12 @@ fun BookshelfScreen(
                         books = filteredBooks,
                         folders = visibleFolders,
                         folderBookCounts = displayedFolderCounts,
+                        folderFinishedBookCounts = displayedFolderFinishedCounts,
                         folderPreviewBooks = folderPreviewBooks,
                         tagNamesByBook = tagNamesByBook,
                         isLoading = uiState.isLoading,
                         playEntranceAnimation = playEntranceAnimation,
-                        deletingBookIds = deletingBookIds,
+                        deletingBookIds = deletingBookIds + hidingBookIds,
                         isEditing = isEditing,
                         selectedBookIds = selectedBookIds,
                         contextMenuState = contextMenuState,
@@ -839,7 +925,7 @@ fun BookshelfScreen(
                         expandedListBookId = expandedListBookId,
                         expandedListFolderId = expandedListFolderId,
                         topPadding = liquidCollectionTopPadding,
-                        bottomPadding = 120.dp,
+                        bottomPadding = if (navigationInsets.bottomBar) 120.dp else collectionBottomPadding,
                         onHaptic = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
                         onSelectionToggle = toggleBookSelection,
                         onExpandedBookChange = {
@@ -871,7 +957,11 @@ fun BookshelfScreen(
                         onRemoveCustomCover = removeCoverFromList,
                         onTags = editTagsFromList,
                         onBookmarksNotes = openNotesFromList,
+                        onToggleHidden = { book -> requestHideBooks(setOf(book.id)) },
+                        onToggleReadStatus = { book -> viewModel.updateBook(book.toggleReadStatus()) },
                         modifier = Modifier
+                            // Before widthIn, so the capped shelf centers beside the side rail.
+                            .padding(start = navigationInsets.start)
                             .widthIn(max = 1000.dp)
                             .fillMaxWidth()
                             .graphicsLayer {
@@ -882,9 +972,15 @@ fun BookshelfScreen(
                     )
                 }
             } else {
-            OverscrollBounce(modifier = Modifier.fillMaxSize()) {
+            OverscrollBounce(
+                modifier = Modifier.fillMaxSize(),
+                state = shelfBounceState,
+                onTopPullRelease = onShelfPullRelease,
+                onTopPullDrag = { offset, delta -> hiddenPullState.onDrag(offset, delta) }
+            ) {
                 Column(
                     modifier = Modifier
+                        .padding(start = navigationInsets.start)
                         .widthIn(max = 1000.dp)
                         .fillMaxSize()
                         .align(Alignment.TopCenter)
@@ -894,6 +990,8 @@ fun BookshelfScreen(
                         selectedFilter = selectedFilter,
                         isEditing = isEditing,
                         selectedCount = selectedBookIds.size,
+                        libraryBookCount = uiState.books.size,
+                        libraryFinishedBookCount = uiState.books.count { it.isReadingFinished },
                         onFilterSelected = { selectedFilter = it },
                         onEditToggle = {
                             isEditing = !isEditing
@@ -907,6 +1005,7 @@ fun BookshelfScreen(
                         },
                         onTagSelected = { showBatchTagSheet = true },
                         onMoveSelected = { showBatchMoveSheet = true },
+                        onHideSelected = { requestHideBooks(selectedBookIds) },
                         folderPath = currentPath,
                         onNavigateToFolder = navigateToFolder,
                         onCreateFolder = { showCreateFolderDialog = true },
@@ -941,11 +1040,12 @@ fun BookshelfScreen(
                         books = filteredBooks,
                         folders = visibleFolders,
                         folderBookCounts = displayedFolderCounts,
+                        folderFinishedBookCounts = displayedFolderFinishedCounts,
                         folderPreviewBooks = folderPreviewBooks,
                         tagNamesByBook = tagNamesByBook,
                         isLoading = uiState.isLoading,
                         playEntranceAnimation = playEntranceAnimation,
-                        deletingBookIds = deletingBookIds,
+                        deletingBookIds = deletingBookIds + hidingBookIds,
                         isEditing = isEditing,
                         selectedBookIds = selectedBookIds,
                         contextMenuState = contextMenuState,
@@ -987,6 +1087,8 @@ fun BookshelfScreen(
                         onRemoveCustomCover = removeCoverFromList,
                         onTags = editTagsFromList,
                         onBookmarksNotes = openNotesFromList,
+                        onToggleHidden = { book -> requestHideBooks(setOf(book.id)) },
+                        onToggleReadStatus = { book -> viewModel.updateBook(book.toggleReadStatus()) },
                         modifier = Modifier
                             .weight(1f)
                             .graphicsLayer {
@@ -998,6 +1100,20 @@ fun BookshelfScreen(
             } // OverscrollBounce 结束
         } // 内容层 Box 结束（renderEffect 模糊作用于此）
 
+            // Lock revealed in the gap that opens above the pulled content. Glass keeps the
+            // header fixed, so the gap starts under it; otherwise the whole page moves down.
+            val statusBarTop = WindowInsets.statusBarsIgnoringVisibility.asPaddingValues().calculateTopPadding()
+            val glassHeaderBottom = with(density) { bookshelfHeaderHeightPx.toDp() }
+            com.huangder.lumibooks.ui.privacy.HiddenLibraryPullIndicator(
+                bounceState = shelfBounceState,
+                pullState = hiddenPullState,
+                enabled = hiddenPullEnabled,
+                gapTop = if (isLiquidGlass) glassHeaderBottom else 0.dp,
+                restingGap = if (isLiquidGlass) (liquidCollectionTopPadding - glassHeaderBottom).coerceAtLeast(0.dp) else 0.dp,
+                minCenter = if (isLiquidGlass) glassHeaderBottom + 22.dp else statusBarTop + 22.dp,
+                // Center over the shelf, which sits beside the side rail.
+                modifier = Modifier.align(Alignment.TopCenter).padding(start = navigationInsets.start).zIndex(1f)
+            )
         // ── 长按上下文菜单覆盖层（在内容层之外，不被模糊） ──
         }
 
@@ -1020,6 +1136,8 @@ fun BookshelfScreen(
                     selectedFilter = selectedFilter,
                     isEditing = isEditing,
                     selectedCount = selectedBookIds.size,
+                    libraryBookCount = uiState.books.size,
+                    libraryFinishedBookCount = uiState.books.count { it.isReadingFinished },
                     onFilterSelected = { selectedFilter = it },
                     onEditToggle = {
                         isEditing = !isEditing
@@ -1033,6 +1151,7 @@ fun BookshelfScreen(
                     },
                     onTagSelected = { showBatchTagSheet = true },
                     onMoveSelected = { showBatchMoveSheet = true },
+                    onHideSelected = { requestHideBooks(selectedBookIds) },
                     folderPath = currentPath,
                     onNavigateToFolder = navigateToFolder,
                     onCreateFolder = { showCreateFolderDialog = true },
@@ -1058,6 +1177,7 @@ fun BookshelfScreen(
                     onSearchBoundsChanged = { searchLauncherBounds = it },
                     modifier = Modifier
                         .zIndex(2f)
+                        .padding(start = navigationInsets.start)
                         .onGloballyPositioned { coordinates ->
                             bookshelfHeaderHeightPx = coordinates.size.height
                             onHeaderBottomChange(coordinates.boundsInRoot().bottom)
@@ -1140,7 +1260,7 @@ fun BookshelfScreen(
                 },
                 onToggleReadStatus = { book ->
                     expandedSearchBookId = null
-                    viewModel.updateBook(book.copy(readingProgress = if (book.isReadingFinished) 0f else 1f))
+                    viewModel.updateBook(book.toggleReadStatus())
                 },
                 launcherBounds = searchLauncherBounds,
                 modifier = Modifier.zIndex(2.6f)
@@ -1182,6 +1302,9 @@ fun BookshelfScreen(
             },
             onMoveToFolder = { book ->
                 pendingContextMenuAction = PendingBookMenuAction(PendingBookMenuActionType.MoveToFolder, book)
+            },
+            onToggleHidden = { book ->
+                pendingContextMenuAction = PendingBookMenuAction(PendingBookMenuActionType.Hide, book)
             }
         )
 
@@ -1254,7 +1377,7 @@ fun BookshelfScreen(
                 },
                 modifier = Modifier.imePadding(),
                 backgroundScrimColor = Color.Transparent,
-                backgroundBlurRadius = 18.dp,
+                fallbackBlurRadius = 18.dp,
                 properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
             ) {
                 com.huangder.lumibooks.ui.components.EditInputDialog(
@@ -1292,6 +1415,7 @@ fun BookshelfScreen(
         tagTargetBook?.takeIf { showTagSheet }?.let { targetBook ->
             BookTagBottomSheet(
                 tags = uiState.tags,
+                bookId = targetBook.id,
                 selectedTagIds = tagIdsByBook[targetBook.id].orEmpty(),
                 onDismiss = {
                     showTagSheet = false
@@ -1312,6 +1436,7 @@ fun BookshelfScreen(
         if (showBatchTagSheet) {
             BatchBookTagSheet(
                 tags = uiState.tags,
+                bookIds = selectedBookIds,
                 selectedBookCount = selectedBookIds.size,
                 onDismiss = { showBatchTagSheet = false },
                 onCreateTag = { name ->
@@ -1360,24 +1485,23 @@ fun BookshelfScreen(
         pendingCrossStorageMove?.let { request ->
             LiquidGlassAlertDialog(
                 onDismissRequest = { pendingCrossStorageMove = null },
-                title = { Text(stringResource(R.string.folder_cross_storage_confirmation_title)) },
+                titleText = stringResource(R.string.folder_cross_storage_confirmation_title),
                 text = { Text(stringResource(R.string.folder_cross_storage_confirmation_message)) },
-                confirmButton = {
-                    LiquidGlassTextButton(
+                actions = listOf(
+                    AppDialogAction(
                         text = stringResource(R.string.confirm),
                         onClick = {
                             pendingCrossStorageMove = null
                             completeBookMove(request, allowCrossStorageMove = true)
-                        }
-                    )
-                },
-                dismissButton = {
-                    LiquidGlassTextButton(
+                        },
+                        role = AppDialogActionRole.Primary
+                    ),
+                    AppDialogAction(
                         text = stringResource(R.string.cancel),
-                        onClick = { pendingCrossStorageMove = null }
+                        onClick = { pendingCrossStorageMove = null },
+                        role = AppDialogActionRole.Cancel
                     )
-                }
-            )
+                ))
         }
 
         if (showCreateFolderDialog) {
@@ -1436,25 +1560,24 @@ fun BookshelfScreen(
             val count = allFolderCounts[folder.id] ?: 0
             LiquidGlassAlertDialog(
                 onDismissRequest = { deleteFolder = null },
-                title = { Text(stringResource(R.string.delete_folder_title, folder.name)) },
+                titleText = stringResource(R.string.delete_folder_title, folder.name),
                 text = { Text(stringResource(R.string.delete_folder_confirm, count)) },
-                confirmButton = {
-                    LiquidGlassTextButton(
+                actions = listOf(
+                    AppDialogAction(
                         text = stringResource(R.string.delete),
-                        tintedColor = Color(0xFFD92D3A),
                         onClick = {
                             viewModel.deleteFolder(folder.id)
                             deleteFolder = null
-                        }
-                    )
-                },
-                dismissButton = {
-                    LiquidGlassTextButton(
+                        },
+                        role = AppDialogActionRole.Destructive,
+                        tintedColor = Color(0xFFD92D3A)
+                    ),
+                    AppDialogAction(
                         text = stringResource(R.string.cancel),
-                        onClick = { deleteFolder = null }
+                        onClick = { deleteFolder = null },
+                        role = AppDialogActionRole.Cancel
                     )
-                }
-            )
+                ))
         }
 
         if (showBatchDeleteConfirm) {
@@ -1477,6 +1600,32 @@ fun BookshelfScreen(
             )
         }
 
+        // Passcode panel above everything on the shelf. It opens from the pull (unlocking the
+        // hidden library) or before the very first hide (creating the passcode).
+        com.huangder.lumibooks.ui.privacy.HiddenLibraryGate(
+            visible = gateVisible,
+            purpose = com.huangder.lumibooks.ui.privacy.PasscodeGatePurpose.Unlock,
+            forHide = booksAwaitingPasscode.isNotEmpty(),
+            anchorInRoot = gateAnchor,
+            motionState = gateMotion,
+            onUnlocked = {
+                gateVisible = false
+                val pending = booksAwaitingPasscode
+                booksAwaitingPasscode = emptySet()
+                if (pending.isNotEmpty()) {
+                    startHide(pending)
+                } else {
+                    lockViewModel.unlockSession()
+                    onOpenHiddenLibrary()
+                }
+            },
+            onDismiss = {
+                gateVisible = false
+                booksAwaitingPasscode = emptySet()
+            },
+            viewModel = lockViewModel,
+            modifier = Modifier.zIndex(4f)
+        )
     }
     }
 }
@@ -1516,6 +1665,7 @@ internal fun BookshelfCollection(
     onBookmarksNotes: (Book) -> Unit,
     folders: List<LibraryFolder> = emptyList(),
     folderBookCounts: Map<String, Int> = emptyMap(),
+    folderFinishedBookCounts: Map<String, Int> = emptyMap(),
     folderPreviewBooks: Map<String, List<Book?>> = emptyMap(),
     onFolderClick: (LibraryFolder) -> Unit = {},
     onFolderRename: (LibraryFolder) -> Unit = {},
@@ -1527,11 +1677,14 @@ internal fun BookshelfCollection(
     coverFlowStateKey: String = "root",
     coverFlowEnabled: Boolean = true,
     onCoverFlowMenuVisibleChange: (Boolean) -> Unit = {},
+    /** Hide on the shelf, unhide in the hidden library; null leaves the action out. */
+    onToggleHidden: ((Book) -> Unit)? = null,
+    onToggleReadStatus: (Book) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val targetMode = BookshelfLayout.normalize(layoutMode)
     val coverFlowStates = rememberSaveableStateHolder()
-    val useWideLandscapeLayout = currentAdaptiveWindowInfo().isWideLandscape
+    val useWideLayout = currentAdaptiveWindowInfo().usesWideLayout
     var renderedMode by remember { mutableStateOf(targetMode) }
     var transitionInProgress by remember { mutableStateOf(false) }
     val transitionAlpha = remember { Animatable(1f) }
@@ -1652,7 +1805,8 @@ internal fun BookshelfCollection(
                         actions = CoverFlowBookActions(
                             open = onBookClick, details = onBookDetails, favorite = onFavorite,
                             editInfo = onEditInfo, customCover = onCustomCover, removeCustomCover = onRemoveCustomCover,
-                            tags = onTags, notes = onBookmarksNotes, move = onMoveToFolder, delete = onDelete
+                            tags = onTags, notes = onBookmarksNotes, move = onMoveToFolder, delete = onDelete,
+                            hide = onToggleHidden
                         ),
                         onMenuVisibleChange = onCoverFlowMenuVisibleChange,
                         onHaptic = onHaptic, onSelectionToggle = onSelectionToggle, onAddBook = onAddBook,
@@ -1679,6 +1833,7 @@ internal fun BookshelfCollection(
                                 FolderListItem(
                                     folder = folder,
                                     bookCount = folderBookCounts[folder.id] ?: 0,
+                                    finishedBookCount = folderFinishedBookCounts[folder.id] ?: 0,
                                     previewBooks = folderPreviewBooks[folder.id].orEmpty(),
                                     enabled = !isEditing,
                                     expanded = !isEditing && expandedListFolderId == folder.id,
@@ -1722,9 +1877,11 @@ internal fun BookshelfCollection(
                                 onRemoveCustomCover = { onRemoveCustomCover(book) },
                                 onTags = { onTags(book) },
                                 onBookmarksNotes = { onBookmarksNotes(book) },
+                                onToggleReadStatus = { onToggleReadStatus(book) },
                                 selectionMode = isEditing,
                                 selected = book.id in selectedBookIds,
-                                onSelectionToggle = { onSelectionToggle(book) }
+                                onSelectionToggle = { onSelectionToggle(book) },
+                                onToggleHidden = onToggleHidden?.let { toggle -> { toggle(book) } }
                             )
                         }
                     }
@@ -1740,7 +1897,7 @@ internal fun BookshelfCollection(
                 val gridSpacing = if (renderedMode == 3) 12.dp else AppSpace.lg
             LazyVerticalGrid(
                 state = gridState,
-                columns = if (useWideLandscapeLayout && renderedMode >= 2) {
+                columns = if (useWideLayout && renderedMode >= 2) {
                     GridCells.Adaptive(140.dp)
                 } else {
                     GridCells.Fixed(renderedMode)
@@ -1763,6 +1920,7 @@ internal fun BookshelfCollection(
                         FolderGridItem(
                             folder = folder,
                             bookCount = folderBookCounts[folder.id] ?: 0,
+                            finishedBookCount = folderFinishedBookCounts[folder.id] ?: 0,
                             previewBooks = folderPreviewBooks[folder.id].orEmpty(),
                             enabled = !isEditing,
                             contextMenuState = folderContextMenuState,
@@ -1806,6 +1964,8 @@ internal fun BookshelfCollection(
 @Composable
 private fun BookshelfTitle(
     path: List<LibraryFolder>,
+    bookCount: Int,
+    finishedBookCount: Int,
     onNavigateToFolder: (String?) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1830,6 +1990,16 @@ private fun BookshelfTitle(
                 interactionSource = remember { MutableInteractionSource() }
             ) { onNavigateToFolder(null) }
         )
+        if (path.isEmpty()) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = stringResource(R.string.bookshelf_library_summary, bookCount, finishedBookCount),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Light,
+                color = AppColors.TextSecondary.copy(alpha = 0.82f),
+                maxLines = 1
+            )
+        }
         path.forEachIndexed { index, folder ->
             Text(
                 text = " > ",
@@ -1923,7 +2093,7 @@ private fun BookshelfHeaderActions(
                     menuHost.show(
                         LiquidGlassMenuSpec(
                             anchorBounds = menuAnchorBounds,
-                            width = if (isLiquidGlass) 220.dp else 196.dp,
+                            width = 196.dp,
                             onDismiss = { menuExpanded = false },
                             items = buildList {
                                 if (onEdit != null) add(LiquidGlassMenuItem(editLabel, AppIcons.PencilSimple, onClick = onEdit))
@@ -2037,11 +2207,14 @@ private fun BookshelfCapsuleHeader(
     selectedFilter: BookshelfFilter,
     isEditing: Boolean,
     selectedCount: Int,
+    libraryBookCount: Int,
+    libraryFinishedBookCount: Int,
     onFilterSelected: (BookshelfFilter) -> Unit,
     onEditToggle: () -> Unit,
     onDeleteSelected: () -> Unit,
     onTagSelected: () -> Unit,
     onMoveSelected: () -> Unit,
+    onHideSelected: () -> Unit,
     folderPath: List<LibraryFolder>,
     onNavigateToFolder: (String?) -> Unit,
     onCreateFolder: () -> Unit,
@@ -2081,7 +2254,7 @@ private fun BookshelfCapsuleHeader(
 
     if (layoutMode == BookshelfLayout.CoverFlow && !isEditing) {
         androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalRippleConfiguration provides null) {
-        Column(modifier.mainTabEntrance().fillMaxWidth().windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
+        Column(modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
             .padding(horizontal = 16.dp, vertical = 6.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 BookshelfHeaderActions(layoutMode, isWebdavSyncing, onSyncClick, onRefreshClick,
@@ -2116,7 +2289,6 @@ private fun BookshelfCapsuleHeader(
 
     Column(
         modifier = modifier
-            .mainTabEntrance()
             .fillMaxWidth()
             .then(
                 if (isLiquidGlass) Modifier else Modifier.background(AppColors.PageBg)
@@ -2124,98 +2296,131 @@ private fun BookshelfCapsuleHeader(
             .windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
             .padding(top = 12.dp)
     ) {
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = AppSpace.lg),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = AppSpace.lg)
         ) {
-            LiquidGlassButton(
-                onClick = onEditToggle,
-                tintedColor = AppColors.CardBg.takeUnless { isLiquidGlass },
-                contentColor = AppColors.TextPrimary,
-                decorationModifier = Modifier,
+            Box(
                 modifier = Modifier
-                    .widthIn(min = 88.dp)
+                    .fillMaxWidth()
                     .heightIn(min = headerCapsuleHeight)
             ) {
-                Text(
-                    text = stringResource(if (isEditing) R.string.done else R.string.edit),
-                    maxLines = 1,
-                    softWrap = false,
-                    color = AppColors.TextPrimary,
-                    fontSize = AppType.BodySmall,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            AnimatedVisibility(
-                visible = isEditing,
-                enter = fadeIn(tween(120)) + scaleIn(
-                    initialScale = 0.78f,
-                    animationSpec = spring(dampingRatio = 0.68f, stiffness = 360f)
-                ),
-                exit = fadeOut(tween(110)) + scaleOut(spring(stiffness = 400f), targetScale = 0.82f)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Spacer(Modifier.width(10.dp))
-                    LiquidGlassIconButton(
-                        imageVector = AppIcons.Trash,
-                        contentDescription = stringResource(R.string.delete),
-                        onClick = onDeleteSelected,
-                        enabled = selectedCount > 0,
-                        size = 46.dp,
-                        iconSize = 21.dp,
-                        contentColor = Color.White,
-                        normalContainerColor = Color(0xFFD92D3A),
-                        liquidContainerColor = Color(0xFFD92D3A),
-                        liquidScrimColor = Color(0xB8D92D3A)
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    LiquidGlassIconButton(
-                        imageVector = AppIcons.Tag,
-                        contentDescription = stringResource(R.string.tag_sheet_title),
-                        onClick = onTagSelected,
-                        enabled = selectedCount > 0,
-                        size = 46.dp,
-                        iconSize = 21.dp,
-                        contentColor = AppColors.TextPrimary,
-                        normalContainerColor = AppColors.CardBg,
-                        liquidContainerColor = AppColors.CardBg,
-                        liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f)
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    LiquidGlassIconButton(
-                        imageVector = AppIcons.FolderSimple,
-                        contentDescription = stringResource(R.string.move_books),
-                        onClick = onMoveSelected,
-                        enabled = selectedCount > 0,
-                        size = 46.dp,
-                        iconSize = 21.dp,
-                        contentColor = AppColors.TextPrimary,
-                        normalContainerColor = AppColors.CardBg,
-                        liquidContainerColor = AppColors.CardBg,
-                        liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f)
-                    )
-                }
-            }
-
-            Spacer(Modifier.weight(1f))
-
-            if (!isEditing) {
-                LiquidGlassSurface(
-                    controlEdge = true,
-                    shape = CircleShape,
-                    fallbackColor = AppColors.CardBg,
-                    contentScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
-                    decorationModifier = Modifier,
-                    modifier = Modifier
-                        .liquidGlassMenuAnchor(kind = com.huangder.lumibooks.ui.components.LiquidGlassMenuAnchorKind.Embedded)
-                        .onGloballyPositioned { browseAnchorBounds = it.boundsInRoot() }
-                        .width(154.dp)
-                        .height(headerCapsuleHeight)
-                ) {
-                    Box(modifier = Modifier.fillMaxSize()) {
+                Crossfade(
+                    targetState = isEditing,
+                    animationSpec = tween(180),
+                    modifier = Modifier.fillMaxWidth()
+                ) { editing ->
+                    if (editing) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        LiquidGlassButton(
+                            onClick = onEditToggle,
+                            tintedColor = AppColors.CardBg.takeUnless { isLiquidGlass },
+                            contentColor = AppColors.TextPrimary,
+                            decorationModifier = Modifier,
+                            modifier = Modifier
+                                .widthIn(min = 88.dp)
+                                .heightIn(min = headerCapsuleHeight)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.done),
+                                maxLines = 1,
+                                softWrap = false,
+                                color = AppColors.TextPrimary,
+                                fontSize = AppType.BodySmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        LiquidGlassIconButton(
+                            imageVector = AppIcons.Trash,
+                            contentDescription = stringResource(R.string.delete),
+                            onClick = onDeleteSelected,
+                            enabled = selectedCount > 0,
+                            size = 46.dp,
+                            iconSize = 21.dp,
+                            contentColor = Color.White,
+                            normalContainerColor = Color(0xFFD92D3A),
+                            liquidContainerColor = Color(0xFFD92D3A),
+                            liquidScrimColor = Color(0xB8D92D3A)
+                        )
+                        LiquidGlassIconButton(
+                            imageVector = AppIcons.Tag,
+                            contentDescription = stringResource(R.string.tag_sheet_title),
+                            onClick = onTagSelected,
+                            enabled = selectedCount > 0,
+                            size = 46.dp,
+                            iconSize = 21.dp,
+                            contentColor = AppColors.TextPrimary,
+                            normalContainerColor = AppColors.CardBg,
+                            liquidContainerColor = AppColors.CardBg,
+                            liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f)
+                        )
+                        LiquidGlassIconButton(
+                            imageVector = AppIcons.FolderSimple,
+                            contentDescription = stringResource(R.string.move_books),
+                            onClick = onMoveSelected,
+                            enabled = selectedCount > 0,
+                            size = 46.dp,
+                            iconSize = 21.dp,
+                            contentColor = AppColors.TextPrimary,
+                            normalContainerColor = AppColors.CardBg,
+                            liquidContainerColor = AppColors.CardBg,
+                            liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f)
+                        )
+                        LiquidGlassIconButton(
+                            imageVector = AppIcons.EyeSlash,
+                            contentDescription = stringResource(R.string.hidden_library_hide),
+                            onClick = onHideSelected,
+                            enabled = selectedCount > 0,
+                            size = 46.dp,
+                            iconSize = 21.dp,
+                            contentColor = AppColors.TextPrimary,
+                            normalContainerColor = AppColors.CardBg,
+                            liquidContainerColor = AppColors.CardBg,
+                            liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f)
+                        )
+                    }
+                    } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        LiquidGlassButton(
+                            onClick = onEditToggle,
+                            tintedColor = AppColors.CardBg.takeUnless { isLiquidGlass },
+                            contentColor = AppColors.TextPrimary,
+                            decorationModifier = Modifier,
+                            modifier = Modifier
+                                .widthIn(min = 88.dp)
+                                .heightIn(min = headerCapsuleHeight)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.edit),
+                                maxLines = 1,
+                                softWrap = false,
+                                color = AppColors.TextPrimary,
+                                fontSize = AppType.BodySmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        Spacer(Modifier.weight(1f))
+                        LiquidGlassSurface(
+                            controlEdge = true,
+                            shape = CircleShape,
+                            fallbackColor = AppColors.CardBg,
+                            contentScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
+                            decorationModifier = Modifier,
+                            modifier = Modifier
+                                .liquidGlassMenuAnchor(kind = com.huangder.lumibooks.ui.components.LiquidGlassMenuAnchorKind.Embedded)
+                                .onGloballyPositioned { browseAnchorBounds = it.boundsInRoot() }
+                                .width(154.dp)
+                                .height(headerCapsuleHeight)
+                        ) {
+                        Box(modifier = Modifier.fillMaxSize()) {
                         Row(
                             modifier = Modifier
                                 .align(Alignment.Center),
@@ -2292,9 +2497,12 @@ private fun BookshelfCapsuleHeader(
                                     )
                             )
                         }
+                        }
+                    }
                     }
                 }
             }
+        }
         }
 
         AnimatedVisibility(visible = isEditing) {
@@ -2347,6 +2555,8 @@ private fun BookshelfCapsuleHeader(
                 ) {
                     BookshelfTitle(
                         path = folderPath,
+                        bookCount = libraryBookCount,
+                        finishedBookCount = libraryFinishedBookCount,
                         onNavigateToFolder = onNavigateToFolder,
                         modifier = Modifier.weight(1f)
                     )
@@ -2390,7 +2600,8 @@ private enum class PendingBookMenuActionType {
     EditInfo,
     BookDetails,
     ToggleReadStatus,
-    MoveToFolder
+    MoveToFolder,
+    Hide
 }
 
 private data class PendingBookMenuAction(
@@ -2720,6 +2931,7 @@ private fun BookGridItem(
 private fun FolderListItem(
     folder: LibraryFolder,
     bookCount: Int,
+    finishedBookCount: Int,
     previewBooks: List<Book?>,
     enabled: Boolean,
     expanded: Boolean,
@@ -2797,7 +3009,7 @@ private fun FolderListItem(
                     }
                     Spacer(Modifier.height(3.dp))
                     Text(
-                        text = stringResource(R.string.bookshelf_category_book_count, bookCount),
+                        text = stringResource(R.string.bookshelf_book_counts_summary, bookCount, finishedBookCount),
                         color = AppColors.TextSecondary,
                         fontSize = 13.sp,
                         maxLines = 1,
@@ -2848,6 +3060,7 @@ private fun FolderListItem(
 private fun FolderGridItem(
     folder: LibraryFolder,
     bookCount: Int,
+    finishedBookCount: Int,
     previewBooks: List<Book?>,
     enabled: Boolean,
     contextMenuState: FolderContextMenuState,
@@ -2935,7 +3148,7 @@ private fun FolderGridItem(
             }
         }
         Text(
-            text = stringResource(R.string.bookshelf_category_book_count, bookCount),
+            text = stringResource(R.string.bookshelf_book_counts_summary, bookCount, finishedBookCount),
             fontSize = AppType.Caption,
             color = AppColors.TextSecondary,
             maxLines = 1

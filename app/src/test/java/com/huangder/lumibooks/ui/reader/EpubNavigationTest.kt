@@ -8,6 +8,18 @@ import org.junit.Test
 
 class EpubNavigationTest {
     @Test
+    fun staleChapterParameterAfterHostCommitIsNotANavigationRequest() {
+        // Host committed chapter 1 while the old parameter 0 is re-applied.
+        assertTrue(isStaleEpubChapterParameter(requestedChapter = 0, previousRequestedChapter = 0, loadedChapter = 1))
+        // A changed parameter is a real request, including a jump back to an earlier chapter.
+        assertFalse(isStaleEpubChapterParameter(requestedChapter = 7, previousRequestedChapter = 3, loadedChapter = 3))
+        assertFalse(isStaleEpubChapterParameter(requestedChapter = 0, previousRequestedChapter = 1, loadedChapter = 1))
+        // First load and steady state.
+        assertFalse(isStaleEpubChapterParameter(requestedChapter = 4, previousRequestedChapter = -1, loadedChapter = -1))
+        assertFalse(isStaleEpubChapterParameter(requestedChapter = 2, previousRequestedChapter = 2, loadedChapter = 2))
+    }
+
+    @Test
     fun scrollPreloadsChaptersEvenWhenCurrentChapterHasManyVirtualPages() {
         assertEquals(EpubPageTarget(1, Int.MAX_VALUE) to EpubPageTarget(3, 0),
             epubAdjacentPreloadTargets(2, 4, 10, 5, scrolling = true))

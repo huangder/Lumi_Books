@@ -201,6 +201,109 @@ class EpubLiveTurnRenderingTest {
         assertEquals(EpubPageTarget(0, 1), host.currentPageTarget())
     }
 
+    @Test fun swipesWhileTheNextPageLoadsEachTurnOnePage() {
+        host.onHasPotentialTurn = { direction, current, count ->
+            if (direction > 0) current.pageIndex + 1 < count else current.pageIndex > 0
+        }
+        host.setCurrentPage(0, 1, 10)
+        var generation = 10
+        host.markPreloadLoading(EpubPageTurnHost.PreloadSlot.NEXT, EpubPageTarget(0, 2), ++generation)
+        var commits = 0
+        host.onPageCommit = { _, target, count ->
+            commits++
+            host.setCurrentPage(target.chapterIndex, target.pageIndex, count)
+            // Stand in for the reader: the following page is prepared after each commit.
+            val next = EpubPageTarget(0, target.pageIndex + 1)
+            host.markPreloadLoading(EpubPageTurnHost.PreloadSlot.NEXT, next, ++generation)
+            host.markPreloadReady(EpubPageTurnHost.PreloadSlot.NEXT, next, generation, next.pageIndex, 10, host.nextWebView)
+        }
+        // Three quick swipes while page 2 is still loading: none may replace another.
+        repeat(3) { index ->
+            event(MotionEvent.ACTION_DOWN, 350f, index * 200L)
+            event(MotionEvent.ACTION_MOVE, 300f, index * 200L + 30)
+            event(MotionEvent.ACTION_MOVE, 60f, index * 200L + 80)
+            event(MotionEvent.ACTION_UP, 60f, index * 200L + 100)
+            shadowOf(Looper.getMainLooper()).idle()
+        }
+        assertEquals(0, commits)
+        host.markPreloadReady(EpubPageTurnHost.PreloadSlot.NEXT, EpubPageTarget(0, 2), generation, 2, 10, host.nextWebView)
+        repeat(12) {
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
+            host.computeScroll(); frame().recycle()
+        }
+        assertEquals(3, commits)
+        assertEquals(EpubPageTarget(0, 4), host.currentPageTarget())
+    }
+
+    @Test fun pressDuringATurnThatEndsBeforeTheMoveFollowsTheFinger() {
+        var commits = 0
+        host.onPageCommit = { _, target, count ->
+            commits++
+            host.setCurrentPage(target.chapterIndex, target.pageIndex, count)
+        }
+        // A tap turn is still animating when the finger lands.
+        assertTrue(host.requestTurn(1))
+        event(MotionEvent.ACTION_DOWN, 100f, 0)
+        // That turn ends before the first move arrives.
+        repeat(3) {
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200))
+            host.computeScroll(); frame().recycle()
+        }
+        assertEquals(1, commits)
+        assertEquals(EpubPageTarget(0, 2), host.currentPageTarget())
+        // Dragging back toward page 1 must move the sheets with the finger.
+        event(MotionEvent.ACTION_MOVE, 220f, 650)
+        assertTrue(host.ownsPage(host.activeWebView))
+        event(MotionEvent.ACTION_MOVE, 330f, 700)
+        event(MotionEvent.ACTION_UP, 330f, 720)
+        repeat(4) {
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200))
+            host.computeScroll(); frame().recycle()
+        }
+        assertEquals(2, commits)
+        assertEquals(EpubPageTarget(0, 1), host.currentPageTarget())
+    }
+
+    @Test fun warmPageMayPrepareDuringAnAutomaticTurnAndFollowsReadingOrder() {
+        // setUp: page 0/1 of 3, with pages 0/0 and 0/2 ready on either side.
+        assertEquals(EpubPageTarget(1, 0), host.pageBeyond(EpubPageTurnHost.PreloadSlot.NEXT, chapterCount = 3))
+        assertNull(host.pageBeyond(EpubPageTurnHost.PreloadSlot.NEXT, chapterCount = 1))
+        assertNull(host.pageBeyond(EpubPageTurnHost.PreloadSlot.PREVIOUS, chapterCount = 3))
+        assertTrue(host.requestTurn(1))
+        assertTrue(host.canPrepareWarmPage())
+        host.markPreloadLoading(EpubPageTurnHost.PreloadSlot.PREVIOUS, EpubPageTarget(0, 0), 9)
+        assertNull(host.pageBeyond(EpubPageTurnHost.PreloadSlot.PREVIOUS, chapterCount = 3))
+        assertFalse(host.canPrepareWarmPage())
+    }
+
+    @Test fun stillMenuTapDropsQueuedTurns() {
+        host.onHasPotentialTurn = { direction, current, count ->
+            if (direction > 0) current.pageIndex + 1 < count else current.pageIndex > 0
+        }
+        host.setCurrentPage(0, 1, 10)
+        host.markPreloadLoading(EpubPageTurnHost.PreloadSlot.NEXT, EpubPageTarget(0, 2), 11)
+        var commits = 0
+        host.onPageCommit = { _, target, count ->
+            commits++
+            host.setCurrentPage(target.chapterIndex, target.pageIndex, count)
+        }
+        event(MotionEvent.ACTION_DOWN, 350f, 0)
+        event(MotionEvent.ACTION_MOVE, 300f, 30)
+        event(MotionEvent.ACTION_MOVE, 60f, 80)
+        event(MotionEvent.ACTION_UP, 60f, 100)
+        // A still tap in the middle means "stop": the queued turn must not play later.
+        event(MotionEvent.ACTION_DOWN, 200f, 300)
+        event(MotionEvent.ACTION_UP, 200f, 360)
+        shadowOf(Looper.getMainLooper()).idle()
+        host.markPreloadReady(EpubPageTurnHost.PreloadSlot.NEXT, EpubPageTarget(0, 2), 11, 2, 10, host.nextWebView)
+        repeat(4) {
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
+            host.computeScroll(); frame().recycle()
+        }
+        assertEquals(0, commits)
+        assertEquals(EpubPageTarget(0, 1), host.currentPageTarget())
+    }
+
     private fun event(action: Int, x: Float, elapsed: Long) {
         val event = MotionEvent.obtain(down, down + elapsed, action, x, 400f, 0)
         host.dispatchTouchEvent(event)

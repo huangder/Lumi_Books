@@ -164,6 +164,8 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_OPEN_DESTINATION = "open_destination"
         const val EXTRA_OPEN_FOLDER_ID = "open_folder_id"
         const val DESTINATION_BOOKSHELF = "bookshelf"
+        /** Opens the hidden library page; it shows its own passcode panel unless already unlocked. */
+        const val DESTINATION_HIDDEN_LIBRARY = "hidden_library"
     }
 
     private var systemDarkMode by mutableStateOf(false)
@@ -172,6 +174,7 @@ class MainActivity : ComponentActivity() {
     private var requestedOpenBookDirect by mutableStateOf(false)
     private var requestedOpenBookshelf by mutableStateOf(false)
     private var requestedOpenFolderId by mutableStateOf<String?>(null)
+    private var requestedOpenHiddenLibrary by mutableStateOf(false)
     private val authorizedStorageManager = AuthorizedStorageManager()
 
     override fun attachBaseContext(newBase: android.content.Context) {
@@ -260,6 +263,8 @@ class MainActivity : ComponentActivity() {
         requestedOpenBookshelf = requestedBookId == null &&
             (requestedOpenFolderId != null ||
                 intent?.getStringExtra(EXTRA_OPEN_DESTINATION) == DESTINATION_BOOKSHELF)
+        requestedOpenHiddenLibrary = requestedBookId == null &&
+            intent?.getStringExtra(EXTRA_OPEN_DESTINATION) == DESTINATION_HIDDEN_LIBRARY
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -889,6 +894,8 @@ class MainActivity : ComponentActivity() {
                                     requestedOpenBookDirect = requestedOpenBookDirect,
                                     requestedOpenBookshelf = requestedOpenBookshelf,
                                     requestedOpenFolderId = requestedOpenFolderId,
+                                    requestedOpenHiddenLibrary = requestedOpenHiddenLibrary,
+                                    onOpenHiddenLibraryRequestConsumed = { requestedOpenHiddenLibrary = false },
                                     onBeforeOpenDifferentBook = ttsController::stop,
                                     onOpenBookRequestConsumed = {
                                         requestedOpenBookId = null

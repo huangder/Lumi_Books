@@ -36,6 +36,19 @@ internal fun epubAdjacentPreloadTargets(
     return previous to next
 }
 
+/**
+ * True when the reader's update block runs with a chapter parameter that has not
+ * changed while the host has already committed another chapter. AndroidView can
+ * re-run its previous update lambda after a host commit and before recomposition
+ * delivers the new chapter; that run must not reload the chapter on screen.
+ */
+internal fun isStaleEpubChapterParameter(
+    requestedChapter: Int,
+    previousRequestedChapter: Int,
+    loadedChapter: Int
+): Boolean = requestedChapter == previousRequestedChapter && loadedChapter >= 0 &&
+    loadedChapter != requestedChapter
+
 internal fun epubDocumentMessageMatches(
     messageDocumentUrl: String?,
     expectedDocumentUrl: String

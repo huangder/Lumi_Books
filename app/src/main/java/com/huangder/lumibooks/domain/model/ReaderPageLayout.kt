@@ -88,6 +88,7 @@ enum class ReaderCornerContent(val key: String) {
     NONE("none"),
     CHAPTER_INFO("chapter_info"),
     BOOK_PROGRESS("book_progress"),
+    CHAPTER_PROGRESS("chapter_progress"),
     PAGE_NUMBER("page_number"),
     GLOBAL_PAGE_NUMBER("global_page_number"),
     BATTERY("battery"),

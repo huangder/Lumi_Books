@@ -188,7 +188,7 @@ object TxtTocRuleCompiler {
     }
 
     /**
-     * Third-party patterns rely on look-around (12 of the 26 shipped defaults use `(?<=...)`), so
+     * Imported third-party patterns may rely on look-around, so
      * that guard is relaxed here while back-references and nested quantifiers stay forbidden to
      * keep catastrophic backtracking bounded.
      */
@@ -372,8 +372,8 @@ object TxtTocRuleCodec {
 object LegadoTxtTocRuleCodec {
     const val ID_PREFIX = "legado-"
 
-    /** Asset holding the third-party default rule set. */
-    const val PRESET_ASSET = "legado_txt_toc_rules.json"
+    /** Lumi-authored presets encoded in the interoperable rule format. */
+    const val PRESET_ASSET = "lumi_txt_toc_presets.json"
 
     private val bookSourceKeys = listOf(
         "bookSourceUrl",
@@ -461,6 +461,12 @@ object LegadoTxtTocRuleCodec {
         val existingIds = existing.mapTo(HashSet()) { it.id }
         imported.filterNotTo(merged) { it.id in existingIds }
         return normalize(merged)
+    }
+
+    /** Preset updates only add missing IDs; edited or previously imported rules remain intact. */
+    fun mergePreset(existing: List<TxtTocRule>, preset: List<TxtTocRule>): List<TxtTocRule> {
+        val ids = existing.mapTo(HashSet()) { it.id }
+        return normalize(existing + preset.filterNot { it.id in ids })
     }
 
     private fun toModel(item: JSONObject): TxtTocRule? {

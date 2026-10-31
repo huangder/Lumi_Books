@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hidden_library_title">非表示の本棚</string>
+    <plurals name="hidden_library_book_count">
+        <item quantity="other">%d 冊</item>
+    </plurals>
+    <string name="hidden_library_empty_title">非表示の本はまだありません</string>
+    <string name="hidden_library_empty_body">本棚で本を長押しして「非表示」を選びます</string>
+    <string name="hidden_library_hide">非表示</string>
+    <string name="hidden_library_unhide">再表示</string>
+    <plurals name="hidden_library_hidden_message">
+        <item quantity="other">%d 冊を非表示にしました。本棚の上端で引き下げると表示できます</item>
+    </plurals>
+    <plurals name="hidden_library_unhidden_message">
+        <item quantity="other">%d 冊を本棚に戻しました</item>
+    </plurals>
+
+    <string name="passcode_title_enter">パスコードを入力</string>
+    <string name="passcode_title_current">現在のパスコードを入力</string>
+    <string name="passcode_title_create">パスコードを設定</string>
+    <string name="passcode_title_new">新しいパスコードを設定</string>
+    <string name="passcode_title_confirm">もう一度入力</string>
+    <string name="passcode_subtitle_create">非表示の本棚を開く 6 桁のパスコードを設定します</string>
+    <string name="passcode_subtitle_create_for_hide">非表示にする前に 6 桁のパスコードを設定してください。非表示の本棚を開くときに使います</string>
+    <plurals name="passcode_error_wrong">
+        <item quantity="other">パスコードが違います。あと %d 回</item>
+    </plurals>
+    <string name="passcode_error_mismatch">一致しません。もう一度設定してください</string>
+    <string name="passcode_locked_out">試行回数が多すぎます。%1$s後にもう一度お試しください</string>
+    <string name="passcode_forgot">パスコードを忘れた場合</string>
+    <string name="passcode_reset_prompt_title">本人確認してパスコードをリセット</string>
+    <string name="passcode_reset_unavailable">先にシステム設定で画面ロックを設定してから、パスコードをリセットしてください</string>
+    <string name="passcode_backspace">削除</string>
+    <string name="passcode_digits_entered">%2$d 桁中 %1$d 桁入力済み</string>
+    <string name="passcode_use_biometric">指紋または顔でロック解除</string>
+    <string name="passcode_changed">パスコードを更新しました</string>
+
+    <string name="biometric_prompt_title">非表示の本棚のロックを解除</string>
+    <string name="biometric_prompt_use_passcode">パスコードを使用</string>
+    <string name="biometric_offer_title">指紋または顔認証を使いますか？</string>
+    <string name="biometric_offer_body">入力せずに非表示の本棚を開けます。認証に失敗してもパスコードで開けます</string>
+    <string name="biometric_offer_enable">オンにする</string>
+    <string name="biometric_offer_skip">後で</string>
+
+    <string name="category_privacy">プライバシー</string>
+    <string name="privacy_hidden_library_summary">本棚の上端で引き下げても開けます</string>
+    <string name="privacy_hidden_library_no_passcode">初回にパスコードを設定します</string>
+    <string name="privacy_section_access">アクセス方法</string>
+    <string name="privacy_change_passcode">パスコードを変更</string>
+    <string name="privacy_biometric_unlock">指紋または顔認証</string>
+    <string name="privacy_biometric_unlock_summary">非表示の本棚を開くときに生体認証を先に使います</string>
+    <string name="privacy_hidden_footer">非表示の本は本棚、ホーム、検索、ウィジェット、統計、メモ一覧に表示されません。読書時間は毎日の目標と連続記録に含まれず、ストレージでは「その他」に含まれます。</string>
+
+    <string name="storage_other">その他</string>
+</resources>

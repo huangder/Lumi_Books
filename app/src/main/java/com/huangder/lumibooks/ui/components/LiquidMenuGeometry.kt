@@ -13,10 +13,13 @@ import com.huangder.lumibooks.ui.theme.AppShapes
 import com.huangder.lumibooks.ui.theme.toAppPath
 import androidx.compose.ui.util.lerp
 import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /** A single, reversible phase drives the outline, source handoff and both optical layers. */
 internal object LiquidMenuGeometry {
@@ -66,6 +69,16 @@ internal object LiquidMenuGeometry {
     }
 }
 
+/** Largest gap between the warped outline and its polyline, in pixels. */
+private const val OutlineTolerancePx = 0.01f
+
+/** Guards degenerate inputs; regular frames need far fewer steps. */
+private const val MaxStepsPerSegment = 256
+
+/** Segments needing more uniform steps than this are halved and stepped separately. */
+private const val UniformStepLimit = 4
+private const val MaxSegmentSplits = 8
+
 internal data class LiquidMenuFrame(
     val bounds: Rect,
     val radius: Float,
@@ -88,37 +101,58 @@ internal data class LiquidMenuFrame(
         )
     }
 
+    /**
+     * Uniform steps needed so the warped [from]..[to] segment deviates from its polyline by at
+     * most [OutlineTolerancePx]. Only x is warped, and along a straight segment it is a
+     * polynomial in t whose second derivative is bounded here; a chord over a step of length h
+     * then deviates by at most bound * h^2 / 8.
+     */
+    private fun warpedSteps(from: Offset, to: Offset): Int {
+        if (neck == 0f || bounds.height <= 0f) return 1
+        val dx = to.x - from.x
+        val dy = (to.y - from.y) / bounds.height
+        if (dy == 0f) return 1
+        fun nearness(y: Float): Float {
+            val v = (y / bounds.height).coerceIn(0f, 1f)
+            return if (nearY < 0f) 1f - v else v
+        }
+        val near = maxOf(nearness(from.y), nearness(to.y))
+        val center = bounds.width / 2f
+        // x' = x - (x - c) * p + side * c * p with p = neck * near^3 and near linear in t.
+        val slope = 3f * neck * near * near * abs(dy)
+        val bend = 6f * neck * near * dy * dy
+        val reach = maxOf(abs(from.x - center), abs(to.x - center)) + center
+        val curvature = 2f * abs(dx) * slope + reach * bend
+        if (curvature <= 0f) return 1
+        return ceil(sqrt(curvature / (8f * OutlineTolerancePx))).toInt().coerceIn(1, MaxStepsPerSegment)
+    }
+
+    /**
+     * Adds the warped start of [from]..[to] plus its interior steps. Long runs are halved first,
+     * so each half is stepped by its own (smaller) bend instead of the worst case of the whole.
+     */
+    private fun addWarpedSegment(from: Offset, to: Offset, points: MutableList<Offset>, depth: Int = 0) {
+        val steps = warpedSteps(from, to)
+        if (steps > UniformStepLimit && depth < MaxSegmentSplits) {
+            val middle = (from + to) / 2f
+            addWarpedSegment(from, middle, points, depth + 1)
+            addWarpedSegment(middle, to, points, depth + 1)
+            return
+        }
+        for (step in 0 until steps) points.add(warp(from + (to - from) * (step / steps.toFloat())))
+    }
+
     fun outlinePoints(continuous: Boolean = false): List<Offset> {
         if (continuous) {
             val outline = AppShapes.rounded(radius).createOutline(bounds.size, LayoutDirection.Ltr, Density(1f))
-            // Keep the original subpixel corner accuracy. Subdivide straight edges only
-            // where the neck actually bends them, rather than adding a vertex every 2px.
+            // The corners keep the subpixel flattening of the rounded outline itself. Straight
+            // runs only gain vertices where the neck actually bends them (see warpedSteps).
             val samples = outline.toAppPath().asAndroidPath().approximate(0.01f)
-            val points = ArrayList<Offset>()
-            fun segment(a: Offset, b: Offset, warpedA: Offset, warpedB: Offset, depth: Int) {
-                val delta = b - a
-                val warpedDelta = warpedB - warpedA
-                // The warp is cubic in y: checking both quarter points also catches
-                // an inflection whose midpoint happens to lie on the chord.
-                var needsSplit = false
-                if (depth < 12) for (step in 1..3) {
-                    val t = step * 0.25f
-                    if ((warp(a + delta * t) - (warpedA + warpedDelta * t)).getDistanceSquared() > 0.0001f) {
-                        needsSplit = true
-                        break
-                    }
-                }
-                if (needsSplit) {
-                    val middle = a + delta * 0.5f
-                    val warpedMiddle = warp(middle)
-                    segment(a, middle, warpedA, warpedMiddle, depth + 1)
-                    segment(middle, b, warpedMiddle, warpedB, depth + 1)
-                } else points.add(warpedA)
-            }
+            val points = ArrayList<Offset>(samples.size / 3)
             for (i in 3 until samples.size step 3) {
-                val a = Offset(samples[i - 2], samples[i - 1])
-                val b = Offset(samples[i + 1], samples[i + 2])
-                segment(a, b, warp(a), warp(b), 0)
+                val from = Offset(samples[i - 2], samples[i - 1])
+                val to = Offset(samples[i + 1], samples[i + 2])
+                addWarpedSegment(from, to, points)
             }
             return points
         }
@@ -155,19 +189,19 @@ internal class LiquidMenuShape(
     private val frame: LiquidMenuFrame,
     private val continuous: Boolean = true
 ) : Shape {
-    // Shadow, backdrop, content clip and optical rim ask for the same outline within
-    // one frame. Share the immutable result instead of rebuilding the warped path.
-    private var cachedSize = Size.Unspecified
-    private var cachedDirection = LayoutDirection.Ltr
-    private var cachedOutline: Outline? = null
+    // One instance belongs to one animation frame, and its shadow, backdrop, content clip and
+    // optical rim all ask for the same outline. Remember the last answer for repeat requests.
+    private var lastRequest: Pair<Size, LayoutDirection>? = null
+    private var lastOutline: Outline? = null
 
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
-        cachedOutline?.let { if (size == cachedSize && layoutDirection == cachedDirection) return it }
-        return buildOutline(size, layoutDirection).also {
-            cachedSize = size
-            cachedDirection = layoutDirection
-            cachedOutline = it
-        }
+        val request = size to layoutDirection
+        val reusable = lastOutline?.takeIf { request == lastRequest }
+        if (reusable != null) return reusable
+        val outline = buildOutline(size, layoutDirection)
+        lastRequest = request
+        lastOutline = outline
+        return outline
     }
 
     private fun buildOutline(size: Size, layoutDirection: LayoutDirection): Outline {

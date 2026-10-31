@@ -76,6 +76,15 @@ private class PagedSelectableTextView(context: Context) : RoundedHighlightTextVi
  * 来自不同排版结果而产生累计偏移。
  */
 class PageContentView(context: Context) : FrameLayout(context) {
+    /** Record ink into the curl's own display list, without borrowing hidden child RenderNodes. */
+    internal fun drawCurlFrame(canvas: android.graphics.Canvas) {
+        background?.let {
+            it.setBounds(0, 0, width, height)
+            it.draw(canvas)
+        }
+        drawReaderCurlChildren(canvas, this)
+    }
+
     internal var initialSelectionRangeProvider: ((Int, IntRange) -> IntRange?)? = null
     var longPressSelectionRange: LongPressSelectionRange = LongPressSelectionRange.DEFAULT
         set(value) {

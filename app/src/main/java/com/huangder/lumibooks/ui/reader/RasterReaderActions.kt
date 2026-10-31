@@ -51,7 +51,8 @@ internal fun RasterReaderActionRow(
     onImageAdjustmentsClick: () -> Unit,
     onConversionClick: () -> Unit,
     modifier: Modifier = Modifier,
-    glassContentScrimColor: Color = AppColors.WindowBg.copy(alpha = 0.18f)
+    glassContentScrimColor: Color = AppColors.WindowBg.copy(alpha = 0.18f),
+    onNotesClick: (() -> Unit)? = null
 ) {
     val annotationLabel = stringResource(R.string.pdf_annotation_tool)
     val bookmarksLabel = stringResource(R.string.reader_bookmark)
@@ -72,6 +73,8 @@ internal fun RasterReaderActionRow(
     val moreExpanded = menuHost?.activeMenu?.sourceId == moreMenuId
     val currentOnAdjustmentsClick by rememberUpdatedState(onImageAdjustmentsClick)
     val currentOnConversionClick by rememberUpdatedState(onConversionClick)
+    val currentOnNotesClick by rememberUpdatedState(onNotesClick)
+    val notesLabel = stringResource(R.string.menu_note)
     val menuSurfaceColor = AppColors.CardBg
     val menuContentColor = AppColors.TextPrimary
 
@@ -84,6 +87,9 @@ internal fun RasterReaderActionRow(
                 add(LiquidGlassMenuItem(adjustmentLabel, AppIcons.Gear) { currentOnAdjustmentsClick() })
             }
             if (!isComic) {
+                if (onNotesClick != null) {
+                    add(LiquidGlassMenuItem(notesLabel, AppIcons.PencilSimple) { currentOnNotesClick?.invoke() })
+                }
                 add(LiquidGlassMenuItem(conversionLabel, AppIcons.Books) { currentOnConversionClick() })
             }
         }

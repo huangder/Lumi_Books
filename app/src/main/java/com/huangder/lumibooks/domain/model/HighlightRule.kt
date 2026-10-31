@@ -13,6 +13,8 @@ data class HighlightRule(
     val underlineWidth: Float = 1f,
     val fontWeight: Int = 400,
     val isItalic: Boolean = false,
+    val highlightMode: Int = HIGHLIGHT_FILLED,
+    val highlightColor: Int? = null,
     /** Optional reader font override. Blank means inherit the book's body font. */
     val fontType: String = "",
     val sampleText: String = "",
@@ -27,6 +29,9 @@ data class HighlightRule(
         const val UNDERLINE_DOUBLE = 2
         const val UNDERLINE_WAVE = 3
         const val UNDERLINE_DASHED = 4
+        const val HIGHLIGHT_FILLED = 0
+        const val HIGHLIGHT_OUTLINE = 1
+        const val HIGHLIGHT_NONE = 2
     }
 }
 
@@ -51,7 +56,9 @@ data class RuleStyle(
     val fontWeight: Int,
     val italic: Boolean,
     /** Optional reader font override. Blank means inherit the book's body font. */
-    val fontType: String = ""
+    val fontType: String = "",
+    val highlightMode: Int = HighlightRule.HIGHLIGHT_FILLED,
+    val highlightColor: Int? = null
 )
 
 data class RuleMatch(

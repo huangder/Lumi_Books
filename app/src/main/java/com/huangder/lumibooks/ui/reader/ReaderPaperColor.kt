@@ -2,6 +2,32 @@ package com.huangder.lumibooks.ui.reader
 
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.ReaderThemeSuites
+import com.huangder.lumibooks.data.local.ReaderPreferencesSnapshot
+import com.huangder.lumibooks.domain.model.Book
+
+/** Read only the saved appearance; do not construct the reader during the hero motion. */
+internal fun ReaderPreferencesSnapshot.resolveOpeningPaperColor(book: Book, appIsDark: Boolean): Int {
+    val suites = readerThemeSuiteState
+    val readerId = if (readerThemeSuiteBookScoped) {
+        readerThemeSuiteBookActiveId?.takeIf { id -> suites.suites.any { it.id == id } }
+    } else null
+    val bookId = if (readerThemeSuiteBookScoped) {
+        readerThemeSuiteBookActiveBookLayoutId?.takeIf { id -> suites.suites.any { it.id == id } }
+    } else null
+    return ReaderUiState(
+        book = book,
+        renderMode = renderMode,
+        readerDisplayMode = readerDisplayMode,
+        eInkModeEnabled = eInkModeEnabled,
+        readerTheme = readerTheme,
+        readerBackgroundSelection = readerBackgroundSelection,
+        readerBackgroundColorSelection = readerBackgroundColorSelection,
+        customReaderBackgrounds = customReaderBackgrounds,
+        readerThemeSuites = suites.suites,
+        activeReaderLayoutThemeSuiteId = readerId ?: suites.activeSuiteId,
+        activeBookLayoutThemeSuiteId = bookId ?: suites.activeBookLayoutSuiteId
+    ).resolveReaderPaperColor(appIsDark)
+}
 
 internal fun publisherFallbackPaperColor(nightDisplay: Boolean): Int =
     if (nightDisplay) 0xFF111111.toInt() else 0xFFFBFBFC.toInt()

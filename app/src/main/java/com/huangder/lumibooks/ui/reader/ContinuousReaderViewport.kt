@@ -3,6 +3,10 @@ package com.huangder.lumibooks.ui.reader
 import android.text.Layout
 import android.text.Spanned
 import android.text.style.ImageSpan
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.remember
 import com.huangder.lumibooks.domain.model.ReaderTextAlignment
 import com.huangder.lumibooks.ui.reader.engine.ResolvedReaderTypeface
 import kotlin.math.roundToInt
@@ -36,6 +40,20 @@ internal data class ContinuousViewportAnchor(
     val imageFraction: Float? = null,
     val imageIndex: Int? = null
 )
+
+/** Only the return button's side matters to composition, not each scroll offset. */
+@Composable
+internal fun rememberContinuousReturnSide(
+    targetChapter: Int?, targetCharacter: Int?, readingChapter: Int,
+    anchor: State<ContinuousViewportAnchor?>,
+    visibleCharacters: State<List<ReaderVisibleCharacters>>
+): State<ReaderReturnSide?> = remember(targetChapter, targetCharacter, readingChapter, anchor, visibleCharacters) {
+    derivedStateOf {
+        if (targetChapter == null || targetCharacter == null) null else
+            readerReturnSideAtCharacter(targetChapter, targetCharacter, readingChapter,
+                anchor.value?.character ?: 0, visibleCharacters.value)
+    }
+}
 
 private data class ImagePosition(val character: Int, val top: Int, val height: Int)
 

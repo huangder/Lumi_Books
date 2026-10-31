@@ -22,6 +22,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- 隐藏书库的指纹/面容解锁（平台 BiometricPrompt，API 29+）。 -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
     <!-- Android 11+ 允许 TextToSpeech 发现并绑定系统语音引擎。 -->
     <queries>
@@ -285,6 +287,10 @@
             android:theme="@style/Theme.EBookReader"
             android:windowSoftInputMode="adjustResize" />
 
+
+
+
+
         <activity
             android:name=".ui.settings.FeedbackActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
@@ -314,6 +320,8 @@
             android:name=".ui.excerpt.ExcerptActivity"
             android:exported="false"
             android:theme="@style/Theme.EBookReader" />
+
+
 
         <activity
             android:name=".ui.bookshelf.BookNotesActivity"

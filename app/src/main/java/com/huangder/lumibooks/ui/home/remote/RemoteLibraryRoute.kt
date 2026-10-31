@@ -78,6 +78,8 @@ internal fun RemoteLibraryRoute(
     val openForm: (RemoteSource?) -> Unit = { existing ->
         context.startActivity(RemoteSourceFormActivity.createIntent(context, type, existing))
     }
+    val mayAddSource = com.huangder.lumibooks.edition.rememberRemoteSourcePermission(state.totalSourceCount)
+    val addSource = { if (mayAddSource()) openForm(null) }
     val clearSelection = {
         selectionMode = false
         selection = emptySet()
@@ -127,7 +129,7 @@ internal fun RemoteLibraryRoute(
                 type = type,
                 sources = state.sources,
                 onBack = goBack,
-                onAdd = { openForm(null) },
+                onAdd = addSource,
                 onOpen = { source ->
                     requestLocalNetworkPermission(source.url, { viewModel.openSource(source) }, {
                         Toast.makeText(context, context.getString(R.string.remote_error_local_network), Toast.LENGTH_SHORT).show()

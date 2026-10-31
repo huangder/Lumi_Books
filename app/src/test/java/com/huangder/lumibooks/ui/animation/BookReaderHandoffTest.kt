@@ -218,4 +218,72 @@ class BookReaderHandoffTest {
         advanceUntilIdle()
         assertEquals(BookReaderTransitionPhase.Library, state.phase)
     }
+
+    private class StoredPage : androidx.compose.ui.graphics.ImageBitmap {
+        override val width = 108
+        override val height = 240
+        override val config = androidx.compose.ui.graphics.ImageBitmapConfig.Argb8888
+        override val colorSpace = androidx.compose.ui.graphics.colorspace.ColorSpaces.Srgb
+        override val hasAlpha = false
+        override fun prepareToDraw() = Unit
+        override fun readPixels(buffer: IntArray, startX: Int, startY: Int, width: Int, height: Int,
+            bufferOffset: Int, stride: Int) = Unit
+    }
+
+    @Test fun `stored page stays up through the wait and the reader appears opaque below it`() = runTest {
+        val state = transition()
+        val page = StoredPage()
+        state.startOpen(book, null, source, 8f, openingSnapshot = page)
+        advanceTimeBy(720)
+        assertEquals(BookReaderTransitionPhase.ReaderLoading, state.phase)
+        assertSame(page, state.openingSnapshot)
+        assertEquals(0f, state.readerLayerAlpha, 0f)
+        state.markReaderReady()
+        runCurrent()
+        assertEquals(BookReaderTransitionPhase.Ready, state.phase)
+        assertEquals(1f, state.readerLayerAlpha, 0f)
+        advanceTimeBy(80)
+        assertTrue(state.shellAlphaSnapshot.value in 0.01f..0.99f)
+        assertEquals(1f, state.readerLayerAlpha, 0f)
+        advanceTimeBy(180)
+        assertEquals(BookReaderTransitionPhase.Reader, state.phase)
+        assertNull(state.openingSnapshot)
+        advanceUntilIdle()
+    }
+
+    @Test fun `stored page decoded late joins the same opening only`() = runTest {
+        val state = transition()
+        state.startOpen(book, null, source, 8f)
+        val firstSession = state.sessionId
+        state.fallbackToLibrary()
+        state.startOpen(book, null, source, 8f)
+        state.offerOpeningSnapshot(StoredPage(), firstSession)
+        runCurrent()
+        assertNull(state.openingSnapshot)
+        val page = StoredPage()
+        state.offerOpeningSnapshot(page, state.sessionId)
+        runCurrent()
+        assertSame(page, state.openingSnapshot)
+        advanceUntilIdle()
+    }
+
+    @Test fun `stored page arriving after the reveal began is ignored`() = runTest {
+        val state = transition()
+        state.startOpen(book, null, source, 8f)
+        state.markReaderReady()
+        advanceTimeBy(720)
+        assertEquals(BookReaderTransitionPhase.Ready, state.phase)
+        state.offerOpeningSnapshot(StoredPage())
+        runCurrent()
+        assertNull(state.openingSnapshot)
+        advanceUntilIdle()
+        assertEquals(BookReaderTransitionPhase.Reader, state.phase)
+    }
+
+    @Test fun `cover flow never uses a stored window page`() = runTest {
+        val state = transition()
+        state.startOpen(book, null, source, 8f, BookReaderPresentation.CoverFlow, openingSnapshot = StoredPage())
+        assertNull(state.openingSnapshot)
+        advanceUntilIdle()
+    }
 }

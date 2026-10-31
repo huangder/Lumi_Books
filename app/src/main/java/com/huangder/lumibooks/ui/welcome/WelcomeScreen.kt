@@ -108,6 +108,8 @@ import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
 import com.huangder.lumibooks.ui.components.LiquidGlassButton
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
+import com.huangder.lumibooks.ui.components.adaptiveSheetFrame
+import com.huangder.lumibooks.ui.components.adaptiveSheetShape
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.AppColors
@@ -1697,18 +1699,16 @@ private fun PolicyBottomSheet(
                 }
         )
 
-        // 容器层（滑入动画）
+        // 容器层（滑入动画）；平板为居中卡片
+        val sheetShape = adaptiveSheetShape(AppRoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.88f)
-                .align(Alignment.BottomCenter)
+            modifier = adaptiveSheetFrame(heightFraction = 0.88f)
                 .materialBottomSheetMotion(containerOffsetY.value, predictiveBackProgress)
                 .shadow(
                     elevation = 24.dp,
-                    shape = AppRoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
+                    shape = sheetShape
                 )
-                .background(cardBg, AppRoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
+                .background(cardBg, sheetShape)
                 .padding(top = 24.dp, start = 24.dp, end = 24.dp)
         ) {
             // 标题栏

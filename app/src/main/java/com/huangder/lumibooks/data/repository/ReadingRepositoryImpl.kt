@@ -19,6 +19,9 @@ import com.huangder.lumibooks.domain.repository.ReadingRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.Dispatchers
 import androidx.room.withTransaction
 import javax.inject.Inject
 import java.util.UUID
@@ -34,6 +37,26 @@ class ReadingRepositoryImpl @Inject constructor(
     private val syncIdentityStore: SyncIdentityStore,
     private val database: AppDatabase
 ) : ReadingRepository {
+    override suspend fun appendActivityDuration(bookId: String, date: String, readingDuration: Long, listeningDuration: Long, startTime: Long, endTime: Long) {
+        require(readingDuration >= 0 && listeningDuration >= 0)
+        if (readingDuration == 0L && listeningDuration == 0L) return
+        val deviceId = syncIdentityStore.deviceId()
+        database.withTransaction {
+            val existing = readingRecordDao.getRecordByBookAndDate(bookId, date, deviceId)
+            if (existing == null) {
+                readingRecordDao.insertRecord(ReadingRecordEntity(bookId = bookId, date = date,
+                    duration = readingDuration, listeningDuration = listeningDuration,
+                    startTime = startTime, endTime = endTime, sourceDeviceId = deviceId))
+            } else {
+                readingRecordDao.appendActivityDuration(existing.id, readingDuration, listeningDuration, startTime, endTime)
+            }
+        }
+    }
+
+    override fun getActivityDurationByBookId(bookId: String) = readingRecordDao.getActivityDurationByBookId(bookId)
+    override fun getActivityDurationBetweenDates(startDate: String, endDate: String) =
+        readingRecordDao.getActivityDurationBetweenDates(startDate, endDate)
+
 
     override fun getRecordsByDate(date: String): Flow<List<ReadingRecord>> {
         return readingRecordDao.getRecordsByDate(date).map { entities ->
@@ -174,7 +197,7 @@ class ReadingRepositoryImpl @Inject constructor(
         val deleted = catalog.filter { it.isDeleted }.mapTo(mutableSetOf()) { it.name }
         (catalog.filterNot { it.isDeleted }.map { it.name } + (notes + bookmarks).flatMap(AnnotationTags::decode))
             .filterNot { it in deleted }.distinct().sorted()
-    }
+    }.distinctUntilChanged().flowOn(Dispatchers.Default)
 
     override suspend fun createAnnotationTag(name: String) {
         database.withTransaction {
@@ -185,7 +208,7 @@ class ReadingRepositoryImpl @Inject constructor(
     private suspend fun rememberAnnotationTags(tags: List<String>, updatedAt: Long, revive: Boolean = false) {
         val existing = if (revive) database.annotationTagDao().getAllTags().associateBy { it.name } else emptyMap()
         val entries = AnnotationTags.normalize(tags).map { name ->
-            AnnotationTagEntity(name, maxOf(updatedAt, (existing[name]?.updatedAt ?: 0L) + 1))
+            AnnotationTagEntity(name, maxOf(updatedAt, (existing[name]?.updatedAt ?: 0L) + 1), groupId = existing[name]?.groupId)
         }
         if (entries.isEmpty()) return
         if (revive) database.annotationTagDao().upsertTags(entries)
@@ -198,8 +221,12 @@ class ReadingRepositoryImpl @Inject constructor(
         if (from.isEmpty() || to.isEmpty() || from == to) return
         database.withTransaction {
             val now = nextAnnotationTagTime(setOf(from, to))
+            val catalog = database.annotationTagDao().getAllTags().associateBy { it.name }
+            val destination = catalog[to]?.takeUnless { it.isDeleted }
+            val groupId = if (destination != null) destination.groupId else catalog[from]?.groupId
             database.annotationTagDao().upsertTags(listOf(
-                AnnotationTagEntity(from, now, isDeleted = true), AnnotationTagEntity(to, now)
+                AnnotationTagEntity(from, now, isDeleted = true, groupId = catalog[from]?.groupId),
+                AnnotationTagEntity(to, now, groupId = groupId)
             ))
             noteDao.getAllNotes().forEach { item ->
                 val tags = AnnotationTags.decode(item.tagsJson)
@@ -290,10 +317,6 @@ class ReadingRepositoryImpl @Inject constructor(
         noteDao.deleteAllNotesByBookId(bookId)
     }
 
-    override suspend fun deleteLegacyPdfAnnotationsByBookId(bookId: String) {
-        noteDao.deleteLegacyPdfAnnotationsByBookId(bookId)
-    }
-
     override fun getMostReadBooksBetween(startDate: String, endDate: String, limit: Int): Flow<List<BookDuration>> =
         readingRecordDao.getMostReadBooksBetween(startDate, endDate, limit)
 
@@ -313,6 +336,7 @@ class ReadingRepositoryImpl @Inject constructor(
             bookId = bookId,
             date = date,
             duration = duration,
+            listeningDuration = listeningDuration,
             startTime = startTime,
             endTime = endTime,
             sourceDeviceId = sourceDeviceId,
@@ -326,6 +350,7 @@ class ReadingRepositoryImpl @Inject constructor(
             bookId = bookId,
             date = date,
             duration = duration,
+            listeningDuration = listeningDuration,
             startTime = startTime,
             endTime = endTime,
             sourceDeviceId = sourceDeviceId,

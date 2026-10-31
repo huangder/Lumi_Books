@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tag_picker_uncategorized">未分类</string>
+    <string name="tag_picker_group_count">%1$d 个标签 · 已选 %2$d 个</string>
+    <string name="tag_picker_save_failed">标签保存失败，请重试</string>
+</resources>

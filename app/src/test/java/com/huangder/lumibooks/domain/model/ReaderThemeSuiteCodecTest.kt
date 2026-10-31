@@ -6,6 +6,45 @@ import org.junit.Test
 
 class ReaderThemeSuiteCodecTest {
     @Test
+    fun cornerMarginsSurvivePersistenceAndPortableExportInEveryMode() {
+        val settings = ReaderThemeSettings(cornerMargins = ReaderCornerMargins(0f, null, 35f, 45f))
+        val suite = ReaderThemeSuite(
+            id = "corner-margins", customName = "Margins", settings = settings,
+            lightSettings = settings.copy(cornerMargins = ReaderCornerMargins(topDp = 80f)),
+            darkSettings = settings.copy(cornerMargins = ReaderCornerMargins(bottomDp = 90f)),
+            bookLayoutSettings = settings.copy(cornerMargins = ReaderCornerMargins(leftDp = 120f))
+        )
+        assertEquals(suite, ReaderThemeSuiteCodec.decode(ReaderThemeSuiteCodec.encodeExact(listOf(suite))).single())
+        assertEquals(suite, LumiThemeBundleCodec.decode(LumiThemeBundleCodec.encode(listOf(suite))).single())
+        val legacy = ReaderThemeSuiteCodec.decode("""[{"id":"day","settings":{"background":"day"}}]""").single()
+        assertEquals(ReaderCornerMargins(), legacy.settings.cornerMargins)
+        assertEquals(38f, legacy.settings.cornerMargins.resolvedLeftDp(legacy.settings.marginLeft))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun portableBundleRejectsInvalidCornerMargin() {
+        LumiThemeBundleCodec.decode("""[{"id":"bad","settings":{"background":"day","cornerMargins":{"leftDp":161}}}]""")
+    }
+
+    @Test
+    fun compressedSpacingSurvivesThemeSaveAndReloadForEveryMode() {
+        val spacing = ReaderThemeSettings(lineHeight = 0.5f, letterSpacing = -5f)
+        val suite = ReaderThemeSuite(
+            id = "custom-spacing",
+            customName = "Compressed",
+            settings = spacing,
+            bookLayoutSettings = spacing.copy(lineHeight = 0.8f, letterSpacing = -2f),
+            lightSettings = spacing.copy(lineHeight = 0.7f),
+            darkSettings = spacing.copy(letterSpacing = -1f)
+        )
+
+        val restored = ReaderThemeSuiteCodec.decode(ReaderThemeSuiteCodec.encode(listOf(suite)))
+            .first { it.id == suite.id }
+
+        assertEquals(suite, restored)
+    }
+
+    @Test
     fun v1ThemeDecodesWithNewDefaults() {
         val raw = """[{"id":"day","settings":{"background":"day","fontSize":18,"fontType":"serif"}}]"""
 

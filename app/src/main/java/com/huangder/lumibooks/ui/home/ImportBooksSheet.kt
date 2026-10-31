@@ -60,6 +60,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -91,6 +92,7 @@ import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
+import com.huangder.lumibooks.ui.components.usesCardSheets
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.util.parser.BookParserFactory
@@ -212,8 +214,44 @@ fun ImportBooksActionSheet(
     onAuthorizeDirectory: () -> Unit,
     onOpenFolderBooks: () -> Unit,
     onImportWebdav: () -> Unit,
-    onImportOpds: () -> Unit
+    onImportOpds: () -> Unit,
+    anchorBounds: Rect? = null,
+    sourceId: Any? = null
 ) {
+    val menuHost = LocalLiquidGlassMenuHost.current
+    if (LocalAppTheme.current == "liquid_glass" && menuHost != null && anchorBounds != null && sourceId != null) {
+        val currentDismiss by rememberUpdatedState(onDismiss)
+        val content: @Composable (Boolean) -> Unit = { interactive ->
+            ImportActionsStage(
+                floatingContainer = true, isPreparing = isPreparing,
+                authorizedDirectoryUris = authorizedDirectoryUris,
+                onSelectFiles = onSelectFiles, onAuthorizeDirectory = onAuthorizeDirectory,
+                onOpenFolderBooks = onOpenFolderBooks, onImportWebdav = onImportWebdav,
+                onImportOpds = onImportOpds, anchored = true, interactive = interactive
+            )
+        }
+        val latestContent by rememberUpdatedState(content)
+        val disposing = remember { booleanArrayOf(false) }
+        val spec = remember(menuHost, sourceId, anchorBounds) {
+            LiquidGlassMenuSpec(
+                anchorBounds = anchorBounds, sourceId = sourceId, width = 320.dp,
+                preferAbove = true, maxVisibleItems = 12, items = emptyList(),
+                keepTriggerInteractive = false,
+                // The picker continues this workflow. Its result owns cleanup after selection.
+                onDismiss = { if (!disposing[0]) currentDismiss() },
+                content = { enabled, _ -> latestContent(enabled) }
+            )
+        }
+        DisposableEffect(menuHost, spec) {
+            disposing[0] = false
+            menuHost.show(spec)
+            onDispose {
+                disposing[0] = true
+                if (menuHost.isActive(spec)) menuHost.dismiss()
+            }
+        }
+        return
+    }
     ImportBooksContainer(
         expanded = false,
         onDismiss = onDismiss
@@ -265,6 +303,7 @@ fun ImportBooksConfirmationSheet(
             onLayoutModeChange = onLayoutModeChange,
             onBookSelectionToggle = onBookSelectionToggle,
             onSelectAll = onSelectAll,
+            onClose = onDismiss,
             onConfirmImport = onConfirmImport
         )
     }
@@ -278,24 +317,34 @@ private fun ImportBooksContainer(
     content: @Composable (floatingContainer: Boolean) -> Unit
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
+    // Tablets show the import sheets as centered cards in every theme.
+    val cardSheets = usesCardSheets()
+    val floating = isLiquidGlass || cardSheets
     val shape = AppRoundedCornerShape(
         topStart = 28.dp,
         topEnd = 28.dp,
-        bottomStart = if (isLiquidGlass) 28.dp else 0.dp,
-        bottomEnd = if (isLiquidGlass) 28.dp else 0.dp
+        bottomStart = if (floating) 28.dp else 0.dp,
+        bottomEnd = if (floating) 28.dp else 0.dp
     )
     val sizeModifier = Modifier
         .widthIn(max = 480.dp)
         .fillMaxWidth()
-        .then(if (expanded) Modifier.fillMaxHeight(0.82f) else Modifier)
+        .then(
+            when {
+                !expanded -> Modifier
+                // The card frame already caps the height; let the book list use all of it.
+                cardSheets -> Modifier.fillMaxHeight()
+                else -> Modifier.fillMaxHeight(0.82f)
+            }
+        )
 
-    if (isLiquidGlass) {
+    if (floating) {
         LiquidGlassDialog(
             onDismissRequest = onDismiss,
             alignment = Alignment.BottomCenter,
             shape = shape,
             modifier = sizeModifier,
-            backgroundBlurRadius = 0.dp,
+            fallbackBlurRadius = 0.dp,
             backgroundScrimColor = Color.Black.copy(alpha = 0.16f),
             contentScrimColor = AppColors.CardBg.copy(alpha = 0.70f)
         ) {
@@ -338,16 +387,18 @@ private fun ImportActionsStage(
     onAuthorizeDirectory: () -> Unit,
     onOpenFolderBooks: () -> Unit,
     onImportWebdav: () -> Unit,
-    onImportOpds: () -> Unit
+    onImportOpds: () -> Unit,
+    anchored: Boolean = false,
+    interactive: Boolean = true
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
-            .verticalScroll(rememberScrollState())
+            .then(if (anchored) Modifier else Modifier.navigationBarsPadding())
+            .then(if (anchored) Modifier else Modifier.verticalScroll(rememberScrollState()))
             .padding(
-                start = 24.dp,
-                end = 24.dp,
+                start = if (anchored) 16.dp else 24.dp,
+                end = if (anchored) 16.dp else 24.dp,
                 top = 22.dp,
                 bottom = if (floatingContainer) 20.dp else 16.dp
             )
@@ -370,20 +421,19 @@ private fun ImportActionsStage(
         ImportActionButton(
             text = stringResource(R.string.import_select_files),
             onClick = onSelectFiles,
-            primary = true,
-            enabled = !isPreparing
+            enabled = !isPreparing && interactive
         )
         Spacer(Modifier.height(8.dp))
         ImportActionButton(
             text = stringResource(R.string.import_authorize_directory),
             onClick = onAuthorizeDirectory,
-            enabled = !isPreparing
+            enabled = !isPreparing && interactive
         )
         Spacer(Modifier.height(8.dp))
         ImportActionButton(
             text = stringResource(R.string.import_select_folder_books),
             onClick = onOpenFolderBooks,
-            enabled = !isPreparing
+            enabled = !isPreparing && interactive
         )
         Spacer(Modifier.height(8.dp))
         // Keep the half-width pair aligned with the tighter vertical button spacing.
@@ -394,13 +444,13 @@ private fun ImportActionsStage(
             ImportActionButton(
                 text = stringResource(R.string.import_webdav),
                 onClick = onImportWebdav,
-                enabled = !isPreparing,
+                enabled = !isPreparing && interactive,
                 modifier = Modifier.weight(1f)
             )
             ImportActionButton(
                 text = stringResource(R.string.import_opds),
                 onClick = onImportOpds,
-                enabled = !isPreparing,
+                enabled = !isPreparing && interactive,
                 modifier = Modifier.weight(1f)
             )
         }
@@ -522,7 +572,8 @@ private fun SelectedBooksStage(
     onLayoutModeChange: (Int) -> Unit,
     onBookSelectionToggle: (SelectedImportBook) -> Unit,
     onSelectAll: () -> Unit,
-    onConfirmImport: () -> Unit
+    onConfirmImport: () -> Unit,
+    onClose: () -> Unit
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val coverBackdrop = rememberLayerBackdrop()
@@ -550,20 +601,13 @@ private fun SelectedBooksStage(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Row(
+            com.huangder.lumibooks.ui.components.AppSheetHeader(
+                title = stringResource(R.string.import_selected_count, selectedBookUris.size),
+                onClose = onClose,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(start = 28.dp, end = 28.dp, top = 26.dp, bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = stringResource(R.string.import_selected_count, selectedBookUris.size),
-                    color = AppColors.TextPrimary,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(Modifier.width(16.dp))
+                actions = {
                 ImportLayoutSwitchButton(
                     layoutMode = normalizedLayoutMode,
                     onLayoutModeChange = onLayoutModeChange
@@ -587,7 +631,8 @@ private fun SelectedBooksStage(
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 }
-            }
+                }
+            )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

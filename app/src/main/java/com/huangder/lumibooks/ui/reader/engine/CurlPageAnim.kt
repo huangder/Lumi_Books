@@ -1,657 +1,482 @@
 package com.huangder.lumibooks.ui.reader.engine
 
-import android.graphics.Bitmap
-import android.graphics.BitmapShader
 import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
-import android.graphics.Matrix
-import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.PointF
-import android.graphics.Rect
-import android.graphics.Region
-import android.graphics.Shader
-import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import android.view.MotionEvent
 import android.view.VelocityTracker
-import android.view.View
+import com.huangder.lumibooks.ui.animation.VisualMotion
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
-import kotlin.math.hypot
-import kotlin.math.min
+import kotlin.math.max
+import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 import kotlin.math.sin
 
 /**
- * GPLv3-derived page-curl animation adapted from legado-E's SimulationPageDelegate.
- *
- * Source: https://github.com/Luoyacheng/legado-E/blob/main/app/src/main/java/io/legado/app/ui/book/read/page/delegate/SimulationPageDelegate.kt
- * The geometry and layer order are retained; Lumi adapts the lifecycle to
- * PageAnimationController and uses lighter shadow colors.
- *
- * The curl is recalculated from the live finger position on every frame. The
- * current/previous page, folded back, underlying page and their shadows are
- * separate clipped layers instead of a translated translucent strip.
+ * Paper page curl modelled on Apple Books. A slow drag pins the free edge to the
+ * finger, so the fold follows the drag direction and the front ink bends across
+ * the roll; a flick or tap plays the same path quickly with an upright fold.
+ * Independently implemented; [PaperCurl] describes the paper model.
  */
 class CurlPageAnim(
     readView: PageAnimationSurface,
-    @Suppress("UNUSED_PARAMETER") private val trackCornerTouchDirectly: Boolean = false,
+    /** Kept for host call sites; every host now shares the same quick catch-up. */
+    @Suppress("UNUSED_PARAMETER") trackCornerTouchDirectly: Boolean = false,
     private var baseDurationMs: Int = 800
 ) : PageAnimationController(readView) {
-
     enum class MotionState { IDLE, DRAGGING, SETTLING, DESTROYED }
 
     /** Observed by ReadView to coordinate page-slot loading and input gating. */
     var onMotionStateChanged: ((MotionState) -> Unit)? = null
-
-    companion object {
-        private const val COMMIT_PROGRESS = 0.14f
-        private const val FLING_VELOCITY_DP_PER_SECOND = 450f
-        /** Recover a gesture when a child/window consumes its terminal event. */
-        private const val DRAG_WATCHDOG_TIMEOUT_MS = 500L
-    }
-
-    override val drawsDirectlyOnCanvas: Boolean = true
-
-    /** EPUB keeps the legacy curl lifecycle; ReadView uses stable settling. */
-    private val useStableCornerSettling: Boolean
-        get() = !trackCornerTouchDirectly
+    override val drawsDirectlyOnCanvas = true
 
     private val density = readView.resources.displayMetrics.density
-    private val pagePaint = Paint(Paint.DITHER_FLAG).apply {
-        isAntiAlias = false
-        isFilterBitmap = false
-    }
-    private val pageSourceRect = Rect()
-    private val pageDestinationRect = Rect()
-    /**
-     * 收尾专用 Scroller：松开后要"按松手速度继续滑、再平滑收住"。
-     * 基类的 FAST_OUT_SLOW_IN 是先冲后爬，松手后会变成刚走一下突然减速。
-     */
-    private val settleScroller = android.widget.Scroller(readView.context, CURL_SETTLE_INTERPOLATOR)
-    private val backTintPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val foldTextureMatrix = Matrix()
-
-    // 纸背画笔：镜像当前页并整体压暗，模拟油墨透过纸背的观感（与 EPUB 卷曲路径一致）。
-    // 纹理用 BitmapShader + CLAMP 铺满整个背面区域，折痕附近不再露出打底色形成浅色边。
-    private val foldTexturePaint = Paint(
-        Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG or Paint.FILTER_BITMAP_FLAG
-    ).apply {
-        colorFilter = ColorMatrixColorFilter(
-            ColorMatrix(
-                floatArrayOf(
-                    0.94f, 0f, 0f, 0f, 6f,
-                    0f, 0.94f, 0f, 0f, 6f,
-                    0f, 0f, 0.94f, 0f, 6f,
-                    0f, 0f, 0f, 0.96f, 0f
-                )
-            )
-        )
-    }
-    private var foldBackShader: BitmapShader? = null
-    private var foldBackShaderBitmap: Bitmap? = null
-    private val folderShadowDrawableLR = GradientDrawable(
-        GradientDrawable.Orientation.LEFT_RIGHT,
-        intArrayOf(
-            Color.TRANSPARENT,
-            SimulationCurlShadowStyle.fold(
-                SimulationCurlShadowStyle.FOLD_SHADOW_MAX_ALPHA
-            )
-        )
-    )
-    private val folderShadowDrawableRL = GradientDrawable(
-        GradientDrawable.Orientation.RIGHT_LEFT,
-        intArrayOf(
-            Color.TRANSPARENT,
-            SimulationCurlShadowStyle.fold(
-                SimulationCurlShadowStyle.FOLD_SHADOW_MAX_ALPHA
-            )
-        )
-    )
-    private val backShadowDrawableLR = GradientDrawable(
-        GradientDrawable.Orientation.LEFT_RIGHT,
-        intArrayOf(
-            SimulationCurlShadowStyle.backPage(
-                SimulationCurlShadowStyle.BACK_PAGE_SHADOW_MAX_ALPHA
-            ),
-            Color.TRANSPARENT
-        )
-    )
-    private val backShadowDrawableRL = GradientDrawable(
-        GradientDrawable.Orientation.RIGHT_LEFT,
-        intArrayOf(
-            SimulationCurlShadowStyle.backPage(
-                SimulationCurlShadowStyle.BACK_PAGE_SHADOW_MAX_ALPHA
-            ),
-            Color.TRANSPARENT
-        )
-    )
-    private val frontShadowDrawableVLR = GradientDrawable(
-        GradientDrawable.Orientation.LEFT_RIGHT,
-        intArrayOf(
-            SimulationCurlShadowStyle.crease(
-                SimulationCurlShadowStyle.CREASE_SHADOW_MAX_ALPHA
-            ),
-            Color.TRANSPARENT
-        )
-    )
-    private val frontShadowDrawableVRL = GradientDrawable(
-        GradientDrawable.Orientation.RIGHT_LEFT,
-        intArrayOf(
-            SimulationCurlShadowStyle.crease(
-                SimulationCurlShadowStyle.CREASE_SHADOW_MAX_ALPHA
-            ),
-            Color.TRANSPARENT
-        )
-    )
-    private val frontShadowDrawableHTB = GradientDrawable(
-        GradientDrawable.Orientation.TOP_BOTTOM,
-        intArrayOf(
-            SimulationCurlShadowStyle.crease(
-                SimulationCurlShadowStyle.CREASE_SHADOW_MAX_ALPHA
-            ),
-            Color.TRANSPARENT
-        )
-    )
-    private val frontShadowDrawableHBT = GradientDrawable(
-        GradientDrawable.Orientation.BOTTOM_TOP,
-        intArrayOf(
-            SimulationCurlShadowStyle.crease(
-                SimulationCurlShadowStyle.CREASE_SHADOW_MAX_ALPHA
-            ),
-            Color.TRANSPARENT
-        )
-    )
-
-    private val path0 = Path()
-    private val path1 = Path()
-    private val shadowClipPath = Path()
-    private val viewportRegion = Region()
-    private val curledRegion = Region()
-    private val visibleFrontRegion = Region()
-    private val visibleFoldRegion = Region()
-    private val bezierStart1 = PointF()
-    private val bezierControl1 = PointF()
-    private val bezierVertex1 = PointF()
-    private val bezierEnd1 = PointF()
-    private val bezierStart2 = PointF()
-    private val bezierControl2 = PointF()
-    private val bezierVertex2 = PointF()
-    private val bezierEnd2 = PointF()
-    private val simulationFrame = SimulationCurlFrame()
-    private val reflectionFrame = CurlReflectionFrame()
-    private val gestureModeLock = CurlGestureModeLock()
-    private var gestureMode = CurlGestureMode.EDGE_VERTICAL
-
-    private var renderTouchX = 0.1f
-    private var renderTouchY = 0.1f
-    private var cornerX = 0f
-    private var cornerY = 0f
-    private var middleX = 0f
-    private var middleY = 0f
-    private var touchToCornerDistance = 0f
-
-    // 🔥 curl 拖拽锚点：direction 首次确定时记录手指位置，
-    // 使 curl 初始偏移为 0，消除松开前纸张突变。
-    private var curlDragOriginX = 0f
-
-    private var turningBitmap: Bitmap? = null
-    private var underBitmap: Bitmap? = null
-    private var ownedTurningBitmap: Bitmap? = null
-    private var ownedUnderBitmap: Bitmap? = null
-    private var turningLease: RenderResourceLease<Bitmap>? = null
-    private var underLease: RenderResourceLease<Bitmap>? = null
-    private var turningPageView: View? = null
-    private var underPageView: View? = null
-    private var snapshotsReady = false
-
-    private var gestureStarted = false
-    private var settleCompletesPage = false
-    /**
-     * Immutable-for-the-duration-of-settling gesture classification. The live
-     * gesture fields are intentionally reset when a new ACTION_DOWN arrives,
-     * but an in-flight curl must keep the corner selected by the old gesture.
-     */
-    private var settleGestureMode = CurlGestureMode.EDGE_VERTICAL
-    private var settleCornerY = Float.NaN
-    private var settleStateActive = false
-    private var settleTargetY = Float.NaN
-    private var settleExpedited = false
-    private var capturedBaseDurationMs = baseDurationMs.coerceIn(1, 1200)
-    private var finalFramePending = false
-    private var lastGeometryValid = false
-    private var settleGeneration = 0
-    private var velocityTracker: VelocityTracker? = null
+    private var renderer: PaperCurlRenderer? = null
+    private var shaderRenderer = false
+    private var shaderUnavailable = false
+    private val look = CurlLook()
+    private var path = CurlPath(1f, 1f)
+    private var pose = CurlPose.FLAT
+    private var captured = false
+    private var progress = 0f
+    private var tilt = 0f
+    private var grabY = 0f
+    /** Where the current sheet started curling; drag math is measured from here. */
+    private var originX = 0f
+    private var originY = 0f
+    private var tracker: VelocityTracker? = null
+    private var tween: CurlTween? = null
+    private var tweenStarted = 0L
+    private var tweenTilt = 0f
+    private var terminalPending = false
+    private var completionPosted = false
+    /** The running turn is already finishing early for queued input. */
+    private var catchingUp = false
+    /** Bumped whenever a turn starts or ends; stale posted completions compare against it. */
+    private var generation = 0L
     private var destroyed = false
-    private var dragWatchdogGeneration = 0
-    private var lastPointerEventUptime = 0L
-    private var lastPointerX = 0f
-    private var lastPointerY = 0f
 
+    init {
+        // Compile the GPU program while the reader settles, not on the first turn.
+        if (Build.VERSION.SDK_INT >= 33) readView.postDelayed(300L) {
+            if (!destroyed && readView.isHardwareAccelerated) PaperCurlShaderRenderer.warmUp()
+        }
+    }
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (destroyed) return false
-        if (!readView.isPageProgressReversed) return handleTouchEvent(event)
-        val mirroredEvent = MotionEvent.obtain(event)
-        mirroredEvent.setLocation(readView.width - event.x, event.y)
-        return try {
-            handleTouchEvent(mirroredEvent)
-        } finally {
-            mirroredEvent.recycle()
-        }
-    }
-
-    private fun handleTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                abortAnim()
-                capturedBaseDurationMs = baseDurationMs
-                onMotionStateChanged?.invoke(MotionState.DRAGGING)
-                gestureStarted = true
-                startX = event.x
-                startY = event.y
+                if (isRunning) return true
+                if (captured) abortAnim()
+                begin(event)
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (isRunning) return true
+                if (tracker == null) begin(event)
+                tracker?.addMovement(event)
                 touchX = event.x
                 touchY = event.y
-                lastX = event.x
-                lastPointerX = event.x
-                lastPointerY = event.y
-                lastPointerEventUptime = SystemClock.uptimeMillis()
-                gestureMode = CurlGestureMode.EDGE_VERTICAL
-                gestureModeLock.begin(event.x, event.y)
-                velocityTracker = VelocityTracker.obtain().also { it.addMovement(event) }
-                return true
-            }
-
-            MotionEvent.ACTION_MOVE -> {
-                ensureGestureStarted(event)
-                velocityTracker?.addMovement(event)
-                lastPointerX = event.x
-                lastPointerY = event.y
-                lastPointerEventUptime = SystemClock.uptimeMillis()
-
-                val dx = event.x - startX
-                val newDirection = when {
-                    dx < 0f -> Direction.NEXT
-                    dx > 0f -> Direction.PREV
-                    else -> Direction.NONE
-                }
-
-                if (newDirection != Direction.NONE && newDirection != direction) {
-                    val wasRenderingCurl = snapshotsReady
-                    if (wasRenderingCurl) {
-                        // A direction reversal changes both page roles (the
-                        // turning sheet and the page underneath). Do not draw
-                        // one frame with the old PREV/NEXT snapshots under the
-                        // new direction; release them and rebase the gesture
-                        // at the new direction's flat coordinate instead.
-                        clearCapturedFrames()
-                        snapshotsReady = false
-                        isDragging = false
-                        readView.postInvalidateOnAnimation()
-                    }
-                    direction = newDirection
-                    gestureModeLock.begin(startX, startY)
-                    gestureMode = CurlGestureMode.EDGE_VERTICAL
-                    curlDragOriginX = startX
-                    touchX = flatTouchX()
-                    touchY = nearCornerY()
-                }
-
-                if (!snapshotsReady && direction != Direction.NONE) {
-                    // Do not render a provisional EDGE_VERTICAL frame. Wait
-                    // through the short classification dead zone, then lock
-                    // one mode for the complete gesture before capturing any
-                    // page frames.
-                    gestureMode = gestureModeLock.lock(
-                        width = readView.width.toFloat(),
-                        height = readView.height.toFloat(),
-                        physicalTurnSign = if (direction == Direction.NEXT) -1f else 1f,
-                        deltaX = dx,
-                        deltaY = event.y - startY
-                    )
-                    if (gestureModeLock.isLocked) {
-                        Log.d(
-                            "CurlPageAnimMode",
-                            "drag dir=$direction startY=$startY height=${readView.height} mode=$gestureMode"
-                        )
-                        configureCorner(startY)
-                        snapshotsReady = capturePages(direction)
-                        isDragging = snapshotsReady
-                        if (snapshotsReady) onMotionStateChanged?.invoke(MotionState.DRAGGING)
-                    }
-                }
-
-                if (snapshotsReady && direction != Direction.NONE) {
-                    // NEXT 从右向左递减；PREV 从真正的屏外平铺态 -width
-                    // 向右递增。两者都以实际拖动位移起步，避免方向刚确定
-                    // 时目标页卷曲突然占据一部分屏幕。
-                    touchX = touchXForPointer(event.x)
-                    touchY = gestureTouchY(event.y)
+                // One sheet per stroke: it flattens as the finger returns, and the other page
+                // only starts once the finger clearly crosses back past where this one lifted.
+                val reference = if (captured) originX else startX
+                val slop = (if (captured) REVERSE_SLOP_DP else 8f) * density
+                val wanted = directionForHorizontalDelta(event.x - reference, slop)
+                    .let { if (captured && it == Direction.NONE) direction else it }
+                if (wanted == Direction.NONE) return true
+                hasMoved = true
+                if (wanted != direction || !captured) {
+                    // The curl starts from zero where the stroke crossed the threshold, so it
+                    // grows in instead of appearing mid-bend; a retry after a missing target
+                    // starts at the finger.
+                    val retry = wanted == direction && !captured
+                    val side = if (event.x >= reference) 1f else -1f
+                    originX = if (retry) event.x else reference + side * slop
+                    originY = event.y
+                    if (captured) releaseTurn()
+                    direction = wanted
+                    isDragging = false
+                    if (onCanFlip?.invoke(wanted) != true || !capture(wanted, originY)) return true
                     isDragging = true
-                    lastX = event.x
-                    if (useStableCornerSettling) scheduleDragWatchdog()
-                    readView.postInvalidateOnAnimation()
+                    onMotionStateChanged?.invoke(MotionState.DRAGGING)
                 }
-                return true
+                updateDrag(event.x, event.y)
+                readView.invalidate()
             }
-
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                dragWatchdogGeneration++
-                lastPointerX = event.x
-                lastPointerY = event.y
-                velocityTracker?.addMovement(event)
-                velocityTracker?.computeCurrentVelocity(1000)
-                val xVelocity = velocityTracker?.xVelocity ?: 0f
-                recycleVelocityTracker()
-                gestureStarted = false
+                if (isRunning) return true
+                tracker?.addMovement(event)
+                tracker?.computeCurrentVelocity(1)
+                val vx = tracker?.xVelocity ?: 0f
+                val vy = tracker?.yVelocity ?: 0f
+                tracker?.recycle()
+                tracker = null
                 isDragging = false
-
-                if (!snapshotsReady || direction == Direction.NONE) {
-                    resetToIdle()
+                if (!captured) {
+                    // Reset before dispatching: a tap callback may start a new turn right here.
+                    direction = Direction.NONE
+                    readView.invalidate()
+                    if (isPageAnimationShortTap(event.actionMasked, hasMoved,
+                            event.eventTime - downTime, abs(event.y - startY))) dispatchTap(event.x)
                     return true
                 }
-
-                touchX = touchXForPointer(event.x)
-                touchY = gestureTouchY(event.y)
-                val progress = abs(event.x - startX) /
-                    readView.width.coerceAtLeast(1).toFloat()
-                val directionalVelocity = when (direction) {
-                    Direction.NEXT -> -xVelocity
-                    Direction.PREV -> xVelocity
-                    Direction.NONE -> 0f
-                }
-                val canFlipTarget = onCanFlip?.invoke(direction) == true
-                val canComplete = event.actionMasked != MotionEvent.ACTION_CANCEL &&
-                    canFlipTarget &&
-                    (progress >= COMMIT_PROGRESS ||
-                        directionalVelocity >= FLING_VELOCITY_DP_PER_SECOND * density)
-                Log.d(
-                    "CurlCommit",
-                    "up dir=$direction progress=$progress velocity=$directionalVelocity " +
-                        "canFlip=$canFlipTarget complete=$canComplete snapshots=$snapshotsReady"
-                )
-
-                if (canComplete) {
-                    isFlipAnim = true
-                    onMotionStateChanged?.invoke(MotionState.SETTLING)
-                    settleToPage()
-                } else {
-                    startBounceBack()
-                }
-                return true
+                release(event, vx, vy)
             }
         }
-        return false
-    }
-
-    override fun onDraw(canvas: Canvas) {
-        // PREV 自身使用从左向右的 legado-E 坐标，不再镜像 NEXT 几何。
-        // 这里只处理竖排/反向阅读布局的物理轴镜像。
-        val mirror = readView.isPageProgressReversed
-        if (!mirror) {
-            drawCurl(canvas)
-            return
-        }
-        val saveCount = canvas.save()
-        canvas.scale(-1f, 1f, readView.width * 0.5f, 0f)
-        drawCurl(canvas)
-        canvas.restoreToCount(saveCount)
-    }
-
-    private fun drawCurl(canvas: Canvas) {
-        if (!snapshotsReady || direction == Direction.NONE) return
-        val width = readView.width.toFloat()
-        val height = readView.height.toFloat()
-        if (width <= 0f || height <= 0f) return
-
-        canvas.save()
-        canvas.clipRect(0f, 0f, width, height)
-        // Transparent WebView snapshots must not expose another page (or an
-        // unrelated preload drawn by the host) through the still-flat sheet.
-        canvas.drawColor(readView.bgColor)
-
-        if (calculateCurlPoints()) {
-            buildCurlPaths(simulationFrame, path0, path1)
-            val underSaveCount = canvas.save()
-            canvas.clipPath(path0)
-            canvas.clipOutPath(path1)
-            drawPage(canvas, underBitmap, underPageView)
-            canvas.restoreToCount(underSaveCount)
-            // The turning sheet is outside path0 in both legado-E branches:
-            // current over next for NEXT, previous over current for PREV.
-            drawCurrentPageArea(canvas, turningBitmap, turningPageView)
-            drawNextPageShadow(canvas)
-            drawCurrentPageShadow(canvas)
-            drawFoldedBack(canvas)
-        } else {
-            val showTurningPage = simulationDirection()?.let {
-                SimulationCurlTurnMotion.fallbackShowsTurningPage(touchX, width, it)
-            } ?: false
-            val fallbackBitmap = if (showTurningPage) turningBitmap else underBitmap
-            val fallbackView = if (showTurningPage) turningPageView else underPageView
-            drawPage(canvas, fallbackBitmap, fallbackView)
-        }
-        canvas.restore()
-        if (finalFramePending) {
-            finalFramePending = false
-            readView.post {
-                if (!isRunning || isDragging) return@post
-                if (useStableCornerSettling && settleCompletesPage &&
-                    !isCommittedFrameFullyOffscreen()
-                ) {
-                    finalFramePending = true
-                    readView.postInvalidateOnAnimation()
-                } else {
-                    finishSettle()
-                }
-            }
-        }
-    }
-
-    override fun startAnim(fromDrag: Boolean) {
-        if (!snapshotsReady || direction == Direction.NONE) return
-        isFlipAnim = true
-        onMotionStateChanged?.invoke(MotionState.SETTLING)
-        settleToPage()
-    }
-
-    fun startFromTap(
-        dir: Direction,
-        gestureStartY: Float? = null,
-        expedited: Boolean = false
-    ): Boolean {
-        if (destroyed || isRunning || isDragging || dir == Direction.NONE) return false
-        if (onCanFlip?.invoke(dir) != true) return false
-
-        abortAnim()
-        capturedBaseDurationMs = baseDurationMs
-        direction = dir
-        val defaultStartY = readView.height * 0.82f
-        val replayedStartY = gestureStartY
-            ?.takeIf { it.isFinite() }
-            ?.coerceIn(0f, readView.height.toFloat())
-        startY = replayedStartY ?: defaultStartY
-        // 点按/边缘点击翻页没有手指位置：用整页竖直卷曲。
-        // 角落卷曲（上/下 30% 起手）只在用户从角落拖出来时使用。
-        gestureMode = if (replayedStartY == null) {
-            CurlGestureMode.EDGE_VERTICAL
-        } else {
-            curlGestureModeForStartY(
-                height = readView.height.toFloat(),
-                downY = startY,
-                physicalTurnSign = if (dir == Direction.NEXT) -1f else 1f
-            )
-        }
-        Log.d(
-            "CurlPageAnimMode",
-            "replay dir=$dir inputY=$gestureStartY startY=$startY " +
-                "height=${readView.height} mode=$gestureMode"
-        )
-        gestureModeLock.reset()
-        configureCorner(startY)
-        // PREV 从屏外平铺态起步，NEXT 保持右侧平铺态。
-        startX = flatTouchX()
-        touchX = startX
-        touchY = nearCornerY()
-        snapshotsReady = capturePages(dir)
-        if (!snapshotsReady) {
-            resetToIdle()
-            return false
-        }
-
-        isFlipAnim = true
-        onMotionStateChanged?.invoke(MotionState.SETTLING)
-        // 自动翻页（点按/边缘点击）：没有手指速度，可见扫过段直接用配置时长，
-        // 这样 NEXT 与 PREV 的可见扫过时间一致（收尾里的隐藏尾段另行计时）。
-        settleToPage(
-            if (expedited) curlExpeditedDurationMs(capturedBaseDurationMs)
-            else capturedBaseDurationMs
-        )
         return true
     }
 
-    override fun computeScroll(): Boolean {
-        if (settleScroller.computeScrollOffset()) {
-            touchX = settleScroller.currX.toFloat()
-            touchY = settleScroller.currY.toFloat()
-            if (settleScroller.currX == settleScroller.finalX &&
-                settleScroller.currY == settleScroller.finalY
-            ) {
-                if (drawsDirectlyOnCanvas && useStableCornerSettling) {
-                    // Both commit and bounce-back keep the overlay alive until
-                    // their terminal frame has actually passed through onDraw.
-                    finalFramePending = true
-                    readView.postInvalidateOnAnimation()
-                } else {
-                    finishSettle()
-                }
-            } else {
-                readView.postInvalidateOnAnimation()
-            }
-            return true
-        }
-
-        if (isRunning) {
-            if (drawsDirectlyOnCanvas && useStableCornerSettling) {
-                finalFramePending = true
-                readView.postInvalidateOnAnimation()
-            } else {
-                finishSettle()
-            }
-            return true
-        }
-        return false
+    private fun begin(event: MotionEvent) {
+        startX = event.x
+        startY = event.y
+        touchX = startX
+        touchY = startY
+        downTime = event.eventTime
+        hasMoved = false
+        direction = Direction.NONE
+        tracker?.recycle()
+        tracker = VelocityTracker.obtain().also { it.addMovement(event) }
     }
 
-    override fun startBounceBack() {
-        if (!snapshotsReady || direction == Direction.NONE) {
-            resetToIdle()
+    private fun dispatchTap(x: Float) {
+        val relative = x / readView.width.coerceAtLeast(1)
+        when {
+            relative < 0.3f -> onTapLeft?.invoke()
+            relative > 0.7f -> onTapRight?.invoke()
+            else -> onTapCenter?.invoke()
+        }
+    }
+
+    /** Canonical x: the spine is always at 0, even for right-to-left page progress. */
+    private fun canonicalX(x: Float) = if (look.mirror) look.width - x else x
+
+    /**
+     * Fold tilt from the drag direction plus the grab height: a page held near its
+     * top corner folds down-slanted, near its bottom corner up-slanted, even when
+     * the finger moves straight across.
+     */
+    private fun desiredTilt(x: Float, y: Float): Float {
+        val dx = abs(canonicalX(x) - canonicalX(originX))
+        val fromCenter = (grabY / look.height - 0.5f) * 2f
+        val zone = PaperCurl.smoothstep(0.2f, 0.6f, abs(fromCenter)) * if (fromCenter < 0f) -1f else 1f
+        val corner = zone * CORNER_LIFT * dx * if (direction == Direction.PREV) -1f else 1f
+        val tilt = atan2(-(y - originY) + corner, dx + 24f * density)
+        return tilt.coerceIn(-MAX_TILT, MAX_TILT)
+    }
+
+    /** Progress that keeps the grabbed free edge (or, backward, the returning roll) under the finger. */
+    private fun dragProgress(x: Float, y: Float, wantedTilt: Float): Float {
+        val width = look.width
+        val down = canonicalX(originX)
+        val dx = canonicalX(x) - down
+        val dy = y - originY
+        return if (direction == Direction.NEXT) {
+            // Starting mid-page still turns the whole sheet by the time the finger reaches the spine.
+            val scale = (width / down.coerceAtLeast(width * 0.5f)).coerceIn(1f, 2f)
+            val travel = -scale * (cos(wantedTilt) * dx + sin(wantedTilt) * dy)
+            (travel / path.travel).coerceIn(0f, 1f)
+        } else {
+            // The returning sheet starts with its shadow just off screen, so it slides in.
+            val scale = (width / (width - down).coerceAtLeast(width * 0.5f)).coerceIn(1f, 2f)
+            path.progressForRollEdge(dx.coerceAtLeast(0f) * scale - path.shadowReach, wantedTilt, grabY)
+        }
+    }
+
+    private fun updateDrag(x: Float, y: Float) {
+        val wanted = desiredTilt(x, y)
+        progress = dragProgress(x, y, wanted)
+        pose = path.pose(progress, wanted, grabY, keepSpine = true)
+        tilt = if (pose.isFlat) 0f else atan2(pose.ny, pose.nx)
+    }
+
+    private fun release(event: MotionEvent, vx: Float, vy: Float) {
+        // Progress velocity: where the curl will be one frame later at the release speed.
+        val ahead = dragProgress(event.x + vx * 16f, event.y + vy * 16f, desiredTilt(event.x, event.y))
+        val velocity = (ahead - progress) / 16f
+        val sign = horizontalTurnSign(direction)
+        val travelled = (event.x - originX) * sign
+        val speed = vx * 1000f * sign
+        val fling = FLING_DP_PER_SECOND * density
+        val up = event.actionMasked == MotionEvent.ACTION_UP
+        val commit = up && (speed > fling || travelled >= readView.width * COMMIT_FRACTION && speed >= -fling)
+        val swipe = if (up) (abs(speed) / (SWIPE_DP_PER_SECOND * density)).coerceIn(0f, 1f) else 0f
+        settle(commit, velocity, expedited = false, swipe = swipe)
+    }
+    /** Finishes a drag: commit flies the sheet off (NEXT) or lays it flat (PREV); cancel reverses. */
+    /**
+     * Finishes a drag at the configured turn pace for the remaining distance; a
+     * quick swipe shortens it by up to 40%. Commit flies the sheet off (NEXT) or
+     * lays it flat (PREV); cancel reverses.
+     */
+    private fun settle(commit: Boolean, velocity: Float, expedited: Boolean, swipe: Float = 0f) {
+        isDragging = false
+        isRunning = true
+        isFlipAnim = commit
+        val target = if ((direction == Direction.NEXT) == commit) 1f else 0f
+        val remaining = abs(target - progress)
+        val heading = if (target > progress) 1f else -1f
+        val towards = (velocity * heading).coerceAtLeast(0f)
+        val base = if (expedited) curlExpeditedDurationMs(baseDurationMs) else baseDurationMs
+        val pace = RELEASE_PACE * (1f - 0.4f * swipe)
+        val duration = if (remaining <= 0f) 1L else (base * remaining * pace).roundToLong()
+            .coerceIn(minSettleMs().toLong(), max(minSettleMs(), base).toLong())
+        val average = remaining / duration
+        val flies = target == 1f
+        // Continue from the finger's speed without a fast start that crawls afterwards.
+        startTween(target, minOf(towards, 2.5f * average) * heading, if (flies) average * heading else 0f, duration)
+        onMotionStateChanged?.invoke(MotionState.SETTLING)
+    }
+
+    private fun startTween(target: Float, startVelocity: Float, endVelocity: Float, duration: Long) {
+        tween = CurlTween(progress, target, startVelocity, endVelocity, duration)
+        tweenStarted = SystemClock.uptimeMillis()
+        tweenTilt = tilt
+        terminalPending = false
+        readView.postInvalidateOnAnimation()
+    }
+
+    override fun computeScroll(): Boolean {
+        if (destroyed) return false
+        val active = tween ?: return terminalPending
+        val elapsed = SystemClock.uptimeMillis() - tweenStarted
+        progress = active.position(elapsed)
+        tilt = tweenTilt * (1f - PaperCurl.smoothstep(0f, 1f, elapsed.toFloat() / active.durationMs))
+        if (elapsed >= active.durationMs) {
+            progress = active.to
+            tilt = 0f
+            tween = null
+            terminalPending = true
+        }
+        pose = path.pose(progress, tilt, grabY, keepSpine = true)
+        return true
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val active = renderer
+        if (!captured || active == null) return
+        try {
+            active.draw(canvas, pose, look)
+        } catch (error: RuntimeException) {
+            // Never let a driver or shader problem break reading: later turns use the mesh.
+            Log.w(TAG, "Curl shader failed; using the mesh renderer", error)
+            shaderUnavailable = true
+            val token = generation
+            readView.post { if (token == generation && captured) endTurn(isFlipAnim) }
             return
         }
-        captureSettleState()
-        isFlipAnim = false
-        settleCompletesPage = false
-        onMotionStateChanged?.invoke(MotionState.SETTLING)
-        startScrollTo(flatTouchX(), resolvedSettleTargetY())
+        if (terminalPending && !completionPosted) {
+            // The terminal pose is on screen now; hand the page over on the next loop.
+            completionPosted = true
+            val token = generation
+            readView.post { if (token == generation && terminalPending) endTurn(isFlipAnim) }
+        }
     }
 
-    override fun abortAnim() {
-        settleGeneration++
-        dragWatchdogGeneration++
-        if (!settleScroller.isFinished) settleScroller.abortAnimation()
-        if (!scroller.isFinished) scroller.abortAnimation()
-        recycleVelocityTracker()
-        releaseBorrowedFrames()
-        gestureStarted = false
-        settleCompletesPage = false
-        settleStateActive = false
-        settleGestureMode = CurlGestureMode.EDGE_VERTICAL
-        settleCornerY = Float.NaN
-        settleTargetY = Float.NaN
-        settleExpedited = false
-        finalFramePending = false
-        lastGeometryValid = false
+    /** Ends the turn; a committed turn hands its page to the host while direction is still set. */
+    private fun endTurn(commit: Boolean) {
+        tracker?.recycle()
+        tracker = null
+        resetMotion()
+        resetChildViews()
+        val ended = ++generation
+        if (commit) onAnimationComplete?.invoke()
+        if (generation != ended) return // the host started the next turn from the callback
+        releaseTurn()
+        direction = Direction.NONE
+        if (!destroyed) onMotionStateChanged?.invoke(MotionState.IDLE)
+        readView.invalidate()
+    }
+
+    private fun resetMotion() {
+        tween = null
+        terminalPending = false
+        completionPosted = false
+        catchingUp = false
         isRunning = false
         isDragging = false
         isFlipAnim = false
-        snapshotsReady = false
-        gestureMode = CurlGestureMode.EDGE_VERTICAL
-        gestureModeLock.reset()
-        resetChildViews()
-        readView.invalidate()
-        direction = Direction.NONE
-        if (!destroyed) onMotionStateChanged?.invoke(MotionState.IDLE)
     }
 
-    override fun completeRunningFlipForNewInput(): RunningFlipHandoff {
-        val committedDirection = committedRunningFlipDirection()
-        if (committedDirection == Direction.NONE) return RunningFlipHandoff.NOT_COMMITTED
-
-        if (drawsDirectlyOnCanvas && useStableCornerSettling) {
-            if (!settleExpedited) {
-                if (!settleScroller.isFinished) settleScroller.abortAnimation()
-                settleExpedited = true
-                startScrollTo(
-                    completionTargetX(),
-                    resolvedSettleTargetY(),
-                    curlExpeditedDurationMs(capturedBaseDurationMs)
-                )
-            }
-            // Keep the current curl visible until its paper edge has actually
-            // left the screen. The host can retain the new intent meanwhile.
-            return RunningFlipHandoff.COMPLETING_ASYNCHRONOUSLY
-        }
-
-        return completeRunningFlipSynchronously(committedDirection)
+    private fun releaseTurn() {
+        renderer?.release()
+        captured = false
+        pose = CurlPose.FLAT
+        progress = 0f
+        tilt = 0f
     }
 
     /**
-     * A confirmed drag has to own the next frame. Unlike another tap, it cannot
-     * wait for the old curl to animate out or the pointer stream will end first.
+     * Idle slots: the visible page on top, its neighbours transparent and off screen.
+     * The curl draws frozen frames, so only this placement decides which page's
+     * selection layer receives a long press.
      */
-    internal fun completeRunningFlipForGestureHandoff(): RunningFlipHandoff {
-        val committedDirection = committedRunningFlipDirection()
-        if (committedDirection == Direction.NONE) return RunningFlipHandoff.NOT_COMMITTED
-        return completeRunningFlipSynchronously(committedDirection)
+    private fun resetChildViews() {
+        if (readView.animatePageViewsDirectly) return
+        val width = readView.width.toFloat()
+        readView.curPageView.translationX = 0f
+        readView.curPageView.translationY = 0f
+        readView.curPageView.alpha = 1f
+        readView.curPageView.translationZ = 2f
+        readView.prevPageView.translationX = idleTranslationX(Direction.PREV, width)
+        readView.prevPageView.translationY = 0f
+        readView.prevPageView.alpha = 0f
+        readView.prevPageView.translationZ = 0f
+        readView.nextPageView.translationX = idleTranslationX(Direction.NEXT, width)
+        readView.nextPageView.translationY = 0f
+        readView.nextPageView.alpha = 0f
+        readView.nextPageView.translationZ = 0f
     }
 
-    private fun committedRunningFlipDirection(): Direction = if (
-        isFlipAnim && isRunning && settleCompletesPage && direction != Direction.NONE
-    ) direction else Direction.NONE
+    private fun capture(dir: Direction, grabAt: Float): Boolean {
+        val width = readView.width
+        val height = readView.height
+        if (width <= 0 || height <= 0) return false
+        val turning = if (dir == Direction.NEXT) readView.curPageView else readView.prevPageView
+        val under = if (dir == Direction.NEXT) readView.nextPageView else readView.curPageView
+        val active = rendererFor()
+        val frozen = try {
+            active.capture(readView, turning, under)
+        } catch (error: RuntimeException) {
+            Log.w(TAG, "Could not freeze curl pages", error)
+            false
+        }
+        if (!frozen) {
+            active.release()
+            return false
+        }
+        generation++
+        path = CurlPath(width.toFloat(), height.toFloat())
+        look.width = width.toFloat()
+        look.height = height.toFloat()
+        look.mirror = readView.isPageProgressReversed
+        look.paper = readView.bgColor or (0xFF shl 24)
+        look.shadowReach = path.shadowReach
+        grabY = grabAt.coerceIn(0f, height.toFloat())
+        direction = dir
+        progress = if (dir == Direction.NEXT) 0f else 1f
+        tilt = 0f
+        pose = path.pose(progress, 0f, grabY, keepSpine = true)
+        captured = true
+        return true
+    }
 
-    private fun completeRunningFlipSynchronously(
-        committedDirection: Direction
-    ): RunningFlipHandoff {
-        if (!settleScroller.isFinished) settleScroller.abortAnimation()
-        recycleVelocityTracker()
-        gestureStarted = false
-        settleCompletesPage = false
-        isRunning = false
-        isDragging = false
-        isFlipAnim = false
-        snapshotsReady = false
-        settleStateActive = false
-        settleGestureMode = CurlGestureMode.EDGE_VERTICAL
-        settleCornerY = Float.NaN
-        settleTargetY = Float.NaN
-        gestureMode = CurlGestureMode.EDGE_VERTICAL
-        gestureModeLock.reset()
-        resetChildViews()
-        direction = committedDirection
-        onAnimationComplete?.invoke()
-        direction = Direction.NONE
-        readView.invalidate()
-        onMotionStateChanged?.invoke(MotionState.IDLE)
+    private fun rendererFor(): PaperCurlRenderer {
+        val wantsShader = Build.VERSION.SDK_INT >= 33 && readView.isHardwareAccelerated && !shaderUnavailable
+        renderer?.let { if (shaderRenderer == wantsShader) return it }
+        renderer?.destroy()
+        if (wantsShader && Build.VERSION.SDK_INT >= 33) {
+            try {
+                return PaperCurlShaderRenderer().also { renderer = it; shaderRenderer = true }
+            } catch (error: RuntimeException) {
+                Log.w(TAG, "Curl shader unavailable; using the mesh renderer", error)
+                shaderUnavailable = true
+            }
+        }
+        return PaperCurlMeshRenderer().also { renderer = it; shaderRenderer = false }
+    }
+    /** Plays a whole turn without a finger: an upright fold, easing in like a light flick. */
+    fun startFromTap(dir: Direction, gestureStartY: Float? = null, expedited: Boolean = false): Boolean {
+        if (destroyed || isRunning || isDragging || dir == Direction.NONE) return false
+        if (onCanFlip?.invoke(dir) != true) return false
+        if (captured) abortAnim()
+        startY = gestureStartY?.takeIf { it.isFinite() } ?: readView.height * 0.5f
+        startX = if (dir == Direction.NEXT) readView.width.toFloat() else 0f
+        if (!capture(dir, startY)) return false
+        isRunning = true
+        isFlipAnim = true
+        val duration = (if (expedited) curlExpeditedDurationMs(baseDurationMs)
+            else (baseDurationMs * TAP_DURATION_FACTOR).roundToInt()).coerceAtLeast(1).toLong()
+        val average = 1f / duration
+        val (start, end) = when {
+            expedited -> 0.9f to 1f
+            dir == Direction.NEXT -> 0.45f to 1.2f
+            else -> 1.6f to 0f
+        }
+        val heading = if (dir == Direction.NEXT) 1f else -1f
+        startTween(if (dir == Direction.NEXT) 1f else 0f, start * average * heading,
+            end * average * heading, duration)
+        onMotionStateChanged?.invoke(MotionState.SETTLING)
+        return true
+    }
+
+    override fun startAnim(fromDrag: Boolean) {
+        if (captured && !isRunning) settle(true, 0f, expedited = false)
+    }
+
+    override fun startBounceBack() {
+        if (captured && !isRunning) settle(false, 0f, expedited = false) else {
+            direction = Direction.NONE
+            readView.invalidate()
+        }
+    }
+
+    /**
+     * The first queued input finishes the running page within about 70 ms; any
+     * further input hands it over at once, so turns never fall behind the taps.
+     */
+    override fun completeRunningFlipForNewInput(): RunningFlipHandoff {
+        if (!committedRunning()) return RunningFlipHandoff.NOT_COMMITTED
+        if (catchingUp) return completeSynchronously()
+        expedite()
+        return RunningFlipHandoff.COMPLETING_ASYNCHRONOUSLY
+    }
+
+    /** A confirmed drag owns the next frame, so the running page is handed over now. */
+    fun completeRunningFlipForGestureHandoff(): RunningFlipHandoff =
+        if (committedRunning()) completeSynchronously() else RunningFlipHandoff.NOT_COMMITTED
+
+    private fun committedRunning() = captured && isRunning && isFlipAnim && direction != Direction.NONE
+
+    private fun completeSynchronously(): RunningFlipHandoff {
+        endTurn(commit = true)
         return RunningFlipHandoff.COMPLETED_SYNCHRONOUSLY
     }
 
-    override fun getOffsetX(): Float = when (direction) {
-        Direction.NEXT -> readView.width - touchX
-        Direction.PREV -> touchX
-        Direction.NONE -> 0f
+    /** Finishes the rest of a committed turn quickly so the queued turn follows the tap. */
+    private fun expedite() {
+        catchingUp = true
+        val active = tween ?: return
+        val elapsed = SystemClock.uptimeMillis() - tweenStarted
+        val remainingTime = active.durationMs - elapsed
+        val distance = abs(active.to - progress)
+        val duration = (CATCH_UP_MS * distance).roundToLong().coerceAtLeast(CATCH_UP_MS / 3)
+        if (duration >= remainingTime) return
+        val velocity = active.velocity(elapsed)
+        val average = distance / duration * if (active.to > progress) 1f else -1f
+        startTween(active.to, velocity, if (active.to == 1f) average else 0f, duration)
+    }
+
+    override fun holdRunningFlipAtEnd(): Boolean {
+        if (!committedRunning()) return false
+        tween = null
+        progress = if (direction == Direction.NEXT) 1f else 0f
+        tilt = 0f
+        pose = path.pose(progress, 0f, grabY, keepSpine = true)
+        terminalPending = true
+        readView.postInvalidateOnAnimation()
+        return true
+    }
+
+    override fun abortAnim() {
+        generation++
+        tracker?.recycle()
+        tracker = null
+        resetMotion()
+        releaseTurn()
+        resetChildViews()
+        direction = Direction.NONE
+        if (!destroyed) onMotionStateChanged?.invoke(MotionState.IDLE)
+        readView.invalidate()
+    }
+
+    /** Distance the page has travelled, growing as the finger moves (host gesture tracking). */
+    override fun getOffsetX(): Float = when {
+        isDragging -> abs(touchX - startX)
+        !captured -> 0f
+        direction == Direction.NEXT -> progress * readView.width
+        else -> (1f - progress) * readView.width
     }
 
     fun setBaseDuration(durationMs: Int) {
@@ -663,913 +488,32 @@ class CurlPageAnim(
     fun destroy() {
         if (destroyed) return
         abortAnim()
-        releaseBorrowedFrames()
         destroyed = true
-        ownedTurningBitmap?.takeUnless { it.isRecycled }?.recycle()
-        ownedUnderBitmap?.takeUnless { it.isRecycled }?.recycle()
-        turningBitmap = null
-        underBitmap = null
-        ownedTurningBitmap = null
-        ownedUnderBitmap = null
-        foldTexturePaint.shader = null
-        foldBackShader = null
-        foldBackShaderBitmap = null
+        renderer?.destroy()
+        renderer = null
         onMotionStateChanged?.invoke(MotionState.DESTROYED)
+        onMotionStateChanged = null
     }
 
-    private fun settleToPage(fixedDurationMs: Int? = null) {
-        captureSettleState()
-        settleCompletesPage = true
-        settleExpedited = false
-        finalFramePending = false
-        if (hasReachedCompletionTarget()) {
-            finishSettle()
-            return
-        }
-        // 与 legado-E 的 onAnimStart 一致：一趟滑到 (touchX = -viewWidth, touchY = 角所在边)，
-        // 时长按行程比例给（线性插值 = 全程匀速），中途没有阶段切换。
-        val targetX = completionTargetX()
-        val targetY = resolvedSettleTargetY()
-        val distance = hypot(targetX - touchX, targetY - touchY)
-        val durationMs = fixedDurationMs ?: curlSettleDurationMs(
-            capturedBaseDurationMs,
-            distance,
-            readView.width.toFloat()
-        )
-        Log.d(
-            "CurlPageAnimState",
-            "settle dir=$direction duration=${durationMs}ms distance=$distance " +
-                "mode=$settleGestureMode targetX=${targetX.toInt()} targetY=${targetY.toInt()}"
-        )
-        startScrollTo(targetX, targetY, durationMs)
-    }
-
-    private fun hasReachedCompletionTarget(): Boolean {
-        val simulationDirection = simulationDirection() ?: return false
-        return SimulationCurlTurnMotion.hasReachedCompletion(
-            touchX,
-            completionTargetX(),
-            simulationDirection
-        )
-    }
-
-    private fun completionTargetX(): Float {
-        val width = readView.width.coerceAtLeast(1).toFloat()
-        val simulationDirection = simulationDirection() ?: return touchX
-        return SimulationCurlTurnMotion.completionTouchX(
-            width,
-            readView.height.toFloat(),
-            simulationDirection,
-            // 与 legado-E 一致：终点就是 touchX = -viewWidth，纸角贴边滑出屏幕。
-            // 之前改成 -(viewWidth + 2·对角线) 是为了让"完全离屏"判据成立，会让纸多飞几屏并越飞越斜。
-            extendedNextTerminal = false
-        )
-    }
-
-    private fun resolvedSettleTargetY(): Float {
-        if (!useStableCornerSettling) return nearCornerY()
-        if (settleStateActive && settleTargetY.isFinite()) return settleTargetY
-        return settleTargetYFor(gestureMode, cornerY)
-    }
-
-    /** Capture mode and corner before any settling path can mutate live input state. */
-    private fun captureSettleState() {
-        if (!useStableCornerSettling) return
-        if (settleStateActive) return
-        settleGestureMode = gestureMode
-        settleCornerY = cornerY
-        settleTargetY = settleTargetYFor(settleGestureMode, settleCornerY)
-        settleStateActive = true
-    }
-
-    private fun settleTargetYFor(
-        mode: CurlGestureMode,
-        capturedCornerY: Float
-    ): Float =
-        // 与 legado-E 的 onAnimStart 一致：收尾终点把 touchY 收到角所在的那条边
-        // （dy = viewHeight - touchY / 1 - touchY），纸页是贴着边竖直滑出去的。
-        nearCornerY(capturedCornerY)
-
-    private fun startScrollTo(
-        targetX: Float,
-        targetY: Float,
-        fixedDurationMs: Int? = null,
-        watchdogMs: Int = -1
-    ) {
-        val flatX = flatTouchX()
-        val flatY = nearCornerY(activeCornerY())
-        val completionX = completionTargetX()
-        val completionY = resolvedSettleTargetY()
-        val fullDistance = hypot(completionX - flatX, completionY - flatY)
-        val remainingDistance = hypot(targetX - touchX, targetY - touchY)
-        val duration = fixedDurationMs ?: curlSettleDurationMs(
-            capturedBaseDurationMs,
-            remainingDistance,
-            fullDistance
-        )
-
-        val dx = (targetX - touchX).toInt()
-        val dy = (targetY - touchY).toInt()
-        if (dx == 0 && dy == 0) {
-            finishSettle()
-            return
-        }
-
-        isRunning = true
-        settleScroller.startScroll(touchX.toInt(), touchY.toInt(), dx, dy, duration)
-        readView.postInvalidateOnAnimation()
-        if (useStableCornerSettling) {
-            scheduleSettleWatchdog(if (watchdogMs > 0) watchdogMs else duration)
-        }
-    }
-
-    /**
-     * A WebView page handoff can temporarily stop ViewRoot from asking the host for another
-     * computeScroll frame. Never leave a committed curl overlay frozen waiting for that frame.
-     */
-    private fun scheduleSettleWatchdog(durationMs: Int) {
-        val generation = ++settleGeneration
-        readView.post {
-            readView.postDelayed(durationMs.toLong() + 80L) watchdog@{
-                if (destroyed || generation != settleGeneration || !isRunning || isDragging) {
-                    return@watchdog
-                }
-                if (!settleScroller.isFinished) {
-                    // 帧循环停了：直接落到当前动画该在的终点，别停在半路。
-                    val finalX = settleScroller.finalX.toFloat()
-                    val finalY = settleScroller.finalY.toFloat()
-                    settleScroller.abortAnimation()
-                    touchX = finalX
-                    touchY = finalY
-                }
-                if (drawsDirectlyOnCanvas && useStableCornerSettling) {
-                    finalFramePending = true
-                    readView.postInvalidateOnAnimation()
-                } else {
-                    finishSettle()
-                }
-            }
-        }
-    }
-
-    /**
-     * Recover a curl whose ACTION_UP/ACTION_CANCEL was consumed by a child or
-     * window transition. Every MOVE creates a new generation, so a slow drag
-     * remains live while a genuinely abandoned stream is finalized safely.
-     */
-    private fun scheduleDragWatchdog() {
-        val generation = ++dragWatchdogGeneration
-        readView.postDelayed(DRAG_WATCHDOG_TIMEOUT_MS) {
-            if (destroyed || generation != dragWatchdogGeneration ||
-                !gestureStarted || !isDragging || !snapshotsReady ||
-                direction == Direction.NONE
-            ) return@postDelayed
-
-            val idleFor = SystemClock.uptimeMillis() - lastPointerEventUptime
-            if (idleFor < DRAG_WATCHDOG_TIMEOUT_MS) {
-                scheduleDragWatchdog()
-                return@postDelayed
-            }
-
-            Log.w(
-                "CurlPageAnimState",
-                "recovering abandoned drag direction=$direction " +
-                    "x=$lastPointerX y=$lastPointerY idle=${idleFor}ms"
-            )
-            val now = SystemClock.uptimeMillis()
-            val syntheticUp = MotionEvent.obtain(
-                downTime,
-                now,
-                MotionEvent.ACTION_UP,
-                lastPointerX,
-                lastPointerY,
-                0
-            )
-            try {
-                // Enter through the public path so reversed page progress
-                // applies the same X mirroring as a real terminal event.
-                onTouchEvent(syntheticUp)
-            } finally {
-                syntheticUp.recycle()
-            }
-        }
-    }
-
-    private fun finishSettle() {
-        settleGeneration++
-        val completedDirection = direction
-        val completed = settleCompletesPage && isFlipAnim
-        Log.d(
-            "CurlPageAnimState",
-            "finish direction=$completedDirection committed=$completed " +
-                "running=$isRunning dragging=$isDragging x=$touchX target=${completionTargetX()}"
-        )
-        isRunning = false
-        isDragging = false
-
-        if (completed && completedDirection != Direction.NONE) {
-            onAnimationComplete?.invoke()
-        }
-
-        isFlipAnim = false
-        resetToIdle()
-    }
-
-    private fun resetToIdle() {
-        releaseBorrowedFrames()
-        settleCompletesPage = false
-        settleStateActive = false
-        settleGestureMode = CurlGestureMode.EDGE_VERTICAL
-        settleCornerY = Float.NaN
-        settleTargetY = Float.NaN
-        settleExpedited = false
-        finalFramePending = false
-        lastGeometryValid = false
-        snapshotsReady = false
-        gestureMode = CurlGestureMode.EDGE_VERTICAL
-        gestureModeLock.reset()
-        direction = Direction.NONE
-        isRunning = false
-        isDragging = false
-        resetChildViews()
-        readView.invalidate()
-        onMotionStateChanged?.invoke(MotionState.IDLE)
-    }
-
-    private fun ensureGestureStarted(event: MotionEvent) {
-        if (gestureStarted) return
-        gestureStarted = true
-        startX = event.x
-        startY = event.y
-        touchX = event.x
-        touchY = event.y
-        gestureMode = CurlGestureMode.EDGE_VERTICAL
-        gestureModeLock.begin(event.x, event.y)
-        velocityTracker = VelocityTracker.obtain().also { it.addMovement(event) }
-    }
-
-    private fun configureCorner(initialY: Float) {
-        cornerX = readView.width.toFloat()
-        cornerY = when (gestureMode) {
-            CurlGestureMode.CORNER_TOP -> 0f
-            CurlGestureMode.CORNER_BOTTOM -> readView.height.toFloat()
-            CurlGestureMode.EDGE_VERTICAL -> when (
-                SimulationCurlGeometry.cornerForTouchY(
-                    readView.height.toFloat(),
-                    initialY
-                )
-            ) {
-                SimulationCurlCorner.TOP -> 0f
-                SimulationCurlCorner.BOTTOM -> readView.height.toFloat()
-                null -> 0f
-            }
-        }
-    }
-
-    private fun simulationDirection(): SimulationCurlTurnDirection? = when (direction) {
-        Direction.NEXT -> SimulationCurlTurnDirection.NEXT
-        Direction.PREV -> SimulationCurlTurnDirection.PREVIOUS
-        Direction.NONE -> null
-    }
-
-    private fun flatTouchX(): Float {
-        val simulationDirection = simulationDirection() ?: return touchX
-        return SimulationCurlTurnMotion.flatTouchX(
-            readView.width.toFloat(),
-            simulationDirection
-        )
-    }
-
-    private fun touchXForPointer(pointerX: Float): Float {
-        val width = readView.width.toFloat()
-        // Curl has its own gesture handler, so apply the same one-screen
-        // displacement bound as the base animation controller before mapping
-        // the pointer into curl coordinates.
-        val boundedPointerX = if (useStableCornerSettling) {
-            pointerX.coerceIn(startX - width, startX + width)
-        } else {
-            pointerX
-        }
-        if (gestureMode == CurlGestureMode.CORNER_TOP ||
-            gestureMode == CurlGestureMode.CORNER_BOTTOM
-        ) {
-            // In a corner curl the Bezier touch point is the fold tip. Keep it
-            // at the real finger coordinate instead of adding displacement to
-            // the right-edge origin.
-            return SimulationCurlGeometry.cornerTouchX(width, boundedPointerX)
-        }
-        val simulationDirection = simulationDirection() ?: return touchX
-        return SimulationCurlGeometry.canonicalTouchX(
-            width,
-            curlDragOriginX,
-            boundedPointerX,
-            simulationDirection
-        )
-    }
-
-    private fun gestureTouchY(pointerY: Float): Float {
-        if (!useStableCornerSettling) {
-            return if (gestureMode == CurlGestureMode.EDGE_VERTICAL) nearCornerY() else pointerY
-        }
-        return when (gestureMode) {
-            // 与 legado-E 一致：中部起手（整页竖直卷曲）的 tip 贴在下边缘；
-            // 角落起手保留角落卷曲，tip 跟着手指走，只是不越过页面中线。
-            CurlGestureMode.EDGE_VERTICAL -> nearCornerY()
-            CurlGestureMode.CORNER_TOP -> pointerY.coerceIn(
-                1f,
-                (readView.height * 0.5f).coerceAtLeast(1f)
-            )
-            CurlGestureMode.CORNER_BOTTOM -> {
-                val height = readView.height.coerceAtLeast(1).toFloat()
-                pointerY.coerceIn(
-                    (height * 0.5f).coerceAtMost(height - 1f),
-                    height - 1f
-                )
-            }
-        }
-    }
-
-    private fun activeCornerY(): Float = if (settleStateActive && settleCornerY.isFinite()) {
-        settleCornerY
-    } else {
-        cornerY
-    }
-
-    private fun nearCornerY(capturedCornerY: Float = activeCornerY()): Float {
-        return if (capturedCornerY == 0f) 1f else readView.height - 1f
-    }
-
-    /** 卷曲坐标的横向裁剪范围，与 calculateCurlPoints() 里传给几何计算的 limit 一致。 */
-    private fun curlHorizontalLimit(): Float =
-        if (useStableCornerSettling) {
-            CurlTerminalGeometry.completionDistance(
-                readView.width.toFloat(),
-                readView.height.toFloat()
-            )
-        } else {
-            readView.width * 1.2f
-        }
-
-    private fun calculateCurlPoints(): Boolean {
-        val width = readView.width.toFloat()
-        val height = readView.height.toFloat()
-        if (width <= 0f || height <= 0f) return false
-
-        val horizontalLimit = curlHorizontalLimit()
-        val renderCornerY = activeCornerY()
-        val corner = if (renderCornerY == 0f) {
-            SimulationCurlCorner.TOP
-        } else {
-            SimulationCurlCorner.BOTTOM
-        }
-        if (!SimulationCurlGeometry.evaluate(
-                width,
-                height,
-                touchX,
-                touchY,
-                corner,
-                simulationFrame,
-                horizontalLimit
-            )
-        ) {
-            lastGeometryValid = false
-            return false
-        }
-
-        renderTouchX = simulationFrame.touchX
-        renderTouchY = simulationFrame.touchY
-        middleX = simulationFrame.middleX
-        middleY = simulationFrame.middleY
-        touchToCornerDistance = simulationFrame.touchToCornerDistance
-        bezierStart1.set(simulationFrame.start1X, simulationFrame.start1Y)
-        bezierControl1.set(simulationFrame.control1X, simulationFrame.control1Y)
-        bezierVertex1.set(simulationFrame.vertex1X, simulationFrame.vertex1Y)
-        bezierEnd1.set(simulationFrame.end1X, simulationFrame.end1Y)
-        bezierStart2.set(simulationFrame.start2X, simulationFrame.start2Y)
-        bezierControl2.set(simulationFrame.control2X, simulationFrame.control2Y)
-        bezierVertex2.set(simulationFrame.vertex2X, simulationFrame.vertex2Y)
-        bezierEnd2.set(simulationFrame.end2X, simulationFrame.end2Y)
-        lastGeometryValid = true
-        return true
-    }
-
-    private fun drawCurrentPageArea(canvas: Canvas, bitmap: Bitmap?, pageView: View?) {
-        if (bitmap == null && pageView == null) return
-        // path0/path1 由 drawCurl() 通过 buildCurlPaths() 统一构建，保证与收尾判据一致。
-        canvas.save()
-        canvas.clipOutPath(path0)
-        drawPage(canvas, bitmap, pageView)
-        canvas.restore()
-    }
-
-    /** Shadow cast by the lifted page onto the revealed page. */
-    private fun drawNextPageShadow(canvas: Canvas) {
-        shadowClipPath.reset()
-        shadowClipPath.moveTo(bezierStart1.x, bezierStart1.y)
-        shadowClipPath.lineTo(bezierVertex1.x, bezierVertex1.y)
-        shadowClipPath.lineTo(bezierVertex2.x, bezierVertex2.y)
-        shadowClipPath.lineTo(bezierStart2.x, bezierStart2.y)
-        shadowClipPath.lineTo(cornerX, activeCornerY())
-        shadowClipPath.close()
-
-        val shadowExtent = touchToCornerDistance * 0.25f
-        if (!shadowExtent.isFinite() || shadowExtent <= 0f) return
-        val upperCorner = activeCornerY() == 0f
-        val left: Int
-        val right: Int
-        val drawable: GradientDrawable
-        if (upperCorner) {
-            left = bezierStart1.x.toInt()
-            right = (bezierStart1.x + shadowExtent).toInt().coerceAtLeast(left + 1)
-            drawable = backShadowDrawableLR
-        } else {
-            right = bezierStart1.x.toInt()
-            left = (bezierStart1.x - shadowExtent).toInt().coerceAtMost(right - 1)
-            drawable = backShadowDrawableRL
-        }
-
-        canvas.save()
-        canvas.clipPath(path0)
-        canvas.clipPath(shadowClipPath)
-        canvas.rotate(foldRotationDegrees(), bezierStart1.x, bezierStart1.y)
-        drawable.setBounds(
-            left,
-            bezierStart1.y.toInt(),
-            right,
-            (bezierStart1.y + pageDiagonal()).toInt()
-        )
-        drawable.draw(canvas)
-        canvas.restore()
-    }
-
-    /** Two narrow directional gradients on the still-flat current page. */
-    private fun drawCurrentPageShadow(canvas: Canvas) {
-        val shadowWidth = SimulationCurlShadowStyle.widthPx(density)
-        val upperCorner = activeCornerY() == 0f
-        val angle = if (upperCorner) {
-            Math.PI / 4.0 - atan2(
-                (bezierControl1.y - renderTouchY).toDouble(),
-                (renderTouchX - bezierControl1.x).toDouble()
-            )
-        } else {
-            Math.PI / 4.0 - atan2(
-                (renderTouchY - bezierControl1.y).toDouble(),
-                (renderTouchX - bezierControl1.x).toDouble()
-            )
-        }
-        val projected = shadowWidth * 1.41421356f
-        val outerX = renderTouchX + (projected * cos(angle)).toFloat()
-        val verticalOffset = (projected * sin(angle)).toFloat()
-        val outerY = if (upperCorner) {
-            renderTouchY + verticalOffset
-        } else {
-            renderTouchY - verticalOffset
-        }
-
-        shadowClipPath.reset()
-        shadowClipPath.moveTo(outerX, outerY)
-        shadowClipPath.lineTo(renderTouchX, renderTouchY)
-        shadowClipPath.lineTo(bezierControl1.x, bezierControl1.y)
-        shadowClipPath.lineTo(bezierStart1.x, bezierStart1.y)
-        shadowClipPath.close()
-
-        var left: Int
-        var right: Int
-        var drawable: GradientDrawable
-        if (upperCorner) {
-            left = bezierControl1.x.toInt()
-            right = (bezierControl1.x + shadowWidth).toInt().coerceAtLeast(left + 1)
-            drawable = frontShadowDrawableVLR
-        } else {
-            right = (bezierControl1.x + 1f).toInt()
-            left = (bezierControl1.x - shadowWidth).toInt().coerceAtMost(right - 1)
-            drawable = frontShadowDrawableVRL
-        }
-        var rotation = Math.toDegrees(
-            atan2(
-                (renderTouchX - bezierControl1.x).toDouble(),
-                (bezierControl1.y - renderTouchY).toDouble()
-            )
-        ).toFloat()
-
-        canvas.save()
-        canvas.clipOutPath(path0)
-        canvas.clipPath(shadowClipPath)
-        canvas.rotate(rotation, bezierControl1.x, bezierControl1.y)
-        drawable.setBounds(
-            left,
-            (bezierControl1.y - pageDiagonal()).toInt(),
-            right,
-            bezierControl1.y.toInt()
-        )
-        drawable.draw(canvas)
-        canvas.restore()
-
-        shadowClipPath.reset()
-        shadowClipPath.moveTo(outerX, outerY)
-        shadowClipPath.lineTo(renderTouchX, renderTouchY)
-        shadowClipPath.lineTo(bezierControl2.x, bezierControl2.y)
-        shadowClipPath.lineTo(bezierStart2.x, bezierStart2.y)
-        shadowClipPath.close()
-
-        if (upperCorner) {
-            left = bezierControl2.y.toInt()
-            right = (bezierControl2.y + shadowWidth).toInt().coerceAtLeast(left + 1)
-            drawable = frontShadowDrawableHTB
-        } else {
-            right = (bezierControl2.y + 1f).toInt()
-            left = (bezierControl2.y - shadowWidth).toInt().coerceAtMost(right - 1)
-            drawable = frontShadowDrawableHBT
-        }
-        rotation = Math.toDegrees(
-            atan2(
-                (bezierControl2.y - renderTouchY).toDouble(),
-                (bezierControl2.x - renderTouchX).toDouble()
-            )
-        ).toFloat()
-        val adjustedControlY = if (bezierControl2.y < 0f) {
-            bezierControl2.y - readView.height
-        } else {
-            bezierControl2.y
-        }
-        val projectedLength = hypot(
-            bezierControl2.x.toDouble(),
-            adjustedControlY.toDouble()
-        ).toFloat()
-        val diagonal = pageDiagonal()
-
-        canvas.save()
-        canvas.clipOutPath(path0)
-        canvas.clipPath(shadowClipPath)
-        canvas.rotate(rotation, bezierControl2.x, bezierControl2.y)
-        if (projectedLength > diagonal) {
-            drawable.setBounds(
-                (bezierControl2.x - shadowWidth - projectedLength).toInt(),
-                left,
-                (bezierControl2.x + diagonal - projectedLength).toInt(),
-                right
-            )
-        } else {
-            drawable.setBounds(
-                (bezierControl2.x - diagonal).toInt(),
-                left,
-                bezierControl2.x.toInt(),
-                right
-            )
-        }
-        drawable.draw(canvas)
-        canvas.restore()
-    }
-
-    private fun foldRotationDegrees(): Float = Math.toDegrees(
-        atan2(
-            (bezierControl1.x - cornerX).toDouble(),
-            (bezierControl2.y - activeCornerY()).toDouble()
-        )
-    ).toFloat()
-
-    private fun pageDiagonal(): Float = hypot(
-        readView.width.toDouble(),
-        readView.height.toDouble()
-    ).toFloat()
-
-    private fun isCommittedFrameFullyOffscreen(): Boolean {
-        if (!drawsDirectlyOnCanvas || !settleCompletesPage ||
-            !isRunning || isDragging
-        ) return false
-        if (!lastGeometryValid) return true
-        val width = readView.width
-        val height = readView.height
-        if (width <= 0 || height <= 0) return false
-
-        return isFrameFullyOffscreenFor(path0, path1)
-    }
-
-    /** 与 drawCurl() 用的两条路径完全一致：翻起的整页形状 + 纸背形状。 */
-    private fun buildCurlPaths(
-        frame: SimulationCurlFrame,
-        pagePath: Path,
-        foldPath: Path
-    ) {
-        pagePath.reset()
-        pagePath.moveTo(frame.start1X, frame.start1Y)
-        pagePath.quadTo(frame.control1X, frame.control1Y, frame.end1X, frame.end1Y)
-        pagePath.lineTo(frame.touchX, frame.touchY)
-        pagePath.lineTo(frame.end2X, frame.end2Y)
-        pagePath.quadTo(frame.control2X, frame.control2Y, frame.start2X, frame.start2Y)
-        pagePath.lineTo(frame.cornerX, frame.cornerY)
-        pagePath.close()
-
-        foldPath.reset()
-        foldPath.moveTo(frame.vertex2X, frame.vertex2Y)
-        foldPath.lineTo(frame.vertex1X, frame.vertex1Y)
-        foldPath.lineTo(frame.end1X, frame.end1Y)
-        foldPath.lineTo(frame.touchX, frame.touchY)
-        foldPath.lineTo(frame.end2X, frame.end2Y)
-        foldPath.close()
-    }
-
-    private fun fillCurlRegions(pagePath: Path, foldPath: Path) {
-        val width = readView.width
-        val height = readView.height
-        viewportRegion.set(0, 0, width, height)
-        curledRegion.setEmpty()
-        curledRegion.setPath(pagePath, viewportRegion)
-        visibleFrontRegion.set(viewportRegion)
-        visibleFrontRegion.op(curledRegion, Region.Op.DIFFERENCE)
-        visibleFoldRegion.setEmpty()
-        visibleFoldRegion.setPath(foldPath, viewportRegion)
-        visibleFoldRegion.op(curledRegion, Region.Op.INTERSECT)
-    }
-
-    private fun isFrameFullyOffscreenFor(pagePath: Path, foldPath: Path): Boolean {
-        fillCurlRegions(pagePath, foldPath)
-        return when (direction) {
-            Direction.NEXT ->
-                isNegligible(visibleFrontRegion) && isNegligible(visibleFoldRegion)
-            Direction.PREV ->
-                isNegligible(curledRegion) && isNegligible(visibleFoldRegion)
-            Direction.NONE -> false
-        }
-    }
-
-    private fun isNegligible(region: Region): Boolean {
-        if (region.isEmpty) return true
-        val bounds = region.bounds
-        return bounds.width() <= 2 || bounds.height() <= 2
-    }
-
-    private fun drawFoldedBack(canvas: Canvas) {
-        canvas.save()
-        canvas.clipPath(path0)
-        canvas.clipPath(path1)
-        canvas.drawColor(readView.bgColor)
-        drawFoldBackTexture(canvas)
-        val background = readView.bgColor
-        backTintPaint.color = Color.argb(
-            SimulationCurlShadowStyle.BACK_SURFACE_TINT_ALPHA,
-            Color.red(background),
-            Color.green(background),
-            Color.blue(background)
-        )
-        canvas.drawRect(
-            0f,
-            0f,
-            readView.width.toFloat(),
-            readView.height.toFloat(),
-            backTintPaint
-        )
-        drawFoldBackShadow(canvas)
-        canvas.restore()
-    }
-
-    /** Directional shading across the reflected paper back, matching legado-E. */
-    private fun drawFoldBackShadow(canvas: Canvas) {
-        val horizontalExtent = abs(
-            (bezierStart1.x + bezierControl1.x) * 0.5f - bezierControl1.x
-        )
-        val verticalExtent = abs(
-            (bezierStart2.y + bezierControl2.y) * 0.5f - bezierControl2.y
-        )
-        val shadowExtent = minOf(horizontalExtent, verticalExtent)
-        if (!shadowExtent.isFinite() || shadowExtent <= 0.5f) return
-
-        val upperCorner = activeCornerY() == 0f
-        val left: Int
-        val right: Int
-        val drawable: GradientDrawable
-        if (upperCorner) {
-            left = (bezierStart1.x - 1f).toInt()
-            right = (bezierStart1.x + shadowExtent + 1f).toInt().coerceAtLeast(left + 1)
-            drawable = folderShadowDrawableLR
-        } else {
-            right = (bezierStart1.x + 1f).toInt()
-            left = (bezierStart1.x - shadowExtent - 1f).toInt().coerceAtMost(right - 1)
-            drawable = folderShadowDrawableRL
-        }
-
-        canvas.save()
-        canvas.rotate(foldRotationDegrees(), bezierStart1.x, bezierStart1.y)
-        drawable.setBounds(
-            left,
-            bezierStart1.y.toInt(),
-            right,
-            (bezierStart1.y + pageDiagonal()).toInt()
-        )
-        drawable.draw(canvas)
-        canvas.restore()
-    }
-
-    private fun drawFoldBackTexture(canvas: Canvas): Boolean {
-        if (!CurlReflectionGeometry.evaluate(
-                cornerX = cornerX,
-                cornerY = activeCornerY(),
-                touchX = renderTouchX,
-                touchY = renderTouchY,
-                out = reflectionFrame
-            )
-        ) return false
-
-        // The back belongs to the same physical sheet as the visible front:
-        // current page for NEXT, previous page for PREV.
-        val bitmap = turningBitmap?.takeUnless { it.isRecycled } ?: return false
-        val shader = foldBackShader?.takeIf { foldBackShaderBitmap === bitmap }
-            ?: BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).also {
-                foldBackShader = it
-                foldBackShaderBitmap = bitmap
-            }
-        // CLAMP 采样让镜像纹理铺满整个背面裁剪区（含折痕附近几何近似
-        // 未覆盖的条带），不再露出 drawColor 的底色形成浅色白边。
-        foldTextureMatrix.reset()
-        foldTextureMatrix.setValues(reflectionFrame.matrixValues)
-        foldTextureMatrix.postScale(
-            readView.width.toFloat() / bitmap.width.coerceAtLeast(1),
-            readView.height.toFloat() / bitmap.height.coerceAtLeast(1)
-        )
-        shader.setLocalMatrix(foldTextureMatrix)
-        foldTexturePaint.shader = shader
-        canvas.drawRect(
-            0f,
-            0f,
-            readView.width.toFloat(),
-            readView.height.toFloat(),
-            foldTexturePaint
-        )
-        return true
-    }
-
-    private fun capturePages(dir: Direction): Boolean {
-        if (readView.width <= 0 || readView.height <= 0) return false
-        if (onCanFlip?.invoke(dir) != true) return false
-        releaseBorrowedFrames()
-
-        if (dir == Direction.NONE) return false
-        fun page(role: PageTurnRole): View = when (role) {
-            PageTurnRole.PREVIOUS -> readView.prevPageView
-            PageTurnRole.CURRENT -> readView.curPageView
-            PageTurnRole.NEXT -> readView.nextPageView
-        }
-        val layers = pageTurnLayers(dir)
-        val turningView = page(layers.upper)
-        val underView = page(layers.lower)
-
-        turningPageView = turningView
-        underPageView = underView
-        val sourceTurningLease = (turningView as? CurlFrameSource)?.acquireCurlFrame()
-        val sourceUnderLease = (underView as? CurlFrameSource)?.acquireCurlFrame()
-        if (sourceTurningLease != null && sourceUnderLease != null) {
-            turningLease = sourceTurningLease
-            underLease = sourceUnderLease
-            turningBitmap = sourceTurningLease.resource
-            underBitmap = sourceUnderLease.resource
-            return true
-        }
-        sourceTurningLease?.close()
-        sourceUnderLease?.close()
-        if (readView.hasDirectPageRenderer) {
-            ownedTurningBitmap?.takeUnless { it.isRecycled }?.recycle()
-            ownedTurningBitmap = null
-            // Main page content remains live, but the reflected paper back uses
-            // the stable cached texture supplied by the placeholder page.
-            turningBitmap = frozenPage(turningView)
-            ownedUnderBitmap?.takeUnless { it.isRecycled }?.recycle()
-            ownedUnderBitmap = null
-            underBitmap = null
-            return true
-        }
-
-        // EpubSnapshotPageView already owns stable, page-sized bitmaps. Borrow
-        // them directly so starting a curl never copies two full screens on the
-        // UI thread. Canvas reader pages still use the reusable owned buffers.
-        turningBitmap = frozenPage(turningView) ?: snapshot(turningView, ownedTurningBitmap).also {
-            ownedTurningBitmap = it
-        }
-        underBitmap = frozenPage(underView) ?: snapshot(underView, ownedUnderBitmap).also {
-            ownedUnderBitmap = it
-        }
-        return turningBitmap != null && underBitmap != null
-    }
-
-    private fun releaseBorrowedFrames() {
-        turningLease?.close()
-        underLease?.close()
-        turningLease = null
-        underLease = null
-        if (turningBitmap !== ownedTurningBitmap) turningBitmap = ownedTurningBitmap
-        if (underBitmap !== ownedUnderBitmap) underBitmap = ownedUnderBitmap
-    }
-
-    private fun clearCapturedFrames() {
-        releaseBorrowedFrames()
-        turningPageView = null
-        underPageView = null
-        foldTexturePaint.shader = null
-        foldBackShader = null
-        foldBackShaderBitmap = null
-    }
-
-    private fun frozenPage(view: View): Bitmap? =
-        (view as? PageBitmapSource)?.pageBitmap?.takeUnless { it.isRecycled }
-
-    private fun snapshot(view: View, reusable: Bitmap?): Bitmap? {
-        val width = readView.width
-        val height = readView.height
-        if (width <= 0 || height <= 0 || view.width <= 0 || view.height <= 0) return null
-
-        // A prefetched slot is marked loaded immediately after its text is assigned.
-        // During very fast consecutive turns Android may not have run the following
-        // layout pass yet, so drawing it at once can capture only the page background.
-        // Resolve that pending layout synchronously before freezing the curl frames.
-        if (view.isLayoutRequested) {
-            val widthSpec = View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY)
-            val heightSpec = View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
-            view.measure(widthSpec, heightSpec)
-            view.layout(0, 0, width, height)
-        }
-
-        val bitmap = if (
-            reusable == null || reusable.isRecycled ||
-            reusable.width != width || reusable.height != height
-        ) {
-            reusable?.recycle()
-            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        } else {
-            reusable
-        }
-
-        bitmap.density = view.resources.displayMetrics.densityDpi
-        bitmap.eraseColor(readView.bgColor)
-        val bitmapCanvas = Canvas(bitmap)
-        val savedTranslationX = view.translationX
-        val savedTranslationY = view.translationY
-        val savedAlpha = view.alpha
-        try {
-            view.translationX = 0f
-            view.translationY = 0f
-            view.alpha = 1f
-            view.draw(bitmapCanvas)
-        } finally {
-            view.translationX = savedTranslationX
-            view.translationY = savedTranslationY
-            view.alpha = savedAlpha
-        }
-        return bitmap
-    }
-
-
-    private fun drawPage(canvas: Canvas, bitmap: Bitmap?, pageView: View?) {
-        canvas.drawColor(readView.bgColor)
-        drawPageContent(canvas, bitmap, pageView)
-    }
-
-    private fun drawPageContent(canvas: Canvas, bitmap: Bitmap?, pageView: View?): Boolean {
-        // 直接渲染的子 View 内容处于物理坐标；仅抵消布局反向镜像。
-        val saveCount = if (readView.isPageProgressReversed) {
-            canvas.save().also {
-                canvas.scale(-1f, 1f, readView.width * 0.5f, 0f)
-            }
-        } else {
-            -1
-        }
-        try {
-            if (pageView != null && readView.drawPageDirectly(canvas, pageView)) return true
-            if (bitmap == null || bitmap.isRecycled) return false
-            pageSourceRect.set(0, 0, bitmap.width, bitmap.height)
-            if (readView.curlBackTextureMode == CurlBackTextureMode.FADED_MIRROR) {
-                // CSS snapshots are surface-sized. Equal source/destination pixel
-                // bounds guarantee a 1:1 raster copy and bypass density conversion.
-                pageDestinationRect.set(0, 0, bitmap.width, bitmap.height)
-            } else {
-                pageDestinationRect.set(0, 0, readView.width, readView.height)
-            }
-            canvas.drawBitmap(bitmap, pageSourceRect, pageDestinationRect, pagePaint)
-            return true
-        } finally {
-            if (saveCount >= 0) canvas.restoreToCount(saveCount)
-        }
-    }
-
-    private fun resetChildViews() {
-        if (readView.animatePageViewsDirectly) return
-        val width = readView.width.toFloat()
-        readView.curPageView.translationX = 0f
-        readView.curPageView.translationY = 0f
-        readView.curPageView.alpha = 1f
-        readView.curPageView.translationZ = 2f
-
-        readView.prevPageView.translationX = idleTranslationX(Direction.PREV, width)
-        readView.prevPageView.translationY = 0f
-        readView.prevPageView.alpha = 0f
-        readView.prevPageView.translationZ = 0f
-
-        readView.nextPageView.translationX = idleTranslationX(Direction.NEXT, width)
-        readView.nextPageView.translationY = 0f
-        readView.nextPageView.alpha = 0f
-        readView.nextPageView.translationZ = 0f
-    }
-
-    private fun recycleVelocityTracker() {
-        velocityTracker?.recycle()
-        velocityTracker = null
+    private fun minSettleMs() = VisualMotion.durationMillis(CURL_SETTLE_MIN_MS)
+
+    private companion object {
+        const val TAG = "PaperCurl"
+        const val COMMIT_FRACTION = 0.14f
+        const val FLING_DP_PER_SECOND = 450f
+        /** Steepest fold a diagonal drag can produce, about 26°. */
+        const val MAX_TILT = 0.45f
+        /** A tap turn runs at 60% of the configured full-turn duration. */
+        const val TAP_DURATION_FACTOR = 0.6f
+        /** A released page covers the whole path in 75% of the configured duration. */
+        const val RELEASE_PACE = 0.75f
+        /** Swipe speed that earns the full 40% shortening. */
+        const val SWIPE_DP_PER_SECOND = 1800f
+        /** Fold tilt per unit of straight drag when the page is held at a corner (~22°). */
+        const val CORNER_LIFT = 0.4f
+        /** The other page starts only after the finger crosses back this far past the lift point. */
+        const val REVERSE_SLOP_DP = 24f
+        /** A queued tap finishes the running page within this time. */
+        const val CATCH_UP_MS = 70L
     }
 }

@@ -160,9 +160,10 @@ class ScrollPageAnim(
             else -> return
         }
         val dy = (toY - fromY).toInt()
-        if (dy == 0) { direction = Direction.NONE; return }
         isRunning = true
-        val duration = if (fromDrag && vh > 0f) {
+        val duration = if (dy == 0) {
+            1
+        } else if (fromDrag && vh > 0f) {
             (baseDurationMs * (kotlin.math.abs(dy) / vh))
                 .toInt()
                 .coerceIn(minOf(VisualMotion.durationMillis(80), baseDurationMs), baseDurationMs)
@@ -291,12 +292,12 @@ class ScrollPageAnim(
                     // 点击
                     val viewWidth = readView.width.toFloat()
                     val relX = event.x / viewWidth
+                    direction = Direction.NONE
                     when {
                         relX < 0.3f -> onTapLeft?.invoke()
                         relX > 0.7f -> onTapRight?.invoke()
                         else -> onTapCenter?.invoke()
                     }
-                    direction = Direction.NONE
                     readView.invalidate()
                     return true
                 }

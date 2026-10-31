@@ -9,6 +9,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.FlingBehavior
 import androidx.compose.foundation.gestures.ScrollScope
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyListScope
@@ -18,10 +19,20 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.AppSpace
+import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.LocalEInkMode
+import com.huangder.lumibooks.ui.theme.LocalLiquidGlassCapability
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
+import com.huangder.lumibooks.ui.components.ProgressiveStartBlur
+import com.huangder.lumibooks.ui.components.progressiveBlurEnabled
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -30,6 +41,8 @@ internal fun RecentBooksRow(
     itemWidth: Dp,
     modifier: Modifier = Modifier,
     state: LazyListState = rememberLazyListState(),
+    startUnderlap: Dp = 0.dp,
+    contentPadding: PaddingValues = PaddingValues(horizontal = AppSpace.lg),
     content: LazyListScope.() -> Unit
 ) {
     val density = LocalDensity.current
@@ -38,14 +51,34 @@ internal fun RecentBooksRow(
     val fling = remember(state, itemWidthPx, spacingPx) {
         RecentBooksFlingBehavior(state, itemWidthPx, spacingPx)
     }
-    LazyRow(
-        state = state,
-        modifier = modifier.fillMaxWidth().testTag("recent_books_row"),
-        contentPadding = PaddingValues(horizontal = AppSpace.lg),
-        horizontalArrangement = Arrangement.spacedBy(AppSpace.md),
-        flingBehavior = fling,
-        content = content
+    val eInkMode = LocalEInkMode.current
+    val blurEnabled = progressiveBlurEnabled(
+        LocalLiquidGlassCapability.current.supported, eInkMode, LocalReduceTransparency.current
     )
+    val backdrop = rememberLayerBackdrop()
+    val fadeStart = startUnderlap > 0.dp
+    Box(modifier.fillMaxWidth()) {
+        LazyRow(
+            state = state,
+            modifier = Modifier.fillMaxWidth()
+                .then(if (fadeStart && blurEnabled) Modifier.layerBackdrop(backdrop) else Modifier)
+                .testTag("recent_books_row"),
+            contentPadding = contentPadding,
+            horizontalArrangement = Arrangement.spacedBy(AppSpace.md),
+            flingBehavior = fling,
+            content = content
+        )
+        if (fadeStart && state.canScrollBackward && !eInkMode) {
+            Box(Modifier.matchParentSize()) {
+                ProgressiveStartBlur(
+                    backdrop = backdrop.takeIf { blurEnabled },
+                    tint = AppColors.PageBg.copy(alpha = if (blurEnabled) 0.08f else 0.62f),
+                    modifier = Modifier.align(Alignment.CenterStart),
+                    bandWidth = startUnderlap + 40.dp
+                )
+            }
+        }
+    }
 }
 
 /** Ease to a bounded destination so a short shelf doesn't abruptly hit its edge. */

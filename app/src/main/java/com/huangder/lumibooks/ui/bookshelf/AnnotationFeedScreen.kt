@@ -129,6 +129,9 @@ internal fun AnnotationFeedScreen(
     viewModel: AnnotationFeedViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    com.huangder.lumibooks.ui.components.ReconcileAnnotationTagDraft(listOfNotNull(uiState.selectedTag)) {
+        viewModel.setTag(it.firstOrNull())
+    }
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val excerptDark = LocalIsDarkTheme.current
     val context = LocalContext.current
@@ -159,7 +162,6 @@ internal fun AnnotationFeedScreen(
     var editingBookmarkRemark by remember { mutableStateOf<Bookmark?>(null) }
     var bookmarkRemarkText by remember { mutableStateOf("") }
     var bookmarkRemarkTags by remember { mutableStateOf<List<String>>(emptyList()) }
-    var managingTags by remember { mutableStateOf(false) }
 
     // The field owns the text so typing never waits on filtering; re-sync after process death.
     LaunchedEffect(Unit) { if (searchOpen) viewModel.setSearchText(searchText) }
@@ -274,12 +276,9 @@ internal fun AnnotationFeedScreen(
                         onClose = closeSearch,
                         modifier = Modifier.weight(1f)
                     )
-                    Spacer(Modifier.width(AppSpace.sm))
-                    LiquidGlassIconButton(
-                        imageVector = AppIcons.Tag,
-                        contentDescription = stringResource(R.string.annotation_tag_manage),
-                        onClick = { managingTags = true }, size = 44.dp, iconSize = 20.dp,
-                        normalContainerColor = AppColors.BgGray
+                    com.huangder.lumibooks.edition.EditionTagManagementButton(
+                        com.huangder.lumibooks.domain.model.TagTypes.ANNOTATION,
+                        Modifier.padding(start = AppSpace.sm)
                     )
                 }
 
@@ -353,17 +352,6 @@ internal fun AnnotationFeedScreen(
                 onDelete = viewModel::deleteTag
             )
         }
-        if (managingTags) AnnotationTagSheet(
-            backdrop = glassBackdrop.takeIf { isLiquidGlass },
-            selected = emptyList(),
-            available = uiState.availableTags,
-            onSave = { names -> names.forEach { viewModel.createTag(it) } },
-            onCreate = viewModel::createTag,
-            onDismiss = { managingTags = false },
-            onRename = viewModel::renameTag,
-            onDelete = viewModel::deleteTag,
-            managementOnly = true
-        )
     }
 }
 

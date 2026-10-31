@@ -13,4 +13,10 @@ class NavigationBackdropPolicyTest {
             listOf(Screen.Bookshelf.route, Screen.Reader.route)))
         assertTrue(navigationBackdropCaptureAllowed(Screen.Bookshelf.route, listOf(Screen.Bookshelf.route)))
     }
+
+    @Test fun neverRecordTheHiddenLibraryWhoseGlassWouldSampleItself() {
+        assertFalse(navigationBackdropCaptureAllowed(Screen.HiddenLibrary.route, listOf(Screen.HiddenLibrary.route)))
+        assertFalse(navigationBackdropCaptureAllowed(Screen.Bookshelf.route,
+            listOf(Screen.Bookshelf.route, Screen.HiddenLibrary.route)))
+    }
 }

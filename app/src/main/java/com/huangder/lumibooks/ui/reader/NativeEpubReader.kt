@@ -170,7 +170,11 @@ internal class NativeEpubSurface(context: Context, private val session: EpubRend
         this.style = style; this.edgeTap = edgeTap; this.identity = identity
         if (this.transition != transition || this.duration != duration || animation == null) {
             destroyAnimation(); this.transition = transition; this.duration = duration
-            animation = if (transition == "curl") CurlPageAnim(surface, baseDurationMs = duration) else SlidePageAnim(surface, duration)
+            animation = when (transition) {
+                "curl" -> CurlPageAnim(surface, baseDurationMs = duration)
+                "wave" -> WavePageAnim(surface, duration)
+                else -> SlidePageAnim(surface, duration)
+            }
             animation!!.apply {
                 onCanFlip = { direction -> canFlip(direction) }
                 onTapLeft = { edge(edgeTap.leftAction) }; onTapRight = { edge(edgeTap.rightAction) }; onTapCenter = { events().menu() }
@@ -315,7 +319,7 @@ internal class NativeEpubSurface(context: Context, private val session: EpubRend
         if (!canFlip(dir)) return false
         events().manual(); clearSelection()
         if (transition == "none") { current = target; updateSlots(); publish() }
-        else when (val a = animation) { is CurlPageAnim -> return a.startFromTap(dir); is SlidePageAnim -> a.startFromTap(dir) }
+        else when (val a = animation) { is CurlPageAnim -> return a.startFromTap(dir); is WavePageAnim -> a.startFromTap(dir); is SlidePageAnim -> a.startFromTap(dir) }
         return true
     }
     private fun edge(action: ReaderEdgeTapAction) { turn(if (action == ReaderEdgeTapAction.NEXT_PAGE) 1 else -1) }

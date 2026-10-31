@@ -6,6 +6,7 @@ import org.jsoup.Jsoup
 import org.jsoup.parser.Parser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -15,6 +16,28 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class EpubTutorialDocumentTest {
+    @Test
+    fun simplifiedChineseTocLessonIsReachableAndIncludesAdvancedRules() {
+        val tutorial = File("src/main/assets/builtin/lumi/guide_zh-CN.epub")
+        EpubRenderSession.open(tutorial.absolutePath).use { session ->
+            val nav = Jsoup.parse(requireNotNull(session.read("OEBPS/nav.xhtml")).bytes.toString(Charsets.UTF_8))
+            val link = requireNotNull(nav.selectFirst("a[href='content.xhtml#txt-toc-rules']"))
+            assertEquals("TXT 目录规则", link.text())
+            val destination = requireNotNull(session.resolveInternalLink(0, link.attr("href")))
+            val response = requireNotNull(session.assetLoader.shouldInterceptRequest(
+                Uri.parse(session.chapterUrl(destination.first, destination.second))
+            ))
+            val document = Jsoup.parse(response.data.bufferedReader().use { it.readText() })
+            val lesson = requireNotNull(document.getElementById("txt-toc-rules"))
+            assertNotNull(lesson.getElementById("txt-toc-quickstart"))
+            assertEquals(7, lesson.select("h3").count { !it.text().startsWith("快速上手") })
+            for (topic in listOf("章节正则", "卷正则", "章节标题模板", "卷标题模板", "兼容规则", "符号开头章节", "保存并应用")) {
+                assertTrue("Missing tutorial topic: $topic", lesson.text().contains(topic))
+            }
+            assertTrue(lesson.select("pre code").any { it.text().contains("^第\\s*") })
+        }
+    }
+
     @Test
     fun finalTutorialChapterRetainsDocumentShell() {
         val tutorial = File("src/main/assets/builtin/lumi/guide_zh-CN.epub")

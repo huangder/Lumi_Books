@@ -1,6 +1,13 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
+        <activity android:name=".ui.reader.CurlPreviewActivity" android:exported="true"
+            android:showWhenLocked="true" android:turnScreenOn="true"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <activity android:name=".ui.reader.ReaderGlassMenuPreviewActivity" android:exported="true"
+            android:theme="@style/Theme.EBookReader" />
+        <activity android:name=".debug.GlassDialogPreviewActivity" android:exported="true"
+            android:theme="@style/Theme.EBookReader" />
         <activity android:name=".ui.reader.PdfMemoryProbeActivity" android:exported="true"
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
         <activity android:name=".ui.reader.EpubPerformanceActivity" android:exported="true"

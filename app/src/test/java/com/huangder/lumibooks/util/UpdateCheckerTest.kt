@@ -26,6 +26,36 @@ class UpdateCheckerTest {
         assertTrue(evaluateAppUpdate(remoteVersion = "v1.1.0", currentVersion = "1.0.99"))
     }
 
+    @Test
+    fun `matches blocked catalog urls after normalizing host default port and trailing slash`() {
+        assertTrue(
+            UpdateChecker.isOpdsUrlBlocked(
+                "HTTPS://Catalog.Example:443/opds/",
+                listOf("https://catalog.example/opds")
+            )
+        )
+    }
+
+    @Test
+    fun `does not block a different catalog path`() {
+        assertFalse(
+            UpdateChecker.isOpdsUrlBlocked(
+                "https://catalog.example/other",
+                listOf("https://catalog.example/opds")
+            )
+        )
+    }
+
+    @Test
+    fun `embedded credentials do not bypass a blocked catalog url`() {
+        assertTrue(
+            UpdateChecker.isOpdsUrlBlocked(
+                "https://reader:secret@catalog.example/opds",
+                listOf("https://catalog.example/opds")
+            )
+        )
+    }
+
     private fun evaluateAppUpdate(remoteVersion: String, currentVersion: String): Boolean {
         return UpdateChecker.evaluate(
             config = UpdateChecker.UpdateConfig(

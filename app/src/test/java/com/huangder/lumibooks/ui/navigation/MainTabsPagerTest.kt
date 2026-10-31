@@ -53,8 +53,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.LayoutDirection
 import com.huangder.lumibooks.ui.components.ConfigurableNavigationBack
 import com.huangder.lumibooks.ui.animation.mainTabEntrance
+import com.huangder.lumibooks.ui.animation.LocalMainTabItemMotion
+import com.huangder.lumibooks.ui.animation.MainTabItemMotion
 import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -124,6 +127,79 @@ class MainTabsPagerTest {
         compose.mainClock.autoAdvance = true
         compose.onNodeWithTag("pager").performTouchInput { swipeRight() }
         compose.runOnIdle { assertEquals(1, state.settledPage) }
+    }
+
+    @Test
+    fun tabClickKeepsRetainedPagesEntranceLayersAttachedThroughoutTheFade() {
+        val itemMotions = arrayOfNulls<MainTabItemMotion>(3)
+        compose.setContent {
+            state = rememberPagerState { mainTabRoutes.size }
+            selection = remember { MainTabSelection() }
+            val scope = rememberCoroutineScope()
+            Column(Modifier.fillMaxSize()) {
+                MainTabsPager(state, true, Modifier.weight(1f), selection) { page ->
+                    val itemMotion = LocalMainTabItemMotion.current
+                    SideEffect { itemMotions[page] = itemMotion }
+                    Text("page-$page", Modifier.mainTabEntrance())
+                }
+                Text("Library", Modifier.testTag("library").clickable {
+                    scope.launch { selection.select(state, 1, true) }
+                })
+            }
+        }
+        val initialMotions = compose.runOnIdle { itemMotions.copyOf() }
+        assertTrue(initialMotions.all { it != null })
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithTag("library").performClick()
+        compose.mainClock.advanceTimeByFrame()
+        compose.runOnIdle {
+            assertTrue(selection.running)
+            initialMotions.forEachIndexed { page, initial ->
+                assertSame("Tab fades must retain page $page's entrance layers", initial, itemMotions[page])
+            }
+        }
+        compose.mainClock.advanceTimeBy(750)
+        compose.runOnIdle {
+            assertTrue(!selection.running)
+            initialMotions.forEachIndexed { page, initial -> assertSame(initial, itemMotions[page]) }
+        }
+    }
+
+    @Test
+    fun bookshelfHeaderRemainsVisibleAfterDockSelectionThenSwipe() {
+        compose.setContent {
+            state = rememberPagerState { mainTabRoutes.size }
+            selection = remember { MainTabSelection() }
+            val scope = rememberCoroutineScope()
+            Column {
+                MainTabsPager(
+                    state = state,
+                    userScrollEnabled = true,
+                    modifier = Modifier.weight(1f).testTag("pager"),
+                    selection = selection
+                ) { page ->
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        if (page == 1) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("书库胶囊", Modifier.testTag("bookshelf-capsule"))
+                                Text("书籍封面", Modifier.testTag("bookshelf-cover"))
+                            }
+                        }
+                    }
+                }
+                Text("统计", Modifier.height(48.dp).clickable {
+                    scope.launch { selection.select(state, 2, true) }
+                }.testTag("tab-2"))
+                Text("书库", Modifier.height(48.dp).clickable {
+                    scope.launch { selection.select(state, 1, true) }
+                }.testTag("tab-1"))
+            }
+        }
+        compose.onNodeWithTag("tab-2").performClick()
+        compose.waitUntil(2_000) { !selection.running }
+        compose.onNodeWithTag("pager").performTouchInput { swipeRight() }
+        compose.onNodeWithTag("bookshelf-capsule").assertIsDisplayed()
+        compose.onNodeWithTag("bookshelf-cover").assertIsDisplayed()
     }
 
     @Test

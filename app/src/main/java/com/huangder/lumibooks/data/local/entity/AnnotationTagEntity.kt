@@ -9,5 +9,6 @@ import androidx.room.PrimaryKey
 data class AnnotationTagEntity(
     @PrimaryKey val name: String,
     val updatedAt: Long,
-    @ColumnInfo(defaultValue = "0") val isDeleted: Boolean = false
+    @ColumnInfo(defaultValue = "0") val isDeleted: Boolean = false,
+    val groupId: String? = null
 )

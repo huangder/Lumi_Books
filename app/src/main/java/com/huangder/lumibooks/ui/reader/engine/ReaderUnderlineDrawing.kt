@@ -42,7 +42,7 @@ internal fun drawReaderUnderline(
                     if (vertical) path.moveTo(cross, position) else path.moveTo(position, cross)
                 } else if (vertical) path.lineTo(cross + deviation, position)
                 else path.lineTo(position, cross + deviation)
-                position = (position + density.coerceAtLeast(1f)).coerceAtMost(end)
+                position = (position + (density * 0.5f).coerceAtLeast(0.05f)).coerceAtMost(end)
             }
             if (vertical) path.lineTo(cross, end) else path.lineTo(end, cross)
             canvas.drawPath(path, paint)

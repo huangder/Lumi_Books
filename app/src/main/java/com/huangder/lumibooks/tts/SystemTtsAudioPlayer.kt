@@ -38,6 +38,8 @@ internal class SystemTtsAudioPlayer(
     private var onDone: (() -> Unit)? = null
     private var onError: ((Throwable) -> Unit)? = null
     private var onRenderedStart: (() -> Unit)? = null
+    private var onPlaybackActivity: ((Boolean) -> Unit)? = null
+    @Volatile private var renderActivity: RenderedAudioActivity? = null
 
     fun renderedFrameOffset(): Long = track?.playbackHeadPosition ?: 0L
     private val ranges = ArrayDeque<Pair<Long, () -> Unit>>()
@@ -87,14 +89,28 @@ internal class SystemTtsAudioPlayer(
         val doneCallback = onDone
         val errorCallback = onError
         val renderedCallback = onRenderedStart
+        val activityCallback = onPlaybackActivity
+        val activity = RenderedAudioActivity(monotonicMs)
+        renderActivity = activity
         renderMonitor = scope.launch {
+            var renderedStart = false
             while (token == generation) {
-                if (created.playbackHeadPosition > 0L) {
+                val head = created.playbackHeadPosition
+                if (head > 0L && !renderedStart) {
+                    renderedStart = true
                     withContext(Dispatchers.Main.immediate) {
                         if (token == generation) renderedCallback?.invoke()
                     }
-                    return@launch
                 }
+                activity.update(head, paused || completed)?.let { active ->
+                    withContext(Dispatchers.Main.immediate) {
+                        if (token == generation) activityCallback?.invoke(active)
+                    }
+                }
+                // UI callbacks can wait for a busy main thread. Keep them on the render
+                // monitor so highlighting never holds up PCM writes and starves AudioTrack.
+                dispatchRenderedRanges(created, token)
+                if (completed) return@launch
                 delay(10)
             }
         }
@@ -106,7 +122,6 @@ internal class SystemTtsAudioPlayer(
             try {
                 for (chunk in channel) {
                     write(chunk)
-                    dispatchRenderedRanges(created, token)
                 }
                 if (token == generation) {
                     val speechFrames = writtenBytes / pcm.frameBytes
@@ -128,12 +143,11 @@ internal class SystemTtsAudioPlayer(
                         } else if (monotonicMs() - lastProgressMs >= STALL_TIMEOUT_MS) {
                             throw IllegalStateException("AudioTrack playback made no progress for 5 seconds")
                         }
-                        dispatchRenderedRanges(created, token)
                         delay(10)
                     }
-                    dispatchRenderedRanges(created, token)
                     if (token == generation) withContext(Dispatchers.Main.immediate) {
                         if (token == generation) {
+                            dispatchRenderedRanges(created, token)
                             completed = true
                             doneCallback?.invoke()
                         }
@@ -212,6 +226,7 @@ internal class SystemTtsAudioPlayer(
     fun pause() {
         paused = true
         runCatching { track?.pause() }
+        renderActivity?.pause()?.let { onPlaybackActivity?.invoke(it) }
     }
 
     fun resume(): Boolean {
@@ -226,6 +241,7 @@ internal class SystemTtsAudioPlayer(
     fun stop() = stop(releaseTrack = true)
 
     private fun stop(releaseTrack: Boolean) {
+        renderActivity = null
         generation++
         input?.close()
         worker?.cancel()
@@ -248,10 +264,11 @@ internal class SystemTtsAudioPlayer(
         inputFinished = false
     }
 
-    fun setCallbacks(onDone: (() -> Unit)?, onError: ((Throwable) -> Unit)?, onRenderedStart: (() -> Unit)? = null) {
+    fun setCallbacks(onDone: (() -> Unit)?, onError: ((Throwable) -> Unit)?, onRenderedStart: (() -> Unit)? = null, onPlaybackActivity: ((Boolean) -> Unit)? = null) {
         this.onDone = onDone
         this.onError = onError
         this.onRenderedStart = onRenderedStart
+        this.onPlaybackActivity = onPlaybackActivity
     }
 
     fun release() {

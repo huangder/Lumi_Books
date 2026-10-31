@@ -1,6 +1,11 @@
 package com.huangder.lumibooks.ui.statistics
 import com.huangder.lumibooks.ui.icons.directionalIcon
 import com.huangder.lumibooks.ui.icons.AppIcons
+import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
+import java.time.LocalDate
+import com.huangder.lumibooks.ui.components.LiquidGlassButton
+import com.huangder.lumibooks.ui.statistics.report.ReadingReportKind
+import com.huangder.lumibooks.ui.statistics.report.ReadingReportPeriod
 
 import com.huangder.lumibooks.ui.components.lumiCardSurface
 import androidx.compose.animation.AnimatedContent
@@ -75,6 +80,7 @@ import com.huangder.lumibooks.ui.bookshelf.BookDetailsActivity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.huangder.lumibooks.ui.components.StatusGradientOverlay
+import com.huangder.lumibooks.ui.components.LocalMainNavigationInsets
 import com.huangder.lumibooks.ui.components.LiquidGlassSegmentedControl
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
@@ -108,15 +114,26 @@ fun StatisticsScreen(
     val statusBarTopPadding = WindowInsets.statusBars
         .asPaddingValues()
         .calculateTopPadding()
-    val bottomContentPadding = if (LocalUseMaterial3Theme.current) {
-        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 96.dp
-    } else {
-        120.dp
+    val navigationInsets = LocalMainNavigationInsets.current
+    val bottomContentPadding = when {
+        // The side rail frees the bottom edge; only the system bar remains.
+        !navigationInsets.bottomBar ->
+            WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + AppSpace.lg
+        LocalUseMaterial3Theme.current ->
+            WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 96.dp
+        else -> 120.dp
     }
     val motionEnabled = LocalMotionEnabled.current
     val context = LocalContext.current
     val chartAnimationsPlayed = remember { mutableStateListOf(false, false, false) }
     val selectedPeriod = uiState.selectedTab.coerceIn(0, 2)
+    val reportPeriod = when (selectedPeriod) {
+        0 -> StatisticsPeriod.week(LocalDate.now(), uiState.displayWeekOffset).start.let {
+            ReadingReportPeriod(ReadingReportKind.WEEK, it.year, it.monthValue - 1, it.dayOfMonth)
+        }
+        1 -> ReadingReportPeriod(ReadingReportKind.MONTH, uiState.displayYear, uiState.displayMonth)
+        else -> ReadingReportPeriod(ReadingReportKind.YEAR, uiState.displayYear)
+    }
     val playChartAnimation = remember(selectedPeriod) {
         !chartAnimationsPlayed[selectedPeriod]
     }
@@ -150,6 +167,8 @@ fun StatisticsScreen(
         ) {
             LazyColumn(
                 modifier = Modifier
+                    // Before widthIn, so the capped column centers beside the side rail.
+                    .padding(start = navigationInsets.start)
                     .widthIn(max = 840.dp)
                     .fillMaxWidth()
                     .align(Alignment.TopCenter)
@@ -157,15 +176,35 @@ fun StatisticsScreen(
                 item(key = "header") {
                     Spacer(Modifier.height(statusBarTopPadding + AppSpace.md))
                     PageEntranceItem(play = playEntranceAnimation, index = 0) {
-                        Text(
-                            text = stringResource(R.string.stats_title),
-                            fontSize = AppType.Display,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = resolveAppFontFamily(KaiTi),
-                            letterSpacing = (-0.02).sp,
-                            color = AppColors.TextPrimary,
-                            modifier = Modifier.padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = AppSpace.lg, vertical = AppSpace.md),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(R.string.stats_title),
+                                fontSize = AppType.Display,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = resolveAppFontFamily(KaiTi),
+                                letterSpacing = (-0.02).sp,
+                                color = AppColors.TextPrimary
+                            )
+                            Spacer(Modifier.width(AppSpace.sm))
+                            Text(
+                                text = stringResource(R.string.stats_finished_books, uiState.finishedBookCount),
+                                modifier = Modifier.weight(1f),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Light,
+                                color = AppColors.TextSecondary.copy(alpha = 0.78f),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            // The header action samples the sibling background, never its own page.
+                            ProvideLiquidGlassBackdrop(segmentedControlBackdrop.takeIf { isLiquidGlass }) {
+                                com.huangder.lumibooks.edition.EditionReportEntry(reportPeriod)
+                            }
+                        }
                     }
                     Spacer(Modifier.height(AppSpace.xl))
                 }
@@ -353,26 +392,28 @@ private fun StatisticsSummary(uiState: StatisticsUiState, selectedPeriod: Int) {
     val goalMs = uiState.dailyGoal * 60 * 1000L
     val goalDays = durations.count { it >= goalMs }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = AppSpace.lg),
-        horizontalArrangement = Arrangement.spacedBy(if (hasGoal) AppSpace.lg else AppSpace.xl)
-    ) {
-        StatisticValue(
-            value = stringResource(R.string.statistics_duration_value, hours, minutes),
-            label = stringResource(R.string.statistics_reading_time),
-            modifier = Modifier.weight(1f, fill = false)
-        )
-        StatisticValue(
-            value = stringResource(R.string.statistics_active_days_value, activeDays),
-            label = stringResource(R.string.statistics_active_days)
-        )
-        if (hasGoal) {
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = AppSpace.lg),
+            horizontalArrangement = Arrangement.spacedBy(if (hasGoal) AppSpace.lg else AppSpace.xl)
+        ) {
             StatisticValue(
-                value = stringResource(R.string.statistics_active_days_value, goalDays),
-                label = stringResource(R.string.statistics_goal_days)
+                value = stringResource(R.string.statistics_duration_value, hours, minutes),
+                label = stringResource(R.string.statistics_reading_time),
+                modifier = Modifier.weight(1f, fill = false)
             )
+            StatisticValue(
+                value = stringResource(R.string.statistics_active_days_value, activeDays),
+                label = stringResource(R.string.statistics_active_days)
+            )
+            if (hasGoal) {
+                StatisticValue(
+                    value = stringResource(R.string.statistics_active_days_value, goalDays),
+                    label = stringResource(R.string.statistics_goal_days)
+                )
+            }
         }
     }
 }

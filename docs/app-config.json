@@ -34,5 +34,6 @@
         "https://cdn.jsdelivr.net/gh/huangder/Lumi_Books@main/docs/fonts/fandol_fang.ttf"
       ]
     }
-  ]
+  ],
+  "blocked_opds_urls": []
 }

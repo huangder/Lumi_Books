@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.reader
 
 import android.app.Application
+import kotlinx.coroutines.flow.first
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.Book
@@ -17,6 +18,22 @@ import com.huangder.lumibooks.util.epub.EpubRenderMode
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
 class ReaderPaperColorTest {
+    @Test fun `opening resolves saved night and book scoped paper before reader creation`() = kotlinx.coroutines.runBlocking {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val preferences = com.huangder.lumibooks.data.local.DataStoreManager(context)
+            .readerPreferences("opening-test").first()
+        val book = Book("opening-test", "title", "author", "book.txt", null, BookFormat.TXT, 0L, 0f, createdAt = 0L)
+        val sepia = ReaderThemeSuite("sepia", settings = ReaderThemeSettings(backgroundSelection = "sepia"))
+        val snapshot = preferences.copy(
+            readerDisplayMode = "night",
+            readerThemeSuiteState = com.huangder.lumibooks.domain.model.ReaderThemeSuiteState(listOf(sepia), "sepia"),
+            readerThemeSuiteBookScoped = true,
+            readerThemeSuiteBookActiveId = "sepia"
+        )
+        assertEquals(0xFF2B2118.toInt(), snapshot.resolveOpeningPaperColor(book, false))
+        assertEquals(0xFFF5E6D3.toInt(), snapshot.copy(readerDisplayMode = "day").resolveOpeningPaperColor(book, true))
+    }
+
     @Test fun `white opening paper is softened while dark paper stays unchanged`() {
         assertEquals(0xFFF0F0F0.toInt(), readerTransitionPaperColor(0xFFFFFFFF.toInt()))
         assertEquals(0xFFF0F0F0.toInt(), readerTransitionPaperColor(0xFFFBFBFC.toInt()))

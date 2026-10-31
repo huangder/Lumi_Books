@@ -1,4 +1,9 @@
 package com.huangder.lumibooks.ui.bookshelf
+
+import com.huangder.lumibooks.ui.components.AppDialogAction
+import com.huangder.lumibooks.ui.components.AppDialogActionRole
+
+import com.huangder.lumibooks.domain.model.ActivityDuration
 import com.huangder.lumibooks.ui.icons.directionalIcon
 import com.huangder.lumibooks.ui.icons.AppIcons
 
@@ -46,10 +51,15 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -62,6 +72,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -83,6 +94,7 @@ import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
+import com.huangder.lumibooks.ui.components.LiquidGlassButton
 import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.home.HomeViewModel
@@ -91,12 +103,14 @@ import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
+import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.effectiveAppTheme
+import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
 import com.huangder.lumibooks.util.FileUtils
-import com.huangder.lumibooks.util.TimeUtils
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import dagger.hilt.android.AndroidEntryPoint
@@ -200,25 +214,33 @@ data class BookDetailsUiState(
     val activeDays: Int = 0,
     val bookmarkCount: Int = 0,
     val noteCount: Int = 0,
-    val isLoading: Boolean = true
+    val isLoading: Boolean = true,
+    val review: String = "",
+    val reviewRating: Float = 0f,
+    val activityDuration: ActivityDuration = ActivityDuration()
 )
 
 @dagger.hilt.android.lifecycle.HiltViewModel
 class BookDetailsViewModel @Inject constructor(
     private val bookRepository: com.huangder.lumibooks.domain.repository.BookRepository,
-    private val readingRepository: com.huangder.lumibooks.domain.repository.ReadingRepository
+    private val readingRepository: com.huangder.lumibooks.domain.repository.ReadingRepository,
+    private val dataStoreManager: DataStoreManager
 ) : androidx.lifecycle.ViewModel() {
     private val _uiState = kotlinx.coroutines.flow.MutableStateFlow(BookDetailsUiState())
     val uiState = _uiState.asStateFlow()
     fun load(bookId: String) {
         viewModelScope.launch {
             kotlinx.coroutines.flow.combine(
-                bookRepository.getAllBooks(),
-                readingRepository.getTotalDurationByBookId(bookId),
-                readingRepository.getActiveDaysByBookId(bookId),
-                readingRepository.getBookmarksByBookId(bookId),
-                readingRepository.getNotesByBookId(bookId)
-            ) { books, duration, days, bookmarks, notes -> BookDetailsUiState(books.firstOrNull { it.id == bookId }, duration ?: 0L, days, bookmarks.size, notes.count { !it.isInkStroke }, false) }
+                kotlinx.coroutines.flow.combine(
+                    bookRepository.getAllBooks(),
+                    readingRepository.getActivityDurationByBookId(bookId),
+                    readingRepository.getActiveDaysByBookId(bookId),
+                    readingRepository.getBookmarksByBookId(bookId),
+                    readingRepository.getNotesByBookId(bookId)
+                ) { books, duration, days, bookmarks, notes -> BookDetailsUiState(books.firstOrNull { it.id == bookId }, duration.totalDuration, days, bookmarks.size, notes.count { !it.isInkStroke }, false, activityDuration = duration) },
+                dataStoreManager.bookReview(bookId),
+                dataStoreManager.bookReviewRating(bookId)
+            ) { state, review, rating -> state.copy(review = review, reviewRating = rating) }
                 .collect { _uiState.value = it }
         }
     }
@@ -304,6 +326,16 @@ fun BookDetailsScreen(
             item { BookHero(book, folderName, onCover = { coverOpen = true }) }
             item {
                 MetricGrid(book, details.totalReadingTime, details.activeDays, details.bookmarkCount, details.noteCount)
+                Text(stringResource(R.string.activity_duration_breakdown,
+                    com.huangder.lumibooks.ui.components.activityDurationText(details.activityDuration.readingDuration),
+                    com.huangder.lumibooks.ui.components.activityDurationText(details.activityDuration.listeningDuration)),
+                    fontSize = AppType.Caption, color = AppColors.TextSecondary,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpace.sm, vertical = AppSpace.sm), textAlign = TextAlign.Center)
+            }
+            item {
+                ReviewEntryCard(details.review, details.reviewRating) {
+                    BookReviewActivity.start(context, book.id, book.title, book.author, book.coverPath)
+                }
             }
             item {
                 InfoCard(
@@ -312,8 +344,7 @@ fun BookDetailsScreen(
                     tags.joinToString { it.name },
                     onEdit = { editing = true },
                     onTags = { tagsOpen = true },
-                    onMove = { moveOpen = true },
-                    onReview = { BookReviewActivity.start(context, book.id, book.title, book.coverPath) }
+                    onMove = { moveOpen = true }
                 )
             }
         }
@@ -326,29 +357,28 @@ fun BookDetailsScreen(
     }
 
     if (editing) EditBookDialog(book, homeViewModel) { editing = false }
-    if (tagsOpen) BookTagBottomSheet(library.tags, library.bookTagLinks.filter { it.bookId == book.id }.map { it.tagId }.toSet(), { tagsOpen = false }, { tag, checked -> homeViewModel.setBookTag(book.id, tag.id, checked) }, { name, parent -> homeViewModel.createAndAssignTag(book.id, name, parent) }, { tag, children -> homeViewModel.deleteTag(tag.id, children) })
+    if (tagsOpen) BookTagBottomSheet(library.tags, library.bookTagLinks.filter { it.bookId == book.id }.map { it.tagId }.toSet(), { tagsOpen = false }, { tag, checked -> homeViewModel.setBookTag(book.id, tag.id, checked) }, { name, parent -> homeViewModel.createAndAssignTag(book.id, name, parent) }, { tag, children -> homeViewModel.deleteTag(tag.id, children) }, bookId = book.id)
     if (moveOpen) FolderMoveSheet(library.folders, 1, currentFolderId, { moveOpen = false }, { name, parent -> homeViewModel.createFolder(name, parent) }) { target -> requestBookMove(target) }
     pendingCrossStorageMove?.let { request ->
         LiquidGlassAlertDialog(
             onDismissRequest = { pendingCrossStorageMove = null },
-            title = { Text(stringResource(R.string.folder_cross_storage_confirmation_title)) },
+            titleText = stringResource(R.string.folder_cross_storage_confirmation_title),
             text = { Text(stringResource(R.string.folder_cross_storage_confirmation_message)) },
-            confirmButton = {
-                LiquidGlassTextButton(
+            actions = listOf(
+                AppDialogAction(
                     text = stringResource(R.string.confirm),
                     onClick = {
                         pendingCrossStorageMove = null
                         completeBookMove(request, allowCrossStorageMove = true)
-                    }
-                )
-            },
-            dismissButton = {
-                LiquidGlassTextButton(
+                    },
+                    role = AppDialogActionRole.Primary
+                ),
+                AppDialogAction(
                     text = stringResource(R.string.cancel),
-                    onClick = { pendingCrossStorageMove = null }
+                    onClick = { pendingCrossStorageMove = null },
+                    role = AppDialogActionRole.Cancel
                 )
-            }
-        )
+            ))
     }
     if (coverOpen) CustomCoverSourceSheet(book, { coverOpen = false }, { coverOpen = false; coverTarget = book; coverPicker.launch("image/*") }, { coverOpen = false; CoverSearchActivity.start(context, book.id, book.title) })
     if (deleteOpen) CloudAwareBookDeleteDialog(
@@ -395,7 +425,7 @@ fun BookDetailsScreen(
     }
 }
 
-@Composable private fun InfoCard(book: Book, folder: String, tags: String, onEdit: () -> Unit, onTags: () -> Unit, onMove: () -> Unit, onReview: () -> Unit) {
+@Composable private fun InfoCard(book: Book, folder: String, tags: String, onEdit: () -> Unit, onTags: () -> Unit, onMove: () -> Unit) {
     val context = LocalContext.current
     LiquidGlassSurface(AppRoundedCornerShape(AppRadius.lg), AppColors.CardBg, Modifier.fillMaxWidth(), contentScrimColor = Color.Transparent) {
         Column {
@@ -411,7 +441,6 @@ fun BookDetailsScreen(
             DetailRow(stringResource(R.string.book_detail_format), book.format.name, false)
             DetailRow(stringResource(R.string.book_detail_folder), folder, true, onMove)
             DetailRow(stringResource(R.string.add_tag), tags.ifBlank { stringResource(R.string.book_detail_none) }, true, onTags)
-            DetailRow(stringResource(R.string.book_review), stringResource(R.string.book_review_open), true, onReview, showChevron = true)
             DetailRow(
                 stringResource(R.string.book_detail_storage),
                 when {
@@ -426,6 +455,129 @@ fun BookDetailsScreen(
             LocationDetailRow(book.filePath)
         }
     }
+}
+
+/**
+ * A card of its own so the review stands out. A written review shows three lines and tapping the card
+ * expands it in place; the edit button opens the editor. With nothing written, the whole card opens it.
+ */
+@Composable internal fun ReviewEntryCard(review: String, rating: Float, onEdit: () -> Unit) {
+    val shape = AppRoundedCornerShape(AppRadius.lg)
+    val (actionColor, onActionColor) = reviewActionColors()
+    val hasReview = review.isNotBlank() || rating > 0f
+    val fullText = remember(review) { review.trim() }
+    val preview = remember(review) { reviewPreviewText(review) }
+    var expanded by rememberSaveable(review) { mutableStateOf(false) }
+    var truncated by remember(review) { mutableStateOf(false) }
+    // The collapsed preview joins paragraphs, so a multi-paragraph review can expand even when it fits.
+    val canExpand = truncated || expanded || preview != fullText
+    val tint = when {
+        hasReview || LocalEInkMode.current -> Color.Transparent
+        LocalIsDarkTheme.current -> actionColor.copy(alpha = 0.12f)
+        else -> actionColor.copy(alpha = 0.07f)
+    }
+    val onCardClick: (() -> Unit)? = when {
+        preview.isEmpty() -> onEdit
+        canExpand -> ({ expanded = !expanded })
+        else -> null
+    }
+    LiquidGlassSurface(shape, AppColors.CardBg, Modifier.fillMaxWidth(), contentScrimColor = Color.Transparent,
+        onClick = onCardClick, interactive = false, pressFeedbackEnabled = false) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                // Expanding long reviews in one layout pass avoids resizing the
+                // glass render target and relaying out the page on every spring frame.
+                .clip(shape)
+                .background(tint)
+                .padding(AppSpace.md),
+            verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.book_review), Modifier.weight(1f), fontSize = AppType.Body, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
+                ReviewEditButton(hasReview, actionColor, onActionColor, onEdit)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                repeat(5) { index ->
+                    ReviewStar((rating - index).coerceIn(0f, 1f), reviewStarEmptyColor, reviewStarFillColor, Modifier.size(18.dp))
+                    if (index < 4) Spacer(Modifier.width(2.dp))
+                }
+                if (hasReview) {
+                    Spacer(Modifier.width(AppSpace.sm))
+                    val label = reviewRatingLabel(rating)
+                    val primary = AppColors.TextPrimary
+                    val secondary = AppColors.TextSecondary
+                    val unrated = stringResource(R.string.book_review_unrated)
+                    Text(
+                        buildAnnotatedString {
+                            if (label == null) {
+                                withStyle(SpanStyle(color = secondary)) { append(unrated) }
+                            } else {
+                                withStyle(SpanStyle(color = primary, fontWeight = FontWeight.SemiBold)) { append(formatReviewScore(rating)) }
+                                withStyle(SpanStyle(color = secondary)) { append(" · $label") }
+                            }
+                        },
+                        fontSize = AppType.BodySmall
+                    )
+                }
+            }
+            if (preview.isNotEmpty()) {
+                ReviewExcerpt(if (expanded) fullText else preview, expanded, actionColor) { truncated = true }
+            } else {
+                Text(
+                    stringResource(if (hasReview) R.string.book_review_hint else R.string.book_review_subtitle),
+                    fontSize = AppType.Caption,
+                    color = AppColors.TextSecondary
+                )
+            }
+        }
+    }
+}
+
+@Composable private fun ReviewEditButton(hasReview: Boolean, actionColor: Color, onActionColor: Color, onClick: () -> Unit) {
+    // Solid before the first review, quieter once there is one to edit. Glass keeps a neutral
+    // pill for the quiet state: tinting glass at low alpha would wash out the accent text.
+    val container = when {
+        !hasReview -> actionColor
+        LocalAppTheme.current == "liquid_glass" -> null
+        else -> actionColor.copy(alpha = 0.12f)
+    }
+    val content = if (hasReview) actionColor else onActionColor
+    LiquidGlassButton(onClick = onClick, tintedColor = container, contentColor = content) {
+        Icon(AppIcons.PencilSimple, contentDescription = null, tint = content, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(AppSpace.xs))
+        Text(
+            stringResource(if (hasReview) R.string.book_review_edit else R.string.book_review_write),
+            fontSize = AppType.BodySmall,
+            fontWeight = FontWeight.SemiBold,
+            color = content,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable private fun ReviewExcerpt(text: String, expanded: Boolean, accent: Color, onTruncated: () -> Unit) {
+    val barColor = accent.copy(alpha = 0.6f)
+    Text(
+        text,
+        onTextLayout = { if (!expanded && it.hasVisualOverflow) onTruncated() },
+        modifier = Modifier
+            .fillMaxWidth()
+            .drawBehind {
+                val barWidth = 3.dp.toPx()
+                val x = if (layoutDirection == androidx.compose.ui.unit.LayoutDirection.Rtl) size.width - barWidth else 0f
+                drawRoundRect(barColor, Offset(x, 0f), Size(barWidth, size.height), CornerRadius(barWidth / 2f))
+            }
+            .padding(start = 3.dp + AppSpace.sm),
+        fontSize = AppType.BodySmall,
+        lineHeight = AppType.BodySmall * 1.6f,
+        fontFamily = resolveAppFontFamily(KaiTi),
+        color = AppColors.TextPrimary,
+        maxLines = if (expanded) Int.MAX_VALUE else 3,
+        overflow = TextOverflow.Ellipsis
+    )
 }
 
 @Composable private fun LocationDetailRow(filePath: String) {
@@ -454,7 +606,7 @@ fun BookDetailsScreen(
     }
 }
 
-@Composable internal fun DetailRow(label: String, value: String, clickable: Boolean, onClick: () -> Unit = {}, showChevron: Boolean = false) {
+@Composable internal fun DetailRow(label: String, value: String, clickable: Boolean, onClick: () -> Unit = {}) {
     val textMeasurer = rememberTextMeasurer()
     val density = androidx.compose.ui.platform.LocalDensity.current
     val labelStyle = TextStyle(fontSize = AppType.Body)
@@ -470,13 +622,12 @@ fun BookDetailsScreen(
         val labelWidthPx = remember(label, labelStyle) {
             textMeasurer.measure(label, style = labelStyle, maxLines = 1).size.width.toFloat()
         }
-        val valueWidthPx = remember(value, valueStyle, showChevron) {
+        val valueWidthPx = remember(value, valueStyle) {
             textMeasurer.measure(value, style = valueStyle, maxLines = 1).size.width.toFloat()
         }
-        val chevronWidthPx = if (showChevron) with(density) { 20.dp.toPx() } else 0f
         val stack = shouldStackDetailRow(
             labelWidthPx = labelWidthPx,
-            valueWidthPx = valueWidthPx + chevronWidthPx,
+            valueWidthPx = valueWidthPx,
             availableWidthPx = availableWidthPx,
             gapWidthPx = with(density) { gap.toPx() }
         )
@@ -484,33 +635,23 @@ fun BookDetailsScreen(
             Column(Modifier.fillMaxWidth()) {
                 Text(label, style = labelStyle, color = AppColors.TextPrimary)
                 Spacer(Modifier.height(6.dp))
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(value, style = valueStyle, color = AppColors.TextSecondary, modifier = Modifier.weight(1f))
-                    if (showChevron) {
-                        Icon(
-                            AppIcons.CaretRight,
-                            contentDescription = null,
-                            tint = AppColors.TextSecondary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
+                Text(
+                    value,
+                    style = valueStyle,
+                    color = AppColors.TextSecondary,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         } else {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(label, style = labelStyle, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
                 Spacer(Modifier.width(gap))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(value, style = valueStyle, color = AppColors.TextSecondary, maxLines = 1)
-                    if (showChevron) {
-                        Icon(
-                            AppIcons.CaretRight,
-                            contentDescription = null,
-                            tint = AppColors.TextSecondary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
+                Text(
+                    value,
+                    style = valueStyle,
+                    color = AppColors.TextSecondary,
+                    maxLines = 1
+                )
             }
         }
     }

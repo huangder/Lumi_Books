@@ -86,7 +86,8 @@ Lumi は **MVVM + Repository** アーキテクチャを採用し、Hilt によ�
 
 ```
 android_books/
-├── LICENSE                     # GPLv3 ライセンス & サードパーティ通知
+├── LICENSE                     # GNU GPLv3
+├── NOTICE                      # 著作権 & サードパーティ通知
 ├── README.md                   # ユーザー向け README
 ├── README.dev.md               # 開発者ガイド（本ファイル）
 ├── build.gradle.kts            # ルートビルド設定
@@ -225,8 +226,6 @@ Lumi のオリジナルコードは [GNU GPLv3](LICENSE) の下でオープン�
 | [PDFBox Android](https://github.com/TomRoush/PdfBox-Android) | Apache 2.0 | PDF テキスト抽出 |
 | [CommonMark](https://github.com/commonmark/commonmark-java) | BSD 2-Clause | Markdown 解析 |
 | [Jsoup](https://jsoup.org/) | MIT | HTML 解析 |
-| [legado-E SimulationPageDelegate](https://github.com/Luoyacheng/legado-E) | GPLv3 | カールページめくりの幾何・描画改変 |
-| [legado-E TXT 目次ルールデータ](https://github.com/Luoyacheng/legado-E) | GPLv3 | 互換モード用の txtTocRule 既定ルール（正規表現のみ使用、スクリプトは実行しません） |
 | [Coil](https://coil-kt.github.io/coil/) | Apache 2.0 | 画像読み込み |
 | [OkHttp](https://square.github.io/okhttp/) | Apache 2.0 | HTTP クライアント |
 

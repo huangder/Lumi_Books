@@ -485,7 +485,8 @@ internal fun BookshelfSearchResultItem(
     selected: Boolean = false,
     onSelectionToggle: () -> Unit = {},
     coverModifier: Modifier = Modifier,
-    selectionScaleEnabled: Boolean = true
+    selectionScaleEnabled: Boolean = true,
+    onToggleHidden: (() -> Unit)? = null
 ) {
     val haptic = LocalHapticFeedback.current
     val eInkMode = LocalEInkMode.current
@@ -572,7 +573,8 @@ internal fun BookshelfSearchResultItem(
                     onRemoveCustomCover = onRemoveCustomCover,
                     onTags = onTags,
                     onBookmarksNotes = onBookmarksNotes,
-                    onToggleReadStatus = onToggleReadStatus
+                    onToggleReadStatus = onToggleReadStatus,
+                    onToggleHidden = onToggleHidden
                 )
             }
         }
@@ -762,9 +764,12 @@ private fun SearchResultActionRow(
     onRemoveCustomCover: () -> Unit,
     onTags: () -> Unit,
     onBookmarksNotes: () -> Unit,
-    onToggleReadStatus: () -> Unit
+    onToggleReadStatus: () -> Unit,
+    onToggleHidden: (() -> Unit)? = null
 ) {
     val hasCustomCover = FileUtils.isCustomCover(book.coverPath)
+    // Hidden books leave favourites, tags and folders alone until they return to the shelf.
+    val organise = !book.isHidden
     val favoritePink = if (LocalIsDarkTheme.current) Color(0xFFFF8A80) else Color(0xFFE85D5D)
     val gap = 4.dp
     HorizontalOverscrollBounce(modifier = Modifier.fillMaxWidth()) {
@@ -797,15 +802,17 @@ private fun SearchResultActionRow(
             animationIndex = 2,
             onClick = onDelete
         )
-        SearchActionButton(
-            icon = AppIcons.Heart.resolve(book.isFavorite),
-            contentDescription = stringResource(R.string.favorite),
-            tintedColor = if (book.isFavorite) favoritePink else Color.Black,
-            contentColor = Color.White,
-            visible = visible,
-            animationIndex = 3,
-            onClick = onFavorite
-        )
+        if (organise) {
+            SearchActionButton(
+                icon = AppIcons.Heart.resolve(book.isFavorite),
+                contentDescription = stringResource(R.string.favorite),
+                tintedColor = if (book.isFavorite) favoritePink else Color.Black,
+                contentColor = Color.White,
+                visible = visible,
+                animationIndex = 3,
+                onClick = onFavorite
+            )
+        }
 
         if (hasCustomCover) {
             SearchActionButton(
@@ -838,13 +845,15 @@ private fun SearchResultActionRow(
             )
         }
 
-        SearchActionButton(
-            icon = AppIcons.Tag,
-            contentDescription = stringResource(R.string.add_tag),
-            visible = visible,
-            animationIndex = if (hasCustomCover) 6 else 5,
-            onClick = onTags
-        )
+        if (organise) {
+            SearchActionButton(
+                icon = AppIcons.Tag,
+                contentDescription = stringResource(R.string.add_tag),
+                visible = visible,
+                animationIndex = if (hasCustomCover) 6 else 5,
+                onClick = onTags
+            )
+        }
         SearchActionButton(
             icon = AppIcons.Bookmark.regular,
             contentDescription = stringResource(R.string.bookmarks_notes),
@@ -861,15 +870,29 @@ private fun SearchResultActionRow(
             animationIndex = if (hasCustomCover) 8 else 7,
             onClick = onToggleReadStatus
         )
-        SearchActionButton(
-            icon = AppIcons.FolderSimple,
-            contentDescription = stringResource(R.string.move_to_folder),
-            label = stringResource(R.string.move_to_folder),
-            width = 104.dp,
-            visible = visible,
-            animationIndex = if (hasCustomCover) 8 else 7,
-            onClick = onMoveToFolder
-        )
+        if (organise) {
+            SearchActionButton(
+                icon = AppIcons.FolderSimple,
+                contentDescription = stringResource(R.string.move_to_folder),
+                label = stringResource(R.string.move_to_folder),
+                width = 104.dp,
+                visible = visible,
+                animationIndex = if (hasCustomCover) 8 else 7,
+                onClick = onMoveToFolder
+            )
+        }
+        if (onToggleHidden != null) {
+            val hideLabel = stringResource(if (book.isHidden) R.string.hidden_library_unhide else R.string.hidden_library_hide)
+            SearchActionButton(
+                icon = if (book.isHidden) AppIcons.Eye else AppIcons.EyeSlash,
+                contentDescription = hideLabel,
+                label = hideLabel,
+                width = 116.dp,
+                visible = visible,
+                animationIndex = if (hasCustomCover) 9 else 8,
+                onClick = onToggleHidden
+            )
+        }
     }
     }
 }

@@ -109,7 +109,7 @@ internal fun readerLineOffsets(
  */
 internal class ReaderHighlightPainter(
     private val paint: Paint,
-    density: Float,
+    private val density: Float,
     private val keepCornersInsideLayout: Boolean = false
 ) {
     private val horizontalPadding = 3f * density
@@ -127,7 +127,8 @@ internal class ReaderHighlightPainter(
         geometry: ReaderLineGeometry,
         start: Int,
         end: Int,
-        color: Int
+        color: Int,
+        outline: Boolean = false
     ) {
         if (color ushr 24 == 0) return
         val safeStart = start.coerceIn(0, text.length)
@@ -135,9 +136,17 @@ internal class ReaderHighlightPainter(
         if (safeStart >= safeEnd) return
 
         paint.color = color
+        val previousStyle = paint.style
+        if (outline) {
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 1.5f * density
+        }
         val fontMetrics = layout.paint.fontMetrics
         val visible = readerVisibleLines(canvas, layout)
-        if (visible.isEmpty()) return
+        if (visible.isEmpty()) {
+            paint.style = previousStyle
+            return
+        }
         val firstLine = maxOf(layout.getLineForOffset(safeStart), visible.first)
         val lastLine = minOf(layout.getLineForOffset(safeEnd - 1), visible.last)
         for (line in firstLine..lastLine) {
@@ -152,6 +161,7 @@ internal class ReaderHighlightPainter(
                 line = line
             )
         }
+        paint.style = previousStyle
     }
 
     private fun drawLineSegment(

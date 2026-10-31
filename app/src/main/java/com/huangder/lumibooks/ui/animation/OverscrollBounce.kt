@@ -44,13 +44,17 @@ fun OverscrollBounce(
     modifier: Modifier = Modifier,
     state: OverscrollBounceState = remember { OverscrollBounceState() },
     onTopPullRelease: ((offsetPx: Float) -> Unit)? = null,
+    onTopPullDrag: ((offsetPx: Float, deltaPx: Float) -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
     val releaseCallback = rememberUpdatedState(onTopPullRelease)
+    val dragCallback = rememberUpdatedState(onTopPullDrag)
     val connection = remember(state) {
-        BounceNestedScrollConnection(state) { offset ->
-            releaseCallback.value?.invoke(offset)
-        }
+        BounceNestedScrollConnection(
+            state = state,
+            onRelease = { offset -> releaseCallback.value?.invoke(offset) },
+            onDrag = { offset, delta -> dragCallback.value?.invoke(offset, delta) }
+        )
     }
 
     // 禁用 Android 原生 overscroll（拉伸效果）
@@ -90,7 +94,8 @@ fun HorizontalOverscrollBounce(
 
 private class BounceNestedScrollConnection(
     private val state: OverscrollBounceState,
-    private val onRelease: (offsetPx: Float) -> Unit
+    private val onRelease: (offsetPx: Float) -> Unit,
+    private val onDrag: (offsetPx: Float, deltaPx: Float) -> Unit
 ) : NestedScrollConnection {
 
     // 拖拽时：施加阻尼
@@ -106,6 +111,7 @@ private class BounceNestedScrollConnection(
         if (source == NestedScrollSource.UserInput && abs(dy) > 0.5f) {
             // 同步更新位移，避免为每个触摸事件创建一个主线程协程。
             state.dragBy(dy * 0.4f)
+            onDrag(state.offset, dy * 0.4f)
             return Offset(0f, dy) // 消耗全部剩余滚动
         }
         return Offset.Zero

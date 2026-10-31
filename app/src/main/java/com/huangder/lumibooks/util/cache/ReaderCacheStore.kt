@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
+import com.huangder.lumibooks.util.BookFileAccess
 import org.json.JSONObject
 import java.io.Closeable
 import java.io.File
@@ -171,10 +172,9 @@ class ReaderCacheStore private constructor(private val context: Context) {
         metadata.delete()
         val temporary = File(root, target.name + ".tmp")
         try {
-            val uri = Uri.parse(location)
-            context.contentResolver.openInputStream(uri)?.use { input ->
+            BookFileAccess.openInputStream(context, location).use { input ->
                 temporary.outputStream().buffered().use(input::copyTo)
-            } ?: return@runCatching null
+            }
             moveAtomically(temporary, target)
             writeMetadata(metadata, fingerprint, target.length(), System.currentTimeMillis())
             trim(excludeKey = fingerprint.key)
@@ -215,10 +215,9 @@ class ReaderCacheStore private constructor(private val context: Context) {
         temporary.delete()
         ensureSessionMirrorSpace(directory, fingerprint.size)
         try {
-            val uri = Uri.parse(location)
-            context.contentResolver.openInputStream(uri)?.use { input ->
+            BookFileAccess.openInputStream(context, location).use { input ->
                 temporary.outputStream().buffered().use(input::copyTo)
-            } ?: throw IOException("Unable to open CBZ document: $uri")
+            }
             if (fingerprint.size > 0L && temporary.length() != fingerprint.size) {
                 throw IOException(
                     "Incomplete CBZ mirror: expected ${fingerprint.size} bytes, copied ${temporary.length()}"

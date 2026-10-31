@@ -30,6 +30,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import com.huangder.lumibooks.domain.model.SelectionMenuSettings
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -86,9 +89,10 @@ class SettingsViewModel @Inject constructor(
     val txtTocThirdPartyRules: kotlinx.coroutines.flow.Flow<List<TxtTocRule>> =
         dataStoreManager.txtTocThirdPartyRules()
 
-    fun saveSelectionMenuItems(items: com.huangder.lumibooks.domain.model.SelectionMenuSettings) {
-        _uiState.update { it.copy(selectionMenuItems = items) }
-        viewModelScope.launch { dataStoreManager.saveSelectionMenuItems(items) }
+    /** Shows the change at once; the DataStore flow then confirms the persisted value. */
+    fun saveSelectionMenuItems(settings: SelectionMenuSettings) {
+        _uiState.update { state -> state.copy(selectionMenuItems = settings) }
+        viewModelScope.launch { dataStoreManager.saveSelectionMenuItems(settings) }
     }
 
     fun saveLongPressSelectionRange(range: LongPressSelectionRange) {
@@ -153,11 +157,9 @@ class SettingsViewModel @Inject constructor(
     }
 
     private fun collectAllPreferences() {
-        viewModelScope.launch {
-            dataStoreManager.selectionMenuItems.collectLatest { items ->
-                _uiState.update { it.copy(selectionMenuItems = items) }
-            }
-        }
+        dataStoreManager.selectionMenuItems
+            .onEach { settings -> _uiState.update { state -> state.copy(selectionMenuItems = settings) } }
+            .launchIn(viewModelScope)
         viewModelScope.launch {
             dataStoreManager.longPressSelectionRange.collectLatest { range ->
                 _uiState.update { it.copy(longPressSelectionRange = range) }
@@ -1127,7 +1129,9 @@ class SettingsViewModel @Inject constructor(
             val coversDirSize = getDirSize(FileUtils.getCoversDirectory(context))
 
             // SAF 与应用内部文件统一取真实大小，并按大小降序展示。
-            val bookDetails = bookRepository.getAllBooks().first().map { book ->
+            // 隐藏书库的书不列出书名，只把体积计入「其他」。
+            val (hiddenBooks, visibleBooks) = bookRepository.getAllBooks().first().partition { it.isHidden }
+            val bookDetails = visibleBooks.map { book ->
                 BookSizeItem(
                     bookId = book.id,
                     title = book.title,
@@ -1135,6 +1139,7 @@ class SettingsViewModel @Inject constructor(
                     sizeBytes = BookFileAccess.size(context, book.filePath)
                 )
             }.sortedByDescending { it.sizeBytes }
+            val otherSize = hiddenBooks.sumOf { BookFileAccess.size(context, it.filePath) }
 
             val remaining = MIN_STORAGE_REFRESH_VISIBILITY_MS -
                 (System.currentTimeMillis() - refreshStartedAt)
@@ -1148,6 +1153,7 @@ class SettingsViewModel @Inject constructor(
                         appSizeBytes = appSize,
                         cacheSizeBytes = genericCacheSize,
                         booksSizeBytes = bookDetails.sumOf { it.sizeBytes },
+                        otherSizeBytes = otherSize,
                         coversSizeBytes = coversDirSize,
                         externalTtsCacheSizeBytes = externalTtsCacheSize,
                         externalTtsCacheLimitMb = state.storageInfo.externalTtsCacheLimitMb,

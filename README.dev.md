@@ -86,7 +86,8 @@ Lumi 采用 **MVVM + Repository** 架构，结合 Hilt 依赖注入：
 
 ```
 android_books/
-├── LICENSE                     # GPLv3 许可证与第三方组件声明
+├── LICENSE                     # GNU GPLv3
+├── NOTICE                      # 版权与第三方组件声明
 ├── README.md                   # 用户版说明
 ├── README.dev.md               # 开发者版说明（本文件）
 ├── build.gradle.kts            # 顶层构建配置
@@ -227,8 +228,6 @@ Lumi 原创代码采用 [GNU GPLv3](LICENSE) 开源。
 | [PDFBox Android](https://github.com/TomRoush/PdfBox-Android) | Apache 2.0 | PDF 文字提取 |
 | [CommonMark](https://github.com/commonmark/commonmark-java) | BSD 2-Clause | Markdown 解析 |
 | [Jsoup](https://jsoup.org/) | MIT | HTML 解析 |
-| [legado-E SimulationPageDelegate](https://github.com/Luoyacheng/legado-E) | GPLv3 | 卷曲翻页几何与绘制改编 |
-| [legado-E TXT 目录规则数据](https://github.com/Luoyacheng/legado-E) | GPLv3 | 兼容模式内置的 txtTocRule 默认规则（仅读取正则，不执行脚本） |
 | [Coil](https://coil-kt.github.io/coil/) | Apache 2.0 | 图片加载 |
 | [OkHttp](https://square.github.io/okhttp/) | Apache 2.0 | HTTP 客户端 |
 

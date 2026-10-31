@@ -14,6 +14,8 @@ interface BookRepository {
     suspend fun updateBook(book: Book)
     suspend fun updateSourceSha256(bookId: String, sha256: String)
     suspend fun updateBookMetadata(book: Book)
+    /** Moves books into or out of the hidden library in one write. */
+    suspend fun setBooksHidden(bookIds: Collection<String>, hidden: Boolean)
     suspend fun deleteBook(book: Book)
     suspend fun markBookCloudOnly(bookId: String)
     suspend fun markBookDownloaded(bookId: String, filePath: String)

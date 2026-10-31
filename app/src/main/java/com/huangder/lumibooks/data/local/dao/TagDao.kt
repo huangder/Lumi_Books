@@ -5,12 +5,26 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.Upsert
 import com.huangder.lumibooks.data.local.entity.BookTagCrossRefEntity
 import com.huangder.lumibooks.data.local.entity.TagEntity
+import com.huangder.lumibooks.domain.model.ManagedTag
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 abstract class TagDao {
+    @Query("SELECT tags.id AS `key`, tags.name, tags.groupId, COUNT(books.id) AS usageCount FROM tags LEFT JOIN book_tag_cross_refs AS links ON links.tagId = tags.id LEFT JOIN books ON books.id = links.bookId AND books.isHidden = 0 GROUP BY tags.id ORDER BY tags.normalizedName, tags.id")
+    abstract fun observeCatalog(): Flow<List<ManagedTag>>
+
+    @Query("SELECT * FROM tags")
+    abstract suspend fun getAllTagsSnapshot(): List<TagEntity>
+
+    @Query("SELECT * FROM book_tag_cross_refs")
+    abstract suspend fun getAllBookTagLinksSnapshot(): List<BookTagCrossRefEntity>
+
+    @Query("UPDATE tags SET groupId = :groupId, updatedAt = :updatedAt WHERE id IN (:ids)")
+    abstract suspend fun moveTags(ids: List<String>, groupId: String?, updatedAt: Long)
+
     @Query("SELECT * FROM tags ORDER BY createdAt ASC")
     abstract fun getAllTags(): Flow<List<TagEntity>>
 
@@ -25,6 +39,9 @@ abstract class TagDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     abstract suspend fun insertBookTagLink(link: BookTagCrossRefEntity)
+
+    @Upsert
+    abstract suspend fun upsertBookTagLink(link: BookTagCrossRefEntity)
 
     @Query("DELETE FROM book_tag_cross_refs WHERE bookId = :bookId AND tagId = :tagId")
     abstract suspend fun deleteBookTagLink(bookId: String, tagId: String)

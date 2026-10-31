@@ -1,4 +1,7 @@
 package com.huangder.lumibooks.ui.bookshelf
+
+import com.huangder.lumibooks.ui.components.AppDialogAction
+import com.huangder.lumibooks.ui.components.AppDialogActionRole
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.heightIn
 import com.huangder.lumibooks.ui.icons.directionalIcon
@@ -380,25 +383,24 @@ private fun BookshelfCategoriesScreen(
         val count = folderBookCounts(uiState.folders, uiState.bookFolderLinks)[folder.id] ?: 0
         LiquidGlassAlertDialog(
             onDismissRequest = { deleteFolder = null },
-            title = { Text(stringResource(R.string.delete_folder_title, folder.name)) },
+            titleText = stringResource(R.string.delete_folder_title, folder.name),
             text = { Text(stringResource(R.string.delete_folder_confirm, count)) },
-            confirmButton = {
-                LiquidGlassTextButton(
+            actions = listOf(
+                AppDialogAction(
                     text = stringResource(R.string.delete),
-                    tintedColor = Color(0xFFD92D3A),
                     onClick = {
                         viewModel.deleteFolder(folder.id)
                         deleteFolder = null
-                    }
-                )
-            },
-            dismissButton = {
-                LiquidGlassTextButton(
+                    },
+                    role = AppDialogActionRole.Destructive,
+                    tintedColor = Color(0xFFD92D3A)
+                ),
+                AppDialogAction(
                     text = stringResource(R.string.cancel),
-                    onClick = { deleteFolder = null }
+                    onClick = { deleteFolder = null },
+                    role = AppDialogActionRole.Cancel
                 )
-            }
-        )
+            ))
     }
 }
 
@@ -698,8 +700,10 @@ private fun CategoriesPageHeader(
             fontWeight = FontWeight.Bold,
             fontFamily = resolveAppFontFamily(KaiTi),
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
         )
+        com.huangder.lumibooks.edition.EditionTagManagementButton(com.huangder.lumibooks.domain.model.TagTypes.BOOK)
     }
 }
 
@@ -1056,7 +1060,7 @@ private fun CategoryBooksPage(
                 onEditInfo = { editingBook = it },
                 onBookDetails = { book -> BookDetailsActivity.start(context, book.id) },
                 onToggleReadStatus = { book ->
-                    viewModel.updateBook(book.copy(readingProgress = if (book.isReadingFinished) 0f else 1f))
+                    viewModel.updateBook(book.toggleReadStatus())
                 },
                 onMoveToFolder = { book -> moveTargetBook = book }
             )
@@ -1084,6 +1088,7 @@ private fun CategoryBooksPage(
 
     tagTargetBook?.let { book ->
         BookTagBottomSheet(
+            bookId = book.id,
             tags = tags,
             selectedTagIds = tagIdsByBook[book.id].orEmpty(),
             onDismiss = { tagTargetBook = null },
@@ -1098,6 +1103,7 @@ private fun CategoryBooksPage(
     }
     if (showBatchTagSheet) {
         BatchBookTagSheet(
+            bookIds = selectedBookIds,
             tags = tags,
             selectedBookCount = selectedBookIds.size,
             onDismiss = { showBatchTagSheet = false },
@@ -1139,30 +1145,29 @@ private fun CategoryBooksPage(
     pendingCrossStorageMove?.let { request ->
         LiquidGlassAlertDialog(
             onDismissRequest = { pendingCrossStorageMove = null },
-            title = { Text(stringResource(R.string.folder_cross_storage_confirmation_title)) },
+            titleText = stringResource(R.string.folder_cross_storage_confirmation_title),
             text = { Text(stringResource(R.string.folder_cross_storage_confirmation_message)) },
-            confirmButton = {
-                LiquidGlassTextButton(
+            actions = listOf(
+                AppDialogAction(
                     text = stringResource(R.string.confirm),
                     onClick = {
                         pendingCrossStorageMove = null
                         completeBookMove(request, allowCrossStorageMove = true)
-                    }
-                )
-            },
-            dismissButton = {
-                LiquidGlassTextButton(
+                    },
+                    role = AppDialogActionRole.Primary
+                ),
+                AppDialogAction(
                     text = stringResource(R.string.cancel),
-                    onClick = { pendingCrossStorageMove = null }
+                    onClick = { pendingCrossStorageMove = null },
+                    role = AppDialogActionRole.Cancel
                 )
-            }
-        )
+            ))
     }
     editingBook?.let { book ->
         LiquidGlassDialog(
             onDismissRequest = { editingBook = null },
             backgroundScrimColor = Color.Transparent,
-            backgroundBlurRadius = 18.dp,
+            fallbackBlurRadius = 18.dp,
             properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
         ) {
             EditInputDialog(

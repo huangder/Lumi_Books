@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.tts
 
+import android.media.AudioManager
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -10,6 +11,30 @@ import org.junit.rules.TemporaryFolder
 class ExternalTtsAudioPlayerTest {
     @get:Rule
     val temporaryFolder = TemporaryFolder()
+
+    @Test
+    fun duckableFocusLossDoesNotPausePlayback() {
+        assertEquals(
+            ExternalTtsAudioFocusAction.IGNORE,
+            externalTtsAudioFocusAction(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK)
+        )
+    }
+
+    @Test
+    fun exclusiveFocusLossPausesAndFocusGainIsTracked() {
+        assertEquals(
+            ExternalTtsAudioFocusAction.PAUSE,
+            externalTtsAudioFocusAction(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT)
+        )
+        assertEquals(
+            ExternalTtsAudioFocusAction.PAUSE,
+            externalTtsAudioFocusAction(AudioManager.AUDIOFOCUS_LOSS)
+        )
+        assertEquals(
+            ExternalTtsAudioFocusAction.GAIN,
+            externalTtsAudioFocusAction(AudioManager.AUDIOFOCUS_GAIN)
+        )
+    }
 
     @Test
     fun normalizePlaybackRate_clampsToSupportedAppRange() {

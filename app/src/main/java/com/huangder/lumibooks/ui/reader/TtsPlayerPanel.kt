@@ -36,7 +36,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.boundsInWindow
@@ -47,6 +52,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuAnchorKind
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
@@ -115,13 +121,9 @@ fun TtsPlayerPanel(
     val rateId = remember { Any() }
     val pitchId = remember { Any() }
     val timerId = remember { Any() }
-    val positionId = remember { Any() }
     var capsuleBounds by remember { mutableStateOf(Rect.Zero) }
     val followEngineLabel = stringResource(R.string.tts_follow_engine)
     val cancelTimerLabel = stringResource(R.string.tts_timer_cancel)
-    val returnProgressLabel = stringResource(R.string.tts_return_to_progress)
-    val fromPageLabel = stringResource(R.string.tts_from_this_page)
-    val followPageTurnsLabel = stringResource(R.string.tts_follow_page_turns)
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val eInkMode = LocalEInkMode.current
     var actionsHidden by remember { mutableStateOf(false) }
@@ -172,7 +174,6 @@ fun TtsPlayerPanel(
             TtsMenuKind.Rate -> rateId
             TtsMenuKind.Pitch -> pitchId
             TtsMenuKind.Timer -> timerId
-            TtsMenuKind.Position -> positionId
         }
         val options = when (kind) {
             TtsMenuKind.Rate -> rateOptions.map { rate ->
@@ -192,17 +193,6 @@ fun TtsPlayerPanel(
                 markInteraction()
                 onCancelSleepTimer()
             }) else emptyList()
-            TtsMenuKind.Position -> listOf(
-                TtsMenuChoice(returnProgressLabel, enabled = canReturnToProgress) {
-                    markInteraction(); onReturnToProgress()
-                },
-                TtsMenuChoice(fromPageLabel) {
-                    markInteraction(); onStartFromCurrentPage()
-                },
-                TtsMenuChoice(followPageTurnsLabel, selected = followUserPageTurns) {
-                    markInteraction(); onFollowUserPageTurnsChange(!followUserPageTurns)
-                }
-            )
         }
         val followEngine = if (usesAndroidTts && (kind == TtsMenuKind.Rate || kind == TtsMenuKind.Pitch)) {
             val selected = if (kind == TtsMenuKind.Rate) speechRateMode else pitchMode
@@ -217,7 +207,6 @@ fun TtsPlayerPanel(
             sourceId = id,
             width = when (kind) {
                 TtsMenuKind.Timer -> 144.dp
-                TtsMenuKind.Position -> 216.dp
                 else -> 192.dp
             },
             items = emptyList(),
@@ -227,12 +216,13 @@ fun TtsPlayerPanel(
             contentColor = readerContentColor,
             forceSolid = forceSolidSurface,
             content = { enabled, select ->
-                TtsMenuChoices(options, if (kind == TtsMenuKind.Timer || kind == TtsMenuKind.Position) 1 else 3,
+                TtsMenuChoices(options, if (kind == TtsMenuKind.Timer) 1 else 3,
                     followEngine, readerContentColor, enabled, select)
             }
         )
         if (toggle) menuHost?.toggle(spec) else menuHost?.show(spec)
     }
+    val actionScrollState = rememberScrollState()
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -247,59 +237,113 @@ fun TtsPlayerPanel(
                 enter = fadeIn(tween(if (eInkMode) 0 else 200)),
                 exit = fadeOut(tween(if (eInkMode) 0 else 280))
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                        .drawWithContent {
+                            drawContent()
+                            val edgeFraction = (18.dp.toPx() / size.width).coerceIn(0f, 0.5f)
+                            val fadeLeft = actionScrollState.value > 0
+                            val fadeRight = actionScrollState.value < actionScrollState.maxValue
+                            val stops = buildList {
+                                add(0f to if (fadeLeft) Color.Transparent else Color.White)
+                                if (fadeLeft) add(edgeFraction to Color.White)
+                                if (fadeRight) add((1f - edgeFraction).coerceAtLeast(last().first) to Color.White)
+                                add(1f to if (fadeRight) Color.Transparent else Color.White)
+                            }
+                            drawRect(
+                                brush = Brush.horizontalGradient(colorStops = stops.toTypedArray()),
+                                blendMode = BlendMode.DstIn
+                            )
+                        }
                 ) {
-                    TtsActionPill(
-                        label = stringResource(R.string.tts_listening_position),
-                        contentDescription = stringResource(R.string.tts_listening_position),
-                        enabled = true,
-                        backgroundColor = panelFallbackColor,
-                        contentColor = panelContentColor,
-                        glassScrim = glassScrim,
-                        forceSolid = forceSolidSurface,
-                        modifier = Modifier.weight(2f).liquidGlassMenuAnchor(positionId, LiquidGlassMenuAnchorKind.Embedded),
-                        onClick = { openMenu(TtsMenuKind.Position) }
-                    )
-                    TtsActionPill(
-                        label = stringResource(R.string.tts_pitch_label),
-                        contentDescription = stringResource(R.string.tts_pitch_label),
-                        enabled = usesAndroidTts,
-                        backgroundColor = panelFallbackColor,
-                        contentColor = panelContentColor,
-                        glassScrim = glassScrim,
-                        forceSolid = forceSolidSurface,
-                        modifier = Modifier.weight(1f).liquidGlassMenuAnchor(pitchId, LiquidGlassMenuAnchorKind.Embedded),
-                        onClick = { openMenu(TtsMenuKind.Pitch) }
-                    )
-                    TtsIconPill(
-                        icon = AppIcons.Speedometer,
-                        contentDescription = stringResource(R.string.tts_speech_rate),
-                        backgroundColor = panelFallbackColor,
-                        contentColor = panelContentColor,
-                        glassScrim = glassScrim,
-                        forceSolid = forceSolidSurface,
-                        modifier = Modifier.liquidGlassMenuAnchor(rateId, LiquidGlassMenuAnchorKind.Embedded),
-                        onClick = { openMenu(TtsMenuKind.Rate) }
-                    )
-                    TtsTimerPill(
-                        contentDescription = stringResource(R.string.tts_timer_label),
-                        active = timerActive,
-                        remainingMs = sleepTimerRemainingMs,
-                        durationMs = sleepTimerDurationMs,
-                        backgroundColor = panelFallbackColor,
-                        contentColor = panelContentColor,
-                        glassScrim = glassScrim,
-                        forceSolid = forceSolidSurface,
-                        modifier = Modifier.liquidGlassMenuAnchor(timerId, LiquidGlassMenuAnchorKind.Embedded),
-                        onClick = { openMenu(TtsMenuKind.Timer) }
-                    )
+                    Row(
+                        modifier = Modifier
+                            .horizontalScroll(actionScrollState)
+                            .padding(horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TtsActionPill(
+                            label = stringResource(R.string.tts_return_to_progress),
+                            contentDescription = stringResource(R.string.tts_return_to_reading_page),
+                            enabled = canReturnToProgress,
+                            backgroundColor = panelFallbackColor,
+                            contentColor = panelContentColor,
+                            glassScrim = glassScrim,
+                            forceSolid = forceSolidSurface,
+                            modifier = Modifier.width(96.dp),
+                            onClick = { markInteraction(); onReturnToProgress() }
+                        )
+                        TtsActionPill(
+                            label = stringResource(R.string.tts_from_this_page),
+                            contentDescription = stringResource(R.string.tts_from_this_page),
+                            enabled = true,
+                            backgroundColor = panelFallbackColor,
+                            contentColor = panelContentColor,
+                            glassScrim = glassScrim,
+                            forceSolid = forceSolidSurface,
+                            modifier = Modifier.width(80.dp),
+                            onClick = { markInteraction(); onStartFromCurrentPage() }
+                        )
+                        TtsActionPill(
+                            label = stringResource(R.string.tts_follow_page_turns),
+                            contentDescription = stringResource(R.string.tts_follow_page_turns),
+                            enabled = true,
+                            active = followUserPageTurns,
+                            backgroundColor = panelFallbackColor,
+                            contentColor = panelContentColor,
+                            glassScrim = glassScrim,
+                            forceSolid = forceSolidSurface,
+                            modifier = Modifier.width(104.dp).semantics {
+                                selected = followUserPageTurns
+                            },
+                            onClick = { markInteraction(); onFollowUserPageTurnsChange(!followUserPageTurns) }
+                        )
+                        TtsTimerPill(
+                            contentDescription = stringResource(R.string.tts_timer_label),
+                            active = timerActive,
+                            remainingMs = sleepTimerRemainingMs,
+                            durationMs = sleepTimerDurationMs,
+                            backgroundColor = panelFallbackColor,
+                            contentColor = panelContentColor,
+                            glassScrim = glassScrim,
+                            forceSolid = forceSolidSurface,
+                            modifier = Modifier.width(68.dp).height(48.dp)
+                                .liquidGlassMenuAnchor(timerId, LiquidGlassMenuAnchorKind.Embedded),
+                            onClick = { openMenu(TtsMenuKind.Timer) }
+                        )
+                        TtsActionPill(
+                            label = stringResource(R.string.tts_speech_rate),
+                            contentDescription = stringResource(R.string.tts_speech_rate),
+                            enabled = true,
+                            backgroundColor = panelFallbackColor,
+                            contentColor = panelContentColor,
+                            glassScrim = glassScrim,
+                            forceSolid = forceSolidSurface,
+                            modifier = Modifier.width(68.dp)
+                                .liquidGlassMenuAnchor(rateId, LiquidGlassMenuAnchorKind.Embedded),
+                            onClick = { openMenu(TtsMenuKind.Rate) }
+                        )
+                        TtsActionPill(
+                            label = stringResource(R.string.tts_pitch_label),
+                            contentDescription = stringResource(R.string.tts_pitch_label),
+                            enabled = usesAndroidTts,
+                            backgroundColor = panelFallbackColor,
+                            contentColor = panelContentColor,
+                            glassScrim = glassScrim,
+                            forceSolid = forceSolidSurface,
+                            modifier = Modifier.width(68.dp)
+                                .liquidGlassMenuAnchor(pitchId, LiquidGlassMenuAnchorKind.Embedded),
+                            onClick = { openMenu(TtsMenuKind.Pitch) }
+                        )
+                    }
                 }
             }
 
             LiquidGlassSurface(
+                    role = com.huangder.lumibooks.ui.theme.AppSurfaceRole.Control,
                     controlEdge = true,
                     shape = AppRoundedCornerShape(36.dp),
                     fallbackColor = panelFallbackColor,
@@ -367,6 +411,7 @@ private fun TtsActionPill(
     label: String,
     contentDescription: String,
     enabled: Boolean,
+    active: Boolean = false,
     backgroundColor: Color,
     contentColor: Color,
     glassScrim: Color,
@@ -374,11 +419,14 @@ private fun TtsActionPill(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
+    val accent = AppColors.Accent
     LiquidGlassSurface(
+        role = com.huangder.lumibooks.ui.theme.AppSurfaceRole.Control,
         controlEdge = true,
         shape = AppRoundedCornerShape(28.dp),
-        fallbackColor = backgroundColor,
-        contentScrimColor = glassScrim,
+        fallbackColor = if (active) accent else backgroundColor,
+        contentScrimColor = if (active) accent.copy(alpha = 0.86f) else glassScrim,
+        tintColor = accent.takeIf { active },
         forceFallback = forceSolid,
         enabled = enabled,
         onClick = onClick,
@@ -392,7 +440,8 @@ private fun TtsActionPill(
     ) {
         Text(
             text = label,
-            color = contentColor.copy(alpha = if (enabled) 1f else 0.38f),
+            color = (if (active) AppColors.OnAccent else contentColor)
+                .copy(alpha = if (enabled) 1f else 0.38f),
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 2,
@@ -416,6 +465,7 @@ private fun TtsIconPill(
     onClick: () -> Unit
 ) {
     LiquidGlassSurface(
+        role = com.huangder.lumibooks.ui.theme.AppSurfaceRole.Control,
         controlEdge = true,
         shape = AppRoundedCornerShape(28.dp),
         fallbackColor = backgroundColor,
@@ -448,13 +498,14 @@ private fun TtsTimerPill(
     onClick: () -> Unit
 ) {
     LiquidGlassSurface(
+        role = com.huangder.lumibooks.ui.theme.AppSurfaceRole.Control,
         controlEdge = true,
         shape = AppRoundedCornerShape(28.dp),
         fallbackColor = backgroundColor,
         contentScrimColor = glassScrim,
         forceFallback = forceSolid,
         onClick = onClick,
-        modifier = modifier.size(44.dp).semantics(mergeDescendants = true) {
+        modifier = modifier.height(48.dp).semantics(mergeDescendants = true) {
             this.contentDescription = contentDescription
             role = Role.Button
         },
@@ -485,7 +536,7 @@ private fun TtsTimerPill(
     }
 }
 
-internal enum class TtsMenuKind { Rate, Pitch, Timer, Position }
+internal enum class TtsMenuKind { Rate, Pitch, Timer }
 
 private data class TtsMenuChoice(
     val label: String,

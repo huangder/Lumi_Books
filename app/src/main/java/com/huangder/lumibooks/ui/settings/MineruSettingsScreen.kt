@@ -70,6 +70,7 @@ import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.components.LiquidGlassDialog
+import com.huangder.lumibooks.ui.components.usesCardSheets
 import com.huangder.lumibooks.ui.components.LiquidGlassButton
 
 @Composable
@@ -614,7 +615,8 @@ private fun MineruConsentSheet(onDismiss: () -> Unit, onAccept: () -> Unit) {
         }
     }
 
-    if (isLiquidGlass) {
+    val cardSheets = usesCardSheets()
+    if (isLiquidGlass || cardSheets) {
         LiquidGlassDialog(
             onDismissRequest = onDismiss,
             alignment = Alignment.BottomCenter,

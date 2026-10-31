@@ -29,19 +29,29 @@ class TxtTocCompatIntegrationTest {
     )
 
     @Test
-    fun shippedPresetImportsEveryRuleAndSkipsTheBlankOne() {
-        val payload = presetAsset().readText(Charsets.UTF_8)
-        val parsed = TxtTocRuleImport.parse(payload)
-
-        assertEquals(25, parsed.thirdPartyRules.size)
-        assertEquals(1, parsed.skipped)
+    fun originalPresetsImportWithoutScriptsOrLegacyIds() {
+        val parsed = TxtTocRuleImport.parse(presetAsset().readText(Charsets.UTF_8))
+        assertEquals(12, parsed.thirdPartyRules.size)
+        assertEquals(0, parsed.skipped)
         assertEquals(0, parsed.scriptIgnored)
-        assertTrue(parsed.thirdPartyRules.all { it.dialect == TxtTocDialect.LEGADO })
-        assertTrue(parsed.thirdPartyRules.all { it.chapterRegex.isNotBlank() })
-        assertEquals(
-            "(?<=[　\\s])(?:序章|楔子|正文(?!完|结)|终章|后记|尾声|番外|第\\s{0,4}[\\d〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+?\\s{0,4}(?:章|节(?!课)|卷|集(?![合和]))).{0,30}${'$'}",
-            parsed.thirdPartyRules.first { it.thirdPartyId == -1L }.chapterRegex
-        )
+        assertTrue(parsed.thirdPartyRules.all { (it.thirdPartyId ?: 0) >= 10280001L })
+        parsed.thirdPartyRules.forEach { rule ->
+            val compiled = TxtTocRuleCompiler.compile(rule).getOrThrow()
+            assertTrue("Example must match ${rule.name}", compiled.match(rule.example) != null)
+        }
+    }
+
+    @Test
+    fun presetRefreshPreservesLegacyRulesAndUserEdits() {
+        val preset = TxtTocRuleImport.parse(presetAsset().readText(Charsets.UTF_8)).thirdPartyRules
+        val legacy = compatibleRule(id = "legado--2")
+        val edited = preset.first().copy(chapterRegex = "^CUSTOM TITLE$", enabled = false)
+        val merged = LegadoTxtTocRuleCodec.mergePreset(listOf(legacy, edited), preset)
+        assertEquals(preset.size + 1, merged.size)
+        assertEquals(legacy.chapterRegex, merged.first { it.id == legacy.id }.chapterRegex)
+        assertEquals(edited.chapterRegex, merged.first { it.id == edited.id }.chapterRegex)
+        assertFalse(merged.first { it.id == edited.id }.enabled)
+        assertEquals(merged, LegadoTxtTocRuleCodec.mergePreset(merged, preset))
     }
 
     @Test

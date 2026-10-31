@@ -1,8 +1,10 @@
 package com.huangder.lumibooks.ui.components
 
+import com.huangder.lumibooks.ui.components.AppDialogAction
+import com.huangder.lumibooks.ui.components.AppDialogActionRole
+
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -47,32 +49,33 @@ fun rememberLocalNetworkPermissionGate(
     }
 
     if (showRationale) {
-        AlertDialog(
+        LiquidGlassAlertDialog(
             onDismissRequest = {
                 showRationale = false
                 pending?.onDenied?.invoke()
                 pending = null
             },
-            title = { Text(stringResource(R.string.local_network_permission_title)) },
+            titleText = stringResource(R.string.local_network_permission_title),
             text = { Text(stringResource(R.string.local_network_permission_message)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showRationale = false
-                    launcher.launch(LocalNetworkAccessManager.PERMISSION)
-                }) {
-                    Text(stringResource(R.string.local_network_permission_continue))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showRationale = false
-                    pending?.onDenied?.invoke()
-                    pending = null
-                }) {
-                    Text(stringResource(R.string.local_network_permission_not_now))
-                }
-            }
-        )
+            actions = listOf(
+                AppDialogAction(
+                    text = stringResource(R.string.local_network_permission_continue),
+                    onClick = {
+                        showRationale = false
+                        launcher.launch(LocalNetworkAccessManager.PERMISSION)
+                    },
+                    role = AppDialogActionRole.Primary
+                ),
+                AppDialogAction(
+                    text = stringResource(R.string.local_network_permission_not_now),
+                    onClick = {
+                        showRationale = false
+                        pending?.onDenied?.invoke()
+                        pending = null
+                    },
+                    role = AppDialogActionRole.Cancel
+                )
+            ))
     }
 
     return remember(accessManager) {

@@ -45,6 +45,7 @@ internal class MarkdownPageTransition(context: Context, private val before: Bitm
         }
         controller = when (mode) {
             "curl" -> CurlPageAnim(surface, trackCornerTouchDirectly = false, baseDurationMs = duration)
+            "wave" -> WavePageAnim(surface, duration)
             "scroll" -> ScrollPageAnim(surface, duration)
             else -> SlidePageAnim(surface, duration)
         }.also { anim ->
@@ -52,6 +53,7 @@ internal class MarkdownPageTransition(context: Context, private val before: Bitm
             anim.onAnimationComplete = { completed = true; invalidate(); finished() }
             when (anim) {
                 is CurlPageAnim -> anim.startFromTap(direction)
+                is WavePageAnim -> anim.startFromTap(direction)
                 is ScrollPageAnim -> anim.startFromTap(direction)
                 is SlidePageAnim -> anim.startFromTap(direction)
             }
@@ -72,6 +74,7 @@ internal class MarkdownPageTransition(context: Context, private val before: Bitm
         val direction = if (forward) PageAnimationController.Direction.NEXT else PageAnimationController.Direction.PREV
         controller = when (mode) {
             "curl" -> CurlPageAnim(surface, trackCornerTouchDirectly = false, baseDurationMs = duration)
+            "wave" -> WavePageAnim(surface, duration)
             "scroll" -> ScrollPageAnim(surface, duration)
             else -> SlidePageAnim(surface, duration)
         }.also { anim ->

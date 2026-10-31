@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.bookshelf
+
+import com.huangder.lumibooks.ui.components.AppSheetHeader
 import com.huangder.lumibooks.ui.icons.directionalIcon
 import com.huangder.lumibooks.ui.icons.AppIcons
 
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,6 +46,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -51,6 +55,7 @@ import com.huangder.lumibooks.domain.model.LibraryFolder
 import com.huangder.lumibooks.ui.components.EditInputDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassButton
 import com.huangder.lumibooks.ui.components.LiquidGlassDialog
+import com.huangder.lumibooks.ui.components.usesCardSheets
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.theme.AppColors
@@ -97,47 +102,39 @@ internal fun FolderNameDialog(
     LiquidGlassDialog(
         onDismissRequest = onDismiss,
         backgroundScrimColor = Color.Transparent,
-        backgroundBlurRadius = 18.dp,
+        fallbackBlurRadius = 18.dp,
         modifier = Modifier
             .fillMaxWidth()
             .widthIn(max = 520.dp),
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .widthIn(max = 520.dp),
-            verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
+        EditInputDialog(
+            title = title,
+            fields = listOf(
+                Triple(
+                    stringResource(R.string.folder_name),
+                    stringResource(R.string.folder_name_hint),
+                    initialName
+                )
+            ),
+            onBack = onDismiss,
+            onConfirm = { values ->
+                val name = values.firstOrNull().orEmpty()
+                if (onConfirmWithStorage != null) onConfirmWithStorage(name, selectedStorage)
+                else onConfirm(name)
+            }
         ) {
-            EditInputDialog(
-                title = title,
-                fields = listOf(
-                    Triple(
-                        stringResource(R.string.folder_name),
-                        stringResource(R.string.folder_name_hint),
-                        initialName
-                    )
-                ),
-                onBack = onDismiss,
-                onConfirm = { values ->
-                    val name = values.firstOrNull().orEmpty()
-                    if (onConfirmWithStorage != null) onConfirmWithStorage(name, selectedStorage)
-                    else onConfirm(name)
-                }
-            )
             if (storageChoices.isNotEmpty()) {
+                Spacer(Modifier.height(24.dp))
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .offset(y = (-8).dp)
-                        .padding(horizontal = AppSpace.sm)
                 ) {
                     Text(
                         text = stringResource(R.string.folder_storage_section_title),
                         color = AppColors.TextSecondary,
                         fontSize = AppType.Caption,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(start = AppSpace.xs, bottom = 2.dp)
+                        modifier = Modifier.padding(bottom = AppSpace.sm)
                     )
                     LiquidGlassSurface(
                         shape = AppRoundedCornerShape(14.dp),
@@ -150,14 +147,23 @@ internal fun FolderNameDialog(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable { selectedStorage = uri }
-                                        .padding(horizontal = 8.dp, vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                        .selectable(
+                                            selected = selectedStorage == uri,
+                                            role = Role.RadioButton,
+                                            onClick = { selectedStorage = uri }
+                                        )
+                                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.Top
                                 ) {
-                                    RadioButton(selected = selectedStorage == uri, onClick = { selectedStorage = uri })
+                                    RadioButton(
+                                        selected = selectedStorage == uri,
+                                        onClick = null,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(Modifier.width(12.dp))
                                     Column(
                                         modifier = Modifier.weight(1f),
-                                        verticalArrangement = Arrangement.spacedBy(1.dp)
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
                                         Text(
                                             text = label,
@@ -210,31 +216,12 @@ internal fun FolderActionsSheet(
                 .navigationBarsPadding()
                 .padding(start = AppSpace.lg, end = AppSpace.lg, top = AppSpace.md, bottom = AppSpace.lg)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = folder.name,
-                        color = AppColors.TextPrimary,
-                        fontSize = AppType.Section,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = stringResource(R.string.bookshelf_custom_categories),
-                        color = AppColors.TextSecondary,
-                        fontSize = AppType.Caption
-                    )
-                }
-                LiquidGlassIconButton(
-                    imageVector = AppIcons.X,
-                    contentDescription = stringResource(R.string.close),
-                    onClick = onDismiss,
-                    size = 40.dp,
-                    iconSize = 20.dp,
-                    normalContainerColor = AppColors.BgGray
-                )
-            }
+            AppSheetHeader(title = folder.name, onClose = onDismiss)
+            Text(
+                text = stringResource(R.string.bookshelf_custom_categories),
+                color = AppColors.TextSecondary,
+                fontSize = AppType.Caption
+            )
             Spacer(Modifier.height(AppSpace.md))
             FolderActionRow(
                 icon = AppIcons.PencilSimple,
@@ -269,7 +256,8 @@ internal fun FolderActionsSheet(
         }
     }
 
-    if (isLiquidGlass) {
+    val cardSheets = usesCardSheets()
+    if (isLiquidGlass || cardSheets) {
         LiquidGlassDialog(
             onDismissRequest = onDismiss,
             alignment = Alignment.BottomCenter,
@@ -353,29 +341,12 @@ internal fun FolderMoveSheet(
                 .navigationBarsPadding()
                 .padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.move_books),
-                        color = AppColors.TextPrimary,
-                        fontSize = AppType.Section,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
+            AppSheetHeader(title = stringResource(R.string.move_books), onClose = onDismiss)
+            Text(
                         text = stringResource(R.string.selected_books_count, selectedBookCount),
                         color = AppColors.TextSecondary,
                         fontSize = AppType.Caption
                     )
-                }
-                LiquidGlassIconButton(
-                    imageVector = AppIcons.X,
-                    contentDescription = stringResource(R.string.close),
-                    onClick = onDismiss,
-                    size = 40.dp,
-                    iconSize = 20.dp,
-                    normalContainerColor = AppColors.BgGray
-                )
-            }
 
             Spacer(Modifier.height(AppSpace.md))
             FolderBreadcrumb(
@@ -460,7 +431,8 @@ internal fun FolderMoveSheet(
         }
     }
 
-    if (isLiquidGlass) {
+    val cardSheets = usesCardSheets()
+    if (isLiquidGlass || cardSheets) {
         LiquidGlassDialog(
             onDismissRequest = onDismiss,
             alignment = Alignment.BottomCenter,
@@ -529,31 +501,14 @@ internal fun FolderRelocationSheet(
                 .navigationBarsPadding()
                 .padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.move_folder),
-                        color = AppColors.TextPrimary,
-                        fontSize = AppType.Section,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
+            AppSheetHeader(title = stringResource(R.string.move_folder), onClose = onDismiss)
+            Text(
                         text = sourceFolder.name,
                         color = AppColors.TextSecondary,
                         fontSize = AppType.Caption,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                }
-                LiquidGlassIconButton(
-                    imageVector = AppIcons.X,
-                    contentDescription = stringResource(R.string.close),
-                    onClick = onDismiss,
-                    size = 40.dp,
-                    iconSize = 20.dp,
-                    normalContainerColor = AppColors.BgGray
-                )
-            }
 
             Spacer(Modifier.height(AppSpace.md))
             FolderBreadcrumb(
@@ -638,7 +593,8 @@ internal fun FolderRelocationSheet(
         }
     }
 
-    if (isLiquidGlass) {
+    val cardSheets = usesCardSheets()
+    if (isLiquidGlass || cardSheets) {
         LiquidGlassDialog(
             onDismissRequest = onDismiss,
             alignment = Alignment.BottomCenter,

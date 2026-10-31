@@ -88,4 +88,5 @@
     <string name="remote_error_invalid_file">下載的檔案無效：可能是登入已過期或檔案已損壞</string>
     <string name="remote_error_destination">無法寫入所選資料夾，請重新授權該資料夾</string>
     <string name="remote_error_unknown">操作失敗，請重試</string>
+    <string name="remote_error_reported_blocked">此 OPDS 網址已被舉報並封鎖，無法新增</string>
 </resources>

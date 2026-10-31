@@ -1,147 +1,154 @@
 package com.huangder.lumibooks.ui.components
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.runtime.*
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import com.huangder.lumibooks.domain.model.SelectionMenuAction
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
 
-/** Gesture preview stays local; only a completed drop is sent to the preference store. */
+/**
+ * Drag-to-reorder state for the selection menu editor.
+ *
+ * While a card is dragged the list shows [draftOrder]; it is rearranged as soon as the card's
+ * centre enters a neighbour, so the lazy list's item animation lets the other cards make way.
+ * The dragged card is translated to stay under the finger (see [translationOf]). Nothing is
+ * committed until [finish], which hands the final order back to the caller.
+ *
+ * List items must be keyed by [SelectionMenuAction.storageKey] and contain nothing else.
+ */
 @Stable
 internal class SelectionMenuReorderState(
     private val listState: LazyListState,
     private val scope: CoroutineScope,
-    initialOrder: List<SelectionMenuAction>,
-    private val edgeZone: Float,
-    private val maxScrollPerSecond: Float,
-    private val motionEnabled: Boolean
+    /** Distance from a list edge where auto-scroll starts. */
+    private val edgeZonePx: Float,
+    /** Auto-scroll distance per frame when the card reaches the very edge. */
+    private val maxScrollPerFramePx: Float
 ) {
-    var order by mutableStateOf(initialOrder)
-        private set
     var draggedAction by mutableStateOf<SelectionMenuAction?>(null)
         private set
-    var dragging by mutableStateOf(false)
+    var draftOrder by mutableStateOf<List<SelectionMenuAction>?>(null)
         private set
-    var scrollSpeed by mutableFloatStateOf(0f)
-        private set
-    var listCoordinates: LayoutCoordinates? = null
-    private val handles = mutableMapOf<SelectionMenuAction, LayoutCoordinates>()
-    private var externalOrder = initialOrder
-    private var originalOrder = initialOrder
-    private var startPointerY = 0f
-    private var startTop = 0f
-    private var draggedTop by mutableFloatStateOf(0f)
-    private var releaseFraction by mutableFloatStateOf(0f)
-    private var releaseJob: Job? = null
 
-    fun syncOrder(value: List<SelectionMenuAction>) {
-        if (value == externalOrder) return
-        externalOrder = value
-        if (value != order) {
-            releaseJob?.cancel()
-            draggedAction = null
-            dragging = false
-            scrollSpeed = 0f
-            order = value
-        }
-    }
+    /** Viewport offset of the dragged card when the drag started. */
+    private var startOffset = 0f
+    private var draggedHeight = 0
+    private var fingerTravel by mutableFloatStateOf(0f)
+    private var autoScroll: Job? = null
 
-    fun registerHandle(action: SelectionMenuAction, coordinates: LayoutCoordinates) {
-        handles[action] = coordinates
-    }
+    val isDragging: Boolean get() = draggedAction != null
 
-    fun handleAt(position: Offset): SelectionMenuAction? {
-        val parent = listCoordinates?.takeIf { it.isAttached } ?: return null
-        return order.firstOrNull { action ->
-            val handle = handles[action]?.takeIf { it.isAttached }
-            handle != null && listState.layoutInfo.visibleItemsInfo.any { it.key == action.key } &&
-                parent.localBoundingBoxOf(handle, clipBounds = false).contains(position)
-        }
-    }
-
-    fun start(action: SelectionMenuAction, pointerY: Float): Boolean {
-        val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == action.key } ?: return false
-        releaseJob?.cancel()
-        originalOrder = order
-        startPointerY = pointerY
-        startTop = item.offset.toFloat()
-        draggedTop = startTop
-        releaseFraction = 0f
+    /** Returns false when the card is not laid out, e.g. after a fast fling. */
+    fun start(action: SelectionMenuAction, order: List<SelectionMenuAction>): Boolean {
+        if (isDragging) return false
+        val item = itemOf(action) ?: return false
+        startOffset = item.offset.toFloat()
+        draggedHeight = item.size
+        fingerTravel = 0f
+        draftOrder = order
         draggedAction = action
-        dragging = true
+        autoScroll = scope.launch {
+            snapshotFlow { edgeScrollStep() != 0f }.collectLatest { scrolling ->
+                if (scrolling) while (isActive && edgeScrollStep() != 0f) {
+                    withFrameNanos { }
+                    val step = edgeScrollStep()
+                    if (step != 0f) {
+                        listState.scrollBy(step)
+                        followFinger()
+                    }
+                }
+            }
+        }
         return true
     }
 
-    fun dragTo(pointerY: Float) {
+    fun dragBy(deltaY: Float) {
+        if (!isDragging) return
+        fingerTravel += deltaY
+        followFinger()
+    }
+
+    /** Ends the drag and returns the order to commit, or null if no drag was active. */
+    fun finish(): List<SelectionMenuAction>? {
+        val result = draftOrder
+        reset()
+        return result
+    }
+
+    fun cancel() = reset()
+
+    /** Layer translation for [action]; zero for every card except the dragged one. */
+    fun translationOf(action: SelectionMenuAction): Float {
+        if (action != draggedAction) return 0f
+        val item = itemOf(action) ?: return 0f
+        return startOffset + fingerTravel - item.offset
+    }
+
+    private fun reset() {
+        autoScroll?.cancel()
+        autoScroll = null
+        draggedAction = null
+        draftOrder = null
+        fingerTravel = 0f
+    }
+
+    private fun itemOf(action: SelectionMenuAction): LazyListItemInfo? =
+        listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == action.storageKey }
+
+    /** Moves the dragged action into the slot of the card its centre currently overlaps. */
+    private fun followFinger() {
         val action = draggedAction ?: return
-        val layout = listState.layoutInfo
-        val item = layout.visibleItemsInfo.firstOrNull { it.key == action.key } ?: return
-        val rawTop = startTop + pointerY - startPointerY
-        // Content padding reserves the toolbar/footer. The lifted card cannot enter those bands.
-        val bottom = (layout.viewportEndOffset - layout.afterContentPadding - item.size).coerceAtLeast(0).toFloat()
-        draggedTop = rawTop.coerceIn(0f, bottom)
-        scrollSpeed = when {
-            rawTop < edgeZone && listState.canScrollBackward ->
-                -maxScrollPerSecond * ((edgeZone - rawTop) / edgeZone).coerceIn(0f, 1f)
-            rawTop > bottom - edgeZone && listState.canScrollForward ->
-                maxScrollPerSecond * ((rawTop - bottom + edgeZone) / edgeZone).coerceIn(0f, 1f)
+        val order = draftOrder ?: return
+        val visible = listState.layoutInfo.visibleItemsInfo
+        if (visible.isEmpty()) return
+        // A fast pointer move can skip every visible row. Clamp to the visible end slot so
+        // the dragged key follows the viewport instead of being disposed during auto-scroll.
+        val centre = (startOffset + fingerTravel + draggedHeight / 2f).coerceIn(
+            visible.first().offset.toFloat(),
+            (visible.last().offset + visible.last().size - 1).toFloat()
+        )
+        val target = visible.firstOrNull { item ->
+            centre >= item.offset && centre < item.offset + item.size
+        } ?: return
+        val targetAction = (target.key as? String)?.let(SelectionMenuAction::fromStorageKey) ?: return
+        val from = order.indexOf(action)
+        val to = order.indexOf(targetAction)
+        if (from < 0 || to < 0 || from == to) return
+
+        // LazyColumn keeps its first visible item anchored by key. Moving that item would
+        // scroll the list along with it, so pin the current scroll position explicitly.
+        val anchorIndex = listState.firstVisibleItemIndex
+        val anchorOffset = listState.firstVisibleItemScrollOffset
+        draftOrder = order.toMutableList().apply { add(to, removeAt(from)) }
+        if (anchorIndex == from || anchorIndex == to) {
+            scope.launch { listState.scrollToItem(anchorIndex, anchorOffset) }
+        }
+    }
+
+    private fun edgeScrollStep(): Float {
+        if (!isDragging) return 0f
+        val info = listState.layoutInfo
+        val top = startOffset + fingerTravel
+        val bottom = top + draggedHeight
+        // Item offsets start after the leading content padding, so 0 is the first unobscured row.
+        val visibleBottom = (info.viewportEndOffset - info.afterContentPadding).toFloat()
+        return when {
+            top < edgeZonePx && listState.canScrollBackward ->
+                -maxScrollPerFramePx * ((edgeZonePx - top) / edgeZonePx).coerceIn(0f, 1f)
+            bottom > visibleBottom - edgeZonePx && listState.canScrollForward ->
+                maxScrollPerFramePx * ((bottom - visibleBottom + edgeZonePx) / edgeZonePx).coerceIn(0f, 1f)
             else -> 0f
         }
-        reorderAtPointer()
-    }
-
-    fun reorderAtPointer() {
-        if (!dragging) return
-        val action = draggedAction ?: return
-        val items = listState.layoutInfo.visibleItemsInfo
-        val current = items.firstOrNull { it.key == action.key } ?: return
-        val index = order.indexOf(action)
-        // A layout from the previous frame may still contain the old key/index mapping.
-        if (current.index != index) return
-        val center = draggedTop + current.size / 2f
-        val previous = items.firstOrNull { it.index == index - 1 && it.key == order.getOrNull(index - 1)?.key }
-        val next = items.firstOrNull { it.index == index + 1 && it.key == order.getOrNull(index + 1)?.key }
-        val target = when {
-            next != null && center >= next.offset + next.size / 2f -> index + 1
-            previous != null && center <= previous.offset + previous.size / 2f -> index - 1
-            else -> return
-        }
-        keepViewport()
-        order = order.toMutableList().apply { add(target, removeAt(index)) }
-    }
-
-    fun translationY(action: SelectionMenuAction): Float {
-        if (action != draggedAction) return 0f
-        val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == action.key } ?: return 0f
-        return (draggedTop - item.offset) * (1f - releaseFraction)
-    }
-
-    fun finish(commit: Boolean): List<SelectionMenuAction>? {
-        if (!dragging) return null
-        dragging = false
-        scrollSpeed = 0f
-        val changed = order != originalOrder
-        if (!commit) {
-            keepViewport()
-            order = originalOrder
-        }
-        releaseJob = scope.launch {
-            if (motionEnabled) {
-                Animatable(0f).animateTo(1f, tween(140)) { releaseFraction = value }
-            }
-            draggedAction = null
-            releaseFraction = 0f
-        }
-        return order.takeIf { commit && changed }
-    }
-
-    private fun keepViewport() {
-        // Key anchoring otherwise follows the former first row when it moves down, hiding its replacement.
-        listState.requestScrollToItem(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)
     }
 }
