@@ -1,5 +1,8 @@
 package com.huangder.lumibooks.ui.reader
 
+import com.huangder.lumibooks.ui.components.AppDialogAction
+import com.huangder.lumibooks.ui.components.AppDialogActionRole
+
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.widget.Toast
@@ -52,7 +55,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInRoot
@@ -62,6 +71,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -92,6 +102,7 @@ import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
 import com.huangder.lumibooks.ui.components.animateBottomSheetIn
 import com.huangder.lumibooks.ui.components.animateBottomSheetOut
 import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
+import com.huangder.lumibooks.ui.components.adaptiveSheetFrame
 import com.kyant.backdrop.Backdrop
 import com.huangder.lumibooks.ui.icons.AppIcons
 import com.huangder.lumibooks.ui.theme.AppColors
@@ -241,10 +252,7 @@ fun HighlightRulesSheet(
         )
 
         LiquidGlassColumnSheetContainer(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .fillMaxHeight(if (rules.isEmpty()) 0.56f else 0.90f)
+            modifier = adaptiveSheetFrame(heightFraction = if (rules.isEmpty()) 0.56f else 0.90f)
                 .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress),
             contentModifier = Modifier
                 .fillMaxSize()
@@ -457,16 +465,9 @@ fun HighlightRulesSheet(
                 backdrop = backdrop,
                 contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
                 backgroundScrimColor = Color.Black.copy(alpha = 0.10f),
-                backgroundBlurRadius = 0.dp,
+                fallbackBlurRadius = 0.dp,
                 transparencyOverride = 0.24f,
-                title = {
-                    Text(
-                        stringResource(R.string.highlight_rule_delete_title),
-                        color = AppColors.TextPrimary,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
+                titleText = stringResource(R.string.highlight_rule_delete_title),
                 text = {
                     Text(
                         stringResource(R.string.highlight_rule_delete_message, rule.name),
@@ -474,26 +475,25 @@ fun HighlightRulesSheet(
                         fontSize = AppType.BodySmall
                     )
                 },
-                confirmButton = {
-                    LiquidGlassTextButton(
+                actions = listOf(
+                    AppDialogAction(
                         text = stringResource(R.string.delete),
                         onClick = {
                             onDeleteRule(rule.id)
                             deleteRule = null
                         },
+                        role = AppDialogActionRole.Destructive,
                         tintedColor = HighlightRuleDanger,
                         contentColor = Color.White
-                    )
-                },
-                dismissButton = {
-                    LiquidGlassTextButton(
+                    ),
+                    AppDialogAction(
                         text = stringResource(R.string.cancel),
                         onClick = { deleteRule = null },
+                        role = AppDialogActionRole.Cancel,
                         tintedColor = AppColors.BgGray,
                         contentColor = AppColors.TextPrimary
                     )
-                }
-        )
+                ))
     }
 
     importPreview?.let { preview ->
@@ -502,16 +502,9 @@ fun HighlightRulesSheet(
             backdrop = backdrop,
             contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
             backgroundScrimColor = Color.Black.copy(alpha = 0.10f),
-            backgroundBlurRadius = 0.dp,
+            fallbackBlurRadius = 0.dp,
             transparencyOverride = 0.24f,
-            title = {
-                Text(
-                    stringResource(R.string.highlight_rules_import_preview),
-                    color = AppColors.TextPrimary,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            },
+            titleText = stringResource(R.string.highlight_rules_import_preview),
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(stringResource(R.string.highlight_rules_import_valid, preview.valid), color = AppColors.TextPrimary)
@@ -520,37 +513,28 @@ fun HighlightRulesSheet(
                     Text(stringResource(R.string.highlight_rules_import_unsupported, preview.unsupported), color = AppColors.TextSecondary)
                 }
             },
-            confirmButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    LiquidGlassTextButton(
-                        text = stringResource(R.string.highlight_rules_import_replace),
-                        onClick = {
-                            importPreview = null
-                            scope.launch { importRules(context, preview.bytes, true, onImportRules) }
-                        },
-                        tintedColor = AppColors.BgGray,
-                        contentColor = AppColors.TextPrimary
-                    )
-                    LiquidGlassTextButton(
-                        text = stringResource(R.string.highlight_rules_import_keep),
-                        onClick = {
-                            importPreview = null
-                            scope.launch { importRules(context, preview.bytes, false, onImportRules) }
-                        },
-                        tintedColor = AppColors.Accent,
-                        contentColor = AppColors.OnAccent
-                    )
-                }
-            },
-            dismissButton = {
-                LiquidGlassTextButton(
-                    text = stringResource(R.string.cancel),
-                    onClick = { importPreview = null },
-                    tintedColor = AppColors.BgGray,
-                    contentColor = AppColors.TextPrimary
+            actions = listOf(
+                AppDialogAction(
+                    stringResource(R.string.highlight_rules_import_keep),
+                    {
+                        importPreview = null
+                        scope.launch { importRules(context, preview.bytes, false, onImportRules) }
+                    }
+                ),
+                AppDialogAction(
+                    stringResource(R.string.highlight_rules_import_replace),
+                    {
+                        importPreview = null
+                        scope.launch { importRules(context, preview.bytes, true, onImportRules) }
+                    },
+                    AppDialogActionRole.Secondary
+                ),
+                AppDialogAction(
+                    stringResource(R.string.cancel),
+                    { importPreview = null },
+                    AppDialogActionRole.Cancel
                 )
-            }
-        )
+            ))
     }
 }
 
@@ -763,6 +747,9 @@ private fun HighlightRuleEditorSheet(
     var colorText by remember(rule.id) {
         mutableStateOf(rule.textColor?.let { String.format(Locale.ROOT, "#%08X", it) }.orEmpty())
     }
+    var highlightColorText by remember(rule.id) {
+        mutableStateOf(rule.highlightColor?.let { String.format(Locale.ROOT, "#%08X", it) }.orEmpty())
+    }
     var underlineMode by remember(rule.id) {
         mutableStateOf(
             rule.underlineMode.takeIf {
@@ -774,18 +761,29 @@ private fun HighlightRuleEditorSheet(
             } ?: HighlightRule.UNDERLINE_NONE
         )
     }
+    var highlightMode by remember(rule.id) {
+        mutableStateOf(rule.highlightMode.takeIf {
+            it == HighlightRule.HIGHLIGHT_FILLED || it == HighlightRule.HIGHLIGHT_OUTLINE || it == HighlightRule.HIGHLIGHT_NONE
+        } ?: HighlightRule.HIGHLIGHT_FILLED)
+    }
     var bold by remember(rule.id) { mutableStateOf(rule.fontWeight >= 600) }
     var italic by remember(rule.id) { mutableStateOf(rule.isItalic) }
     var fontType by remember(rule.id) { mutableStateOf(rule.fontType) }
     var showCustomColorDialog by remember(rule.id) { mutableStateOf(false) }
+    var showCustomHighlightColorDialog by remember(rule.id) { mutableStateOf(false) }
     val parsedColor = remember(colorText) { parseRuleColor(colorText) }
+    val parsedHighlightColor = remember(highlightColorText) { parseRuleColor(highlightColorText) }
+    val selectedHighlightColor = parsedHighlightColor ?: 0xFFFFEB3B.toInt()
     val colorInvalid = colorText.isNotBlank() && parsedColor == null
+    val highlightColorInvalid = highlightColorText.isNotBlank() && parsedHighlightColor == null
     val draft = rule.copy(
         name = name.trim(),
         pattern = pattern,
         targetScope = HighlightRule.TARGET_BODY,
         textColor = parsedColor,
+        highlightColor = parsedHighlightColor,
         underlineMode = underlineMode,
+        highlightMode = highlightMode,
         fontWeight = if (bold) 700 else 400,
         isItalic = italic,
         fontType = fontType,
@@ -793,7 +791,7 @@ private fun HighlightRuleEditorSheet(
     )
     val requiredError = name.isBlank() || pattern.isBlank()
     val regexError = if (pattern.isBlank()) null else HighlightRuleMatcher.validationError(draft)
-    val canSave = !requiredError && !colorInvalid && regexError == null
+    val canSave = !requiredError && !colorInvalid && !highlightColorInvalid && regexError == null
     val previewFontFamily = when {
         fontType.isBlank() || fontType == "system" -> null
         fontType == "serif" -> FontFamily.Serif
@@ -846,10 +844,7 @@ private fun HighlightRuleEditorSheet(
                 ) { isClosing = true }
         )
         LiquidGlassColumnSheetContainer(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .fillMaxHeight(0.90f)
+            modifier = adaptiveSheetFrame(heightFraction = 0.90f)
                 .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress),
             contentModifier = Modifier
                 .fillMaxSize()
@@ -885,6 +880,42 @@ private fun HighlightRuleEditorSheet(
                     )
                 }
                 Spacer(Modifier.height(12.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        stringResource(R.string.highlight_rule_preview),
+                        color = AppColors.TextPrimary,
+                        fontSize = AppType.BodySmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = AppColors.BgGray,
+                        shape = AppRoundedCornerShape(12.dp)
+                    ) {
+                        if (sample.isBlank()) {
+                            Text(
+                                stringResource(R.string.highlight_rule_preview_empty),
+                                modifier = Modifier.padding(14.dp),
+                                color = AppColors.TextSecondary,
+                                fontSize = AppType.Body,
+                                lineHeight = 25.sp
+                            )
+                        } else {
+                            HighlightRulePreviewText(
+                                text = preview,
+                                matches = remember(draft, sample) {
+                                    HighlightRuleMatcher.match(sample, 0, listOf(draft.copy(enabled = true)))
+                                },
+                                modifier = Modifier.padding(14.dp)
+                            )
+                        }
+                    }
+                }
                 Column(
                     modifier = Modifier
                         .weight(1f)
@@ -995,6 +1026,79 @@ private fun HighlightRuleEditorSheet(
                         onImportFont = onImportFont
                     )
                     Text(
+                        stringResource(R.string.highlight_rule_highlight_style),
+                        fontSize = AppType.BodySmall,
+                        color = AppColors.TextSecondary,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                    val highlightLabels = listOf(
+                        stringResource(R.string.highlight_rule_style_filled),
+                        stringResource(R.string.highlight_rule_style_outline),
+                        stringResource(R.string.highlight_rule_style_none)
+                    )
+                    LiquidGlassSegmentedControl(
+                        itemCount = 3,
+                        selectedIndex = highlightMode,
+                        onSelected = { highlightMode = it },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { index, selected ->
+                        Text(
+                            highlightLabels[index],
+                            color = if (selected) AppColors.TextPrimary else AppColors.TextSecondary,
+                            fontSize = AppType.Caption,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                        )
+                    }
+                    val highlightSwatches = listOf(
+                        0xFFFFEB3B, 0xFFE53935, 0xFF1976D2, 0xFF00897B, 0xFF7E57C2, 0xFFEF6C00
+                    ).map { it.toInt() }
+                    val customHighlightColorSelected = parsedHighlightColor != null && parsedHighlightColor !in highlightSwatches
+                    BoxWithConstraints(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .width(maxWidth + 24.dp)
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            highlightSwatches.forEach { swatch ->
+                                HighlightRuleColorSwatch(
+                                    color = Color(swatch),
+                                    isSelected = parsedHighlightColor == swatch,
+                                    contentDescription = stringResource(R.string.highlight_rule_mark_color),
+                                    onClick = { highlightColorText = String.format(Locale.ROOT, "#%08X", swatch) }
+                                )
+                            }
+                            HighlightRuleColorSwatch(
+                                color = if (customHighlightColorSelected) Color(selectedHighlightColor) else AppColors.BgGray,
+                                isSelected = customHighlightColorSelected,
+                                contentDescription = stringResource(R.string.highlight_rule_custom_color),
+                                onClick = { showCustomHighlightColorDialog = true }
+                            ) {
+                                if (!customHighlightColorSelected) {
+                                    Icon(
+                                        imageVector = AppIcons.Plus,
+                                        contentDescription = null,
+                                        tint = AppColors.TextSecondary,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    RuleEditorTextField(
+                        label = stringResource(R.string.highlight_rule_mark_color),
+                        value = highlightColorText,
+                        onValueChange = { highlightColorText = it },
+                        placeholder = "#FFF2C94C",
+                        isError = highlightColorInvalid,
+                        singleLine = true
+                    )
+                    HighlightRuleMarkColorPreview(color = Color(selectedHighlightColor))
+                    Text(
                         stringResource(R.string.highlight_rule_underline),
                         fontSize = AppType.BodySmall,
                         color = AppColors.TextSecondary,
@@ -1034,28 +1138,6 @@ private fun HighlightRuleEditorSheet(
                             LiquidGlassSwitch(checked = italic, onCheckedChange = { italic = it })
                         }
                     }
-                    Text(
-                        stringResource(R.string.highlight_rule_preview),
-                        color = AppColors.TextPrimary,
-                        fontSize = AppType.BodySmall,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = AppColors.BgGray,
-                        shape = AppRoundedCornerShape(12.dp)
-                    ) {
-                        Text(
-                            text = if (sample.isBlank()) {
-                                AnnotatedString(stringResource(R.string.highlight_rule_preview_empty))
-                            } else preview,
-                            modifier = Modifier.padding(14.dp),
-                            color = AppColors.TextPrimary,
-                            fontSize = AppType.Body,
-                            lineHeight = 25.sp
-                        )
-                    }
                     Spacer(Modifier.height(8.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1093,6 +1175,16 @@ private fun HighlightRuleEditorSheet(
                 showCustomColorDialog = false
             },
             onDismiss = { showCustomColorDialog = false }
+        )
+    }
+    if (showCustomHighlightColorDialog) {
+        HighlightRuleColorDialog(
+            initialColor = selectedHighlightColor,
+            onApply = { value ->
+                highlightColorText = String.format(Locale.ROOT, "#%08X", value)
+                showCustomHighlightColorDialog = false
+            },
+            onDismiss = { showCustomHighlightColorDialog = false }
         )
     }
 }
@@ -1549,6 +1641,111 @@ private fun previewText(
         )
     }
     return builder.toAnnotatedString()
+}
+
+@Composable
+private fun HighlightRulePreviewText(
+    text: AnnotatedString,
+    matches: List<com.huangder.lumibooks.domain.model.RuleMatch>,
+    modifier: Modifier = Modifier
+) {
+    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val padding = with(density) { 2.dp.toPx() }
+    val radius = with(density) { 3.dp.toPx() }
+    val strokeWidth = with(density) { 1.5.dp.toPx() }
+    Text(
+        text = text,
+        modifier = modifier.drawBehind {
+            val textLayout = layout ?: return@drawBehind
+            matches.forEach { match ->
+                if (match.style.highlightMode == HighlightRule.HIGHLIGHT_NONE) return@forEach
+                val color = match.style.highlightColor?.let(::Color) ?: Color(0xFFFFEB3B)
+                val firstLine = textLayout.getLineForOffset(match.start)
+                val lastLine = textLayout.getLineForOffset((match.end - 1).coerceAtLeast(match.start))
+                for (line in firstLine..lastLine) {
+                    val from = maxOf(match.start, textLayout.getLineStart(line))
+                    val to = minOf(match.end, textLayout.getLineEnd(line))
+                    if (from >= to) continue
+                    var left = Float.POSITIVE_INFINITY
+                    var top = Float.POSITIVE_INFINITY
+                    var right = Float.NEGATIVE_INFINITY
+                    var bottom = Float.NEGATIVE_INFINITY
+                    for (index in from until to) {
+                        val bounds = textLayout.getBoundingBox(index)
+                        left = minOf(left, bounds.left)
+                        top = minOf(top, bounds.top)
+                        right = maxOf(right, bounds.right)
+                        bottom = maxOf(bottom, bounds.bottom)
+                    }
+                    if (right <= left || bottom <= top) continue
+                    drawRoundRect(
+                        color = if (match.style.highlightMode == HighlightRule.HIGHLIGHT_FILLED) color.copy(alpha = 0.28f) else color,
+                        topLeft = Offset(left - padding, top - padding),
+                        size = Size(right - left + padding * 2, bottom - top + padding * 2),
+                        cornerRadius = CornerRadius(radius),
+                        style = if (match.style.highlightMode == HighlightRule.HIGHLIGHT_OUTLINE) Stroke(strokeWidth) else Fill
+                    )
+                }
+            }
+        },
+        color = AppColors.TextPrimary,
+        fontSize = AppType.Body,
+        lineHeight = 25.sp,
+        onTextLayout = { layout = it }
+    )
+}
+
+@Composable
+private fun HighlightRuleMarkColorPreview(color: Color) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            stringResource(R.string.highlight_rule_mark_color_preview),
+            color = AppColors.TextSecondary,
+            fontSize = AppType.Caption
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(42.dp)
+                .clip(AppRoundedCornerShape(8.dp))
+                .drawBehind {
+                    val cell = 8.dp.toPx()
+                    val light = Color(0xFFF5F5F5)
+                    val dark = Color(0xFFDADADA)
+                    var y = 0f
+                    var row = 0
+                    while (y < size.height) {
+                        var x = 0f
+                        var column = 0
+                        while (x < size.width) {
+                            drawRect(
+                                color = if ((row + column) % 2 == 0) light else dark,
+                                topLeft = Offset(x, y),
+                                size = Size(cell, cell)
+                            )
+                            x += cell
+                            column++
+                        }
+                        y += cell
+                        row++
+                    }
+                    drawRoundRect(
+                        color = color.copy(alpha = 0.34f),
+                        topLeft = Offset(10.dp.toPx(), 6.dp.toPx()),
+                        size = Size(size.width - 20.dp.toPx(), size.height - 12.dp.toPx()),
+                        cornerRadius = CornerRadius(6.dp.toPx())
+                    )
+                    drawLine(
+                        color = color,
+                        start = Offset(18.dp.toPx(), size.height - 10.dp.toPx()),
+                        end = Offset(size.width - 18.dp.toPx(), size.height - 10.dp.toPx()),
+                        strokeWidth = 2.dp.toPx()
+                    )
+                }
+                .border(1.dp, AppColors.Divider, AppRoundedCornerShape(8.dp))
+        )
+    }
 }
 
 private fun parseRuleColor(value: String): Int? {

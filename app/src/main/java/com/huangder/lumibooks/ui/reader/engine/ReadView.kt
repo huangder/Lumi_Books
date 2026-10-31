@@ -29,6 +29,7 @@ import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.ui.reader.BionicReadingFormatter
 import com.huangder.lumibooks.ui.reader.mapGlobalProgress
 import com.huangder.lumibooks.ui.reader.pageIndexForChapterFraction
+import com.huangder.lumibooks.ui.layout.isLandscapeOrNearSquare
 import com.huangder.lumibooks.tts.TtsPageChangeOrigin
 import com.huangder.lumibooks.util.ChineseConverter
 import kotlin.math.abs
@@ -153,8 +154,6 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     companion object {
         private const val TAG = "ReadView"
         private const val JUMP_SETTLE_TIMEOUT_MS = 5_000L
-        private const val CURL_COMMIT_FRACTION = 0.14f
-        private const val CURL_FLING_DP_PER_SECOND = 450f
         /** 手指拖出正文区多远后触发跨页选择翻页。 */
         private const val CONTENT_SELECTION_EDGE_THRESHOLD_DP = 8f
         /** 翻一页后需把手指带回正文区这么多 dp 才允许再次触发（防连翻）。 */
@@ -199,7 +198,16 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             curPageView = curSpreadView,
             nextPageView = nextSpreadView,
             backgroundColorProvider = { bgColor },
-            reversePageProgressProvider = { currentWritingMode.isVertical }
+            reversePageProgressProvider = { currentWritingMode.isVertical },
+            directPageRenderer = { canvas, page ->
+                when (page) {
+                    prevSpreadView, curSpreadView, nextSpreadView -> {
+                        drawReaderCurlChildren(canvas, page as FrameLayout)
+                        true
+                    }
+                    else -> false
+                }
+            }
         )
     }
 
@@ -366,6 +374,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var rvSwipeTurnClaimed = false
     private var rvIsEdgeTouch = false
     private var rvIsHandlingPageGesture = false
+    // Track the actual stream before selection/guide routing can consume its
+    // terminal event. Gesture ownership alone can otherwise outlive the pointer.
+    private var rvPointerStreamActive = false
     private var rvBoundaryGestureSuppressed = false
     private val bookmarkPullTracker = BookmarkPullGestureTracker()
     private var rvPendingImageLongPress: ReaderImageHit? = null
@@ -400,6 +411,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var scrollTransitionDurationMs = ReaderPageAnimationSettings.SCROLL_DEFAULT_MS
     private var fadeTransitionDurationMs = ReaderPageAnimationSettings.FADE_DEFAULT_MS
     private var curlTransitionDurationMs = ReaderPageAnimationSettings.CURL_DEFAULT_MS
+    private var waveTransitionDurationMs = ReaderPageAnimationSettings.WAVE_DEFAULT_MS
     private var currentEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT
     private var selectionMenuVisible = false
     private var currentWritingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL
@@ -952,7 +964,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             currentUseDisplayDensityForSpans = useDisplayDensityForSpans
             currentWritingMode = writingMode
             currentTwoPageSpreadEnabled = twoPageSpread
-            currentTwoPageSpread = twoPageSpread && width > height
+            currentTwoPageSpread = twoPageSpread && isLandscapeOrNearSquare(width, height)
             return
         }
 
@@ -978,7 +990,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val paginationLayoutChanged =
             currentUseDisplayDensityForSpans != useDisplayDensityForSpans
         val writingModeChanged = currentWritingMode != writingMode
-        val resolvedSpread = twoPageSpread && width > height
+        val resolvedSpread = twoPageSpread && isLandscapeOrNearSquare(width, height)
         val spreadModeChanged = currentTwoPageSpread != resolvedSpread
         val writingModeAnchor = if (writingModeChanged) {
             slotManager.getCurSlot().takeIf { it.isLoaded }?.contentView?.chapterStartOffset
@@ -1014,6 +1026,10 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
         // 🔥 无变化时提前返回，避免菜单切换等 recomposition 触发不必要的重配置
         if (isConfigured && !needsRelayout) {
+            // Unfolding can enable spreads while the current view is still portrait. The
+            // active layout stays single-page, but onMeasure must retain the new eligibility
+            // for the next resize or rotation (including a later return to the cover display).
+            currentTwoPageSpreadEnabled = twoPageSpread
             val currentSlot = slotManager.getCurSlot()
             // A direct TOC jump advances the slot before Compose receives its page callback.
             // Repeated old snapshots must not command the slot back to the previous page.
@@ -1054,7 +1070,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         pendingStartChapter = effectiveStartChapter
         pendingStartPage = effectiveStartPage
         if (writingModeChanged || spreadModeChanged) resetPageViewPositions()
-        if (spreadModeChanged || sizeChanged) applyPageViewLayout()
+        if (spreadModeChanged || sizeChanged) applyPageViewLayout(width, height)
         configuredWidth = width
         configuredHeight = height
 
@@ -1455,6 +1471,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             "fade" -> FadePageAnim(animationSurface, fadeTransitionDurationMs)
             "scroll" -> ScrollPageAnim(animationSurface, scrollTransitionDurationMs)
             "curl" -> CurlPageAnim(animationSurface, baseDurationMs = curlTransitionDurationMs)
+            "wave" -> WavePageAnim(animationSurface, waveTransitionDurationMs)
             else -> SlidePageAnim(animationSurface, slideTransitionDurationMs)
         }
         // 重新绑定回调
@@ -1493,6 +1510,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             ReaderPageAnimationSettings.MODE_SCROLL -> scrollTransitionDurationMs = sanitized
             ReaderPageAnimationSettings.MODE_FADE -> fadeTransitionDurationMs = sanitized
             ReaderPageAnimationSettings.MODE_CURL -> curlTransitionDurationMs = sanitized
+            ReaderPageAnimationSettings.MODE_WAVE -> waveTransitionDurationMs = sanitized
             else -> slideTransitionDurationMs = sanitized
         }
         if (mode != currentPageTransition) return
@@ -1501,10 +1519,18 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             is ScrollPageAnim -> controller.setBaseDuration(sanitized)
             is FadePageAnim -> controller.setBaseDuration(sanitized)
             is CurlPageAnim -> controller.setBaseDuration(sanitized)
+            is WavePageAnim -> controller.setWaveDuration(sanitized)
         }
     }
 
     private fun resetPageViewPositions() {
+        // Instant turns hide adjacent spreads with INVISIBLE. A later animated
+        // controller must receive drawable pages as well as fresh offsets/alpha.
+        // Otherwise slide moves the hidden next page until this reader is recreated.
+        listOf(prevSpreadView, curSpreadView, nextSpreadView).forEach {
+            it.visibility = View.VISIBLE
+            it.translationZ = 0f
+        }
         val pageWidth = width.toFloat()
         prevSpreadView.translationX = if (currentWritingMode.isVertical) pageWidth else -pageWidth
         prevSpreadView.translationY = 0f
@@ -1521,11 +1547,11 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
      * 单页模式下所有页槽全宽显示、右半页隐藏；
      * 双页对开模式下每页槽拆成左/右半页（中缝 16dp）。
      */
-    private fun applyPageViewLayout() {
-        if (width <= 0 || height <= 0) return
+    private fun applyPageViewLayout(viewportWidth: Int, viewportHeight: Int) {
+        if (viewportWidth <= 0 || viewportHeight <= 0) return
         val density = resources.displayMetrics.density
         val gutterPx = (16f * density).toInt()
-        val halfWidth = ((width - gutterPx) / 2).coerceAtLeast(1)
+        val halfWidth = ((viewportWidth - gutterPx) / 2).coerceAtLeast(1)
         for ((gutter, left, right) in listOf(
             Triple(prevGutterView, prevPageView, prevPageRightView),
             Triple(curGutterView, curPageView, curPageRightView),
@@ -1648,6 +1674,10 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
      * - 长按（非卷曲模式 >500ms 或无明显移动）→ 不拦截，TextView 原生触发选词
      */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> rvPointerStreamActive = true
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> rvPointerStreamActive = false
+        }
         if (ev.actionMasked == MotionEvent.ACTION_DOWN || ev.actionMasked == MotionEvent.ACTION_CANCEL) {
             initialSelectionExtension = null
         }
@@ -2309,7 +2339,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     override fun dispatchDraw(canvas: android.graphics.Canvas) {
         if (animationController.drawsDirectlyOnCanvas &&
-            (animationController.isRunning || animationController.isDragging)) {
+            (animationController.isRunning || animationController.isDragging ||
+                animationController.isCompletingTurn)
+        ) {
             // 仿真翻页活动期完全由稳定快照绘制，避免实时子 View 从裁剪路径中漏出。
             animationController.onDraw(canvas)
             ReaderPageTurnPerformance.markFirstFrame()
@@ -2376,6 +2408,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         contentSelectionHandoffPending = false
         pendingContentSelectionTurn = null
         bookmarkPullTracker.reset()
+        rvPointerStreamActive = false
         rvBoundaryGestureSuppressed = false
         rvSystemBackGestureCandidate = false
         rvSystemBackGestureSuppressed = false
@@ -2401,6 +2434,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             is ScrollPageAnim -> ctrl.startFromTap(dir)
             is FadePageAnim -> ctrl.startFromTap(dir)
             is CurlPageAnim -> ctrl.startFromTap(dir)
+            is WavePageAnim -> ctrl.startFromTap(dir)
             is NoPageAnim -> ctrl.startFromTap(dir)
         }
     }
@@ -2472,17 +2506,20 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     private fun deferredCurlGestureCommits(event: MotionEvent): Boolean {
         if (event.actionMasked != MotionEvent.ACTION_UP) return false
-        val dx = event.x - rvTouchStartX
-        val distanceCommit = abs(dx) / width.coerceAtLeast(1).toFloat() >= CURL_COMMIT_FRACTION
-        val elapsed = (event.eventTime - rvTouchDownTime).coerceAtLeast(1L)
-        val velocityCommit = abs(dx) * 1_000f / elapsed >=
-            CURL_FLING_DP_PER_SECOND * resources.displayMetrics.density
-        return distanceCommit || velocityCommit
+        return shouldCommitDeferredCurlGesture(
+            deltaX = event.x - rvTouchStartX,
+            elapsedMillis = event.eventTime - rvTouchDownTime,
+            widthPx = width,
+            density = resources.displayMetrics.density,
+            direction = rvDeferredCurlDirection,
+            reversed = currentWritingMode.isVertical
+        )
     }
 
     private fun requestCurlTurn(direction: PageAnimationController.Direction): Boolean {
         val controller = animationController as? CurlPageAnim ?: return false
         if (direction == PageAnimationController.Direction.NONE) return false
+        releaseEndedCurlGestureForProgrammaticTurn(controller)
 
         if (isJumpSettling) {
             curlTurnSequencer.offerWhileWaiting(
@@ -2525,6 +2562,19 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
         curlTurnSequencer.clear()
         return false
+    }
+
+    private fun releaseEndedCurlGestureForProgrammaticTurn(controller: CurlPageAnim) {
+        if (rvPointerStreamActive) return
+        if (rvDeferredCurlGesture) {
+            // Its terminal event was routed to another owner; this is an
+            // uncommitted swipe, not an accepted keyboard/tap request.
+            curlTurnSequencer.cancelNewest(rvDeferredCurlDirection)
+        }
+        rvIsHandlingPageGesture = false
+        rvDeferredCurlGesture = false
+        rvDeferredCurlDirection = PageAnimationController.Direction.NONE
+        if (controller.isDragging && !controller.isRunning) controller.abortAnim()
     }
 
     private fun prepareCurlSwipe(direction: PageAnimationController.Direction): Boolean {
@@ -2858,16 +2908,16 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         }
     }
 
-    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
-        super.onLayout(changed, left, top, right, bottom)
-        val layoutWidth = right - left
-        val layoutHeight = bottom - top
-        if (changed && currentChapterCount > 0 &&
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        val layoutWidth = measuredWidth
+        val layoutHeight = measuredHeight
+        if (currentChapterCount > 0 &&
             (
                 !isConfigured ||
                     configuredWidth != layoutWidth ||
                     configuredHeight != layoutHeight ||
-                    (currentTwoPageSpreadEnabled && (layoutWidth > layoutHeight)) != currentTwoPageSpread
+                    (currentTwoPageSpreadEnabled && isLandscapeOrNearSquare(layoutWidth, layoutHeight)) != currentTwoPageSpread
                 )
         ) {
             configure(
@@ -2897,6 +2947,10 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 width = layoutWidth,
                 height = layoutHeight
             )
+            // configure updates the half-page LayoutParams. Measure them in this
+            // pass: requesting another layout from onLayout can be swallowed by
+            // AndroidView, leaving full-width left pages and zero-width right pages.
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec)
         }
     }
 

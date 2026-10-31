@@ -126,7 +126,7 @@ internal object VerticalTextLayouter {
 
         val baseEm = paint.textSize.coerceAtLeast(1f)
         val columnAdvance = (baseEm * lineSpacingMultiplier + lineSpacingExtra)
-            .coerceAtLeast(baseEm)
+            .coerceAtLeast(baseEm * 0.5f)
         val columnCount = (width / columnAdvance).toInt().coerceAtLeast(1)
         val graphemes = graphemeRanges(text.toString())
         val pages = mutableListOf<VerticalPageSlice>()

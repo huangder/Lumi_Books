@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tag_management_invalid_name">有効な名前を入力してください。書籍タグとグループ名は20文字以内です。</string>
+</resources>

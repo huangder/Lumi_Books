@@ -464,7 +464,8 @@ class JustifiedTextView @JvmOverloads constructor(
                 geometry = geometry,
                 start = text.getSpanStart(span),
                 end = text.getSpanEnd(span),
-                color = span.color
+                color = span.color,
+                outline = span.outline
             )
         }
         text.getSpans(0, text.length, ReaderSearchHighlightSpan::class.java).forEach { span ->

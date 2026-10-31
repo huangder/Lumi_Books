@@ -130,6 +130,7 @@ class PortableSnapshotManager @Inject constructor(
                 folders = portableFolders,
                 bookFolderLinks = syncDao.getAllBookFolderLinks(),
                 tags = syncDao.getAllTags(),
+                tagGroups = database.tagGroupDao().getAllGroups(),
                 annotationTags = database.annotationTagDao().getAllTags(),
                 bookTagLinks = syncDao.getAllBookTagLinks(),
                 readingRecords = syncDao.getAllReadingRecords(),
@@ -147,11 +148,12 @@ class PortableSnapshotManager @Inject constructor(
     }
 
     suspend fun apply(
-        snapshot: PortableSnapshot,
+        incomingSnapshot: PortableSnapshot,
         assetFiles: Map<String, File>,
         replace: Boolean,
         replaceAssetDirectories: Boolean = replace
     ) = withContext(Dispatchers.IO) {
+        val snapshot = incomingSnapshot.flattenLegacyTagHierarchy()
         val deviceId = syncIdentityStore.deviceId()
         validateSnapshot(snapshot, assetFiles)
         val oldPreferences = dataStoreManager.exportPortablePreferences(deviceId)
@@ -218,6 +220,7 @@ class PortableSnapshotManager @Inject constructor(
                     syncDao.clearFolders()
                     syncDao.clearTags()
                     database.annotationTagDao().clearTags()
+                    database.tagGroupDao().deleteAll()
                     bookDao.clearBooks()
                     syncDao.clearTombstones()
                     database.highlightRuleDao().clearBookStates()
@@ -239,12 +242,30 @@ class PortableSnapshotManager @Inject constructor(
                     )
                 }
                 if (restoredFolders.isNotEmpty()) syncDao.upsertFolders(restoredFolders)
-                if (snapshot.tags.isNotEmpty()) syncDao.upsertTags(snapshot.tags)
+                // Recheck group deletions and assignments while holding the database write lock.
+                val tagCatalog = PortableSnapshotMerger.merge(
+                    snapshot.copy(
+                        tags = if (replace) emptyList() else syncDao.getAllTags(),
+                        annotationTags = if (replace) emptyList() else database.annotationTagDao().getAllTags(),
+                        tagGroups = if (replace) emptyList() else database.tagGroupDao().getAllGroups(),
+                        hasTagGroups = true,
+                        bookTagsWithoutGroupId = emptySet(),
+                        annotationTagsWithoutGroupId = emptySet()
+                    ), snapshot
+                )
+                database.tagGroupDao().upsertGroups(tagCatalog.tagGroups)
+                if (tagCatalog.tags.isNotEmpty()) syncDao.upsertTags(tagCatalog.tags)
                 if (snapshot.bookFolderLinks.isNotEmpty()) syncDao.upsertBookFolderLinks(snapshot.bookFolderLinks)
                 if (snapshot.bookTagLinks.isNotEmpty()) syncDao.upsertBookTagLinks(snapshot.bookTagLinks)
                 if (snapshot.readingRecords.isNotEmpty()) syncDao.upsertReadingRecords(snapshot.readingRecords.map {
                     val key = "${it.bookId}\u0000${it.date}\u0000${it.sourceDeviceId}"
-                    it.copy(id = if (replace) 0 else existingRecords[key]?.id ?: 0)
+                    val existing = existingRecords[key]
+                    it.copy(id = if (replace) 0 else existing?.id ?: 0,
+                        duration = if (replace) it.duration else maxOf(it.duration, existing?.duration ?: 0),
+                        listeningDuration = if (replace) it.listeningDuration else maxOf(it.listeningDuration, existing?.listeningDuration ?: 0),
+                        startTime = if (replace || existing == null) it.startTime else minOf(it.startTime, existing.startTime),
+                        endTime = if (replace || existing == null) it.endTime else maxOf(it.endTime, existing.endTime),
+                        updatedAt = if (replace || existing == null) it.updatedAt else maxOf(it.updatedAt, existing.updatedAt))
                 })
                 if (snapshot.bookmarks.isNotEmpty()) syncDao.upsertBookmarks(snapshot.bookmarks.map {
                     val existing = existingBookmarks[it.syncId]
@@ -259,20 +280,13 @@ class PortableSnapshotManager @Inject constructor(
                     else it.copy(id = if (replace) 0 else existing?.id ?: 0)
                 })
                 val tagDao = database.annotationTagDao()
-                val existingAnnotationTags = tagDao.getAllTags().associateBy { it.name }
                 // Backfill labels from older backups that have no independent catalog.
                 tagDao.ensureTags((snapshot.notes.flatMap { note ->
                     AnnotationTags.decode(note.tagsJson).map { AnnotationTagEntity(it, note.updatedAt) }
                 } + snapshot.bookmarks.flatMap { bookmark ->
                     AnnotationTags.decode(bookmark.tagsJson).map { AnnotationTagEntity(it, bookmark.updatedAt) }
                 }).distinctBy { it.name })
-                tagDao.upsertTags(snapshot.annotationTags.map { incoming ->
-                    val existing = existingAnnotationTags[incoming.name]
-                    if (!replace && existing != null && (
-                        existing.updatedAt > incoming.updatedAt ||
-                            (existing.updatedAt == incoming.updatedAt && existing.isDeleted)
-                    )) existing else incoming
-                })
+                tagDao.upsertTags(tagCatalog.annotationTags)
                 if (snapshot.tombstones.isNotEmpty()) syncDao.upsertTombstones(snapshot.tombstones)
                 if (snapshot.highlightRules.isNotEmpty()) {
                     database.highlightRuleDao().upsertRules(snapshot.highlightRules)
@@ -560,7 +574,7 @@ class PortableSnapshotManager @Inject constructor(
     private fun BookEntity.toPortable(bodyAssetId: String?, coverAssetId: String?) = PortableBook(
         id, title, author, format, lastReadTime, readingProgress, locatorJson, createdAt, isFavorite,
         isCloudOnly, metadataUpdatedAt, bodyAssetId, coverAssetId, remoteLibraryKey, remoteFileName,
-        remoteFileSize, remoteFileSha256, isPinned
+        remoteFileSize, remoteFileSha256, isPinned, isManuallyMarkedRead, isHidden
     )
 
 }
@@ -577,7 +591,8 @@ internal fun PortableBook.toEntity(
         ?: (bodyAssetId == null && (isCloudOnly || filePath.isBlank())),
     remoteLibraryKey = remoteLibraryKey, remoteFileName = remoteFileName,
     remoteFileSize = remoteFileSize, remoteFileSha256 = remoteFileSha256,
-    metadataUpdatedAt = metadataUpdatedAt, isPinned = isPinned
+    metadataUpdatedAt = metadataUpdatedAt, isPinned = isPinned,
+    isManuallyMarkedRead = isManuallyMarkedRead, isHidden = isHidden
 )
 
 private fun stableSuffix(value: String): String = MessageDigest.getInstance("SHA-256")

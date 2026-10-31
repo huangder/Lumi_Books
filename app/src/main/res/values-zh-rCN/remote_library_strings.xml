@@ -88,4 +88,5 @@
     <string name="remote_error_invalid_file">下载的文件无效：可能是登录已过期或文件已损坏</string>
     <string name="remote_error_destination">无法写入所选文件夹，请重新授权该文件夹</string>
     <string name="remote_error_unknown">操作失败，请重试</string>
+    <string name="remote_error_reported_blocked">该 OPDS 地址已被举报并屏蔽，无法添加</string>
 </resources>

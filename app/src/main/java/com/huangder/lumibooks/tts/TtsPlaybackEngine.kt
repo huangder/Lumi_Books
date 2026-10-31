@@ -73,6 +73,9 @@ interface AndroidTtsPlaybackEngine : TtsPlaybackEngine {
 }
 
 interface TtsPlaybackListener {
+    /** Actual rendered PCM activity, including pause/resume and buffer starvation. */
+    fun onPlaybackActivity(utteranceId: String, active: Boolean) = Unit
+
     fun onStart(utteranceId: String)
 
     fun onDone(utteranceId: String)

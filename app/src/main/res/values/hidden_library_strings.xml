@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hidden_library_title">隐藏书库</string>
+    <plurals name="hidden_library_book_count">
+        <item quantity="other">%d 本书</item>
+    </plurals>
+    <string name="hidden_library_empty_title">这里还没有隐藏的书</string>
+    <string name="hidden_library_empty_body">在书库长按一本书，选择「隐藏」</string>
+    <string name="hidden_library_hide">隐藏</string>
+    <string name="hidden_library_unhide">取消隐藏</string>
+    <plurals name="hidden_library_hidden_message">
+        <item quantity="other">已隐藏 %d 本书，在书库顶部下拉可查看</item>
+    </plurals>
+    <plurals name="hidden_library_unhidden_message">
+        <item quantity="other">已将 %d 本书移回书库</item>
+    </plurals>
+
+    <string name="passcode_title_enter">输入密码</string>
+    <string name="passcode_title_current">输入当前密码</string>
+    <string name="passcode_title_create">设置隐藏书库密码</string>
+    <string name="passcode_title_new">设置新密码</string>
+    <string name="passcode_title_confirm">再次输入密码</string>
+    <string name="passcode_subtitle_create">设置 6 位数字密码，用来打开隐藏书库</string>
+    <string name="passcode_subtitle_create_for_hide">隐藏前先设置 6 位数字密码，以后用它打开隐藏书库</string>
+    <plurals name="passcode_error_wrong">
+        <item quantity="other">密码错误，还可尝试 %d 次</item>
+    </plurals>
+    <string name="passcode_error_mismatch">两次输入不一致，请重新设置</string>
+    <string name="passcode_locked_out">尝试次数过多，请 %1$s 后重试</string>
+    <string name="passcode_forgot">忘记密码？</string>
+    <string name="passcode_reset_prompt_title">验证身份以重设隐藏书库密码</string>
+    <string name="passcode_reset_unavailable">请先在系统设置中设置锁屏密码，再重设隐藏书库密码</string>
+    <string name="passcode_backspace">退格</string>
+    <string name="passcode_digits_entered">已输入 %1$d 位，共 %2$d 位</string>
+    <string name="passcode_use_biometric">使用指纹或面容解锁</string>
+    <string name="passcode_changed">密码已更新</string>
+
+    <string name="biometric_prompt_title">解锁隐藏书库</string>
+    <string name="biometric_prompt_use_passcode">使用密码</string>
+    <string name="biometric_offer_title">开启指纹或面容解锁？</string>
+    <string name="biometric_offer_body">之后打开隐藏书库时可直接验证，验证失败仍可输入密码</string>
+    <string name="biometric_offer_enable">开启</string>
+    <string name="biometric_offer_skip">暂不</string>
+
+    <string name="category_privacy">隐私</string>
+    <string name="privacy_hidden_library_summary">也可以在书库顶部下拉进入</string>
+    <string name="privacy_hidden_library_no_passcode">首次进入时设置密码</string>
+    <string name="privacy_section_access">访问方式</string>
+    <string name="privacy_change_passcode">更改密码</string>
+    <string name="privacy_biometric_unlock">指纹或面容解锁</string>
+    <string name="privacy_biometric_unlock_summary">打开隐藏书库时优先使用生物识别</string>
+    <string name="privacy_hidden_footer">隐藏的书不会出现在书库、首页、搜索、桌面小组件、统计和笔记汇总中，阅读时长也不计入每日目标与连续阅读；存储空间里计入「其他」。</string>
+
+    <string name="storage_other">其他</string>
+</resources>

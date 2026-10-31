@@ -1,239 +1,256 @@
 package com.huangder.lumibooks.ui.settings
 
 import android.app.Application
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.*
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.test.*
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isToggleable
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.SelectionMenuAction
 import com.huangder.lumibooks.domain.model.SelectionMenuSettings
-import com.huangder.lumibooks.ui.components.SelectionMenuSettingsEditor
 import com.huangder.lumibooks.ui.components.SelectionMenuSettingsDialog
-import org.junit.Assert.assertTrue
-import org.junit.Assert.assertFalse
+import com.huangder.lumibooks.ui.components.SelectionMenuSettingsEditor
+import com.huangder.lumibooks.ui.components.labelRes
+import com.huangder.lumibooks.ui.theme.EBookReaderTheme
+import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35], application = Application::class)
+@Config(sdk = [35], application = Application::class, qualifiers = "en-w360dp-h800dp-mdpi")
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class SelectionMenuSettingsEditorTest {
     @get:Rule val compose = createComposeRule()
-    private val saved = mutableListOf<SelectionMenuSettings>()
-    private val listState = LazyListState()
-    private var dragging = false
+    private fun text(id: Int, vararg args: Any) = RuntimeEnvironment.getApplication().getString(id, *args)
+    private fun label(action: SelectionMenuAction) = text(action.labelRes())
+    private fun handle(action: SelectionMenuAction) =
+        compose.onNodeWithContentDescription(text(R.string.selection_menu_drag, label(action)))
 
-    private fun show(initial: SelectionMenuSettings) {
+    private fun switchFor(action: SelectionMenuAction) =
+        compose.onNode(isToggleable() and hasAnyAncestor(hasTestTag("selection-menu-${action.storageKey}")))
+
+    private fun showEditor(
+        initial: SelectionMenuSettings = SelectionMenuSettings(),
+        theme: String = "lumi",
+        motion: Boolean = true,
+        onReordering: (Boolean) -> Unit = {},
+        editorModifier: Modifier = Modifier.fillMaxSize(),
+        listState: LazyListState = LazyListState()
+    ): () -> SelectionMenuSettings {
+        var settings by mutableStateOf(initial)
         compose.setContent {
-            var settings by remember { mutableStateOf(initial) }
-            MaterialTheme {
-                Box(Modifier.width(360.dp).height(600.dp)) {
-                    SelectionMenuSettingsEditor(settings, { saved += it; settings = it }, listState = listState,
-                        onDraggingChange = { dragging = it })
+            EBookReaderTheme(appTheme = theme, darkTheme = false) {
+                CompositionLocalProvider(LocalMotionEnabled provides motion) {
+                    SelectionMenuSettingsEditor(
+                        settings = settings,
+                        onChange = { settings = it },
+                        modifier = editorModifier,
+                        listState = listState,
+                        onReorderingChange = onReordering
+                    )
                 }
             }
         }
+        return { settings }
     }
 
-    @Test fun accessibilityActionMovesTheExcerptRowBeforeDictionary() {
-        show(SelectionMenuSettings())
-        val context = RuntimeEnvironment.getApplication()
-        val label = context.getString(R.string.excerpt_title)
-        val dragLabel = context.getString(R.string.selection_menu_drag, label)
-        compose.onNodeWithTag("selection_menu_list").performScrollToNode(hasContentDescription(dragLabel))
-        val actions = compose.onNodeWithContentDescription(dragLabel).fetchSemanticsNode().config[SemanticsActions.CustomActions]
-        compose.runOnIdle { actions.first { it.label == context.getString(R.string.selection_menu_move_up, label) }.action() }
-        val excerptTop = compose.onNodeWithText(label).fetchSemanticsNode().boundsInRoot.top
-        val dictionaryTop = compose.onNodeWithText(context.getString(R.string.menu_dictionary)).fetchSemanticsNode().boundsInRoot.top
-        assertTrue(excerptTop < dictionaryTop)
+    @Test fun everyActionIsListedAndOnlyReplaceIsMarkedTxtOnly() {
+        showEditor()
+        SelectionMenuAction.entries.forEach { compose.onNodeWithText(label(it)).assertExists() }
+        compose.onAllNodesWithText(text(R.string.selection_menu_txt_only)).assertCountEquals(1)
+        compose.onNode(hasText(text(R.string.selection_menu_txt_only)) and
+            hasAnyAncestor(hasTestTag("selection-menu-replace"))).assertExists()
     }
 
-    @Test fun longPressHandleMovesTheFirstToolDown() {
-        show(SelectionMenuSettings())
-        val context = RuntimeEnvironment.getApplication()
-        val highlight = context.getString(R.string.menu_highlight)
-        val underline = context.getString(R.string.menu_underline)
-        val rowDistance = compose.onNodeWithText(underline).fetchSemanticsNode().boundsInRoot.top -
-            compose.onNodeWithText(highlight).fetchSemanticsNode().boundsInRoot.top
-        compose.onNodeWithContentDescription(context.getString(R.string.selection_menu_drag, highlight))
-            .performTouchInput {
-                down(center)
-                advanceEventTime(650)
-                repeat(5) { moveBy(Offset(0f, rowDistance / 4), delayMillis = 60) }
-                up()
-            }
-        val highlightTop = compose.onNodeWithText(highlight).fetchSemanticsNode().boundsInRoot.top
-        val underlineTop = compose.onNodeWithText(context.getString(R.string.menu_underline)).fetchSemanticsNode().boundsInRoot.top
-        assertTrue("Drag distance=$rowDistance; highlight=$highlightTop underline=$underlineTop", highlightTop > underlineTop)
+    @Test fun switchesHideActionsButNeverTheLastVisibleOne() {
+        val hiddenAllButCopy = SelectionMenuAction.entries.filter { it != SelectionMenuAction.COPY }
+            .fold(SelectionMenuSettings()) { settings, action -> settings.withVisibility(action, false) }
+            .withVisibility(SelectionMenuAction.NOTE, true)
+        val current = showEditor(hiddenAllButCopy)
+        switchFor(SelectionMenuAction.NOTE).assertIsEnabled().performClick()
+        compose.runOnIdle { assertFalse(current().isVisible(SelectionMenuAction.NOTE)) }
+        switchFor(SelectionMenuAction.COPY).assertIsNotEnabled()
+        switchFor(SelectionMenuAction.SEARCH).assertIsEnabled().performClick()
+        compose.runOnIdle { assertTrue(current().isVisible(SelectionMenuAction.SEARCH)) }
+        switchFor(SelectionMenuAction.COPY).assertIsEnabled()
     }
 
-    @Test fun cardFollowsSmallFingerMovementBeforeChangingOrder() {
-        show(SelectionMenuSettings())
-        val context = RuntimeEnvironment.getApplication()
-        val label = context.getString(R.string.menu_highlight)
-        val handle = compose.onNodeWithContentDescription(context.getString(R.string.selection_menu_drag, label))
-        val before = compose.onNodeWithText(label).fetchSemanticsNode().boundsInRoot.top
-        val movement = handle.fetchSemanticsNode().boundsInRoot.height / 3f
-        handle.performTouchInput { down(center); advanceEventTime(650); moveBy(Offset(0f, movement)) }
-        val after = compose.onNodeWithText(label).fetchSemanticsNode().boundsInRoot.top
-        assertEquals("The card must follow the finger before crossing a row", movement, after - before, 2f)
-        compose.runOnIdle { assertTrue(saved.isEmpty()) }
-        handle.performTouchInput { up() }
-    }
-
-    @Test fun reorderingFirstItemKeepsTheViewportAndSavesOnceOnRelease() {
-        show(SelectionMenuSettings())
-        val context = RuntimeEnvironment.getApplication()
-        val label = context.getString(R.string.menu_highlight)
-        val underline = context.getString(R.string.menu_underline)
-        val rowDistance = compose.onNodeWithText(underline).fetchSemanticsNode().boundsInRoot.top -
-            compose.onNodeWithText(label).fetchSemanticsNode().boundsInRoot.top
-        val handle = compose.onNodeWithContentDescription(context.getString(R.string.selection_menu_drag, label))
-        handle.performTouchInput {
-            down(center); advanceEventTime(650)
-            repeat(9) { moveBy(Offset(0f, rowDistance / 4f), delayMillis = 60) }
-        }
+    @Test fun accessibilityActionsMoveRowsAndStopAtTheEnds() {
+        val current = showEditor()
+        fun actionsOf(action: SelectionMenuAction) =
+            handle(action).fetchSemanticsNode().config[SemanticsActions.CustomActions].map { it.label }
+        assertEquals(listOf(text(R.string.selection_menu_move_down, label(SelectionMenuAction.HIGHLIGHT))),
+            actionsOf(SelectionMenuAction.HIGHLIGHT))
+        handle(SelectionMenuAction.NOTE).fetchSemanticsNode().config[SemanticsActions.CustomActions]
+            .first { it.label == text(R.string.selection_menu_move_up, label(SelectionMenuAction.NOTE)) }
+            .action()
         compose.runOnIdle {
-            assertTrue("Dragging must only preview order", saved.isEmpty())
-            assertEquals(0, listState.firstVisibleItemIndex)
-            assertEquals(0, listState.firstVisibleItemScrollOffset)
+            assertEquals(listOf(SelectionMenuAction.HIGHLIGHT, SelectionMenuAction.NOTE, SelectionMenuAction.UNDERLINE),
+                current().order.take(3))
         }
-        handle.performTouchInput { up() }
-        compose.runOnIdle {
-            assertEquals(1, saved.size)
-            assertEquals(SelectionMenuAction.HIGHLIGHT, saved.single().order[2])
-            assertEquals(0, listState.firstVisibleItemIndex)
-            assertEquals(0, listState.firstVisibleItemScrollOffset)
-        }
-        compose.onNodeWithText(underline).assertIsDisplayed()
     }
 
-    @Test fun cancellingDragDiscardsThePreviewWithoutSaving() {
-        show(SelectionMenuSettings())
-        val context = RuntimeEnvironment.getApplication()
-        val label = context.getString(R.string.menu_highlight)
-        val underline = context.getString(R.string.menu_underline)
-        val rowDistance = compose.onNodeWithText(underline).fetchSemanticsNode().boundsInRoot.top -
-            compose.onNodeWithText(label).fetchSemanticsNode().boundsInRoot.top
-        val handle = compose.onNodeWithContentDescription(context.getString(R.string.selection_menu_drag, label))
-        handle.performTouchInput {
-            down(center); advanceEventTime(650)
-            repeat(5) { moveBy(Offset(0f, rowDistance / 4f), delayMillis = 60) }
-            cancel()
-        }
-        compose.runOnIdle { assertTrue(saved.isEmpty()) }
-        assertTrue(compose.onNodeWithText(label).fetchSemanticsNode().boundsInRoot.top <
-            compose.onNodeWithText(underline).fetchSemanticsNode().boundsInRoot.top)
-    }
+    @Test fun longPressDragReordersAndCommitsOnRelease() = dragHighlightDown(motion = true)
 
-    @Test fun aSingleLargeMoveCanPlaceTheSecondToolFirstWithoutEnteringTheHeader() {
-        show(SelectionMenuSettings())
-        val context = RuntimeEnvironment.getApplication()
-        val highlight = context.getString(R.string.menu_highlight)
-        val underline = context.getString(R.string.menu_underline)
-        val firstTop = compose.onNodeWithText(highlight).fetchSemanticsNode().boundsInRoot.top
-        val secondTop = compose.onNodeWithText(underline).fetchSemanticsNode().boundsInRoot.top
-        val handle = compose.onNodeWithContentDescription(context.getString(R.string.selection_menu_drag, underline))
-        handle.performTouchInput {
-            down(center); advanceEventTime(650)
-            moveBy(Offset(0f, -(secondTop - firstTop) * 1.4f))
-        }
-        assertTrue(compose.onNodeWithText(underline).fetchSemanticsNode().boundsInRoot.top >= firstTop)
-        handle.performTouchInput { up() }
-        compose.runOnIdle {
-            assertEquals(SelectionMenuAction.UNDERLINE, saved.single().order.first())
-            assertEquals(0, listState.firstVisibleItemIndex)
-            assertEquals(0, listState.firstVisibleItemScrollOffset)
-        }
-        compose.onNodeWithText(underline).assertIsDisplayed()
-        compose.onNodeWithText(highlight).assertIsDisplayed()
-    }
+    @Test fun reducedMotionDragStillReorders() = dragHighlightDown(motion = false)
 
-    @Test fun holdingAtTheBottomAndTopScrollsWithoutLosingTheDraggedCard() {
-        show(SelectionMenuSettings())
-        val context = RuntimeEnvironment.getApplication()
-        val note = context.getString(R.string.menu_note)
-        val handle = compose.onNodeWithContentDescription(context.getString(R.string.selection_menu_drag, note))
-        val list = compose.onNodeWithTag("selection_menu_list")
-        val viewport = list.fetchSemanticsNode().boundsInRoot
-        handle.performTouchInput { down(center); advanceEventTime(650); moveBy(Offset.Zero) }
-        compose.runOnIdle { assertTrue("Long press must acquire the handle", dragging) }
+    private fun dragHighlightDown(motion: Boolean) {
+        val events = mutableListOf<Boolean>()
+        val current = showEditor(motion = motion, onReordering = { events += it })
         compose.mainClock.autoAdvance = false
-        handle.performTouchInput {
-            moveBy(Offset(0f, viewport.height))
+        handle(SelectionMenuAction.HIGHLIGHT).performTouchInput {
+            down(center)
+            advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100)
         }
-        repeat(100) { compose.waitForIdle(); compose.mainClock.advanceTimeByFrame() }
-        compose.runOnIdle {
-            assertTrue(listState.firstVisibleItemIndex > 0)
-            assertTrue(saved.isEmpty())
+        compose.mainClock.advanceTimeBy(700)
+        compose.onRoot().performTouchInput {
+            repeat(20) { moveBy(androidx.compose.ui.geometry.Offset(0f, 8f)) }
         }
-        val lowerBounds = compose.onNodeWithText(note).fetchSemanticsNode().boundsInRoot
-        assertTrue(lowerBounds.top >= viewport.top && lowerBounds.bottom <= viewport.bottom)
-        list.performTouchInput { up() }
-        compose.mainClock.autoAdvance = true
-        compose.runOnIdle { assertEquals(SelectionMenuAction.NOTE, saved.single().order.last()) }
-
-        handle.performTouchInput { down(center); advanceEventTime(650); moveBy(Offset.Zero) }
-        compose.runOnIdle { assertTrue("Long press must reacquire the handle", dragging) }
-        compose.mainClock.autoAdvance = false
-        handle.performTouchInput {
-            moveBy(Offset(0f, -viewport.height))
+        compose.mainClock.advanceTimeBy(32)
+        compose.runOnUiThread {
+            assertEquals(listOf(true), events)
+            assertEquals("Nothing is committed while dragging", SelectionMenuSettings(), current())
         }
-        repeat(100) { compose.waitForIdle(); compose.mainClock.advanceTimeByFrame() }
-        list.performTouchInput { up() }
+        compose.onRoot().performTouchInput { up() }
         compose.mainClock.autoAdvance = true
         compose.runOnIdle {
-            assertEquals(SelectionMenuAction.NOTE, saved.last().order.first())
-            assertEquals(2, saved.size)
-            assertEquals(0, listState.firstVisibleItemIndex)
+            assertEquals(listOf(true, false), events)
+            val order = current().order
+            assertTrue("Highlight should have moved down: $order", order.indexOf(SelectionMenuAction.HIGHLIGHT) >= 2)
+            assertEquals(SelectionMenuAction.entries.size, order.distinct().size)
         }
-        compose.onNodeWithText(note).assertIsDisplayed()
     }
 
-    @Test fun lastSwitchIsLockedUntilAnotherToolIsEnabled() {
-        show(SelectionMenuSettings.fromStored(emptyList(),
-            SelectionMenuAction.entries.associate { it.key to (it == SelectionMenuAction.COPY) }))
-        val context = RuntimeEnvironment.getApplication()
-        val copyLabel = context.getString(R.string.menu_copy)
-        val excerptLabel = context.getString(R.string.excerpt_title)
-        fun scrollTo(label: String) {
-            compose.onNodeWithTag("selection_menu_list").performScrollToNode(hasContentDescription(label))
+    @Test fun fastDragBeyondShortViewportKeepsScrollingUntilRelease() {
+        val listState = LazyListState()
+        val events = mutableListOf<Boolean>()
+        val current = showEditor(
+            motion = false,
+            onReordering = { events += it },
+            editorModifier = Modifier.height(220.dp),
+            listState = listState
+        )
+        compose.mainClock.autoAdvance = false
+        handle(SelectionMenuAction.HIGHLIGHT).performTouchInput {
+            down(center)
+            advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100)
         }
-        val copy = compose.onNodeWithContentDescription(copyLabel)
-        scrollTo(copyLabel)
-        copy.assertIsOn().assertIsNotEnabled()
-        scrollTo(excerptLabel)
-        compose.onNodeWithContentDescription(context.getString(R.string.excerpt_title))
-            .performClick().assertIsOn()
-        scrollTo(copyLabel)
-        copy.assertIsEnabled().performClick().assertIsOff()
-        scrollTo(excerptLabel)
-        compose.onNodeWithContentDescription(context.getString(R.string.excerpt_title))
-            .assertIsOn().assertIsNotEnabled()
+        compose.mainClock.advanceTimeBy(700)
+        compose.onRoot().performTouchInput {
+            moveBy(androidx.compose.ui.geometry.Offset(0f, 250f))
+        }
+        // Hold the pointer outside the viewport while real frame-driven scrolling runs.
+        compose.mainClock.advanceTimeBy(1_600)
+        compose.runOnUiThread {
+            assertTrue("The held drag must scroll past its original slot", listState.firstVisibleItemIndex > 1)
+            assertEquals(listOf(true), events)
+            assertEquals("Auto-scroll must not save the draft", SelectionMenuSettings(), current())
+        }
+        compose.onRoot().performTouchInput { up() }
+        compose.mainClock.autoAdvance = true
+        compose.runOnIdle {
+            assertEquals(listOf(true, false), events)
+            assertTrue(current().order.indexOf(SelectionMenuAction.HIGHLIGHT) >= 6)
+        }
     }
 
-    @Test fun tappingTheSheetTitleDoesNotCancelChanges() {
-        var dismissed = false
+    @Test fun cancellingAnActiveDragDiscardsItsOrder() {
+        val events = mutableListOf<Boolean>()
+        val current = showEditor(motion = false, onReordering = { events += it })
+        compose.mainClock.autoAdvance = false
+        handle(SelectionMenuAction.HIGHLIGHT).performTouchInput {
+            down(center)
+            advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100)
+        }
+        compose.mainClock.advanceTimeBy(700)
+        compose.onRoot().performTouchInput {
+            moveBy(androidx.compose.ui.geometry.Offset(0f, 160f))
+        }
+        compose.mainClock.advanceTimeBy(32)
+        compose.runOnUiThread {
+            assertEquals(listOf(true), events)
+            assertEquals(SelectionMenuSettings(), current())
+        }
+        compose.onRoot().performTouchInput { cancel() }
+        compose.mainClock.autoAdvance = true
+        compose.runOnIdle {
+            assertEquals(listOf(true, false), events)
+            assertEquals("Cancelled drag must not save its order", SelectionMenuSettings(), current())
+        }
+    }
+
+    @Test fun settingsScreenResetsToDefaultsAndSavesImmediately() {
+        var saved: SelectionMenuSettings? = null
+        var backs = 0
+        val start = SelectionMenuSettings().moveBy(SelectionMenuAction.COPY, -7).withVisibility(SelectionMenuAction.NOTE, false)
         compose.setContent {
-            MaterialTheme {
-                SelectionMenuSettingsDialog(true, SelectionMenuSettings(), { dismissed = true }, {})
+            EBookReaderTheme(appTheme = "liquid_glass", darkTheme = true) {
+                SelectionMenuSettingsScreen(saved ?: start, { saved = it }, { backs++ })
             }
         }
-        val context = RuntimeEnvironment.getApplication()
-        compose.onNodeWithText(context.getString(R.string.selection_menu_settings)).performTouchInput { click() }
-        compose.runOnIdle { assertFalse(dismissed) }
+        compose.onNodeWithText(text(R.string.selection_menu_settings)).assertExists()
+        compose.onNodeWithText(text(R.string.highlight_reset_default)).performClick()
+        compose.runOnIdle { assertEquals(SelectionMenuSettings(), saved) }
+        compose.onNodeWithContentDescription(text(R.string.back)).performClick()
+        compose.runOnIdle { assertEquals(1, backs) }
+    }
+
+    @Test fun readerSheetSavesOnlyOnConfirm() {
+        var visible by mutableStateOf(true)
+        var saved: SelectionMenuSettings? = null
+        var dismissals = 0
+        compose.setContent {
+            EBookReaderTheme(appTheme = "lumi", darkTheme = false) {
+                CompositionLocalProvider(LocalMotionEnabled provides false) {
+                    SelectionMenuSettingsDialog(
+                        visible = visible,
+                        currentItems = SelectionMenuSettings(),
+                        onDismiss = { dismissals++; visible = false },
+                        onSave = { saved = it; visible = false }
+                    )
+                }
+            }
+        }
+        switchFor(SelectionMenuAction.NOTE).performClick()
+        compose.onNodeWithContentDescription(text(R.string.close)).performClick()
+        compose.runOnIdle { assertEquals(1, dismissals); assertNull(saved) }
+
+        compose.runOnIdle { visible = true }
+        switchFor(SelectionMenuAction.NOTE).performClick()
+        compose.onNodeWithText(text(R.string.confirm)).performClick()
+        compose.runOnIdle {
+            assertEquals(1, dismissals)
+            assertEquals(SelectionMenuSettings().withVisibility(SelectionMenuAction.NOTE, false), saved)
+        }
     }
 }

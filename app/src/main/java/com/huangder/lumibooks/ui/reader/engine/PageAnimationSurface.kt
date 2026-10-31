@@ -46,6 +46,9 @@ class PageAnimationSurface(
     val bgColor: Int get() = backgroundColorProvider()
     val isPageProgressReversed: Boolean get() = reversePageProgressProvider()
     val hasDirectPageRenderer: Boolean get() = directPageRenderer != null
+    /** Tests can force the canvas renderer; GPU curls also need a hardware window. */
+    internal var gpuRenderingEnabled: Boolean = true
+    val isHardwareAccelerated: Boolean get() = gpuRenderingEnabled && root.isHardwareAccelerated
 
     fun drawPageDirectly(canvas: Canvas, pageView: View): Boolean =
         directPageRenderer?.invoke(canvas, pageView) == true

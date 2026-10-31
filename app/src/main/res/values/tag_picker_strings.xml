@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tag_picker_uncategorized">Uncategorized</string>
+    <string name="tag_picker_group_count">%1$d tags · %2$d selected</string>
+    <string name="tag_picker_save_failed">Could not save tags. Please try again.</string>
+</resources>

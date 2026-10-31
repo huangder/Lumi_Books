@@ -15,6 +15,19 @@ import kotlinx.coroutines.ensureActive
 internal const val EXTERNAL_TTS_MIN_PLAYBACK_RATE = 0.5f
 internal const val EXTERNAL_TTS_MAX_PLAYBACK_RATE = 5f
 
+internal enum class ExternalTtsAudioFocusAction {
+    IGNORE,
+    PAUSE,
+    GAIN
+}
+
+internal fun externalTtsAudioFocusAction(change: Int): ExternalTtsAudioFocusAction = when (change) {
+    AudioManager.AUDIOFOCUS_LOSS,
+    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> ExternalTtsAudioFocusAction.PAUSE
+    AudioManager.AUDIOFOCUS_GAIN -> ExternalTtsAudioFocusAction.GAIN
+    else -> ExternalTtsAudioFocusAction.IGNORE
+}
+
 internal fun normalizeExternalTtsPlaybackRate(rate: Float): Float = rate.coerceIn(
     EXTERNAL_TTS_MIN_PLAYBACK_RATE,
     EXTERNAL_TTS_MAX_PLAYBACK_RATE
@@ -23,8 +36,9 @@ internal fun normalizeExternalTtsPlaybackRate(rate: Float): Float = rate.coerceI
 /**
  * Streams 24 kHz mono PCM16LE through [AudioTrack] while owning audio focus.
  *
- * Focus loss (permanent or transient) pauses playback and notifies the playback engine via
- * [onFocusLost]. Playback remains paused after focus returns until the controller resumes it.
+ * Exclusive focus loss pauses playback and notifies the playback engine via [onFocusLost].
+ * Duckable losses leave playback running. Playback remains paused after focus returns until
+ * the controller resumes it.
  */
 class ExternalTtsAudioPlayer(
     @ApplicationContext private val context: Context,
@@ -214,23 +228,17 @@ class ExternalTtsAudioPlayer(
             .build()
         val listener = AudioManager.OnAudioFocusChangeListener { change ->
             if (generation != focusGeneration) return@OnAudioFocusChangeListener
-            when (change) {
-                AudioManager.AUDIOFOCUS_LOSS -> {
+            when (externalTtsAudioFocusAction(change)) {
+                ExternalTtsAudioFocusAction.PAUSE -> {
                     hasFocus = false
                     paused = true
                     track?.pause()
                     onFocusLost?.invoke()
                 }
-                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
-                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                    hasFocus = false
-                    paused = true
-                    track?.pause()
-                    onFocusLost?.invoke()
-                }
-                AudioManager.AUDIOFOCUS_GAIN -> {
+                ExternalTtsAudioFocusAction.GAIN -> {
                     hasFocus = true
                 }
+                ExternalTtsAudioFocusAction.IGNORE -> Unit
             }
         }
         focusChangeListener = listener
@@ -238,7 +246,6 @@ class ExternalTtsAudioPlayer(
         val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
             .setAudioAttributes(attributes)
             .setOnAudioFocusChangeListener(listener, audioHandler)
-            .setWillPauseWhenDucked(true)
             .build()
         focusRequest = request
         val result = audioManager.requestAudioFocus(request)

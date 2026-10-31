@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tag_picker_uncategorized">未分類</string>
+    <string name="tag_picker_group_count">%1$d 個標籤 · 已選 %2$d 個</string>
+    <string name="tag_picker_save_failed">標籤儲存失敗，請重試</string>
+</resources>

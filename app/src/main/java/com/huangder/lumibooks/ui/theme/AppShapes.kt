@@ -21,6 +21,13 @@ import com.kyant.shapes.UnevenRoundedRectangle
  * while its continuous style removes the curvature discontinuity at each edge.
  */
 object AppShapes {
+    /** Nested edges share a center; oversized insets resolve to a square corner. */
+    fun concentricRadius(parentRadius: Dp, inset: Dp): Dp =
+        (parentRadius - inset.coerceAtLeast(0.dp)).coerceAtLeast(0.dp)
+
+    fun concentric(parentRadius: Dp, inset: Dp, continuous: Boolean = true): CornerBasedShape =
+        rounded(concentricRadius(parentRadius, inset), continuous)
+
     fun usesContinuousCorners(theme: String): Boolean = theme != "material3"
 
     fun rounded(radius: Dp, continuous: Boolean = true): CornerBasedShape =

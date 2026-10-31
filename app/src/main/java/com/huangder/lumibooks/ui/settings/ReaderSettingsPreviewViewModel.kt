@@ -10,6 +10,7 @@ import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundType
 import com.huangder.lumibooks.domain.model.CustomFontPreset
 import com.huangder.lumibooks.domain.model.ReaderPageAnimationSettings
+import com.huangder.lumibooks.domain.model.ReaderPageTransition
 import com.huangder.lumibooks.domain.model.ReaderLayoutTarget
 import com.huangder.lumibooks.domain.model.ReaderThemeSettings
 import com.huangder.lumibooks.domain.model.ReaderThemeSuite
@@ -107,7 +108,7 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
         }
         viewModelScope.launch {
             dataStoreManager.pageTransition().collectLatest { mode ->
-                if (mode in setOf("slide", "scroll", "fade", "curl")) {
+                if (mode in setOf("slide", "scroll", "fade", "curl", "wave")) {
                     _uiState.update { it.copy(animationMode = mode) }
                 }
             }
@@ -493,7 +494,7 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
                 fontType = sharedFontType,
                 bodyFontWeight = config.optInt("textBold", 400).coerceIn(100, 900),
                 lineHeight = (1.35f + config.optDouble("lineSpacingExtra", 0.0).toFloat() /
-                    config.optDouble("textSize", 16.0).toFloat().coerceAtLeast(1f)).coerceIn(1f, 2.5f),
+                    config.optDouble("textSize", 16.0).toFloat().coerceAtLeast(1f)).coerceIn(ReaderThemeSettings.LINE_HEIGHT_RANGE),
                 letterSpacing = config.optDouble("letterSpacing", 0.0).toFloat(),
                 paragraphSpacing = config.optDouble("paragraphSpacing", 2.0).toFloat(),
                 firstLineIndent = if (config.optString("paragraphIndent").isNotBlank()) 2f else 0f,
@@ -530,7 +531,8 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
     }
 
     fun setAnimationMode(mode: String) {
-        if (mode !in setOf("slide", "scroll", "fade", "curl") || _uiState.value.eInkMode) return
+        if (mode !in setOf("slide", "scroll", "fade", "curl", "wave")) return
+        if (_uiState.value.eInkMode && !ReaderPageTransition.isAvailableInEInk(mode)) return
         _uiState.update { it.copy(animationMode = mode) }
         viewModelScope.launch { dataStoreManager.savePageTransition(mode) }
     }

@@ -32,7 +32,9 @@ import com.huangder.lumibooks.ui.reader.engine.ResolvedReaderTypeface
 import com.huangder.lumibooks.util.parser.EpubParser
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlin.math.roundToInt
 import org.junit.Assert.*
@@ -54,6 +56,7 @@ class ContinuousScrollReaderTest {
     private val list = LazyListState()
     private var restored = false
     private lateinit var composeRoot: View
+    private lateinit var readerScope: CoroutineScope
     private var chapterCount = 3
     private var currentChapter = 1
     private var loadChapter: (Int, Int?) -> CharSequence? = { _, _ -> text }
@@ -95,6 +98,7 @@ class ContinuousScrollReaderTest {
     ) {
         val reported = mutableStateOf(currentChapter to 0f)
         compose.setContent {
+            readerScope = androidx.compose.runtime.rememberCoroutineScope()
             composeRoot = androidx.compose.ui.platform.LocalView.current
             Box(Modifier.fillMaxSize()) {
                 if (mounted.value) ContinuousScrollReader(
@@ -135,6 +139,33 @@ class ContinuousScrollReaderTest {
                     onManualScrollStarted = onManualScrollStarted
                 )
             }
+        }
+    }
+
+    @Test fun adjacentChaptersArePreparedBeforeAnOngoingScrollStops() {
+        currentChapter = 0
+        chapterCount = 8
+        val loaded = ConcurrentHashMap.newKeySet<Int>()
+        val scrollGate = CompletableDeferred<Unit>()
+        loadChapter = { index, _ -> loaded.add(index); text }
+        show()
+        compose.waitUntil(15_000) { restored && loaded.containsAll(listOf(0, 1, 2)) }
+        compose.runOnIdle {
+            readerScope.launch {
+                list.scrollToItem(4)
+                list.scroll { scrollGate.await() }
+            }
+        }
+        try {
+            compose.waitUntil(15_000) {
+                list.firstVisibleItemIndex == 4 && list.isScrollInProgress && loaded.contains(3)
+            }
+            compose.runOnIdle {
+                assertTrue("Previous chapter must be ready while the fling is still active", loaded.contains(3))
+                assertTrue(list.isScrollInProgress)
+            }
+        } finally {
+            scrollGate.complete(Unit)
         }
     }
 
@@ -507,7 +538,10 @@ class ContinuousScrollReaderTest {
             runCatching { visibleTextView().text.isNotEmpty() }.getOrDefault(false)
         }
 
-        val initialSize = compose.runOnIdle { visibleTextView().textSize }
+        val initialSize = compose.runOnIdle {
+            visibleTextView().let { it.textSize to it.resources.displayMetrics.density }
+        }
+        assertEquals(18f * initialSize.second, initialSize.first, 0.01f)
         compose.runOnIdle {
             font.value = 24f
             weight.value = 700
@@ -522,7 +556,7 @@ class ContinuousScrollReaderTest {
                 .toList()
             assertTrue(
                 "initial=$initialSize attached=${views.map { it.textSize to it.text.length }}",
-                views.any { it.text.isNotEmpty() && it.textSize > initialSize }
+                views.any { it.text.isNotEmpty() && it.textSize > initialSize.first }
             )
             assertTrue(
                 "attached=${views.map { it.paint.isFakeBoldText to it.text.length }}",

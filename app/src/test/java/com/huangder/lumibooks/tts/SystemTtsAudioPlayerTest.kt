@@ -1,6 +1,8 @@
 package com.huangder.lumibooks.tts
 
 import android.media.AudioFormat
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -15,6 +17,44 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SystemTtsAudioPlayerTest {
+    @Test
+    fun busyMainThreadDoesNotBlockAudioWritesForRenderedRanges() = runTest {
+        val mainQueue = ArrayDeque<Runnable>()
+        Dispatchers.setMain(object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) {
+                mainQueue.addLast(block)
+            }
+        })
+        val track = BufferedTrack(frameBytes = 2)
+        val player = SystemTtsAudioPlayer(backgroundScope) { track }
+        var ranges = 0
+        try {
+            assertTrue(player.begin(24_000, AudioFormat.ENCODING_PCM_16BIT, 1))
+            player.scheduleRange(0) { ranges++ }
+            player.append(ByteArray(8) { 1 })
+            runCurrent()
+            track.render(4)
+            // Keep main-thread callbacks queued while more PCM becomes available.
+            player.append(ByteArray(8) { 2 })
+            player.append(ByteArray(8) { 3 })
+            advanceTimeBy(20)
+            runCurrent()
+            assertTrue(mainQueue.isNotEmpty())
+            assertEquals(0, ranges)
+            assertEquals(List<Byte>(8) { 1 } + List<Byte>(8) { 2 } + List<Byte>(8) { 3 }, track.bytes)
+            do {
+                while (mainQueue.isNotEmpty()) mainQueue.removeFirst().run()
+                runCurrent()
+            } while (mainQueue.isNotEmpty())
+            assertEquals(1, ranges)
+        } finally {
+            player.stop()
+            while (mainQueue.isNotEmpty()) mainQueue.removeFirst().run()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
     @Test
     fun shortUtteranceStartsAndCompletesOnlyAfterItsSpeechIsRendered() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))

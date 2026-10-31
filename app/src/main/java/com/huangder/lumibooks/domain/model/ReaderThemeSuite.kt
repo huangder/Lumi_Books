@@ -20,9 +20,13 @@ data class ReaderThemeSettings(
     val marginLeft: Float = 38f,
     val marginRight: Float = 38f,
     val marginTop: Float = 64f,
-    val marginBottom: Float = 64f
+    val marginBottom: Float = 64f,
+    val cornerMargins: ReaderCornerMargins = ReaderCornerMargins()
 ) {
     companion object {
+        val LINE_HEIGHT_RANGE = 0.5f..2.5f
+        val LETTER_SPACING_RANGE = -5f..10f
+
         const val MIN_MARGIN_DP = 0f
         const val MAX_HORIZONTAL_MARGIN_DP = 160f
         const val MAX_VERTICAL_MARGIN_DP = 400f
@@ -226,29 +230,17 @@ object ReaderThemeSuites {
         backgroundColorSelection = backgroundColorSelection.takeIf(String::isNotBlank) ?: DAY_ID,
         backgroundImageOpacity = backgroundImageOpacity.coerceIn(0f, 1f),
         backgroundImageBlurDp = backgroundImageBlurDp.coerceIn(0f, 40f),
-        fontSize = fontSize.coerceIn(12f, 28f),
+        fontSize = fontSize,
         fontType = fontType.takeIf(String::isNotBlank) ?: "system",
-        bodyFontWeight = bodyFontWeight.coerceIn(100, 900),
-        lineHeight = lineHeight.coerceIn(1f, 2.5f),
-        letterSpacing = letterSpacing.coerceIn(0f, 10f),
-        paragraphSpacing = paragraphSpacing.coerceIn(0f, 30f),
-        firstLineIndent = firstLineIndent.coerceIn(0f, 4f),
-        marginLeft = marginLeft.coerceIn(
-            ReaderThemeSettings.MIN_MARGIN_DP,
-            ReaderThemeSettings.MAX_HORIZONTAL_MARGIN_DP
-        ),
-        marginRight = marginRight.coerceIn(
-            ReaderThemeSettings.MIN_MARGIN_DP,
-            ReaderThemeSettings.MAX_HORIZONTAL_MARGIN_DP
-        ),
-        marginTop = marginTop.coerceIn(
-            ReaderThemeSettings.MIN_MARGIN_DP,
-            ReaderThemeSettings.MAX_VERTICAL_MARGIN_DP
-        ),
-        marginBottom = marginBottom.coerceIn(
-            ReaderThemeSettings.MIN_MARGIN_DP,
-            ReaderThemeSettings.MAX_VERTICAL_MARGIN_DP
-        )
+        bodyFontWeight = bodyFontWeight,
+        lineHeight = lineHeight,
+        letterSpacing = letterSpacing,
+        paragraphSpacing = paragraphSpacing,
+        firstLineIndent = firstLineIndent,
+        marginLeft = marginLeft,
+        marginRight = marginRight,
+        marginTop = marginTop,
+        marginBottom = marginBottom
     )
 }
 
@@ -317,6 +309,12 @@ object ReaderThemeSuiteCodec {
         put("marginRight", marginRight.toDouble())
         put("marginTop", marginTop.toDouble())
         put("marginBottom", marginBottom.toDouble())
+        put("cornerMargins", JSONObject().apply {
+            cornerMargins.leftDp?.let { put("leftDp", it.toDouble()) }
+            cornerMargins.rightDp?.let { put("rightDp", it.toDouble()) }
+            cornerMargins.topDp?.let { put("topDp", it.toDouble()) }
+            cornerMargins.bottomDp?.let { put("bottomDp", it.toDouble()) }
+        })
     }
 
     private fun ReaderThemeSuite.toJsonObject() = JSONObject().apply {
@@ -350,7 +348,17 @@ object ReaderThemeSuiteCodec {
         marginLeft = optDouble("marginLeft", 38.0).toFloat(),
         marginRight = optDouble("marginRight", 38.0).toFloat(),
         marginTop = optDouble("marginTop", 64.0).toFloat(),
-        marginBottom = optDouble("marginBottom", 64.0).toFloat()
+        marginBottom = optDouble("marginBottom", 64.0).toFloat(),
+        cornerMargins = optJSONObject("cornerMargins")?.let { margins ->
+            fun optionalMargin(key: String): Float? =
+                if (margins.has(key) && !margins.isNull(key)) margins.optDouble(key).toFloat() else null
+            ReaderCornerMargins(
+                leftDp = optionalMargin("leftDp"),
+                rightDp = optionalMargin("rightDp"),
+                topDp = optionalMargin("topDp"),
+                bottomDp = optionalMargin("bottomDp")
+            )
+        } ?: ReaderCornerMargins()
         )
     }
 }
@@ -429,6 +437,18 @@ object LumiThemeBundleCodec {
         validateNumber(settings, "marginRight", 0.0, ReaderThemeSettings.MAX_HORIZONTAL_MARGIN_DP.toDouble(), label)
         validateNumber(settings, "marginTop", 0.0, ReaderThemeSettings.MAX_VERTICAL_MARGIN_DP.toDouble(), label)
         validateNumber(settings, "marginBottom", 0.0, ReaderThemeSettings.MAX_VERTICAL_MARGIN_DP.toDouble(), label)
+        if (settings.has("cornerMargins")) {
+            val margins = settings.optJSONObject("cornerMargins")
+            require(margins != null) { "Invalid $label cornerMargins" }
+            listOf("leftDp", "rightDp", "topDp", "bottomDp").forEach { key ->
+                if (!margins.isNull(key)) {
+                    val max = if (key == "leftDp" || key == "rightDp") {
+                        ReaderThemeSettings.MAX_HORIZONTAL_MARGIN_DP
+                    } else ReaderThemeSettings.MAX_VERTICAL_MARGIN_DP
+                    validateNumber(margins, key, 0.0, max.toDouble(), "$label cornerMargins")
+                }
+            }
+        }
     }
 
     private fun validateRequiredString(settings: JSONObject, key: String, label: String) {

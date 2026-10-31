@@ -53,6 +53,9 @@ lumi-window.xml
 /settings.preferences_pb
 /.local/
 
+# Optional private edition checkout; never publish its implementation in this repository.
+/app/src/premium/
+
 # Local LUMI Dream promotional project (not part of the Android app or docs site)
 /00-START-HERE.txt
 /DELIVERY-CHECKLIST.md

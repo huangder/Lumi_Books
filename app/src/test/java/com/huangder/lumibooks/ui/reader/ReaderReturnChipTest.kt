@@ -29,15 +29,16 @@ class ReaderReturnChipTest {
     private fun verify(dark: Boolean, eInk: Boolean, headphones: Boolean,
         ink: Color = if (eInk || !dark) Color.Black else Color.White) {
         var clicks = 0
+        val pageLabel = if (headphones) "6-50.3%" else "23"
         compose.setContent {
-            ReaderReturnChip(23, ReaderReturnSide.RIGHT, headphones,
+            ReaderReturnChip(pageLabel, ReaderReturnSide.RIGHT, headphones,
                 if (dark) Color.Black else Color.White, ink,
                 eInk, "target", { clicks++ })
         }
         compose.onNodeWithContentDescription("target").assertIsDisplayed()
             .assertHeightIsAtLeast(48.dp).assertWidthIsAtLeast(48.dp)
         compose.onNodeWithText("返回").assertDoesNotExist()
-        compose.onNodeWithText("23", useUnmergedTree = true)
+        compose.onNodeWithText(pageLabel, useUnmergedTree = true)
             .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { getLayout ->
                 val results = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
                 getLayout(results)
@@ -51,7 +52,7 @@ class ReaderReturnChipTest {
     @Test fun clickFinishesFadingBeforeNavigationAndCannotBeRepeated() {
         compose.mainClock.autoAdvance = false
         var clicks = 0
-        compose.setContent { ReaderReturnChip(23, ReaderReturnSide.LEFT, false,
+        compose.setContent { ReaderReturnChip("23", ReaderReturnSide.LEFT, false,
             Color.White, Color.Black, false, "return", { clicks++ }) }
         compose.onNodeWithContentDescription("return").performClick()
         compose.mainClock.advanceTimeByFrame()
@@ -79,7 +80,7 @@ class ReaderReturnChipTest {
         var jumps = 0
         var returns = 0
         compose.setContent {
-            ReaderReturnChip(if (headphones.value) 12 else 34,
+            ReaderReturnChip(if (headphones.value) "12" else "34",
                 if (headphones.value) ReaderReturnSide.LEFT else ReaderReturnSide.RIGHT,
                 headphones.value, Color.White, Color.Black, false,
                 if (headphones.value) "listen" else "return", {

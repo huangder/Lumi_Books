@@ -30,7 +30,9 @@ data class BookEntity(
     val sourceSha256: String? = null,
     val sourceDisplayName: String? = null,
     val sourceLastModified: Long = 0L,
-    val isMissing: Boolean = false
+    val isMissing: Boolean = false,
+    val isHidden: Boolean = false,
+    val isManuallyMarkedRead: Boolean = false
 )
 
 enum class BookFormat {

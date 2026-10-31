@@ -563,25 +563,34 @@ class MobiParser(private val context: Context? = null) : BookParser, BookRenderS
         // line is wrongly treated as a paragraph start and shifts right, which breaks
         // the pagination/rendering consistency (clipped text + page-turn jitter).
         val indentCount = firstLineIndentChars.roundToInt().coerceIn(0, 4)
-        if (indentCount > 0) {
-            val paragraphStarts = ArrayList<Int>()
-            var paragraphStart = 0
-            for (j in 0..ssb.length) {
-                if (j == ssb.length || ssb[j] == '\n') {
-                    val hasImage = ssb.getSpans(paragraphStart, j, ImageSpan::class.java).isNotEmpty()
-                    // 标题同样不缩进：h1/h2 转成的"放大 + 加粗"段落会命中。
-                    val isHeading = isHeadingParagraph(ssb, paragraphStart, j)
-                    if (paragraphStart < j && !hasImage && !isHeading) paragraphStarts += paragraphStart
-                    paragraphStart = j + 1
+        val paragraphStarts = ArrayList<Pair<Int, Int>>()
+        var paragraphStart = 0
+        for (j in 0..ssb.length) {
+            if (j == ssb.length || ssb[j] == '\n') {
+                var firstContent = paragraphStart
+                while (firstContent < j && ssb[firstContent].isParagraphIndentWhitespace()) {
+                    firstContent++
                 }
+                val hasImage = ssb.getSpans(paragraphStart, j, ImageSpan::class.java).isNotEmpty()
+                // 标题同样不缩进：h1/h2 转成的"放大 + 加粗"段落会命中。
+                val isHeading = isHeadingParagraph(ssb, firstContent, j)
+                if (firstContent < j && !hasImage && !isHeading) {
+                    paragraphStarts += paragraphStart to firstContent
+                }
+                paragraphStart = j + 1
             }
-            val indentText = "\u3000".repeat(indentCount)
-            for (start in paragraphStarts.asReversed()) {
-                ssb.insert(start, indentText)
-            }
+        }
+        val indentText = "\u3000".repeat(indentCount)
+        for ((start, firstContent) in paragraphStarts.asReversed()) {
+            // Replace publisher whitespace rather than adding to it. Run even
+            // for zero indent so the setting can remove the book's own indent.
+            ssb.replace(start, firstContent, indentText)
         }
         return ssb
     }
+
+    private fun Char.isParagraphIndentWhitespace(): Boolean =
+        this == ' ' || this == '\t' || this == '\u00A0' || this == '\u3000'
 
     private fun trimTrailingNewlines(text: CharSequence): CharSequence {
         var end = text.length

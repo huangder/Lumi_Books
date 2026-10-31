@@ -1,0 +1,91 @@
+Lumi Books
+Copyright 2026 Huangder
+
+This public source distribution contains the base edition. An optional private
+checkout supplies additional official-edition features and is not included here.
+Distribution of a combined build requires appropriate rights for all included
+code; this notice does not create an exception to any third-party license.
+
+Lumi original code, the analytic paper-curl renderer and the Lumi-authored TXT
+heading presets are distributed under GNU GPLv3. The rule-file codec is
+an independent compatibility implementation. User-imported rules retain their
+original ownership and license; they are not part of the distributed presets.
+
+The experimental renderer is based on an independently implemented analytic
+bending surface and observed interaction in the user-provided reference video.
+It contains no Apple or legado-E implementation code.
+
+Third-party attribution retained from the previous distribution follows.
+
+Lumi uses Backdrop and adapts interaction code from AndroidLiquidGlass:
+
+    Project: AndroidLiquidGlass / Backdrop
+    Source: https://github.com/Kyant0/AndroidLiquidGlass
+    Maven: io.github.kyant0:backdrop:1.0.6
+    Copyright: Copyright 2025 Kyant
+    License: Apache License 2.0
+
+The complete Apache License 2.0 text distributed with Lumi is available at:
+
+    app/src/main/assets/licenses/android-liquid-glass-apache-2.0.txt
+
+Files adapted from AndroidLiquidGlass carry their own source notices. Those
+files have been modified for integration with Lumi.
+
+Lumi bundles the GenRyuMin2 font collection, derived from Adobe's Source font
+software:
+
+    Font: GenRyuMin2 / Source
+    Copyright: Copyright 2014-2019 Adobe
+    Reserved Font Name: Source
+    License: SIL Open Font License 1.1
+
+The complete SIL Open Font License 1.1 text distributed with Lumi is available
+at:
+
+app/src/main/assets/licenses/genryumin2-ofl-1.1.txt
+
+Additional runtime components distributed with the APK are listed below. Their
+copyright and license notices remain applicable to those components; the
+complete license texts are shipped under app/src/main/assets/licenses/.
+
+Apache License 2.0 components:
+
+    AndroidX Core, Lifecycle, Activity Compose, RecyclerView, Compose/Material,
+    Navigation Compose, Hilt and AndroidX Hilt extensions, Room, DataStore,
+    WebKit, Kotlin Coroutines, PDFBox Android, AndroidX PDF, WorkManager,
+    OkHttp/Okio (Square), Coil (Coil Contributors, including coil-svg),
+    AndroidX Palette, Haze (Chris Banes), and AndroidLiquidGlass / Backdrop.
+
+    License text: app/src/main/assets/licenses/apache-2.0.txt
+
+AndroidSVG is distributed under Apache License 2.0:
+
+    Copyright 2013-2018 Cave Rock Software Ltd
+    Maven: com.caverock:androidsvg-aar:1.4
+
+CommonMark Java is distributed under the BSD 2-Clause License:
+
+    Copyright 2015 Robin Stocker
+    License text: app/src/main/assets/licenses/commonmark-bsd-2-clause.txt
+
+Jsoup is distributed under the MIT License:
+
+    Copyright 2009-2026 Jonathan Hedley
+    License text: app/src/main/assets/licenses/jsoup-mit.txt
+
+PDFBox Android includes Bouncy Castle modules (bcprov, bcpkix and bcutil):
+
+    Copyright 2000-2022 The Legion of the Bouncy Castle Inc.
+    License text: app/src/main/assets/licenses/bouncycastle-mit.txt
+
+Lumi bundles the LXGW WenKai font as app/src/main/res/font/lxgw_wenkai.ttf:
+
+    Copyright 2021-2026 LXGW and the Klee Project Authors
+    Reserved Font Names: 霞鹜, 霞鶩, 落霞孤鹜, 落霞孤鶩 and LXGW
+    License text: app/src/main/assets/licenses/lxgw-wenkai-ofl-1.1.txt
+
+Markwon 4.6.2 and Prism4j 2.0.0 are distributed under Apache License 2.0.
+JLatexMath Android 0.2.0 is GPL-2.0-or-later with an independent-module
+linking exception. Its code, fonts and exception retain their original licenses.
+See app/src/main/assets/licenses/markdown-native/ for complete texts and source.

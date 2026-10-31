@@ -11,6 +11,9 @@ import com.huangder.lumibooks.data.local.entity.NoteEntity
 import com.huangder.lumibooks.data.local.model.QuoteWidgetData
 import kotlinx.coroutines.flow.Flow
 
+/** Cross-book feeds and statistics leave out marks made in hidden books. */
+private const val NOTE_NOT_IN_HIDDEN_BOOK = "bookId NOT IN (SELECT id FROM books WHERE isHidden = 1)"
+
 @Dao
 interface NoteDao {
     @Query("SELECT * FROM notes WHERE bookId = :bookId ORDER BY createdAt DESC")
@@ -19,16 +22,17 @@ interface NoteDao {
     @Query("SELECT * FROM notes")
     suspend fun getAllNotes(): List<NoteEntity>
 
-    /** Highlights, underlines and notes of every book; ink strokes share this table and are skipped. */
+    /** Highlights, underlines and notes of every visible book; ink strokes share this table and are skipped. */
     @Query(
         "SELECT * FROM notes WHERE type NOT LIKE 'pdf_ink_%' AND type NOT LIKE 'epub_comic_ink_%' " +
-            "ORDER BY createdAt DESC, id DESC"
+            "AND $NOTE_NOT_IN_HIDDEN_BOOK ORDER BY createdAt DESC, id DESC"
     )
     fun observeTextNotes(): Flow<List<NoteEntity>>
 
     @Query(
         "SELECT * FROM notes WHERE createdAt >= :startMs AND createdAt < :endMs " +
-            "AND type NOT LIKE 'pdf_ink_%' AND type NOT LIKE 'epub_comic_ink_%'"
+            "AND type NOT LIKE 'pdf_ink_%' AND type NOT LIKE 'epub_comic_ink_%' " +
+            "AND $NOTE_NOT_IN_HIDDEN_BOOK"
     )
     fun observeTextNotesCreatedBetween(startMs: Long, endMs: Long): Flow<List<NoteEntity>>
 
@@ -43,7 +47,7 @@ interface NoteDao {
             "notes.selectedText AS selectedText, notes.note AS noteText, " +
             "books.title AS bookTitle, books.author AS bookAuthor " +
             "FROM notes INNER JOIN books ON books.id = notes.bookId " +
-            "WHERE TRIM(notes.selectedText) <> '' " +
+            "WHERE TRIM(notes.selectedText) <> '' AND books.isHidden = 0 " +
             "ORDER BY RANDOM() LIMIT 1"
     )
     suspend fun getRandomWidgetQuote(): QuoteWidgetData?
@@ -53,7 +57,7 @@ interface NoteDao {
             "notes.selectedText AS selectedText, notes.note AS noteText, " +
             "books.title AS bookTitle, books.author AS bookAuthor " +
             "FROM notes INNER JOIN books ON books.id = notes.bookId " +
-            "WHERE TRIM(notes.selectedText) <> '' " +
+            "WHERE TRIM(notes.selectedText) <> '' AND books.isHidden = 0 " +
             "ORDER BY notes.id"
     )
     fun observeWidgetQuotes(): Flow<List<QuoteWidgetData>>
@@ -102,6 +106,4 @@ interface NoteDao {
     @Query("DELETE FROM notes WHERE sourceRuleId = :ruleId AND origin = 'highlight_rule'")
     suspend fun deleteGeneratedNotesForRule(ruleId: String)
 
-    @Query("DELETE FROM notes WHERE bookId = :bookId AND type NOT LIKE 'pdf_ink_%'")
-    suspend fun deleteLegacyPdfAnnotationsByBookId(bookId: String)
 }

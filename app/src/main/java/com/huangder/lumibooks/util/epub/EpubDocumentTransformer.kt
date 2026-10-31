@@ -55,7 +55,9 @@ object EpubDocumentTransformer {
         // 同 script：样式中的 '>'（如后代选择器）若被转义成 &gt;，HTML 解析模式下
         // 不会反转义，部分规则会失效，因此也用 DataNode 注入。
         head.appendElement("style").attr("id", "lumi-reader-style")
-            .appendChild(DataNode(READER_CSS))
+            .appendChild(DataNode("/*<![CDATA[*/\n$READER_CSS\n/*]]>*/"))
+        head.appendElement("style").attr("id", "lumi-floated-media-style")
+            .appendChild(DataNode(FLOATED_MEDIA_CSS))
         document.body().attr("data-lumi-layout", layout.name.lowercase())
         // 整页只有图片的页面（封面、卷首图、插图页、固定版式的整页图）在阅读器里应当满屏，
         // 不该被页边距缩进去一圈。reflowable 沿用封面样式，固定版式只打标记、不动设计盒。
@@ -64,13 +66,13 @@ object EpubDocumentTransformer {
             allowCoverStyling = layout == EpubRenditionLayout.REFLOWABLE,
             isCoverCandidate = isCoverCandidate
         )
-        markReflowableMediaWrappers(document, layout)
-        markFullBleedMedia(document, layout, cssIndex.plus(documentCssIndex(document)))
-        // 必须以 DataNode 注入：文档以 XML 语法序列化，appendText 会把脚本里的
-        // '<'、'>'、'&' 转义成 &lt; &gt; &amp;，浏览器在 <script> 内不会反转义，
-        // 导致分页脚本语法错误、原排版空白卡死（text/html 章节尤其明显）。
+        val effectiveCssIndex = cssIndex.plus(documentCssIndex(document))
+        markReflowableMediaWrappers(document, layout, effectiveCssIndex)
+        markFullBleedMedia(document, layout, effectiveCssIndex)
+        // XHTML 由 XML 解析器读取，裸 '<' 和 '&' 会使整个章节解析失败。
+        // 同时用 JS 注释包住 CDATA 标记，让 text/html 中的脚本也能直接执行。
         document.body().appendElement("script").attr("id", "lumi-reader-script")
-            .appendChild(DataNode(READER_SCRIPT))
+            .appendChild(DataNode("//<![CDATA[\n$READER_SCRIPT\n//]]>"))
         return document.outerHtml().toByteArray(Charsets.UTF_8)
     }
 
@@ -170,7 +172,11 @@ object EpubDocumentTransformer {
         }
 
     /** Prevent a publisher's image-only wrapper from being fragmented between CSS columns. */
-    private fun markReflowableMediaWrappers(document: Document, layout: EpubRenditionLayout) {
+    private fun markReflowableMediaWrappers(
+        document: Document,
+        layout: EpubRenditionLayout,
+        cssIndex: EpubCssIndex
+    ) {
         if (layout != EpubRenditionLayout.REFLOWABLE) return
         val body = document.body()
         topLevelMedia(body).forEach { media ->
@@ -183,9 +189,19 @@ object EpubDocumentTransformer {
                     break
                 }
                 wrapper.attr(MEDIA_WRAPPER_ATTR, "true")
+                if (isHorizontallyFloated(wrapper, cssIndex)) {
+                    wrapper.attr(FLOATED_MEDIA_ATTR, "true")
+                }
                 wrapper = wrapper.parent()
             }
         }
+    }
+
+    private fun isHorizontallyFloated(element: org.jsoup.nodes.Element, cssIndex: EpubCssIndex): Boolean {
+        val inlineFloat = Regex("(?:^|;)\\s*float\\s*:\\s*(left|right)\\b", RegexOption.IGNORE_CASE)
+            .find(element.attr("style"))?.groupValues?.get(1)
+        val declaredFloat = cssIndex.declaration(element, "float")
+        return (inlineFloat ?: declaredFloat)?.trim()?.lowercase() in setOf("left", "right")
     }
 
     private fun isFootnoteMedia(media: org.jsoup.nodes.Element): Boolean {
@@ -782,19 +798,30 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
 
     private const val MEDIA_ONLY_ATTR = "data-lumi-media-only"
     private const val MEDIA_WRAPPER_ATTR = "data-lumi-media-wrapper"
+    private const val FLOATED_MEDIA_ATTR = "data-lumi-floated-media"
     private const val BLEED_ATTR = "data-lumi-bleed"
     private const val BLEED_HORIZONTAL = "horizontal"
     private const val BLEED_HORIZONTAL_TOP = "horizontal-top"
 
+    private const val FLOATED_MEDIA_CSS = """
+html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media="true"] {
+  float: none !important;
+  clear: both !important;
+  width: 100% !important;
+}
+"""
+
     private val READER_SCRIPT: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
         buildString(
             READER_SCRIPT_PART_1.length + READER_SCRIPT_PART_1B.length +
-                READER_SCRIPT_PART_2.length + READER_SCRIPT_PART_3.length
+                READER_SCRIPT_PART_2.length + READER_SCRIPT_PART_3.length +
+                READER_SCRIPT_PART_3B.length
         ) {
             append(READER_SCRIPT_PART_1)
             append(READER_SCRIPT_PART_1B)
             append(READER_SCRIPT_PART_2)
             append(READER_SCRIPT_PART_3)
+            append(READER_SCRIPT_PART_3B)
         }
     }
 
@@ -815,6 +842,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     readerBackgroundActive: false,
     readerBackgroundHasImage: false,
     readerBackgroundUrl: null,
+    autoScrollSpeed: 0, autoScrollFrame: 0, autoScrollLastTime: 0,
     edgeTapLeft: -1, edgeTapRight: 1, canTurnPrevious: true, canTurnNext: true,
     bionicReading: false, chineseMode: 'original', chineseMap: null, pendingPreparedPage: null, prepareSerial: 0,
     highlightItems: [], ttsHighlight: null, ttsFollowSuspended: false, searchHighlight: null, dictionarySelection: null,
@@ -824,6 +852,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     return Math.max(1, Math.round(base * state.visualDurationScale));
   }
   var resizeTimer = 0;
+  var viewportFrozen = false;
   var selectionDispatchTimer = 0;
   var scrollNotifyTimer = 0;
   var searchHighlightTimer = 0;
@@ -860,6 +889,15 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
   var pageStageDurationOverride = 0;
   var footnoteRequestSerial = 0;
   var pageNotifySerial = 0;
+  // Load-stage timing for the native trace, in ms since this document's navigation start.
+  function traceNow() {
+    return Math.round(window.performance && performance.now ? performance.now() : 0);
+  }
+  var loadTiming = { script: traceNow(), paginations: 0, repaginations: 0 };
+  function withLoadTiming(payload) {
+    payload.timing = Object.assign({ now: traceNow() }, loadTiming);
+    return payload;
+  }
 
   function post(type, payload) {
     try {
@@ -985,11 +1023,15 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
         var physicalPage = physicalPageForRect(rect);
         var logicalPage = state.flow === 'scrolled'
           ? physicalPage : logicalPageForPhysical(physicalPage);
-        if (logicalPage !== state.page) continue;
+        if (state.flow === 'scrolled') {
+          if (rect.bottom <= readerBox().top || rect.top >= viewportHeight()) continue;
+        } else if (logicalPage !== state.page) continue;
         var x = Math.max(1, Math.min(viewportWidth() - 2, rect.left + Math.min(4, rect.width / 2)));
-        var y = Math.max(1, Math.min(viewportHeight() - 2, rect.top + Math.min(4, rect.height / 2)));
+        var y = Math.max(state.flow === 'scrolled' ? readerBox().top + 1 : 1,
+          Math.min(viewportHeight() - 2, rect.top + Math.min(4, rect.height / 2)));
         var range = document.caretRangeFromPoint ? document.caretRangeFromPoint(x, y) : null;
-        if (range && document.body.contains(range.startContainer) && pageForRange(range) === state.page) {
+        if (range && document.body.contains(range.startContainer) &&
+            (state.flow === 'scrolled' || pageForRange(range) === state.page)) {
           return locator(range.startContainer, range.startOffset, { index: index });
         }
         var startRange = document.createRange();
@@ -1009,6 +1051,20 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
   }
 
   function currentPagePayload() {
+    var position = currentLocator();
+    if (state.flow === 'scrolled' && (state.fixed || isMediaOnlyPage())) {
+      position.numberingPageCount = 1;
+      position.numberingPageIndex = 0;
+    } else if (state.flow === 'scrolled' && state.numberingStarts) {
+      position.numberingPageCount = state.numberingStarts.length;
+      var character = position.textPosition || 0;
+      var low = 0, high = state.numberingStarts.length;
+      while (low < high) {
+        var middle = (low + high) >>> 1;
+        if (state.numberingStarts[middle] <= character) low = middle + 1; else high = middle;
+      }
+      position.numberingPageIndex = Math.max(0, low - 1);
+    }
     return {
       pageIndex: state.page,
       pageCount: state.total,
@@ -1016,7 +1072,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       pageSerial: pageNotifySerial,
       configurationGeneration: state.configurationGeneration,
       layoutRevision: state.layoutRevision,
-      locator: currentLocator()
+      locator: position
     };
   }
 
@@ -1178,12 +1234,14 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
   }
 
   function viewportWidth() {
+    if (viewportFrozen && state.viewportWidth > 0) return state.viewportWidth;
     if (state.fixed && state.nativeViewport) return Math.round(state.nativeViewport.width);
     var visual = window.visualViewport && window.visualViewport.width;
     return Math.max(1, Math.round(visual || window.outerWidth || window.innerWidth || document.documentElement.clientWidth));
   }
 
   function viewportHeight() {
+    if (viewportFrozen && state.viewportHeight > 0) return state.viewportHeight;
     if (state.fixed && state.nativeViewport) return Math.round(state.nativeViewport.height);
     var visual = window.visualViewport && window.visualViewport.height;
     return Math.max(1, Math.round(visual || window.outerHeight || window.innerHeight || document.documentElement.clientHeight));
@@ -1562,7 +1620,10 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
   }
 
   function turnByDirection(direction, manual) {
-    if (manual) post('manualScroll', {});
+    if (manual) {
+      setAutoScrollSpeed(0);
+      post('manualScroll', {});
+    }
     direction = Number(direction) < 0 ? -1 : 1;
     // Do not queue input behind a running transition. Finalize the already
     // committed page synchronously, then start the next adjacent animation.
@@ -1583,7 +1644,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
         if (serial !== state.prepareSerial || state.pendingPreparedPage !== request ||
             state.stableLayoutRevision !== state.layoutRevision) return;
         state.pendingPreparedPage = null;
-        post('pagePrepared', {
+        loadTiming.prepareMs = traceNow() - (request.requestedAt || 0);
+        post('pagePrepared', withLoadTiming({
           configurationGeneration: state.configurationGeneration,
           layoutRevision: state.layoutRevision,
           requestToken: request.token,
@@ -1592,7 +1654,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
           reverseAxis: state.reverseAxis,
           pageSerial: pageNotifySerial,
           locator: currentLocator()
-        });
+        }));
       });
     });
     return true;
@@ -1602,7 +1664,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     state.prepareSerial += 1;
     state.pendingPreparedPage = {
       page: Math.max(0, Number(page) || 0),
-      token: Number(requestToken) || 0
+      token: Number(requestToken) || 0,
+      requestedAt: traceNow()
     };
     fulfillPreparedPageRequest();
   }
@@ -1632,7 +1695,10 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       });
     });
     var fontJob = document.fonts && document.fonts.ready ? document.fonts.ready.catch(function () {}) : Promise.resolve();
-    var settled = Promise.all([fontJob, Promise.all(imageJobs)]);
+    loadTiming.images = imageJobs.length;
+    var settled = Promise.all([fontJob, Promise.all(imageJobs)]).then(function () {
+      loadTiming.mediaSettled = traceNow();
+    });
     // 个别 WebView/损坏媒体会让 decode() 或 fonts.ready 永不结束。分页不能因此永久
     // 卡在不可见状态；超时后先显示页面，媒体完成加载时浏览器仍会正常补画。
     var timeout = new Promise(function (resolve) { setTimeout(resolve, 1800); });
@@ -1933,6 +1999,56 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     body.style.minHeight = '0px';
   }
 
+  // Measure the horizontal layout before restoring the scroll surface in the same frame.
+  function measureScrollNumbering() {
+    if (state.fixed || isMediaOnlyPage()) return [0];
+    var body = document.body, root = document.documentElement;
+    var bodyStyle = body.getAttribute('style'), rootStyle = root.getAttribute('style');
+    var oldOffsets = state.pageOffsets, oldPage = state.page, oldStep = state.pageStep;
+    var starts = [0];
+    try {
+      clearOverflowFits();
+      state.flow = 'paginated';
+      state.page = 0;
+      state.pageOffsets = [0];
+      root.classList.remove('lumi-scrolled');
+      root.classList.add('lumi-paginated');
+      root.style.overflow = 'hidden';
+      applyPaginationBox(body);
+      fitReflowableHorizontalOverflow();
+      var extent = Math.max(root.scrollWidth, body.scrollWidth, state.viewportWidth);
+      state.pageOffsets = collectOccupiedPages(Math.max(0, Math.ceil((extent - 1) / state.pageStep) - 1));
+      var index = textIndex(), range = document.createRange(), firstNode = 0;
+      for (var page = 1; page < state.pageOffsets.length; page++) {
+        var found = index.text.length;
+        for (var n = firstNode; n < index.nodes.length; n++) {
+          var info = index.nodes[n], length = info.node.nodeValue.length;
+          if (!length) continue;
+          range.setStart(info.node, length - 1); range.collapse(true);
+          if (pageForRange(range) < page) continue;
+          var low = 0, high = length - 1;
+          while (low < high) {
+            var middle = (low + high) >>> 1;
+            range.setStart(info.node, middle); range.collapse(true);
+            if (pageForRange(range) < page) low = middle + 1; else high = middle;
+          }
+          found = info.start + low;
+          firstNode = n;
+          break;
+        }
+        starts.push(found);
+      }
+      return starts;
+    } finally {
+      clearOverflowFits();
+      state.flow = 'scrolled'; state.pageOffsets = oldOffsets;
+      state.page = oldPage; state.pageStep = oldStep;
+      root.classList.remove('lumi-paginated'); root.classList.add('lumi-scrolled');
+      if (bodyStyle === null) body.removeAttribute('style'); else body.setAttribute('style', bodyStyle);
+      if (rootStyle === null) root.removeAttribute('style'); else root.setAttribute('style', rootStyle);
+    }
+  }
+
   function scrollMetrics() {
     var root = document.scrollingElement || document.documentElement;
     var clientHeight = Math.max(1,
@@ -2158,6 +2274,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     state.layoutRevision += 1;
     state.stableLayoutRevision = -1;
     state.paginating = true;
+    var paginateStarted = traceNow();
     var body = document.body;
     clearOverflowFits();
     applyPendingRuleStyles();
@@ -2308,6 +2425,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       // 上下滚动时原书底图不能直接铺在整篇文档上：带 cover 的底图会被放大到"整本书高度"，
       // 滚动起来就错位/变形。和分页模式一样搬进随视口大小的固定层，每屏都能看到完整底图。
       applyPublisherBackgroundLayer();
+      state.numberingStarts = measureScrollNumbering();
       applyScrolledBox(body);
       body.style.height = 'auto';
       body.style.maxHeight = 'none';
@@ -2355,7 +2473,11 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     state.paginating = false;
     rebuildHighlightLayer();
     fulfillPreparedPageRequest();
-    post('ready', currentPagePayload());
+    loadTiming.paginations += 1;
+    loadTiming.paginateMs = traceNow() - paginateStarted;
+    loadTiming.pages = state.total;
+    if (!loadTiming.firstReady) loadTiming.firstReady = traceNow();
+    post('ready', withLoadTiming(currentPagePayload()));
     publishStableLayout();
     if (location.hash && !state.initialFragmentApplied) {
       state.initialFragmentApplied = true;
@@ -2379,8 +2501,10 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     }
     var previous = geometry();
     var unchanged = 0;
+    var frames = 0;
     function check() {
       if (revision !== state.layoutRevision || generation !== state.configurationGeneration || state.paginating) return;
+      frames += 1;
       var current = geometry();
       var same = previous.length === current.length && current.every(function (value, index) {
         return Math.abs(value - previous[index]) <= 1;
@@ -2389,7 +2513,8 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       previous = current;
       if (unchanged < 2 || !state.mediaSettled) { requestAnimationFrame(check); return; }
       state.stableLayoutRevision = revision;
-      post('layoutStable', currentPagePayload());
+      loadTiming.stableFrames = frames;
+      post('layoutStable', withLoadTiming(currentPagePayload()));
       fulfillPreparedPageRequest();
     }
     requestAnimationFrame(check);
@@ -2644,7 +2769,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
       rules += textSelector + '{letter-spacing:' + letterSpacingDp.toFixed(3) + 'px !important;}';
     }
     if (hasLineHeight) {
-      lineHeight = Math.max(1, Math.min(2.5, lineHeight));
+      lineHeight = Math.max(0.5, Math.min(2.5, lineHeight));
       rules += textSelector + '{line-height:' + lineHeight.toFixed(3) + ' !important;}';
     }
     if (hasParagraphSpacing) {
@@ -2940,6 +3065,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     config = config || {};
     if (state.configured && config.configurationGeneration &&
         config.configurationGeneration === state.configurationGeneration) return;
+    if (!loadTiming.configured) loadTiming.configured = traceNow();
     // Paint-only suites keep the layout revision, but their pixels still need
     // a new compositor fence. Never report the previous configuration as ready.
     state.stableLayoutRevision = -1;
@@ -2993,7 +3119,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     state.progression = config.progression === 'rtl' ? 'rtl' : 'ltr';
     state.flow = config.flow === 'scrolled' ? 'scrolled' : 'paginated';
     state.transition = config.transition === 'fade' ? 'fade' :
-      (config.transition === 'none' ? 'none' : (config.transition === 'curl' ? 'curl' : 'slide'));
+      (config.transition === 'none' ? 'none' : (config.transition === 'curl' ? 'curl' : (config.transition === 'wave' ? 'wave' : 'slide')));
     state.visualDurationScale = Number(config.visualDurationScale) > 0 ? Number(config.visualDurationScale) : 1;
     document.documentElement.style.setProperty('--lumi-motion-scale', String(state.visualDurationScale));
     state.transitionDurationMs = Math.max(1, Math.min(1200,
@@ -3080,6 +3206,43 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
     if (state.ready && !state.paginating && state.stableLayoutRevision === state.layoutRevision) {
       post('layoutStable', currentPagePayload());
     }
+  }
+
+  function setAutoScrollSpeed(speed) {
+    speed = Math.max(0, Number(speed) || 0);
+    if (Math.abs(state.autoScrollSpeed - speed) < 0.01) return;
+    state.autoScrollSpeed = speed;
+    if (state.autoScrollFrame) cancelAnimationFrame(state.autoScrollFrame);
+    state.autoScrollFrame = 0;
+    state.autoScrollLastTime = 0;
+    if (!speed || state.flow !== 'scrolled' || state.fixed) return;
+    var tick = function (time) {
+      if (!state.autoScrollSpeed || state.flow !== 'scrolled' || state.fixed) {
+        state.autoScrollFrame = 0;
+        return;
+      }
+      // Loading/repagination can temporarily report a one-screen document.
+      if (!state.ready || state.paginating) {
+        state.autoScrollLastTime = 0;
+        state.autoScrollFrame = requestAnimationFrame(tick);
+        return;
+      }
+      if (state.autoScrollLastTime) {
+        var elapsed = Math.min(100, time - state.autoScrollLastTime);
+        window.scrollBy(0, elapsed * state.autoScrollSpeed / 1000);
+      }
+      state.autoScrollLastTime = time;
+      var metrics = scrollMetrics();
+      // maxScrollY already excludes the viewport height; compare scroll offsets.
+      if (metrics.nonScrollable || metrics.scrollY >= metrics.maxScrollY - 1) {
+        state.autoScrollSpeed = 0;
+        state.autoScrollFrame = 0;
+        post('autoScrollEnd', {});
+        return;
+      }
+      state.autoScrollFrame = requestAnimationFrame(tick);
+    };
+    state.autoScrollFrame = requestAnimationFrame(tick);
   }
 
   /** 文字锚点换算成页号；锚点不可用时返回 null。 */
@@ -3506,7 +3669,7 @@ html.lumi-green-dark #lumi-footnote-popover { background: #1e3527; color: #c8e6c
 // 单个 Kotlin 字符串常量超过 64KB 会被编译器拒绝（UTF8 string too large），
 // 阅读脚本因此拆成多段，运行时再拼接。
 private const val READER_SCRIPT_PART_3 = """
-  function appendHighlightRange(layer, range, color, extraClass) {
+  function appendHighlightRange(layer, range, color, extraClass, outlineColor) {
     if (!range) return 0;
     var layerRect = layer.getBoundingClientRect();
     var scaleX = layer.offsetWidth > 0 ? layerRect.width / layer.offsetWidth : 1;
@@ -3531,7 +3694,11 @@ private const val READER_SCRIPT_PART_3 = """
       block.style.top = rect.top + 'px';
       block.style.width = (rect.right - rect.left) + 'px';
       block.style.height = (rect.bottom - rect.top) + 'px';
-      block.style.backgroundColor = color;
+      block.style.backgroundColor = outlineColor ? 'transparent' : color;
+      if (outlineColor) {
+        block.style.border = '1px solid ' + outlineColor;
+        block.style.boxSizing = 'border-box';
+      }
       block.style.borderRadius = Math.min(6, (rect.right - rect.left) / 2, (rect.bottom - rect.top) / 2) + 'px';
       layer.appendChild(block);
     });
@@ -3656,19 +3823,35 @@ private const val READER_SCRIPT_PART_3 = """
       if (item.ruleStyle) {
         var style = item.ruleStyle;
         var hasRuleColor = /^#[0-9a-f]{6,8}$/i.test(style.textColor || '');
-        var ruleColor = hasRuleColor ? style.textColor : color;
+        var hasMarkColor = /^#[0-9a-f]{6,8}$/i.test(style.highlightColor || '');
+        var ruleColor = hasRuleColor ? style.textColor : null;
+        var markColor = hasMarkColor ? style.highlightColor : color;
+        var markFillColor = markColor;
+        var markHex = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(markColor || '');
+        if (markHex) {
+          var rgb = markHex[1];
+          markFillColor = 'rgba(' + parseInt(rgb.slice(0, 2), 16) + ',' +
+            parseInt(rgb.slice(2, 4), 16) + ',' + parseInt(rgb.slice(4, 6), 16) + ',.34)';
+        }
         if (window.CSS && CSS.highlights && window.Highlight) {
           var name = 'lumi-rule-' + itemIndex;
           var declarations = [];
-          if (hasRuleColor) declarations.push('color:' + ruleColor);
-          if (item.type === 'underline') appendUnderlineRange(underlineLayer, range, ruleColor, style.underlineMode);
+          if (ruleColor) declarations.push('color:' + ruleColor);
           if (declarations.length) {
             CSS.highlights.set(name, new Highlight(range));
             ruleCss.push('::highlight(' + name + '){' + declarations.join(';') + '}');
           }
-        }
-        if (item.type === 'underline' && !(window.CSS && CSS.highlights && window.Highlight)) {
-          appendUnderlineRange(underlineLayer, range, ruleColor, style.underlineMode);
+          if (style.highlightMode !== 2) {
+            appendHighlightRange(layer, range, markFillColor, null,
+              style.highlightMode === 1 ? markColor : null);
+          }
+          if (item.type === 'underline') appendUnderlineRange(underlineLayer, range, markColor, style.underlineMode);
+        } else {
+          if (style.highlightMode !== 2) {
+            appendHighlightRange(layer, range, markFillColor, null,
+              style.highlightMode === 1 ? markColor : null);
+          }
+          if (item.type === 'underline') appendUnderlineRange(underlineLayer, range, markColor, style.underlineMode);
         }
         return;
       }
@@ -4238,6 +4421,8 @@ private const val READER_SCRIPT_PART_3 = """
     return popover;
   }
 
+"""
+private const val READER_SCRIPT_PART_3B = """
   function positionFootnotePopover(popover, anchorBounds) {
     if (!popover || !anchorBounds) return;
     var width = viewportWidth();
@@ -4405,6 +4590,9 @@ private const val READER_SCRIPT_PART_3 = """
     var touch = event.touches[0];
     var dx = touch.clientX - touchStartX;
     var dy = touch.clientY - touchStartY;
+    if (state.flow === 'scrolled' && !state.fixed && Math.abs(dy) >= 12) {
+      setAutoScrollSpeed(0);
+    }
     if (state.flow === 'scrolled' && !state.fixed && !state.ttsFollowSuspended && Math.abs(dy) >= 12) {
       // Stop locally before a queued highlight update or the native bridge can move the viewport.
       state.ttsFollowSuspended = true;
@@ -4821,17 +5009,24 @@ private const val READER_SCRIPT_PART_3 = """
     clearTimeout(resizeTimer);
     state.layoutRevision += 1;
     state.stableLayoutRevision = -1;
-    post('layoutPending', currentPagePayload());
+    loadTiming.repaginations += 1;
+    var pending = currentPagePayload();
+    // Callers name the trigger; the fonts 'loadingdone' listener passes its event object.
+    pending.cause = typeof arguments[0] === 'string' ? arguments[0] : 'font';
+    post('layoutPending', pending);
     resizeTimer = setTimeout(function () {
       if (!state.paginating) paginate(state.total > 1 ? state.page / (state.total - 1) : 0);
     }, 120);
   }
 
   window.addEventListener('resize', function () {
+    // Android WebView's visualViewport can shrink for another window's IME even
+    // when this View and its Activity retain their full physical dimensions.
+    if (viewportFrozen) return;
     var width = viewportWidth();
     var height = viewportHeight();
     if (width === state.viewportWidth && height === state.viewportHeight) return;
-    scheduleRepagination();
+    scheduleRepagination('resize');
   });
 
   window.addEventListener('scroll', function () {
@@ -4844,8 +5039,12 @@ private const val READER_SCRIPT_PART_3 = """
         state.total = metrics.pageCount;
         var nextPage = Math.max(0, Math.min(state.total - 1,
           Math.floor((metrics.scrollY + metrics.clientHeight * 0.42) / metrics.clientHeight)));
-        if (nextPage !== state.page) {
-          state.page = nextPage;
+        var previousPage = state.page;
+        state.page = nextPage;
+        var payload = currentPagePayload();
+        var numberingPage = payload.locator.numberingPageIndex;
+        if (nextPage !== previousPage || numberingPage !== state.lastNumberingPage) {
+          state.lastNumberingPage = numberingPage;
           ++pageNotifySerial;
           post('page', currentPagePayload());
         }
@@ -4862,7 +5061,7 @@ private const val READER_SCRIPT_PART_3 = """
     var target = event.target;
     if (target && target.closest && target.closest('#lumi-page-stage')) return;
     // Late media paint does not resize a fixed publisher design box.
-    if (target && /^(IMG|VIDEO|SVG)$/i.test(target.tagName || '') && !state.fixed) scheduleRepagination();
+    if (target && /^(IMG|VIDEO|SVG)$/i.test(target.tagName || '') && !state.fixed) scheduleRepagination('media');
   }, true);
 
   document.addEventListener('visibilitychange', function () {
@@ -4876,6 +5075,15 @@ private const val READER_SCRIPT_PART_3 = """
   }
 
   window.LumiReader = {
+    setViewportFrozen: function (frozen) {
+      viewportFrozen = !!frozen;
+      if (viewportFrozen) {
+        clearTimeout(resizeTimer);
+      } else if (viewportWidth() !== state.viewportWidth || viewportHeight() !== state.viewportHeight ||
+                 state.stableLayoutRevision < 0) {
+        scheduleRepagination('viewport-resume');
+      }
+    },
     moveSelectionHandle: moveSelectionHandle,
     configure: configure,
     reportLayoutStatus: reportLayoutStatus,
@@ -4884,6 +5092,7 @@ private const val READER_SCRIPT_PART_3 = """
     goToPage: function (page) { moveToPage(page, true); },
     goToProgression: goToProgression,
     currentPosition: function () { return currentPagePayload(); },
+    setAutoScrollSpeed: setAutoScrollSpeed,
     syncToPage: syncToPage,
     preparePage: preparePage,
     goToFragment: function (fragment) {
@@ -4915,7 +5124,7 @@ private const val READER_SCRIPT_PART_3 = """
       }
     },
     setTransition: function (transition) {
-      state.transition = transition === 'curl' || transition === 'fade' || transition === 'none' ? transition : 'slide';
+    state.transition = transition === 'curl' || transition === 'fade' || transition === 'none' || transition === 'wave' ? transition : 'slide';
       return state.transition;
     }
   };

@@ -114,6 +114,7 @@ class TxtEditorActivity : ComponentActivity() {
                     )
                     LiquidGlassDialogHost(
                         modifier = Modifier.fillMaxSize(),
+                        snapshotContent = true,
                         backdrop = activeEditorBackdrop
                     ) {
                         ProvideLiquidGlassBackdrop(activeEditorBackdrop) {

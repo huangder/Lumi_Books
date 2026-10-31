@@ -117,7 +117,7 @@ class AdvancedSettingsSheetTest {
         compose.onNodeWithText(context.getString(R.string.reader_settings_text_spacing))
             .performScrollTo().performClick()
         val lineSliderMatcher = SemanticsMatcher("line height slider") {
-            it.config.getOrNull(SemanticsProperties.ProgressBarRangeInfo)?.range == 1f..2.5f
+            it.config.getOrNull(SemanticsProperties.ProgressBarRangeInfo)?.range == 0.5f..2.5f
         }
         val lineSlider = compose.onNode(lineSliderMatcher).performScrollTo()
         lineSlider.performTouchInput { down(center); moveBy(Offset(120f, 0f)) }
@@ -135,18 +135,20 @@ class AdvancedSettingsSheetTest {
 
     private fun verifyBookSpacing() {
         val lineHeight = mutableFloatStateOf(1.5f)
+        val letterSpacing = mutableFloatStateOf(0f)
         val context = RuntimeEnvironment.getApplication()
         compose.setContent {
             AdvancedSettingsSheet(
                 visible = true, previewText = "A preview paragraph with enough words to fill several lines.",
-                currentLineHeight = lineHeight.floatValue, currentLetterSpacing = 0f,
+                currentLineHeight = lineHeight.floatValue, currentLetterSpacing = letterSpacing.floatValue,
                 currentFontType = "system", currentBackgroundSelection = "day", customBackgrounds = emptyList(),
                 currentMarginLeft = 38f, currentMarginRight = 38f,
                 currentMarginTop = 64f, currentMarginBottom = 64f,
                 currentBgColor = Color.White, currentBackgroundImagePath = null,
                 currentTextColor = Color.Black, currentTextColorOverride = null, currentFontSizeSp = 16f,
                 preservePublisherLayout = true, publisherSuiteActive = true, eInkModeEnabled = true,
-                onLineHeightChange = { lineHeight.floatValue = it }, onLetterSpacingChange = {},
+                onLineHeightChange = { lineHeight.floatValue = it },
+                onLetterSpacingChange = { letterSpacing.floatValue = it },
                 onFontTypeChange = {}, onBackgroundSelect = {}, onAddBackgroundColor = { _, _ -> },
                 onAddBackgroundImage = { _, _ -> }, onDeleteBackground = {},
                 onMarginLeftChange = {}, onMarginRightChange = {}, onMarginTopChange = {}, onMarginBottomChange = {},
@@ -166,10 +168,19 @@ class AdvancedSettingsSheetTest {
             compose.onNodeWithText(context.getString(label)).performScrollTo().assertIsDisplayed()
         }
         val lineSlider = SemanticsMatcher("line height slider") {
-            it.config.getOrNull(SemanticsProperties.ProgressBarRangeInfo)?.range == 1f..2.5f
+            it.config.getOrNull(SemanticsProperties.ProgressBarRangeInfo)?.range == 0.5f..2.5f
         }
         compose.onNode(lineSlider).performScrollTo()
             .performSemanticsAction(SemanticsActions.SetProgress) { it(1.8f) }
         compose.runOnIdle { assertEquals(1.8f, lineHeight.floatValue, 0.01f) }
+        compose.onNode(lineSlider).performScrollTo()
+            .performSemanticsAction(SemanticsActions.SetProgress) { it(0.5f) }
+        compose.runOnIdle { assertEquals(0.5f, lineHeight.floatValue, 0.01f) }
+        val letterSlider = SemanticsMatcher("letter spacing slider") {
+            it.config.getOrNull(SemanticsProperties.ProgressBarRangeInfo)?.range == -5f..10f
+        }
+        compose.onNode(letterSlider).performScrollTo()
+            .performSemanticsAction(SemanticsActions.SetProgress) { it(-2f) }
+        compose.runOnIdle { assertEquals(-2f, letterSpacing.floatValue, 0.01f) }
     }
 }

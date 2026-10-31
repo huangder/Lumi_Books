@@ -69,6 +69,19 @@ class LongPressSelectionViewTest {
             layoutPage()
             val bitmap = android.graphics.Bitmap.createBitmap(400, 700, android.graphics.Bitmap.Config.ARGB_8888)
             view.draw(android.graphics.Canvas(bitmap))
+            val selectedLine = view.layout.getLineForOffset(start)
+            val highlightX = (view.totalPaddingLeft +
+                (view.readerHorizontalPosition(start)!! + view.readerHorizontalPosition(start + 1)!!) / 2f).toInt()
+            val highlightY = view.totalPaddingTop + view.layout.getLineBaseline(selectedLine)
+            val highlightPixel = bitmap.getPixel(highlightX, highlightY)
+            assertEquals("selected text must have a visible background after controller replacement",
+                android.graphics.Color.alpha(view.readerSelectionColor), android.graphics.Color.alpha(highlightPixel))
+            val pageBitmap = android.graphics.Bitmap.createBitmap(400, 700, android.graphics.Bitmap.Config.ARGB_8888)
+            page.draw(android.graphics.Canvas(pageBitmap))
+            val pagePixel = pageBitmap.getPixel(highlightX, highlightY)
+            assertTrue("the selection must remain visible over the page: $pagePixel",
+                android.graphics.Color.blue(pagePixel) > android.graphics.Color.red(pagePixel) + 20)
+            pageBitmap.recycle()
             for ((position, trailing) in listOf(start to false, end to true)) {
                 val point = view.readerHandleCirclePosition(position, trailing)!!
                 assertEquals("handle must be painted at its hit target", accent,
@@ -83,6 +96,38 @@ class LongPressSelectionViewTest {
             }
             bitmap.recycle()
         } finally { activity.pause().stop().destroy() }
+    }
+
+    @Test fun selectionDrawRecoversLayoutDiscardedAfterBufferReplacement() {
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        val page = PageContentView(context).apply {
+            configure(24f, android.graphics.Color.BLACK, marginLeftPx = 24f,
+                marginRightPx = 24f, marginTopPx = 24f, marginBottomPx = 24f)
+            val content = "Visible text and its selection must share a valid layout. ".repeat(4)
+            setPageContent(content, 0, content.length)
+            measure(View.MeasureSpec.makeMeasureSpec(400, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(700, View.MeasureSpec.EXACTLY))
+            layout(0, 0, 400, 700)
+        }
+        val view = page.textView as RoundedHighlightTextView
+        Selection.setSelection(view.text as Spannable, 5, 12)
+        val bitmap = android.graphics.Bitmap.createBitmap(400, 700, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+        view.draw(canvas)
+        assertTrue("fixture must paint a selection", (0 until bitmap.height).any { y ->
+            (0 until bitmap.width).any { x -> android.graphics.Color.alpha(bitmap.getPixel(x, y)) > 0 }
+        })
+        val expected = bitmap.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
+        // TextView discards this field during controller/buffer replacement.
+        android.widget.TextView::class.java.getDeclaredMethod("nullLayouts")
+            .apply { isAccessible = true }.invoke(view)
+        assertNull(view.layout)
+        bitmap.eraseColor(android.graphics.Color.TRANSPARENT)
+        view.draw(canvas)
+        assertNotNull("custom drawing must rebuild a discarded layout", view.layout)
+        assertTrue("the selection must draw without waiting for another layout pass", expected.sameAs(bitmap))
+        expected.recycle()
+        bitmap.recycle()
     }
 
     @Test fun paragraphExtendsPastPageOnReleaseButPreservesManualAdjustment() {

@@ -144,7 +144,7 @@ The **Sponsor** button in the GitHub repository sidebar will also list the avail
 
 ## 📜 License
 
-Lumi's original code is open-sourced under the [GNU GPLv3](LICENSE). Third-party dependencies and adaptations follow their respective licenses. The curl page-turn implementation is adapted from the GPLv3 project [legado-E](https://github.com/Luoyacheng/legado-E); the Liquid Glass implementation is adapted from [AndroidLiquidGlass / Backdrop](https://github.com/Kyant0/AndroidLiquidGlass) under Apache 2.0. © 2026 Huangder
+Lumi's original code is open-sourced under the [GNU GPLv3](LICENSE). Third-party dependencies and adaptations follow their respective licenses. The paper-curl renderer and bundled TXT heading presets are independently implemented; the Liquid Glass implementation is adapted from [AndroidLiquidGlass / Backdrop](https://github.com/Kyant0/AndroidLiquidGlass) under Apache 2.0. © 2026 Huangder
 
 ---
 

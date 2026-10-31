@@ -134,6 +134,7 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = AppSpace.md)
+                        .padding(bottom = AppSpace.sm)
                         .shadow(8.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
                         .clip(AppRoundedCornerShape(AppRadius.lg))
                         .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
@@ -191,12 +192,14 @@ fun SettingsScreen(
                 Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
             }
 
-                Spacer(Modifier.height(AppSpace.lg))
+                com.huangder.lumibooks.edition.EditionMembershipEntry()
 
                 CategoryItem(AppIcons.FolderOpen, stringResource(R.string.authorized_folders_title)) {
                     context.startActivity(Intent(context, AuthorizedFoldersActivity::class.java))
                 }
                 Spacer(Modifier.height(AppSpace.sm))
+
+                com.huangder.lumibooks.edition.EditionTagManagementSettingsEntry()
 
                 // 分类列表：按设置域分组，组内使用细分隔线保持扫描节奏。
                 SettingsCategoryGroup {
@@ -210,6 +213,10 @@ fun SettingsScreen(
                     SettingsGroupDivider()
                     CategoryItem(AppIcons.Translate, stringResource(R.string.category_language), grouped = true) {
                         context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "language"))
+                    }
+                    SettingsGroupDivider()
+                    CategoryItem(AppIcons.Shield, stringResource(R.string.category_privacy), grouped = true) {
+                        context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "privacy"))
                     }
                     SettingsGroupDivider()
                     CategoryItem(AppIcons.Trash, stringResource(R.string.category_storage), grouped = true) {
@@ -242,6 +249,7 @@ fun SettingsScreen(
                 Spacer(Modifier.height(120.dp))
         }
     }
+
 
     // ── 昵称编辑对话框（卡片风格） ──
     if (showNicknameDialog) {
@@ -353,7 +361,7 @@ fun ThirdPartyServicesDetail(viewModel: SettingsViewModel) {
 // ─── 分类条目 ──────────────────────────────────────────────────
 
 @Composable
-private fun CategoryItem(
+internal fun CategoryItem(
     icon: ImageVector? = null,
     label: String,
     supportingText: String? = null,

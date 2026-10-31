@@ -1,4 +1,7 @@
 package com.huangder.lumibooks.ui.components
+
+import com.huangder.lumibooks.ui.components.AppDialogAction
+import com.huangder.lumibooks.ui.components.AppDialogActionRole
 import com.huangder.lumibooks.ui.icons.directionalIcon
 import com.huangder.lumibooks.ui.icons.AppIcons
 
@@ -50,14 +53,7 @@ fun PolicyUpdateDialog(
 
     LiquidGlassAlertDialog(
         onDismissRequest = { },
-        title = {
-            Text(
-                text = title,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = AppColors.TextPrimary
-            )
-        },
+        titleText = title,
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
@@ -106,20 +102,20 @@ fun PolicyUpdateDialog(
                 }
             }
         },
-        confirmButton = {
-            LiquidGlassTextButton(
+        actions = listOf(
+            AppDialogAction(
                 text = stringResource(R.string.policy_update_accept),
-                tintedColor = AppColors.Accent,
-                onClick = onAccept
-            )
-        },
-        dismissButton = {
-            LiquidGlassTextButton(
+                onClick = onAccept,
+                role = AppDialogActionRole.Primary,
+                tintedColor = AppColors.Accent
+            ),
+            AppDialogAction(
                 text = stringResource(R.string.policy_update_decline),
-                contentColor = AppColors.TextSecondary,
-                onClick = onDecline
+                onClick = onDecline,
+                role = AppDialogActionRole.Cancel,
+                contentColor = AppColors.TextSecondary
             )
-        },
+        ),
         // Keep policy text readable over page artwork while retaining the glass lens.
         contentScrimColor = AppColors.CardBg.copy(alpha = 0.80f)
     )
@@ -138,6 +134,7 @@ private fun PolicyUpdateItem(
 
     if (isLiquidGlass) {
         LiquidGlassSurface(
+            role = com.huangder.lumibooks.ui.theme.AppSurfaceRole.Content,
             shape = shape,
             fallbackColor = AppColors.BgGray,
             contentScrimColor = AppColors.CardBg.copy(alpha = 0.74f),

@@ -1,6 +1,9 @@
 package com.huangder.lumibooks.tts
 
 import android.media.AudioFormat
+import android.content.Intent
+import android.content.pm.ResolveInfo
+import android.content.pm.ServiceInfo
 import android.os.Bundle
 import android.os.Looper
 import android.speech.tts.TextToSpeech
@@ -37,12 +40,133 @@ class SystemTtsEngineTest {
     class RecordingTts : ShadowTextToSpeech() {
         data class Request(val text: String, val id: String, val file: File)
         val requests = mutableListOf<Request>()
+        data class SpokenRequest(val text: String, val queueMode: Int, val id: String)
+        val spokenRequests = mutableListOf<SpokenRequest>()
+        var stopCount = 0
+
+        @Implementation
+        override fun speak(text: CharSequence, queueMode: Int, params: Bundle?, utteranceId: String): Int {
+            spokenRequests += SpokenRequest(text.toString(), queueMode, utteranceId)
+            return TextToSpeech.SUCCESS
+        }
+
+        @Implementation
+        override fun stop(): Int {
+            stopCount++
+            return TextToSpeech.SUCCESS
+        }
 
         @Implementation
         override fun synthesizeToFile(text: CharSequence, params: Bundle, file: File, utteranceId: String): Int {
             requests += Request(text.toString(), utteranceId, file)
             return TextToSpeech.SUCCESS
         }
+    }
+
+    @Test
+    fun multiTtsUsesNativePlaybackWithoutSpeculativeSynthesisOrStopsBetweenSentences() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val player = SystemTtsAudioPlayer(backgroundScope) { throw AssertionError("MultiTTS must own playback") }
+        val engine = TtsEngine(ApplicationProvider.getApplicationContext(), player)
+        val started = mutableListOf<String>()
+        val done = mutableListOf<String>()
+        val errors = mutableListOf<Throwable>()
+        engine.setListener(listener(started, done, errors))
+        try {
+            selectMultiTts(engine)
+            initializeEngine(engine)
+            val shadow = shadowOf(ShadowTextToSpeech.getLastTextToSpeechInstance()) as RecordingTts
+            val callbacks = shadow.utteranceProgressListener
+            val initialStops = shadow.stopCount
+            assertEquals(false, engine.canResumeWithoutRestart)
+
+            assertTrue(engine.speak("First sentence.", "first").isSuccess)
+            engine.prefetch("Next sentence.")
+            assertTrue(shadow.requests.isEmpty())
+            assertEquals(listOf(RecordingTts.SpokenRequest("First sentence.", TextToSpeech.QUEUE_ADD, "first")), shadow.spokenRequests)
+            callbacks.onStart("first")
+            // Native synthesis callbacks must not create a second, local playback stream.
+            callbacks.onBeginSynthesis("first", 24_000, AudioFormat.ENCODING_PCM_16BIT, 1)
+            callbacks.onAudioAvailable("first", ByteArray(8))
+            shadowOf(Looper.getMainLooper()).idle()
+            runCurrent()
+            assertEquals(listOf("first"), started)
+            assertTrue(done.isEmpty())
+
+            callbacks.onDone("first")
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(listOf("first"), done)
+            engine.stopForPageTurn()
+            assertTrue(engine.speak("Next sentence.", "next").isSuccess)
+            callbacks.onDone("first") // Late duplicates cannot complete the next sentence.
+            callbacks.onError("first", TextToSpeech.ERROR_SYNTHESIS)
+            callbacks.onStart("next")
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(listOf("first", "next"), started)
+            assertEquals(listOf("first"), done)
+            assertEquals(initialStops, shadow.stopCount)
+            assertEquals(listOf(TextToSpeech.QUEUE_ADD, TextToSpeech.QUEUE_ADD), shadow.spokenRequests.map { it.queueMode })
+            assertTrue(shadow.requests.isEmpty())
+            assertTrue(errors.isEmpty())
+        } finally {
+            engine.shutdown()
+            player.release()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun multiTtsPauseStopsNativeAudioAndInvalidatesCallbacksUntilSentenceIsRestarted() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val player = SystemTtsAudioPlayer(backgroundScope) { throw AssertionError("Unexpected local playback") }
+        val engine = TtsEngine(ApplicationProvider.getApplicationContext(), player)
+        val started = mutableListOf<String>()
+        val done = mutableListOf<String>()
+        val errors = mutableListOf<Throwable>()
+        engine.setListener(listener(started, done, errors))
+        try {
+            selectMultiTts(engine)
+            initializeEngine(engine)
+            val shadow = shadowOf(ShadowTextToSpeech.getLastTextToSpeechInstance()) as RecordingTts
+            val callbacks = shadow.utteranceProgressListener
+            engine.speak("First sentence.", "first")
+            val initialStops = shadow.stopCount
+            engine.pause()
+            callbacks.onStop("first", true)
+            callbacks.onStart("first")
+            callbacks.onDone("first")
+            callbacks.onError("first", TextToSpeech.ERROR_SYNTHESIS)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(initialStops + 1, shadow.stopCount)
+            assertEquals(false, engine.resume())
+            assertTrue(started.isEmpty())
+            assertTrue(done.isEmpty())
+            assertTrue(errors.isEmpty())
+            engine.speak("First sentence.", "restart")
+            callbacks.onStart("restart")
+            callbacks.onDone("restart")
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(listOf("restart"), started)
+            assertEquals(listOf("restart"), done)
+        } finally {
+            engine.shutdown()
+            player.release()
+            Dispatchers.resetMain()
+        }
+    }
+
+    private suspend fun selectMultiTts(engine: TtsEngine) {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        shadowOf(context.packageManager).addResolveInfoForIntent(
+            Intent(TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE),
+            ResolveInfo().apply {
+                serviceInfo = ServiceInfo().apply {
+                    packageName = "org.nobody.multitts"
+                    name = "org.nobody.multitts.service.TTSService"
+                }
+            }
+        )
+        engine.selectEngine("org.nobody.multitts")
     }
 
     private class Track : SystemTtsAudioPlayer.PcmTrack {

@@ -89,16 +89,10 @@ internal fun Modifier.liquidGlassControlEdge(
     isDark: Boolean,
     // Used by the debug comparison fixture to exercise Android 12 rendering on newer devices.
     forceCanvas: Boolean = false
-): Modifier = liquidGlassControlEdge({ shape }, material, isDark, forceCanvas)
-
-/** Read animated outlines during drawing so the rim does not drive recomposition. */
-internal fun Modifier.liquidGlassControlEdge(
-    shape: () -> Shape,
-    material: Color,
-    isDark: Boolean,
-    forceCanvas: Boolean = false
 ): Modifier = drawWithCache {
-    val outline = shape().createOutline(size, layoutDirection, this)
+    // Created inside the cache block: a shape that reads animation state (see DrawTimeShape)
+    // invalidates only this cache, not the composition.
+    val outline = shape.createOutline(size, layoutDirection, this)
     val palette = controlEdgePalette(material, isDark)
     val darkWidth = ControlEdgeDarkWidth.toPx()
     val lightWidth = ControlEdgeLightWidth.toPx()

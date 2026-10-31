@@ -1,5 +1,8 @@
 package com.huangder.lumibooks.ui.reader
 
+import com.huangder.lumibooks.ui.components.AppDialogAction
+import com.huangder.lumibooks.ui.components.AppDialogActionRole
+
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
@@ -7,6 +10,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,7 +69,8 @@ internal fun ObserveListeningResume(
     visibleEnd: Int? = null,
     allowPageFallback: Boolean = true,
     visibleCharacters: List<ReaderVisibleCharacters> = emptyList(),
-    visibleChapters: Set<Int> = emptySet()
+    visibleChapters: Set<Int> = emptySet(),
+    visibleCharactersState: State<List<ReaderVisibleCharacters>>? = null
 ) {
     val owner = LocalLifecycleOwner.current
     var foreground by remember(owner) {
@@ -84,8 +89,11 @@ internal fun ObserveListeningResume(
     }
     LaunchedEffect(ready, foreground, readerActive) {
         if (ready && foreground && readerActive) {
+            // Read the latest viewport only when this check runs. Observing every
+            // scrolled line in composition would recompose the owning reader screen.
+            val currentVisibleCharacters = visibleCharactersState?.value ?: visibleCharacters
             viewModel.checkListeningResume(readingChapter, readingPage, visibleStart, visibleEnd,
-                allowPageFallback, visibleCharacters, visibleChapters)
+                allowPageFallback, currentVisibleCharacters, visibleChapters)
         } else if (!foreground || !readerActive) {
             viewModel.hideListeningReader()
         }
@@ -138,8 +146,22 @@ internal fun ReaderListeningDialog(
     }
     if (useGlass) {
         LiquidGlassAlertDialog(onDismissRequest = onDismissRequest, backdrop = backdrop,
-            contentScrimColor = surface.copy(alpha = 0.92f), transparencyOverride = 0.08f,
-            title = title, text = text, confirmButton = confirm, dismissButton = dismiss)
+            contentScrimColor = surface.copy(alpha = 0.64f), transparencyOverride = 0.35f,
+            title = title, text = text,
+ actions = listOf(
+     AppDialogAction(
+         confirmText,
+         onConfirm,
+         tintedColor = ink,
+         contentColor = surface
+     ),
+     AppDialogAction(
+         dismissText,
+         onDismiss,
+         AppDialogActionRole.Cancel,
+         contentColor = ink
+     )
+ ))
     } else {
         AlertDialog(onDismissRequest = onDismissRequest, containerColor = surface,
             titleContentColor = ink, textContentColor = ink,

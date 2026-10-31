@@ -26,8 +26,8 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @OptIn(ExperimentalCoroutinesApi::class)
 class RasterRenderSessionTest {
-    private class Decoder(private val tiled: Boolean = false, private val reduced: Boolean = false) : RasterPageDecoder {
-        override val pageCount = 1
+    private class Decoder(private val tiled: Boolean = false, private val reduced: Boolean = false,
+        override val pageCount: Int = 1) : RasterPageDecoder {
         override val parallelism = 2
         var boundsReads = 0
         var decodes = 0
@@ -68,6 +68,25 @@ class RasterRenderSessionTest {
         assertEquals(0, decoder.decodes)
         assertNotNull(session.renderPage(0, 200))
         assertEquals(1, decoder.decodes)
+        session.close()
+        runCurrent()
+    }
+
+    @Test fun `idle comic spread prepares previous and next spreads before they are composed`() = runTest {
+        val decoder = Decoder(tiled = true, pageCount = 9)
+        val session = RasterRenderSession(decoder, scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)))
+        val viewport = RasterViewport(setOf(3, 4), anchor = 3, width = 200, spread = true, scrolling = true)
+        session.updateViewport(viewport)
+        advanceTimeBy(500)
+        runCurrent()
+        assertEquals("No speculative bitmap decoding during a drag", 0, decoder.decodes)
+        session.updateViewport(viewport.copy(scrolling = false))
+        advanceTimeBy(RASTER_SETTLE_MS)
+        runCurrent()
+        listOf(1, 2, 5, 6).forEach { page ->
+            assertNotNull("Neighbor page $page should already have a readable bitmap", session.cachedReadablePage(page))
+        }
+        assertNull("Visible pages still use SSIV first", session.cachedReadablePage(3))
         session.close()
         runCurrent()
     }

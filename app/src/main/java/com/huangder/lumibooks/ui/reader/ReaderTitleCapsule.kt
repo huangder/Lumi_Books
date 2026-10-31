@@ -34,6 +34,7 @@ internal fun ReaderTitleCapsule(
     ) {
         if (isLiquidGlass) {
             LiquidGlassSurface(
+                role = com.huangder.lumibooks.ui.theme.AppSurfaceRole.Control,
                 controlEdge = true,
                 shape = AppRoundedCornerShape(50),
                 fallbackColor = fallbackColor,

@@ -56,6 +56,24 @@ class HighlightRuleCodecTest {
     }
 
     @Test
+    fun highlightModeAndIndependentMarkColorRoundTrip() {
+        val rule = rule("outlined", "LUMI").copy(
+            textColor = 0xFF222222.toInt(),
+            highlightMode = HighlightRule.HIGHLIGHT_OUTLINE,
+            highlightColor = 0xFF1976D2.toInt()
+        )
+
+        val decoded = HighlightRuleCodec.decode(HighlightRuleCodec.encodeJson(listOf(rule))).single()
+
+        assertEquals(HighlightRule.HIGHLIGHT_OUTLINE, decoded.highlightMode)
+        assertEquals(0xFF1976D2.toInt(), decoded.highlightColor)
+        assertEquals(0xFF222222.toInt(), decoded.textColor)
+        assertEquals(HighlightRule.HIGHLIGHT_FILLED, HighlightRuleCodec.decode(
+            """[{"id":"old","name":"old","pattern":"LUMI"}]""".toByteArray()
+        ).single().highlightMode)
+    }
+
+    @Test
     fun zipUsesCompatibleEntryAndProminentLumiManifest() {
         val bytes = HighlightRuleCodec.encodeZip(listOf(rule("one", "a+")), exportedAt = 123L)
         val entries = mutableMapOf<String, String>()

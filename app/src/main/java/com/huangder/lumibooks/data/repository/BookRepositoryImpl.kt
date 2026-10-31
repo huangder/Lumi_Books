@@ -59,6 +59,11 @@ class BookRepositoryImpl @Inject constructor(
         bookDao.updateBook(book.copy(metadataUpdatedAt = System.currentTimeMillis()).toEntity())
     }
 
+    override suspend fun setBooksHidden(bookIds: Collection<String>, hidden: Boolean) {
+        if (bookIds.isEmpty()) return
+        bookDao.setBooksHidden(bookIds.distinct(), hidden, System.currentTimeMillis())
+    }
+
     override suspend fun deleteBook(book: Book) {
         syncStateDao.upsertTombstones(
             listOf(
@@ -119,7 +124,9 @@ class BookRepositoryImpl @Inject constructor(
             sourceSha256 = sourceSha256,
             sourceDisplayName = sourceDisplayName,
             sourceLastModified = sourceLastModified,
-            isMissing = isMissing
+            isMissing = isMissing,
+            isHidden = isHidden,
+            isManuallyMarkedRead = isManuallyMarkedRead
         )
     }
 
@@ -149,7 +156,9 @@ class BookRepositoryImpl @Inject constructor(
             sourceSha256 = sourceSha256,
             sourceDisplayName = sourceDisplayName,
             sourceLastModified = sourceLastModified,
-            isMissing = isMissing
+            isMissing = isMissing,
+            isHidden = isHidden,
+            isManuallyMarkedRead = isManuallyMarkedRead
         )
     }
 }

@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.domain.repository
 
+import com.huangder.lumibooks.domain.model.ActivityDuration
 import com.huangder.lumibooks.data.local.dao.BookDuration
 import com.huangder.lumibooks.domain.model.AnnotationEditPlan
 import com.huangder.lumibooks.domain.model.Bookmark
@@ -9,6 +10,10 @@ import com.huangder.lumibooks.domain.model.ReadingRecord
 import kotlinx.coroutines.flow.Flow
 
 interface ReadingRepository {
+    suspend fun appendActivityDuration(bookId: String, date: String, readingDuration: Long, listeningDuration: Long, startTime: Long, endTime: Long)
+    fun getActivityDurationByBookId(bookId: String): Flow<ActivityDuration>
+    fun getActivityDurationBetweenDates(startDate: String, endDate: String): Flow<ActivityDuration>
+
     fun getRecordsByDate(date: String): Flow<List<ReadingRecord>>
     fun getRecordsBetweenDates(startDate: String, endDate: String): Flow<List<ReadingRecord>>
     fun getTotalDurationByDate(date: String): Flow<Long?>
@@ -44,7 +49,6 @@ interface ReadingRepository {
         noteInserts: List<Note>
     )
     suspend fun deleteAllNotesByBookId(bookId: String)
-    suspend fun deleteLegacyPdfAnnotationsByBookId(bookId: String)
     fun getMostReadBooksBetween(startDate: String, endDate: String, limit: Int = 5): Flow<List<BookDuration>>
     fun getDailyTotalsBetween(startDate: String, endDate: String): Flow<List<DailyTotal>>
     fun getTotalDurationByBookId(bookId: String): Flow<Long?>

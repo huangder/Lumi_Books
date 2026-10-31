@@ -69,6 +69,7 @@ fun RemoteErrorKind.messageRes(): Int = when (this) {
     RemoteErrorKind.UNSUPPORTED_FORMAT -> R.string.remote_error_unsupported_format
     RemoteErrorKind.INVALID_FILE -> R.string.remote_error_invalid_file
     RemoteErrorKind.DESTINATION_UNAVAILABLE -> R.string.remote_error_destination
+    RemoteErrorKind.REPORTED_BLOCKED -> R.string.remote_error_reported_blocked
     RemoteErrorKind.UNKNOWN -> R.string.remote_error_unknown
 }
 

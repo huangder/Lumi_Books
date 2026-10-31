@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.highlight
 
 import com.huangder.lumibooks.domain.model.RuleStyle
+import com.huangder.lumibooks.domain.model.HighlightRule
 import org.json.JSONObject
 
 object RuleStyleJson {
@@ -12,6 +13,8 @@ object RuleStyleJson {
         put("fontWeight", style.fontWeight)
         put("italic", style.italic)
         if (style.fontType.isNotBlank()) put("fontType", style.fontType)
+        put("highlightMode", style.highlightMode)
+        style.highlightColor?.let { put("highlightColor", it) }
     }.toString()
 
     fun decode(raw: String?): RuleStyle? = raw?.let {
@@ -26,7 +29,9 @@ object RuleStyleJson {
                 underlineWidth = json.optDouble("underlineWidth", 1.0).toFloat(),
                 fontWeight = json.optInt("fontWeight", 400),
                 italic = json.optBoolean("italic"),
-                fontType = json.optString("fontType")
+                fontType = json.optString("fontType"),
+                highlightMode = json.optInt("highlightMode", HighlightRule.HIGHLIGHT_FILLED),
+                highlightColor = if (json.has("highlightColor") && !json.isNull("highlightColor")) json.optInt("highlightColor") else null
             )
         }.getOrNull()
     }

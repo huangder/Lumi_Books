@@ -14,6 +14,12 @@ val releaseStartupTrace = providers.gradleProperty("lumiStartupTrace")
     .map { it.toBooleanStrict() }
     .orElse(false)
 
+// The optional private checkout supplies the official edition. A public clone builds on its own.
+val forceOss = providers.gradleProperty("lumi.oss").map { it.toBooleanStrict() }.orElse(false)
+val premiumEdition = !forceOss.get() && file("src/premium/java").isDirectory
+// KSP/Hilt outputs must not survive a switch to a source set with fewer declarations.
+layout.buildDirectory.set(layout.projectDirectory.dir("build/${if (premiumEdition) "official" else "oss"}"))
+
 android {
     namespace = "com.huangder.lumibooks"
     compileSdk {
@@ -31,6 +37,7 @@ android {
 
         buildConfigField("boolean", "DIAGNOSTIC_BUILD", "false")
         buildConfigField("boolean", "STARTUP_TRACE_ENABLED", "false")
+        buildConfigField("boolean", "PREMIUM_EDITION", premiumEdition.toString())
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -83,6 +90,18 @@ android {
         compose = true
         buildConfig = true
     }
+    sourceSets {
+        getByName("main") {
+            java.srcDir(if (premiumEdition) "src/premium/java" else "src/oss/java")
+            if (premiumEdition) {
+                res.srcDir("src/premium/res")
+                assets.srcDir("src/premium/assets")
+            }
+        }
+        getByName("test") {
+            java.srcDir(if (premiumEdition) "src/premium/test" else "src/oss/test")
+        }
+    }
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -101,6 +120,12 @@ android {
             // 允许框架方法返回默认值，避免 "Method ... not mocked" 直接把用例打挂。
             isReturnDefaultValues = true
         }
+    }
+}
+
+androidComponents {
+    onVariants { variant ->
+        if (premiumEdition) variant.sources.manifests.addStaticManifestFile("src/premium/AndroidManifest.xml")
     }
 }
 

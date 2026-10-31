@@ -9,6 +9,9 @@ import androidx.room.Update
 import com.huangder.lumibooks.data.local.entity.BookmarkEntity
 import kotlinx.coroutines.flow.Flow
 
+/** Cross-book feeds and statistics leave out bookmarks of hidden books. */
+private const val BOOKMARK_NOT_IN_HIDDEN_BOOK = "bookId NOT IN (SELECT id FROM books WHERE isHidden = 1)"
+
 @Dao
 interface BookmarkDao {
     @Query("SELECT * FROM bookmarks WHERE bookId = :bookId ORDER BY createdAt DESC")
@@ -17,10 +20,13 @@ interface BookmarkDao {
     @Query("SELECT * FROM bookmarks")
     suspend fun getAllBookmarks(): List<BookmarkEntity>
 
-    @Query("SELECT * FROM bookmarks ORDER BY createdAt DESC, id DESC")
+    @Query("SELECT * FROM bookmarks WHERE $BOOKMARK_NOT_IN_HIDDEN_BOOK ORDER BY createdAt DESC, id DESC")
     fun observeAllBookmarks(): Flow<List<BookmarkEntity>>
 
-    @Query("SELECT * FROM bookmarks WHERE createdAt >= :startMs AND createdAt < :endMs")
+    @Query(
+        "SELECT * FROM bookmarks WHERE createdAt >= :startMs AND createdAt < :endMs " +
+            "AND $BOOKMARK_NOT_IN_HIDDEN_BOOK"
+    )
     fun observeBookmarksCreatedBetween(startMs: Long, endMs: Long): Flow<List<BookmarkEntity>>
 
     @Query("SELECT tagsJson FROM bookmarks")

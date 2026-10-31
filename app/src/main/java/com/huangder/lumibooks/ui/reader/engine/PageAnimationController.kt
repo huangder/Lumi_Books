@@ -222,12 +222,14 @@ abstract class PageAnimationController(
                     // 点击，非滑动
                     val viewWidth = readView.width.toFloat()
                     val relX = event.x / viewWidth
+                    // A tap callback can synchronously start a new flip. Clear
+                    // this gesture before dispatching, never its replacement.
+                    direction = Direction.NONE
                     when {
                         relX < 0.3f -> onTapLeft?.invoke()
                         relX > 0.7f -> onTapRight?.invoke()
                         else -> onTapCenter?.invoke()
                     }
-                    direction = Direction.NONE
                     readView.invalidate()
                     return true
                 }

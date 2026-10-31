@@ -45,6 +45,8 @@ object HighlightRuleCodec {
             json.put("underlineWidth", rule.underlineWidth.toDouble())
             json.put("fontWeight", rule.fontWeight)
             json.put("isItalic", rule.isItalic)
+            json.put("highlightMode", rule.highlightMode)
+            rule.highlightColor?.let { json.put("highlightColor", it) } ?: json.remove("highlightColor")
             if (rule.fontType.isBlank()) json.remove("fontType") else json.put("fontType", rule.fontType)
             json.put("sampleText", rule.sampleText)
             json.put("_lumi", JSONObject().apply {
@@ -95,6 +97,8 @@ object HighlightRuleCodec {
             underlineWidth = json.optDouble("underlineWidth", 1.0).toFloat(),
             fontWeight = json.optInt("fontWeight", 400),
             isItalic = json.optBoolean("isItalic", false),
+            highlightMode = json.optInt("highlightMode", HighlightRule.HIGHLIGHT_FILLED),
+            highlightColor = if (json.has("highlightColor") && !json.isNull("highlightColor")) json.optInt("highlightColor") else null,
             fontType = json.optString("fontType"),
             sampleText = json.optString("sampleText"),
             rawJson = json.put("pattern", pattern).toString(),

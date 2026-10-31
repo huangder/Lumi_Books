@@ -15,6 +15,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -23,12 +24,27 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ProvideTextStyle
+import androidx.compose.material3.Text
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import com.huangder.lumibooks.ui.theme.AppPresentation
+import com.huangder.lumibooks.ui.theme.AppSurfaceRole
+import com.huangder.lumibooks.ui.theme.AppType
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -43,14 +59,17 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
+import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -66,9 +85,12 @@ internal data class LiquidGlassDialogSpec(
     val alignment: Alignment,
     val contentScrimColor: Color,
     val backgroundScrimColor: Color,
-    val backgroundBlurRadius: androidx.compose.ui.unit.Dp,
+    val fallbackBlurRadius: androidx.compose.ui.unit.Dp,
     val transparencyOverride: Float?,
     val properties: DialogProperties,
+    val maxWidth: Dp,
+    /** A bottom sheet presented as a centered card on tablets. */
+    val cardSheet: Boolean = false,
     val content: @Composable BoxScope.() -> Unit
 )
 
@@ -138,15 +160,24 @@ val LocalLiquidGlassDialogHost = staticCompositionLocalOf<LiquidGlassDialogHostS
 fun LiquidGlassDialogHost(
     modifier: Modifier = Modifier,
     backdrop: Backdrop? = null,
+    /** Native editors cannot safely be recorded into a Compose layer. */
+    snapshotContent: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val motionEnabled = LocalMotionEnabled.current
     val inheritedBackdrop = LocalLiquidGlassBackdrop.current
-    val activeBackdrop = backdrop ?: inheritedBackdrop
     val scope = rememberCoroutineScope()
     val state = remember(scope) { LiquidGlassDialogHostState(scope) }
     val currentSpec = state.spec
+    val providedBackdrop = backdrop ?: inheritedBackdrop
+    val needsSnapshot = isLiquidGlass && (snapshotContent || providedBackdrop == null)
+    val snapshot = rememberWindowGlassSnapshot(
+        enabled = needsSnapshot && currentSpec != null,
+        identity = state.dialogs.firstOrNull()?.id
+    )
+    val activeBackdrop = if (needsSnapshot) snapshot.backdrop else providedBackdrop
+    val overlayReady = !needsSnapshot || snapshot.ready
     val scrimProgress by animateFloatAsState(
         targetValue = if (state.visible) 1f else 0f,
         animationSpec = tween(if (state.visible) 160 else 220),
@@ -160,12 +191,13 @@ fun LiquidGlassDialogHost(
         Box(modifier = modifier) {
             Box(
                 modifier = Modifier.fillMaxSize()
+                    .then(if (currentSpec != null) Modifier.clearAndSetSemantics { } else Modifier)
             ) {
                 content()
             }
 
             AnimatedVisibility(
-                visible = currentSpec != null,
+                visible = currentSpec != null && overlayReady,
                 enter = fadeIn(tween(150)),
                 exit = fadeOut(tween(190)),
                 modifier = Modifier.fillMaxSize()
@@ -259,6 +291,14 @@ fun LiquidGlassDialogHost(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
+                                        // Cards sit mid-screen, so keep them clear of system bars.
+                                        .then(
+                                            if (targetSpec.alignment != Alignment.BottomCenter) {
+                                                Modifier.windowInsetsPadding(WindowInsets.safeDrawing)
+                                            } else {
+                                                Modifier
+                                            }
+                                        )
                                         .padding(
                                             start = if (targetSpec.alignment == Alignment.BottomCenter) 14.dp else 32.dp,
                                             end = if (targetSpec.alignment == Alignment.BottomCenter) 14.dp else 32.dp,
@@ -274,8 +314,20 @@ fun LiquidGlassDialogHost(
                                         contentScrimColor = targetSpec.contentScrimColor,
                                         transparencyOverride = targetSpec.transparencyOverride,
                                         interactive = false,
+                                        provideSurfaceBackdrop = true,
+                                        role = AppSurfaceRole.Overlay,
+                                        fallbackBlurRadius = targetSpec.fallbackBlurRadius,
+                                        forceFallback = targetSpec.backdrop == null && activeBackdrop == null,
                                         modifier = Modifier
-                                            .widthIn(max = 560.dp)
+                                            .then(
+                                                if (targetSpec.cardSheet) {
+                                                    Modifier
+                                                        .widthIn(max = minOf(CardSheetMaxWidth, targetSpec.maxWidth))
+                                                        .heightIn(max = CardSheetMaxHeight)
+                                                } else {
+                                                    Modifier.widthIn(max = targetSpec.maxWidth)
+                                                }
+                                            )
                                             .then(targetSpec.modifier)
                                             .fillMaxWidth()
                                             .clickable(
@@ -300,13 +352,14 @@ fun LiquidGlassDialog(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
     backdrop: Backdrop? = null,
-    shape: Shape = AppRoundedCornerShape(28.dp),
+    shape: Shape = AppRoundedCornerShape(AppPresentation.DialogCorner),
     alignment: Alignment = Alignment.Center,
-    contentScrimColor: Color = AppColors.CardBg.copy(alpha = 0.78f),
+    contentScrimColor: Color = AppColors.CardBg.copy(alpha = 0.56f),
     backgroundScrimColor: Color = Color.Black.copy(alpha = 0.20f),
-    backgroundBlurRadius: androidx.compose.ui.unit.Dp = 0.dp,
+    fallbackBlurRadius: androidx.compose.ui.unit.Dp = AppPresentation.OverlayFallbackBlur,
     transparencyOverride: Float? = null,
     properties: DialogProperties = DialogProperties(),
+    maxWidth: Dp = AppPresentation.SheetMaxWidth,
     content: @Composable BoxScope.() -> Unit
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
@@ -322,6 +375,12 @@ fun LiquidGlassDialog(
     val id = remember { Any() }
     val latestDismiss by rememberUpdatedState(onDismissRequest)
     val latestContent by rememberUpdatedState(content)
+    // Tablets center bottom sheets as cards (see AdaptiveSheet.kt).
+    val cardSheet = alignment == Alignment.BottomCenter && usesCardSheets()
+    val effectiveAlignment = if (cardSheet) Alignment.Center else alignment
+    val windowSnapshot = rememberWindowGlassSnapshot(
+        enabled = host == null && isLiquidGlass, identity = id
+    )
 
     if (host != null && isLiquidGlass) {
         DisposableEffect(
@@ -330,12 +389,14 @@ fun LiquidGlassDialog(
             sourceBackdrop,
             shape,
             modifier,
-            alignment,
+            effectiveAlignment,
+            cardSheet,
             contentScrimColor,
             backgroundScrimColor,
-            backgroundBlurRadius,
+            fallbackBlurRadius,
             transparencyOverride,
-            properties
+            properties,
+            maxWidth
         ) {
             host.show(
                 LiquidGlassDialogSpec(
@@ -344,21 +405,51 @@ fun LiquidGlassDialog(
                     backdrop = sourceBackdrop,
                     shape = shape,
                     modifier = modifier,
-                    alignment = alignment,
+                    alignment = effectiveAlignment,
                     contentScrimColor = contentScrimColor,
                     backgroundScrimColor = backgroundScrimColor,
-                    backgroundBlurRadius = backgroundBlurRadius,
+                    fallbackBlurRadius = fallbackBlurRadius,
                     transparencyOverride = transparencyOverride,
                     properties = properties,
+                    maxWidth = maxWidth,
+                    cardSheet = cardSheet,
                     content = { latestContent() }
                 )
             )
             onDispose { host.hide(id) }
         }
+    } else if (isLiquidGlass) {
+        // Without a host, record pixels before opening the independent Dialog window.
+        // Passing a live LayerBackdrop across windows can build a cyclic native graph.
+        if (!windowSnapshot.ready) return
+        Dialog(onDismissRequest = onDismissRequest, properties = properties) {
+            LiquidGlassSurface(
+                modifier = Modifier.widthIn(max = maxWidth).then(modifier).fillMaxWidth(),
+                shape = shape,
+                fallbackColor = AppColors.CardBg,
+                backdrop = windowSnapshot.backdrop,
+                contentScrimColor = contentScrimColor,
+                transparencyOverride = transparencyOverride,
+                provideSurfaceBackdrop = true,
+                role = AppSurfaceRole.Overlay,
+                fallbackBlurRadius = fallbackBlurRadius,
+                forceFallback = windowSnapshot.backdrop == null,
+                contentAlignment = Alignment.TopStart,
+                content = content
+            )
+        }
+    } else if (cardSheet) {
+        CardSheetDialog(
+            onDismissRequest = onDismissRequest,
+            shape = shape,
+            modifier = modifier,
+            properties = properties,
+            content = content
+        )
     } else {
         Dialog(onDismissRequest = onDismissRequest, properties = properties) {
             Surface(
-                modifier = Modifier.fillMaxWidth().then(modifier),
+                modifier = Modifier.widthIn(max = maxWidth).then(modifier).fillMaxWidth(),
                 shape = shape,
                 color = AppColors.CardBg,
                 contentColor = AppColors.TextPrimary
@@ -373,28 +464,36 @@ fun LiquidGlassDialog(
 @Composable
 fun LiquidGlassAlertDialog(
     onDismissRequest: () -> Unit,
-    confirmButton: @Composable () -> Unit,
+    confirmButton: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
     backdrop: Backdrop? = null,
     dismissButton: (@Composable () -> Unit)? = null,
     title: (@Composable () -> Unit)? = null,
     text: (@Composable () -> Unit)? = null,
     properties: DialogProperties = DialogProperties(),
-    contentScrimColor: Color = AppColors.CardBg.copy(alpha = 0.82f),
+    contentScrimColor: Color = AppColors.CardBg.copy(alpha = 0.60f),
     backgroundScrimColor: Color = Color.Black.copy(alpha = 0.20f),
-    backgroundBlurRadius: androidx.compose.ui.unit.Dp = 0.dp,
-    transparencyOverride: Float? = null
+    fallbackBlurRadius: androidx.compose.ui.unit.Dp = AppPresentation.OverlayFallbackBlur,
+    transparencyOverride: Float? = null,
+    actions: List<AppDialogAction>? = null,
+    titleText: String? = null
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
-    val host = LocalLiquidGlassDialogHost.current
+    val resolvedTitle: (@Composable () -> Unit)? = titleText?.let { value -> { Text(value) } } ?: title
 
     if (!isLiquidGlass) {
         AlertDialog(
             onDismissRequest = onDismissRequest,
-            confirmButton = confirmButton,
+            confirmButton = {
+                if (actions != null) actions.filter { it.role != AppDialogActionRole.Cancel }.forEach {
+                    AppDialogActionButton(it, glass = false)
+                } else confirmButton()
+            },
             modifier = modifier,
-            dismissButton = dismissButton,
-            title = title,
+            dismissButton = if (actions != null) {
+                { actions.filter { it.role == AppDialogActionRole.Cancel }.forEach { AppDialogActionButton(it, glass = false) } }
+            } else dismissButton,
+            title = resolvedTitle,
             text = text,
             properties = properties
         )
@@ -404,31 +503,42 @@ fun LiquidGlassAlertDialog(
     LiquidGlassDialog(
         onDismissRequest = onDismissRequest,
         modifier = modifier,
+        maxWidth = AppPresentation.AlertMaxWidth,
         backdrop = backdrop,
-        shape = AppRoundedCornerShape(32.dp),
+        shape = AppRoundedCornerShape(AppPresentation.DialogCorner),
         properties = properties,
         contentScrimColor = contentScrimColor,
         backgroundScrimColor = backgroundScrimColor,
-        backgroundBlurRadius = backgroundBlurRadius,
+        fallbackBlurRadius = fallbackBlurRadius,
         transparencyOverride = transparencyOverride
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 20.dp),
-            horizontalAlignment = Alignment.End
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
+            horizontalAlignment = Alignment.Start
         ) {
-            title?.let {
-                Box(Modifier.fillMaxWidth()) { it() }
+            resolvedTitle?.let {
+                ProvideTextStyle(MaterialTheme.typography.titleLarge.copy(
+                    fontSize = AppType.Section, fontWeight = FontWeight.Bold,
+                    color = AppColors.TextPrimary, textAlign = TextAlign.Start
+                )) { Box(Modifier.fillMaxWidth()) { it() } }
             }
             text?.let {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = if (title != null) 14.dp else 0.dp, bottom = 12.dp)
-                ) { it() }
+                        .padding(top = if (resolvedTitle != null) 12.dp else 0.dp, bottom = 20.dp)
+                ) {
+                    ProvideTextStyle(MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = AppType.BodySmall, color = AppColors.TextSecondary,
+                        textAlign = TextAlign.Start
+                    )) { it() }
+                }
             }
-            FlowRow(
+            if (text == null) Box(Modifier.padding(top = 20.dp))
+            if (actions != null) AppDialogActions(actions) else FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalArrangement = Arrangement.spacedBy(8.dp)

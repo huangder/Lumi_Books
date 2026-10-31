@@ -96,4 +96,5 @@
     <string name="remote_error_invalid_file">The downloaded file is invalid: the login may have expired or the file may be damaged.</string>
     <string name="remote_error_destination">Can\'t write to the selected folder. Please authorize it again.</string>
     <string name="remote_error_unknown">Something went wrong. Please try again.</string>
+    <string name="remote_error_reported_blocked">This OPDS URL has been reported and blocked.</string>
 </resources>

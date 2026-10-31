@@ -4,7 +4,6 @@ import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
-import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 import java.security.MessageDigest
@@ -195,8 +194,10 @@ class AuthorizedStorageManager @Inject constructor() {
     }.getOrDefault(documentUri)
 
     fun rename(context: Context, documentUri: Uri, name: String): Uri =
-        DocumentsContract.renameDocument(context.contentResolver, documentUri, name)
-            ?: error("Unable to rename document")
+        (DocumentsContract.renameDocument(context.contentResolver, documentUri, name)
+            ?: error("Unable to rename document")).let { renamed ->
+            if (DocumentsContract.isTreeUri(documentUri)) documentUriUsingTree(documentUri, renamed) else renamed
+        }
 
     fun move(
         context: Context,
@@ -208,7 +209,9 @@ class AuthorizedStorageManager @Inject constructor() {
         documentUri,
         sourceParentUri,
         targetParentUri
-    ) ?: error("Unable to move document")
+    )?.let { moved ->
+        if (DocumentsContract.isTreeUri(targetParentUri)) documentUriUsingTree(targetParentUri, moved) else moved
+    } ?: error("Unable to move document")
 
     /**
      * Copies a book into an authorized directory and deletes the source only after a hash match.
@@ -224,8 +227,11 @@ class AuthorizedStorageManager @Inject constructor() {
     ): MoveResult {
         val resolver = context.contentResolver
         val mime = mimeTypeFor(fileName)
-        val destination = DocumentsContract.createDocument(resolver, targetParentUri, mime, fileName)
+        val created = DocumentsContract.createDocument(resolver, targetParentUri, mime, fileName)
             ?: error("Unable to create destination document")
+        val destination = if (DocumentsContract.isTreeUri(targetParentUri)) {
+            documentUriUsingTree(targetParentUri, created)
+        } else created
         var completed = false
         try {
             val digest = MessageDigest.getInstance("SHA-256")
@@ -262,12 +268,7 @@ class AuthorizedStorageManager @Inject constructor() {
     }
 
     private fun openSource(context: Context, location: String): InputStream =
-        if (BookFileAccess.isContentUri(location)) {
-            context.contentResolver.openInputStream(Uri.parse(location))
-                ?: error("Unable to open source document")
-        } else {
-            File(location).inputStream().buffered()
-        }
+        BookFileAccess.openInputStream(context, location)
 
     private fun deleteSource(context: Context, location: String) {
         if (BookFileAccess.isContentUri(location)) {

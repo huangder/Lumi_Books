@@ -88,4 +88,5 @@
     <string name="remote_error_invalid_file">다운로드한 파일이 올바르지 않습니다: 로그인이 만료되었거나 파일이 손상되었을 수 있습니다</string>
     <string name="remote_error_destination">선택한 폴더에 쓸 수 없습니다. 이 폴더에 다시 권한을 부여해 주세요</string>
     <string name="remote_error_unknown">작업에 실패했습니다. 다시 시도해 주세요</string>
+    <string name="remote_error_reported_blocked">신고되어 차단된 OPDS 주소이므로 추가할 수 없습니다</string>
 </resources>

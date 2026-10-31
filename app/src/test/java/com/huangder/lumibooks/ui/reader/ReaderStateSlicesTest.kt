@@ -1,12 +1,31 @@
 package com.huangder.lumibooks.ui.reader
 
 import com.huangder.lumibooks.domain.model.ReaderLayoutTarget
+import com.huangder.lumibooks.domain.model.ReaderCornerMargins
+import com.huangder.lumibooks.domain.model.ReaderThemeSettings
+import com.huangder.lumibooks.domain.model.ReaderThemeSuite
 import com.huangder.lumibooks.util.epub.EpubRenderMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 class ReaderStateSlicesTest {
+    @Test
+    fun displayUsesTheActiveSuitesCornerMarginsForTheActualMode() {
+        val light = ReaderCornerMargins(leftDp = 0f, topDp = 40f)
+        val dark = ReaderCornerMargins(rightDp = 15f, bottomDp = 60f)
+        val suite = ReaderThemeSuite(
+            id = "day", settings = ReaderThemeSettings(),
+            lightSettings = ReaderThemeSettings(cornerMargins = light),
+            darkSettings = ReaderThemeSettings(cornerMargins = dark)
+        )
+        val state = ReaderUiState(readerThemeSuites = listOf(suite), readerCornerMargins = dark)
+        assertEquals(light, state.withActiveThemeSettingsForMode(false).readerCornerMargins)
+        assertEquals(dark, state.withActiveThemeSettingsForMode(true).readerCornerMargins)
+        val fallback = state.copy(readerThemeSuites = emptyList())
+        assertEquals(dark, fallback.withActiveThemeSettingsForMode(false).readerCornerMargins)
+    }
+
     @Test
     fun positionChangesDoNotChangeDocumentRenderOrControlsSlices() {
         val initial = ReaderUiState(isLoading = false, pageReady = true)

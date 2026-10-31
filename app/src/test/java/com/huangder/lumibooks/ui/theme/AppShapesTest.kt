@@ -33,6 +33,15 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], application = Application::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class AppShapesTest {
+    @Test fun nestedCornersKeepTheirCenterAndClampOversizedInsets() {
+        assertEquals(16.dp, AppShapes.concentricRadius(32.dp, 16.dp))
+        assertEquals(0.dp, AppShapes.concentricRadius(28.dp, 40.dp))
+        assertEquals(28.dp, AppShapes.concentricRadius(28.dp, (-4).dp))
+        val child = AppShapes.concentric(32.dp, 16.dp)
+        assertEquals(16f, child.topStart.toPx(size, Density(1f)), 0f)
+        assertTrue(outline(child) is Outline.Generic)
+        assertEquals(RoundedCornerShape(16.dp), AppShapes.concentric(32.dp, 16.dp, continuous = false))
+    }
     private val size = Size(160f, 100f)
     private fun outline(shape: Shape, rtl: Boolean = false, size: Size = this.size, density: Float = 1f) =
         shape.createOutline(size, if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr, Density(density))

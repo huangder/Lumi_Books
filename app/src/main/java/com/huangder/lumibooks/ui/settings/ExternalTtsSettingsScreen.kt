@@ -86,6 +86,7 @@ import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.components.LiquidGlassDialog
+import com.huangder.lumibooks.ui.components.usesCardSheets
 import com.huangder.lumibooks.ui.components.LiquidGlassButton
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
@@ -1043,7 +1044,8 @@ private fun ExternalTtsConsentSheet(
         }
     }
 
-    if (isLiquidGlass) {
+    val cardSheets = usesCardSheets()
+    if (isLiquidGlass || cardSheets) {
         LiquidGlassDialog(
             onDismissRequest = onDismiss,
             alignment = Alignment.BottomCenter,
@@ -1158,7 +1160,8 @@ private fun ExternalTtsHttpWarningSheet(
         }
     }
 
-    if (isLiquidGlass) {
+    val cardSheets = usesCardSheets()
+    if (isLiquidGlass || cardSheets) {
         LiquidGlassDialog(
             onDismissRequest = onDismiss,
             alignment = Alignment.BottomCenter,

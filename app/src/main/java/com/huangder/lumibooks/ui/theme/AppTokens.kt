@@ -119,6 +119,9 @@ object AppColors {
     private val DarkDivider = Color(0xFF38383A)
 
     val Accent: Color @Composable get() = LocalAppAccentColor.current
+    val Destructive: Color @Composable get() = if (LocalEInkMode.current) Color.Black
+        else if (LocalUseMaterial3Theme.current) MaterialTheme.colorScheme.error
+        else if (LocalIsDarkTheme.current) Color(0xFFFF6961) else Color(0xFFD92D3A)
     val OnAccent: Color @Composable get() = LocalOnAppAccentColor.current
     val ControlActive: Color @Composable get() = if (LocalEInkMode.current) {
         Color.Black

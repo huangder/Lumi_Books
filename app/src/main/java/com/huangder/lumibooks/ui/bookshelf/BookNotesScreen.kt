@@ -128,9 +128,11 @@ fun BookNotesScreen(
     var editingNoteTags by remember { mutableStateOf<Note?>(null) }
     var editingBookmarkTags by remember { mutableStateOf<Bookmark?>(null) }
     var selectedTag by rememberSaveable { mutableStateOf<String?>(null) }
+    com.huangder.lumibooks.ui.components.ReconcileAnnotationTagDraft(listOfNotNull(selectedTag)) {
+        selectedTag = it.firstOrNull()
+    }
     var selectedColor by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedLine by rememberSaveable { mutableStateOf<Int?>(null) }
-    var managingTags by remember { mutableStateOf(false) }
     val renameTag: (String, String) -> Unit = { old, new ->
         if (selectedTag == old) selectedTag = new.trim()
         viewModel.renameTag(old, new)
@@ -250,12 +252,7 @@ fun BookNotesScreen(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                LiquidGlassIconButton(
-                    imageVector = AppIcons.Tag,
-                    contentDescription = stringResource(R.string.annotation_tag_manage),
-                    onClick = { managingTags = true }, size = 44.dp, iconSize = 20.dp,
-                    normalContainerColor = AppColors.BgGray
-                )
+                com.huangder.lumibooks.edition.EditionTagManagementButton(com.huangder.lumibooks.domain.model.TagTypes.ANNOTATION)
             }
 
             Spacer(Modifier.height(AppSpace.md))
@@ -273,7 +270,9 @@ fun BookNotesScreen(
 
             // ── 内容列表 ──
             AnnotationListFilters(
-                tags = (uiState.notes.flatMap { it.tags } + uiState.bookmarks.flatMap { it.tags }).distinct().sorted(),
+                tags = remember(uiState.notes, uiState.bookmarks) {
+                    (uiState.notes.flatMap { it.tags } + uiState.bookmarks.flatMap { it.tags }).distinct().sorted()
+                },
                 selectedTag = selectedTag,
                 onTagSelected = { selectedTag = it },
                 colors = if (selectedTab < 2) uiState.notes.filter { !it.isNoteEntry && (selectedTab == 1) == (it.type == "underline") }.map { it.color }.distinct() else emptyList(),
@@ -401,17 +400,6 @@ fun BookNotesScreen(
                 onDelete = deleteTag
             )
         }
-        if (managingTags) AnnotationTagSheet(
-            backdrop = glassBackdrop.takeIf { isLiquidGlass },
-            selected = emptyList(),
-            available = uiState.availableTags,
-            onSave = { names -> names.forEach { viewModel.createTag(it) } },
-            onCreate = viewModel::createTag,
-            onDismiss = { managingTags = false },
-            onRename = renameTag,
-            onDelete = deleteTag,
-            managementOnly = true
-        )
     }
 }
 

@@ -36,13 +36,13 @@ interface BookDao {
 
     @Query(
         "SELECT id AS bookId, title, author, coverPath, readingProgress " +
-            "FROM books ORDER BY lastReadTime DESC LIMIT 1"
+            "FROM books WHERE isHidden = 0 ORDER BY lastReadTime DESC LIMIT 1"
     )
     suspend fun getContinueReadingWidgetData(): ContinueReadingWidgetData?
 
     @Query(
         "SELECT id AS bookId, title, author, coverPath, readingProgress " +
-            "FROM books ORDER BY lastReadTime DESC LIMIT 1"
+            "FROM books WHERE isHidden = 0 ORDER BY lastReadTime DESC LIMIT 1"
     )
     fun observeContinueReadingWidgetData(): Flow<ContinueReadingWidgetData?>
 
@@ -63,6 +63,10 @@ interface BookDao {
 
     @Query("UPDATE books SET sourceSha256 = :sha256 WHERE id = :bookId")
     suspend fun updateSourceSha256(bookId: String, sha256: String)
+
+    /** Bumps metadataUpdatedAt so WebDAV and backup merges carry the change to other devices. */
+    @Query("UPDATE books SET isHidden = :hidden, metadataUpdatedAt = :updatedAt WHERE id IN (:bookIds)")
+    suspend fun setBooksHidden(bookIds: List<String>, hidden: Boolean, updatedAt: Long)
 
     @Query("UPDATE books SET filePath = '', isCloudOnly = 1 WHERE id = :bookId")
     suspend fun markBookCloudOnly(bookId: String)

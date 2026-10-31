@@ -103,22 +103,24 @@ private fun configurableBackHandler(
         }
     }
 
-    if (enabled && predictiveBackEnabled) {
-        PredictiveBackHandler(enabled = enabled) { events ->
-            try {
-                events.collect { event ->
-                    val rawProgress = event.progress.coerceIn(0f, 1f)
-                    progress.snapTo(transformProgress(rawProgress))
-                }
-                progress.snapTo(1f)
-                currentOnBack()
-            } catch (_: CancellationException) {
-                progress.animateTo(0f, tween(180))
+    // Keep registration order stable: enabling a parent after a pager tab settles
+    // must not put it ahead of an already composed search overlay or dialog.
+    PredictiveBackHandler(enabled = enabled && predictiveBackEnabled) { events ->
+        try {
+            events.collect { event ->
+                val rawProgress = event.progress.coerceIn(0f, 1f)
+                progress.snapTo(transformProgress(rawProgress))
             }
+            progress.snapTo(1f)
+            currentOnBack()
+        } catch (_: CancellationException) {
+            progress.animateTo(0f, tween(180))
         }
-    } else if (enabled) {
-        BackHandler(onBack = currentOnBack)
     }
+    // Read the latest callback only when back fires. Reading currentOnBack here would put it
+    // in the caller's scope; a caller that recreates onBack would then recompose every frame.
+    val dispatchBack = remember { { currentOnBack() } }
+    BackHandler(enabled = enabled && !predictiveBackEnabled, onBack = dispatchBack)
 
     return progress.value
 }

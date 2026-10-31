@@ -1,5 +1,8 @@
 package com.huangder.lumibooks.ui.components
 
+import com.huangder.lumibooks.ui.components.AppDialogAction
+import com.huangder.lumibooks.ui.components.AppDialogActionRole
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -32,14 +35,7 @@ fun RemoteNoticeDialog(
 
     LiquidGlassAlertDialog(
         onDismissRequest = {},
-        title = {
-            Text(
-                text = title,
-                fontSize = AppType.Body,
-                fontWeight = FontWeight.Bold,
-                color = AppColors.TextPrimary
-            )
-        },
+        titleText = title,
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Spacer(modifier = Modifier.height(2.dp))
@@ -60,13 +56,14 @@ fun RemoteNoticeDialog(
                 )
             }
         },
-        confirmButton = {
-            LiquidGlassTextButton(
+        actions = listOf(
+            AppDialogAction(
                 text = stringResource(R.string.remote_notice_acknowledge),
-                tintedColor = AppColors.Accent,
-                onClick = onConfirm
+                onClick = onConfirm,
+                role = AppDialogActionRole.Primary,
+                tintedColor = AppColors.Accent
             )
-        },
+        ),
         properties = DialogProperties(
             dismissOnBackPress = false,
             dismissOnClickOutside = false

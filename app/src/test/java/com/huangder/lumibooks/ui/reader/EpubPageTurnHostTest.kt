@@ -122,13 +122,12 @@ class EpubPageTurnHostTest {
     }
 
     @Test
-    fun curlAndReaderBackgroundImagesPreloadImmutableBitmaps() {
+    fun onlyDeformingTransitionsPreloadImmutableBitmaps() {
         assertTrue(requiresEpubPreloadBitmap("curl"))
+        assertTrue(requiresEpubPreloadBitmap("wave"))
         assertFalse(requiresEpubPreloadBitmap("slide"))
         assertFalse(requiresEpubPreloadBitmap("scroll"))
         assertFalse(requiresEpubPreloadBitmap("none"))
-        assertTrue(requiresEpubPreloadBitmap("slide", backgroundSnapshot = true))
-        assertTrue(requiresEpubPreloadBitmap("scroll", backgroundSnapshot = true))
     }
 
     @Test
@@ -141,6 +140,7 @@ class EpubPageTurnHostTest {
     @Test
     fun curlPromotesPreparedWebViewRolesAfterCommit() {
         assertTrue(supportsEpubPageRolePromotion("curl"))
+        assertTrue(supportsEpubPageRolePromotion("wave"))
         assertTrue(supportsEpubPageRolePromotion("slide"))
         assertTrue(supportsEpubPageRolePromotion("scroll"))
         assertFalse(supportsEpubPageRolePromotion("none"))
@@ -170,6 +170,9 @@ class EpubPageTurnHostTest {
         )
         assertTrue(
             usesNativeEpubPageTurn(false, "curl", EpubRenditionLayout.PRE_PAGINATED)
+        )
+        assertTrue(
+            usesNativeEpubPageTurn(false, "wave", EpubRenditionLayout.PRE_PAGINATED)
         )
     }
 

@@ -1620,8 +1620,12 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         getChapterContentPreview(chapterIndex, width, height, 0).text
 
     /** Whole-book counting must not evict the chapter text retained for reading. */
-    internal fun getChapterContentForPagination(chapterIndex: Int): CharSequence =
-        getChapterContentPreviewInternal(chapterIndex, contentWidth, contentHeight, 0, retainCache = false).text
+    internal fun getChapterContentForPagination(
+        chapterIndex: Int,
+        width: Int = contentWidth,
+        height: Int = contentHeight
+    ): CharSequence =
+        getChapterContentPreviewInternal(chapterIndex, width, height, 0, retainCache = false).text
 
     /**
      * Decode only the first part of a long chapter for continuous scrolling. The returned

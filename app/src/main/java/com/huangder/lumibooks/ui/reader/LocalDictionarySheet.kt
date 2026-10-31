@@ -93,30 +93,27 @@ internal fun LocalDictionarySheetContent(query: String, result: DictionaryLookup
         Box(Modifier.fillMaxSize().background(AppColors.Scrim.copy(alpha = 0.20f * (1f - offset.value.coerceIn(0f, 1f))))
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { closing = true })
         LiquidGlassColumnSheetContainer(
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.7f)
+            modifier = adaptiveSheetFrame(heightFraction = 0.7f)
                 .materialBottomSheetMotion(offset.value, if (detailId == null) backProgress else 0f),
             contentModifier = Modifier.fillMaxSize().navigationBarsPadding().padding(horizontal = 24.dp, vertical = 16.dp),
             fallbackColor = AppColors.CardBg, shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             backdrop = glassBackdrop, forceFallback = forceSolid || LocalEInkMode.current
         ) {
-            Row(Modifier.fillMaxWidth().height(44.dp), verticalAlignment = Alignment.CenterVertically) {
-                AnimatedContent(targetState = detailId, modifier = Modifier.weight(1f),
+                AnimatedContent(targetState = detailId, modifier = Modifier.fillMaxWidth(),
                     contentAlignment = Alignment.CenterStart,
                     transitionSpec = { dictionaryPageTransition(initialState != null, targetState != null, motion).using(null) },
                     label = "dictionaryHeader") { pageId ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        if (pageId != null) LiquidGlassIconButton(imageVector = AppIcons.CaretLeft,
-                            contentDescription = stringResource(R.string.dictionary_back_results),
-                            onClick = { detailId = null }, size = 44.dp, iconSize = 20.dp)
-                        Text(if (pageId == null) query else result?.results?.firstOrNull { it.dictionary.id == pageId }?.dictionary?.name
-                            ?: stringResource(R.string.menu_dictionary), modifier = Modifier.weight(1f).padding(start = 8.dp),
-                            fontSize = AppType.Section, color = AppColors.TextPrimary,
-                            fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
+                    com.huangder.lumibooks.ui.components.AppSheetHeader(
+                        title = if (pageId == null) query else result?.results?.firstOrNull { it.dictionary.id == pageId }?.dictionary?.name
+                            ?: stringResource(R.string.menu_dictionary),
+                        onClose = { closing = true }, onBack = if (pageId != null) ({ detailId = null }) else null,
+                        backContentDescription = stringResource(R.string.dictionary_back_results),
+                        actions = {
+                            if (pageId != null) LiquidGlassIconButton(imageVector = AppIcons.X,
+                                contentDescription = stringResource(R.string.close), onClick = { closing = true }, size = 44.dp)
+                        }
+                    )
                 }
-                LiquidGlassIconButton(imageVector = AppIcons.X, contentDescription = stringResource(R.string.close),
-                    onClick = { closing = true }, size = 44.dp, iconSize = 20.dp)
-            }
             Spacer(Modifier.height(12.dp))
             if (result == null) LinearProgressIndicator(Modifier.fillMaxWidth())
             AnimatedContent(targetState = detailId, modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds(),

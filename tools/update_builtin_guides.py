@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import zipfile
 from pathlib import Path
@@ -95,6 +96,8 @@ def update_guide(path: Path, locale: str) -> None:
     spec = CONTENT[locale]
     source_cover = SOURCE_COVER_DIR / spec["cover"]
     if not source_cover.is_file():
+        source_cover = COVER_DIR / spec["cover"]
+    if not source_cover.is_file():
         raise FileNotFoundError(source_cover)
 
     with zipfile.ZipFile(path, "r") as source:
@@ -113,20 +116,36 @@ def update_guide(path: Path, locale: str) -> None:
             raise ValueError(f"Cannot find insertion point in {path}")
         content = content.replace(marker, spec["updates"] + "\n" + marker, 1)
 
-    advanced_markers = (
-        "Symbols, volume hierarchy",
-        "符号、卷章层级",
-        "符號、卷章層級",
-        "記号、巻と章",
-        "기호, 권·장",
+    # Older updates placed this lesson in the release notes immediately before s3.
+    # Remove that copy and always attach it to the actual TOC tutorial section.
+    content = content.replace(spec["toc"].strip(), "")
+    toc_pattern = r'(<section id="txt-toc-rules">)(.*?)(</section>)'
+    toc_match = re.search(toc_pattern, content, flags=re.DOTALL)
+    if toc_match is None:
+        raise ValueError(f"Cannot find TOC tutorial in {path}")
+    lesson = toc_match.group(2)
+    if locale == "zh-CN":
+        lesson = lesson.replace(
+            "规则保存后只对当前书籍生效。",
+            "每本书可以选择不同的规则；保存的自定义规则也可以在其他 TXT 中选用。",
+        ).replace("输入框只填写等号后面的正则内容。", "输入框只填写冒号后面的正则内容。")
+        if 'id="txt-toc-quickstart"' not in lesson:
+            lesson = lesson.replace(
+                "<h3>一、先判断你的标题长什么样</h3>",
+                '<div id="txt-toc-quickstart"><h3>快速上手：先生成一份正确的目录</h3>'
+                '<ol><li>打开一本 TXT，轻点阅读页中间呼出菜单，在“更多”中选择“TXT 目录规则”。此入口只在 TXT 阅读器中显示。</li>'
+                '<li>先点“自动选择”，等待重新扫描，再打开目录检查开头、结尾和正文是否对应。</li>'
+                '<li>结果不合适时，重新打开规则弹窗，按标题格式点选内置规则；“符号开头章节”可识别“☆、第一章”等标题。</li>'
+                '<li>仍不合适时，在“自定义规则”填写规则名称、章节正则，按需要填写卷正则和标题模板，再点“保存并应用”。</li>'
+                '<li>重新打开目录核对章节数量、标题和卷分组；如需查看字段说明，点击规则弹窗标题旁的帮助按钮。</li></ol></div>'
+                '<h3>一、先判断你的标题长什么样</h3>',
+                1,
+            )
+    content = (
+        content[:toc_match.start()]
+        + toc_match.group(1) + lesson.rstrip() + "\n" + spec["toc"].strip() + toc_match.group(3)
+        + content[toc_match.end():]
     )
-    if not any(marker in content for marker in advanced_markers):
-        marker = "</section>\n<section id=\"s3\">"
-        if marker not in content:
-            marker = "</section>\r\n<section id=\"s3\">"
-        if marker not in content:
-            raise ValueError(f"Cannot find TOC insertion point in {path}")
-        content = content.replace(marker, spec["toc"] + "\n" + marker, 1)
 
     nav = "\n".join(
         line for line in nav.splitlines()
@@ -168,7 +187,9 @@ def main() -> None:
     COVER_DIR.mkdir(parents=True, exist_ok=True)
     for filename, locale in GUIDES.items():
         spec = CONTENT[locale]
-        shutil.copy2(SOURCE_COVER_DIR / spec["cover"], COVER_DIR / spec["cover"])
+        source_cover = SOURCE_COVER_DIR / spec["cover"]
+        if source_cover.is_file():
+            shutil.copy2(source_cover, COVER_DIR / spec["cover"])
         update_guide(GUIDE_DIR / filename, locale)
         print(f"updated {filename} with {spec['cover']}")
 

@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.ui.components.LiquidGlassDialog
+import com.huangder.lumibooks.ui.components.usesCardSheets
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
@@ -57,12 +58,8 @@ fun CustomCoverSourceSheet(
                 .fillMaxWidth()
                 .padding(start = 24.dp, end = 24.dp, top = 22.dp, bottom = 20.dp)
         ) {
-            Text(
-                text = stringResource(R.string.cover_source_title),
-                fontSize = AppType.Section,
-                fontWeight = FontWeight.Bold,
-                color = AppColors.TextPrimary
-            )
+            com.huangder.lumibooks.ui.components.AppSheetHeader(
+                title = stringResource(R.string.cover_source_title), onClose = onDismiss)
             Text(
                 text = book.title,
                 fontSize = AppType.Caption,
@@ -88,7 +85,8 @@ fun CustomCoverSourceSheet(
         }
     }
 
-    if (isLiquidGlass) {
+    val cardSheets = usesCardSheets()
+    if (isLiquidGlass || cardSheets) {
         LiquidGlassDialog(
             onDismissRequest = onDismiss,
             alignment = Alignment.BottomCenter,

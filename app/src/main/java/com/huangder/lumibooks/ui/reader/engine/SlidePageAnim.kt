@@ -216,9 +216,10 @@ class SlidePageAnim(
             else -> return
         }
         val dx = (toX - fromX).toInt()
-        if (dx == 0) { direction = Direction.NONE; return }
         isRunning = true
-        val capturedDurationMs = baseDurationMs
+        // A drag can already be at the terminal pixel (especially after
+        // clamping). Still run the completion path so the host shifts slots.
+        val capturedDurationMs = if (dx == 0) 1 else baseDurationMs
         scroller.startScroll(fromX.toInt(), 0, dx, 0, capturedDurationMs)
         readView.postInvalidateOnAnimation()
     }

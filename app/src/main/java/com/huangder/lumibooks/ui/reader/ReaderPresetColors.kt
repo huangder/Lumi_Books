@@ -3,6 +3,8 @@ package com.huangder.lumibooks.ui.reader
 import androidx.core.graphics.ColorUtils
 import com.huangder.lumibooks.domain.model.ReaderThemeSuites
 
+internal val readerPresetBackgroundSelections = listOf("day", "night", "sepia", "green")
+
 internal fun readerPresetBackgroundColor(selection: String, dark: Boolean): Int = when (selection) {
     ReaderThemeSuites.NIGHT_ID -> 0xFF1A1A1A.toInt()
     ReaderThemeSuites.SEPIA_ID -> if (dark) 0xFF2B2118.toInt() else 0xFFF5E6D3.toInt()

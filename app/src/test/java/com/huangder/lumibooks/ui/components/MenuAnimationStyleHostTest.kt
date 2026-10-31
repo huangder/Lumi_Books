@@ -138,7 +138,7 @@ class MenuAnimationStyleHostTest {
         }
     }
 
-    @Test fun normalMenuHidesTheTriggerAndSubmitsSelectionOnlyOnce() {
+    @Test fun normalMenuKeepsTheTriggerAndSubmitsSelectionOnlyOnce() {
         show()
         compose.onNodeWithTag("menuTrigger").assertExists()
         compose.runOnIdle { assertEquals(Color.Gray.toArgb(), triggerPixel()) }
@@ -148,10 +148,11 @@ class MenuAnimationStyleHostTest {
             assertNotNull(host.displayedMenu)
             assertTrue(host.measured)
             assertFalse(host.ownsDrawing(sourceId))
-            assertTrue(host.hidesSource(sourceId))
-            assertNotEquals("The source must disappear from the page capture", Color.Gray.toArgb(), triggerPixel())
+            // A normal popup does not take ownership of the source drawing layer.
+            assertFalse(host.hidesSource(sourceId))
+            assertEquals("The normal popup keeps its source visible", Color.Gray.toArgb(), triggerPixel())
         }
-        compose.onNodeWithTag("menuTrigger").assertDoesNotExist()
+        compose.onNodeWithTag("menuTrigger").assertExists()
         compose.onNodeWithText("Choose this").performClick()
         compose.runOnIdle {
             assertEquals(1, selections)
@@ -193,62 +194,92 @@ class MenuAnimationStyleHostTest {
         }
     }
 
-    @Test fun categoryContentKeepsItsExpandedSizeThroughoutTheMorphAndReturn() {
-        val sizes = mutableListOf<IntSize>()
-        val panel = menu.copy(
-            fadeOnlyPanel = true,
-            content = { _, _ ->
-                Box(Modifier.fillMaxSize().onSizeChanged { sizes += it })
-            }
-        )
+    @Test fun categoryViewportRemainsSettledWhileItsContainerTravels() {
+        val measurements = mutableSetOf<IntSize>()
         show()
-        compose.runOnIdle { host.show(panel) }
-        advance(800)
         compose.runOnIdle {
-            assertTrue("The panel content must be laid out", sizes.isNotEmpty())
-            assertTrue("The morph must not reflow the panel content: $sizes", sizes.distinct().size == 1)
-            assertEquals(view.width, sizes.single().width)
-            assertEquals(view.height * 0.85, sizes.single().height.toDouble(), 1.0)
-            host.dismiss()
+            host.show(menu.copy(fadeOnlyPanel = true, content = { _, _ ->
+                Box(Modifier.fillMaxSize().onSizeChanged { measurements += it })
+            }))
         }
-        advance(500)
-        compose.runOnIdle {
-            assertEquals("Closing must keep the same content layout", 1, sizes.distinct().size)
-            assertNull(host.displayedMenu)
+        for (opening in listOf(true, false)) {
+            repeat(10) {
+                advance(80, renderFrames = true)
+                compose.runOnIdle {
+                    assertEquals("Content must have exactly one settled viewport", 1, measurements.size)
+                    val measured = measurements.first()
+                    assertEquals(view.width, measured.width)
+                    assertEquals(view.height * 0.85, measured.height.toDouble(), 1.0)
+                }
+            }
+            if (opening) compose.runOnIdle { host.dismiss() }
         }
+        compose.runOnIdle { assertNull(host.displayedMenu) }
     }
 
+    @Test fun ordinaryThemeDoesNotRecomposeMorphSurfacesEveryFrame() = assertBoundedMorphCompositions(false)
+
+    @Test fun glassThemeDoesNotRecomposeMorphSurfacesEveryFrame() = assertBoundedMorphCompositions(true)
+
     @OptIn(InternalComposeTracingApi::class)
-    @Test fun menuMorphDoesNotRecomposeItsShellEveryFrame() {
+    private fun assertBoundedMorphCompositions(glass: Boolean) {
         style.value = MenuAnimationStyle.LIQUID
-        var compositions = 0
-        Composer.setTracer(object : CompositionTracer {
-            override fun isTraceInProgress() = true
+        val visits = mutableMapOf<String, Int>()
+        val watched = setOf("AnchoredLiquidGlassMenu", "MenuFallbackSurface", "LiquidGlassSurface", "LiquidMenuSurface")
+        val prefix = "com.huangder.lumibooks.ui.components."
+        val tracer = object : CompositionTracer {
+            override fun isTraceInProgress(): Boolean = true
             override fun traceEventStart(key: Int, dirty1: Int, dirty2: Int, info: String) {
-                if (info.startsWith("com.huangder.lumibooks.ui.components.AnchoredLiquidGlassMenu ")) compositions++
+                val name = info.removePrefix(prefix).substringBefore(' ')
+                if (info.startsWith(prefix) && name in watched) visits[name] = visits.getOrDefault(name, 0) + 1
             }
-            override fun traceEventEnd() = Unit
-        })
+            override fun traceEventEnd() {}
+        }
+        Composer.setTracer(tracer)
         try {
-            show(glass = true)
-            for (panel in listOf(false, true)) {
+            show(glass)
+            listOf(false, true).forEach { panel ->
                 compose.runOnIdle {
-                    compositions = 0
-                    host.show(menu.copy(fadeOnlyPanel = panel, forceSolid = panel))
+                    visits.clear()
+                    host.show(menu.copy(forceSolid = panel, fadeOnlyPanel = panel))
                 }
                 advance(1200, renderFrames = true)
                 compose.runOnIdle { host.dismiss() }
                 advance(1200, renderFrames = true)
                 compose.runOnIdle {
-                    println("Menu shell compositions (panel=$panel): $compositions")
-                    assertTrue("The tracer must observe the menu", compositions > 0)
-                    assertTrue("Only setup and interaction changes should recompose the shell (panel=$panel): $compositions", compositions <= 12)
+                    val expected = when {
+                        glass && !panel -> setOf("AnchoredLiquidGlassMenu", "LiquidMenuSurface")
+                        glass -> setOf("AnchoredLiquidGlassMenu", "MenuFallbackSurface")
+                        else -> setOf("AnchoredLiquidGlassMenu", "MenuFallbackSurface", "LiquidGlassSurface")
+                    }
+                    expected.forEach { name ->
+                        val count = visits.getOrDefault(name, 0)
+                        assertTrue("Missing tracer observation for $name (glass=$glass panel=$panel)", count > 0)
+                        assertTrue("$name recomposed during morph (glass=$glass panel=$panel): $count", count <= 12)
+                    }
                     assertNull(host.displayedMenu)
                 }
             }
         } finally {
             Composer.setTracer(null)
         }
+    }
+
+    @Test fun surfaceBlurBoostIsAddedOnceAndSuppressedByReducedTransparency() {
+        val requested = LiquidGlassMenuMorph.blurBoostDp(0.3f) * 2f
+        assertTrue(requested > 0f)
+        for (reduced in listOf(false, true)) {
+            val boost = menuSurfaceBlurBoostPx(reduced, requested)
+            assertEquals(if (reduced) 0f else requested, boost, 0f)
+            for (supported in listOf(false, true)) {
+                val drawnBlur = mutableListOf<Float>()
+                GlassRefractionState().render(supported, 3f + boost, 12f + boost,
+                    resetEffects = {}, blur = { drawnBlur += it }, refract = {}, onFailure = { throw it })
+                assertEquals(listOf((if (supported) 3f else 12f) + boost), drawnBlur)
+            }
+        }
+        assertEquals(0f, menuSurfaceBlurBoostPx(false, -1f), 0f)
+        assertEquals(0f, menuSurfaceBlurBoostPx(false, LiquidGlassMenuMorph.blurBoostDp(1f)), 0f)
     }
 
     @Test fun categoryPanelUsesFadeWhenMotionIsReduced() {
@@ -362,7 +393,7 @@ class MenuAnimationStyleHostTest {
         compose.runOnIdle { assertNull(host.displayedMenu); assertEquals(1, selections) }
     }
 
-    @Test fun reducedMotionHidesTheTriggerUntilTheMenuHasFinishedClosingForEitherStyle() {
+    @Test fun reducedMotionKeepsTheTriggerVisibleForEitherStyle() {
         motion.value = false
         show()
         for (value in MenuAnimationStyle.entries) {
@@ -372,12 +403,12 @@ class MenuAnimationStyleHostTest {
             compose.runOnIdle {
                 assertTrue(host.isActive(menu))
                 assertFalse(host.ownsDrawing(sourceId))
-                assertTrue(host.hidesSource(sourceId))
+                assertFalse(host.hidesSource(sourceId))
             }
-            compose.onNodeWithTag("menuTrigger").assertDoesNotExist()
+            compose.onNodeWithTag("menuTrigger").assertExists()
             compose.runOnIdle { host.dismiss() }
             advance(32)
-            compose.onNodeWithTag("menuTrigger").assertDoesNotExist()
+            compose.onNodeWithTag("menuTrigger").assertExists()
             advance(200)
             compose.runOnIdle {
                 assertNull(host.displayedMenu)

@@ -1,4 +1,7 @@
 package com.huangder.lumibooks.ui.components
+
+import com.huangder.lumibooks.ui.components.AppDialogAction
+import com.huangder.lumibooks.ui.components.AppDialogActionRole
 import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.text.format.Formatter
@@ -50,21 +53,20 @@ fun CloudBookDownloadDialog(
     }
     LiquidGlassAlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.book_download_title, book.title)) },
+        titleText = stringResource(R.string.book_download_title, book.title),
         text = { Text(stringResource(R.string.book_download_confirm, size)) },
-        confirmButton = {
-            LiquidGlassTextButton(
+        actions = listOf(
+            AppDialogAction(
                 text = stringResource(R.string.download_book_file),
-                onClick = onDownload
-            )
-        },
-        dismissButton = {
-            LiquidGlassTextButton(
+                onClick = onDownload,
+                role = AppDialogActionRole.Primary
+            ),
+            AppDialogAction(
                 text = stringResource(R.string.cancel),
-                onClick = onDismiss
+                onClick = onDismiss,
+                role = AppDialogActionRole.Cancel
             )
-        }
-    )
+        ))
 }
 
 @Composable
@@ -76,14 +78,10 @@ fun CloudAwareBookDeleteDialog(
 ) {
     LiquidGlassAlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(
-                if (bookCount == 1) {
-                    stringResource(R.string.delete_book)
-                } else {
-                    stringResource(R.string.delete_selected_books_title)
-                }
-            )
+        titleText = if (bookCount == 1) {
+            stringResource(R.string.delete_book)
+        } else {
+            stringResource(R.string.delete_selected_books_title)
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -99,46 +97,20 @@ fun CloudAwareBookDeleteDialog(
                 )
             }
         },
-        confirmButton = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (hasRemoteBooks) {
-                    LiquidGlassTextButton(
-                        text = stringResource(R.string.delete_local_only),
-                        tintedColor = Color(0xFFD92D3A),
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = { onDelete(BookDeleteMode.LOCAL_ONLY) }
-                    )
-                    LiquidGlassTextButton(
-                        text = stringResource(R.string.delete_local_and_cloud),
-                        tintedColor = Color(0xFFD92D3A),
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = { onDelete(BookDeleteMode.LOCAL_AND_CLOUD) }
-                    )
-                } else {
-                    LiquidGlassTextButton(
-                        text = stringResource(R.string.delete),
-                        tintedColor = Color(0xFFD92D3A),
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = { onDelete(BookDeleteMode.LOCAL_ONLY) }
-                    )
-                }
-                LiquidGlassTextButton(
-                    text = stringResource(R.string.force_delete),
-                    tintedColor = Color(0xFFB42318),
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { onDelete(BookDeleteMode.FORCE_LOCAL_AND_CLOUD) }
-                )
-                LiquidGlassTextButton(
-                    text = stringResource(R.string.cancel),
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = onDismiss
-                )
+        actions = buildList {
+            if (hasRemoteBooks) {
+                add(AppDialogAction(stringResource(R.string.delete_local_only),
+                    { onDelete(BookDeleteMode.LOCAL_ONLY) }, AppDialogActionRole.Destructive))
+                add(AppDialogAction(stringResource(R.string.delete_local_and_cloud),
+                    { onDelete(BookDeleteMode.LOCAL_AND_CLOUD) }, AppDialogActionRole.Destructive))
+            } else {
+                add(AppDialogAction(stringResource(R.string.delete),
+                    { onDelete(BookDeleteMode.LOCAL_ONLY) }, AppDialogActionRole.Destructive))
             }
-        }
-    )
+            add(AppDialogAction(stringResource(R.string.force_delete),
+                { onDelete(BookDeleteMode.FORCE_LOCAL_AND_CLOUD) }, AppDialogActionRole.Destructive))
+            add(AppDialogAction(stringResource(R.string.cancel), onDismiss, AppDialogActionRole.Cancel))
+        })
 }
 
 /** Cover status follows the progress preference; cloud affordances remain visible in both modes. */

@@ -1,5 +1,8 @@
 package com.huangder.lumibooks.ui.reader
 
+import com.huangder.lumibooks.ui.components.AppDialogAction
+import com.huangder.lumibooks.ui.components.AppDialogActionRole
+
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material3.CircularProgressIndicator
@@ -23,7 +26,7 @@ internal fun EpubComicSwitchDialog(viewModel: ReaderViewModel, backdrop: Backdro
     LiquidGlassAlertDialog(
         onDismissRequest = viewModel::cancelEpubComicSwitch,
         backdrop = backdrop,
-        title = { Text(stringResource(R.string.epub_comic_switch), color = AppColors.TextPrimary) },
+        titleText = stringResource(R.string.epub_comic_switch),
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 if (state.epubComicPreparing) CircularProgressIndicator(color = AppColors.Accent)
@@ -32,18 +35,14 @@ internal fun EpubComicSwitchDialog(viewModel: ReaderViewModel, backdrop: Backdro
                     color = AppColors.TextSecondary, lineHeight = 22.sp)
             }
         },
-        confirmButton = {
-            if (state.epubComicConfirmation) LiquidGlassTextButton(
-                text = stringResource(R.string.epub_comic_continue),
-                onClick = viewModel::confirmEpubComicSwitch,
-                tintedColor = AppColors.Accent
-            )
-        },
-        dismissButton = {
-            LiquidGlassTextButton(
-                text = stringResource(if (state.epubComicError != null) android.R.string.ok else android.R.string.cancel),
-                onClick = viewModel::cancelEpubComicSwitch
-            )
-        }
-    )
+        actions = buildList {
+            if (state.epubComicConfirmation) add(AppDialogAction(
+                stringResource(R.string.epub_comic_continue), viewModel::confirmEpubComicSwitch
+            ))
+            add(AppDialogAction(
+                stringResource(if (state.epubComicError != null) android.R.string.ok else android.R.string.cancel),
+                viewModel::cancelEpubComicSwitch,
+                if (state.epubComicError != null) AppDialogActionRole.Primary else AppDialogActionRole.Cancel
+            ))
+        })
 }

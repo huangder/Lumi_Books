@@ -6,9 +6,10 @@ data class LibraryTag(
     val id: String,
     val name: String,
     val createdAt: Long,
-    /** null = 一级标签；非 null = 归属该 id 一级标签下的二级标签 */
+    /** Retained for compatibility with older backups. New labels are flat. */
     val parentId: String? = null,
-    val updatedAt: Long = createdAt
+    val updatedAt: Long = createdAt,
+    val groupId: String? = null
 )
 
 data class BookTagLink(

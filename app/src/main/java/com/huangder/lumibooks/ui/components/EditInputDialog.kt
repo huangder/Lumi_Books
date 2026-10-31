@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -28,11 +30,14 @@ import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.AppShapes
+import com.huangder.lumibooks.ui.theme.AppPresentation
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
@@ -88,7 +93,8 @@ fun EditInputDialog(
     title: String,
     fields: List<Triple<String, String, String>>,  // (label, placeholder, initialValue)
     onBack: () -> Unit,
-    onConfirm: (List<String>) -> Unit
+    onConfirm: (List<String>) -> Unit,
+    supportingContent: (@Composable ColumnScope.() -> Unit)? = null
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     // 每个字段的编辑状态
@@ -99,7 +105,7 @@ fun EditInputDialog(
     val density = LocalDensity.current
     val g2Shape = if (LocalAppTheme.current == "material3") {
         remember(density) { LegacyEditDialogShape(with(density) { 36.dp.toPx() }) }
-    } else AppRoundedCornerShape(36.dp)
+    } else AppRoundedCornerShape(AppPresentation.DialogCorner)
 
     Column(
         modifier = Modifier
@@ -108,42 +114,8 @@ fun EditInputDialog(
             .background(if (isLiquidGlass) androidx.compose.ui.graphics.Color.Transparent else AppColors.CardBg)
             .padding(horizontal = AppSpace.lg, vertical = 22.dp)
     ) {
-        // ── 顶栏：返回 ← | 标题 | 确认 ✓ ──
-        Box(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            // 返回箭头（左）
-            LiquidGlassIconButton(
-                imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
-                contentDescription = stringResource(R.string.back),
-                onClick = onBack,
-                modifier = Modifier.align(Alignment.CenterStart),
-                size = 40.dp,
-                iconSize = 22.dp
-            )
-
-            // 标题（中）
-            Text(
-                text = title,
-                fontSize = AppType.Section,
-                fontWeight = FontWeight.Bold,
-                fontFamily = resolveAppFontFamily(KaiTi),
-                color = AppColors.TextPrimary,
-                modifier = Modifier.align(Alignment.Center)
-            )
-
-            // 确认按钮（右）—— 黑色圆形 + 白色对勾
-            LiquidGlassIconButton(
-                imageVector = AppIcons.Check,
-                contentDescription = stringResource(R.string.confirm),
-                onClick = { onConfirm(values.map { it.value }) },
-                modifier = Modifier.align(Alignment.CenterEnd),
-                size = 40.dp,
-                iconSize = 22.dp,
-                contentColor = if (isLiquidGlass) AppColors.TextPrimary else AppColors.CardBg,
-                normalContainerColor = AppColors.TextPrimary
-            )
-        }
+        AppSheetHeader(title = title, onClose = onBack,
+            onConfirm = { onConfirm(values.map { it.value }) })
 
         Spacer(Modifier.height(18.dp))
 
@@ -159,7 +131,8 @@ fun EditInputDialog(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(AppRoundedCornerShape(AppRadius.lg))
+                    .clip(AppRoundedCornerShape(if (LocalAppTheme.current == "material3") AppRadius.lg
+                        else AppShapes.concentricRadius(AppPresentation.DialogCorner, AppSpace.lg)))
                     .background(AppColors.BgGray)
                     .padding(horizontal = AppSpace.md, vertical = 14.dp)
             ) {
@@ -196,6 +169,9 @@ fun EditInputDialog(
             }
         }
 
+        if (supportingContent != null) {
+            supportingContent()
+        }
         Spacer(Modifier.height(4.dp))
     }
 }

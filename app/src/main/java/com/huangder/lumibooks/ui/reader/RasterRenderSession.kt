@@ -193,10 +193,11 @@ internal class RasterRenderSession(
                 }
                 neighbors.forEach { page ->
                     launch {
-                        val size = geometry(page, priority = 3, background = true) ?: return@launch
-                        if (decoder.tileSource(page, size) == null) {
-                            render(page, viewport.width, PageRenderMode.NORMAL, false, 3, background = true)
-                        }
+                        // Offscreen comic pages have no SSIV instance yet. Prepare a readable
+                        // bitmap while idle so dragging into a spread never waits for two tile
+                        // decoders to open. Viewport changes cancel this speculative request.
+                        motion.first { !it }
+                        render(page, viewport.width, PageRenderMode.NORMAL, false, 3, background = true)
                     }
                 }
             }

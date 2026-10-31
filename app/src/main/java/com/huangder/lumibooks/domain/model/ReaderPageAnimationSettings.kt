@@ -4,12 +4,14 @@ data class ReaderPageAnimationSettings(
     val slideDurationMs: Int = SLIDE_DEFAULT_MS,
     val scrollDurationMs: Int = SCROLL_DEFAULT_MS,
     val fadeDurationMs: Int = FADE_DEFAULT_MS,
-    val curlDurationMs: Int = CURL_DEFAULT_MS
+    val curlDurationMs: Int = CURL_DEFAULT_MS,
+    val waveDurationMs: Int = WAVE_DEFAULT_MS
 ) {
     fun durationFor(mode: String): Int = when (mode) {
         MODE_SCROLL -> scrollDurationMs
         MODE_FADE -> fadeDurationMs
         MODE_CURL -> curlDurationMs
+        MODE_WAVE -> waveDurationMs
         else -> slideDurationMs
     }
 
@@ -17,6 +19,7 @@ data class ReaderPageAnimationSettings(
         MODE_SCROLL -> copy(scrollDurationMs = sanitizeDuration(mode, durationMs))
         MODE_FADE -> copy(fadeDurationMs = sanitizeDuration(mode, durationMs))
         MODE_CURL -> copy(curlDurationMs = sanitizeDuration(mode, durationMs))
+        MODE_WAVE -> copy(waveDurationMs = sanitizeDuration(mode, durationMs))
         else -> copy(slideDurationMs = sanitizeDuration(MODE_SLIDE, durationMs))
     }
 
@@ -25,11 +28,13 @@ data class ReaderPageAnimationSettings(
         const val MODE_SCROLL = "scroll"
         const val MODE_FADE = "fade"
         const val MODE_CURL = "curl"
+        const val MODE_WAVE = "wave"
 
         const val SLIDE_DEFAULT_MS = 260
         const val SCROLL_DEFAULT_MS = 260
         const val FADE_DEFAULT_MS = 400
         const val CURL_DEFAULT_MS = 800
+        const val WAVE_DEFAULT_MS = 400
 
         fun rangeFor(mode: String): IntRange = when (mode) {
             MODE_CURL -> 300..1200
@@ -41,6 +46,7 @@ data class ReaderPageAnimationSettings(
         fun defaultFor(mode: String): Int = when (mode) {
             MODE_FADE -> FADE_DEFAULT_MS
             MODE_CURL -> CURL_DEFAULT_MS
+            MODE_WAVE -> WAVE_DEFAULT_MS
             else -> SLIDE_DEFAULT_MS
         }
 

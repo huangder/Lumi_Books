@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
 interface TagRepository {
     fun getAllTags(): Flow<List<LibraryTag>>
     fun getAllBookTagLinks(): Flow<List<BookTagLink>>
-    /** parentId=null 创建一级标签；同名标签归属不同父级时返回 null（名字全局唯一） */
+    /** Labels are flat; parentId is accepted for source compatibility with older callers. */
     suspend fun createAndAssignTag(bookId: String, rawName: String, parentId: String? = null): LibraryTag?
     suspend fun assignTag(bookId: String, tagId: String)
     suspend fun removeTagFromBook(bookId: String, tagId: String)

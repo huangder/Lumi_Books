@@ -136,7 +136,7 @@
 
 ## 📜 ライセンス
 
-Lumi のオリジナルコードは [GNU GPLv3](LICENSE) の下でオープンソース公開されています。サードパーティ依存ライブラリと改変コードはそれぞれのライセンスに従います。カールページめくりは GPLv3 の [legado-E](https://github.com/Luoyacheng/legado-E) を改変し、Liquid Glass の実装は Apache 2.0 ライセンスの [AndroidLiquidGlass / Backdrop](https://github.com/Kyant0/AndroidLiquidGlass) を改変して使用しています。© 2026 Huangder
+Lumi のオリジナルコードは [GNU GPLv3](LICENSE) の下でオープンソース公開されています。サードパーティ依存ライブラリと改変コードはそれぞれのライセンスに従います。カールページめくりと内蔵 TXT 目次プリセットは独立実装です。Liquid Glass の実装は Apache 2.0 ライセンスの [AndroidLiquidGlass / Backdrop](https://github.com/Kyant0/AndroidLiquidGlass) を改変して使用しています。© 2026 Huangder
 
 ---
 

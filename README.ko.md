@@ -136,7 +136,7 @@
 
 ## 📜 라이선스
 
-Lumi의 오리지널 코드는 [GNU GPLv3](LICENSE)에 따라 오픈소스로 공개됩니다. 서드파티 종속성 및 개작 코드는 각각의 라이선스를 따릅니다. 컬 페이지 넘김은 GPLv3 프로젝트 [legado-E](https://github.com/Luoyacheng/legado-E)를 개작했으며, Liquid Glass 구현은 Apache 2.0 라이선스의 [AndroidLiquidGlass / Backdrop](https://github.com/Kyant0/AndroidLiquidGlass)을 개작하여 사용합니다. © 2026 Huangder
+Lumi의 오리지널 코드는 [GNU GPLv3](LICENSE)에 따라 오픈소스로 공개됩니다. 서드파티 종속성 및 개작 코드는 각각의 라이선스를 따릅니다. 페이지 컬 렌더러와 내장 TXT 목차 프리셋은 독립적으로 구현되었으며, Liquid Glass 구현은 Apache 2.0 라이선스의 [AndroidLiquidGlass / Backdrop](https://github.com/Kyant0/AndroidLiquidGlass)을 개작하여 사용합니다. © 2026 Huangder
 
 ---
 

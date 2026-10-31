@@ -24,6 +24,9 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -97,7 +100,11 @@ internal fun CollapsingSettingsScaffold(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     actions: (@Composable RowScope.() -> Unit)? = null,
-    content: @Composable () -> Unit
+    lazyListState: LazyListState? = null,
+    lazyContent: (LazyListScope.() -> Unit)? = null,
+    alignToolbarToContent: Boolean = false,
+    showBackButton: Boolean = true,
+    content: @Composable () -> Unit = {}
 ) {
     val capability = LocalLiquidGlassCapability.current
     val eInkMode = LocalEInkMode.current
@@ -122,10 +129,13 @@ internal fun CollapsingSettingsScaffold(
     val toolbarBottomPx = with(LocalDensity.current) { toolbarTotalHeight.toPx() }
 
     // 单一进度源：模糊强度与大小标题过渡都读它，二者不会失步。
-    val collapseProgress = remember(scrollState, toolbarBottomPx) {
+    val collapseProgress = remember(scrollState, lazyListState, toolbarBottomPx) {
         derivedStateOf {
+            val scrollOffset = lazyListState?.let {
+                if (it.firstVisibleItemIndex == 0) it.firstVisibleItemScrollOffset.toFloat() else largeTitleHeight
+            } ?: scrollState.value.toFloat()
             detailTitleCollapseFraction(
-                titleTop = toolbarBottomPx - scrollState.value,
+                titleTop = toolbarBottomPx - scrollOffset,
                 titleHeight = largeTitleHeight,
                 viewportTop = toolbarBottomPx
             )
@@ -138,15 +148,9 @@ internal fun CollapsingSettingsScaffold(
                 .fillMaxSize()
                 .then(if (blurEnabled) Modifier.layerBackdrop(topBlurBackdrop) else Modifier)
         ) {
-            Column(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .widthIn(max = 840.dp)
-                    .fillMaxWidth()
-                    .fillMaxHeight()
-                    .imePadding()
-                    .verticalScroll(scrollState)
-            ) {
+            val contentModifier = Modifier.align(Alignment.TopCenter).widthIn(max = 840.dp)
+                .fillMaxWidth().fillMaxHeight().imePadding()
+            val heading: @Composable () -> Unit = {
                 Spacer(Modifier.height(toolbarTotalHeight))
                 Text(
                     text = title,
@@ -167,8 +171,19 @@ internal fun CollapsingSettingsScaffold(
                     fontFamily = resolveAppFontFamily(fangSongFamily()),
                     color = AppColors.TextPrimary
                 )
-                content()
-                Spacer(Modifier.height(120.dp))
+            }
+            if (lazyListState != null && lazyContent != null) {
+                LazyColumn(modifier = contentModifier, state = lazyListState) {
+                    item(key = "settings-heading", contentType = "heading") { Column { heading() } }
+                    lazyContent()
+                    item(key = "settings-footer", contentType = "footer") { Spacer(Modifier.height(120.dp)) }
+                }
+            } else {
+                Column(contentModifier.verticalScroll(scrollState)) {
+                    heading()
+                    content()
+                    Spacer(Modifier.height(120.dp))
+                }
             }
         }
 
@@ -195,18 +210,19 @@ internal fun CollapsingSettingsScaffold(
         Row(
             modifier = Modifier
                 .align(Alignment.TopCenter)
+                .then(if (alignToolbarToContent) Modifier.widthIn(max = 840.dp) else Modifier)
                 .fillMaxWidth()
                 .statusBarsPadding()
                 .height(SettingsToolbarHeight)
-                .padding(horizontal = AppSpace.sm),
+                .padding(horizontal = if (alignToolbarToContent) AppSpace.lg else AppSpace.sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            LiquidGlassIconButton(
+            if (showBackButton) LiquidGlassIconButton(
                 imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
                 contentDescription = stringResource(R.string.back),
                 onClick = onBack,
-                settingsBackButton = true
-            )
+                settingsBackButton = !alignToolbarToContent
+            ) else Spacer(Modifier.size(48.dp))
             Box(
                 modifier = Modifier
                     .weight(1f)

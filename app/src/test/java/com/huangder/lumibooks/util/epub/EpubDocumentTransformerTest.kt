@@ -10,6 +10,37 @@ import org.junit.Test
 
 class EpubDocumentTransformerTest {
     @Test
+    fun injectedScriptAndStylesRemainValidInBothXhtmlAndHtml() {
+        val source = """<html xmlns="http://www.w3.org/1999/xhtml"><head/><body><p>A &amp; B</p></body></html>"""
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("chapter.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE
+        )
+        // A tolerant Jsoup round trip misses the fatal XML errors seen by WebView.
+        val factory = javax.xml.parsers.DocumentBuilderFactory.newInstance().apply {
+            isNamespaceAware = true
+            setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+        }
+        val xml = factory.newDocumentBuilder().parse(output.inputStream())
+        val xmlScript = xml.getElementsByTagName("script").item(0).textContent
+        val html = Jsoup.parse(output.toString(Charsets.UTF_8), "", Parser.htmlParser())
+        val htmlScript = html.selectFirst("#lumi-reader-script")!!.data()
+        assertTrue(xmlScript.contains("window.LumiReader"))
+        assertEquals(
+            xmlScript.trim().removePrefix("//").removeSuffix("//").trim(),
+            htmlScript.removePrefix("//<![CDATA[").trim().removeSuffix("//]]>").trim()
+        )
+        assertFalse(xmlScript.contains("&lt;"))
+        assertFalse(xmlScript.contains("&amp;"))
+        val xmlStyle = xml.getElementsByTagName("style").item(0).textContent
+        val htmlStyle = html.selectFirst("#lumi-reader-style")!!.data()
+        assertEquals(
+            xmlStyle.trim().removePrefix("/**/").removeSuffix("/**/").trim(),
+            htmlStyle.removePrefix("/*<![CDATA[*/").trim().removeSuffix("/*]]>*/").trim()
+        )
+    }
+
+    @Test
     fun svgTextPageIsNotTreatedAsSingleImage() {
         val resource = EpubResource("OPS/page.xhtml", "application/xhtml+xml",
             "<html><body><svg viewBox='0 0 100 100'><image href='cover.jpg'/><text>Title</text></svg></body></html>".toByteArray())
@@ -21,6 +52,28 @@ class EpubDocumentTransformerTest {
         val resource = EpubResource("OPS/cover.xhtml", "application/xhtml+xml",
             "<html><body><svg viewBox='0 0 100 100'><text>Title</text></svg></body></html>".toByteArray())
         assertTrue(EpubDocumentTransformer.isMediaOnlyPage(resource))
+    }
+
+    @Test
+    fun paginatedReaderMarksFloatedIllustrationsForBlockLayout() {
+        val source = """
+            <html><body>
+              <div class="DKimg-right"><img src="art.jpg" width="100%"/></div>
+              <p>Following paragraph</p>
+            </body></html>
+        """.trimIndent()
+        val css = EpubCssIndex.parse(listOf("OPS/Styles/book.css" to ".DKimg-right { float: right; width: 40%; }"))
+        val output = EpubDocumentTransformer.transform(
+            EpubResource("OPS/Text/chapter.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE,
+            isCoverCandidate = false,
+            cssIndex = css
+        ).toString(Charsets.UTF_8)
+        val document = Jsoup.parse(output, "", Parser.xmlParser())
+
+        assertEquals("true", document.selectFirst(".DKimg-right")!!.attr("data-lumi-floated-media"))
+        assertTrue(output.contains("float: none !important"))
+        assertTrue(output.contains("width: 100% !important"))
     }
 
     @Test

@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
+import android.provider.DocumentsContract
 import android.util.Log
 import com.huangder.lumibooks.util.cache.MirrorLifetime
 import com.huangder.lumibooks.util.cache.ReaderMirrorLease
@@ -66,8 +67,7 @@ object BookFileAccess {
         val temporaryFile = File.createTempFile("document_", suffix, cacheDirectory)
 
         try {
-            val input = context.contentResolver.openInputStream(uri)
-                ?: error("Unable to open book document")
+            val input = openInputStream(context, location)
             input.use { source ->
                 temporaryFile.outputStream().buffered().use { target ->
                     source.copyTo(target)
@@ -97,7 +97,9 @@ object BookFileAccess {
 
     fun openDescriptor(context: Context, location: String, writable: Boolean = false): ParcelFileDescriptor {
         return if (isContentUri(location)) {
-            context.contentResolver.openFileDescriptor(Uri.parse(location), if (writable) "rw" else "r")
+            withDocumentAccess(context, Uri.parse(location), writable) { uri ->
+                context.contentResolver.openFileDescriptor(uri, if (writable) "rw" else "r")
+            }
                 ?: error("Unable to open book document")
         } else {
             ParcelFileDescriptor.open(
@@ -111,8 +113,10 @@ object BookFileAccess {
         if (!isContentUri(location)) return File(location).takeIf { it.exists() }?.length() ?: 0L
         val uri = Uri.parse(location)
         val queriedSize = runCatching {
-            context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else null
+            withDocumentAccess(context, uri) { readable ->
+                context.contentResolver.query(readable, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else null
+                }
             }
         }.getOrNull()
         if (queriedSize != null) return queriedSize.coerceAtLeast(0L)
@@ -127,9 +131,45 @@ object BookFileAccess {
 
     fun openInputStream(context: Context, location: String): InputStream {
         if (!isContentUri(location)) return File(location).inputStream().buffered()
-        return context.contentResolver.openInputStream(Uri.parse(location))
+        return withDocumentAccess(context, Uri.parse(location)) { uri ->
+            context.contentResolver.openInputStream(uri)
+        }
             ?.buffered()
             ?: error("Unable to open book document")
+    }
+
+    /** Older imports may have stored a plain document URI after a provider move/rename.
+     * Reuse an existing tree grant; the provider still checks that the document is a child.
+     * Never invent a filesystem path or request new permissions while opening a book.
+     */
+    internal fun <T> withDocumentAccess(
+        context: Context,
+        uri: Uri,
+        writable: Boolean = false,
+        operation: (Uri) -> T
+    ): T {
+        try {
+            return operation(uri)
+        } catch (denied: SecurityException) {
+            val documentId = runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+                ?: throw denied
+            val grants = context.contentResolver.persistedUriPermissions
+            for (grant in grants) {
+                if (!grant.isReadPermission || (writable && !grant.isWritePermission) ||
+                    grant.uri.authority != uri.authority || !DocumentsContract.isTreeUri(grant.uri)
+                ) continue
+                val candidate = DocumentsContract.buildDocumentUriUsingTree(grant.uri, documentId)
+                if (candidate == uri) continue
+                try {
+                    return operation(candidate)
+                } catch (_: SecurityException) {
+                    // Another granted tree may contain this document.
+                } catch (_: java.io.FileNotFoundException) {
+                    // Some providers report an unrelated tree as a missing document.
+                }
+            }
+            throw denied
+        }
     }
 
     fun displayName(context: Context, location: String): String? {
@@ -139,10 +179,12 @@ object BookFileAccess {
 
     private fun queryDisplayName(context: Context, uri: Uri): String? {
         return runCatching {
-            context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-                ?.use { cursor ->
-                    if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getString(0) else null
-                }
+            withDocumentAccess(context, uri) { readable ->
+                context.contentResolver.query(readable, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                    ?.use { cursor ->
+                        if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getString(0) else null
+                    }
+            }
         }.getOrNull()
     }
 }
@@ -160,8 +202,10 @@ class SeekableBookSource internal constructor(
         val uri = writeBackUri ?: error("This seekable source has no source document")
         val sourceFile = temporaryFile ?: error("This seekable source is not backed by a cache file")
 
-        val output = runCatching { context.contentResolver.openOutputStream(uri, "rwt") }.getOrNull()
-            ?: context.contentResolver.openOutputStream(uri, "wt")
+        val output = BookFileAccess.withDocumentAccess(context, uri, writable = true) { writableUri ->
+            runCatching { context.contentResolver.openOutputStream(writableUri, "rwt") }.getOrNull()
+                ?: context.contentResolver.openOutputStream(writableUri, "wt")
+        }
             ?: error("Unable to write book document")
         FileInputStream(sourceFile).buffered().use { input ->
             output.buffered().use { target -> input.copyTo(target) }

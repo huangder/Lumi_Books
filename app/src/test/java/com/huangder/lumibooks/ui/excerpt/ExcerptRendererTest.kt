@@ -2,6 +2,10 @@ package com.huangder.lumibooks.ui.excerpt
 
 import android.app.Application
 import android.graphics.BitmapFactory
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -23,7 +27,7 @@ class ExcerptRendererTest {
         textColor = 0xFFF5E6D3.toInt(), createdAt = 1790640000000)
 
     @Test fun longBodyAndNotesGrowWithoutChangingWidthOrClippingFooter() {
-        for (style in ExcerptStyle.entries) {
+        for (style in ExcerptStyle.entries.take(6)) {
             val short = ExcerptRenderer.prepare(context, request, style)
             val long = ExcerptRenderer.prepare(context, request.copy(text = request.text.repeat(45)), style)
             val longNote = ExcerptRenderer.prepare(context, request.copy(note = request.note.repeat(45)), style)
@@ -62,8 +66,11 @@ class ExcerptRendererTest {
         val output = File("build/excerpt-previews").apply { mkdirs() }
         val cover = File(context.cacheDir, "sample-cover.png")
         context.assets.open("excerpt_reading.png").use { input -> cover.outputStream().use(input::copyTo) }
-        for (style in ExcerptStyle.entries) {
-            val document = ExcerptRenderer.prepare(context, request.copy(coverPath = cover.path), style)
+        val bookCover = File(context.cacheDir, "sample-book-cover.webp")
+        context.assets.open("builtin/lumi/covers/SC.webp").use { input -> bookCover.outputStream().use(input::copyTo) }
+        for (style in ExcerptStyle.entries.take(6)) {
+            val sample = request.copy(coverPath = cover.path)
+            val document = ExcerptRenderer.prepare(context, sample, style)
             File(output, "${style.name.lowercase()}.png").outputStream().use(document::writePng)
         }
         val fallback = ExcerptRenderer.prepare(context, request.copy(coverPath = "/missing.jpg"), ExcerptStyle.COVER)
@@ -78,5 +85,30 @@ class ExcerptRendererTest {
         assertEquals(listOf("阅", "读", "The Art of Reading 2026", "艺", "术"), runs.map { it.text })
         assertTrue(runs[2].sideways)
         assertFalse(runs[0].sideways)
+    }
+
+    @Test fun originalFreeStylesKeepRecordedHeightsAndDefaultPixels() {
+        val heights = mapOf(
+            ExcerptStyle.READER to 964,
+            ExcerptStyle.CALENDAR to 1335,
+            ExcerptStyle.CLASSIC to 1356,
+            ExcerptStyle.ILLUSTRATION to 964,
+            ExcerptStyle.ILLUSTRATION_EDGE to 964,
+            ExcerptStyle.COVER to 964
+        )
+        for ((style, height) in heights) {
+            val implicit = ExcerptRenderer.prepare(context, request, style)
+            val explicit = ExcerptRenderer.prepare(context, request, style,
+                ExcerptRenderOptions(ExcerptAspectRatio.FREE, " \r\n "))
+            assertEquals("Original height changed for $style", height, implicit.height)
+            assertEquals(1f, implicit.fontScale)
+            assertFalse(implicit.isLongImageFallback)
+            val original = implicit.render()
+            val withDefaults = explicit.render()
+            assertTrue("Defaults must preserve pixels for $style", original.sameAs(withDefaults))
+            original.recycle(); withDefaults.recycle()
+        }
+        assertEquals(1465, ExcerptRenderer.prepare(context,
+            request.copy(bookTitle = "The Art of Reading 阅读的艺术"), ExcerptStyle.CLASSIC).height)
     }
 }

@@ -20,6 +20,9 @@ object HighlightRuleMatcher {
                 HighlightRule.UNDERLINE_DASHED
             )
         ) return "暂不支持该下划线类型"
+        if (rule.highlightMode !in setOf(HighlightRule.HIGHLIGHT_FILLED, HighlightRule.HIGHLIGHT_OUTLINE, HighlightRule.HIGHLIGHT_NONE)) {
+            return "暂不支持该高亮样式"
+        }
         return try {
             Pattern.compile(rule.pattern)
             null
@@ -58,7 +61,9 @@ object HighlightRuleMatcher {
                                 rule.underlineWidth,
                                 rule.fontWeight,
                                 rule.isItalic,
-                                rule.fontType
+                                rule.fontType,
+                                rule.highlightMode,
+                                rule.highlightColor
                             ),
                             position = rule.position
                         )

@@ -23,6 +23,7 @@ import com.huangder.lumibooks.data.remote.RemoteSource
 import com.huangder.lumibooks.data.remote.RemoteSourceType
 import com.huangder.lumibooks.data.remote.WebdavLibraryClient
 import com.huangder.lumibooks.domain.repository.FolderRepository
+import com.huangder.lumibooks.util.UpdateChecker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.UUID
 import javax.inject.Inject
@@ -66,7 +67,9 @@ data class RemoteLibraryUiState(
     val sortMode: RemoteSortMode = RemoteSortMode.DEFAULT,
     val sortAscending: Boolean = true,
     /** Direction of the last level change, for the folder-books style level transition. */
-    val navigatedForward: Boolean = true
+    val navigatedForward: Boolean = true,
+    /** WebDAV and OPDS libraries together, for the free-version limit. */
+    val totalSourceCount: Int = 0
 )
 
 @HiltViewModel
@@ -95,6 +98,7 @@ class RemoteLibraryViewModel @Inject constructor(
         val active = state.activeSource?.let { current -> sources.firstOrNull { it.id == current.id } }
         state.copy(
             sources = sources,
+            totalSourceCount = stored.sources.size,
             activeSource = active,
             levels = if (active == null) emptyList() else state.levels,
             importedKeys = active?.let { source ->
@@ -316,6 +320,12 @@ class RemoteLibraryViewModel @Inject constructor(
             createdAt = existing?.createdAt ?: System.currentTimeMillis()
         )
         val effectivePassword = password.ifEmpty { existing?.let { store.password(it.id) }.orEmpty() }
+        if (type == RemoteSourceType.OPDS) {
+            val config = UpdateChecker.fetchUpdateConfig()
+            if (config != null && UpdateChecker.isOpdsUrlBlocked(trimmedUrl, config.blockedOpdsUrls)) {
+                return RemoteErrorKind.REPORTED_BLOCKED
+            }
+        }
         val error = try {
             when (type) {
                 RemoteSourceType.OPDS -> opdsClient.loadPage(source, effectivePassword)

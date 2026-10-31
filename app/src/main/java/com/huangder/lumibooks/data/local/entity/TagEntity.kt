@@ -15,5 +15,6 @@ data class TagEntity(
     val normalizedName: String,
     val createdAt: Long,
     val parentId: String? = null,
-    val updatedAt: Long = createdAt
+    val updatedAt: Long = createdAt,
+    val groupId: String? = null
 )

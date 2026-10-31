@@ -270,7 +270,7 @@ private fun SponsorPage(
         // 感谢列表
         CreditSection(
             title = stringResource(R.string.sponsor_thanks_title),
-            names = listOf("雋乂、匿名、匿名、匿名、Jun.、BennyBlack、百年老字号、匿名、匿名、白飘飘、唱罢阴山敕勒歌、七七七、Y3uoO、祈、宇宙无敌哥儿赞、马果、匿名、马果、知我、匿名、&_赵、匿名、匿名、蟑螂恶霸、路上行人、大灰狼、与瓦无瓜、Micah、小张、超级小步、选择春虫走向成功、盘旋在古城上的白色乌鸦、我滴龟龟哟")
+            names = listOf("雋乂、匿名、匿名、匿名、Jun.、BennyBlack、百年老字号、匿名、匿名、白飘飘、唱罢阴山敕勒歌、七七七、Y3uoO、祈、宇宙无敌哥儿赞、马果、匿名、马果、知我、匿名、&_赵、匿名、匿名、蟑螂恶霸、路上行人、大灰狼、与瓦无瓜、Micah、小张、超级小步、选择春虫走向成功、盘旋在古城上的白色乌鸦、我滴龟龟哟、潔籁、清水肉肉、小耳朵左耳、匿名、littlebing、清水肉肉、Jiang、Towards the sun.")
         )
 
         Spacer(Modifier.height(AppSpace.md))

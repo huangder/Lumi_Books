@@ -106,7 +106,7 @@ class HighlightRuleMaterializer @Inject constructor(
                 endLocatorJson = locators.second,
                 selectedText = match.text,
                 note = "",
-                color = match.style.textColor?.let { String.format("#%08X", it) } ?: "#FFF2C94C",
+                color = match.style.highlightColor?.let { String.format("#%08X", it) } ?: "#FFF2C94C",
                 createdAt = now,
                 type = if (match.style.underlineMode == HighlightRule.UNDERLINE_NONE) "highlight" else "underline",
                 syncId = deterministicSyncId(bookId, match.ruleId, match.matchKey),
