@@ -1,5 +1,31 @@
 # Public and official builds
 
+## Integrate before building
+
+The public checkout and `app/src/premium` are two separate Git repositories.
+Committing in one does not commit the other. A Git worktree is another checkout,
+not a shared working directory: edits in another worktree are not build inputs.
+The Gradle tasks use only the selected checkout and its nested Premium checkout.
+
+Use one designated integration checkout for device builds. Each feature task
+must report its public and Premium paths, branches and commits, then integrate
+both sides there. Review overlapping changes instead of copying whole folders.
+Before installation, list relevant worktrees and confirm every requested feature
+is present in the integration checkout, including untracked source and resources.
+Do not treat an unchanged Premium `main`, a successful build or an identical
+version name as proof that all feature work has been integrated.
+
+Keep the public branch based on the independently buildable public history.
+Never merge pre-split Premium history into it. Keep private implementations,
+credentials and activation distributions out of the public index. Record the
+compatible public commit in the private repository and retain a local build
+record with both commit IDs, edition, APK path and verification results.
+
+Shared changes require official and OSS compilation checks. Install only the
+new official debug APK for ordinary device validation; OSS validation output
+must not replace it. A local commit is a saved version; pushing, merging a PR
+and publishing an APK are separate actions that require user authorization.
+
 The public checkout builds the base edition with the existing Gradle tasks:
 
 ```powershell
