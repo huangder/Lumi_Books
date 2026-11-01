@@ -28,7 +28,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
@@ -40,35 +39,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.R
+import com.huangder.lumibooks.ui.components.CollapsingPageLargeTitle
+import com.huangder.lumibooks.ui.components.CollapsingPageSmallTitle
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.PROGRESSIVE_BLUR_TINT_ALPHA
 import com.huangder.lumibooks.ui.components.PROGRESSIVE_BLUR_TINT_ALPHA_DARK
 import com.huangder.lumibooks.ui.components.ProgressiveTopBlur
-import com.huangder.lumibooks.ui.components.largeTitleAlpha
-import com.huangder.lumibooks.ui.components.largeTitleScale
 import com.huangder.lumibooks.ui.components.progressiveBlurEnabled
 import com.huangder.lumibooks.ui.components.progressiveTopScrimEnabled
 import com.huangder.lumibooks.ui.components.quantizeBlurStrength
-import com.huangder.lumibooks.ui.components.smallTitleAlpha
-import com.huangder.lumibooks.ui.components.smallTitleScale
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppSpace
-import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassCapability
-import com.huangder.lumibooks.ui.theme.fangSongFamily
-import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.Backdrop
@@ -152,24 +143,12 @@ internal fun CollapsingSettingsScaffold(
                 .fillMaxWidth().fillMaxHeight().imePadding()
             val heading: @Composable () -> Unit = {
                 Spacer(Modifier.height(toolbarTotalHeight))
-                Text(
-                    text = title,
+                CollapsingPageLargeTitle(
+                    title = title,
+                    progress = { collapseProgress.value },
                     modifier = Modifier
                         .padding(horizontal = AppSpace.lg, vertical = AppSpace.sm)
                         .onSizeChanged { size -> largeTitleHeight = size.height.toFloat() }
-                        .graphicsLayer {
-                            // 读取放在绘制阶段，滚动时只失效图层，不触发重组。
-                            val progress = collapseProgress.value
-                            val scale = largeTitleScale(progress)
-                            scaleX = scale
-                            scaleY = scale
-                            alpha = largeTitleAlpha(progress)
-                            transformOrigin = TransformOrigin(0f, 0.5f)
-                        },
-                    fontSize = AppType.Display,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = resolveAppFontFamily(fangSongFamily()),
-                    color = AppColors.TextPrimary
                 )
             }
             if (lazyListState != null && lazyContent != null) {
@@ -229,27 +208,12 @@ internal fun CollapsingSettingsScaffold(
                     .padding(horizontal = AppSpace.sm),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = title,
-                    fontSize = AppType.Section,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = resolveAppFontFamily(fangSongFamily()),
-                    color = AppColors.TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.graphicsLayer {
-                        val progress = collapseProgress.value
-                        val scale = smallTitleScale(progress)
-                        scaleX = scale
-                        scaleY = scale
-                        alpha = smallTitleAlpha(progress)
-                    }
-                )
+                CollapsingPageSmallTitle(title = title, progress = { collapseProgress.value })
             }
             if (actions != null) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.End,
+                    horizontalArrangement = Arrangement.spacedBy(AppSpace.sm, Alignment.End),
                     content = actions
                 )
             } else {

@@ -1,5 +1,10 @@
 package com.huangder.lumibooks.ui.privacy
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import com.huangder.lumibooks.ui.components.LocalCollapsingPageTopInset
+import com.huangder.lumibooks.ui.components.CollapsingPageScaffold
+
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -19,12 +24,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,16 +35,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.zIndex
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.BookshelfLayout
@@ -101,7 +100,6 @@ fun HiddenLibraryScreen(
     var editingBook by remember { mutableStateOf<Book?>(null) }
     var coverSourceBook by remember { mutableStateOf<Book?>(null) }
     var coverTargetBook by remember { mutableStateOf<Book?>(null) }
-    var headerHeightPx by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(books) {
         val ids = books.mapTo(HashSet()) { it.id }
@@ -152,79 +150,90 @@ fun HiddenLibraryScreen(
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current
     val blurAllowed = !LocalEInkMode.current && !LocalReduceTransparency.current && android.os.Build.VERSION.SDK_INT >= 31
     val backdrop = rememberLayerBackdrop()
-    val topPadding = with(LocalDensity.current) { headerHeightPx.toDp() } + 12.dp
 
     Box(modifier.fillMaxSize().background(AppColors.PageBg)) {
-        ProvideLiquidGlassBackdrop(backdrop.takeIf { isLiquidGlass }) {
-            // Same layering as the shelf: the long-press menu blurs the page behind it.
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .then(if (isLiquidGlass) Modifier.layerBackdrop(backdrop) else Modifier)
-                    .graphicsLayer {
-                        val radius = 20f * contextMenuState.scrimAlpha.value
-                        renderEffect = if (blurAllowed && radius > 0.01f) {
-                            android.graphics.RenderEffect.createBlurEffect(radius, radius, android.graphics.Shader.TileMode.CLAMP)
-                                .asComposeRenderEffect()
-                        } else null
-                    }
-                    .background(AppColors.PageBg)
-            ) {
-                BookshelfCollection(
-                    layoutMode = BookshelfLayout.conventional(uiState.bookshelfLayoutMode),
-                    books = books,
-                    tagNamesByBook = emptyMap(),
-                    isLoading = uiState.isLoading,
-                    playEntranceAnimation = false,
-                    deletingBookIds = leavingIds,
+        CollapsingPageScaffold(
+            drawContentBehindHeader = true,
+            title = stringResource(R.string.hidden_library_title),
+            onBack = {
+                if (isEditing) {
+                    isEditing = false
+                    selectedIds = emptySet()
+                } else onBack()
+            },
+            pinnedContent = {
+                HiddenLibraryHeader(
+                    bookCount = books.size,
                     isEditing = isEditing,
-                    selectedBookIds = selectedIds,
-                    contextMenuState = contextMenuState,
-                    syncedBookIds = uiState.syncedBookIds,
-                    downloadStates = uiState.downloadStates,
-                    expandedListBookId = expandedListBookId,
-                    topPadding = topPadding,
-                    bottomPadding = 32.dp,
-                    onHaptic = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
-                    onSelectionToggle = { book ->
-                        selectedIds = if (book.id in selectedIds) selectedIds - book.id else selectedIds + book.id
+                    selectedCount = selectedIds.size,
+                    onEditToggle = {
+                        isEditing = !isEditing
+                        expandedListBookId = null
+                        if (!isEditing) selectedIds = emptySet()
                     },
-                    onExpandedBookChange = { expandedListBookId = it },
-                    onBookClick = onOpenBook,
-                    onAddBook = {},
-                    onEditInfo = { expandedListBookId = null; editingBook = it },
-                    onBookDetails = { BookDetailsActivity.start(context, it.id) },
-                    onDelete = { expandedListBookId = null; pendingDelete = listOf(it) },
-                    onFavorite = {},
-                    onCustomCover = { expandedListBookId = null; coverSourceBook = it },
-                    onRemoveCustomCover = viewModel::removeCustomCover,
-                    onTags = {},
-                    onBookmarksNotes = openNotes,
-                    showAddBook = false,
-                    onToggleHidden = { book -> expandedListBookId = null; unhide(setOf(book.id)) },
-                    onToggleReadStatus = { book -> viewModel.updateBook(book.toggleReadStatus()) },
-                    modifier = Modifier.fillMaxSize()
+                    onSelectAll = {
+                        selectedIds = if (books.all { it.id in selectedIds }) emptySet() else books.mapTo(LinkedHashSet()) { it.id }
+                    },
+                    onUnhide = { unhide(selectedIds) },
+                    onDelete = { pendingDelete = books.filter { it.id in selectedIds } },
+                    modifier = Modifier
                 )
-                if (!uiState.isLoading && books.isEmpty()) HiddenLibraryEmptyState(Modifier.align(Alignment.Center))
+            }
+        ) {
+            ProvideLiquidGlassBackdrop(backdrop.takeIf { isLiquidGlass }) {
+                // Same layering as the shelf: the long-press menu blurs the page behind it.
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .then(if (isLiquidGlass) Modifier.layerBackdrop(backdrop) else Modifier)
+                        .graphicsLayer {
+                            val radius = 20f * contextMenuState.scrimAlpha.value
+                            renderEffect = if (blurAllowed && radius > 0.01f) {
+                                android.graphics.RenderEffect.createBlurEffect(radius, radius, android.graphics.Shader.TileMode.CLAMP)
+                                    .asComposeRenderEffect()
+                            } else null
+                        }
+                        .background(AppColors.PageBg)
+                ) {
+                    BookshelfCollection(
+                        layoutMode = BookshelfLayout.conventional(uiState.bookshelfLayoutMode),
+                        books = books,
+                        tagNamesByBook = emptyMap(),
+                        isLoading = uiState.isLoading,
+                        playEntranceAnimation = false,
+                        deletingBookIds = leavingIds,
+                        isEditing = isEditing,
+                        selectedBookIds = selectedIds,
+                        contextMenuState = contextMenuState,
+                        syncedBookIds = uiState.syncedBookIds,
+                        downloadStates = uiState.downloadStates,
+                        expandedListBookId = expandedListBookId,
+                        topPadding = LocalCollapsingPageTopInset.current + 12.dp,
+                        bottomPadding = 32.dp,
+                        onHaptic = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
+                        onSelectionToggle = { book ->
+                            selectedIds = if (book.id in selectedIds) selectedIds - book.id else selectedIds + book.id
+                        },
+                        onExpandedBookChange = { expandedListBookId = it },
+                        onBookClick = onOpenBook,
+                        onAddBook = {},
+                        onEditInfo = { expandedListBookId = null; editingBook = it },
+                        onBookDetails = { BookDetailsActivity.start(context, it.id) },
+                        onDelete = { expandedListBookId = null; pendingDelete = listOf(it) },
+                        onFavorite = {},
+                        onCustomCover = { expandedListBookId = null; coverSourceBook = it },
+                        onRemoveCustomCover = viewModel::removeCustomCover,
+                        onTags = {},
+                        onBookmarksNotes = openNotes,
+                        showAddBook = false,
+                        onToggleHidden = { book -> expandedListBookId = null; unhide(setOf(book.id)) },
+                        onToggleReadStatus = { book -> viewModel.updateBook(book.toggleReadStatus()) },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    if (!uiState.isLoading && books.isEmpty()) HiddenLibraryEmptyState(Modifier.align(Alignment.Center).padding(top = LocalCollapsingPageTopInset.current))
+                }
             }
         }
-        HiddenLibraryHeader(
-            bookCount = books.size,
-            isEditing = isEditing,
-            selectedCount = selectedIds.size,
-            onBack = onBack,
-            onEditToggle = {
-                isEditing = !isEditing
-                expandedListBookId = null
-                if (!isEditing) selectedIds = emptySet()
-            },
-            onSelectAll = {
-                selectedIds = if (books.all { it.id in selectedIds }) emptySet() else books.mapTo(LinkedHashSet()) { it.id }
-            },
-            onUnhide = { unhide(selectedIds) },
-            onDelete = { pendingDelete = books.filter { it.id in selectedIds } },
-            modifier = Modifier.zIndex(2f).onGloballyPositioned { headerHeightPx = it.size.height }
-        )
         ProvideLiquidGlassBackdrop(backdrop.takeIf { isLiquidGlass }) {
             BookContextMenuOverlay(
                 state = contextMenuState,

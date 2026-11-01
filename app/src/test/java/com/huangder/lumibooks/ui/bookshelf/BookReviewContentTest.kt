@@ -2,6 +2,12 @@ package com.huangder.lumibooks.ui.bookshelf
 
 import android.app.Application
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Text
+import androidx.compose.ui.platform.testTag
+import com.huangder.lumibooks.ui.components.CollapsingPageScaffold
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -42,6 +48,34 @@ class BookReviewContentTest {
         editor.performTextInputSelection(androidx.compose.ui.text.TextRange(original.length))
         editor.performTextInput("末尾补充")
         compose.runOnIdle { assertEquals(original + "末尾补充", review.value) }
+        editor.assertHeightIsEqualTo(240.dp)
+    }
+
+    @Test fun collapsingReviewKeepsSaveReachableAndEditorBounded() {
+        val original = (1..60).joinToString("\n") { "Review paragraph $it with enough text to scroll." }
+        val review = mutableStateOf(original)
+        compose.setContent {
+            EBookReaderTheme(appTheme = "lumi", darkTheme = false) {
+                CollapsingPageScaffold(
+                    title = "Book review",
+                    onBack = {},
+                    actions = { Text("Save", Modifier.testTag("save")) }
+                ) {
+                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).testTag("review-content")) {
+                        Spacer(Modifier.height(400.dp))
+                        ReviewEditor(review.value, { review.value = it }, editorHeight = 240.dp)
+                    }
+                }
+            }
+        }
+        compose.onNodeWithTag("review-content").performTouchInput { swipeUp() }
+        compose.onNodeWithTag("save").assertIsDisplayed()
+        val editor = compose.onNode(hasSetTextAction()).performScrollTo()
+        editor.assertHeightIsEqualTo(240.dp)
+        editor.performTextInputSelection(androidx.compose.ui.text.TextRange(original.length))
+        editor.performTextInput(" Added at the end")
+        compose.runOnIdle { assertEquals(original + " Added at the end", review.value) }
+        compose.onNodeWithTag("save").assertIsDisplayed()
         editor.assertHeightIsEqualTo(240.dp)
     }
 

@@ -1,5 +1,10 @@
 package com.huangder.lumibooks.ui.home.remote
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import com.huangder.lumibooks.ui.components.LocalCollapsingPageTopInset
+import com.huangder.lumibooks.ui.components.CollapsingPageScaffold
+
 import com.huangder.lumibooks.ui.components.AppDialogAction
 import com.huangder.lumibooks.ui.components.AppDialogActionRole
 
@@ -34,12 +39,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,7 +65,6 @@ import com.huangder.lumibooks.ui.components.LiquidGlassButton
 import com.huangder.lumibooks.ui.components.LiquidGlassDialog
 import com.huangder.lumibooks.ui.components.usesCardSheets
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
-import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 import com.huangder.lumibooks.ui.components.SwipeRevealItem
 import com.huangder.lumibooks.ui.components.RequestLocalNetworkPermission
 import com.huangder.lumibooks.ui.components.lumiCardSurface
@@ -90,94 +92,91 @@ internal fun RemoteSourceListScreen(
 ) {
     var pendingDelete by remember { mutableStateOf<RemoteSource?>(null) }
     Box(modifier = Modifier.fillMaxSize()) {
-      Column(modifier = Modifier.fillMaxSize()) {
-        RemotePageHeader(
-            title = stringResource(
-                if (type == RemoteSourceType.WEBDAV) R.string.remote_library_webdav_title else R.string.remote_library_opds_title
-            ),
-            subtitle = null,
+        CollapsingPageScaffold(
+            drawContentBehindHeader = true,
+            title = stringResource(if (type == RemoteSourceType.WEBDAV) R.string.remote_library_webdav_title else R.string.remote_library_opds_title),
             onBack = onBack
-        )
-        LazyColumn(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(
-                start = AppSpace.lg,
-                end = AppSpace.lg,
-                top = AppSpace.sm,
-                bottom = 128.dp
-            ),
-            verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
         ) {
-            if (sources.isEmpty()) {
-                item(key = "empty") { RemoteSourcesEmptyCard(type = type) }
-            }
-            items(sources, key = { it.id }) { source ->
-                RemoteSourceRow(
-                    source = source,
-                    onOpen = { onOpen(source) },
-                    onEdit = { onEdit(source) },
-                    onDelete = { pendingDelete = source }
-                )
-            }
-            if (type == RemoteSourceType.OPDS) {
-                item(key = "feedback_hint") {
-                    Text(
-                        text = stringResource(R.string.remote_library_feedback_hint),
-                        color = AppColors.TextSecondary,
-                        fontSize = AppType.Caption,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.fillMaxWidth().padding(top = AppSpace.xs).padding(horizontal = AppSpace.xs)
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(
+                    start = AppSpace.lg,
+                    end = AppSpace.lg,
+                    top = LocalCollapsingPageTopInset.current + AppSpace.sm,
+                    bottom = 128.dp
+                ),
+                verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
+            ) {
+                if (sources.isEmpty()) {
+                    item(key = "empty") { RemoteSourcesEmptyCard(type = type) }
+                }
+                items(sources, key = { it.id }) { source ->
+                    RemoteSourceRow(
+                        source = source,
+                        onOpen = { onOpen(source) },
+                        onEdit = { onEdit(source) },
+                        onDelete = { pendingDelete = source }
                     )
+                }
+                if (type == RemoteSourceType.OPDS) {
+                    item(key = "feedback_hint") {
+                        Text(
+                            text = stringResource(R.string.remote_library_feedback_hint),
+                            color = AppColors.TextSecondary,
+                            fontSize = AppType.Caption,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.fillMaxWidth().padding(top = AppSpace.xs).padding(horizontal = AppSpace.xs)
+                        )
+                    }
                 }
             }
         }
-      }
-      Row(
-          modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = AppSpace.lg, bottom = AppSpace.sm),
-          horizontalArrangement = Arrangement.spacedBy(AppSpace.sm),
-          verticalAlignment = Alignment.Top
-      ) {
-          if (type == RemoteSourceType.OPDS) {
-              Column(
-                  modifier = Modifier.widthIn(max = 180.dp),
-                  horizontalAlignment = Alignment.CenterHorizontally
-              ) {
-                  LiquidGlassButton(
-                      onClick = onFeedback,
-                      modifier = Modifier.fillMaxWidth().height(56.dp),
-                      shape = AppRoundedCornerShape(AppRadius.full),
-                      tintedColor = AppColors.Accent,
-                      contentColor = AppColors.OnAccent
-                  ) {
-                      Icon(AppIcons.Bug, contentDescription = null, tint = AppColors.OnAccent, modifier = Modifier.size(18.dp))
-                      Spacer(Modifier.width(AppSpace.xs))
-                      Text(
-                          text = stringResource(R.string.remote_library_feedback),
-                          color = AppColors.OnAccent,
-                          fontSize = AppType.BodySmall,
-                          fontWeight = FontWeight.SemiBold,
-                          maxLines = 1,
-                          softWrap = false,
-                          overflow = TextOverflow.Ellipsis
-                      )
-                  }
-              }
-          }
-          LiquidGlassIconButton(
-              imageVector = AppIcons.Plus,
-              contentDescription = stringResource(R.string.remote_library_add),
-              onClick = onAdd,
-              size = 56.dp,
-              iconSize = 24.dp,
-              contentColor = AppColors.OnAccent,
-              normalContainerColor = AppColors.Accent,
-              liquidContainerColor = AppColors.Accent,
-              liquidScrimColor = AppColors.Accent.copy(alpha = 0.58f)
-          )
-      }
+        Row(
+            modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = AppSpace.lg, bottom = AppSpace.sm),
+            horizontalArrangement = Arrangement.spacedBy(AppSpace.sm),
+            verticalAlignment = Alignment.Top
+        ) {
+            if (type == RemoteSourceType.OPDS) {
+                Column(
+                    modifier = Modifier.widthIn(max = 180.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    LiquidGlassButton(
+                        onClick = onFeedback,
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        shape = AppRoundedCornerShape(AppRadius.full),
+                        tintedColor = AppColors.Accent,
+                        contentColor = AppColors.OnAccent
+                    ) {
+                        Icon(AppIcons.Bug, contentDescription = null, tint = AppColors.OnAccent, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(AppSpace.xs))
+                        Text(
+                            text = stringResource(R.string.remote_library_feedback),
+                            color = AppColors.OnAccent,
+                            fontSize = AppType.BodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+            LiquidGlassIconButton(
+                imageVector = AppIcons.Plus,
+                contentDescription = stringResource(R.string.remote_library_add),
+                onClick = onAdd,
+                size = 56.dp,
+                iconSize = 24.dp,
+                contentColor = AppColors.OnAccent,
+                normalContainerColor = AppColors.Accent,
+                liquidContainerColor = AppColors.Accent,
+                liquidScrimColor = AppColors.Accent.copy(alpha = 0.58f)
+            )
+        }
     }
     pendingDelete?.let { source ->
         LiquidGlassAlertDialog(
@@ -389,20 +388,23 @@ internal fun RemoteSourceFormScreen(
         if (type == RemoteSourceType.WEBDAV) R.string.remote_library_url_hint_webdav else R.string.remote_library_url_hint_opds
     )
     Box(modifier = Modifier.fillMaxSize().imePadding()) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            RemotePageHeader(
-                title = stringResource(if (existing == null) R.string.remote_library_add else R.string.remote_library_edit),
-                subtitle = stringResource(
-                    if (type == RemoteSourceType.WEBDAV) R.string.import_webdav else R.string.import_opds
-                ),
-                onBack = onBack
-            )
+        CollapsingPageScaffold(
+            drawContentBehindHeader = true,
+            title = stringResource(if (existing == null) R.string.remote_library_add else R.string.remote_library_edit),
+            onBack = onBack,
+            pinnedContent = {
+                Text(stringResource(if (type == RemoteSourceType.WEBDAV) R.string.import_webdav else R.string.import_opds),
+                    color = AppColors.TextSecondary, fontSize = AppType.Caption,
+                    modifier = Modifier.padding(horizontal = AppSpace.lg, vertical = AppSpace.xs))
+            }
+        ) {
             Column(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
                     .layerBackdrop(blurBackdrop)
                     .verticalScroll(rememberScrollState())
+                    .padding(top = LocalCollapsingPageTopInset.current)
                     .padding(horizontal = AppSpace.lg, vertical = AppSpace.sm),
                 verticalArrangement = Arrangement.spacedBy(AppSpace.md)
             ) {

@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
@@ -90,13 +89,14 @@ import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.model.LumiEasterEgg
 import com.huangder.lumibooks.ui.animation.LumiMotion
 import com.huangder.lumibooks.ui.animation.VisualMotion
+import com.huangder.lumibooks.ui.components.LocalCollapsingPageTopInset
+import com.huangder.lumibooks.ui.components.CollapsingPageScaffold
 import com.huangder.lumibooks.ui.components.ConfigurableActivityBack
 import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 import com.huangder.lumibooks.ui.components.LocalLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.icons.AppIcons
-import com.huangder.lumibooks.ui.icons.directionalIcon
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
@@ -247,29 +247,11 @@ private fun BookReviewScreen(
         CompositionLocalProvider(
             LocalLiquidGlassBackdrop provides if (ownsBackdrop) pageBackdrop else LocalLiquidGlassBackdrop.current
         ) {
-            Column(Modifier.fillMaxSize().statusBarsPadding()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = AppSpace.md, end = AppSpace.md, top = AppSpace.sm, bottom = AppSpace.sm),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    LiquidGlassIconButton(
-                        directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
-                        stringResource(R.string.back),
-                        onBack
-                    )
-                    Spacer(Modifier.width(AppSpace.sm))
-                    Text(
-                        stringResource(R.string.book_review),
-                        modifier = Modifier.weight(1f),
-                        fontSize = AppType.Title,
-                        fontWeight = FontWeight.Bold,
-                        color = AppColors.TextPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(Modifier.width(AppSpace.sm))
+            CollapsingPageScaffold(
+                title = stringResource(R.string.book_review),
+                drawContentBehindHeader = true,
+                onBack = onBack,
+                actions = {
                     // Lives in the top bar so it stays reachable while the keyboard is open.
                     LiquidGlassTextButton(
                         text = stringResource(R.string.book_review_save),
@@ -285,18 +267,20 @@ private fun BookReviewScreen(
                         contentColor = if (dirty) onActionColor else AppColors.TextSecondary
                     )
                 }
+            ) {
                 BoxWithConstraints(
                     Modifier
                         .fillMaxWidth()
                         .weight(1f)
                         .imePadding()
                 ) {
-                    val editorHeight = (maxHeight * 0.65f).coerceIn(160.dp, 480.dp)
+                    val topInset = LocalCollapsingPageTopInset.current
+                    val editorHeight = ((maxHeight - topInset).coerceAtLeast(0.dp) * 0.65f).coerceIn(160.dp, 480.dp)
                     Column(
                         Modifier.fillMaxSize()
                             .verticalScroll(rememberScrollState())
                             .navigationBarsPadding()
-                            .padding(start = AppSpace.md, end = AppSpace.md, top = AppSpace.xs, bottom = AppSpace.lg)
+                            .padding(start = AppSpace.md, end = AppSpace.md, top = topInset + AppSpace.xs, bottom = AppSpace.lg)
                     ) {
                         BookReviewHero(
                             title = bookTitle,

@@ -1,10 +1,12 @@
 package com.huangder.lumibooks.ui.bookshelf
 
+import com.huangder.lumibooks.ui.components.LocalCollapsingPageTopInset
+import com.huangder.lumibooks.ui.components.CollapsingPageScaffold
+
 import com.huangder.lumibooks.ui.components.AppDialogAction
 import com.huangder.lumibooks.ui.components.AppDialogActionRole
 
 import com.huangder.lumibooks.domain.model.ActivityDuration
-import com.huangder.lumibooks.ui.icons.directionalIcon
 import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.content.Context
@@ -34,7 +36,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -310,19 +311,27 @@ fun BookDetailsScreen(
         }
     }
 
-    Box(Modifier.fillMaxSize().background(AppColors.PageBg)) {
+    CollapsingPageScaffold(
+        title = stringResource(R.string.book_details),
+        drawContentBehindHeader = true,
+        onBack = onBack,
+        modifier = Modifier.fillMaxSize().background(AppColors.PageBg),
+        bottomBar = {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                FloatingDetailTag(
+                    modifier = Modifier.navigationBarsPadding().padding(bottom = 12.dp),
+                    onDelete = { deleteOpen = true }, onEdit = { editing = true }, onMove = { moveOpen = true },
+                    onNotes = { context.startActivity(Intent(context, BookNotesActivity::class.java).putExtra(BookNotesActivity.EXTRA_BOOK_ID, book.id)) },
+                    onRead = { onOpenReader(book.id) }
+                )
+            }
+        }
+    ) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize().statusBarsPadding(),
-            contentPadding = PaddingValues(start = AppSpace.md, end = AppSpace.md, top = 10.dp, bottom = 124.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = AppSpace.md, end = AppSpace.md, top = LocalCollapsingPageTopInset.current + 10.dp, bottom = AppSpace.lg),
             verticalArrangement = Arrangement.spacedBy(AppSpace.md)
         ) {
-            item {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    LiquidGlassIconButton(directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight), stringResource(R.string.back), onBack)
-                    Spacer(Modifier.width(AppSpace.sm))
-                    Text(stringResource(R.string.book_details), fontSize = AppType.Title, fontWeight = FontWeight.Bold, color = AppColors.TextPrimary)
-                }
-            }
             item { BookHero(book, folderName, onCover = { coverOpen = true }) }
             item {
                 MetricGrid(book, details.totalReadingTime, details.activeDays, details.bookmarkCount, details.noteCount)
@@ -348,12 +357,6 @@ fun BookDetailsScreen(
                 )
             }
         }
-        FloatingDetailTag(
-            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 12.dp),
-            onDelete = { deleteOpen = true }, onEdit = { editing = true }, onMove = { moveOpen = true },
-            onNotes = { context.startActivity(Intent(context, BookNotesActivity::class.java).putExtra(BookNotesActivity.EXTRA_BOOK_ID, book.id)) },
-            onRead = { onOpenReader(book.id) }
-        )
     }
 
     if (editing) EditBookDialog(book, homeViewModel) { editing = false }
