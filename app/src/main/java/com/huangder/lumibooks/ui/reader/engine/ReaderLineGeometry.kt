@@ -212,8 +212,21 @@ internal class ReaderLineGeometry(
             val contentEnd = metrics.contentEnd
             if (contentEnd <= metrics.lineStart || !x.isFinite()) return null
             if (!metrics.justified) {
-                return layout.getOffsetForHorizontal(line, x)
+                val nativeOffset = layout.getOffsetForHorizontal(line, x)
                     .coerceIn(metrics.lineStart, contentEnd)
+                // Layout can exclude a wrapped line's final caret because that
+                // offset also starts the following row. Compare its drawn edge
+                // explicitly so the last character remains selectable.
+                if (contentEnd == metrics.rawLineEnd && line < layout.lineCount - 1 &&
+                    layout.getParagraphDirection(line) == Layout.DIR_LEFT_TO_RIGHT &&
+                    !layout.isRtlCharAt(contentEnd - 1)
+                ) {
+                    val nativeX = nativePosition(nativeOffset)
+                    if (nativeX != null && abs(x - nativeLineEnd(metrics, line)) < abs(x - nativeX)) {
+                        return contentEnd
+                    }
+                }
+                return nativeOffset
             }
             // Editor/Layout choose a caret by the midpoint between adjacent
             // carets, rather than treating a character's whole advance as its
