@@ -9,7 +9,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
@@ -62,23 +61,15 @@ class WelcomeThemeRenderTest {
             }
         }
         compose.onNodeWithText(context.getString(R.string.welcome_start_using)).performClick()
-        val features = listOf(
-            Triple("excerpt", R.string.welcome_excerpt_title, R.string.welcome_excerpt_description),
-            Triple("g2", R.string.welcome_g2_title, R.string.welcome_g2_description),
-            Triple("dictionary", R.string.welcome_dictionary_title, R.string.welcome_dictionary_description)
-        )
-        for ((name, title, description) in features) {
-            compose.onNodeWithText(context.getString(title)).assertIsDisplayed()
-            compose.onNodeWithContentDescription(context.getString(description)).assertExists()
-            compose.onNodeWithText(context.getString(R.string.welcome_enable_liquid_glass)).assertDoesNotExist()
-            val next = compose.onNodeWithText(context.getString(R.string.welcome_next)).assertIsDisplayed()
-            compose.onNodeWithText(context.getString(R.string.welcome_previous)).assertIsDisplayed()
-            val bounds = next.fetchSemanticsNode().boundsInRoot
-            assertTrue("Navigation must stay on screen", bounds.bottom <= view.height)
-            save("$theme-${if (ink) "ink" else if (dark) "dark" else "light"}-$fontScale-$name")
-            next.performClick()
-        }
         compose.onNodeWithText(context.getString(R.string.welcome_support_title)).assertIsDisplayed()
+        for (title in listOf(R.string.welcome_excerpt_title, R.string.welcome_g2_title, R.string.welcome_dictionary_title)) {
+            compose.onNodeWithText(context.getString(title)).assertDoesNotExist()
+        }
+        compose.onNodeWithText(context.getString(R.string.welcome_enable_liquid_glass)).assertDoesNotExist()
+        val finish = compose.onNodeWithText(context.getString(R.string.welcome_start_using)).assertIsDisplayed()
+        val bounds = finish.fetchSemanticsNode().boundsInRoot
+        assertTrue("Navigation must stay on screen", bounds.bottom <= view.height)
+        save("$theme-${if (ink) "ink" else if (dark) "dark" else "light"}-$fontScale-support")
     }
 
     private fun save(name: String) {

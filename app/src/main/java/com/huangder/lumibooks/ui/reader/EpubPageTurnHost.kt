@@ -339,7 +339,7 @@ internal class EpubPageTurnHost(
         }
         EpubTurnTrace.log("warm_create", "wv" to view.traceId)
         warmWebView = view
-        addView(view, 1, matchParentParams())
+        addView(view, 1, webViewParams())
         onWarmViewCreated?.invoke(view)
         return true
     }
@@ -589,6 +589,9 @@ internal class EpubPageTurnHost(
     var onSlideVisualPageAdvanced: ((EpubPageTarget, Int) -> Unit)? = null
     var onInvalidatePreloads: (() -> Unit)? = null
 
+    private var scrollViewportTopPx = 0
+    private var scrollViewportBottomPx = 0
+
     init {
         clipChildren = true
         clipToPadding = true
@@ -600,10 +603,10 @@ internal class EpubPageTurnHost(
         // Reader background sits below every page so publisher paint (an image
         // background in the book itself) always wins where it exists.
         addView(backgroundImageView, matchParentParams())
-        addView(previousWebView, matchParentParams())
-        addView(nextWebView, matchParentParams())
+        addView(previousWebView, webViewParams())
+        addView(nextWebView, webViewParams())
         addView(preloadMask, matchParentParams())
-        addView(activeWebView, matchParentParams())
+        addView(activeWebView, webViewParams())
         addView(previousPage, matchParentParams())
         addView(currentPage, matchParentParams())
         addView(nextPage, matchParentParams())
@@ -625,6 +628,23 @@ internal class EpubPageTurnHost(
         setBackgroundColor(color)
         preloadMask.setBackgroundColor(color)
         applyWebViewBackgroundColor()
+    }
+
+    // Scrolling margins belong to the viewport, so they must not scroll away
+    // with the chapter. Keep the background layers at the full host size.
+    fun setScrollViewportInsets(topPx: Int, bottomPx: Int) {
+        val top = topPx.coerceAtLeast(0)
+        val bottom = bottomPx.coerceAtLeast(0)
+        if (scrollViewportTopPx == top && scrollViewportBottomPx == bottom) return
+        scrollViewportTopPx = top
+        scrollViewportBottomPx = bottom
+        allWebViews().forEach { it.layoutParams = webViewParams() }
+        requestLayout()
+    }
+
+    private fun webViewParams() = matchParentParams().apply {
+        topMargin = scrollViewportTopPx
+        bottomMargin = scrollViewportBottomPx
     }
 
     /**

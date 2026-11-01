@@ -98,6 +98,19 @@ private class BounceNestedScrollConnection(
     private val onDrag: (offsetPx: Float, deltaPx: Float) -> Unit
 ) : NestedScrollConnection {
 
+    override fun onPreScroll(
+        available: Offset,
+        source: NestedScrollSource
+    ): Offset {
+        if (source != NestedScrollSource.UserInput) return Offset.Zero
+        // Undo the translated overscroll before the list can scroll and clip its first items.
+        // Once back at rest, let the list consume the remainder of this same gesture.
+        val consumed = state.releaseBy(available.y)
+        if (consumed == 0f) return Offset.Zero
+        onDrag(state.offset, consumed)
+        return Offset(0f, consumed)
+    }
+
     // 拖拽时：施加阻尼
     override fun onPostScroll(
         consumed: Offset,
@@ -140,6 +153,13 @@ class OverscrollBounceState {
 
     internal fun dragBy(delta: Float) {
         offset += delta
+    }
+
+    internal fun releaseBy(delta: Float): Float {
+        if (offset == 0f || delta == 0f || offset * delta >= 0f) return 0f
+        val consumed = delta.coerceIn(-abs(offset), abs(offset))
+        offset += consumed
+        return consumed
     }
 
     internal suspend fun animateBack() {

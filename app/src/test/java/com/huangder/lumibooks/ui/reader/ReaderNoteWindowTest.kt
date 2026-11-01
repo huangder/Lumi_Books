@@ -30,6 +30,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowDialog
+import org.robolectric.shadows.ShadowLooper
+import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "en-rUS-w411dp-h891dp-xxhdpi")
@@ -76,7 +78,8 @@ class ReaderNoteWindowTest {
             compose.runOnIdle {
                 assertTrue(dialog.isShowing)
                 assertNotSame(activity.window, dialog.window)
-                assertEquals(originalMode, activity.window.attributes.softInputMode)
+                // While the note is open the covered reader must not resize for the IME.
+                assertEquals(readerWindowImeMode(originalMode), activity.window.attributes.softInputMode)
                 assertEquals(0, dialog.window!!.attributes.flags and WindowManager.LayoutParams.FLAG_DIM_BEHIND)
                 // Simulate the available height shrinking in the IME's target window.
                 dialog.window!!.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, readerSize.second / 2)
@@ -91,9 +94,11 @@ class ReaderNoteWindowTest {
             compose.runOnIdle {
                 assertFalse(dialog.isShowing)
                 assertFalse(visible.value)
-                assertEquals(originalMode, activity.window.attributes.softInputMode)
                 assertEquals(readerSize, readerView.width to readerView.height)
             }
+            // The reader's own mode comes back once the keyboard has had time to hide.
+            ShadowLooper.idleMainLooper(400, TimeUnit.MILLISECONDS)
+            compose.runOnIdle { assertEquals(originalMode, activity.window.attributes.softInputMode) }
             compose.onNodeWithText("Current reading page").assertIsDisplayed()
         }
         assertEquals(1, confirms)

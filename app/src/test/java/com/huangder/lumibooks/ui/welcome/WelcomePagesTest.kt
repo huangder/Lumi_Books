@@ -5,35 +5,28 @@ import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class WelcomePagesTest {
-    private val features = listOf(
-        WelcomePage.EXCERPT_PREVIEW,
-        WelcomePage.G2_PREVIEW,
-        WelcomePage.DICTIONARY_PREVIEW
-    )
-
     @Test
-    fun `new installation shows features after optional glass setup`() {
+    fun `new installation goes from optional glass setup to support`() {
         assertEquals(
-            listOf(WelcomePage.LANGUAGE_SETUP, WelcomePage.INTRODUCTION, WelcomePage.LIQUID_GLASS_PREVIEW) +
-                features + WelcomePage.SUPPORT,
+            listOf(WelcomePage.LANGUAGE_SETUP, WelcomePage.INTRODUCTION, WelcomePage.LIQUID_GLASS_PREVIEW, WelcomePage.SUPPORT),
             welcomePages(shouldShowLanguageSetup = true, isNewInstallation = true, isEInkMode = false)
         )
     }
 
     @Test
-    fun `update shows all features without offering to change the existing theme`() {
+    fun `update goes directly from introduction to support`() {
         assertEquals(
-            listOf(WelcomePage.INTRODUCTION) + features + WelcomePage.SUPPORT,
+            listOf(WelcomePage.INTRODUCTION, WelcomePage.SUPPORT),
             welcomePages(shouldShowLanguageSetup = false, isNewInstallation = false, isEInkMode = false)
         )
     }
 
     @Test
-    fun `ink users still see features on both fresh installs and updates`() {
+    fun `ink users go directly from introduction to support on fresh installs and updates`() {
         for (fresh in listOf(true, false)) {
             val pages = welcomePages(false, fresh, true)
             assertFalse(pages.contains(WelcomePage.LIQUID_GLASS_PREVIEW))
-            assertEquals(listOf(WelcomePage.INTRODUCTION) + features + WelcomePage.SUPPORT, pages)
+            assertEquals(listOf(WelcomePage.INTRODUCTION, WelcomePage.SUPPORT), pages)
         }
     }
 

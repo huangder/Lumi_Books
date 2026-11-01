@@ -230,17 +230,18 @@ object ReaderThemeSuites {
         backgroundColorSelection = backgroundColorSelection.takeIf(String::isNotBlank) ?: DAY_ID,
         backgroundImageOpacity = backgroundImageOpacity.coerceIn(0f, 1f),
         backgroundImageBlurDp = backgroundImageBlurDp.coerceIn(0f, 40f),
-        fontSize = fontSize,
+        // Same limits as the theme sheet's sliders.
+        fontSize = fontSize.coerceIn(12f, 28f),
         fontType = fontType.takeIf(String::isNotBlank) ?: "system",
-        bodyFontWeight = bodyFontWeight,
-        lineHeight = lineHeight,
-        letterSpacing = letterSpacing,
-        paragraphSpacing = paragraphSpacing,
-        firstLineIndent = firstLineIndent,
-        marginLeft = marginLeft,
-        marginRight = marginRight,
-        marginTop = marginTop,
-        marginBottom = marginBottom
+        bodyFontWeight = bodyFontWeight.coerceIn(100, 900),
+        lineHeight = lineHeight.coerceIn(ReaderThemeSettings.LINE_HEIGHT_RANGE),
+        letterSpacing = letterSpacing.coerceIn(ReaderThemeSettings.LETTER_SPACING_RANGE),
+        paragraphSpacing = paragraphSpacing.coerceIn(0f, 30f),
+        firstLineIndent = firstLineIndent.coerceIn(0f, 4f),
+        marginLeft = marginLeft.coerceIn(ReaderThemeSettings.HORIZONTAL_MARGIN_RANGE),
+        marginRight = marginRight.coerceIn(ReaderThemeSettings.HORIZONTAL_MARGIN_RANGE),
+        marginTop = marginTop.coerceIn(ReaderThemeSettings.VERTICAL_MARGIN_RANGE),
+        marginBottom = marginBottom.coerceIn(ReaderThemeSettings.VERTICAL_MARGIN_RANGE)
     )
 }
 
@@ -429,8 +430,10 @@ object LumiThemeBundleCodec {
         validateNumber(settings, "fontSize", 12.0, 28.0, label)
         if (settings.has("fontType")) validateOptionalString(settings, "fontType", label)
         validateInteger(settings, "bodyFontWeight", 100, 900, label)
-        validateNumber(settings, "lineHeight", 1.0, 2.5, label)
-        validateNumber(settings, "letterSpacing", 0.0, 10.0, label)
+        validateNumber(settings, "lineHeight", ReaderThemeSettings.LINE_HEIGHT_RANGE.start.toDouble(),
+            ReaderThemeSettings.LINE_HEIGHT_RANGE.endInclusive.toDouble(), label)
+        validateNumber(settings, "letterSpacing", ReaderThemeSettings.LETTER_SPACING_RANGE.start.toDouble(),
+            ReaderThemeSettings.LETTER_SPACING_RANGE.endInclusive.toDouble(), label)
         validateNumber(settings, "paragraphSpacing", 0.0, 30.0, label)
         validateNumber(settings, "firstLineIndent", 0.0, 4.0, label)
         validateNumber(settings, "marginLeft", 0.0, ReaderThemeSettings.MAX_HORIZONTAL_MARGIN_DP.toDouble(), label)

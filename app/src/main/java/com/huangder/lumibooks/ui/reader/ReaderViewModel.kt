@@ -1352,8 +1352,9 @@ class ReaderViewModel @Inject constructor(
                 }
             }
             if (hydrated != presets) {
-                _uiState.value = _uiState.value.copy(customReaderBackgrounds = hydrated)
-                dataStoreManager.saveCustomReaderBackgrounds(hydrated)
+                presets.zip(hydrated).forEach { (original, sampled) ->
+                    if (sampled != original) dataStoreManager.saveProcessedReaderBackground(original, sampled)
+                }
             }
         }
     }
@@ -1550,8 +1551,9 @@ class ReaderViewModel @Inject constructor(
                     }
                 }
                 if (hydrated != presets) {
-                    _uiState.value = _uiState.value.copy(customReaderBackgrounds = hydrated)
-                    dataStoreManager.saveCustomReaderBackgrounds(hydrated)
+                    presets.zip(hydrated).forEach { (original, sampled) ->
+                        if (sampled != original) dataStoreManager.saveProcessedReaderBackground(original, sampled)
+                    }
                 }
             }
         }
@@ -2412,16 +2414,9 @@ class ReaderViewModel @Inject constructor(
                 return@launch
             }
 
-            val latest = latestState.customReaderBackgrounds
-            val updated = latest.map {
-                if (it.id == latestSelected.id) it.copy(
-                    processedValue = target,
-                    processedBlurDp = blur
-                ) else it
-            }
-            if (updated != latest) {
-                dataStoreManager.saveCustomReaderBackgrounds(updated)
-                _uiState.value = _uiState.value.copy(customReaderBackgrounds = updated)
+            val processed = latestSelected.copy(processedValue = target, processedBlurDp = blur)
+            if (processed != latestSelected) {
+                dataStoreManager.saveProcessedReaderBackground(latestSelected, processed)
                 latestSelected.processedValue
                     ?.takeUnless { it == target }
                     ?.let { oldPath -> withContext(Dispatchers.IO) { runCatching { File(oldPath).delete() } } }
@@ -2465,7 +2460,11 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun addCustomReaderBackgroundImage(uri: Uri, displayName: String = "") {
-        if (_uiState.value.keepsPublisherPaint()) return
+        val state = _uiState.value
+        if (state.keepsPublisherPaint()) return
+        val layout = state.readerLayoutTarget()
+        val suiteId = state.activeThemeSuiteIdFor(layout)
+        val dark = state.themeEditingDark
         viewModelScope.launch {
             val preset = withContext(Dispatchers.IO) {
                 val id = UUID.randomUUID().toString()
@@ -2487,7 +2486,12 @@ class ReaderViewModel @Inject constructor(
                     null
                 }
             } ?: return@launch
-            saveAddedReaderBackground(preset)
+            dataStoreManager.addReaderThemeSuiteBackground(
+                suiteId,
+                layout,
+                preset,
+                modeDark = dark.takeIf { layout == ReaderLayoutTarget.READER_LAYOUT }
+            )
         }
     }
 
@@ -2557,15 +2561,11 @@ class ReaderViewModel @Inject constructor(
             }
         )
         val targetSuiteId = state.activeThemeSuiteIdFor(layout)
-        val settings = updatedSuites.firstOrNull { it.id == targetSuiteId }
-            ?.settingsFor(layout, state.themeEditingDark)
-            ?: return
         viewModelScope.launch {
-            dataStoreManager.saveCustomReaderBackgrounds(updated)
-            dataStoreManager.updateReaderThemeSuite(
+            dataStoreManager.addReaderThemeSuiteBackground(
                 targetSuiteId,
                 layout,
-                settings,
+                preset,
                 modeDark = state.themeEditingDark.takeIf { layout == ReaderLayoutTarget.READER_LAYOUT }
             )
         }

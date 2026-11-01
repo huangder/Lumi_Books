@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlin.math.roundToInt
 import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
@@ -3187,6 +3188,11 @@ internal fun EpubWebViewReader(
             ) ?: chapterIndex
             val isFixedLayout = session.renditionLayout(chapterIndex) ==
                 EpubRenditionLayout.PRE_PAGINATED
+            val density = pageTurnHost.resources.displayMetrics.density
+            pageTurnHost.setScrollViewportInsets(
+                topPx = if (continuousScroll) (marginTopDp.coerceAtLeast(0f) * density).roundToInt() else 0,
+                bottomPx = if (continuousScroll) (marginBottomDp.coerceAtLeast(0f) * density).roundToInt() else 0
+            )
             if (pageTurnHost.paddingLeft != 0 || pageTurnHost.paddingTop != 0 ||
                 pageTurnHost.paddingRight != 0 || pageTurnHost.paddingBottom != 0
             ) {
@@ -3845,16 +3851,22 @@ private fun configureReader(
         .put(
             "insets",
             JSONObject()
-                .put("top", marginTopDp)
+                .put("top", if (continuousScroll) 0f else marginTopDp)
                 .put("right", marginRightDp)
-                .put("bottom", marginBottomDp)
+                .put("bottom", if (continuousScroll) 0f else marginBottomDp)
                 .put("left", marginLeftDp)
         )
     if (session.renditionLayout(chapterIndex) == EpubRenditionLayout.PRE_PAGINATED) {
         val density = view.resources.displayMetrics.density.coerceAtLeast(1f)
+        // Insets may have just changed, before Android has laid out the child.
+        val host = view.parent as? EpubPageTurnHost
+        val margins = view.layoutParams as? android.view.ViewGroup.MarginLayoutParams
+        val viewportHeight = if (host != null && host.height > 0) {
+            (host.height - (margins?.topMargin ?: 0) - (margins?.bottomMargin ?: 0)).coerceAtLeast(1)
+        } else view.height
         config.put("viewport", JSONObject()
             .put("width", view.width / density)
-            .put("height", view.height / density))
+            .put("height", viewportHeight / density))
     }
     val lifecycle = view.documentLifecycle
     val layoutKey = JSONObject(config.toString()).apply {

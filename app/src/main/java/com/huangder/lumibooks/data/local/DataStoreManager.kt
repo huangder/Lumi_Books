@@ -48,6 +48,7 @@ import com.huangder.lumibooks.domain.model.ReaderThemeSuite
 import com.huangder.lumibooks.domain.model.ReaderThemeSuiteCodec
 import com.huangder.lumibooks.domain.model.ReaderThemeSuiteState
 import com.huangder.lumibooks.domain.model.ReaderThemeSuites
+import com.huangder.lumibooks.domain.model.usesReaderBackground
 import com.huangder.lumibooks.domain.model.ReaderLayoutTarget
 import com.huangder.lumibooks.domain.model.PdfPageMode
 import com.huangder.lumibooks.domain.model.PageRenderMode
@@ -1660,6 +1661,35 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    /** Image processing must not replace a newer asset list or resurrect a removed image. */
+    suspend fun saveProcessedReaderBackground(
+        expected: ReaderBackgroundPreset,
+        processed: ReaderBackgroundPreset
+    ) {
+        context.dataStore.edit { preferences ->
+            val backgrounds = ReaderBackgroundPresetCodec.decode(preferences[CUSTOM_READER_BACKGROUNDS])
+            if (backgrounds.none { it == expected }) return@edit
+            preferences[CUSTOM_READER_BACKGROUNDS] = ReaderBackgroundPresetCodec.encode(
+                backgrounds.map { if (it == expected) processed else it }
+            )
+        }
+    }
+
+    /** Only collect an image after checking every persisted layout and mode atomically. */
+    suspend fun removeUnusedReaderBackground(id: String): ReaderBackgroundPreset? {
+        var removed: ReaderBackgroundPreset? = null
+        context.dataStore.edit { preferences ->
+            val backgrounds = ReaderBackgroundPresetCodec.decode(preferences[CUSTOM_READER_BACKGROUNDS])
+            val preset = backgrounds.firstOrNull { it.id == id } ?: return@edit
+            if (readThemeSuites(preferences).any { it.usesReaderBackground(preset.selectionKey) }) return@edit
+            preferences[CUSTOM_READER_BACKGROUNDS] = ReaderBackgroundPresetCodec.encode(
+                backgrounds.filterNot { it.id == id }
+            )
+            removed = preset
+        }
+        return removed
+    }
+
     suspend fun saveReaderTextColor(color: Int?) {
         context.dataStore.edit { preferences ->
             if (color == null) preferences.remove(READER_TEXT_COLOR)
@@ -2070,6 +2100,45 @@ class DataStoreManager @Inject constructor(
             preferences[READER_THEME_SUITES] = ReaderThemeSuiteCodec.encode(updated)
             preferences[READER_THEME_SUITES_VERSION] = READER_THEME_SUITES_VERSION_VALUE
             // Legacy flat keys keep mirroring the reader-layout set only.
+            if (layout == ReaderLayoutTarget.READER_LAYOUT && modeDark == null &&
+                preferences[ACTIVE_READER_THEME_SUITE_ID] == suiteId
+            ) {
+                preferences.applyReaderThemeSettings(updated.first { it.id == suiteId }.settings)
+            }
+        }
+    }
+
+    /** Publish a copied image and its selection in the same preferences transaction. */
+    suspend fun addReaderThemeSuiteBackground(
+        suiteId: String,
+        layout: ReaderLayoutTarget,
+        preset: ReaderBackgroundPreset,
+        modeDark: Boolean? = null
+    ) {
+        context.dataStore.edit { preferences ->
+            val suites = readThemeSuites(preferences)
+            if (suites.none { it.id == suiteId }) return@edit
+            val updated = suites.map { suite ->
+                if (suite.id != suiteId) suite else {
+                    val current = if (modeDark != null) suite.settingsFor(layout, modeDark)
+                        else suite.settingsFor(layout)
+                    val settings = current.copy(
+                        backgroundSelection = preset.selectionKey,
+                        backgroundColorSelection = if (preset.type == ReaderBackgroundType.COLOR) {
+                            preset.selectionKey
+                        } else current.backgroundColorSelection
+                    )
+                    if (layout == ReaderLayoutTarget.READER_LAYOUT && modeDark != null) {
+                        suite.withModeSettings(modeDark, settings)
+                    } else suite.withSettings(layout, settings)
+                }
+            }
+            val backgrounds = ReaderBackgroundPresetCodec.decode(preferences[CUSTOM_READER_BACKGROUNDS])
+            preferences[CUSTOM_READER_BACKGROUNDS] = ReaderBackgroundPresetCodec.encode(
+                backgrounds.filterNot { it.id == preset.id } + preset
+            )
+            preferences[READER_THEME_SUITES] = ReaderThemeSuiteCodec.encode(updated)
+            preferences[READER_THEME_SUITES_VERSION] = READER_THEME_SUITES_VERSION_VALUE
             if (layout == ReaderLayoutTarget.READER_LAYOUT && modeDark == null &&
                 preferences[ACTIVE_READER_THEME_SUITE_ID] == suiteId
             ) {

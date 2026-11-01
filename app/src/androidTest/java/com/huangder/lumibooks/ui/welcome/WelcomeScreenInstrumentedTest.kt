@@ -44,30 +44,19 @@ class WelcomeScreenInstrumentedTest {
 
         composeRule.onNodeWithText(context.getString(R.string.welcome_liquid_glass_title)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.welcome_next)).performClick()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_excerpt_title)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_previous)).performClick()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_liquid_glass_title)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.welcome_support_title)).assertIsDisplayed()
     }
 
     @Test
-    fun updateWalkthroughIncludesAllFeaturesAndBackNeverShowsThemeSetup() {
+    fun updateWalkthroughGoesDirectlyToSupport() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         showWelcome(isNewInstallation = false, startOnIntroduction = true)
 
         composeRule.onNodeWithText(context.getString(R.string.welcome_start_using)).performClick()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_excerpt_title)).assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.welcome_enable_liquid_glass)).assertDoesNotExist()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_previous)).performClick()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_title)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_start_using)).performClick()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_next)).performClick()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_g2_title)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_next)).performClick()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_dictionary_title)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_previous)).performClick()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_g2_title)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_next)).performClick()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_next)).performClick()
+        composeRule.onNodeWithText(context.getString(R.string.welcome_excerpt_title)).assertDoesNotExist()
+        composeRule.onNodeWithText(context.getString(R.string.welcome_g2_title)).assertDoesNotExist()
+        composeRule.onNodeWithText(context.getString(R.string.welcome_dictionary_title)).assertDoesNotExist()
         composeRule.onNodeWithText(context.getString(R.string.welcome_support_title)).assertIsDisplayed()
     }
 

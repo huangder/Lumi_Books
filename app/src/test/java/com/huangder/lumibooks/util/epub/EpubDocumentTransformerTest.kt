@@ -91,7 +91,13 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("data-lumi-rule-style"))
         assertTrue(output.contains("clearRuleInlineStyles"))
         assertTrue(output.contains("CSS.highlights.set"))
-        assertTrue(output.contains("appendUnderlineRange(underlineLayer, range, ruleColor, style.underlineMode)"))
+        // Underline/mark colors are independent from the rule text color.
+        assertTrue(output.contains("var ruleColor = hasRuleColor ? style.textColor : null"))
+        assertTrue(output.contains("var markColor = hasMarkColor ? style.highlightColor : color"))
+        // Both CSS Highlight support and the fallback must draw marks with markColor.
+        assertEquals(2, Regex(Regex.escape(
+            "appendUnderlineRange(underlineLayer, range, markColor, style.underlineMode)"
+        )).findAll(output).count())
         assertTrue(output.contains("stroke-dasharray"))
     }
 
@@ -617,7 +623,9 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("edgeTapLeft: -1, edgeTapRight: 1"))
         assertTrue(output.contains("turnByDirection(state.edgeTapLeft, true)"))
         assertTrue(output.contains("turnByDirection(state.edgeTapRight, true)"))
-        assertTrue(output.contains("if (manual) post('manualScroll', {});"))
+        assertTrue("Manual page turns stop auto-scroll before notifying the bridge", Regex(
+            """function turnByDirection\(direction, manual\)\s*\{\s*if \(manual\)\s*\{\s*setAutoScrollSpeed\(0\);\s*post\('manualScroll', \{\}\);\s*\}"""
+        ).containsMatchIn(output))
         assertTrue(output.contains("if (state.nativePaging) post('tap', { zone: 'left' })"))
         assertTrue(output.contains("if (state.nativePaging) post('tap', { zone: 'right' })"))
         assertTrue(output.contains("if (state.nativePaging || state.flow !== 'paginated'"))

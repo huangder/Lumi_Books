@@ -74,11 +74,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Fill
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
@@ -141,9 +139,6 @@ internal enum class WelcomePage {
     LANGUAGE_SETUP,
     INTRODUCTION,
     LIQUID_GLASS_PREVIEW,
-    EXCERPT_PREVIEW,
-    G2_PREVIEW,
-    DICTIONARY_PREVIEW,
     SUPPORT
 }
 
@@ -164,9 +159,6 @@ internal fun welcomePages(
     if (shouldShowLanguageSetup) add(WelcomePage.LANGUAGE_SETUP)
     add(WelcomePage.INTRODUCTION)
     if (isNewInstallation && !isEInkMode) add(WelcomePage.LIQUID_GLASS_PREVIEW)
-    add(WelcomePage.EXCERPT_PREVIEW)
-    add(WelcomePage.G2_PREVIEW)
-    add(WelcomePage.DICTIONARY_PREVIEW)
     add(WelcomePage.SUPPORT)
 }
 
@@ -294,16 +286,8 @@ fun WelcomeScreen(
                 onContinue = { currentPage = pages[(pages.indexOf(WelcomePage.INTRODUCTION) + 1).coerceAtMost(pages.lastIndex)] }
             )
 
-            WelcomePage.LIQUID_GLASS_PREVIEW,
-            WelcomePage.EXCERPT_PREVIEW,
-            WelcomePage.G2_PREVIEW,
-            WelcomePage.DICTIONARY_PREVIEW -> UpdatePreviewPage(
-                preview = when (page) {
-                    WelcomePage.LIQUID_GLASS_PREVIEW -> UpdatePreview.LIQUID_GLASS
-                    WelcomePage.EXCERPT_PREVIEW -> UpdatePreview.EXCERPT
-                    WelcomePage.G2_PREVIEW -> UpdatePreview.G2
-                    else -> UpdatePreview.DICTIONARY
-                },
+            WelcomePage.LIQUID_GLASS_PREVIEW -> UpdatePreviewPage(
+                preview = UpdatePreview.LIQUID_GLASS,
                 isEInkMode = isEInkMode,
                 isLiquidGlass = isLiquidGlass,
                 onBack = { currentPage = pages[(pages.indexOf(page) - 1).coerceAtLeast(0)] },
@@ -728,11 +712,6 @@ private fun ThemeSwitchOverlay(
         animationSpec = spring(dampingRatio = 0.78f, stiffness = 420f),
         label = "themeSwitchCapsuleScale"
     )
-    val sweepProgress by animateFloatAsState(
-        targetValue = if (stage == 5) 1f else 0f,
-        animationSpec = tween(900, easing = AppEasing.Accelerate),
-        label = "themeSwitchLightSweep"
-    )
 
     Box(
         modifier = Modifier
@@ -741,44 +720,6 @@ private fun ThemeSwitchOverlay(
                 detectTapGestures { }
             }
     ) {
-        Canvas(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(112.dp)
-                .align(Alignment.TopCenter)
-                .graphicsLayer {
-                    alpha = sweepProgress
-                    translationY = (-112).dp.toPx() + sweepProgress * 980.dp.toPx()
-                }
-        ) {
-            val arcWidth = size.width * 0.60f
-            val arcHeight = size.height * 1.45f
-            val arcTopLeft = Offset(
-                x = (size.width - arcWidth) / 2f,
-                y = -size.height * 0.42f
-            )
-            val arcSize = Size(arcWidth, arcHeight)
-
-            drawArc(
-                color = Color.White.copy(alpha = 0.16f),
-                startAngle = 202f,
-                sweepAngle = 136f,
-                useCenter = false,
-                topLeft = arcTopLeft,
-                size = arcSize,
-                style = Stroke(width = 20.dp.toPx(), cap = StrokeCap.Round)
-            )
-            drawArc(
-                color = Color.White.copy(alpha = 0.58f),
-                startAngle = 202f,
-                sweepAngle = 136f,
-                topLeft = arcTopLeft,
-                size = arcSize,
-                useCenter = false,
-                style = Stroke(width = 5.dp.toPx(), cap = StrokeCap.Round)
-            )
-        }
-
         Box(
             modifier = Modifier
                 .align(Alignment.Center)

@@ -30,19 +30,26 @@ class AnnotationColorTargetTest {
 
         val updated = annotationStyleAfterColorChange(style, "underline", 0xFFCC5500.toInt())
 
-        assertNull(updated.textColor)
+        // The picked colour goes to the mark; the rule's text colour is left untouched.
+        assertEquals(0xFFCC5500.toInt(), updated.highlightColor)
+        assertEquals(style.textColor, updated.textColor)
         assertEquals(style.underlineMode, updated.underlineMode)
         assertEquals(style.fontWeight, updated.fontWeight)
         assertEquals(style.italic, updated.italic)
     }
 
     @Test
-    fun changingRuleTextColorStillUpdatesTextColor() {
-        val style = RuleStyle(null, 0, 2f, 1f, 400, false)
-        assertEquals(
-            0xFFCC5500.toInt(),
-            annotationStyleAfterColorChange(style, "highlight", 0xFFCC5500.toInt()).textColor
-        )
+    fun changingHighlightColorUpdatesMarkColorOnly() {
+        val style = RuleStyle(null, 0, 2f, 1f, 400, false, highlightColor = 0xFF00FF00.toInt())
+        val updated = annotationStyleAfterColorChange(style, "highlight", 0xFFCC5500.toInt())
+        assertEquals(0xFFCC5500.toInt(), updated.highlightColor)
+        assertNull(updated.textColor)
+    }
+
+    @Test
+    fun unresolvedColorKeepsPreviousMarkColor() {
+        val style = RuleStyle(null, 0, 2f, 1f, 400, false, highlightColor = 0xFF00FF00.toInt())
+        assertEquals(0xFF00FF00.toInt(), annotationStyleAfterColorChange(style, "highlight", null).highlightColor)
     }
 
     @Test

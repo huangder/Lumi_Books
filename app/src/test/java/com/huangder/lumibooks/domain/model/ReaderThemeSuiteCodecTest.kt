@@ -42,6 +42,33 @@ class ReaderThemeSuiteCodecTest {
             .first { it.id == suite.id }
 
         assertEquals(suite, restored)
+        assertEquals(suite, LumiThemeBundleCodec.decode(LumiThemeBundleCodec.encode(listOf(suite))).single())
+    }
+
+    @Test
+    fun spacingLimitsApplyToEveryThemeVariantAndPortableImport() {
+        val tooLow = ReaderThemeSettings(lineHeight = 0f, letterSpacing = -6f)
+        val tooHigh = ReaderThemeSettings(lineHeight = 3f, letterSpacing = 11f)
+        val normalized = ReaderThemeSuites.normalized(listOf(ReaderThemeSuite(
+            id = "spacing-limits", customName = "Spacing limits", settings = tooLow, bookLayoutSettings = tooHigh,
+            lightSettings = tooLow, darkSettings = tooHigh
+        ))).first { it.id == "spacing-limits" }
+        listOf(normalized.settings, normalized.lightSettings!!).forEach {
+            assertEquals(0.5f, it.lineHeight)
+            assertEquals(-5f, it.letterSpacing)
+        }
+        listOf(normalized.bookLayoutSettings, normalized.darkSettings!!).forEach {
+            assertEquals(2.5f, it.lineHeight)
+            assertEquals(10f, it.letterSpacing)
+        }
+        assertEquals(normalized, LumiThemeBundleCodec.decode(
+            LumiThemeBundleCodec.encode(listOf(normalized))).single())
+        listOf("lineHeight" to 0.49, "lineHeight" to 2.51,
+            "letterSpacing" to -5.01, "letterSpacing" to 10.01).forEach { (key, value) ->
+            org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+                LumiThemeBundleCodec.decode("""[{"id":"bad","settings":{"background":"day","$key":$value}}]""")
+            }
+        }
     }
 
     @Test

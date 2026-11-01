@@ -4,6 +4,7 @@ import android.app.Application
 import android.graphics.*
 import com.huangder.lumibooks.ui.reader.engine.*
 import org.junit.Assert.*
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -16,7 +17,9 @@ import java.io.File
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class NativeEpubDeviceProbeTest {
     @Test fun actualDeviceBookChaptersCompileAndDraw() {
-        val session = EpubRenderSession.open(File("build/device-epubs/mao.epub").absolutePath)
+        val epub = File("build/device-epubs/mao.epub")
+        assumeTrue("device probe EPUB is unavailable: ${epub.absolutePath}", epub.isFile)
+        val session = EpubRenderSession.open(epub.absolutePath)
         try {
             for (chapter in 184..186) {
                 val source = session.nativeChapterSource(chapter)!!
