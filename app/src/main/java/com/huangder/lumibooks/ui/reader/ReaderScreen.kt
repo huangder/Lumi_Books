@@ -695,7 +695,8 @@ internal class ContinuousSelectableTextView(context: Context) : RoundedHighlight
         // the chapter underneath it. Native and custom selection share geometry.
         return updateReaderSelectionHandlePosition(
             selectionPointerWindowX - location[0],
-            (selectionPointerWindowY - location[1]).coerceIn(visible.top + 1f, visible.bottom - 1f)
+            selectionPointerWindowY - location[1],
+            visible
         )
     }
 

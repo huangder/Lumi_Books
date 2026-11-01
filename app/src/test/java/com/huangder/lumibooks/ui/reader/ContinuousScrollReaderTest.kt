@@ -330,6 +330,10 @@ class ContinuousScrollReaderTest {
             .append(imageChapter(100)).append(text) }
         show()
         compose.waitUntil(15_000) { restored }
+        compose.waitUntil(15_000) {
+            descendants(composeRoot.rootView).filterIsInstance<ContinuousSelectableTextView>()
+                .any { it.isAttachedToWindow && it.text.isNotEmpty() }
+        }
         var target = Offset.Zero
         compose.runOnIdle {
             val view = visibleTextView()
