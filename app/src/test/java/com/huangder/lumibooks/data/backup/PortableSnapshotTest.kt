@@ -15,6 +15,18 @@ import org.junit.Test
 import org.json.JSONObject
 
 class PortableSnapshotTest {
+    @Test fun kindleFormatsAndOriginalAssetsRoundTrip() {
+        for (format in listOf("AZW", "AZW3")) {
+            val book = PortableBook("kindle", "Title", "Author", format, 0L, 0.25f, null,
+                1L, false, false, 1L, "body", null, "library", "book.${format.lowercase()}", 42L, "sha")
+            val asset = PortableAsset("body", "book", "kindle", "sha.${format.lowercase()}", "sha", 42L)
+            val original = snapshot("device-a").copy(books = listOf(book), assets = listOf(asset))
+            val restored = PortableSnapshot.fromJson(original.toJson())
+            assertEquals(book, restored.books.single())
+            assertEquals(asset, restored.assets.single())
+        }
+    }
+
     @Test fun listeningTimeRoundTripsAndOldBackupsKeepReadingTime() {
         val original = snapshot("device-a", records = listOf(record("device-a", 30_000).copy(listeningDuration = 90_000)))
         val restored = PortableSnapshot.fromJson(original.toJson())

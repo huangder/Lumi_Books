@@ -107,7 +107,7 @@ fun RemoteBookCover(
     val brush = when (extension?.lowercase()) {
         "epub" -> Brush.linearGradient(listOf(Color(0xFF9BB7D4), Color(0xFF657D9A)))
         "pdf" -> Brush.linearGradient(listOf(Color(0xFFDFA19C), Color(0xFFB95E5B)))
-        "mobi" -> Brush.linearGradient(listOf(Color(0xFFA8C3A0), Color(0xFF5F8A5C)))
+        "mobi", "azw", "azw3" -> Brush.linearGradient(listOf(Color(0xFFA8C3A0), Color(0xFF5F8A5C)))
         "cbz" -> Brush.linearGradient(listOf(Color(0xFFE0B87C), Color(0xFFB07A3C)))
         else -> Brush.linearGradient(listOf(Color(0xFFB8B0D6), Color(0xFF8179A8)))
     }

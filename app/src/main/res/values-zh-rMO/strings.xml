@@ -289,7 +289,7 @@
     <string name="bookshelf_library_summary">共%1$d本，已讀完%2$d本</string>
     <string name="bookshelf_book_counts_summary">%1$d 本  已讀%2$d本</string>
     <string name="filter_all">全部</string>
-    <string name="filter_downloaded">EPUB &amp; MOBI</string>
+    <string name="filter_downloaded">EPUB · MOBI · AZW · AZW3</string>
     <string name="filter_pdf">PDF</string>
     <string name="filter_favorites">收藏</string>
     <string name="edit_book_info">修改書本資訊</string>
@@ -1171,7 +1171,7 @@
     <string name="import_sort_name">按名稱</string>
     <string name="import_summary">已匯入 %1$d 本書籍</string>
     <string name="import_summary_with_failures">已匯入 %1$d 本，%2$d 本失敗</string>
-    <string name="import_supported_formats">支援 EPUB、PDF、TXT</string>
+    <string name="import_supported_formats">EPUB · PDF · TXT · MOBI · AZW · AZW3 · CBZ · Markdown</string>
     <string name="label_first_line_indent">首行縮排</string>
     <string name="label_paragraph_spacing">段落間距</string>
     <string name="menu_replace">替換</string>
@@ -1252,7 +1252,7 @@
     <string name="tts_unavailable">無法啟動文字轉語音，請檢查系統語音引擎和語言資料</string>
     <string name="selected_books_count_compact">已選 %1$d 本</string>
     <string name="txt_editor_structure_changed_warning">偵測到章節結構變更，已儲存正文；原有標註定位可能需要重新確認</string>
-    <string name="filter_epub_mobi">EPUB &amp; MOBI</string>
+    <string name="filter_epub_mobi">EPUB · MOBI · AZW · AZW3</string>
     <string name="new_category_folder">新增分類資料夾</string>
     <string name="folder_name">資料夾名稱</string>
     <string name="folder_name_hint">輸入資料夾名稱</string>

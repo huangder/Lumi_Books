@@ -58,7 +58,16 @@ class RemoteBookFilesTest {
     fun `mime and name map to importable extensions`() {
         assertEquals("epub", RemoteBookFiles.extensionForMimeType("application/epub+zip; charset=binary"))
         assertEquals("cbz", RemoteBookFiles.extensionForMimeType("application/x-cbz"))
-        assertNull(RemoteBookFiles.extensionForMimeType("application/x-mobi8-ebook"))
+        assertEquals("azw3", RemoteBookFiles.extensionForMimeType("application/x-mobi8-ebook"))
+        assertEquals("azw", RemoteBookFiles.extensionForMimeType("application/vnd.amazon.ebook"))
+        for (extension in listOf("azw", "azw3")) {
+            assertEquals(extension, RemoteBookFiles.extensionFromName("book.${extension.uppercase()}"))
+            assertEquals(extension, RemoteBookFiles.extensionForMimeType(RemoteBookFiles.mimeTypeForExtension(extension)))
+            assertEquals("Original.$extension", RemoteBookFiles.resolveDownloadFileName(
+                "attachment; filename=Original.$extension", "application/octet-stream",
+                "https://example.com/download", "Title", "epub"
+            ))
+        }
         assertEquals("md", RemoteBookFiles.extensionFromName("notes.MD"))
         assertNull(RemoteBookFiles.extensionFromName("archive.rar"))
     }

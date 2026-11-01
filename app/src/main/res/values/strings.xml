@@ -433,7 +433,7 @@
     <string name="bookshelf_library_summary">共%1$d本，已读完%2$d本</string>
     <string name="bookshelf_book_counts_summary">%1$d 本  已读%2$d本</string>
     <string name="filter_all">全部</string>
-    <string name="filter_downloaded">EPUB &amp; MOBI</string>
+    <string name="filter_downloaded">EPUB · MOBI · AZW · AZW3</string>
     <string name="filter_pdf">PDF</string>
     <string name="filter_favorites">收藏</string>
     <string name="edit_book_info">修改书本信息</string>
@@ -1269,7 +1269,7 @@
     <string name="import_no_authorized_directory">尚未授权书籍文件夹</string>
     <string name="import_directory_permission_lost">文件夹访问权限已失效，请重新授权</string>
     <string name="import_refresh_summary">已更新 %1$d 本，发现 %2$d 本文件缺失</string>
-    <string name="import_supported_formats">支持 EPUB、PDF、TXT</string>
+    <string name="import_supported_formats">EPUB · PDF · TXT · MOBI · AZW · AZW3 · CBZ · Markdown</string>
     <string name="import_layout_mode">切换排版</string>
     <string name="import_sort">排序</string>
     <string name="import_sort_default">默认顺序</string>
@@ -1447,7 +1447,7 @@
     <string name="statistics_active_days_value">%1$d天</string>
     <string name="selected_books_count_compact">已选 %1$d 本</string>
     <string name="txt_editor_structure_changed_warning">检测到章节结构变化，已保存正文；原有标注定位可能需要重新确认</string>
-    <string name="filter_epub_mobi">EPUB &amp; MOBI</string>
+    <string name="filter_epub_mobi">EPUB · MOBI · AZW · AZW3</string>
     <string name="new_category_folder">新建分类文件夹</string>
     <string name="folder_storage_section_title">文件夹位置</string>
     <string name="folder_storage_virtual">仅书架分类</string>

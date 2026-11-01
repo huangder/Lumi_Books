@@ -5,13 +5,15 @@ import java.net.URLDecoder
 /** Pure helpers shared by the WebDAV and OPDS sources: formats, file names and identities. */
 object RemoteBookFiles {
     /** Extensions the existing import pipeline can read, in download preference order. */
-    val SUPPORTED_EXTENSIONS = listOf("epub", "pdf", "mobi", "cbz", "md", "markdown", "txt")
+    val SUPPORTED_EXTENSIONS = listOf("epub", "pdf", "mobi", "azw", "azw3", "cbz", "md", "markdown", "txt")
 
     private val MIME_EXTENSIONS = mapOf(
         "application/epub+zip" to "epub",
         "application/pdf" to "pdf",
         "application/x-mobipocket-ebook" to "mobi",
         "application/x-mobi" to "mobi",
+        "application/x-mobi8-ebook" to "azw3",
+        "application/vnd.amazon.ebook" to "azw",
         "application/vnd.comicbook+zip" to "cbz",
         "application/x-cbz" to "cbz",
         "text/markdown" to "md",
@@ -21,8 +23,6 @@ object RemoteBookFiles {
 
     /** Labels for formats a catalog may offer but the importer cannot read. */
     private val UNSUPPORTED_MIME_LABELS = mapOf(
-        "application/x-mobi8-ebook" to "AZW3",
-        "application/vnd.amazon.ebook" to "AZW",
         "application/x-fictionbook+xml" to "FB2",
         "application/fb2+zip" to "FB2",
         "application/x-zip-compressed-fb2" to "FB2",
@@ -65,6 +65,8 @@ object RemoteBookFiles {
         "epub" -> "application/epub+zip"
         "pdf" -> "application/pdf"
         "mobi" -> "application/x-mobipocket-ebook"
+        "azw" -> "application/vnd.amazon.ebook"
+        "azw3" -> "application/x-mobi8-ebook"
         "cbz" -> "application/vnd.comicbook+zip"
         "md", "markdown" -> "text/markdown"
         else -> "text/plain"

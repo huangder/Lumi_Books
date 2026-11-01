@@ -100,7 +100,7 @@ private const val REMOTE_TERMS_URL = "https://huangder.top/terms.html"
 private const val REMOTE_PRIVACY_URL = "https://huangder.top/privacy.html"
 
 /** 外部打开/分享导入支持的书籍扩展名。 */
-private val SUPPORTED_IMPORT_EXTENSIONS = setOf("epub", "pdf", "txt", "mobi", "cbz", "md", "markdown")
+private val SUPPORTED_IMPORT_EXTENSIONS = setOf("epub", "pdf", "txt", "mobi", "azw", "azw3", "cbz", "md", "markdown")
 
 private fun Intent?.extractImportUris(): List<Uri> {
     val importIntent = this ?: return emptyList()
@@ -631,7 +631,7 @@ class MainActivity : ComponentActivity() {
             return (metadata?.optString("title")?.takeIf { it.isNotBlank() } ?: fallback.first) to
                 (metadata?.optString("author")?.takeIf { it.isNotBlank() } ?: fallback.second)
         }
-        if (format != BookFormat.EPUB && format != BookFormat.MOBI) return fallback
+        if (!format.supportsEpubFeatures) return fallback
         return runCatching {
             val parser = BookParserFactory.createParser(format, this)
             try {
@@ -654,6 +654,8 @@ class MainActivity : ComponentActivity() {
         "epub" -> BookFormat.EPUB
         "pdf" -> BookFormat.PDF
         "mobi" -> BookFormat.MOBI
+        "azw" -> BookFormat.AZW
+        "azw3" -> BookFormat.AZW3
         "cbz" -> BookFormat.CBZ
         "md", "markdown", "mdpack" -> BookFormat.MARKDOWN
         else -> BookFormat.TXT

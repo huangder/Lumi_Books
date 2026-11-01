@@ -331,7 +331,7 @@
     <string name="bookshelf_library_summary">共%1$d本，已读完%2$d本</string>
     <string name="bookshelf_book_counts_summary">%1$d 本  已读%2$d本</string>
     <string name="filter_all">全部</string>
-    <string name="filter_downloaded">EPUB &amp; MOBI</string>
+    <string name="filter_downloaded">EPUB · MOBI · AZW · AZW3</string>
     <string name="filter_pdf">PDF</string>
     <string name="filter_favorites">收藏</string>
     <string name="bookshelf_categories_title">分类与标签</string>
@@ -1013,7 +1013,7 @@
     <string name="import_no_authorized_directory">尚未授权书籍文件夹</string>
     <string name="import_directory_permission_lost">文件夹访问权限已失效，请重新授权</string>
     <string name="import_refresh_summary">已更新 %1$d 本，发现 %2$d 本文件缺失</string>
-    <string name="import_supported_formats">支持 EPUB、PDF、TXT</string>
+    <string name="import_supported_formats">EPUB · PDF · TXT · MOBI · AZW · AZW3 · CBZ · Markdown</string>
     <string name="import_layout_mode">切换排版</string>
     <string name="import_sort">排序</string>
     <string name="import_sort_default">默认顺序</string>
@@ -1336,7 +1336,7 @@
     <string name="welcome_terms_content">Lumi 用户协议\n协议版本：2\n生效日期：2026年6月29日\n最近更新：2026年10月29日\n应用名称：Lumi\n包名：com.huangder.lumibooks\n开发者：huangder\n联系邮箱：huangder0104@126.com\n一、接受协议\n下载、安装、打开或使用 Lumi，即表示您已阅读、理解并同意本协议。如不同意，请停止使用本应用。\n二、应用功能\nLumi 是开源、本地优先的电子书阅读器，支持 EPUB、TXT、PDF 阅读、本地书架、阅读进度、书签、笔记、阅读统计、系统 TTS、TXT 编辑、文件/文件夹授权读取、可选 MinerU 云端 PDF 解析、可选 WebDAV 同步、可选第三方 TTS，以及网络封面搜索和按需远程字体下载。\n本应用不提供 Lumi 账号注册、登录或开发者运营的云端书库。WebDAV、MinerU、第三方 TTS、网络封面搜索和远程字体下载均在您主动配置、启用或使用时发生。\n赞助/贡献者页面打开时会请求 GitHub contributors API 并加载头像，GitHub 及其 CDN 会接收正常网络请求元数据。\n三、用户权利与义务\n• 您可以免费使用可用功能，自主管理阅读数据、缓存和配置，并随时停用可选网络功能。\n• 您可以在遵守开源许可证的前提下查看、修改和分发本应用源代码。\n• 确保您阅读、导入、编辑、解析、朗读或同步的电子书及文本不侵犯他人合法权益。\n• 仅上传、同步或发送您有权处理的文件和文本，不传输 DRM 保护内容、他人敏感个人信息、商业秘密或依法不得传输的内容。\n• 自行保管 WebDAV 密码、MinerU Token 和第三方 TTS API Key，并遵守对应服务商协议、隐私政策、费用和限额规则。\n• 使用 TXT 编辑器保存前确认内容并备份重要文件，不得利用本应用从事违法、侵权或破坏网络服务安全的活动。\n四、知识产权\nLumi 原创源代码、原创界面设计、图标及品牌标识的相关权利归开发者 huangder 所有，原创代码依 GNU GPLv3 许可证开放使用。第三方依赖及改编代码继续受各自许可证约束；应用名称、图标及品牌标识不因源代码开源而授予额外商标许可。\n您通过本应用阅读、编辑、解析、朗读或同步的电子书及其内容权利归原始权利人所有。本应用仅提供工具功能，不主张对您的阅读内容享有权利。\n五、免责声明\n本应用按“现状”提供，不保证对所有文件、设备、系统版本和第三方接口完全兼容。因设备故障、误操作、权限撤销、文件损坏、同步冲突、第三方服务不可用、计费变化或政策调整造成的损失，由您自行承担。WebDAV、MinerU、第三方 TTS、搜索服务和字体 CDN 均由第三方或您自建环境独立提供，本应用不保证其可用性、数据完整性、保存期限、删除效果、合成或解析质量。TXT 编辑会改变您授权保存的文件内容，请提前备份。\n六、隐私保护\n阅读数据默认保存在本机；网络封面搜索、贡献者/头像展示、远程字体下载、更新检查，以及 WebDAV、MinerU、第三方 TTS 和外部链接访问会产生相应网络请求。具体请见《隐私政策》。\n七、第三方服务与用户自选服务\nOpenDataLab/MinerU、WebDAV 服务商、第三方 TTS、GitHub 及其 CDN、Bing、百度和 Google 等服务独立运营。您应阅读并遵守相应服务的条款、隐私政策、费用和限额规则。开启 HTTP TTS 时，API Key 和朗读文本可能明文传输。\n八、协议的变更\n我们可能根据功能、法律法规或第三方服务要求修改本协议，并更新最近更新日期。涉及隐私、数据传输、核心功能或用户义务的重大变更，将通过应用内版本提示要求您重新阅读并确认；其他变更自公布之日起生效。\n九、终止与终止后的处理\n您可以随时停止使用并卸载应用。卸载会删除应用私有数据，但不会自动删除原始电子书文件、WebDAV 服务器副本或第三方服务已经处理的数据。\n十、适用法律\n本协议的解释和执行适用中华人民共和国法律。因本协议引起的争议，应友好协商解决；协商不成的，任何一方均可向开发者所在地有管辖权的人民法院提起诉讼。\n十一、其他条款\n本协议中任何条款如被认定为无效或不可执行，其余条款仍然有效。本协议构成您与开发者之间关于使用本应用的完整协议。\n十二、联系我们\n如对本用户协议有疑问，请联系开发者 huangder（huangder0104@126.com），或在项目 GitHub 仓库提交反馈。\n本用户协议最后更新于 2026年10月29日。\n十三、本次更新补充说明\nAI 翻译、本地词典和摘录卡片属于可选功能。AI 翻译会将选中文本发送至您配置的服务，结果准确性、费用、限额和数据处理由该服务决定；本地词典查询和摘录卡片生成在设备上完成。卡片分享后由接收应用按其条款处理。</string>
     <string name="selected_books_count_compact">已选 %1$d 本</string>
     <string name="txt_editor_structure_changed_warning">检测到章节结构变化，已保存正文；原有标注定位可能需要重新确认</string>
-    <string name="filter_epub_mobi">EPUB &amp; MOBI</string>
+    <string name="filter_epub_mobi">EPUB · MOBI · AZW · AZW3</string>
     <string name="new_category_folder">新建分类文件夹</string>
     <string name="folder_name">文件夹名称</string>
     <string name="folder_name_hint">输入文件夹名称</string>

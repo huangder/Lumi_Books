@@ -289,7 +289,7 @@
     <string name="bookshelf_library_summary">총 %1$d권, 완독 %2$d권</string>
     <string name="bookshelf_book_counts_summary">%1$d권  완독 %2$d권</string>
     <string name="filter_all">전체</string>
-    <string name="filter_downloaded">EPUB &amp; MOBI</string>
+    <string name="filter_downloaded">EPUB · MOBI · AZW · AZW3</string>
     <string name="filter_pdf">PDF</string>
     <string name="filter_favorites">즐겨찾기</string>
     <string name="edit_book_info">도서 정보 수정</string>
@@ -1172,7 +1172,7 @@
     <string name="import_sort_name">이름별</string>
     <string name="import_summary">%1$d권을 가져왔습니다</string>
     <string name="import_summary_with_failures">%1$d권 가져옴, %2$d권 실패</string>
-    <string name="import_supported_formats">EPUB, PDF, TXT 지원</string>
+    <string name="import_supported_formats">EPUB · PDF · TXT · MOBI · AZW · AZW3 · CBZ · Markdown</string>
     <string name="label_first_line_indent">첫 줄 들여쓰기</string>
     <string name="label_paragraph_spacing">단락 간격</string>
     <string name="menu_replace">바꾸기</string>
@@ -1253,7 +1253,7 @@
     <string name="tts_unavailable">TTS를 시작할 수 없습니다. 시스템 음성 엔진과 언어 데이터를 확인하세요</string>
     <string name="selected_books_count_compact">%1$d권 선택</string>
     <string name="txt_editor_structure_changed_warning">장 구조 변경을 감지했습니다. 본문은 저장되었지만 기존 주석 위치를 다시 확인해야 할 수 있습니다.</string>
-    <string name="filter_epub_mobi">EPUB &amp; MOBI</string>
+    <string name="filter_epub_mobi">EPUB · MOBI · AZW · AZW3</string>
     <string name="new_category_folder">분류 폴더 만들기</string>
     <string name="folder_name">폴더 이름</string>
     <string name="folder_name_hint">폴더 이름 입력</string>

@@ -289,7 +289,7 @@
     <string name="bookshelf_library_summary">全%1$d冊、読了%2$d冊</string>
     <string name="bookshelf_book_counts_summary">%1$d冊  読了%2$d冊</string>
     <string name="filter_all">すべて</string>
-    <string name="filter_downloaded">EPUB &amp; MOBI</string>
+    <string name="filter_downloaded">EPUB · MOBI · AZW · AZW3</string>
     <string name="filter_pdf">PDF</string>
     <string name="filter_favorites">お気に入り</string>
     <string name="edit_book_info">書籍情報を編集</string>
@@ -1172,7 +1172,7 @@
     <string name="import_sort_name">名前順</string>
     <string name="import_summary">%1$d冊をインポートしました</string>
     <string name="import_summary_with_failures">%1$d冊をインポート、%2$d冊失敗</string>
-    <string name="import_supported_formats">EPUB、PDF、TXT に対応</string>
+    <string name="import_supported_formats">EPUB · PDF · TXT · MOBI · AZW · AZW3 · CBZ · Markdown</string>
     <string name="label_first_line_indent">一行字下げ</string>
     <string name="label_paragraph_spacing">段落間隔</string>
     <string name="menu_replace">置換</string>
@@ -1253,7 +1253,7 @@
     <string name="tts_unavailable">音声読み上げを開始できません。システムの音声エンジンと言語データを確認してください</string>
     <string name="selected_books_count_compact">%1$d冊選択</string>
     <string name="txt_editor_structure_changed_warning">章構成の変更を検出しました。本文は保存されましたが、既存の注釈位置は再確認が必要な場合があります。</string>
-    <string name="filter_epub_mobi">EPUB &amp; MOBI</string>
+    <string name="filter_epub_mobi">EPUB · MOBI · AZW · AZW3</string>
     <string name="new_category_folder">カテゴリフォルダを作成</string>
     <string name="folder_name">フォルダ名</string>
     <string name="folder_name_hint">フォルダ名を入力</string>

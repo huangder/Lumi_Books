@@ -1052,6 +1052,8 @@ class WebdavSyncManager @Inject constructor(
         "epub" -> BookFormat.EPUB
         "pdf" -> BookFormat.PDF
         "mobi" -> BookFormat.MOBI
+        "azw" -> BookFormat.AZW
+        "azw3" -> BookFormat.AZW3
         "cbz" -> BookFormat.CBZ
         "md", "markdown", "mdpack" -> BookFormat.MARKDOWN
         else -> BookFormat.TXT
@@ -1263,6 +1265,8 @@ class WebdavSyncManager @Inject constructor(
             com.huangder.lumibooks.domain.model.BookFormat.EPUB -> ".epub"
             com.huangder.lumibooks.domain.model.BookFormat.PDF -> ".pdf"
             com.huangder.lumibooks.domain.model.BookFormat.MOBI -> ".mobi"
+            BookFormat.AZW -> ".azw"
+            BookFormat.AZW3 -> ".azw3"
             com.huangder.lumibooks.domain.model.BookFormat.CBZ -> ".cbz"
             com.huangder.lumibooks.domain.model.BookFormat.MARKDOWN -> ".mdpack"
             else -> ".txt"
@@ -1282,6 +1286,8 @@ class WebdavSyncManager @Inject constructor(
             com.huangder.lumibooks.domain.model.BookFormat.EPUB -> "epub"
             com.huangder.lumibooks.domain.model.BookFormat.PDF -> "pdf"
             com.huangder.lumibooks.domain.model.BookFormat.MOBI -> "mobi"
+            BookFormat.AZW -> "azw"
+            BookFormat.AZW3 -> "azw3"
             com.huangder.lumibooks.domain.model.BookFormat.CBZ -> "cbz"
             else -> "txt"
         }
@@ -1780,7 +1786,7 @@ class WebdavSyncManager @Inject constructor(
         } catch (_: Exception) { null }
 
         // EPUB/MOBI carry OPF metadata, CBZ may carry ComicInfo.xml.
-        val (title, author) = if (format == BookFormat.EPUB || format == BookFormat.MOBI ||
+        val (title, author) = if (format == BookFormat.EPUB || format.isKindle ||
             format == BookFormat.CBZ || format == BookFormat.MARKDOWN
         ) {
             try {

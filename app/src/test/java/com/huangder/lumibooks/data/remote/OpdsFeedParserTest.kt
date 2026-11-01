@@ -39,9 +39,9 @@ class OpdsFeedParserTest {
         assertEquals("https://books.example.com/covers/1-thumb.jpg", book.thumbnailUrl)
         assertEquals("epub", book.preferredFormat?.extension)
         assertEquals(1_048_576L, book.preferredFormat?.sizeBytes)
-        assertEquals(listOf("epub", "pdf"), book.supportedFormats.map { it.extension })
-        // AZW3 is listed for the details page but never offered as a download.
-        assertEquals("AZW3", book.formats.single { !it.isSupported }.label)
+        assertEquals(listOf("epub", "pdf", "azw3"), book.supportedFormats.map { it.extension })
+        assertTrue(book.formats.all { it.isSupported })
+        assertEquals("https://books.example.com/get/1.azw3", book.formats.single { it.extension == "azw3" }.url)
     }
 
     @Test

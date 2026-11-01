@@ -415,7 +415,7 @@
     <string name="bookshelf_library_summary">%1$d books, %2$d finished</string>
     <string name="bookshelf_book_counts_summary">%1$d books  %2$d read</string>
     <string name="filter_all">All</string>
-    <string name="filter_downloaded">EPUB &amp; MOBI</string>
+    <string name="filter_downloaded">EPUB · MOBI · AZW · AZW3</string>
     <string name="filter_pdf">PDF</string>
     <string name="filter_favorites">Favorites</string>
     <string name="edit_book_info">Edit Book Info</string>
@@ -1192,7 +1192,7 @@
     <string name="import_no_authorized_directory">No book folder has been authorized</string>
     <string name="import_directory_permission_lost">Folder access expired. Please authorize it again.</string>
     <string name="import_refresh_summary">Updated %1$d; %2$d files are missing</string>
-    <string name="import_supported_formats">Supports EPUB, PDF, and TXT</string>
+    <string name="import_supported_formats">EPUB · PDF · TXT · MOBI · AZW · AZW3 · CBZ · Markdown</string>
     <string name="import_layout_mode">Switch layout</string>
     <string name="import_sort">Sort</string>
     <string name="import_sort_default">Default order</string>
@@ -1423,7 +1423,7 @@
     <string name="tts_floating_loading">Reading…</string>
     <string name="selected_books_count_compact">%1$d selected</string>
     <string name="txt_editor_structure_changed_warning">Chapter structure changed. Text was saved, but existing annotation positions may need review.</string>
-    <string name="filter_epub_mobi">EPUB &amp; MOBI</string>
+    <string name="filter_epub_mobi">EPUB · MOBI · AZW · AZW3</string>
     <string name="new_category_folder">New category folder</string>
     <string name="folder_name">Folder name</string>
     <string name="folder_name_hint">Enter a folder name</string>

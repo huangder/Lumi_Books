@@ -6,7 +6,7 @@ import com.huangder.lumibooks.domain.model.BookTagLink
 import com.huangder.lumibooks.domain.model.LibraryTag
 
 internal fun Book.isEpubMobi(): Boolean =
-    format == BookFormat.EPUB || format == BookFormat.MOBI
+    format == BookFormat.EPUB || format.isKindle
 
 /** Bitmap page formats (PDF/CBZ) share the raster reader. */
 internal fun Book.isRasterPageFormat(): Boolean = format.isRasterPageFormat

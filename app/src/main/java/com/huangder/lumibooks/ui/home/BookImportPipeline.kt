@@ -230,13 +230,15 @@ class BookImportPipeline @Inject constructor(
     }.getOrNull()
 
     companion object {
-        val SUPPORTED_BOOK_EXTENSIONS = setOf("epub", "pdf", "txt", "mobi", "cbz", "md", "markdown")
+        val SUPPORTED_BOOK_EXTENSIONS = setOf("epub", "pdf", "txt", "mobi", "azw", "azw3", "cbz", "md", "markdown")
         private const val NO_URI = "lumibooks:no-uri"
 
-        fun String.toBookFormat(): BookFormat = when (this) {
+        fun String.toBookFormat(): BookFormat = when (lowercase()) {
             "epub" -> BookFormat.EPUB
             "pdf" -> BookFormat.PDF
             "mobi" -> BookFormat.MOBI
+            "azw" -> BookFormat.AZW
+            "azw3" -> BookFormat.AZW3
             "cbz" -> BookFormat.CBZ
             "md", "markdown", "mdpack" -> BookFormat.MARKDOWN
             else -> BookFormat.TXT

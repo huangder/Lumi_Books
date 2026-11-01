@@ -9,6 +9,17 @@ import org.json.JSONObject
 
 class SyncManifestTest {
     @Test
+    fun kindleSyncMetadataAndFileNamesRetainTheirFormat() {
+        for (format in listOf("AZW", "AZW3")) {
+            val metadata = SyncBookMetadata("Title", "Author", format, 1L, false, 2L)
+            val entry = SyncFileEntry("book.${format.lowercase()}", "sha", 42L, 2L, metadata)
+            val restored = SyncFileEntry.fromJson(JSONObject(entry.toJson().toString()))
+            assertEquals(entry, restored)
+            assertEquals(format, com.huangder.lumibooks.domain.model.BookFormat.valueOf(restored.metadata!!.format).name)
+        }
+    }
+
+    @Test
     fun v1ManifestRemainsReadableWithoutMetadataOrTombstones() {
         val manifest = SyncManifest.fromJson(
             """

@@ -50,7 +50,13 @@ data class Book(
 }
 
 enum class BookFormat {
-    EPUB, PDF, TXT, MOBI, CBZ, MARKDOWN;
+    EPUB, PDF, TXT, MOBI, CBZ, MARKDOWN, AZW, AZW3;
+
+    val isKindle: Boolean get() = this == MOBI || this == AZW || this == AZW3
+    val supportsEpubFeatures: Boolean get() = this == EPUB || isKindle
+    val supportsBookLayout: Boolean get() = supportsEpubFeatures || this == MARKDOWN
+    val supportsTextReading: Boolean get() = !isRasterPageFormat
+    val supportsAnnotations: Boolean get() = this != CBZ
 
     /** Bitmap page sources (PDF/CBZ) are rendered by the raster reader instead of the text engines. */
     val isRasterPageFormat: Boolean get() = this == PDF || this == CBZ

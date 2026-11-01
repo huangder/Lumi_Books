@@ -61,6 +61,19 @@ class PortableSnapshotApplyAvailabilityTest {
         assertFalse(entity.isCloudOnly)
     }
 
+    @Test
+    fun `kindle backup restore preserves format and original file extension`() {
+        for (format in listOf("AZW", "AZW3")) {
+            val original = portableBook(isCloudOnly = false, bodyAssetId = "body")
+                .copy(format = format, remoteFileName = "book.${format.lowercase()}")
+            val entity = original.toEntity("/books/book.${format.lowercase()}", null)
+            assertEquals(format, entity.format)
+            assertEquals("/books/book.${format.lowercase()}", entity.filePath)
+            assertEquals(original.remoteFileName, entity.remoteFileName)
+            assertEquals(format, com.huangder.lumibooks.data.local.entity.BookFormat.fromString(entity.format).name)
+        }
+    }
+
     private fun portableBook(isCloudOnly: Boolean, bodyAssetId: String? = null) = PortableBook(
         id = "b1",
         title = "Title",

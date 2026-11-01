@@ -1165,7 +1165,7 @@ internal fun ImportBookCoverArt(
             return@produceState
         }
         val format = runCatching { BookFormat.valueOf(extension) }.getOrNull()
-        if (format == BookFormat.EPUB || format == BookFormat.PDF || format == BookFormat.MOBI ||
+        if (format?.supportsEpubFeatures == true || format == BookFormat.PDF ||
             format == BookFormat.CBZ
         ) {
             value = withContext(Dispatchers.IO) {
@@ -1183,7 +1183,7 @@ internal fun ImportBookCoverArt(
     val coverBrush = when (extension) {
         "EPUB" -> Brush.linearGradient(listOf(Color(0xFF9BB7D4), Color(0xFF657D9A)))
         "PDF" -> Brush.linearGradient(listOf(Color(0xFFDFA19C), Color(0xFFB95E5B)))
-        "MOBI" -> Brush.linearGradient(listOf(Color(0xFFA8C3A0), Color(0xFF5F8A5C)))
+        "MOBI", "AZW", "AZW3" -> Brush.linearGradient(listOf(Color(0xFFA8C3A0), Color(0xFF5F8A5C)))
         "CBZ" -> Brush.linearGradient(listOf(Color(0xFFE0B87C), Color(0xFFB07A3C)))
         else -> Brush.linearGradient(listOf(Color(0xFFB8B0D6), Color(0xFF8179A8)))
     }

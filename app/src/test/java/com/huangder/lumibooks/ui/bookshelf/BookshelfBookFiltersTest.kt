@@ -7,11 +7,11 @@ import org.junit.Test
 
 class BookshelfBookFiltersTest {
     @Test
-    fun epubMobiIncludesOnlyEpubAndMobiBooks() {
+    fun epubMobiIncludesEpubAndAllKindleBooks() {
         val books = BookFormat.entries.map { format -> book(format) }
 
         assertEquals(
-            listOf(BookFormat.EPUB, BookFormat.MOBI),
+            listOf(BookFormat.EPUB, BookFormat.MOBI, BookFormat.AZW, BookFormat.AZW3),
             books.filter(Book::isEpubMobi).map { it.format }
         )
     }

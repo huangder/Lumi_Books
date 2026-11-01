@@ -17,7 +17,7 @@ object RemoteFileSniffer {
     fun matches(head: ByteArray, extension: String): Boolean = when (extension.lowercase()) {
         "epub", "cbz" -> head.startsWith(byteArrayOf(0x50, 0x4B, 0x03, 0x04))
         "pdf" -> head.toString(Charsets.ISO_8859_1).take(1024).contains("%PDF-")
-        "mobi" -> head.size >= 68 && head.copyOfRange(60, 68).toString(Charsets.ISO_8859_1).let {
+        "mobi", "azw", "azw3" -> head.size >= 68 && head.copyOfRange(60, 68).toString(Charsets.ISO_8859_1).let {
             it == "BOOKMOBI" || it == "TEXtREAd"
         }
         "txt", "md", "markdown" -> !looksLikeHtml(head) && head.none { it == 0.toByte() }

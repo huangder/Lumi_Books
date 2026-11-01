@@ -204,6 +204,9 @@
                 <data android:scheme="content" />
                 <data android:scheme="file" />
                 <data android:mimeType="application/x-mobipocket-ebook" />
+                <data android:mimeType="application/x-mobi" />
+                <data android:mimeType="application/vnd.amazon.ebook" />
+                <data android:mimeType="application/x-mobi8-ebook" />
             </intent-filter>
 
             <!-- CBZ 漫画文件关联 -->
@@ -223,6 +226,10 @@
                 <data android:scheme="content" />
                 <data android:scheme="file" />
                 <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.azw" />
+                <data android:pathPattern=".*\\.AZW" />
+                <data android:pathPattern=".*\\.azw3" />
+                <data android:pathPattern=".*\\.AZW3" />
                 <data android:pathPattern=".*\\.cbz" />
                 <data android:pathPattern=".*\\.CBZ" />
             </intent-filter>
@@ -238,6 +245,9 @@
                 <data android:mimeType="text/markdown" />
                 <data android:mimeType="text/x-markdown" />
                 <data android:mimeType="application/x-mobipocket-ebook" />
+                <data android:mimeType="application/x-mobi" />
+                <data android:mimeType="application/vnd.amazon.ebook" />
+                <data android:mimeType="application/x-mobi8-ebook" />
                 <data android:mimeType="application/vnd.comicbook+zip" />
                 <data android:mimeType="application/x-cbz" />
             </intent-filter>

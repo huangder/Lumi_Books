@@ -250,7 +250,7 @@ class HomeViewModel @Inject constructor(
                 bookRepository.getAllBooks().collectLatest { books ->
                     val missingCovers = withContext(Dispatchers.IO) {
                         books.filter { book ->
-                            book.format == BookFormat.EPUB && !book.isMissing &&
+                            book.format.supportsEpubFeatures && !book.isMissing &&
                                 !FileUtils.isCustomCover(book.coverPath) &&
                                 (book.coverPath.isNullOrBlank() || !File(book.coverPath).isFile ||
                                     BitmapFactory.Options().apply { inJustDecodeBounds = true }.let { options ->
