@@ -2746,14 +2746,6 @@ fun ChangelogDetail() {
 
 // ─── 高亮颜色色卡管理 ─────────────────────────────────────────
 
-private val presetColorOptions = listOf(
-    "#D6C58D", "#CFA09A", "#A7B59D", "#9DAFC1", "#B2A198", "#AFB0AC",
-    "#FFD700", "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7",
-    "#DDA0DD", "#98D8C8", "#F7DC6F", "#BB8FCE", "#85C1E9", "#F8C471",
-    "#82E0AA", "#F1948A", "#AED6F1", "#D7BDE2", "#A3E4D7", "#FAD7A0",
-    "#E59866", "#ABEBC6", "#D5F5E3", "#FADBD8", "#D6EAF8", "#E8DAEF"
-)
-
 @Composable
 fun HighlightColorDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
@@ -2917,9 +2909,14 @@ fun HighlightColorDetail(viewModel: SettingsViewModel) {
     }
 
     colorTarget?.let { (paletteIndex, slotIndex) ->
-        HighlightPaletteColorDialog(
+        ThemeColorDialog(
+            initialColorHex = palettes.getOrNull(paletteIndex)?.normalizedColors?.getOrNull(slotIndex)
+                ?: defaultHighlightColors[slotIndex],
+            dialogTitle = stringResource(R.string.highlight_palette_set_color),
+            resetText = stringResource(R.string.highlight_reset_default),
+            resetColorHex = defaultHighlightColors[slotIndex],
             onDismiss = { colorTarget = null },
-            onColorSelected = { hex ->
+            onConfirm = { hex ->
                 updateSlot(paletteIndex, slotIndex, hex)
                 colorTarget = null
             }
@@ -3112,111 +3109,6 @@ private fun HighlightPaletteSlot(
                 tint = AppColors.TextSecondary.copy(alpha = 0.66f),
                 modifier = Modifier.size(16.dp)
             )
-        }
-    }
-}
-
-@Composable
-private fun HighlightPaletteColorDialog(
-    onDismiss: () -> Unit,
-    onColorSelected: (String) -> Unit
-) {
-    var customHex by remember { mutableStateOf("") }
-    var customError by remember { mutableStateOf(false) }
-    val density = androidx.compose.ui.platform.LocalDensity.current
-    val shape = if (LocalAppTheme.current == "material3") {
-        remember(density) { G2ContinuousCornerShape(with(density) { 30.dp.toPx() }) }
-    } else AppRoundedCornerShape(30.dp)
-
-    LiquidGlassDialog(
-        onDismissRequest = onDismiss,
-        backgroundScrimColor = Color.Black.copy(alpha = 0.20f),
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        LiquidGlassSurface(
-            shape = shape,
-            fallbackColor = AppColors.CardBg,
-            contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
-            modifier = Modifier
-                .fillMaxWidth()
-                .widthIn(max = 360.dp)
-        ) {
-            Column(Modifier.padding(AppSpace.lg)) {
-                Text(
-                    stringResource(R.string.highlight_palette_set_color),
-                    fontSize = AppType.Section,
-                    fontWeight = FontWeight.Bold,
-                    color = AppColors.TextPrimary
-                )
-                Spacer(Modifier.height(AppSpace.md))
-                Text(
-                    stringResource(R.string.highlight_pick_preset),
-                    fontSize = AppType.BodySmall,
-                    color = AppColors.TextSecondary
-                )
-                Spacer(Modifier.height(AppSpace.sm))
-                presetColorOptions.chunked(6).forEach { row ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        row.forEach { hex ->
-                            val color = runCatching {
-                                Color(android.graphics.Color.parseColor(hex))
-                            }.getOrDefault(Color.Gray)
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(color)
-                                    .border(1.dp, AppColors.Divider, CircleShape)
-                                    .clickable(
-                                        indication = null,
-                                        interactionSource = remember { MutableInteractionSource() }
-                                    ) { onColorSelected(hex) }
-                            )
-                        }
-                        repeat(6 - row.size) { Spacer(Modifier.size(36.dp)) }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
-                Spacer(Modifier.height(AppSpace.sm))
-                OutlinedTextField(
-                    value = customHex,
-                    onValueChange = {
-                        customHex = it
-                        customError = false
-                    },
-                    label = { Text(stringResource(R.string.highlight_color_hex), fontSize = AppType.Caption) },
-                    isError = customError,
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    textStyle = TextStyle(fontSize = AppType.BodySmall)
-                )
-                Spacer(Modifier.height(AppSpace.sm))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(onClick = onDismiss) {
-                        Text(stringResource(R.string.cancel), fontSize = AppType.BodySmall)
-                    }
-                    Spacer(Modifier.width(AppSpace.xs))
-                    LiquidGlassTextButton(
-                        text = stringResource(R.string.confirm),
-                        onClick = {
-                            val value = customHex.trim()
-                            if (value.matches(Regex("^#?[0-9A-Fa-f]{6}$"))) {
-                                onColorSelected(if (value.startsWith("#")) value else "#$value")
-                            } else {
-                                customError = true
-                            }
-                        },
-                        tintedColor = AppColors.Accent,
-                        contentColor = AppColors.OnAccent
-                    )
-                }
-            }
         }
     }
 }
