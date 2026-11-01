@@ -3,6 +3,7 @@ package com.huangder.lumibooks.reading
 import android.os.SystemClock
 import android.util.Log
 import com.huangder.lumibooks.domain.repository.ReadingRepository
+import com.huangder.lumibooks.edition.EditionActivityObserver
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
@@ -18,15 +19,18 @@ import kotlinx.coroutines.withContext
 class ReadingActivityTracker internal constructor(
     private val persist: suspend (ActivityIncrement) -> Unit,
     private val scope: CoroutineScope,
-    private val timeline: ActivityTimeline
+    private val timeline: ActivityTimeline,
+    private val onPersisted: (ActivityIncrement) -> Unit = {}
 ) {
-    @Inject constructor(repository: ReadingRepository) : this(
+    @Inject constructor(repository: ReadingRepository, observer: EditionActivityObserver) : this(
         { increment -> withContext(Dispatchers.IO) {
+            observer.prepare()
             repository.appendActivityDuration(increment.bookId, increment.date,
                 increment.readingDuration, increment.listeningDuration, increment.startTime, increment.endTime)
         } },
         CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
-        ActivityTimeline(SystemClock::elapsedRealtime, System::currentTimeMillis)
+        ActivityTimeline(SystemClock::elapsedRealtime, System::currentTimeMillis),
+        { observer.record(it.readingDuration, it.listeningDuration) }
     )
     private val pending = ArrayDeque<ActivityIncrement>()
     private var saving = false
@@ -80,6 +84,11 @@ class ReadingActivityTracker internal constructor(
                         if (error is CancellationException) throw error
                         Log.w("ReadingActivity", "Unable to save activity; retrying on next checkpoint", error)
                         break
+                    }
+                    // Imports never pass through this live timeline. An observer failure must
+                    // not retry the already committed database increment.
+                    runCatching { onPersisted(increment) }.onFailure {
+                        Log.w("ReadingActivity", "Unable to record local activity", it)
                     }
                 }
             } finally { saving = false }

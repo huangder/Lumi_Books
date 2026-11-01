@@ -18,8 +18,14 @@ class OssAccess @Inject constructor() : PremiumAccess {
     override fun start() = Unit
 }
 
+@Singleton
+class OssWidgetRefresh @Inject constructor() : EditionWidgetRefresh {
+    override fun start() = Unit
+}
+
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class OssAccessModule {
     @Binds abstract fun access(implementation: OssAccess): PremiumAccess
+    @Binds abstract fun widgetRefresh(implementation: OssWidgetRefresh): EditionWidgetRefresh
 }

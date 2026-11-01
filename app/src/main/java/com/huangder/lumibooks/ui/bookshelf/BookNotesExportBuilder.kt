@@ -26,6 +26,9 @@ import com.huangder.lumibooks.ui.reader.txtChapterTitleFontSize
 import com.huangder.lumibooks.util.parser.BookParser
 import com.huangder.lumibooks.util.parser.BookParserFactory
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -48,6 +51,16 @@ class BookNotesExportBuilder @Inject constructor(
         bookmarks: List<Bookmark>,
         notes: List<Note>
     ): BookNotesExportDocument = withContext(Dispatchers.IO) {
+        prepare(NotesExportBook(book, notes, bookmarks)).asTxt()
+    }
+
+    internal suspend fun prepare(source: NotesExportBook): NotesExportContent = withContext(Dispatchers.IO) {
+        require(!source.book.isHidden) { "Hidden books cannot be exported" }
+        val book = source.book
+        val notes = source.notes.filterNot { it.isInkStroke }
+        val bookmarks = source.bookmarks
+        val filteredSource = source.copy(notes = notes)
+        currentCoroutineContext().ensureActive()
         val labels = BookNotesExportLabels(
             highlightSection = context.getString(R.string.export_highlight_section),
             highlightContent = context.getString(R.string.export_highlight_content),
@@ -62,28 +75,32 @@ class BookNotesExportBuilder @Inject constructor(
             bookmarkRemark = context.getString(R.string.bookmark_remark_export),
             tags = context.getString(R.string.annotation_tags),
             fileSuffix = context.getString(R.string.export_file_suffix),
-            chapterNumber = { context.getString(R.string.chapter_number, it) }
+            chapterNumber = { context.getString(R.string.chapter_number, it) },
+            underlineSection = context.getString(R.string.tab_underline)
         )
         var parserToClose: BookParser? = null
         // Raster page formats (PDF/CBZ) carry no reflowable text; page labels come from the
         // page index instead of a parser pass.
-        val parsed = if (book.format.isRasterPageFormat) {
-            null
-        } else {
-            runCatching {
-                val parser = BookParserFactory.createParser(book.format, context).also { created ->
-                    if (created is com.huangder.lumibooks.util.parser.TxtParser) {
-                        created.selectedEncoding = com.huangder.lumibooks.util.parser.TxtEncoding.fromStorage(
-                            dataStoreManager.txtEncoding(book.id).first()
-                        )
-                        created.selectedTocRule = dataStoreManager.resolveTxtTocRule(book.id)
-                    }
-                }
-                parserToClose = parser
-                parser to parser.parse(book.filePath)
-            }.getOrNull()
-        }
         try {
+            val parsed = if (book.format.isRasterPageFormat) {
+                null
+            } else {
+                exportOrNull {
+                    val parser = BookParserFactory.createParser(book.format, context).also { created ->
+                        parserToClose = created
+                        if (created is com.huangder.lumibooks.util.parser.TxtParser) {
+                            created.selectedEncoding = com.huangder.lumibooks.util.parser.TxtEncoding.fromStorage(
+                                dataStoreManager.txtEncoding(book.id).first()
+                            )
+                            created.selectedTocRule = dataStoreManager.resolveTxtTocRule(book.id)
+                        }
+                    }
+                    parserToClose = parser
+                    currentCoroutineContext().ensureActive()
+                    parser to parser.parse(book.filePath)
+                }
+            }
+            currentCoroutineContext().ensureActive()
             val chapterTitles = parsed?.second?.chapters
                 ?.associate { it.index to it.title }
                 .orEmpty()
@@ -119,16 +136,8 @@ class BookNotesExportBuilder @Inject constructor(
                 )
             }
 
-            BookNotesExportDocument(
-                fileName = BookNotesExportFormatter.suggestedFileName(book.title, labels.fileSuffix),
-                text = BookNotesExportFormatter.format(
-                    bookTitle = book.title,
-                    notes = notes,
-                    bookmarks = exportBookmarks,
-                    chapterTitles = exportChapterTitles,
-                    labels = labels
-                )
-            )
+            currentCoroutineContext().ensureActive()
+            NotesExportContent(filteredSource, exportChapterTitles, exportBookmarks, labels)
         } finally {
             runCatching { parserToClose?.close() }
         }
@@ -139,9 +148,9 @@ class BookNotesExportBuilder @Inject constructor(
         bookmarks: List<Bookmark>
     ): Map<Long, String> {
         val pageIndices = bookmarks.map { it.chapterIndex }.toSet()
-        val pageTexts = runCatching {
+        val pageTexts = exportOrNull {
             pdfTextExtractor.extractPages(File(book.filePath), pageIndices)
-        }.getOrDefault(emptyMap())
+        }.orEmpty()
         return bookmarks.associate { bookmark ->
             bookmark.id to pageTexts[bookmark.chapterIndex].orEmpty()
         }
@@ -208,7 +217,8 @@ class BookNotesExportBuilder @Inject constructor(
 
         val result = mutableMapOf<Long, String>()
         bookmarks.groupBy { it.chapterIndex }.forEach { (chapterIndex, chapterBookmarks) ->
-            val chapterText = runCatching {
+            currentCoroutineContext().ensureActive()
+            val chapterText = exportOrNull {
                 formatChapterText(
                     raw = parser.getChapterContent(chapterIndex),
                     format = format,
@@ -217,12 +227,13 @@ class BookNotesExportBuilder @Inject constructor(
                     paragraphSpacingDp = paragraphSpacingDp,
                     firstLineIndent = firstLineIndent
                 )
-            }.getOrNull() ?: return@forEach
+            } ?: return@forEach
             if (chapterText.isEmpty()) return@forEach
 
-            val layout = runCatching { engine.layout(chapterIndex, chapterText) }.getOrNull()
+            val layout = exportOrNull { engine.layout(chapterIndex, chapterText) }
                 ?: return@forEach
             chapterBookmarks.forEach { bookmark ->
+                currentCoroutineContext().ensureActive()
                 val page = layout.pages.getOrNull(bookmark.position.toInt())
                     ?: layout.pages.lastOrNull()
                     ?: return@forEach
@@ -298,4 +309,12 @@ class BookNotesExportBuilder @Inject constructor(
             else -> Typeface.DEFAULT
         }
     }
+    private inline fun <T> exportOrNull(block: () -> T): T? = try {
+        block()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        null
+    }
+
 }

@@ -32,6 +32,14 @@ entries; the public implementations render nothing. The excerpt template
 boundary keeps the six base styles public. An unavailable saved style falls
 back to the reader style without deleting the stored preferences.
 
+`EditionWidgetRefresh` starts optional widget observers through the selected
+edition's Hilt binding; OSS supplies an empty implementation. Optional widget
+providers, manifests, resources and tests belong in the private checkout. Shared
+visible-book queries and compare-and-set position updates remain public so both
+editions use the same library records. External readers can explicitly request
+a reload of the persisted position without allowing stale background saves to
+overwrite it. Cover Flow selection mode disables its management actions.
+
 The official APK keeps its existing behavior: reading reports and advanced
 excerpts can be previewed without unlocking; export is gated. Tag management
 checks access at entry. Neither edition changes the application ID, Room schema,

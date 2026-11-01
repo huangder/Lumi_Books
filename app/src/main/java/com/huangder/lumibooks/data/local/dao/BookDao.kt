@@ -13,6 +13,21 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface BookDao {
+    @Query("SELECT * FROM books WHERE isHidden = 0 ORDER BY lastReadTime DESC")
+    fun observeVisibleBooks(): Flow<List<BookEntity>>
+
+    @Query("SELECT * FROM books WHERE id = :id AND isHidden = 0")
+    suspend fun getVisibleBookById(id: String): BookEntity?
+
+    /** Rejects stale external-reader writes and books hidden since the snapshot was loaded. */
+    @Query("UPDATE books SET readingProgress = :progress, locatorJson = :locator, lastReadTime = :timestamp " +
+        "WHERE id = :id AND isHidden = 0 AND readingProgress = :expectedProgress " +
+        "AND ((locatorJson IS NULL AND :expectedLocator IS NULL) OR locatorJson = :expectedLocator)")
+    suspend fun compareAndSetVisibleReadingProgress(
+        id: String, expectedProgress: Float, expectedLocator: String?,
+        progress: Float, locator: String, timestamp: Long
+    ): Int
+
     @Query("SELECT * FROM books ORDER BY lastReadTime DESC")
     fun getAllBooks(): Flow<List<BookEntity>>
 

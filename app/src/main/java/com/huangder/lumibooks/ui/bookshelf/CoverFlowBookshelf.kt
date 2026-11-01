@@ -87,7 +87,8 @@ internal fun CoverFlowBookshelf(
     onFolderSetCover: (LibraryFolder) -> Unit,
     onFolderRemoveCover: (LibraryFolder) -> Unit,
     onFolderMove: (LibraryFolder) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    pickerMode: Boolean = false
 ) {
     val state = rememberSaveable(saver = CoverFlowState.Saver) { CoverFlowState() }
     val motionEnabled = LocalMotionEnabled.current && !LocalEInkMode.current
@@ -126,7 +127,8 @@ internal fun CoverFlowBookshelf(
         }
     }
     LaunchedEffect(enabled, libraryReady) { if (!enabled || !libraryReady) state.interrupt() }
-    LaunchedEffect(state.menuBookId) { currentMenuCallback(state.menuBookId != null) }
+    LaunchedEffect(pickerMode) { if (pickerMode) state.dismissMenu() }
+    LaunchedEffect(state.menuBookId, pickerMode) { currentMenuCallback(!pickerMode && state.menuBookId != null) }
     DisposableEffect(state) {
         onDispose { state.interrupt(); currentMenuCallback(false) }
     }
@@ -219,6 +221,7 @@ internal fun CoverFlowBookshelf(
                                 actions.open(book, bounds ?: sceneLayout.hero(state.focusedIndex, state.position)?.bounds)
                             },
                             onHaptic = onHaptic,
+                            menusEnabled = !pickerMode,
                             modifier = stageModifier,
                             sceneAlpha = { 1f - progress.value }
                         )
@@ -244,7 +247,7 @@ internal fun CoverFlowBookshelf(
                                     modifier = Modifier.widthIn(max = 360.dp).fillMaxWidth().padding(horizontal = 20.dp)
                                 )
                                 val menuBook = books.firstOrNull { it.id == state.menuBookId }
-                                androidx.compose.animation.AnimatedVisibility(menuBook != null && !isEditing && enabled,
+                                androidx.compose.animation.AnimatedVisibility(!pickerMode && menuBook != null && !isEditing && enabled,
                                     enter = fadeIn(tween(110)) + scaleIn(initialScale = if (motionEnabled) 0.92f else 1f,
                                         animationSpec = spring(dampingRatio = 0.9f, stiffness = 450f)),
                                     exit = fadeOut(tween(90)) + scaleOut(spring(stiffness = 400f), targetScale = if (motionEnabled) 0.96f else 1f)) {
@@ -272,7 +275,7 @@ internal fun CoverFlowBookshelf(
                 }
             }
         }
-        if (listMounted) {
+        if (listMounted && !pickerMode) {
             // Animated glass capture nested in the flying cover's parent is deliberately avoided.
             ProvideLiquidGlassBackdrop(null) {
                 LazyColumn(state = listState,

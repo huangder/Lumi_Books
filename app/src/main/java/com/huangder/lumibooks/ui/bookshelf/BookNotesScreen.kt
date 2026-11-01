@@ -326,31 +326,38 @@ fun BookNotesScreen(
             ExportBookmarksButton(
                 isLiquidGlass = isLiquidGlass,
                 isExporting = uiState.isExporting,
-                enabled = uiState.book != null &&
-                    (uiState.bookmarks.isNotEmpty() || uiState.notes.isNotEmpty()),
-                onClick = {
-                    viewModel.prepareExport { result ->
-                        result.onSuccess { document ->
-                            pendingExportText = document.text
-                            runCatching {
-                                createDocumentLauncher.launch(document.fileName)
+                enabled = uiState.book?.isHidden == false &&
+                    com.huangder.lumibooks.edition.canOpenBookNotesExport(
+                        uiState.bookmarks.isNotEmpty() || uiState.notes.isNotEmpty()
+                    ),
+                onClick = com.huangder.lumibooks.edition.rememberBookNotesExportAction(
+                    book = uiState.book,
+                    notes = uiState.notes,
+                    bookmarks = uiState.bookmarks,
+                    onExportTxt = {
+                        viewModel.prepareExport { result ->
+                            result.onSuccess { document ->
+                                pendingExportText = document.text
+                                runCatching {
+                                    createDocumentLauncher.launch(document.fileName)
+                                }.onFailure {
+                                    pendingExportText = null
+                                    Toast.makeText(
+                                        context,
+                                        R.string.export_bookmarks_failed,
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
                             }.onFailure {
-                                pendingExportText = null
                                 Toast.makeText(
                                     context,
                                     R.string.export_bookmarks_failed,
                                     Toast.LENGTH_SHORT
                                 ).show()
                             }
-                        }.onFailure {
-                            Toast.makeText(
-                                context,
-                                R.string.export_bookmarks_failed,
-                                Toast.LENGTH_SHORT
-                            ).show()
                         }
                     }
-                },
+                ),
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .navigationBarsPadding()

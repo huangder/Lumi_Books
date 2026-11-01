@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.widget
 
 import android.content.Context
+import com.huangder.lumibooks.edition.EditionWidgetRefresh
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.data.local.dao.BookDao
 import com.huangder.lumibooks.data.local.dao.NoteDao
@@ -22,7 +23,8 @@ class WidgetRefreshCoordinator @Inject constructor(
     @ApplicationContext private val context: Context,
     private val bookDao: BookDao,
     private val noteDao: NoteDao,
-    private val dataStoreManager: DataStoreManager
+    private val dataStoreManager: DataStoreManager,
+    private val editionWidgetRefresh: dagger.Lazy<EditionWidgetRefresh>
 ) {
     private val started = AtomicBoolean(false)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -30,6 +32,7 @@ class WidgetRefreshCoordinator @Inject constructor(
     @OptIn(FlowPreview::class)
     fun start() {
         if (!started.compareAndSet(false, true)) return
+        editionWidgetRefresh.get().start()
 
         scope.launch {
             bookDao.observeContinueReadingWidgetData()

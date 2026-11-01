@@ -35,7 +35,7 @@ interface ReadingRecordDao {
     @Query("SELECT SUM(duration + listeningDuration) FROM reading_records WHERE date BETWEEN :startDate AND :endDate AND $NOT_HIDDEN_BOOK")
     fun getTotalDurationBetweenDates(startDate: String, endDate: String): Flow<Long?>
 
-    /** All-time reading plus listening, the Premium reading unlock's measure. */
+    /** All-time reading plus listening, including imported and synchronized history. */
     @Query("SELECT COALESCE(SUM(duration + listeningDuration), 0) FROM reading_records WHERE $NOT_HIDDEN_BOOK")
     fun observeTotalActivityDuration(): Flow<Long>
 

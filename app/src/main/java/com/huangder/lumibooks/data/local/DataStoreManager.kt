@@ -104,6 +104,12 @@ import kotlinx.coroutines.cancel
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
+data class StoredNotesExportTemplate(
+    val header: String,
+    val entry: String,
+    val extension: String
+)
+
 data class StoredExcerptPreferences(
     val styleName: String,
     val aspectRatioName: String,
@@ -276,6 +282,23 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    val notesExportTemplate: Flow<StoredNotesExportTemplate?> = context.dataStore.data.map { preferences ->
+        if (preferences[NOTES_EXPORT_HEADER] == null && preferences[NOTES_EXPORT_ENTRY] == null) null
+        else StoredNotesExportTemplate(
+            header = preferences[NOTES_EXPORT_HEADER].orEmpty(),
+            entry = preferences[NOTES_EXPORT_ENTRY].orEmpty(),
+            extension = preferences[NOTES_EXPORT_EXTENSION] ?: "md"
+        )
+    }.distinctUntilChanged()
+
+    suspend fun saveNotesExportTemplate(value: StoredNotesExportTemplate) {
+        context.dataStore.edit { preferences ->
+            preferences[NOTES_EXPORT_HEADER] = value.header
+            preferences[NOTES_EXPORT_ENTRY] = value.entry
+            preferences[NOTES_EXPORT_EXTENSION] = value.extension
+        }
+    }
+
     private val readerMigrationMutex = Mutex()
     @Volatile private var readerMigrationsComplete = false
     private val deviceSupportsHdr: Boolean by lazy {
@@ -285,6 +308,10 @@ class DataStoreManager @Inject constructor(
     }
 
     companion object {
+        private val NOTES_EXPORT_HEADER = stringPreferencesKey("notes_export_header")
+        private val NOTES_EXPORT_ENTRY = stringPreferencesKey("notes_export_entry")
+        private val NOTES_EXPORT_EXTENSION = stringPreferencesKey("notes_export_extension")
+
         private val EXCERPT_STYLE = stringPreferencesKey("excerpt_style")
         private val EXCERPT_ASPECT_RATIO = stringPreferencesKey("excerpt_aspect_ratio")
         private val EXCERPT_SIGNATURE = stringPreferencesKey("excerpt_signature")

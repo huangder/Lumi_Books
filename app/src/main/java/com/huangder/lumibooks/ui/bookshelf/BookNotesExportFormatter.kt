@@ -23,7 +23,8 @@ internal data class BookNotesExportLabels(
     val tags: String = "标签",
     val pageUnavailable: String,
     val fileSuffix: String,
-    val chapterNumber: (Int) -> String
+    val chapterNumber: (Int) -> String,
+    val underlineSection: String = highlightSection
 )
 
 internal object BookNotesExportFormatter {

@@ -176,6 +176,7 @@ private fun ReaderRouter(
     windowReady: Boolean,
     openingComplete: Boolean,
     readerActive: Boolean,
+    readingPositionReloadToken: Long = 0L,
     openingPaperColor: Color? = null,
     openingSnapshotsEnabled: Boolean = false,
     onOpenBook: (String) -> Unit
@@ -301,6 +302,7 @@ private fun ReaderRouter(
             } else {
                 ReaderScreen(
                     bookId = bookId,
+                    readingPositionReloadToken = readingPositionReloadToken,
                     onNavigateBack = leaveReader,
                     onFirstContentDrawn = reportFirstContent,
                     onInteractive = {},
@@ -350,13 +352,17 @@ fun MainNavGraph(
     bookOpenUsesHeroTransition: Boolean = true,
     predictiveBackEnabled: Boolean = true,
     requestedOpenBookId: String? = null,
+    requestedReloadBookId: String? = null,
+    readingPositionReloadToken: Long = 0L,
     requestedOpenBookDirect: Boolean = false,
     requestedOpenBookshelf: Boolean = false,
+    requestedOpenStatistics: Boolean = false,
     requestedOpenFolderId: String? = null,
     requestedOpenHiddenLibrary: Boolean = false,
     onBeforeOpenDifferentBook: () -> Unit = {},
     onOpenBookRequestConsumed: () -> Unit = {},
     onOpenBookshelfRequestConsumed: () -> Unit = {},
+    onOpenStatisticsRequestConsumed: () -> Unit = {},
     onOpenHiddenLibraryRequestConsumed: () -> Unit = {}
 ) {
     val mainStartDestination = when (startDestination) {
@@ -365,7 +371,11 @@ fun MainNavGraph(
         else -> Screen.Home.route
     }
     val mainPagerState = rememberPagerState(
-        initialPage = if (requestedOpenBookshelf) 1 else mainTabRoutes.indexOf(mainStartDestination)
+        initialPage = when {
+            requestedOpenBookshelf -> 1
+            requestedOpenStatistics -> 2
+            else -> mainTabRoutes.indexOf(mainStartDestination)
+        }
     ) { mainTabRoutes.size }
     val selectedTab by remember { derivedStateOf { mainPagerState.settledPage } }
     val tabNavigationScope = rememberCoroutineScope()
@@ -790,6 +800,17 @@ fun MainNavGraph(
         if (requestedOpenFolderId == null) onOpenBookshelfRequestConsumed()
     }
 
+    LaunchedEffect(requestedOpenStatistics) {
+        if (!requestedOpenStatistics) return@LaunchedEffect
+        onBeforeOpenDifferentBook()
+        tabNavigationJob?.cancel()
+        mainPagerState.scrollToPage(2)
+        if (navController.currentDestination?.route != mainStartDestination) {
+            navController.popBackStack(mainStartDestination, inclusive = false)
+        }
+        onOpenStatisticsRequestConsumed()
+    }
+
     // 监听路由变化，从阅读页/设置页返回时延迟显示 TabBar
     val currentEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentEntry?.destination?.route
@@ -832,7 +853,11 @@ fun MainNavGraph(
         currentRoute, visibleEntries.map { it.destination.route }
     )
     var lastMainRoute by rememberSaveable {
-        mutableStateOf(if (requestedOpenBookshelf) Screen.Bookshelf.route else mainStartDestination)
+        mutableStateOf(when {
+            requestedOpenBookshelf -> Screen.Bookshelf.route
+            requestedOpenStatistics -> Screen.Statistics.route
+            else -> mainStartDestination
+        })
     }
     var bookshelfFolderOpen by rememberSaveable { mutableStateOf(requestedOpenFolderId != null) }
     var bookshelfCurrentFolderId by rememberSaveable { mutableStateOf(requestedOpenFolderId) }
@@ -842,6 +867,7 @@ fun MainNavGraph(
     }
     val activeMainRoute = mainTabRoutes[selectedTab]
     val backgroundRoute = if (requestedOpenBookshelf) Screen.Bookshelf.route
+        else if (requestedOpenStatistics) Screen.Statistics.route
         else if (currentRoute == mainStartDestination) activeMainRoute else lastMainRoute
     androidx.compose.runtime.SideEffect { lastMainRoute = backgroundRoute }
     val backgroundScene = when {
@@ -1254,6 +1280,7 @@ fun MainNavGraph(
                         ) {
                 ReaderRouter(
                     bookId = bookId,
+                    readingPositionReloadToken = if (requestedReloadBookId == bookId) readingPositionReloadToken else 0L,
                     openingPaperColor = bookReaderTransition.readerPaperColorArgb?.let { Color(it) },
                     // Pages are only kept for the window hero that grows into them.
                     openingSnapshotsEnabled = entranceAnimationsEnabled && bookOpenUsesHeroTransition &&

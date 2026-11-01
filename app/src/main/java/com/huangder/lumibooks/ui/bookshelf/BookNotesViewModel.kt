@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 
 data class BookNotesUiState(
@@ -134,15 +135,20 @@ class BookNotesViewModel @Inject constructor(
 
         _uiState.value = snapshot.copy(isExporting = true)
         viewModelScope.launch {
-            val result = runCatching {
-                exportBuilder.build(
+            try {
+                val document = exportBuilder.build(
                     book = book,
                     bookmarks = snapshot.bookmarks,
                     notes = snapshot.notes
                 )
+                onComplete(Result.success(document))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                onComplete(Result.failure(error))
+            } finally {
+                _uiState.value = _uiState.value.copy(isExporting = false)
             }
-            _uiState.value = _uiState.value.copy(isExporting = false)
-            onComplete(result)
         }
     }
 }

@@ -276,6 +276,11 @@ internal fun AnnotationFeedScreen(
                         onClose = closeSearch,
                         modifier = Modifier.weight(1f)
                     )
+                    com.huangder.lumibooks.edition.EditionAnnotationFeedExportButton(
+                        entries = uiState.entries,
+                        enabled = !uiState.isLoading && uiState.entries.isNotEmpty(),
+                        modifier = Modifier.padding(start = AppSpace.sm)
+                    )
                     com.huangder.lumibooks.edition.EditionTagManagementButton(
                         com.huangder.lumibooks.domain.model.TagTypes.ANNOTATION,
                         Modifier.padding(start = AppSpace.sm)

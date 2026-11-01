@@ -161,18 +161,23 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_OPEN_BOOK_ID = "open_book_id"
+        const val EXTRA_RELOAD_READING_POSITION = "reload_reading_position"
         const val EXTRA_OPEN_DESTINATION = "open_destination"
         const val EXTRA_OPEN_FOLDER_ID = "open_folder_id"
         const val DESTINATION_BOOKSHELF = "bookshelf"
+        const val DESTINATION_STATISTICS = "statistics"
         /** Opens the hidden library page; it shows its own passcode panel unless already unlocked. */
         const val DESTINATION_HIDDEN_LIBRARY = "hidden_library"
     }
 
     private var systemDarkMode by mutableStateOf(false)
     private var requestedOpenBookId by mutableStateOf<String?>(null)
+    private var requestedReloadBookId by mutableStateOf<String?>(null)
+    private var readingPositionReloadToken by mutableStateOf(0L)
     /** 外部文件打开已匹配到本地书籍时，绕过首页和书籍过渡页直达阅读器。 */
     private var requestedOpenBookDirect by mutableStateOf(false)
     private var requestedOpenBookshelf by mutableStateOf(false)
+    private var requestedOpenStatistics by mutableStateOf(false)
     private var requestedOpenFolderId by mutableStateOf<String?>(null)
     private var requestedOpenHiddenLibrary by mutableStateOf(false)
     private val authorizedStorageManager = AuthorizedStorageManager()
@@ -256,6 +261,10 @@ class MainActivity : ComponentActivity() {
             ?.getStringExtra(EXTRA_OPEN_BOOK_ID)
             ?.takeIf { it.isNotBlank() }
         requestedOpenBookId = requestedBookId
+        if (requestedBookId != null && intent?.getBooleanExtra(EXTRA_RELOAD_READING_POSITION, false) == true) {
+            requestedReloadBookId = requestedBookId
+            readingPositionReloadToken++
+        }
         requestedOpenBookDirect = false
         requestedOpenFolderId = intent
             ?.getStringExtra(EXTRA_OPEN_FOLDER_ID)
@@ -263,6 +272,8 @@ class MainActivity : ComponentActivity() {
         requestedOpenBookshelf = requestedBookId == null &&
             (requestedOpenFolderId != null ||
                 intent?.getStringExtra(EXTRA_OPEN_DESTINATION) == DESTINATION_BOOKSHELF)
+        requestedOpenStatistics = requestedBookId == null && !requestedOpenBookshelf &&
+            intent?.getStringExtra(EXTRA_OPEN_DESTINATION) == DESTINATION_STATISTICS
         requestedOpenHiddenLibrary = requestedBookId == null &&
             intent?.getStringExtra(EXTRA_OPEN_DESTINATION) == DESTINATION_HIDDEN_LIBRARY
     }
@@ -891,8 +902,12 @@ class MainActivity : ComponentActivity() {
                                         com.huangder.lumibooks.domain.model.BookOpenTransition.HERO.storedValue,
                                     predictiveBackEnabled = predictiveBackEnabled && !eInkModeEnabled,
                                     requestedOpenBookId = requestedOpenBookId,
+                                    requestedReloadBookId = requestedReloadBookId,
+                                    readingPositionReloadToken = readingPositionReloadToken,
                                     requestedOpenBookDirect = requestedOpenBookDirect,
                                     requestedOpenBookshelf = requestedOpenBookshelf,
+                                    requestedOpenStatistics = requestedOpenStatistics,
+                                    onOpenStatisticsRequestConsumed = { requestedOpenStatistics = false },
                                     requestedOpenFolderId = requestedOpenFolderId,
                                     requestedOpenHiddenLibrary = requestedOpenHiddenLibrary,
                                     onOpenHiddenLibraryRequestConsumed = { requestedOpenHiddenLibrary = false },

@@ -8,6 +8,7 @@ import com.huangder.lumibooks.data.local.entity.BookEntity
 import com.huangder.lumibooks.data.local.entity.AnnotationTagEntity
 import com.huangder.lumibooks.domain.model.AnnotationTags
 import com.huangder.lumibooks.data.sync.SyncIdentityStore
+import com.huangder.lumibooks.edition.EditionActivityObserver
 import com.huangder.lumibooks.mineru.MineruTokenStore
 import com.huangder.lumibooks.tts.ExternalTtsTokenStore
 import com.huangder.lumibooks.util.BookFileAccess
@@ -36,15 +37,28 @@ data class PortableSnapshotBundle(
 )
 
 @Singleton
-class PortableSnapshotManager @Inject constructor(
+class PortableSnapshotManager internal constructor(
     @ApplicationContext private val context: Context,
     private val database: AppDatabase,
     private val dataStoreManager: DataStoreManager,
     private val syncIdentityStore: SyncIdentityStore,
     private val mineruTokenStore: MineruTokenStore,
     private val externalTtsTokenStore: ExternalTtsTokenStore,
-    private val translationTokenStore: com.huangder.lumibooks.translation.TranslationTokenStore
+    private val translationTokenStore: com.huangder.lumibooks.translation.TranslationTokenStore,
+    private val beforeApply: suspend () -> Unit = {}
 ) {
+    @Inject constructor(
+        @ApplicationContext context: Context,
+        database: AppDatabase,
+        dataStoreManager: DataStoreManager,
+        syncIdentityStore: SyncIdentityStore,
+        mineruTokenStore: MineruTokenStore,
+        externalTtsTokenStore: ExternalTtsTokenStore,
+        translationTokenStore: com.huangder.lumibooks.translation.TranslationTokenStore,
+        activityObserver: EditionActivityObserver
+    ) : this(context, database, dataStoreManager, syncIdentityStore, mineruTokenStore,
+        externalTtsTokenStore, translationTokenStore, beforeApply = activityObserver::prepare)
+
     suspend fun capture(includeBookFiles: Boolean = true): PortableSnapshotBundle = withContext(Dispatchers.IO) {
         val deviceId = syncIdentityStore.deviceId()
         val bookDao = database.bookDao()
@@ -156,6 +170,8 @@ class PortableSnapshotManager @Inject constructor(
         val snapshot = incomingSnapshot.flattenLegacyTagHierarchy()
         val deviceId = syncIdentityStore.deviceId()
         validateSnapshot(snapshot, assetFiles)
+        // Freeze this installation's pre-existing history before restore/sync can replace it.
+        beforeApply()
         val oldPreferences = dataStoreManager.exportPortablePreferences(deviceId)
         val preparedAssets = prepareAssets(snapshot, assetFiles, replaceAssetDirectories)
         val assetPaths = preparedAssets.paths

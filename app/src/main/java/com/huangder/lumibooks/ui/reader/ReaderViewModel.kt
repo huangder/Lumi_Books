@@ -827,6 +827,9 @@ class ReaderViewModel @Inject constructor(
     private var processedBackgroundJob: Job? = null
     private val progressWriteMutex = Mutex()
     private var progressWriteVersion = 0L
+    private var externalPositionReloading = false
+    private var lastExternalPositionReloadToken = 0L
+    private var externalPositionReloadJob: Job? = null
 
     val ttsPageTurnRequests = ttsController.pageTurnRequests
     /** Current page spoken by TTS; the reader UI uses this to offer a one-tap return. */
@@ -888,10 +891,41 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    /** Restores an external reader's persisted anchor without saving this session's stale page. */
+    fun reloadStoredReadingPosition(requestToken: Long) {
+        if (requestToken == 0L || requestToken == lastExternalPositionReloadToken) return
+        lastExternalPositionReloadToken = requestToken
+        // A freshly created reader already loads the latest persisted position.
+        if (_uiState.value.book == null) return
+        externalPositionReloading = true
+        continuousProgressJob?.cancel()
+        cacheRecoveryJob?.cancel()
+        ++progressWriteVersion
+        externalPositionReloadJob?.cancel()
+        externalPositionReloadJob = viewModelScope.launch {
+            try {
+                val latest = progressWriteMutex.withLock {
+                    bookRepository.getBookById(bookId)
+                } ?: return@launch
+                val preferences = dataStoreManager.readerPreferences(bookId).first()
+                loadBook(preferences, latest, isCacheRecovery = true)
+                pageLayoutEngine.invalidateAll()
+                preloadCache.clear()
+                _uiState.value = _uiState.value.copy(contentRevision = _uiState.value.contentRevision + 1)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _uiState.value = _uiState.value.copy(isLoading = false, error = error.message)
+            } finally {
+                if (requestToken == lastExternalPositionReloadToken) externalPositionReloading = false
+            }
+        }
+    }
+
     fun onAppForegrounded() {
         isPaused = false
         activityTracker.setReaderVisible(this, bookId, true)
-        recoverReaderAfterCacheClearIfNeeded()
+        if (!externalPositionReloading) recoverReaderAfterCacheClearIfNeeded()
     }
 
     private fun recoverReaderAfterCacheClearIfNeeded() {
@@ -2212,31 +2246,7 @@ class ReaderViewModel @Inject constructor(
         renderMode: EpubRenderMode,
         dark: Boolean
     ): ReaderThemeSettings? {
-        val suiteState = preferences.readerThemeSuiteState
-        val layout = readerLayoutTargetFor(format, renderMode)
-        val requestedId = when (layout) {
-            ReaderLayoutTarget.READER_LAYOUT -> if (preferences.readerThemeSuiteBookScoped) {
-                preferences.readerThemeSuiteBookActiveId
-                    ?.takeIf { id -> suiteState.suites.any { it.id == id } }
-                    ?: suiteState.activeSuiteId
-            } else {
-                suiteState.activeSuiteId
-            }
-            ReaderLayoutTarget.BOOK_LAYOUT -> if (preferences.readerThemeSuiteBookScoped) {
-                preferences.readerThemeSuiteBookActiveBookLayoutId
-                    ?.takeIf { id -> suiteState.suites.any { it.id == id } }
-                    ?: suiteState.activeBookLayoutSuiteId
-            } else {
-                suiteState.activeBookLayoutSuiteId
-            }
-        }
-        val resolvedId = ReaderThemeSuites.resolveActiveId(
-            suites = suiteState.suites,
-            requestedId = requestedId,
-            layout = layout
-        )
-        return suiteState.suites.firstOrNull { it.id == resolvedId }
-            ?.settingsFor(layout, dark)
+        return resolveReaderParserThemeSettings(preferences, format, renderMode, dark)
     }
 
     private fun syncParserParagraphFormatting(
@@ -2764,7 +2774,7 @@ class ReaderViewModel @Inject constructor(
     private var pendingComicIndex: EpubComicIndex? = null
     private var comicSwitchCommitting = false
     private val textCallbacksBlocked: Boolean
-        get() = _uiState.value.epubComicReader || comicSwitchCommitting
+        get() = externalPositionReloading || _uiState.value.epubComicReader || comicSwitchCommitting
 
     fun requestEpubComicReader() {
         val book = _uiState.value.book ?: return
@@ -6597,6 +6607,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     private fun saveProgress() {
+        if (externalPositionReloading) return
         val state = _uiState.value
         val writeVersion = ++progressWriteVersion
         viewModelScope.launch {
@@ -6613,6 +6624,7 @@ class ReaderViewModel @Inject constructor(
      * 避免瞬态 0 进度覆盖用户真实进度。退后台/离开阅读页走 saveProgress() 即时落库。
      */
     private fun scheduleProgressSave() {
+        if (externalPositionReloading) return
         val state = _uiState.value
         val writeVersion = ++progressWriteVersion
         continuousProgressJob?.cancel()
@@ -6625,6 +6637,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     private suspend fun saveProgressFor(state: ReaderUiState) {
+        if (externalPositionReloading) return
         val book = state.book ?: return
         val position = captureRecoveryPosition(state) ?: return
         persistRecoveryPosition(book, position)
@@ -6721,6 +6734,7 @@ class ReaderViewModel @Inject constructor(
         book: Book,
         position: ReaderCacheRecoveryPosition
     ) {
+        if (externalPositionReloading) return
         bookRepository.updateReadingProgress(book.id, position.readingProgress, position.locatorJson)
         bookRepository.updateLastReadTime(book.id, System.currentTimeMillis())
         // Trigger debounced WebDAV sync for reading progress

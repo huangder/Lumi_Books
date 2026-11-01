@@ -15,22 +15,26 @@ class ReadingActivityTrackerTest {
     @Test fun failedWriteRetriesWithoutLosingOrDuplicatingNewActivity() = runTest {
         val epoch = Instant.parse("2026-10-26T00:00:00Z").toEpochMilli()
         val saved = mutableListOf<ActivityIncrement>()
+        val observed = mutableListOf<ActivityIncrement>()
         var fail = true
         val tracker = ReadingActivityTracker({
             if (fail) throw IllegalStateException("database unavailable")
             saved += it
-        }, backgroundScope, ActivityTimeline({ testScheduler.currentTime }, { epoch + testScheduler.currentTime }))
+        }, backgroundScope, ActivityTimeline({ testScheduler.currentTime }, { epoch + testScheduler.currentTime }),
+            onPersisted = { observed += it })
         val owner = Any()
         tracker.setReaderVisible(owner, "book", true)
         advanceTimeBy(15_000)
         runCurrent()
         assertTrue(saved.isEmpty())
+        assertTrue(observed.isEmpty())
         fail = false
         advanceTimeBy(15_000)
         runCurrent()
         tracker.setReaderVisible(owner, "book", false)
         runCurrent()
         assertEquals(30_000L, saved.sumOf { it.readingDuration })
+        assertEquals(saved, observed)
     }
 
     @Test fun inFlightWriteDoesNotAbsorbLaterIncrementsAndOldReaderCannotClearNewOwner() = runTest {

@@ -1222,8 +1222,12 @@ fun ReaderScreen(
     onInteractive: () -> Unit = {},
     onReaderPaperColorChanged: (Int) -> Unit = {},
     readerActive: Boolean = true,
+    readingPositionReloadToken: Long = 0L,
     viewModel: ReaderViewModel = hiltViewModel()
 ) {
+    LaunchedEffect(readingPositionReloadToken) {
+        if (readingPositionReloadToken != 0L) viewModel.reloadStoredReadingPosition(readingPositionReloadToken)
+    }
     // Layout constraints update with rotation and split-screen resizing, even when a
     // locale-wrapped Context still reports the previous Configuration dimensions.
     BoxWithConstraints(Modifier.fillMaxSize()) {

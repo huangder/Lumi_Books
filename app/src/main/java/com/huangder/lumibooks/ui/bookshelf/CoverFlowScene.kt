@@ -111,7 +111,8 @@ internal fun CoverFlowScene(
     onOpen: (Book, Rect?) -> Unit,
     onHaptic: () -> Unit,
     modifier: Modifier = Modifier,
-    sceneAlpha: () -> Float = { 1f }
+    sceneAlpha: () -> Float = { 1f },
+    menusEnabled: Boolean = true
 ) {
     val density = LocalDensity.current
     val context = LocalContext.current
@@ -196,8 +197,8 @@ internal fun CoverFlowScene(
                     coversLayer.record { this@drawWithContent.drawContent() }
                     drawLayer(coversLayer)
                 } else Modifier)
-                .then(if (enabled) Modifier.pointerInput(state, books, geometry, direction, motionEnabled) {
-                    coverFlowGestures(books, state, layout, scope, motionEnabled,
+                .then(if (enabled) Modifier.pointerInput(state, books, geometry, direction, motionEnabled, menusEnabled) {
+                    coverFlowGestures(books, state, layout, scope, motionEnabled, menusEnabled,
                         onOpen = { book, rect -> currentOpen(book, rect) }, onHaptic = { currentHaptic() })
                 } else Modifier)
                 .then(if (enabled && books.isNotEmpty()) Modifier.semantics(mergeDescendants = true) {
@@ -216,7 +217,7 @@ internal fun CoverFlowScene(
                         }
                         true
                     }
-                    onLongClick(menuLabel) { state.settle(scope, center, motionEnabled, showMenuAfter = true); true }
+                    if (menusEnabled) onLongClick(menuLabel) { state.settle(scope, center, motionEnabled, showMenuAfter = true); true }
                 } else Modifier.clearAndSetSemantics { })
         ) {
             order.forEachIndexed { rank, index ->
@@ -292,7 +293,7 @@ internal fun CoverFlowCover(book: Book, modifier: Modifier = Modifier) {
 
 private suspend fun PointerInputScope.coverFlowGestures(
     books: List<Book>, state: CoverFlowState, layout: CoverFlowSceneLayout,
-    scope: CoroutineScope, motionEnabled: Boolean,
+    scope: CoroutineScope, motionEnabled: Boolean, menusEnabled: Boolean,
     onOpen: (Book, Rect?) -> Unit, onHaptic: () -> Unit
 ) {
     awaitEachGesture {
@@ -329,7 +330,7 @@ private suspend fun PointerInputScope.coverFlowGestures(
             result
         }
         if (decision == null) {
-            if (hit != null) {
+            if (menusEnabled && hit != null) {
                 onHaptic()
                 if (state.isCentered(hit)) state.showMenu()
                 else state.settle(scope, hit, motionEnabled, showMenuAfter = true)
