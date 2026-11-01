@@ -25,6 +25,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import android.view.MotionEvent
+import com.huangder.lumibooks.ui.components.CollapsingPageScaffold
+import com.huangder.lumibooks.ui.components.rememberCollapsingPageState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -126,26 +130,8 @@ private fun WebViewPage(title: String, assetFile: String, isDark: Boolean, onBac
             .fillMaxSize()
             .background(AppColors.WindowBg)
     ) {
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            // 顶栏
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = AppSpace.sm, vertical = AppSpace.sm),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                LiquidGlassIconButton(
-                    imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
-                    contentDescription = stringResource(R.string.back),
-                    onClick = onBack,
-                    settingsBackButton = true
-                )
-                Spacer(Modifier.weight(1f))
-                Text(title, fontSize = AppType.Section, fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(fangSongFamily()), color = AppColors.TextPrimary)
-                Spacer(Modifier.weight(1f))
-                Spacer(Modifier.size(48.dp))
-            }
-
+        val pageState = rememberCollapsingPageState()
+        CollapsingPageScaffold(title = title, onBack = onBack, state = pageState) {
             // WebView
             AndroidView(
                 factory = { context ->
@@ -163,6 +149,19 @@ private fun WebViewPage(title: String, assetFile: String, isDark: Boolean, onBac
                                     """.trimIndent(), null)
                                 }
                             }
+                        }
+                        // Observe the native gesture without swallowing links, selection or WebView history.
+                        var previousY = 0f
+                        setOnTouchListener { view, event ->
+                            when (event.actionMasked) {
+                                MotionEvent.ACTION_DOWN -> previousY = event.rawY
+                                MotionEvent.ACTION_MOVE -> {
+                                    val delta = event.rawY - previousY
+                                    if (delta < 0f || view.scrollY == 0) pageState.consumeDelta(delta)
+                                    previousY = event.rawY
+                                }
+                            }
+                            false
                         }
                         settings.javaScriptEnabled = true
                         settings.defaultTextEncodingName = "UTF-8"

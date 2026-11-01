@@ -14,7 +14,7 @@ internal fun EditionTagManagementSettingsEntry() = Unit
 internal fun EditionReportEntry(period: ReadingReportPeriod) = Unit
 
 @Composable
-internal fun EditionTagManagementButton(type: String, modifier: Modifier = Modifier) = Unit
+internal fun EditionTagManagementButton(type: String, modifier: Modifier = Modifier, toolbar: Boolean = false) = Unit
 
 @Composable
 internal fun rememberRemoteSourcePermission(sourceCount: Int): () -> Boolean = { true }

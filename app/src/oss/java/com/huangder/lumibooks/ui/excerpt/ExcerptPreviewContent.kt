@@ -60,12 +60,13 @@ fun ExcerptPreview(
     request: ExcerptRequest,
     onClose: () -> Unit,
     modifier: Modifier = Modifier.fillMaxSize(),
-    handleBack: Boolean = true
+    handleBack: Boolean = true,
+    presentation: ExcerptPresentation = ExcerptPresentation.FULLSCREEN
 ) {
     val viewModel: ExcerptViewModel = hiltViewModel()
     val selection by viewModel.selection.collectAsState()
     LaunchedEffect(Unit) { viewModel.openSession() }
-    ExcerptPreviewContent(request, selection, viewModel::select, onClose, modifier, handleBack)
+    ExcerptPreviewContent(request, selection, viewModel::select, onClose, modifier, handleBack, presentation = presentation)
 }
 
 private data class ExcerptRenderState(val document: ExcerptDocument? = null, val failed: Boolean = false)
@@ -81,6 +82,7 @@ internal fun ExcerptPreviewContent(
     handleBack: Boolean = true,
     render: (suspend (ExcerptRequest, ExcerptSelection) -> ExcerptDocument)? = null,
     write: (suspend (ExcerptDocument, Boolean) -> Uri)? = null,
+    presentation: ExcerptPresentation = ExcerptPresentation.FULLSCREEN,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -164,10 +166,8 @@ internal fun ExcerptPreviewContent(
     BackHandler(enabled = handleBack, onBack = onClose)
 
     BoxWithConstraints(modifier.imePadding()) {
-        val controlsMaxHeight = maxHeight * 0.38f
-        Column(Modifier.fillMaxSize().padding(horizontal = AppSpace.md)) {
-            AppSheetHeader(stringResource(R.string.excerpt_title), onClose,
-                modifier = Modifier.padding(top = AppSpace.md, bottom = AppSpace.sm))
+        ExcerptPreviewLayout(presentation, onClose) { viewportHeight ->
+            val controlsMaxHeight = viewportHeight * 0.38f
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().testTag("excerpt_preview"), contentAlignment = Alignment.Center) {
                 if (shownDocument != null) {
                     val needsScroll = maxWidth * shownDocument.height.toFloat() / shownDocument.width > maxHeight

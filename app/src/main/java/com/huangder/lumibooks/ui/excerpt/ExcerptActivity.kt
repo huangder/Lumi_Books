@@ -148,7 +148,7 @@ class ExcerptActivity : ComponentActivity() {
                             .then(if (activeBackdrop != null) Modifier.layerBackdrop(backdrop) else Modifier)
                             .background(AppColors.WindowBg))
                         com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop(activeBackdrop) {
-                            request?.let { ExcerptPreview(it, onClose = { finish() }, modifier = Modifier.fillMaxSize().safeDrawingPadding()) }
+                            request?.let { ExcerptPreview(it, onClose = { finish() }, modifier = Modifier.fillMaxSize(), presentation = ExcerptPresentation.FULLSCREEN) }
                         }
                     }
                 }
@@ -183,7 +183,7 @@ fun ExcerptSheet(request: ExcerptRequest, onClose: () -> Unit, glassBackdrop: Ba
             backdrop = glassBackdrop
         ) {
             ExcerptPreview(request, onClose = { closing = true },
-                modifier = Modifier.fillMaxWidth().height(maxHeight), handleBack = false)
+                modifier = Modifier.fillMaxWidth().height(maxHeight), handleBack = false, presentation = ExcerptPresentation.SHEET)
         }
     }
 }

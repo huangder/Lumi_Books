@@ -1,5 +1,10 @@
 package com.huangder.lumibooks.ui.home.remote
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import com.huangder.lumibooks.ui.components.LocalCollapsingPageTopInset
+import com.huangder.lumibooks.ui.components.CollapsingPageScaffold
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.fadeIn
@@ -24,7 +29,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -39,11 +43,10 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.focusRequester
@@ -180,31 +183,36 @@ internal fun RemoteBrowserScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            RemoteBrowserHeader(
-                title = level.title,
-                path = breadcrumb,
-                summary = summary,
-                searchAvailable = searchAvailable,
-                searchQuery = searchQuery,
-                loading = level.loading,
-                showSelectAll = books.isNotEmpty(),
-                selectionMode = selectionMode,
-                layoutMode = layoutMode,
-                sortMode = sortMode,
-                sortAscending = sortAscending,
-                onBack = onBack,
-                onSearchOpen = onSearchOpen,
-                onSearchQueryChange = onSearchQueryChange,
-                onSearchSubmit = onSearchSubmit,
-                onSearchClose = onSearchClose,
-                onRefresh = onRefresh,
-                onSelectAll = onSelectAll,
-                onExitSelection = onExitSelection,
-                onSortModeChange = onSortModeChange,
-                onSortAscendingChange = onSortAscendingChange,
-                onLayoutModeChange = onLayoutModeChange
-            )
+        CollapsingPageScaffold(
+            drawContentBehindHeader = true,
+            title = level.title,
+            state = androidx.compose.runtime.key(level.url) { com.huangder.lumibooks.ui.components.rememberCollapsingPageState() },
+            onBack = if (searchQuery != null) onSearchClose else onBack,
+            pinnedContent = {
+                RemoteBrowserHeader(
+                    path = breadcrumb,
+                    summary = summary,
+                    searchAvailable = searchAvailable,
+                    searchQuery = searchQuery,
+                    loading = level.loading,
+                    showSelectAll = books.isNotEmpty(),
+                    selectionMode = selectionMode,
+                    layoutMode = layoutMode,
+                    sortMode = sortMode,
+                    sortAscending = sortAscending,
+                    onSearchOpen = onSearchOpen,
+                    onSearchQueryChange = onSearchQueryChange,
+                    onSearchSubmit = onSearchSubmit,
+                    onSearchClose = onSearchClose,
+                    onRefresh = onRefresh,
+                    onSelectAll = onSelectAll,
+                    onExitSelection = onExitSelection,
+                    onSortModeChange = onSortModeChange,
+                    onSortAscendingChange = onSortAscendingChange,
+                    onLayoutModeChange = onLayoutModeChange
+                )
+            }
+        ) {
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -216,19 +224,20 @@ internal fun RemoteBrowserScreen(
                     .layerBackdrop(backdrop)
             ) {
                 when {
-                    page == null && level.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    page == null && level.loading -> Box(Modifier.fillMaxSize().padding(top = LocalCollapsingPageTopInset.current), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = AppColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
                     }
                     page == null -> RemoteEmptyState(
                         message = stringResource((level.error ?: RemoteErrorKind.UNKNOWN).messageRes()),
                         actionLabel = stringResource(R.string.retry),
                         onAction = onRetry,
-                        modifier = Modifier.padding(horizontal = AppSpace.lg)
+                        modifier = Modifier.padding(horizontal = AppSpace.lg).padding(top = LocalCollapsingPageTopInset.current)
                     )
                     folders.isEmpty() && books.isEmpty() -> RemoteEmptyState(
                         message = stringResource(
                             if (level.url.startsWith("search:")) R.string.search_no_results else R.string.remote_library_empty_folder
-                        )
+                        ),
+                        modifier = Modifier.padding(top = LocalCollapsingPageTopInset.current)
                     )
                     else -> AnimatedContent(
                         targetState = layoutMode,
@@ -245,6 +254,7 @@ internal fun RemoteBrowserScreen(
                         label = "remoteLayout"
                     ) { mode ->
                         RemoteLevelContent(
+                            topPadding = LocalCollapsingPageTopInset.current,
                             folders = folders,
                             books = books,
                             layoutMode = mode,
@@ -283,6 +293,7 @@ internal fun RemoteBrowserScreen(
 
 @Composable
 private fun RemoteLevelContent(
+    topPadding: androidx.compose.ui.unit.Dp = 0.dp,
     folders: List<RemoteFolder>,
     books: List<RemoteBookItem>,
     layoutMode: Int,
@@ -301,7 +312,7 @@ private fun RemoteLevelContent(
     val padding = PaddingValues(
         start = AppSpace.lg,
         end = AppSpace.lg,
-        top = AppSpace.xs,
+        top = topPadding + AppSpace.xs,
         bottom = RemoteBottomBarContentPadding
     )
     val bookClick: (RemoteBookItem) -> Unit = { if (selectionMode) onToggleBook(it) else onOpenBook(it) }
@@ -739,9 +750,9 @@ internal fun RemotePrimaryButton(
     }
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun RemoteBrowserHeader(
-    title: String,
+internal fun RemoteBrowserHeader(
     path: String,
     summary: String,
     searchAvailable: Boolean,
@@ -752,7 +763,6 @@ private fun RemoteBrowserHeader(
     layoutMode: Int,
     sortMode: RemoteSortMode,
     sortAscending: Boolean,
-    onBack: () -> Unit,
     onSearchOpen: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
     onSearchSubmit: () -> Unit,
@@ -768,7 +778,6 @@ private fun RemoteBrowserHeader(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .statusBarsPadding()
             .padding(top = AppSpace.sm)
     ) {
         Row(
@@ -777,14 +786,8 @@ private fun RemoteBrowserHeader(
                 .padding(horizontal = AppSpace.lg),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            RemoteHeaderIconButton(
-                icon = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
-                description = stringResource(R.string.back),
-                onClick = if (searching) onSearchClose else onBack
-            )
-            Spacer(Modifier.width(AppSpace.sm))
             RemoteSearchHeaderSlot(
-                title = title,
+                title = "",
                 path = path,
                 searchAvailable = searchAvailable,
                 query = searchQuery,
@@ -807,37 +810,43 @@ private fun RemoteBrowserHeader(
             }
         }
         Spacer(Modifier.height(AppSpace.sm))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = AppSpace.lg),
-            verticalAlignment = Alignment.CenterVertically
+        androidx.compose.foundation.layout.BoxWithConstraints(
+            Modifier.fillMaxWidth().padding(horizontal = AppSpace.lg)
         ) {
-            Text(
-                text = summary,
-                color = AppColors.TextSecondary,
-                fontSize = AppType.Caption,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            if (selectionMode) {
-                Spacer(Modifier.width(AppSpace.sm))
-                RemoteHeaderPill(stringResource(R.string.done), onExitSelection)
+            val controls: @Composable () -> Unit = {
+                if (selectionMode) {
+                    RemoteHeaderPill(stringResource(R.string.done), onExitSelection)
+                }
+                if (showSelectAll) {
+                    RemoteAccentPill(stringResource(R.string.import_select_all), onSelectAll)
+                }
+                RemoteSortButton(
+                    mode = sortMode,
+                    ascending = sortAscending,
+                    onModeChange = onSortModeChange,
+                    onAscendingChange = onSortAscendingChange
+                )
+                RemoteLayoutButton(layoutMode = layoutMode, onClick = onLayoutModeChange)
             }
-            if (showSelectAll) {
-                Spacer(Modifier.width(AppSpace.sm))
-                RemoteAccentPill(stringResource(R.string.import_select_all), onSelectAll)
+            val wrapControls = maxWidth < 360.dp || androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.15f
+            if (wrapControls) {
+                Column(verticalArrangement = Arrangement.spacedBy(AppSpace.sm)) {
+                    Text(summary, color = AppColors.TextSecondary, fontSize = AppType.Caption,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth())
+                    androidx.compose.foundation.layout.FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(AppSpace.sm, Alignment.End),
+                        verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
+                    ) { controls() }
+                }
+            } else {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AppSpace.sm),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text(summary, color = AppColors.TextSecondary, fontSize = AppType.Caption,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    controls()
+                }
             }
-            Spacer(Modifier.width(AppSpace.sm))
-            RemoteSortButton(
-                mode = sortMode,
-                ascending = sortAscending,
-                onModeChange = onSortModeChange,
-                onAscendingChange = onSortAscendingChange
-            )
-            Spacer(Modifier.width(AppSpace.sm))
-            RemoteLayoutButton(layoutMode = layoutMode, onClick = onLayoutModeChange)
         }
         Spacer(Modifier.height(AppSpace.sm))
     }
@@ -882,7 +891,7 @@ private fun RemoteSearchHeaderSlot(
                 .padding(end = if (searchAvailable) collapsedWidth + AppSpace.sm else 0.dp)
                 .graphicsLayer { alpha = 1f - expansion }
         ) {
-            Text(
+            if (title.isNotBlank()) Text(
                 text = title,
                 color = AppColors.TextPrimary,
                 fontSize = AppType.Section,
@@ -909,6 +918,7 @@ private fun RemoteSearchHeaderSlot(
                 onExpand = onExpand,
                 onSubmit = onSubmit,
                 modifier = Modifier
+                    .testTag("remote-search-pill")
                     .align(Alignment.CenterEnd)
                     .width(collapsedWidth + (expandedWidth - collapsedWidth) * expansion)
                     .height(44.dp)
@@ -933,11 +943,16 @@ private fun RemoteSearchPill(
 ) {
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    var retainedQuery by remember { mutableStateOf(query) }
+    androidx.compose.runtime.SideEffect { if (expanded) retainedQuery = query }
+    val displayedQuery = if (expanded) query else retainedQuery
     LaunchedEffect(expanded) {
         if (expanded) {
             runCatching { focusRequester.requestFocus() }
             keyboardController?.show()
         } else {
+            focusManager.clearFocus()
             keyboardController?.hide()
         }
     }
@@ -951,7 +966,7 @@ private fun RemoteSearchPill(
         modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
-        if (expanded) {
+        if (expanded || contentAlpha > 0f) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
@@ -962,8 +977,9 @@ private fun RemoteSearchPill(
                 Icon(AppIcons.MagnifyingGlass, contentDescription = null, tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(AppSpace.sm))
                 androidx.compose.foundation.text.BasicTextField(
-                    value = query,
+                    value = displayedQuery,
                     onValueChange = onQueryChange,
+                    enabled = expanded,
                     modifier = Modifier
                         .weight(1f)
                         .focusRequester(focusRequester),
@@ -983,7 +999,7 @@ private fun RemoteSearchPill(
                     }),
                     decorationBox = { inner ->
                         Box {
-                            if (query.isEmpty()) {
+                            if (displayedQuery.isEmpty()) {
                                 Text(
                                     text = stringResource(R.string.remote_library_search_placeholder),
                                     color = AppColors.TextSecondary,

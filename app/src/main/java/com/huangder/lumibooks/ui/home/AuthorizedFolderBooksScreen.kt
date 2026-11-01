@@ -1,5 +1,9 @@
 package com.huangder.lumibooks.ui.home
 
+import androidx.compose.runtime.setValue
+import com.huangder.lumibooks.ui.components.LocalCollapsingPageTopInset
+import com.huangder.lumibooks.ui.components.CollapsingPageScaffold
+
 import androidx.compose.foundation.layout.heightIn
 import com.huangder.lumibooks.ui.components.lumiCardSurface
 import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
@@ -33,7 +37,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -58,8 +61,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -385,31 +388,35 @@ internal fun AuthorizedFolderBooksScreen(
     val normalizedLayoutMode = layoutMode.coerceIn(1, 3)
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            FolderBooksHeader(
-                title = breadcrumb.lastOrNull()?.name
-                    ?: stringResource(R.string.import_select_folder_books),
-                path = breadcrumb.takeIf { it.size > 1 }
-                    ?.joinToString(" › ") { it.name }
-                    .orEmpty(),
-                levelSummary = levelSummary,
-                isScanning = isScanning,
-                isSearching = isSearching,
-                searchQuery = searchQuery,
-                showSelectAll = levelBooks.isNotEmpty(),
-                layoutMode = normalizedLayoutMode,
-                sortMode = sortMode,
-                sortAscending = sortAscending,
-                onBack = onBack,
-                onRefresh = onRefresh,
-                onSearchOpen = onSearchOpen,
-                onSearchQueryChange = onSearchQueryChange,
-                onSearchClose = onSearchClose,
-                onSelectAll = onSelectAll,
-                onSortModeChange = onSortModeChange,
-                onSortAscendingChange = onSortAscendingChange,
-                onLayoutModeChange = { onLayoutModeChange(normalizedLayoutMode % 3 + 1) }
-            )
+        CollapsingPageScaffold(
+            drawContentBehindHeader = true,
+            title = breadcrumb.lastOrNull()?.name ?: stringResource(R.string.import_select_folder_books),
+            state = androidx.compose.runtime.key(breadcrumb.lastOrNull()?.key ?: "root") { com.huangder.lumibooks.ui.components.rememberCollapsingPageState() },
+            onBack = if (isSearching) onSearchClose else onBack,
+            pinnedContent = {
+                FolderBooksHeader(
+                    path = breadcrumb.takeIf { it.size > 1 }
+                        ?.joinToString(" › ") { it.name }
+                        .orEmpty(),
+                    levelSummary = levelSummary,
+                    isScanning = isScanning,
+                    isSearching = isSearching,
+                    searchQuery = searchQuery,
+                    showSelectAll = levelBooks.isNotEmpty(),
+                    layoutMode = normalizedLayoutMode,
+                    sortMode = sortMode,
+                    sortAscending = sortAscending,
+                    onRefresh = onRefresh,
+                    onSearchOpen = onSearchOpen,
+                    onSearchQueryChange = onSearchQueryChange,
+                    onSearchClose = onSearchClose,
+                    onSelectAll = onSelectAll,
+                    onSortModeChange = onSortModeChange,
+                    onSortAscendingChange = onSortAscendingChange,
+                    onLayoutModeChange = { onLayoutModeChange(normalizedLayoutMode % 3 + 1) }
+                )
+            }
+        ) {
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -439,6 +446,7 @@ internal fun AuthorizedFolderBooksScreen(
                     label = "folderBooksLayout"
                 ) { (layoutModeForLevel, _) ->
                     FolderBooksLevel(
+                        topPadding = LocalCollapsingPageTopInset.current,
                         items = items,
                         filesByKey = filesByKey,
                         pathByKey = pathByKey,
@@ -473,9 +481,9 @@ internal fun AuthorizedFolderBooksScreen(
     }
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun FolderBooksHeader(
-    title: String,
+internal fun FolderBooksHeader(
     path: String,
     levelSummary: String,
     isScanning: Boolean,
@@ -485,7 +493,6 @@ private fun FolderBooksHeader(
     layoutMode: Int,
     sortMode: FolderBooksSortMode,
     sortAscending: Boolean,
-    onBack: () -> Unit,
     onRefresh: () -> Unit,
     onSearchOpen: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
@@ -502,7 +509,6 @@ private fun FolderBooksHeader(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .statusBarsPadding()
             .padding(top = AppSpace.sm)
     ) {
         Row(
@@ -511,17 +517,6 @@ private fun FolderBooksHeader(
                 .padding(horizontal = AppSpace.lg),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            LiquidGlassIconButton(
-                imageVector = AppIcons.ArrowLeft,
-                contentDescription = stringResource(R.string.back),
-                onClick = onBack,
-                size = 44.dp,
-                iconSize = 20.dp,
-                normalContainerColor = AppColors.BgGray,
-                liquidContainerColor = AppColors.CardBg,
-                liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f)
-            )
-            Spacer(Modifier.width(AppSpace.sm))
             BoxWithConstraints(modifier = Modifier.weight(1f)) {
                 val collapsedWidth = 44.dp
                 val expandedWidth = maxWidth
@@ -549,14 +544,6 @@ private fun FolderBooksHeader(
                         .fillMaxWidth()
                         .alpha(titleAlpha)
                 ) {
-                    Text(
-                        text = title,
-                        color = AppColors.TextPrimary,
-                        fontSize = AppType.Section,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
                     if (path.isNotBlank()) {
                         Text(
                             text = path,
@@ -574,7 +561,8 @@ private fun FolderBooksHeader(
                     onQueryChange = onSearchQueryChange,
                     onExpand = onSearchOpen,
                     modifier = Modifier
-                        .align(Alignment.CenterEnd)
+                        .testTag("folder-search-pill")
+                    .align(Alignment.CenterEnd)
                         .width(collapsedWidth + (expandedWidth - collapsedWidth) * expansion)
                         .height(44.dp)
                         .graphicsLayer {
@@ -606,64 +594,71 @@ private fun FolderBooksHeader(
             }
         }
         Spacer(Modifier.height(AppSpace.sm))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = AppSpace.lg),
-            verticalAlignment = Alignment.CenterVertically
+        androidx.compose.foundation.layout.BoxWithConstraints(
+            Modifier.fillMaxWidth().padding(horizontal = AppSpace.lg)
         ) {
-            Text(
-                text = levelSummary,
-                color = AppColors.TextSecondary,
-                fontSize = AppType.Caption,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            if (showSelectAll) {
-                Spacer(Modifier.width(AppSpace.sm))
-                LiquidGlassButton(
-                    onClick = onSelectAll,
-                    modifier = Modifier.heightIn(min = 44.dp),
-                    shape = AppRoundedCornerShape(AppRadius.capsule),
-                    tintedColor = AppColors.Accent,
-                    prominentShadow = false,
-                    contentColor = AppColors.OnAccent
+            val controls: @Composable () -> Unit = {
+                if (showSelectAll) {
+                    LiquidGlassButton(
+                        onClick = onSelectAll,
+                        modifier = Modifier.heightIn(min = 44.dp),
+                        shape = AppRoundedCornerShape(AppRadius.capsule),
+                        tintedColor = AppColors.Accent,
+                        prominentShadow = false,
+                        contentColor = AppColors.OnAccent
+                    ) {
+                        Text(
+                            text = selectAllLabel,
+                            color = AppColors.OnAccent,
+                            fontSize = AppType.BodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                FolderBooksSortButton(
+                    sortMode = sortMode,
+                    sortAscending = sortAscending,
+                    onSortModeChange = onSortModeChange,
+                    onSortAscendingChange = onSortAscendingChange
+                )
+                LiquidGlassSurface(
+                    controlEdge = true,
+                    shape = CircleShape,
+                    fallbackColor = AppColors.BgGray,
+                    contentScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
+                    onClick = onLayoutModeChange,
+                    effectPadding = 1.dp,
+                    modifier = Modifier.size(44.dp)
                 ) {
-                    Text(
-                        text = selectAllLabel,
-                        color = AppColors.OnAccent,
-                        fontSize = AppType.BodySmall,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    Icon(
+                        imageVector = if (layoutMode == 1) AppIcons.List else AppIcons.SquaresFour,
+                        contentDescription = layoutModeLabel,
+                        tint = AppColors.TextPrimary,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
-            Spacer(Modifier.width(AppSpace.sm))
-            FolderBooksSortButton(
-                sortMode = sortMode,
-                sortAscending = sortAscending,
-                onSortModeChange = onSortModeChange,
-                onSortAscendingChange = onSortAscendingChange
-            )
-            Spacer(Modifier.width(AppSpace.sm))
-            LiquidGlassSurface(
-                controlEdge = true,
-                shape = CircleShape,
-                fallbackColor = AppColors.BgGray,
-                contentScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
-                onClick = onLayoutModeChange,
-                effectPadding = 1.dp,
-                modifier = Modifier.size(44.dp)
-            ) {
-                Icon(
-                    imageVector = if (layoutMode == 1) AppIcons.List else AppIcons.SquaresFour,
-                    contentDescription = layoutModeLabel,
-                    tint = AppColors.TextPrimary,
-                    modifier = Modifier.size(20.dp)
-                )
+            val wrapControls = maxWidth < 360.dp || androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.15f
+            if (wrapControls) {
+                Column(verticalArrangement = Arrangement.spacedBy(AppSpace.sm)) {
+                    Text(levelSummary, color = AppColors.TextSecondary, fontSize = AppType.Caption,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth())
+                    androidx.compose.foundation.layout.FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(AppSpace.sm, Alignment.End),
+                        verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
+                    ) { controls() }
+                }
+            } else {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AppSpace.sm),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text(levelSummary, color = AppColors.TextSecondary, fontSize = AppType.Caption,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    controls()
+                }
             }
         }
         Spacer(Modifier.height(AppSpace.xs))
@@ -681,11 +676,16 @@ private fun FolderBooksSearchPill(
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    var retainedQuery by remember { mutableStateOf(query) }
+    androidx.compose.runtime.SideEffect { if (expanded) retainedQuery = query }
+    val displayedQuery = if (expanded) query else retainedQuery
     LaunchedEffect(expanded) {
         if (expanded) {
             focusRequester.requestFocus()
             keyboardController?.show()
         } else {
+            focusManager.clearFocus()
             keyboardController?.hide()
         }
     }
@@ -699,7 +699,7 @@ private fun FolderBooksSearchPill(
         modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
-        if (expanded) {
+        if (expanded || contentAlpha > 0f) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
@@ -715,8 +715,9 @@ private fun FolderBooksSearchPill(
                 )
                 Spacer(Modifier.width(AppSpace.sm))
                 BasicTextField(
-                    value = query,
+                    value = displayedQuery,
                     onValueChange = onQueryChange,
+                    enabled = expanded,
                     modifier = Modifier
                         .weight(1f)
                         .focusRequester(focusRequester),
@@ -731,7 +732,7 @@ private fun FolderBooksSearchPill(
                     keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
                     decorationBox = { innerTextField ->
                         Box {
-                            if (query.isEmpty()) {
+                            if (displayedQuery.isEmpty()) {
                                 Text(
                                     text = stringResource(R.string.import_search_placeholder),
                                     color = AppColors.TextSecondary,
@@ -744,7 +745,7 @@ private fun FolderBooksSearchPill(
                         }
                     }
                 )
-                if (query.isNotEmpty()) {
+                if (displayedQuery.isNotEmpty()) {
                     Box(
                         modifier = Modifier
                             .size(28.dp)
@@ -933,6 +934,7 @@ private fun sortModeLabel(mode: FolderBooksSortMode): String = stringResource(
 
 @Composable
 private fun FolderBooksLevel(
+    topPadding: androidx.compose.ui.unit.Dp = 0.dp,
     items: List<FolderBooksItem>,
     filesByKey: Map<String, AuthorizedFolderFile>,
     pathByKey: Map<String, String>,
@@ -946,7 +948,9 @@ private fun FolderBooksLevel(
     onToggleBook: (AuthorizedFolderFile) -> Unit
 ) {
     if (items.isEmpty()) {
-        FolderBooksEmptyState(isScanning = isScanning, emptyText = emptyLabel)
+        Box(Modifier.fillMaxSize().padding(top = topPadding)) {
+            FolderBooksEmptyState(isScanning = isScanning, emptyText = emptyLabel)
+        }
         return
     }
     if (layoutMode == 1) {
@@ -955,7 +959,7 @@ private fun FolderBooksLevel(
             contentPadding = PaddingValues(
                 start = AppSpace.lg,
                 end = AppSpace.lg,
-                top = AppSpace.xs,
+                top = topPadding + AppSpace.xs,
                 bottom = 118.dp
             ),
             verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
@@ -985,7 +989,7 @@ private fun FolderBooksLevel(
         contentPadding = PaddingValues(
             start = AppSpace.lg,
             end = AppSpace.lg,
-            top = AppSpace.xs,
+            top = topPadding + AppSpace.xs,
             bottom = 118.dp
         ),
         horizontalArrangement = Arrangement.spacedBy(AppSpace.sm),

@@ -2,9 +2,10 @@ package com.huangder.lumibooks.ui.bookshelf
 
 import com.huangder.lumibooks.ui.excerpt.ExcerptLauncher
 import com.huangder.lumibooks.ui.excerpt.ExcerptRequest
-import com.huangder.lumibooks.ui.icons.directionalIcon
 import com.huangder.lumibooks.ui.icons.AppIcons
 
+import com.huangder.lumibooks.ui.components.LocalCollapsingPageTopInset
+import com.huangder.lumibooks.ui.components.CollapsingPageScaffold
 import com.huangder.lumibooks.ui.components.lumiCardSurface
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -29,7 +30,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -212,77 +212,45 @@ fun BookNotesScreen(
                 )
                 .background(AppColors.PageBg)
         )
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .then(
-                    if (isLiquidGlass) Modifier.layerBackdrop(glassBackdrop) else Modifier
-                )
-                .background(AppColors.PageBg)
-        ) {
-            // ── 顶栏：返回 + 标题 ──
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal = if (isLiquidGlass) AppSpace.sm else AppSpace.lg,
-                        vertical = AppSpace.sm
+        CollapsingPageScaffold(
+            title = stringResource(R.string.notes_title),
+            drawContentBehindHeader = true,
+            onBack = onNavigateBack,
+            modifier = Modifier.fillMaxSize()
+                .then(if (isLiquidGlass) Modifier.layerBackdrop(glassBackdrop) else Modifier),
+            actions = {
+                com.huangder.lumibooks.edition.EditionTagManagementButton(com.huangder.lumibooks.domain.model.TagTypes.ANNOTATION, toolbar = true)
+            },
+            pinnedContent = {
+                Column {
+                    SegmentedTabBar(
+                        selectedTab = selectedTab,
+                        tabs = tabs,
+                        onTabSelected = { selectedTab = it; selectedColor = null; selectedLine = null },
+                        modifier = Modifier.padding(horizontal = AppSpace.lg),
+                        backdrop = segmentedControlBackdrop.takeIf { isLiquidGlass }
                     )
-            ) {
-                LiquidGlassIconButton(
-                    imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
-                    contentDescription = stringResource(R.string.back),
-                    onClick = onNavigateBack,
-                    size = if (isLiquidGlass) 48.dp else 36.dp,
-                    iconSize = if (isLiquidGlass) 20.dp else 18.dp,
-                    contentColor = AppColors.TextPrimary,
-                    normalContainerColor = AppColors.BgGray,
-                    settingsBackButton = true
-                )
-                Spacer(Modifier.width(AppSpace.md))
-                Text(
-                    text = stringResource(R.string.notes_title),
-                    fontSize = AppType.Section,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = resolveAppFontFamily(KaiTi),
-                    color = AppColors.TextPrimary,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                com.huangder.lumibooks.edition.EditionTagManagementButton(com.huangder.lumibooks.domain.model.TagTypes.ANNOTATION)
+
+                    Spacer(Modifier.height(AppSpace.md))
+
+                    // ── 内容列表 ──
+                    AnnotationListFilters(
+                        tags = remember(uiState.notes, uiState.bookmarks) {
+                            (uiState.notes.flatMap { it.tags } + uiState.bookmarks.flatMap { it.tags }).distinct().sorted()
+                        },
+                        selectedTag = selectedTag,
+                        onTagSelected = { selectedTag = it },
+                        colors = if (selectedTab < 2) uiState.notes.filter { !it.isNoteEntry && (selectedTab == 1) == (it.type == "underline") }.map { it.color }.distinct() else emptyList(),
+                        selectedColor = selectedColor,
+                        onColorSelected = { selectedColor = it },
+                        selectedLine = selectedLine,
+                        onLineSelected = { selectedLine = it },
+                        showLines = selectedTab == 1,
+                        modifier = Modifier.padding(horizontal = AppSpace.lg)
+                    )
+                }
             }
-
-            Spacer(Modifier.height(AppSpace.md))
-
-            // ── 分段选择器 Tab ──
-            SegmentedTabBar(
-                selectedTab = selectedTab,
-                tabs = tabs,
-                onTabSelected = { selectedTab = it; selectedColor = null; selectedLine = null },
-                modifier = Modifier.padding(horizontal = AppSpace.lg),
-                backdrop = segmentedControlBackdrop.takeIf { isLiquidGlass }
-            )
-
-            Spacer(Modifier.height(AppSpace.md))
-
-            // ── 内容列表 ──
-            AnnotationListFilters(
-                tags = remember(uiState.notes, uiState.bookmarks) {
-                    (uiState.notes.flatMap { it.tags } + uiState.bookmarks.flatMap { it.tags }).distinct().sorted()
-                },
-                selectedTag = selectedTag,
-                onTagSelected = { selectedTag = it },
-                colors = if (selectedTab < 2) uiState.notes.filter { !it.isNoteEntry && (selectedTab == 1) == (it.type == "underline") }.map { it.color }.distinct() else emptyList(),
-                selectedColor = selectedColor,
-                onColorSelected = { selectedColor = it },
-                selectedLine = selectedLine,
-                onLineSelected = { selectedLine = it },
-                showLines = selectedTab == 1,
-                modifier = Modifier.padding(horizontal = AppSpace.lg)
-            )
+        ) {
             val filter = ReadingMarkFilter(selectedTag, selectedColor, selectedLine)
             when (selectedTab) {
                 0 -> NoteList(
@@ -506,9 +474,10 @@ private fun NoteList(
     onEditTags: (Note) -> Unit,
     onDelete: (Note) -> Unit
 ) {
+    val topInset = LocalCollapsingPageTopInset.current
     if (notes.isEmpty()) {
         Box(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().padding(top = topInset),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -534,7 +503,7 @@ private fun NoteList(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = AppSpace.lg,
-                top = AppSpace.sm,
+                top = topInset + AppSpace.sm,
                 end = AppSpace.lg,
                 bottom = 96.dp
             ),
@@ -563,9 +532,10 @@ private fun BookmarkList(
     onEditTags: (Bookmark) -> Unit,
     onDelete: (Bookmark) -> Unit
 ) {
+    val topInset = LocalCollapsingPageTopInset.current
     if (bookmarks.isEmpty()) {
         Box(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().padding(top = topInset),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -579,7 +549,7 @@ private fun BookmarkList(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = AppSpace.lg,
-                top = AppSpace.sm,
+                top = topInset + AppSpace.sm,
                 end = AppSpace.lg,
                 bottom = 96.dp
             ),

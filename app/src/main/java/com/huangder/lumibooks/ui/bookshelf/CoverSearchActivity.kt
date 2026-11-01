@@ -1,5 +1,4 @@
 package com.huangder.lumibooks.ui.bookshelf
-import com.huangder.lumibooks.ui.icons.directionalIcon
 import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.app.Activity
@@ -12,6 +11,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.ContextThemeWrapper
+import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.view.PixelCopy
 import android.view.View
 import android.webkit.WebChromeClient
@@ -51,7 +52,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -67,6 +67,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -98,6 +99,8 @@ import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
+import com.huangder.lumibooks.ui.components.CollapsingPageScaffold
+import com.huangder.lumibooks.ui.components.rememberCollapsingPageState
 import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
@@ -238,6 +241,9 @@ private fun CoverSearchScreen(
     var showSuccess by remember { mutableStateOf(false) }
     var queryText by remember { mutableStateOf(bookTitle) }
     var selectedEngine by remember { mutableStateOf(CoverSearchEngine.BING) }
+    val pageTitleState = rememberCollapsingPageState()
+    val nativeScrollEnabled by rememberUpdatedState(!cropMode && !capturing && !showSuccess)
+
 
     // WebView derives prefers-color-scheme from its themed context. The activity's
     // platform theme is fixed to light, so use an explicit wrapper that follows the
@@ -289,6 +295,42 @@ private fun CoverSearchScreen(
             loadUrl(selectedEngine.buildImageSearchUrl("$bookTitle $querySuffix"))
         }
     }
+    DisposableEffect(webView, pageTitleState) {
+        val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+        var previousY = 0f
+        var startY = 0f
+        var startX = 0f
+        var verticalDrag = false
+        var multiTouch = false
+        webView.setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    previousY = event.rawY
+                    startY = event.rawY
+                    startX = event.rawX
+                    verticalDrag = false
+                    multiTouch = false
+                }
+                MotionEvent.ACTION_POINTER_DOWN -> multiTouch = true
+                MotionEvent.ACTION_MOVE -> {
+                    val delta = event.rawY - previousY
+                    previousY = event.rawY
+                    if (!verticalDrag) {
+                        val dy = kotlin.math.abs(event.rawY - startY)
+                        verticalDrag = dy > touchSlop && dy > kotlin.math.abs(event.rawX - startX)
+                    }
+                    if (nativeScrollEnabled && !multiTouch && verticalDrag && event.pointerCount == 1 &&
+                        (delta < 0f || !view.canScrollVertically(-1))) {
+                        pageTitleState.consumeDelta(delta)
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> verticalDrag = false
+            }
+            // Web navigation, zoom, selection and links retain their original touch stream.
+            false
+        }
+        onDispose { webView.setOnTouchListener(null) }
+    }
     DisposableEffect(webView) {
         onDispose { webView.destroy() }
     }
@@ -298,16 +340,16 @@ private fun CoverSearchScreen(
         if (!cropMode) {
             delay(delayMillis(200L))
             if (!cropMode) cropFrame = null
-        } else if (containerSize != Size.Zero && cropFrame == null) {
-            var width = containerSize.height * 0.62f * COVER_ASPECT_RATIO
-            if (width > containerSize.width) width = containerSize.width
+        } else if (containerSize != Size.Zero) {
+            val current = cropFrame
+            val desiredWidth = current?.width ?: (containerSize.height * 0.62f * COVER_ASPECT_RATIO)
+            val width = minOf(desiredWidth, containerSize.width, containerSize.height * COVER_ASPECT_RATIO)
             val height = width / COVER_ASPECT_RATIO
-            cropFrame = Rect(
-                left = (containerSize.width - width) / 2f,
-                top = (containerSize.height - height) / 2f,
-                right = (containerSize.width + width) / 2f,
-                bottom = (containerSize.height + height) / 2f
-            )
+            val left = ((current?.center?.x ?: (containerSize.width / 2f)) - width / 2f)
+                .coerceIn(0f, (containerSize.width - width).coerceAtLeast(0f))
+            val top = ((current?.center?.y ?: (containerSize.height / 2f)) - height / 2f)
+                .coerceIn(0f, (containerSize.height - height).coerceAtLeast(0f))
+            cropFrame = Rect(left, top, left + width, top + height)
         }
     }
 
@@ -373,16 +415,14 @@ private fun CoverSearchScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(AppColors.PageBg)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-        ) {
+    CollapsingPageScaffold(
+        title = stringResource(R.string.cover_source_web_search),
+        onBack = onExit,
+        modifier = Modifier.fillMaxSize().background(AppColors.PageBg),
+        state = pageTitleState,
+        contentScrollEnabled = false,
+        headerGesturesEnabled = !capturing && !showSuccess,
+        pinnedContent = {
             CoverSearchTopBar(
                 query = queryText,
                 onQueryChange = { queryText = it },
@@ -391,81 +431,10 @@ private fun CoverSearchScreen(
                     val trimmed = queryText.trim()
                     if (trimmed.isNotEmpty()) webView.loadUrl(selectedEngine.buildImageSearchUrl(trimmed))
                 },
-                onBack = onExit,
                 onReload = { webView.reload() }
             )
-
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = AppSpace.md - AppSpace.xs)
-                    .clip(AppRoundedCornerShape(22.dp))
-                    .background(AppColors.BgGray)
-                    .border(
-                        width = 1.dp,
-                        color = AppColors.Divider.copy(alpha = 0.65f),
-                        shape = AppRoundedCornerShape(22.dp)
-                    )
-                    .onGloballyPositioned { coordinates ->
-                        containerSize = Size(
-                            coordinates.size.width.toFloat(),
-                            coordinates.size.height.toFloat()
-                        )
-                        areaOriginInRoot = coordinates.positionInRoot()
-                    }
-            ) {
-                AndroidView(
-                    factory = { webView },
-                    modifier = Modifier.fillMaxSize()
-                )
-
-                if (isLoading && !capturing) {
-                    LinearProgressIndicator(
-                        progress = { pageProgress / 100f },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(2.dp),
-                        color = AppColors.Accent,
-                        trackColor = Color.Transparent
-                    )
-                }
-
-                CoverCropOverlay(
-                    visible = cropMode,
-                    frame = cropFrame,
-                    containerSize = containerSize,
-                    onFrameChange = { cropFrame = it },
-                    decorationsHidden = capturing,
-                    modifier = Modifier.fillMaxSize()
-                )
-
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = showSuccess,
-                    enter = scaleIn(
-                        initialScale = 0.6f,
-                        animationSpec = spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMedium)
-                    ) + fadeIn(tween(120)),
-                    exit = fadeOut(tween(150)),
-                    modifier = Modifier.align(Alignment.Center)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(72.dp)
-                            .clip(CircleShape)
-                            .background(AppColors.Accent),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = AppIcons.Check,
-                            contentDescription = null,
-                            tint = AppColors.OnAccent,
-                            modifier = Modifier.size(36.dp)
-                        )
-                    }
-                }
-            }
-
+        },
+        bottomBar = {
             CoverSearchBottomBar(
                 selectedEngine = selectedEngine,
                 cropMode = cropMode,
@@ -484,6 +453,77 @@ private fun CoverSearchScreen(
                 },
                 onConfirmCrop = confirmCrop
             )
+        }
+    ) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = AppSpace.md - AppSpace.xs)
+                .clip(AppRoundedCornerShape(22.dp))
+                .background(AppColors.BgGray)
+                .border(
+                    width = 1.dp,
+                    color = AppColors.Divider.copy(alpha = 0.65f),
+                    shape = AppRoundedCornerShape(22.dp)
+                )
+                .onGloballyPositioned { coordinates ->
+                    containerSize = Size(
+                        coordinates.size.width.toFloat(),
+                        coordinates.size.height.toFloat()
+                    )
+                    areaOriginInRoot = coordinates.positionInRoot()
+                }
+        ) {
+            AndroidView(
+                factory = { webView },
+                modifier = Modifier.fillMaxSize()
+            )
+
+            if (isLoading && !capturing) {
+                LinearProgressIndicator(
+                    progress = { pageProgress / 100f },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.dp),
+                    color = AppColors.Accent,
+                    trackColor = Color.Transparent
+                )
+            }
+
+            CoverCropOverlay(
+                visible = cropMode,
+                frame = cropFrame,
+                containerSize = containerSize,
+                onFrameChange = { cropFrame = it },
+                decorationsHidden = capturing,
+                modifier = Modifier.fillMaxSize()
+            )
+
+            androidx.compose.animation.AnimatedVisibility(
+                visible = showSuccess,
+                enter = scaleIn(
+                    initialScale = 0.6f,
+                    animationSpec = spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMedium)
+                ) + fadeIn(tween(120)),
+                exit = fadeOut(tween(150)),
+                modifier = Modifier.align(Alignment.Center)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .background(AppColors.Accent),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = AppIcons.Check,
+                        contentDescription = null,
+                        tint = AppColors.OnAccent,
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
+            }
         }
     }
 }
@@ -650,7 +690,6 @@ private fun CoverSearchTopBar(
     query: String,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
-    onBack: () -> Unit,
     onReload: () -> Unit
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
@@ -684,14 +723,6 @@ private fun CoverSearchTopBar(
             .padding(horizontal = AppSpace.md - AppSpace.xs, vertical = AppSpace.sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        LiquidGlassIconButton(
-            imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
-            contentDescription = stringResource(R.string.back),
-            onClick = onBack,
-            settingsBackButton = true
-        )
-        Spacer(Modifier.size(AppSpace.md - AppSpace.xs))
-
         if (isLiquidGlass) {
             LiquidGlassSurface(
                 controlEdge = true,

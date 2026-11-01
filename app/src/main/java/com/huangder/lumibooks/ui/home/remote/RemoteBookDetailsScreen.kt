@@ -1,5 +1,10 @@
 package com.huangder.lumibooks.ui.home.remote
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import com.huangder.lumibooks.ui.components.LocalCollapsingPageTopInset
+import com.huangder.lumibooks.ui.components.CollapsingPageScaffold
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -16,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -27,11 +31,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -88,147 +89,147 @@ internal fun RemoteBookDetailsScreen(
     val blurBackdrop = contentBackdrop ?: com.kyant.backdrop.backdrops.rememberLayerBackdrop()
 
     Box(modifier = Modifier.fillMaxSize()) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        RemotePageHeader(
+        CollapsingPageScaffold(
+            drawContentBehindHeader = true,
             title = stringResource(R.string.remote_book_details_title),
-            subtitle = source?.name,
             onBack = onBack
-        )
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .layerBackdrop(blurBackdrop)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = AppSpace.lg),
-            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.height(AppSpace.md))
-            RemoteBookCover(
-                model = cover,
-                extension = format?.extension,
-                title = title,
-                shape = AppRoundedCornerShape(AppRadius.lg),
-                placeholderFontSize = AppType.Section,
-                modifier = Modifier.width(150.dp).aspectRatio(0.70f)
-            )
-            Spacer(Modifier.height(AppSpace.md))
-            Text(
-                text = title,
-                color = AppColors.TextPrimary,
-                fontSize = AppType.Section,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(Modifier.height(AppSpace.xs))
-            Text(
-                text = authors.joinToString(", ").ifBlank { stringResource(R.string.book_author_unknown) },
-                color = AppColors.TextSecondary,
-                fontSize = AppType.BodySmall,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            val supported = item.supportedFormats
-            if (supported.size > 1) {
-                Spacer(Modifier.height(AppSpace.md))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(AppSpace.sm, Alignment.CenterHorizontally),
-                    verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
-                ) {
-                    supported.forEach { option ->
-                        FormatChip(
-                            label = RemoteBookFiles.displayFormat(option.extension),
-                            selected = option.url == format?.url,
-                            onClick = { onSelectFormat(option) }
-                        )
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(AppSpace.lg))
-            val rows = buildList {
-                format?.let { add(stringResource(R.string.remote_book_format) to RemoteBookFiles.displayFormat(it.extension)) }
-                add(stringResource(R.string.remote_book_size) to (formatRemoteSize(size) ?: stringResource(R.string.book_download_size_unknown)))
-                (item.publisher ?: metadata?.publisher)?.let { add(stringResource(R.string.remote_book_publisher) to it) }
-                (item.language ?: metadata?.language)?.let { add(stringResource(R.string.remote_book_language) to it) }
-                (item.published ?: metadata?.published)?.let { add(stringResource(R.string.remote_book_published) to it.take(10)) }
-                item.categories.ifEmpty { metadata?.categories.orEmpty() }.takeIf { it.isNotEmpty() }?.let {
-                    add(stringResource(R.string.remote_book_categories) to it.take(6).joinToString(" · "))
-                }
-                item.remotePath?.let { add(stringResource(R.string.remote_book_path) to it) }
-                item.lastModified.takeIf { it > 0L }?.let {
-                    add(stringResource(R.string.remote_book_modified) to DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(it)))
-                }
-                source?.let { add(stringResource(R.string.remote_book_source) to it.name) }
-            }
-            InfoCard(rows)
-
-            val unsupported = item.formats.filterNot { it.isSupported }.mapNotNull { it.label }.distinct()
-            if (unsupported.isNotEmpty()) {
-                Spacer(Modifier.height(AppSpace.sm))
-                Text(
-                    text = stringResource(R.string.remote_book_unsupported_formats, unsupported.joinToString(", ")),
-                    color = AppColors.TextSecondary,
-                    fontSize = AppType.Caption,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            if (!summary.isNullOrBlank()) {
-                Spacer(Modifier.height(AppSpace.md))
-                SectionCard(title = stringResource(R.string.remote_book_summary)) {
-                    Text(
-                        text = summary,
-                        color = AppColors.TextPrimary,
-                        fontSize = AppType.BodySmall,
-                        lineHeight = AppType.BodySmall * 1.55f,
-                        maxLines = if (summaryExpanded) Int.MAX_VALUE else 6,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.clickable { summaryExpanded = !summaryExpanded }
-                    )
-                }
-            } else if (source?.type == RemoteSourceType.WEBDAV &&
-                (format?.extension == "epub" || format?.extension == "cbz") && metadata == null
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .layerBackdrop(blurBackdrop)
+                    .verticalScroll(rememberScrollState())
+                    .padding(top = LocalCollapsingPageTopInset.current)
+                    .padding(horizontal = AppSpace.lg),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Spacer(Modifier.height(AppSpace.md))
-                SectionCard(title = stringResource(R.string.remote_book_summary)) {
-                    if (state.readingMetadata) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(color = AppColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(AppSpace.sm))
-                            Text(stringResource(R.string.remote_book_reading_info), color = AppColors.TextSecondary, fontSize = AppType.Caption)
+                RemoteBookCover(
+                    model = cover,
+                    extension = format?.extension,
+                    title = title,
+                    shape = AppRoundedCornerShape(AppRadius.lg),
+                    placeholderFontSize = AppType.Section,
+                    modifier = Modifier.width(150.dp).aspectRatio(0.70f)
+                )
+                Spacer(Modifier.height(AppSpace.md))
+                Text(
+                    text = title,
+                    color = AppColors.TextPrimary,
+                    fontSize = AppType.Section,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(AppSpace.xs))
+                Text(
+                    text = authors.joinToString(", ").ifBlank { stringResource(R.string.book_author_unknown) },
+                    color = AppColors.TextSecondary,
+                    fontSize = AppType.BodySmall,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                val supported = item.supportedFormats
+                if (supported.size > 1) {
+                    Spacer(Modifier.height(AppSpace.md))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(AppSpace.sm, Alignment.CenterHorizontally),
+                        verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
+                    ) {
+                        supported.forEach { option ->
+                            FormatChip(
+                                label = RemoteBookFiles.displayFormat(option.extension),
+                                selected = option.url == format?.url,
+                                onClick = { onSelectFormat(option) }
+                            )
                         }
-                    } else {
-                        Text(
-                            text = state.metadataError?.let { stringResource(it.messageRes()) }
-                                ?: stringResource(R.string.remote_book_read_info_hint),
-                            color = AppColors.TextSecondary,
-                            fontSize = AppType.Caption
-                        )
-                        Spacer(Modifier.height(AppSpace.sm))
-                        RemoteHeaderPill(stringResource(R.string.remote_book_read_info), onReadMetadata)
                     }
                 }
-            }
-            Spacer(Modifier.height(RemoteBottomBarContentPadding + 48.dp))
-        }
-    }
 
-    RemoteBottomBar(blurBackdrop = blurBackdrop) {
-        DownloadBar(
-            state = state,
-            size = size,
-            hasFormat = format != null,
-            onDownload = onDownload,
-            onCancel = onCancel,
-            onRetry = onRetry,
-            onOpen = onOpen
-        )
-    }
+                Spacer(Modifier.height(AppSpace.lg))
+                val rows = buildList {
+                    format?.let { add(stringResource(R.string.remote_book_format) to RemoteBookFiles.displayFormat(it.extension)) }
+                    add(stringResource(R.string.remote_book_size) to (formatRemoteSize(size) ?: stringResource(R.string.book_download_size_unknown)))
+                    (item.publisher ?: metadata?.publisher)?.let { add(stringResource(R.string.remote_book_publisher) to it) }
+                    (item.language ?: metadata?.language)?.let { add(stringResource(R.string.remote_book_language) to it) }
+                    (item.published ?: metadata?.published)?.let { add(stringResource(R.string.remote_book_published) to it.take(10)) }
+                    item.categories.ifEmpty { metadata?.categories.orEmpty() }.takeIf { it.isNotEmpty() }?.let {
+                        add(stringResource(R.string.remote_book_categories) to it.take(6).joinToString(" · "))
+                    }
+                    item.remotePath?.let { add(stringResource(R.string.remote_book_path) to it) }
+                    item.lastModified.takeIf { it > 0L }?.let {
+                        add(stringResource(R.string.remote_book_modified) to DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(it)))
+                    }
+                    source?.let { add(stringResource(R.string.remote_book_source) to it.name) }
+                }
+                InfoCard(rows)
+
+                val unsupported = item.formats.filterNot { it.isSupported }.mapNotNull { it.label }.distinct()
+                if (unsupported.isNotEmpty()) {
+                    Spacer(Modifier.height(AppSpace.sm))
+                    Text(
+                        text = stringResource(R.string.remote_book_unsupported_formats, unsupported.joinToString(", ")),
+                        color = AppColors.TextSecondary,
+                        fontSize = AppType.Caption,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                if (!summary.isNullOrBlank()) {
+                    Spacer(Modifier.height(AppSpace.md))
+                    SectionCard(title = stringResource(R.string.remote_book_summary)) {
+                        Text(
+                            text = summary,
+                            color = AppColors.TextPrimary,
+                            fontSize = AppType.BodySmall,
+                            lineHeight = AppType.BodySmall * 1.55f,
+                            maxLines = if (summaryExpanded) Int.MAX_VALUE else 6,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.clickable { summaryExpanded = !summaryExpanded }
+                        )
+                    }
+                } else if (source?.type == RemoteSourceType.WEBDAV &&
+                    (format?.extension == "epub" || format?.extension == "cbz") && metadata == null
+                ) {
+                    Spacer(Modifier.height(AppSpace.md))
+                    SectionCard(title = stringResource(R.string.remote_book_summary)) {
+                        if (state.readingMetadata) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(color = AppColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(AppSpace.sm))
+                                Text(stringResource(R.string.remote_book_reading_info), color = AppColors.TextSecondary, fontSize = AppType.Caption)
+                            }
+                        } else {
+                            Text(
+                                text = state.metadataError?.let { stringResource(it.messageRes()) }
+                                    ?: stringResource(R.string.remote_book_read_info_hint),
+                                color = AppColors.TextSecondary,
+                                fontSize = AppType.Caption
+                            )
+                            Spacer(Modifier.height(AppSpace.sm))
+                            RemoteHeaderPill(stringResource(R.string.remote_book_read_info), onReadMetadata)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(RemoteBottomBarContentPadding + 48.dp))
+            }
+        }
+
+        RemoteBottomBar(blurBackdrop = blurBackdrop) {
+            DownloadBar(
+                state = state,
+                size = size,
+                hasFormat = format != null,
+                onDownload = onDownload,
+                onCancel = onCancel,
+                onRetry = onRetry,
+                onOpen = onOpen
+            )
+        }
     }
 }
 
