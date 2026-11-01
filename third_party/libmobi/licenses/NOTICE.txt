@@ -1,0 +1,15 @@
+libmobi 0.12
+Copyright (c) 2014-2022 Bartek Fabiszewski and contributors.
+Upstream: https://github.com/bfabiszewski/libmobi
+Pinned commit: 85dcfe803fc2a21020ddcf15c3eb66b93d388add (tag v0.12).
+Licensed under GNU LGPL version 3 or later; see libmobi-LGPL-3.0.txt and GPL-3.0.txt.
+The bundled miniz.c is public domain under the Unlicense; see miniz-UNLICENSE.txt.
+The upstream source is vendored unchanged, including miniz's own notices.
+Lumi Books builds it as a separate libmobi.so, without encryption or external
+libxml2/zlib dependencies. The allocation hooks/build configuration are in
+app/src/main/cpp. Corresponding source and reproducible instructions are in
+this application's public source repository:
+https://github.com/huangder/Lumi_Books/tree/main/third_party/libmobi
+https://github.com/huangder/Lumi_Books/blob/main/devdocs/kindle-native.md
+The library may be modified and replaced; no restriction is imposed on reverse
+engineering for debugging modifications to this LGPL-covered component.

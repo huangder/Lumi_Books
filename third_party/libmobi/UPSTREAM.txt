@@ -1,0 +1,2 @@
+# libmobi upstream revision
+https://github.com/bfabiszewski/libmobi/tree/85dcfe803fc2a21020ddcf15c3eb66b93d388add

@@ -22,6 +22,13 @@ layout.buildDirectory.set(layout.projectDirectory.dir("build/${if (premiumEditio
 
 android {
     namespace = "com.huangder.lumibooks"
+    ndkVersion = "28.0.13004108"
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
     compileSdk {
         version = release(37) {
             minorApiLevel = 0
@@ -93,6 +100,7 @@ android {
     sourceSets {
         getByName("main") {
             java.srcDir(if (premiumEdition) "src/premium/java" else "src/oss/java")
+            assets.srcDir("../third_party/libmobi/licenses")
             if (premiumEdition) {
                 res.srcDir("src/premium/res")
                 assets.srcDir("src/premium/assets")
