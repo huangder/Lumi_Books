@@ -40,7 +40,7 @@ android {
         minSdk = 26
         targetSdk = 37
         versionCode = 17
-        versionName = "2.3.10"
+        versionName = "2.3.11-O"
 
         buildConfigField("boolean", "DIAGNOSTIC_BUILD", "false")
         buildConfigField("boolean", "STARTUP_TRACE_ENABLED", "false")
