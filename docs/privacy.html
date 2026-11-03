@@ -5,79 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/png" href="icon.png">
     <title>隐私政策 — Lumi</title>
-    <script>document.documentElement.classList.add('js');</script>
-    <style>
-        /* ═══ 法律文档页专属布局（设计系统见 lumi-immersive.css） ═══ */
-        .doc {
-            width: min(calc(100% - 40px), 860px);
-            margin: clamp(28px, 4vw, 48px) auto 0;
-            padding: clamp(28px, 5vw, 62px);
-            border-radius: var(--radius-xl);
-        }
-        .doc h1 { font-size: clamp(28px, 3.4vw, 38px); font-weight: 700; }
-        .doc .meta { margin: 10px 0 40px; font-size: 14px; color: var(--muted); }
-        .doc h2 {
-            font-size: 21px;
-            font-weight: 600;
-            margin: 46px 0 14px;
-            padding-top: 34px;
-            border-top: 1px solid var(--stroke);
-        }
-        .doc h2:first-of-type { border-top: 0; padding-top: 0; margin-top: 6px; }
-        .doc h3 { font-size: 17px; font-weight: 600; margin: 28px 0 10px; }
-        .doc p { font-size: 15.5px; line-height: 1.9; color: var(--body-c); margin-bottom: 12px; }
-        .doc strong { color: var(--ink); }
-        .table-scroll { overflow-x: auto; margin: 16px 0 22px; }
-        .doc table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        .doc th, .doc td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--stroke); vertical-align: top; }
-        .doc th {
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            color: var(--muted);
-            white-space: nowrap;
-        }
-        .doc td { color: var(--body-c); line-height: 1.7; }
-        .doc ul { list-style: none; margin: 8px 0 16px; }
-        .doc ul li { padding: 5px 0; font-size: 15px; line-height: 1.8; color: var(--body-c); }
-        .doc ul li::before { content: "·  "; color: var(--accent); font-weight: 700; }
-        .doc .cross { color: #ff7a66; margin-right: 8px; }
-        .doc a { color: var(--accent-strong); text-decoration: underline; text-underline-offset: 3px; }
-        .doc .endnote { margin-top: 30px; font-size: 13px; color: var(--muted); }
-
-        .doc-footer {
-            width: min(calc(100% - 40px), 860px);
-            margin: 0 auto;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            padding: 24px 0 36px;
-            border-top: 1px solid var(--stroke);
-            font-size: 13px;
-            color: var(--muted);
-        }
-        .doc-footer a { color: var(--muted); margin-left: 22px; text-decoration: none; }
-        .doc-footer a:first-child { margin-left: 0; }
-        .doc-footer a:hover { color: var(--ink); text-decoration: underline; }
-        @media (max-width: 640px) {
-            .doc-footer { flex-direction: column; text-align: center; }
-            .doc-footer a { margin: 0 8px; }
-        }
-    </style>
-    <link rel="stylesheet" href="lumi-immersive.css">
+    <link rel="stylesheet" href="lumi-editorial.css">
+    <script defer src="lumi-editorial.js"></script>
 </head>
 <body>
+<a class="skip" href="#main">跳到主要内容</a>
 
 <!-- ═══ Top Navigation ═══ -->
 <nav class="top-nav">
     <a href="index.html" class="nav-logo" aria-label="Lumi 首页">
-        <img src="icon.png" class="logo-icon-img" alt="Lumi">
+        <img src="media/lumi2.webp" class="logo-icon-img" alt="Lumi">
         <span class="logo-text">Lumi</span>
     </a>
     <ul class="nav-links" aria-label="主导航">
-        <li><a href="features.html">功能</a></li>
+        <li><a href="features.html">阅读体验</a></li>
         <li><a href="privacy-section.html" class="active" aria-current="page">隐私</a></li>
         <li><a href="tech.html">技术</a></li>
         <li><a href="sponsor.html">赞助</a></li>
@@ -88,7 +29,7 @@
     </div>
     <button class="nav-more-btn" type="button" aria-label="打开导航菜单" aria-controls="lumi-nav-menu">菜单</button>
     <div class="nav-more-dropdown" id="lumi-nav-menu">
-        <a href="features.html">功能</a>
+        <a href="features.html">阅读体验</a>
         <a href="privacy-section.html" class="active" aria-current="page">隐私</a>
         <a href="tech.html">技术</a>
         <a href="sponsor.html">赞助</a>
@@ -96,9 +37,9 @@
     </div>
 </nav>
 
-<div class="glass-card doc">
+<div class="doc" id="main">
     <h1>隐私政策</h1>
-    <p class="meta">政策版本：3 · 生效日期：2026年6月29日 · 最近更新：2026年10月1日</p>
+    <p class="meta">政策版本：4 · 生效日期：2026年6月29日 · 最近更新：2026年11月3日</p>
 
     <h2>一、引言</h2>
     <p>Lumi（以下简称“本应用”）是一款开源、本地优先的电子书阅读器。我们深知隐私对您的重要性，本隐私政策说明本应用如何处理数据，以及哪些可选功能会把数据发送到您选择或确认的网络服务。</p>
@@ -199,8 +140,10 @@
     </ul>
     <p>如不希望书籍或文本离开设备，请不要启用 WebDAV 同步、MinerU 云端解析、第三方 TTS、AI 翻译或网络封面搜索，并使用本地阅读、本地解析、系统 TTS 和本地词典。</p>
 
-    <h2>六、儿童隐私</h2>
-    <p>本应用不针对 13 岁以下儿童，不会故意收集儿童个人信息。监护人如发现儿童可能通过可选第三方服务提交了个人信息，请联系我们并同时联系相应服务方。</p>
+    <h2>六、未成年人及儿童隐私</h2>
+    <p>在中国大陆，未成年人指未满 18 周岁的人；不满 14 周岁未成年人的个人信息属于敏感个人信息。Lumi 不专门面向儿童，也不为年龄核验收集生日或身份证件。处理不满 14 周岁未成年人的个人信息，应依法取得监护人同意，并遵守儿童个人信息保护要求。</p>
+    <p>未成年人使用 WebDAV、云端解析、第三方 TTS、AI 翻译等可选联网服务时，应在监护人指导下了解数据传输和费用，遵守相应服务的年龄要求。不要发送儿童身份、联系方式等非必要个人信息；涉及儿童个人信息处理时，应依法取得监护人同意。</p>
+    <p>未成年人及监护人可通过 huangder0104@126.com 提交权益投诉，以及个人信息查阅、复制、更正、删除等请求。我们会在依法应处理的范围内受理和处理；本机数据可通过应用内现有功能管理，第三方持有的数据还需联系相应服务方。请勿在公开 GitHub Issues 上传儿童个人信息。</p>
 
     <h2>七、隐私政策的变更</h2>
     <p>我们可能因功能、法律法规或第三方服务变化更新本政策。更新后将在应用内或网页公布，并更新“最近更新”日期；重大变化会通过应用内版本提示要求您重新阅读并确认。</p>
@@ -210,12 +153,12 @@
     <ul>
     <li>开发者：huangder</li>
     <li>邮箱：<a href="mailto:huangder0104@126.com">huangder0104@126.com</a></li>
-    <li>GitHub Issues：欢迎在项目仓库提交问题反馈</li>
+    <li>GitHub Issues：欢迎提交一般问题反馈；涉及未成年人权益投诉或个人信息请求，请发送至上述邮箱，不要在公开 Issues 上传儿童个人信息</li>
     </ul>
 
     <h2>九、适用范围</h2>
     <p>本隐私政策仅适用于 Lumi 应用（com.huangder.lumibooks）在 Android 平台上的功能，不适用于第三方服务自身的数据处理活动。</p>
-    <p class="endnote">本隐私政策最后更新于 2026年10月1日。</p>
+    <p class="endnote">本隐私政策最后更新于 2026年11月3日。</p>
 </div>
 
 <div class="doc-footer">
@@ -226,6 +169,5 @@
     </span>
 </div>
 
-<script src="lumi-nav.js"></script>
 </body>
 </html>

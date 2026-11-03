@@ -7,7 +7,7 @@
     <title>更新日志 — Lumi</title>
     <script>document.documentElement.classList.add('js');</script>
     <style>
-        /* ═══ 更新日志页专属布局（设计系统见 lumi-immersive.css） ═══ */
+        /* Legacy changelog styles are overridden by the shared editorial system. */
         .cl-wrap {
             width: min(calc(100% - 40px), 860px);
             margin: 0 auto;
@@ -73,18 +73,19 @@
             .changelog-list li { gap: 9px; padding: 10px 8px; font-size: 14px; }
         }
     </style>
-    <link rel="stylesheet" href="lumi-immersive.css">
+    <link rel="stylesheet" href="lumi-editorial.css">
+    <script defer src="lumi-editorial.js"></script>
 </head>
 <body>
 
 <!-- ═══ Top Navigation ═══ -->
 <nav class="top-nav">
     <a href="index.html" class="nav-logo" aria-label="Lumi 首页">
-        <img src="icon.png" class="logo-icon-img" alt="Lumi">
+        <img src="media/lumi2.webp" class="logo-icon-img" alt="Lumi">
         <span class="logo-text">Lumi</span>
     </a>
     <ul class="nav-links" aria-label="主导航">
-        <li><a href="features.html">功能</a></li>
+        <li><a href="features.html">阅读体验</a></li>
         <li><a href="privacy-section.html">隐私</a></li>
         <li><a href="tech.html">技术</a></li>
         <li><a href="sponsor.html">赞助</a></li>
@@ -95,7 +96,7 @@
     </div>
     <button class="nav-more-btn" type="button" aria-label="打开导航菜单" aria-controls="lumi-nav-menu">菜单</button>
     <div class="nav-more-dropdown" id="lumi-nav-menu">
-        <a href="features.html">功能</a>
+        <a href="features.html">阅读体验</a>
         <a href="privacy-section.html">隐私</a>
         <a href="tech.html">技术</a>
         <a href="sponsor.html">赞助</a>
@@ -109,6 +110,13 @@
         <h1>更新日志</h1>
         <p>Lumi 的每一次进步，都记录在这里</p>
     </div>
+
+    <section class="glass-card version-block reveal" id="minor-protection-2026" aria-labelledby="minor-protection-title">
+        <h2 id="minor-protection-title">2026 年未成年人保护工作记录</h2>
+        <p class="version-date">更新日期：2026-11-03</p>
+        <p>本次修订区分未满 18 周岁的未成年人和不满 14 周岁儿童的个人信息保护要求，补充联网服务年龄、监护同意及付费提示，明确依法不得免除的责任，并公布权益投诉和个人信息请求邮箱。应用以本地阅读为主，现有听书定时停止仅为辅助工具，不等同于完整防沉迷系统。本次未新增实名认证、年龄登记或强制阅读限时，也不表示已完成全面合规认证。</p>
+        <p>未成年人及监护人可联系 <a href="mailto:huangder0104@126.com">huangder0104@126.com</a>；请勿在公开 Issues 上传儿童个人信息。后续每年在本页更新实际完成的保护工作。详见<a href="privacy.html">隐私政策</a>和<a href="terms.html">用户协议</a>。</p>
+    </section>
 
     <!-- v2.3.11-O -->
     <div class="glass-card version-block reveal">
@@ -516,6 +524,5 @@
     </div>
 </footer>
 
-<script src="lumi-nav.js"></script>
 </body>
 </html>
