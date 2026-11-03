@@ -47,7 +47,7 @@ data class RemoteFormat(
     val extension: String?,
     val mimeType: String? = null,
     val sizeBytes: Long = 0L,
-    /** Human readable label for formats the app cannot import (for example AZW3). */
+    /** Human readable label for formats the app cannot import (for example KFX). */
     val label: String? = null
 ) {
     val isSupported: Boolean get() = extension != null

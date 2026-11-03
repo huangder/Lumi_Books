@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.reader
 
+import com.huangder.lumibooks.tts.TtsChapterSnapshot
 import com.huangder.lumibooks.tts.TtsPageContent
 import com.huangder.lumibooks.tts.TtsPageLocation
 import com.huangder.lumibooks.tts.TtsPageSource
@@ -86,6 +87,12 @@ internal class ReflowTtsPageSource(
         return getPage(chapterIndex, pageIndex)
     }
 
+    override suspend fun getChapter(chapterIndex: Int): TtsChapterSnapshot? {
+        if (closed || chapterIndex !in 0 until chapterCount) return null
+        val text = chapterText(chapterIndex) ?: return null
+        return TtsChapterSnapshot(chapterIndex, chapterCount, ChineseConverter.convert(text.toString(), chineseMode))
+    }
+
     private suspend fun chapterText(chapterIndex: Int): CharSequence? {
         chapterCache[chapterIndex]?.let { return it }
         val text = chapterProvider?.invoke(chapterIndex) ?: return null
@@ -122,6 +129,9 @@ internal class PdfTtsPageSource(
         chapterIndex: Int,
         characterOffset: Int
     ): TtsPageContent? = getPage(chapterIndex, 0)
+
+    override suspend fun getChapter(chapterIndex: Int): TtsChapterSnapshot? =
+        getPage(chapterIndex, 0)?.let { TtsChapterSnapshot(chapterIndex, pageCount, it.text) }
 
     override fun close() {
         closed = true
@@ -166,6 +176,44 @@ internal class OriginalLayoutEpubTtsPageSource(
             return content
         }
         return fallbackPage(location)
+    }
+
+    override suspend fun getChapter(chapterIndex: Int): TtsChapterSnapshot? {
+        if (closed || chapterIndex !in 0 until chapterCount) return null
+        // Prefer renderer text: parser text can use different whitespace/offsets.
+        if (chapterSnapshots[chapterIndex] == null) requestWebPage(chapterIndex, 0)?.let(::cacheWebPage)
+        val text = chapterSnapshots[chapterIndex]
+            ?: chapterTextProvider?.invoke(chapterIndex)?.also { chapterSnapshots[chapterIndex] = it }
+            ?: return null
+        return TtsChapterSnapshot(chapterIndex, chapterCount, text)
+    }
+
+    override suspend fun locatePage(chapterIndex: Int, characterOffset: Int): TtsPageContent? {
+        if (closed || chapterIndex !in 0 until chapterCount) return null
+        val first = requestWebPage(chapterIndex, 0)
+        if (first != null) {
+            cacheWebPage(first)
+            var low = 0
+            var high = first.pageCount - 1
+            while (low <= high) {
+                val mid = (low + high) / 2
+                val page = requestWebPage(chapterIndex, mid) ?: break
+                val content = cacheWebPage(page)
+                when {
+                    characterOffset < content.startCharacterOffset -> high = mid - 1
+                    characterOffset >= content.endCharacterOffset && mid < first.pageCount - 1 -> low = mid + 1
+                    else -> return content
+                }
+            }
+        }
+        // A hidden/destroyed renderer must never prevent offset seeking or speech.
+        val text = getChapter(chapterIndex)?.text ?: return null
+        return TtsPageContent(
+            location = TtsPageLocation(chapterIndex, 0), text = text,
+            previous = (chapterIndex - 1).takeIf { it >= 0 }?.let { TtsPageLocation(it, 0) },
+            next = (chapterIndex + 1).takeIf { it < chapterCount }?.let { TtsPageLocation(it, 0) },
+            startCharacterOffset = 0, endCharacterOffset = text.length
+        ).also { pageCache[it.location] = it }
     }
 
     private suspend fun requestWebPage(chapterIndex: Int, pageIndex: Int): EpubPageText? {
@@ -244,9 +292,14 @@ internal class OriginalLayoutEpubTtsPageSource(
         }
     }
 
+    override fun detachReader() {
+        prefetchJob?.cancel()
+        webPageProvider = null
+    }
+
     override fun close() {
         closed = true
-        prefetchJob?.cancel()
+        detachReader()
         scope.cancel()
         webPageProvider = null
         chapterTextProvider = null

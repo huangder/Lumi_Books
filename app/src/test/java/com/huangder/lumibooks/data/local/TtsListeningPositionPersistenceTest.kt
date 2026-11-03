@@ -29,6 +29,24 @@ import org.robolectric.annotation.Config
 class TtsListeningPositionPersistenceTest {
     @get:Rule val temporaryFolder = TemporaryFolder()
 
+    @Test fun readerExitChoicePersistsAndCanReturnToAskingWithoutChangingStartChoice() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.dataStore.edit { it.clear() }
+        val manager = DataStoreManager(context)
+        assertNull(manager.ttsContinueOnReaderExit.first())
+        manager.saveTtsFloatingWindow(false)
+        manager.saveTtsStartChoice(TtsStartChoice.CURRENT_PAGE)
+        for (choice in listOf(true, false)) {
+            manager.saveTtsContinueOnReaderExit(choice)
+            assertEquals(choice, DataStoreManager(context).ttsContinueOnReaderExit.first())
+            assertEquals(false, DataStoreManager(context).ttsFloatingWindow.first())
+            assertEquals(TtsStartChoice.CURRENT_PAGE, manager.ttsStartChoice.first())
+        }
+        manager.saveTtsContinueOnReaderExit(null)
+        assertNull(DataStoreManager(context).ttsContinueOnReaderExit.first())
+        assertEquals(TtsStartChoice.CURRENT_PAGE, manager.ttsStartChoice.first())
+    }
+
     @Test
     fun rememberedStartChoicesPersistAndCanBeResetToAskEachTime() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()

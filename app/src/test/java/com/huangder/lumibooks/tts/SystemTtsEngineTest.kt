@@ -43,9 +43,11 @@ class SystemTtsEngineTest {
         data class SpokenRequest(val text: String, val queueMode: Int, val id: String)
         val spokenRequests = mutableListOf<SpokenRequest>()
         var stopCount = 0
+        var rejectNextSpeak = false
 
         @Implementation
         override fun speak(text: CharSequence, queueMode: Int, params: Bundle?, utteranceId: String): Int {
+            if (rejectNextSpeak) { rejectNextSpeak = false; return TextToSpeech.ERROR }
             spokenRequests += SpokenRequest(text.toString(), queueMode, utteranceId)
             return TextToSpeech.SUCCESS
         }
@@ -61,6 +63,113 @@ class SystemTtsEngineTest {
             requests += Request(text.toString(), utteranceId, file)
             return TextToSpeech.SUCCESS
         }
+    }
+
+    @Test
+    fun multiTtsQueuesOneSuccessorAndReplaysEarlyCallbacksOnlyOnAdoptionAcrossPageTurns() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val player = SystemTtsAudioPlayer(backgroundScope) { throw AssertionError("Unexpected local playback") }
+        val engine = TtsEngine(ApplicationProvider.getApplicationContext(), player)
+        val started = mutableListOf<String>()
+        val done = mutableListOf<String>()
+        val errors = mutableListOf<Throwable>()
+        engine.setListener(listener(started, done, errors))
+        try {
+            selectMultiTts(engine)
+            initializeEngine(engine)
+            val shadow = shadowOf(ShadowTextToSpeech.getLastTextToSpeechInstance()) as RecordingTts
+            val callbacks = shadow.utteranceProgressListener
+            val stops = shadow.stopCount
+            assertTrue(engine.supportsQueuedPlayback)
+            engine.speak("First.", "first")
+            assertTrue(engine.queueNext("Second.", "second").isSuccess)
+            assertTrue(engine.queueNext("Overflow.", "overflow").isFailure)
+            assertEquals(listOf("first", "second"), shadow.spokenRequests.map { it.id })
+            callbacks.onStart("first")
+            callbacks.onStart("second") // Android can deliver this before the controller handles first's done.
+            callbacks.onStart("second")
+            callbacks.onDone("second") // Even a very short successor can finish before adoption.
+            callbacks.onDone("second")
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(listOf("first"), started)
+            assertTrue(done.isEmpty())
+            callbacks.onDone("first")
+            shadowOf(Looper.getMainLooper()).idle()
+            engine.stopForPageTurn()
+            assertTrue(engine.speak("Second.", "second").isSuccess)
+            assertEquals(listOf("first", "second"), started)
+            assertEquals(listOf("first", "second"), done)
+            assertEquals(2, shadow.spokenRequests.size)
+            assertEquals(stops, shadow.stopCount)
+            assertTrue(shadow.spokenRequests.all { it.queueMode == TextToSpeech.QUEUE_ADD })
+            assertTrue(shadow.requests.isEmpty())
+            assertTrue(errors.isEmpty())
+        } finally { engine.shutdown(); player.release(); Dispatchers.resetMain() }
+    }
+
+    @Test
+    fun multiTtsPauseAndStopInvalidateBothQueuedAudioAndBufferedCallbacks() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val player = SystemTtsAudioPlayer(backgroundScope) { throw AssertionError("Unexpected local playback") }
+        val engine = TtsEngine(ApplicationProvider.getApplicationContext(), player)
+        val started = mutableListOf<String>()
+        val done = mutableListOf<String>()
+        val errors = mutableListOf<Throwable>()
+        engine.setListener(listener(started, done, errors))
+        try {
+            selectMultiTts(engine)
+            initializeEngine(engine)
+            val shadow = shadowOf(ShadowTextToSpeech.getLastTextToSpeechInstance()) as RecordingTts
+            val callbacks = shadow.utteranceProgressListener
+            for (pause in listOf(true, false)) {
+                engine.speak("Current.", "current-$pause")
+                engine.queueNext("Queued.", "queued-$pause")
+                callbacks.onStart("queued-$pause")
+                shadowOf(Looper.getMainLooper()).idle()
+                if (pause) engine.pause() else engine.stop()
+                callbacks.onStart("current-$pause")
+                callbacks.onDone("current-$pause")
+                callbacks.onDone("queued-$pause")
+                callbacks.onError("queued-$pause", TextToSpeech.ERROR_SYNTHESIS)
+                shadowOf(Looper.getMainLooper()).idle()
+                assertEquals(false, engine.resume())
+                assertTrue(started.isEmpty())
+                assertTrue(done.isEmpty())
+                assertTrue(errors.isEmpty())
+            }
+        } finally { engine.shutdown(); player.release(); Dispatchers.resetMain() }
+    }
+
+    @Test
+    fun multiTtsQueuedFailuresDoNotInterruptCurrentSpeechAndAreDeliveredOnAdoption() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val player = SystemTtsAudioPlayer(backgroundScope) { throw AssertionError("Unexpected local playback") }
+        val engine = TtsEngine(ApplicationProvider.getApplicationContext(), player)
+        val started = mutableListOf<String>()
+        val done = mutableListOf<String>()
+        val errors = mutableListOf<Throwable>()
+        engine.setListener(listener(started, done, errors))
+        try {
+            selectMultiTts(engine)
+            initializeEngine(engine)
+            val shadow = shadowOf(ShadowTextToSpeech.getLastTextToSpeechInstance()) as RecordingTts
+            val callbacks = shadow.utteranceProgressListener
+            engine.speak("Current.", "current")
+            shadow.rejectNextSpeak = true
+            assertTrue(engine.queueNext("Next.", "rejected").isFailure)
+            assertTrue(engine.queueNext("Next.", "next").isSuccess)
+            val stops = shadow.stopCount
+            callbacks.onError("next", TextToSpeech.ERROR_SYNTHESIS)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(errors.isEmpty())
+            assertEquals(stops, shadow.stopCount)
+            callbacks.onDone("current")
+            shadowOf(Looper.getMainLooper()).idle()
+            engine.speak("Next.", "next")
+            assertEquals(1, errors.size)
+            assertEquals(listOf("current"), done)
+            assertEquals(2, shadow.spokenRequests.size)
+        } finally { engine.shutdown(); player.release(); Dispatchers.resetMain() }
     }
 
     @Test

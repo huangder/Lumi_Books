@@ -12,38 +12,59 @@ import android.util.LruCache
 import androidx.core.content.res.ResourcesCompat
 import com.huangder.lumibooks.R
 import java.io.File
+import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /** Read the OpenType axis, rather than treating every bold-capable font as variable. */
 internal fun variableWeightRange(buffer: ByteBuffer): ClosedFloatingPointRange<Float>? = runCatching {
     val data = buffer.duplicate().order(ByteOrder.BIG_ENDIAN)
-    val base = if (data.getInt(0) == 0x74746366) data.getInt(12) else 0 // First face of a TTC.
-    val tables = data.getShort(base + 4).toInt() and 0xffff
+    readVariableWeightRange(data::getInt) { data.getShort(it).toInt() and 0xffff }
+}.getOrNull()
+
+/** Inspect only table records and axis metadata, even for very large CJK fonts. */
+internal fun variableWeightRange(file: File): ClosedFloatingPointRange<Float>? = runCatching {
+    RandomAccessFile(file, "r").use { data ->
+        readVariableWeightRange(
+            { data.seek(it.toLong()); data.readInt() },
+            { data.seek(it.toLong()); data.readUnsignedShort() }
+        )
+    }
+}.getOrNull()
+
+private inline fun readVariableWeightRange(
+    intAt: (Int) -> Int,
+    unsignedShortAt: (Int) -> Int
+): ClosedFloatingPointRange<Float>? {
+    val base = if (intAt(0) == 0x74746366) intAt(12) else 0 // First face of a TTC.
+    val tables = unsignedShortAt(base + 4)
     for (i in 0 until tables) {
         val record = base + 12 + i * 16
-        if (data.getInt(record) != 0x66766172) continue // fvar
-        val offset = data.getInt(record + 8)
-        val axesStart = data.getShort(offset + 4).toInt() and 0xffff
-        val count = data.getShort(offset + 8).toInt() and 0xffff
-        val size = data.getShort(offset + 10).toInt() and 0xffff
-        if (size < 20) return@runCatching null
+        if (intAt(record) != 0x66766172) continue // fvar
+        val offset = intAt(record + 8)
+        val axesStart = unsignedShortAt(offset + 4)
+        val count = unsignedShortAt(offset + 8)
+        val size = unsignedShortAt(offset + 10)
+        if (size < 20) return null
         for (axis in 0 until count) {
             val a = offset + axesStart + axis * size
-            if (data.getInt(a) != 0x77676874) continue // wght
-            val min = data.getInt(a + 4) / 65536f
-            val max = data.getInt(a + 12) / 65536f
-            return@runCatching if (min >= 1f && max <= 1000f && max > min) min..max else null
+            if (intAt(a) != 0x77676874) continue // wght
+            val min = intAt(a + 4) / 65536f
+            val max = intAt(a + 12) / 65536f
+            return if (min >= 1f && max <= 1000f && max > min) min..max else null
         }
     }
-    null
-}.getOrNull()
+    return null
+}
 
 private data class WeightAxis(val range: ClosedFloatingPointRange<Float>?)
 private val axisCache = LruCache<String, WeightAxis>(32)
 
 internal fun readerVariableWeightRange(context: Context, fontType: String,
     customFontPath: String?): ClosedFloatingPointRange<Float>? {
+    if (fontType.startsWith("custom") && customFontPath != null) {
+        return readerFileFont(File(customFontPath)).weightRange
+    }
     val file = customFontPath?.let(::File)
     val key = "$fontType:${file?.absolutePath}:${file?.length()}:${file?.lastModified()}"
     synchronized(axisCache) { axisCache.get(key)?.let { return it.range } }
@@ -52,8 +73,6 @@ internal fun readerVariableWeightRange(context: Context, fontType: String,
         fontType == "serif" -> context.resources.openRawResource(R.font.source_serif4_regular).use {
             variableWeightRange(ByteBuffer.wrap(it.readBytes()))
         }
-        fontType.startsWith("custom") && customFontPath != null ->
-            variableWeightRange(ByteBuffer.wrap(File(customFontPath).readBytes()))
         fontType in listOf("system", "sans_serif", "monospace") && Build.VERSION.SDK_INT >= 31 -> {
             val name = if (fontType == "monospace") "monospace" else "sans-serif"
             val glyphs = TextRunShaper.shapeTextRun("Aa", 0, 2, 0, 2, 0f, 0f, false,

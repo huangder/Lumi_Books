@@ -155,5 +155,6 @@ done:
     mobi_free_rawml(raw);
     mobi_free(m);
     if (lumi_mobi_budget_exceeded()) result = 5;
+    if (result) remove_outputs(output);
     return result;
 }

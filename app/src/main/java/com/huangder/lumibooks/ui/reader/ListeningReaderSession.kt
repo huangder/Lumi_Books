@@ -14,6 +14,32 @@ internal class ListeningReaderSession {
     val followEnabled = _followEnabled.asStateFlow()
     private var checked = false
     private var generation = 0L
+    private var backgrounded = false
+    private var backgroundSessionId: Long? = null
+    private var jumpSessionId: Long? = null
+
+    /** Lifecycle can report PAUSE/STOP and composition changes for the same transition. */
+    fun suspendForBackground(sessionId: Long?) {
+        if (backgrounded) return
+        backgrounded = true
+        backgroundSessionId = sessionId
+        checked = false
+        detach(preservePrompt = false)
+    }
+
+    /** null means a fresh open/session and keeps the existing saved-position policy. */
+    fun returnFromBackground(sessionId: Long?): Boolean? {
+        if (!backgrounded) return null
+        backgrounded = false
+        val sameSession = sessionId != null && sessionId == backgroundSessionId
+        backgroundSessionId = null
+        if (!sameSession) return null
+        checked = false
+        return true
+    }
+
+    fun isJumpSessionCurrent(sessionId: Long?): Boolean =
+        jumpSessionId == null || jumpSessionId == sessionId
 
     fun beginCheck(): Long? {
         if (checked) return null
@@ -38,11 +64,14 @@ internal class ListeningReaderSession {
     }
 
     fun hide() {
+        backgrounded = false
+        backgroundSessionId = null
         checked = false
         keepReading()
     }
 
-    fun requestJump(position: TtsListeningPosition) {
+    fun requestJump(position: TtsListeningPosition, sessionId: Long? = null) {
+        jumpSessionId = sessionId
         _prompt.value = null
         _jumpRequest.value = position
     }
@@ -54,6 +83,7 @@ internal class ListeningReaderSession {
     }
 
     fun follow() {
+        jumpSessionId = null
         generation++
         checked = true
         _prompt.value = null
@@ -62,6 +92,7 @@ internal class ListeningReaderSession {
     }
 
     private fun detach(preservePrompt: Boolean) {
+        jumpSessionId = null
         generation++
         if (!preservePrompt) _prompt.value = null
         _jumpRequest.value = null

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tts_restore_reader_controls">展开听书胶囊</string>
+    <string name="tts_fullscreen">全屏听书</string>
+    <string name="tts_expand_controls">展开听书控件</string>
+    <string name="tts_collapse_controls">收起听书控件</string>
+    <string name="tts_exit_title">退出后继续听书？</string>
+    <string name="tts_exit_setting">退出书籍时听书</string>
+    <string name="tts_exit_message">继续听书会在书外显示悬浮字幕，打开其他书籍时将停止朗读。</string>
+    <string name="tts_exit_message_without_subtitles">退出后继续后台朗读，悬浮字幕保持关闭。打开其他书籍时将停止朗读。</string>
+    <string name="tts_exit_continue">继续听书</string>
+    <string name="tts_exit_stop">停止并退出</string>
+    <string name="tts_overlay_permission_needed">请允许显示悬浮窗后继续听书</string>
+    <string name="tts_return_to_book">返回正在听的书</string>
+    <string name="tts_return_reading_progress">返回阅读进度</string>
+    <string name="tts_restore_subtitle">展开悬浮字幕</string>
+</resources>

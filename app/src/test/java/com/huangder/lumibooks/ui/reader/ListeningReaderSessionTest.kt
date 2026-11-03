@@ -7,6 +7,65 @@ import org.junit.Test
 class ListeningReaderSessionTest {
     private val target = TtsListeningPosition("book", 2, 3, 450, 123L)
 
+    @Test fun repeatedBackgroundEventsPreserveFollowIntentAndRestoreOnlyOnce() {
+        val session = ListeningReaderSession()
+        session.follow()
+        repeat(4) { session.suspendForBackground(42) }
+        assertFalse(session.followEnabled.value)
+        assertEquals(true, session.returnFromBackground(42))
+        val live = target.copy(chapterIndex = 5, characterOffset = 900)
+        session.requestJump(live, 42)
+        assertNull(session.returnFromBackground(42))
+        assertFalse(session.isJumpSessionCurrent(43))
+        assertTrue(session.isJumpSessionCurrent(42))
+        assertTrue(session.completeJump(live))
+        assertTrue(session.followEnabled.value)
+    }
+
+    @Test fun backgroundReturnAfterManualBrowsingTracksTheLiveSessionWithoutAnotherOpeningPrompt() {
+        val session = ListeningReaderSession()
+        session.follow()
+        session.pageTurn()
+        repeat(3) { session.suspendForBackground(8) }
+        assertEquals(true, session.returnFromBackground(8))
+        assertNull(session.returnFromBackground(8))
+        session.requestJump(target, 8)
+        assertEquals(target, session.jumpRequest.value)
+        assertTrue(session.completeJump(target))
+        assertTrue(session.followEnabled.value)
+    }
+
+    @Test fun backgroundReturnFromAnExplicitReadingChoiceAlsoTracksTheLiveSession() {
+        val session = openedSession()
+        session.keepReading()
+        session.suspendForBackground(9)
+        assertEquals(true, session.returnFromBackground(9))
+        assertFalse(session.followEnabled.value)
+        session.requestJump(target, 9)
+        assertTrue(session.completeJump(target))
+        assertTrue(session.followEnabled.value)
+    }
+
+    @Test fun changedOrStoppedAudioSessionUsesExistingOpeningPolicy() {
+        for (nextSession in listOf(2L, null)) {
+            val session = ListeningReaderSession()
+            session.follow()
+            session.suspendForBackground(1)
+            assertNull(session.returnFromBackground(nextSession))
+            assertNotNull(session.beginCheck())
+            assertFalse(session.followEnabled.value)
+        }
+    }
+
+    @Test fun leavingReaderClearsTemporaryFollowIntent() {
+        val session = ListeningReaderSession()
+        session.follow()
+        session.suspendForBackground(1)
+        session.hide()
+        assertNull(session.returnFromBackground(1))
+        assertNotNull(session.beginCheck())
+    }
+
     private fun openedSession() = ListeningReaderSession().apply {
         val opening = beginCheck()!!
         assertTrue(isCurrent(opening))

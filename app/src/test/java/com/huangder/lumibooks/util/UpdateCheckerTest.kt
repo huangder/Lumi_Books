@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.util
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -53,6 +54,57 @@ class UpdateCheckerTest {
                 "https://reader:secret@catalog.example/opds",
                 listOf("https://catalog.example/opds")
             )
+        )
+    }
+
+    @Test
+    fun `policy revisions prompt existing users without an app update`() {
+        val result = evaluatePolicies(acceptedTerms = 2, acceptedPrivacy = 3)
+
+        assertTrue(result.hasTermsUpdate)
+        assertTrue(result.hasPrivacyUpdate)
+        assertEquals(3, result.termsVersion)
+        assertEquals(4, result.privacyVersion)
+        assertFalse(result.hasAppUpdate)
+        assertFalse(result.isForceUpdate)
+    }
+
+    @Test
+    fun `accepted policy revisions do not prompt again`() {
+        val result = evaluatePolicies(acceptedTerms = 3, acceptedPrivacy = 4)
+
+        assertFalse(result.hasTermsUpdate)
+        assertFalse(result.hasPrivacyUpdate)
+    }
+
+    @Test
+    fun `policy acceptance is tracked independently for each document`() {
+        val privacyOnly = evaluatePolicies(acceptedTerms = 3, acceptedPrivacy = 3)
+        assertFalse(privacyOnly.hasTermsUpdate)
+        assertTrue(privacyOnly.hasPrivacyUpdate)
+
+        val termsOnly = evaluatePolicies(acceptedTerms = 2, acceptedPrivacy = 4)
+        assertTrue(termsOnly.hasTermsUpdate)
+        assertFalse(termsOnly.hasPrivacyUpdate)
+    }
+
+    private fun evaluatePolicies(acceptedTerms: Int, acceptedPrivacy: Int): UpdateChecker.CheckResult {
+        return UpdateChecker.evaluate(
+            config = UpdateChecker.UpdateConfig(
+                latestVersion = "1.0.06",
+                latestVersionCode = 0,
+                releaseUrl = "",
+                updateTitle = "",
+                updateMessage = "",
+                changelog = "",
+                forceUpdateBelowVersionCode = 0L,
+                termsVersion = 3,
+                privacyVersion = 4,
+                notice = null
+            ),
+            currentVersion = "1.0.06",
+            acceptedTerms = acceptedTerms,
+            acceptedPrivacy = acceptedPrivacy
         )
     }
 

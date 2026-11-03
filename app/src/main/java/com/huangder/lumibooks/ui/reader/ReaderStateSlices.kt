@@ -3,6 +3,8 @@ package com.huangder.lumibooks.ui.reader
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.model.SelectionMenuSettings
 import com.huangder.lumibooks.domain.model.Book
+import com.huangder.lumibooks.domain.model.BookFormat
+
 import com.huangder.lumibooks.domain.model.CustomFontPreset
 import com.huangder.lumibooks.domain.model.ReaderBackgroundPreset
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
@@ -223,7 +225,7 @@ internal fun readerLayoutTargetFor(
     format: String?,
     renderMode: EpubRenderMode
 ): ReaderLayoutTarget =
-    if ((format in setOf("EPUB", "MOBI")) && renderMode == EpubRenderMode.BOOK_LAYOUT) {
+    if ((readerFormatSupportsEpubFeatures(format)) && renderMode == EpubRenderMode.BOOK_LAYOUT) {
         ReaderLayoutTarget.BOOK_LAYOUT
     } else {
         ReaderLayoutTarget.READER_LAYOUT
@@ -307,3 +309,12 @@ private fun ReaderUiState.currentThemeSettingsFallback() = com.huangder.lumibook
     marginBottom = marginBottomDp,
     cornerMargins = readerCornerMargins
 )
+
+internal fun readerFormatSupportsBookLayout(format: String?): Boolean =
+    BookFormat.entries.firstOrNull { it.name == format }?.supportsBookLayout == true
+
+internal fun readerFormatSupportsEpubFeatures(format: String?): Boolean =
+    BookFormat.entries.firstOrNull { it.name == format }?.supportsEpubFeatures == true
+
+internal fun readerFormatSupportsText(format: String?): Boolean =
+    BookFormat.entries.firstOrNull { it.name == format }?.supportsTextReading == true

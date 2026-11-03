@@ -23,16 +23,7 @@ internal fun resolveReaderTypeface(
     val normalizedWeight = weight.coerceIn(100, 900)
     if (fontType == "serif") return ResolvedReaderTypeface(readerSerifTypeface(context, normalizedWeight), false)
     if (fontType.startsWith("custom") && customFontPath != null) {
-        val range = readerVariableWeightRange(context, fontType, customFontPath)
-        if (range != null) {
-            val effectiveWeight = normalizedWeight.toFloat().coerceIn(range).toInt()
-            val face = runCatching {
-                Typeface.Builder(customFontPath)
-                    .setFontVariationSettings("'wght' $effectiveWeight")
-                    .setWeight(effectiveWeight).build()
-            }.getOrNull()
-            if (face != null) return ResolvedReaderTypeface(face, false)
-        }
+        readerFileFont(File(customFontPath)).resolve(normalizedWeight)?.let { return it }
     }
     val isCustomFamily = fontType == "fangsong" || fontType == "kaiti" ||
         fontType.startsWith("custom")
@@ -45,9 +36,6 @@ internal fun resolveReaderTypeface(
         fontType == "kaiti" -> runCatching {
             ResourcesCompat.getFont(context, R.font.lxgw_wenkai)
         }.getOrNull() ?: Typeface.DEFAULT
-        fontType.startsWith("custom") -> customFontPath
-            ?.let { path -> runCatching { Typeface.createFromFile(File(path)) }.getOrNull() }
-            ?: Typeface.DEFAULT
         else -> Typeface.DEFAULT
     }
 

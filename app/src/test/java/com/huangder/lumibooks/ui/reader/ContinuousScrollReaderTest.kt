@@ -169,6 +169,22 @@ class ContinuousScrollReaderTest {
         }
     }
 
+    @Test fun continuousTextUsesThePagedReadersLineSpacingMetrics() {
+        currentChapter = 0
+        chapterCount = 1
+        val requestedLineHeight = 1.7f
+        show(lineHeight = requestedLineHeight)
+        compose.waitUntil(15_000) { restored }
+
+        compose.runOnIdle {
+            val view = visibleTextView()
+            val measuredLineHeight = view.layout.getLineTop(1) - view.layout.getLineTop(0)
+            val expectedLineHeight = view.paint.fontSpacing * requestedLineHeight +
+                2.5f * view.resources.displayMetrics.density
+            assertEquals(expectedLineHeight, measuredLineHeight.toFloat(), 3f)
+        }
+    }
+
     @Test fun lineGuideTapScrollsOneLineWithoutOpeningMenuOrSelectingText() {
         currentChapter = 0
         chapterCount = 1

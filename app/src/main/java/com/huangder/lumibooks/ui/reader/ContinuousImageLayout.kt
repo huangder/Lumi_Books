@@ -111,7 +111,12 @@ internal class ContinuousComicImageSpan(
 }
 
 /** TextView must use multiplier 1: applying it to an ImageSpan also multiplies its height. */
-internal fun protectContinuousImageHeights(text: Spannable, lineSpacing: Float = 1f, comicMode: Boolean = false) {
+internal fun protectContinuousImageHeights(
+    text: Spannable,
+    lineSpacing: Float = 1f,
+    comicMode: Boolean = false,
+    lineSpacingExtraPx: Float = 0f
+) {
     text.getSpans(0, text.length, ContinuousLineHeight::class.java).forEach(text::removeSpan)
     val comicGaps = if (comicMode) {
         text.getSpans(0, text.length, ImageSpan::class.java)
@@ -121,20 +126,28 @@ internal fun protectContinuousImageHeights(text: Spannable, lineSpacing: Float =
                 (start until end).takeIf { start < end && it.all { offset -> text[offset].isWhitespace() } }
             }
     } else emptyList()
+    val paragraphSpacers = text
+        .getSpans(0, text.length, EpubParser.ParagraphLineHeightSpan::class.java)
+        .mapNotNull { span ->
+            val start = text.getSpanStart(span)
+            val end = text.getSpanEnd(span)
+            if (start < 0 || end <= start) null else (start until end) to span.extraHeightPx
+        }
+    text.getSpans(0, text.length, EpubParser.ParagraphLineHeightSpan::class.java)
+        .forEach(text::removeSpan)
     // Keep character offsets/bookmarks intact. Only collapse separator line metrics
     // between consecutive images; text before, between or after images remains selectable.
-    comicGaps.forEach { gap ->
-        text.getSpans(gap.first, gap.last + 1, EpubParser.ParagraphLineHeightSpan::class.java)
-            .filter { text.getSpanStart(it) >= gap.first && text.getSpanEnd(it) <= gap.last + 1 }
-            .forEach(text::removeSpan)
-    }
     if (text.isNotEmpty()) text.setSpan(
-        ContinuousLineHeight(lineSpacing, comicGaps), 0, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        ContinuousLineHeight(lineSpacing, lineSpacingExtraPx, comicGaps, paragraphSpacers),
+        0, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
     )
 }
 
 private class ContinuousLineHeight(
-    private val multiplier: Float, private val comicGaps: List<IntRange>
+    private val multiplier: Float,
+    private val lineSpacingExtraPx: Float,
+    private val comicGaps: List<IntRange>,
+    private val paragraphSpacers: List<Pair<IntRange, Int>>
 ) : LineHeightSpan.WithDensity {
     override fun chooseHeight(
         text: CharSequence, start: Int, end: Int, spanstartv: Int, v: Int,
@@ -173,20 +186,30 @@ private class ContinuousLineHeight(
             fm.bottom = 0
             return
         }
-        if (blank && spanned.getSpans(start, limit, EpubParser.ParagraphLineHeightSpan::class.java)
-                .any { spanned.getSpanStart(it) < limit && spanned.getSpanEnd(it) > start }) return
+        val paragraphSpacerHeight = if (blank) paragraphSpacers.firstOrNull { (range, _) ->
+            start >= range.first && limit <= range.last + 1
+        }?.second else null
+        if (paragraphSpacerHeight != null) {
+            val height = (paragraphSpacerHeight * multiplier.coerceAtLeast(0.1f) + lineSpacingExtraPx)
+                .roundToInt().coerceAtLeast(0)
+            fm.ascent = 0
+            fm.top = 0
+            fm.descent = height
+            fm.bottom = height
+            return
+        }
         // StaticLayout reuses the metrics mutated by chooseHeight for subsequent
         // wrapped lines in a paragraph. Derive fresh metrics from the font/spans,
         // otherwise a 1.5x multiplier grows as 1.5x, 2.25x, 3.375x, ... .
         if (paint != null) resetTextMetrics(spanned, start, limit, paint, fm)
-        if (blank) return
         val textHeight = fm.descent - fm.ascent
         val imageHeight = images.maxOfOrNull { it.drawable.bounds.height() } ?: 0
         fm.ascent = minOf(fm.ascent, -imageHeight)
         fm.top = minOf(fm.top, fm.ascent)
         // Match TextView's last-line behavior, without scaling image or spacer rows.
         if (limit == text.length && text.lastOrNull() != '\n') return
-        val extra = (textHeight * (multiplier.coerceAtLeast(0.1f) - 1f)).roundToInt()
+        val extra = (textHeight * (multiplier.coerceAtLeast(0.1f) - 1f) + lineSpacingExtraPx)
+            .roundToInt()
         fm.descent += extra
         fm.bottom = maxOf(fm.bottom, fm.descent)
     }

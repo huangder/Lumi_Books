@@ -112,6 +112,14 @@ class TtsEngine internal constructor(
     private var synthesisWatchdog: Runnable? = null
     private var activePaused = false
     private var nativeUtteranceId: String? = null
+    private class NativeUtterance(val text: String, val id: String) {
+        val callbacks = ArrayList<() -> Unit>()
+        var started = false
+        var terminal = false
+    }
+    private var nativeCurrent: NativeUtterance? = null
+    private var nativeNext: NativeUtterance? = null
+    private var lastNativeDoneMs: Long? = null
     // MultiTTS ties its background music to synthesis activity. File synthesis and speculative
     // prefetch finish before audible playback, so let Android pace its output instead.
     private val usesNativePlayback: Boolean
@@ -350,6 +358,23 @@ class TtsEngine internal constructor(
     override val canResumeWithoutRestart: Boolean
         get() = !usesNativePlayback
 
+    override val supportsQueuedPlayback: Boolean get() = usesNativePlayback
+
+    override suspend fun queueNext(text: String, utteranceId: String): Result<Unit> =
+        withContext(Dispatchers.Main.immediate) {
+            runCatching {
+                check(usesNativePlayback && nativeCurrent != null && nativeNext == null)
+                val next = NativeUtterance(text, utteranceId)
+                nativeNext = next
+                try {
+                    submitNative(next)
+                } catch (error: Throwable) {
+                    nativeNext = null
+                    throw error
+                }
+            }
+        }
+
     override suspend fun speak(text: String, utteranceId: String): Result<Unit> =
         withContext(Dispatchers.Main.immediate) {
             if (engine == null) return@withContext Result.failure(SystemTtsException.Initialization())
@@ -466,8 +491,8 @@ class TtsEngine internal constructor(
 
     override suspend fun stopForPageTurn() = withContext(Dispatchers.Main.immediate) {
         if (usesNativePlayback) {
-            // A normal turn follows onDone; avoid stop() restarting MultiTTS's music each page.
-            if (nativeUtteranceId != null) stopNativePlayback()
+            // A queued successor may already be audible; a visual page turn must retain it.
+            if (nativeCurrent != null) stopNativePlayback()
             return@withContext
         }
         discardSynthesis(activeSynthesis)
@@ -553,17 +578,23 @@ class TtsEngine internal constructor(
         playbackListener = listener
         utteranceListener = object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {
-                postNativeCallback(utteranceId) { id ->
-                    logNativePlayback("native_playback_started", id)
+                val startedAt = SystemClock.elapsedRealtime()
+                postNativeCallback(utteranceId, starting = true) { id ->
+                    logNativePlayback("native_playback_started", id, extra = mapOf(
+                        "startedAtMs" to startedAt,
+                        "gapMs" to lastNativeDoneMs?.let { (startedAt - it).coerceAtLeast(0L) }))
                     playbackListener?.onStart(id)
                     playbackListener?.onPlaybackActivity(id, true)
                 }
             }
 
             override fun onDone(utteranceId: String?) {
-                postNativeCallback(utteranceId) { id ->
+                val doneAt = SystemClock.elapsedRealtime()
+                postNativeCallback(utteranceId, terminal = true) { id ->
                     nativeUtteranceId = null
-                    logNativePlayback("native_playback_done", id)
+                    nativeCurrent = null
+                    lastNativeDoneMs = doneAt
+                    logNativePlayback("native_playback_done", id, extra = mapOf("doneAtMs" to doneAt))
                     playbackListener?.onPlaybackActivity(id, false)
                     playbackListener?.onDone(id)
                 }
@@ -644,8 +675,8 @@ class TtsEngine internal constructor(
             }
 
             override fun onStop(utteranceId: String?, interrupted: Boolean) {
-                postNativeCallback(utteranceId) { id ->
-                    nativeUtteranceId = null
+                postNativeCallback(utteranceId, terminal = true) { id ->
+                    stopNativePlayback()
                     logNativePlayback("native_playback_interrupted", id)
                     playbackListener?.onPlaybackActivity(id, false)
                     playbackListener?.onPlaybackInterrupted()
@@ -722,51 +753,83 @@ class TtsEngine internal constructor(
     private var playbackListener: TtsPlaybackListener? = null
 
     private fun speakNative(text: String, utteranceId: String): Result<Unit> = runCatching {
-        if (nativeUtteranceId != null) stopNativePlayback()
-        nativeUtteranceId = utteranceId
+        val prepared = nativeNext?.takeIf { it.id == utteranceId && it.text == text }
+        if (prepared != null) {
+            nativeNext = null
+            nativeCurrent = prepared
+            nativeUtteranceId = utteranceId
+            logNativePlayback("native_queue_adopted", utteranceId)
+            prepared.callbacks.toList().forEach { it() }
+            prepared.callbacks.clear()
+        } else {
+            if (nativeCurrent != null || nativeNext != null) stopNativePlayback()
+            val task = NativeUtterance(text, utteranceId)
+            nativeCurrent = task
+            nativeUtteranceId = utteranceId
+            try { submitNative(task) } catch (error: Throwable) {
+                nativeCurrent = null
+                nativeUtteranceId = null
+                throw error
+            }
+        }
+    }
+
+    private fun submitNative(task: NativeUtterance) {
         // QUEUE_FLUSH calls the engine's stop hook even at a natural sentence boundary.
-        // The controller submits one sentence at a time, after Android reports audible completion.
+        // Keep the native stream alive while the controller keeps one successor queued.
         val result = try {
-            engine!!.speak(text, TextToSpeech.QUEUE_ADD, Bundle(), utteranceId)
+            engine!!.speak(task.text, TextToSpeech.QUEUE_ADD, Bundle(), task.id)
         } catch (error: Throwable) {
-            nativeUtteranceId = null
             throw SystemTtsException.Playback(cause = error)
         }
         if (result != TextToSpeech.SUCCESS) {
-            nativeUtteranceId = null
             throw SystemTtsException.Playback(result)
         }
-        logNativePlayback("native_playback_requested", utteranceId)
+        logNativePlayback("native_playback_requested", task.id, extra = mapOf(
+            "queued" to (task === nativeNext), "requestedAtMs" to SystemClock.elapsedRealtime()))
     }
 
     private fun stopNativePlayback() {
         val id = nativeUtteranceId
         nativeUtteranceId = null // Invalidate callbacks before stop can deliver onStop/onDone.
+        nativeCurrent = null
+        nativeNext = null
+        lastNativeDoneMs = null
         id?.let { playbackListener?.onPlaybackActivity(it, false) }
         engine?.stop()
     }
 
-    private fun postNativeCallback(utteranceId: String?, callback: (String) -> Unit) {
+    private fun postNativeCallback(
+        utteranceId: String?, terminal: Boolean = false, starting: Boolean = false,
+        callback: (String) -> Unit
+    ) {
         mainHandler.post {
-            if (utteranceId != null && utteranceId == nativeUtteranceId) callback(utteranceId)
+            val task = nativeCurrent?.takeIf { it.id == utteranceId }
+                ?: nativeNext?.takeIf { it.id == utteranceId } ?: return@post
+            if (task.terminal || (starting && task.started)) return@post
+            if (starting) task.started = true
+            if (terminal) task.terminal = true
+            if (task === nativeCurrent) callback(task.id)
+            else task.callbacks += { callback(task.id) }
         }
     }
 
     private fun failNativePlayback(utteranceId: String?, error: SystemTtsException.Playback) {
-        postNativeCallback(utteranceId) { id ->
-            nativeUtteranceId = null
+        postNativeCallback(utteranceId, terminal = true) { id ->
+            stopNativePlayback()
             logNativePlayback("native_playback_failed", id, error)
             playbackListener?.onPlaybackActivity(id, false)
             playbackListener?.onError(id, error)
         }
     }
 
-    private fun logNativePlayback(event: String, id: String, error: Throwable? = null) {
+    private fun logNativePlayback(event: String, id: String, error: Throwable? = null,
+        extra: Map<String, Any?> = emptyMap()) {
         DiagnosticLoggerRegistry.logger?.log("tts", event, attributes = mapOf(
             "enginePackage" to enginePackageName,
             "utteranceId" to id,
             "playbackMode" to "native"
-        ), throwable = error)
+        ) + extra, throwable = error)
     }
 
     private fun finishSynthesisPlayback(task: Synthesis) {
@@ -818,6 +881,9 @@ class TtsEngine internal constructor(
         activePaused = false
         nativeUtteranceId?.let { playbackListener?.onPlaybackActivity(it, false) }
         nativeUtteranceId = null
+        nativeCurrent = null
+        nativeNext = null
+        lastNativeDoneMs = null
         if (stopEngine) engine?.stop()
     }
 

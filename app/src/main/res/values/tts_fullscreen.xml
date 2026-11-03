@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tts_full_cover">封面模式</string>
+    <string name="tts_full_subtitles">字幕模式</string>
+    <string name="tts_full_previous_chapter">上一章</string>
+    <string name="tts_full_next_chapter">下一章</string>
+    <string name="tts_full_previous_page">上一页</string>
+    <string name="tts_full_next_page">下一页</string>
+    <string name="tts_full_progress">章节进度</string>
+    <string name="tts_full_engine">引擎</string>
+    <string name="tts_full_system">系统默认</string>
+    <string name="tts_full_ai">AI 语音</string>
+    <string name="tts_full_engine_failed">切换失败，已恢复原语音引擎</string>
+    <string name="tts_full_chapter">第 %1$d / %2$d 章</string>
+    <string name="tts_full_page">第 %1$d / %2$d 页</string>
+    <string name="tts_full_close">收起听书页</string>
+    <string name="tts_full_empty">正在准备朗读内容…</string>
+    <string name="tts_full_rate_value">语速 %1$sx</string>
+    <string name="tts_full_pitch_value">音调 %1$sx</string>
+</resources>

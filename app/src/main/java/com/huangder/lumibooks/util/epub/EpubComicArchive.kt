@@ -1,15 +1,14 @@
 package com.huangder.lumibooks.util.epub
 
 import android.content.Context
-import com.huangder.lumibooks.util.BookFileAccess
 import com.huangder.lumibooks.util.cache.BookFingerprint
-import com.huangder.lumibooks.util.cache.MirrorLifetime
 import com.huangder.lumibooks.util.cache.ReaderCacheStore
 import com.huangder.lumibooks.util.parser.CbzChapter
 import com.huangder.lumibooks.util.parser.CbzIndex
 import com.huangder.lumibooks.util.parser.CbzPage
 import com.huangder.lumibooks.util.parser.OpenedCbzArchive
 import com.huangder.lumibooks.util.zip.ZipCompatRepair
+import com.huangder.lumibooks.util.kindle.ReadableEpubSource
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import java.util.zip.ZipFile
@@ -18,10 +17,12 @@ internal object EpubComicArchive {
     suspend fun index(context: Context, location: String): EpubComicIndex {
         val coroutine = currentCoroutineContext()
         val store = ReaderCacheStore.get(context)
-        val fingerprint = BookFingerprint.resolve(context, location)
         val namespace = "epub_comic_index_v${EpubComicIndex.VERSION}"
-        store.readMetadata(namespace, fingerprint)?.toString()?.let(EpubComicIndex::decode)?.let { return it }
         return withArchive(context, location) { path, zip ->
+            // A reconstructed publication's path contains its content hash and converter version.
+            val fingerprint = BookFingerprint.resolve(context, path)
+            store.readMetadata(namespace, fingerprint)?.toString()?.let(EpubComicIndex::decode)
+                ?.let { return@withArchive it }
             val entries = zip.entries().asSequence().associateBy { it.name.lowercase() }
             val index = EpubComicIndexer.build(EpubPackageReader.read(path), { resource ->
                 val entry = zip.getEntry(resource) ?: entries[resource.lowercase()]
@@ -41,7 +42,7 @@ internal object EpubComicArchive {
     }
 
     fun open(context: Context, location: String, index: EpubComicIndex): OpenedCbzArchive {
-        val lease = BookFileAccess.openSeekable(context, location, writable = false, mirrorLifetime = MirrorLifetime.SESSION)
+        val lease = ReadableEpubSource.open(context, location)
         var zip: ZipFile? = null
         try {
             val path = compatible(context, lease.path)
@@ -71,7 +72,7 @@ internal object EpubComicArchive {
         emptyArchiveMessage = "EPUB archive is empty")
 
     private fun <T> withArchive(context: Context, location: String, read: (String, ZipFile) -> T): T =
-        BookFileAccess.openSeekable(context, location, writable = false, mirrorLifetime = MirrorLifetime.SESSION).use { lease ->
+        ReadableEpubSource.open(context, location).use { lease ->
             val path = compatible(context, lease.path)
             ZipFile(path).use { read(path, it) }
         }

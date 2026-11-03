@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.getValue
@@ -14,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -43,6 +47,7 @@ class ReaderMenuLayoutTest {
     private var viewport by mutableStateOf(DpSize(1280.dp, 800.dp))
     private val labels = mutableMapOf<Int, String>()
     private var clicks = 0
+    private var catalogBounds by mutableStateOf<Rect?>(null)
 
     private fun mount() {
         compose.setContent {
@@ -74,8 +79,17 @@ class ReaderMenuLayoutTest {
                             onCatalogClick = {}, onPreviousChapterClick = {}, onNextChapterClick = {},
                             onBookmarkClick = { clicks++ }, onSearchClick = { clicks++ }, onThemeClick = { clicks++ },
                             sideRailItemSize = layout.sideRailItemSize,
+                            onCatalogBoundsChanged = { catalogBounds = it },
                             modifier = Modifier.align(Alignment.BottomCenter)
                         )
+                        ReaderTtsFloatingHost(
+                            visible = true, readerMenuVisible = true,
+                            position = com.huangder.lumibooks.tts.ReaderTtsPosition(),
+                            onPositionChange = {}, catalogBoundsInWindow = catalogBounds
+                        ) { placement ->
+                            Box(Modifier.offset(x = placement.capsuleX).width(128.dp).height(48.dp)
+                                .testTag("menu-listening-slot"))
+                        }
                     }
                 }
             }
@@ -87,7 +101,17 @@ class ReaderMenuLayoutTest {
     private fun action(res: Int) = compose.onNodeWithText(labels.getValue(res))
     private fun header(res: Int) = compose.onNodeWithContentDescription(labels.getValue(res))
 
+    private fun assertListeningAboveCatalog() {
+        val bounds = requireNotNull(catalogBounds)
+        val capsule = compose.onNodeWithTag("menu-listening-slot").fetchSemanticsNode().boundsInRoot
+        assertEquals(bounds.top - 12f, capsule.bottom, 1f)
+        assertEquals(bounds.left, capsule.left, 1f)
+        val catalogLabel = action(R.string.reader_toc).fetchSemanticsNode().boundsInRoot
+        assertTrue(capsule.bottom < catalogLabel.top)
+    }
+
     private fun assertBottomActions() {
+        assertListeningAboveCatalog()
         val notes = action(R.string.reader_notes).fetchSemanticsNode().boundsInRoot
         val search = action(R.string.reader_search).fetchSemanticsNode().boundsInRoot
         val theme = action(R.string.reader_theme).fetchSemanticsNode().boundsInRoot
@@ -116,6 +140,7 @@ class ReaderMenuLayoutTest {
     @Test
     fun rotatingTheViewportRestoresPhoneLayoutWithoutAConfigurationUpdate() {
         mount()
+        assertListeningAboveCatalog()
         val more = header(R.string.more_options).fetchSemanticsNode().boundsInRoot
         val notes = action(R.string.reader_notes).fetchSemanticsNode().boundsInRoot
         val theme = action(R.string.reader_theme).fetchSemanticsNode().boundsInRoot
@@ -123,6 +148,9 @@ class ReaderMenuLayoutTest {
         assertEquals(64f, notes.height, 1f)
         assertTrue("Both side groups must fit without overlap", more.bottom < notes.top && notes.bottom < theme.top)
         compose.runOnIdle { viewport = DpSize(375.dp, 840.dp) }
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        assertListeningAboveCatalog()
         compose.waitForIdle()
         assertBottomActions()
         assertEquals(36f, header(R.string.tts_listen).fetchSemanticsNode().boundsInRoot.width, 1f)

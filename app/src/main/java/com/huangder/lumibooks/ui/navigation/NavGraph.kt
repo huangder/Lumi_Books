@@ -359,7 +359,6 @@ fun MainNavGraph(
     requestedOpenStatistics: Boolean = false,
     requestedOpenFolderId: String? = null,
     requestedOpenHiddenLibrary: Boolean = false,
-    onBeforeOpenDifferentBook: () -> Unit = {},
     onOpenBookRequestConsumed: () -> Unit = {},
     onOpenBookshelfRequestConsumed: () -> Unit = {},
     onOpenStatisticsRequestConsumed: () -> Unit = {},
@@ -777,7 +776,6 @@ fun MainNavGraph(
             ?.arguments
             ?.getString("bookId")
         if (currentReaderBookId != requestedId) {
-            onBeforeOpenDifferentBook()
             val requestedBook = homeViewModel.findBook(requestedId)
             requestOpenBook(
                 requestedId,
@@ -791,7 +789,6 @@ fun MainNavGraph(
 
     LaunchedEffect(requestedOpenBookshelf) {
         if (!requestedOpenBookshelf) return@LaunchedEffect
-        onBeforeOpenDifferentBook()
         tabNavigationJob?.cancel()
         mainPagerState.scrollToPage(1)
         if (navController.currentDestination?.route != mainStartDestination) {
@@ -802,7 +799,6 @@ fun MainNavGraph(
 
     LaunchedEffect(requestedOpenStatistics) {
         if (!requestedOpenStatistics) return@LaunchedEffect
-        onBeforeOpenDifferentBook()
         tabNavigationJob?.cancel()
         mainPagerState.scrollToPage(2)
         if (navController.currentDestination?.route != mainStartDestination) {
@@ -1330,7 +1326,6 @@ fun MainNavGraph(
                         bookReaderTransition.phase == BookReaderTransitionPhase.Reader
                     } else !showTransition,
                     onOpenBook = { targetBookId ->
-                        onBeforeOpenDifferentBook()
                         val target = homeViewModel.findBook(targetBookId)
                         requestOpenBook(
                             targetBookId,

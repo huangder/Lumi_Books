@@ -465,6 +465,12 @@ fun RasterReaderScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val ttsState by viewModel.ttsState.collectAsState()
+    val readerTtsPosition by viewModel.readerTtsPosition.collectAsState(com.huangder.lumibooks.tts.ReaderTtsPosition())
+    val floatingSubtitlesEnabled by viewModel.floatingSubtitlesEnabled.collectAsState(true)
+    var ttsCatalogBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+    var ttsRevealKey by remember(bookId) { mutableIntStateOf(0) }
+    var readerViewportOrigin by remember { mutableStateOf(Offset.Zero) }
+    var menuViewportCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val ttsCurrentPage by viewModel.ttsCurrentPage.collectAsState()
     val listeningResumePrompt by viewModel.listeningResumePrompt.collectAsState()
     val listeningResumeJumpRequest by viewModel.listeningResumeJumpRequest.collectAsState()
@@ -523,12 +529,26 @@ fun RasterReaderScreen(
     var selectedInkColorSlot by remember(bookId) { mutableStateOf(0) }
     var inkColorExpanded by remember(bookId) { mutableStateOf(false) }
     var conversionSheet by remember { mutableStateOf<PdfConversionSheet?>(null) }
+    var showTtsExitDialog by remember(bookId) { mutableStateOf(false) }
+    var exitRequested by remember(bookId) { mutableStateOf(false) }
+    val completeReaderExit: (Boolean) -> Unit = { keepListening ->
+        if (!exitRequested) {
+            exitRequested = true
+            showTtsExitDialog = false
+            val finishExit: () -> Unit = {
+                if (uiState.epubComicReader) scope.launch {
+                    viewModel.flushEpubComicProgress()
+                    onNavigateBack()
+                } else onNavigateBack()
+            }
+            if (keepListening) viewModel.continueTtsOutsideReader(finishExit) else {
+                viewModel.stopTts()
+                finishExit()
+            }
+        }
+    }
     val exitReader: () -> Unit = {
-        viewModel.stopTts()
-        if (uiState.epubComicReader) scope.launch {
-            viewModel.flushEpubComicProgress()
-            onNavigateBack()
-        } else onNavigateBack()
+        viewModel.requestTtsReaderExit(onAsk = { showTtsExitDialog = true }, onExit = completeReaderExit)
     }
     val openBookFromReader: (String) -> Unit = { targetBookId ->
         viewModel.stopTts()
@@ -1218,6 +1238,14 @@ fun RasterReaderScreen(
         eInkMode = eInkMode, backdrop = pdfGlassBackdrop.takeIf { capturePdfBackdrop },
         onDismiss = viewModel::dismissTtsStart, onChoose = viewModel::chooseTtsStart
     )
+    TtsExitDialog(
+        visible = showTtsExitDialog && readerActive,
+        floatingSubtitlesEnabled = floatingSubtitlesEnabled,
+        paperColor = rasterBackgroundColor, contentColor = AppColors.TextPrimary,
+        eInkMode = eInkMode, backdrop = pdfGlassBackdrop.takeIf { capturePdfBackdrop },
+        onDismiss = { showTtsExitDialog = false },
+        onExit = { keep, remember -> viewModel.chooseTtsReaderExit(keep, remember, completeReaderExit) }
+    )
     val inkPageLayouts = remember(pageSource) { mutableStateMapOf<Int, LayoutCoordinates>() }
     CompositionLocalProvider(LocalRasterPagePrepared provides reportPagePrepared, LocalPdfTextAnnotations provides pdfText,
         LocalRasterInkPages provides inkPageLayouts) {
@@ -1225,6 +1253,7 @@ fun RasterReaderScreen(
     Box(
         Modifier
             .fillMaxSize()
+            .onGloballyPositioned { readerViewportOrigin = it.boundsInWindow().topLeft }
             .background(rasterBackgroundColor)
     ) {
         // PDF 页面（上下连续滚动 / 上下分页 / 相册式左右分页）
@@ -1730,6 +1759,8 @@ fun RasterReaderScreen(
                     viewModel.setRasterZoomLocked(!uiState.rasterZoomLocked, scale)
                 },
                 onTtsToggle = {
+                    ttsRevealKey++
+                    showMenu = false
                     viewModel.requestTtsStart(startTtsWithPermission)
                 },
                 onBookmarkToggle = {
@@ -1784,8 +1815,12 @@ fun RasterReaderScreen(
             ) + fadeOut(tween(180)),
             modifier = Modifier.fillMaxSize()
         ) {
-            Box(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize().onGloballyPositioned { menuViewportCoordinates = it }) {
                 PdfBottomMenu(
+                    onCatalogBoundsChanged = { bounds ->
+                        val origin = menuViewportCoordinates?.takeIf { it.isAttached }?.boundsInWindow(clipBounds = false)?.topLeft
+                        if (origin != null) ttsCatalogBounds = bounds.translate(readerViewportOrigin - origin)
+                    },
                     onImageAdjustmentsClick = { showMenu = false; showImageAdjustments = true },
                     chapterTitle = if (isComic) {
                         comicIndex?.pages?.getOrNull(currentPage)?.let { comicIndex.chapterTitles.getOrNull(it.chapterIndex) }
@@ -1951,24 +1986,18 @@ fun RasterReaderScreen(
                 }
             )
         }
-        val ttsBottomPadding by animateDpAsState(
-            targetValue = if (showMenu) 160.dp else 44.dp,
-            animationSpec = if (eInkMode || !motionEnabled) tween(0) else spring(dampingRatio = 0.82f, stiffness = 360f),
-            label = "ttsBottomPadding"
-        )
-        AnimatedVisibility(
+        ReaderTtsFloatingHost(
             visible = ttsState.activeBookId == bookId &&
                 ttsState.playbackState != TtsPlaybackState.IDLE &&
                 !showPdfToc && !showPdfBookmarks && conversionSheet == null,
-            enter = if (eInkMode) EnterTransition.None else if (!motionEnabled) fadeIn(tween(120)) else slideInVertically(spring(stiffness = 400f, visibilityThreshold = IntOffset(1, 1)), initialOffsetY = { it }) + fadeIn(spring(stiffness = 400f)),
-            exit = if (eInkMode) ExitTransition.None else if (!motionEnabled) fadeOut(tween(100)) else slideOutVertically(spring(stiffness = 400f, visibilityThreshold = IntOffset(1, 1)), targetOffsetY = { it }) + fadeOut(spring(stiffness = 400f)),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = ttsBottomPadding)
-        ) {
+            readerMenuVisible = showMenu,
+            position = readerTtsPosition,
+            onPositionChange = viewModel::saveReaderTtsPosition,
+            catalogBoundsInWindow = ttsCatalogBounds,
+            revealKey = ttsRevealKey
+        ) { placement ->
             TtsPlayerPanel(
+                placement = placement,
                 chapterTitle = comicIndex?.pages?.getOrNull(currentPage)?.let { page ->
                     comicIndex.chapterTitles.getOrNull(page.chapterIndex)
                 } ?: uiState.chapterTitles.getOrNull(currentPage) ?: (book?.title ?: ""),
@@ -1983,6 +2012,7 @@ fun RasterReaderScreen(
                 followUserPageTurns = ttsState.followUserPageTurns,
                 onPlayPause = viewModel::toggleTtsPlayPause,
                 onStop = viewModel::stopTts,
+                onOpenFullscreen = { viewModel.openFullScreenTts(context) },
                 onSkipForward = viewModel::ttsSkipForward,
                 onSkipBackward = viewModel::ttsSkipBackward,
                 onRateChange = viewModel::setTtsSpeechRate,
@@ -2830,6 +2860,7 @@ private fun PdfBottomMenu(
     onAnnotationClick: () -> Unit,
     onNotesClick: (() -> Unit)? = null,
     onBookmarksClick: () -> Unit,
+    onCatalogBoundsChanged: ((androidx.compose.ui.geometry.Rect) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -2877,17 +2908,19 @@ private fun PdfBottomMenu(
             )
         }
         // 目录胶囊
-        PdfCatalogCapsule(
-            title = chapterTitle,
-            progress = chapterProgress,
-            pageSource = pageSource,
-            pageCount = pdfPageCount,
-            glassContentScrimColor = glassContentScrimColor,
-            onClick = onCatalogClick,
-            onProgressDragStart = onCatalogProgressDragStart,
-            onProgressPageChange = onCatalogProgressPageChange,
-            onProgressDragEnd = onCatalogProgressDragEnd
-        )
+        Box(Modifier.onGloballyPositioned { onCatalogBoundsChanged?.invoke(it.boundsInWindow(clipBounds = false)) }) {
+            PdfCatalogCapsule(
+                title = chapterTitle,
+                progress = chapterProgress,
+                pageSource = pageSource,
+                pageCount = pdfPageCount,
+                glassContentScrimColor = glassContentScrimColor,
+                onClick = onCatalogClick,
+                onProgressDragStart = onCatalogProgressDragStart,
+                onProgressPageChange = onCatalogProgressPageChange,
+                onProgressDragEnd = onCatalogProgressDragEnd
+            )
+        }
         RasterReaderActionRow(
             isComic = isComic,
             onAnnotationClick = onAnnotationClick,

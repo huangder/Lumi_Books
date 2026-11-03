@@ -10,9 +10,12 @@ endforeach()
 # Keep the LGPL library separately replaceable and build it entirely from source.
 add_library(mobi SHARED ${MOBI_FILES} mobi_budget.c)
 target_include_directories(mobi PUBLIC ${VENDOR} ${CMAKE_CURRENT_LIST_DIR})
-target_compile_definitions(mobi PRIVATE USE_XMLWRITER USE_MINIZ HAVE_UNISTD_H HAVE_STRDUP NDEBUG MINIZ_NO_STDIO MINIZ_NO_TIME
-    PACKAGE_VERSION="0.12" MOBI_INLINE=inline
-    MINIZ_NO_ZLIB_COMPATIBLE_NAMES MINIZ_NO_ARCHIVE_APIS MINIZ_NO_ARCHIVE_WRITING_APIS)
+target_compile_definitions(mobi PRIVATE USE_XMLWRITER USE_MINIZ HAVE_UNISTD_H HAVE_STRDUP NDEBUG
+    PACKAGE_VERSION="0.12" MOBI_INLINE=inline)
+# The other units get these flags from upstream miniz.h.
+set_property(SOURCE ${VENDOR}/miniz.c APPEND PROPERTY COMPILE_DEFINITIONS
+    MINIZ_NO_STDIO MINIZ_NO_TIME MINIZ_NO_ZLIB_COMPATIBLE_NAMES
+    MINIZ_NO_ARCHIVE_APIS MINIZ_NO_ARCHIVE_WRITING_APIS)
 set_source_files_properties(${MOBI_FILES} PROPERTIES COMPILE_OPTIONS "-include;${CMAKE_CURRENT_LIST_DIR}/mobi_budget.h" COMPILE_DEFINITIONS LUMI_MOBI_WRAP_ALLOC)
 if(ANDROID)
     add_library(lumi_kindle SHARED kindle_core.c kindle_jni.c)
@@ -31,7 +34,7 @@ endif()
 
 
 # Optional Windows/JVM integration harness; never used in the APK.
-if(NOT ANDROID AND DEFINED LUMI_JAVA_HOME)
+if(NOT ANDROID AND LUMI_JAVA_HOME)
     add_library(lumi_kindle SHARED kindle_core.c kindle_jni.c)
     target_include_directories(lumi_kindle PRIVATE "${LUMI_JAVA_HOME}/include" "${LUMI_JAVA_HOME}/include/win32")
     target_link_libraries(lumi_kindle PRIVATE mobi)

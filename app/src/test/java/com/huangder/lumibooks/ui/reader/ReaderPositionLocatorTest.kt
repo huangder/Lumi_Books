@@ -78,6 +78,18 @@ class ReaderPositionLocatorTest {
     }
 
     @Test
+    fun `round trip preserves continuous scroll character anchor`() {
+        val locator = ReaderPositionLocator(
+            chapterIndex = 4,
+            chapterFraction = 0.25f,
+            flow = ReaderPositionFlow.CONTINUOUS,
+            characterOffset = 812
+        )
+
+        assertEquals(locator, ReaderPositionLocator.fromJson(locator.toJson()))
+    }
+
+    @Test
     fun `version one locator remains readable without byte anchor`() {
         val json = """{"type":"lumi_reader_position","version":1,"chapterIndex":2,"chapterFraction":0.5,"flow":"paged","characterOffset":42}"""
 

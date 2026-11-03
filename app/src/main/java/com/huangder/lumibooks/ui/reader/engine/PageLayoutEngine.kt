@@ -240,11 +240,11 @@ class PageLayoutEngine {
                 generation = layoutGeneration,
                 visibleWidth = visibleWidth,
                 visibleHeight = visibleHeight,
-                textPaint = TextPaint(activeTextPaint).apply {
-                    if (useDisplayDensityForSpans) {
-                        density = activeTextPaint.density
-                    }
-                },
+                // TextPaint(Paint) copies only Paint fields. TextPaint.set also
+                // preserves density, which dp title spans need in every format.
+                // Losing it makes pagination measure a smaller title than the
+                // page TextView renders, pushing the body into the bottom margin.
+                textPaint = TextPaint().apply { set(activeTextPaint) },
                 textAlignment = textAlignment,
                 writingMode = writingMode,
                 lineSpacingExtra = lineSpacingExtra,

@@ -380,6 +380,9 @@ class DataStoreManager @Inject constructor(
         private val SELECTION_MENU_ITEMS = stringPreferencesKey("selection_menu_items")
         private val LONG_PRESS_SELECTION_RANGE = stringPreferencesKey("long_press_selection_range")
         private val TTS_FLOATING_WINDOW = booleanPreferencesKey("tts_floating_window")
+        private val TTS_READER_X = floatPreferencesKey("tts_reader_capsule_x")
+        private val TTS_READER_Y = floatPreferencesKey("tts_reader_capsule_y")
+        private val TTS_READER_DOCK = stringPreferencesKey("tts_reader_capsule_dock")
         private val TTS_FLOATING_X_FRACTION = floatPreferencesKey("tts_floating_x_fraction")
         private val TTS_FLOATING_Y_FRACTION = floatPreferencesKey("tts_floating_y_fraction")
         private val TTS_FLOATING_BACKGROUND_COLOR = stringPreferencesKey("tts_floating_background_color")
@@ -390,6 +393,7 @@ class DataStoreManager @Inject constructor(
         private val PREFERRED_TTS_ENGINE = stringPreferencesKey("preferred_tts_engine")
         private val TTS_PROVIDER_SELECTION = stringPreferencesKey("tts_provider_selection")
         private val TTS_START_CHOICE = stringPreferencesKey("tts_start_choice")
+        private val TTS_CONTINUE_ON_READER_EXIT = booleanPreferencesKey("tts_continue_on_reader_exit")
         private val TTS_READER_RESUME_CHOICE = stringPreferencesKey("tts_reader_resume_choice")
         private val TTS_READER_RESUME_HINT_MIGRATED = booleanPreferencesKey("tts_reader_resume_hint_migrated_v1")
         private val BODY_FONT_WEIGHT = intPreferencesKey("body_font_weight")
@@ -826,6 +830,26 @@ class DataStoreManager @Inject constructor(
 
     val longPressSelectionRange: Flow<LongPressSelectionRange> = context.dataStore.data.map { preferences ->
         LongPressSelectionRange.fromKey(preferences[LONG_PRESS_SELECTION_RANGE])
+    }
+
+    val readerTtsPosition: Flow<com.huangder.lumibooks.tts.ReaderTtsPosition> = context.dataStore.data.map { preferences ->
+        com.huangder.lumibooks.tts.ReaderTtsPosition(
+            xFraction = preferences[TTS_READER_X] ?: 0f,
+            yFraction = preferences[TTS_READER_Y] ?: 1f,
+            dock = com.huangder.lumibooks.tts.ReaderTtsDock.entries.firstOrNull {
+                it.name == preferences[TTS_READER_DOCK]
+            } ?: com.huangder.lumibooks.tts.ReaderTtsDock.NONE,
+            saved = preferences[TTS_READER_X] != null && preferences[TTS_READER_Y] != null
+        ).normalized()
+    }
+
+    suspend fun saveReaderTtsPosition(position: com.huangder.lumibooks.tts.ReaderTtsPosition) {
+        val value = position.normalized()
+        context.dataStore.edit { preferences ->
+            preferences[TTS_READER_X] = value.xFraction
+            preferences[TTS_READER_Y] = value.yFraction
+            preferences[TTS_READER_DOCK] = value.dock.name
+        }
     }
 
     val floatingSubtitleSettings: Flow<FloatingSubtitleSettings> = context.dataStore.data.map { preferences ->
@@ -1293,6 +1317,15 @@ class DataStoreManager @Inject constructor(
 
     override val ttsStartChoice: Flow<TtsStartChoice?> = context.dataStore.data.map {
         TtsStartChoice.fromStoredValue(it[TTS_START_CHOICE])
+    }
+
+    val ttsContinueOnReaderExit: Flow<Boolean?> = context.dataStore.data.map { it[TTS_CONTINUE_ON_READER_EXIT] }
+
+    suspend fun saveTtsContinueOnReaderExit(keepListening: Boolean?) {
+        context.dataStore.edit { preferences ->
+            if (keepListening == null) preferences.remove(TTS_CONTINUE_ON_READER_EXIT)
+            else preferences[TTS_CONTINUE_ON_READER_EXIT] = keepListening
+        }
     }
 
     override suspend fun saveTtsStartChoice(choice: TtsStartChoice?) {

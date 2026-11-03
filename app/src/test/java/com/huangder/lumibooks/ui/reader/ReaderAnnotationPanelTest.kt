@@ -4,13 +4,19 @@ import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.Note
 import com.huangder.lumibooks.ui.theme.*
@@ -54,6 +60,52 @@ class ReaderAnnotationPanelTest {
             file.parentFile?.mkdirs()
             file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
             bitmap.recycle()
+        }
+    }
+
+    @Test fun readerCardExpandsQuoteAndNoteWithoutJumpingAndKeepsLocationLink() {
+        val quote = "First quoted line\nSecond quoted line\nThird quoted line\nLast quoted line"
+        val remark = "First note line\nSecond note line\nLast note line"
+        val entry = mark(6, quote, emptyList(), type = "note").copy(note = remark)
+        var jumps = 0
+        compose.setContent {
+            EBookReaderTheme(appTheme = if (glass.value) "liquid_glass" else "lumi", darkTheme = false) {
+                CompositionLocalProvider(
+                    LocalAppTheme provides if (glass.value) "liquid_glass" else "lumi",
+                    LocalLiquidGlassCapability provides LiquidGlassCapability(true, false),
+                    LocalMotionEnabled provides false
+                ) {
+                    Box(Modifier.width(320.dp)) {
+                        HighlightNoteItem(entry, onShare = {}, onClick = { jumps++ },
+                            onDelete = {}, onEditTags = {}, usePageLabels = glass.value)
+                    }
+                }
+            }
+        }
+        fun layout(text: String): TextLayoutResult {
+            val results = mutableListOf<TextLayoutResult>()
+            compose.onNodeWithText(text, useUnmergedTree = true)
+                .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
+            return results.single()
+        }
+        listOf(false, true).forEach { liquid ->
+            compose.runOnIdle { glass.value = liquid }
+            assertTrue(layout(remark).hasVisualOverflow)
+            compose.onNodeWithText(remark).performClick()
+            assertEquals(4, layout(quote).lineCount)
+            assertEquals(3, layout(remark).lineCount)
+            val expandedLayout = layout(remark)
+            assertFalse(expandedLayout.didOverflowHeight)
+            assertFalse(expandedLayout.isLineEllipsized(expandedLayout.lineCount - 1))
+            assertEquals(remark.length, expandedLayout.getLineEnd(expandedLayout.lineCount - 1))
+            compose.runOnIdle { assertEquals(if (liquid) 1 else 0, jumps) }
+            compose.onNodeWithText(remark).performClick()
+            compose.onNodeWithText(quote, useUnmergedTree = true).assertDoesNotExist()
+            assertTrue(layout(remark).hasVisualOverflow)
+            val location = RuntimeEnvironment.getApplication().getString(
+                if (liquid) R.string.pdf_page_number else R.string.reader_chapter_fallback, 1)
+            compose.onNodeWithText(location).performClick()
+            compose.runOnIdle { assertEquals(if (liquid) 2 else 1, jumps) }
         }
     }
 

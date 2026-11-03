@@ -424,6 +424,11 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            dataStoreManager.ttsContinueOnReaderExit.collectLatest { choice ->
+                _uiState.value = _uiState.value.copy(ttsContinueOnReaderExit = choice)
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.ttsReaderResumeChoice.collectLatest { choice ->
                 _uiState.value = _uiState.value.copy(ttsReaderResumeChoice = choice)
             }
@@ -590,6 +595,10 @@ class SettingsViewModel @Inject constructor(
 
     fun saveTtsStartChoice(choice: com.huangder.lumibooks.tts.TtsStartChoice?) {
         viewModelScope.launch { dataStoreManager.saveTtsStartChoice(choice) }
+    }
+
+    fun saveTtsContinueOnReaderExit(choice: Boolean?) {
+        viewModelScope.launch { dataStoreManager.saveTtsContinueOnReaderExit(choice) }
     }
 
     fun saveTtsReaderResumeChoice(choice: com.huangder.lumibooks.tts.TtsReaderResumeChoice?) {
@@ -1026,8 +1035,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 com.huangder.lumibooks.util.cache.ReaderCacheStore.get(context).clear()
+                com.huangder.lumibooks.util.kindle.KindleEpubCache.clear(context)
                 context.cacheDir.listFiles()?.forEach { entry ->
-                    if (entry.name != ExternalTtsAudioCache.DIRECTORY_NAME && entry.name != "reader_cache") {
+                    if (entry.name != ExternalTtsAudioCache.DIRECTORY_NAME && entry.name != "reader_cache" &&
+                        entry.name != com.huangder.lumibooks.util.kindle.KindleEpubCache.DIRECTORY) {
                         entry.deleteRecursively()
                     }
                 }

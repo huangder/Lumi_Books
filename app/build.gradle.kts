@@ -123,6 +123,10 @@ android {
             all {
                 it.maxHeapSize = "2g"
                 it.systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
+                // Optional host JNI build for real Kindle reconstruction tests, never packaged.
+                System.getenv("LUMI_KINDLE_NATIVE_DIR")?.let { nativeDirectory ->
+                    it.systemProperty("java.library.path", nativeDirectory)
+                }
             }
             // 本地单测跑在 JVM 上，解析层里的 android.util.Log 没有实现；
             // 允许框架方法返回默认值，避免 "Method ... not mocked" 直接把用例打挂。

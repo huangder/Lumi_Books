@@ -48,7 +48,7 @@ internal object BitmapPageSourceFactory {
                 val decoder = when (format) {
                     BookFormat.PDF -> openPdf(context, filePath)
                     BookFormat.CBZ -> CbzPageDecoder(CbzArchiveOpener.open(context, filePath))
-                    BookFormat.EPUB -> CbzPageDecoder(com.huangder.lumibooks.util.epub.EpubComicArchive.open(
+                    BookFormat.EPUB, BookFormat.MOBI, BookFormat.AZW, BookFormat.AZW3 -> CbzPageDecoder(com.huangder.lumibooks.util.epub.EpubComicArchive.open(
                         context, filePath, epubComicIndex ?: return@withContext null))
                     else -> return@withContext null
                 }

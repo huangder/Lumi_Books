@@ -1,24 +1,26 @@
 package com.huangder.lumibooks.service
 
 import android.content.Context
+import android.content.Intent
 import android.animation.ValueAnimator
-import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Rect
-import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.provider.Settings
 import android.text.TextUtils
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.ViewConfiguration
+import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.TextView
-import androidx.core.graphics.ColorUtils
 import androidx.core.view.doOnLayout
 import com.huangder.lumibooks.R
+import com.huangder.lumibooks.MainActivity
+import com.huangder.lumibooks.domain.repository.BookRepository
+import com.huangder.lumibooks.widget.decodeWidgetCover
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.tts.FloatingSubtitleSettings
 import com.huangder.lumibooks.tts.SUBTITLE_SCROLL_MIN_DURATION_MS
@@ -37,19 +39,24 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.abs
 
 @Singleton
 class FloatingSubtitleOverlayController @Inject constructor(
     @ApplicationContext private val context: Context,
     private val dataStoreManager: DataStoreManager,
-    private val ttsController: TtsController
+    private val ttsController: TtsController,
+    private val bookRepository: BookRepository
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val windowManager = context.getSystemService(WindowManager::class.java)
 
     private var started = false
     private var appInForeground = false
+    private var readerVisible = false
     private var previewActive = false
     private var persistedSettings = FloatingSubtitleSettings()
     private var previewSettings: FloatingSubtitleSettings? = null
@@ -61,6 +68,13 @@ class FloatingSubtitleOverlayController @Inject constructor(
     private var scrollAnimator: ValueAnimator? = null
 
     private var subtitleView: TextView? = null
+    private var overlayView: FloatingSubtitleView? = null
+    private var mode = FloatingSubtitleMode.SUBTITLE
+    private var geometryAnimator: ValueAnimator? = null
+    private var appliedSettings: FloatingSubtitleSettings? = null
+    private var dragging = false
+    private var moved = false
+    private var coverBitmap: android.graphics.Bitmap? = null
     private var layoutParams: WindowManager.LayoutParams? = null
     private var overlayRegistered = false
 
@@ -72,6 +86,18 @@ class FloatingSubtitleOverlayController @Inject constructor(
     fun start() {
         if (started) return
         started = true
+        scope.launch {
+            ttsController.activeBookId.collectLatest { bookId ->
+                coverBitmap = null
+                overlayView?.setCover(null)
+                if (bookId != null) {
+                    coverBitmap = withContext(Dispatchers.IO) {
+                        decodeWidgetCover(bookRepository.getBookById(bookId)?.coverPath, dp(72f))
+                    }
+                    overlayView?.setCover(coverBitmap)
+                }
+            }
+        }
         scope.launch {
             combine(
                 dataStoreManager.floatingSubtitleSettings,
@@ -113,6 +139,11 @@ class FloatingSubtitleOverlayController @Inject constructor(
         reconcile()
     }
 
+    fun setReaderVisible(visible: Boolean) {
+        readerVisible = visible
+        reconcile()
+    }
+
     fun setPreviewActive(active: Boolean) {
         previewActive = active
         if (!active) previewSettings = null
@@ -129,13 +160,17 @@ class FloatingSubtitleOverlayController @Inject constructor(
     }
 
     fun onDisplayConfigurationChanged() {
+        geometryAnimator?.cancel()
+        geometryAnimator = null
+        appliedSettings = null
+        scrollRestartPending = true
         reconcile()
     }
 
     private fun reconcile() {
         val settings = effectiveSettings()
         val canDraw = Settings.canDrawOverlays(context)
-        val shouldShowForPlayback = !appInForeground &&
+        val shouldShowForPlayback = (!appInForeground || !readerVisible) &&
             settings.enabled &&
             playbackState != TtsPlaybackState.IDLE
         val shouldShow = canDraw && (previewActive || shouldShowForPlayback)
@@ -144,13 +179,19 @@ class FloatingSubtitleOverlayController @Inject constructor(
             return
         }
 
-        val view = subtitleView ?: createSubtitleView().also {
-            subtitleView = it
+        val view = overlayView ?: createOverlayView().also {
+            overlayView = it
+            subtitleView = it.subtitle
             scrollRestartPending = true
         }
         val params = layoutParams ?: createLayoutParams(settings).also { layoutParams = it }
-        updateView(view, settings)
-        updateLayoutParams(params, settings, view)
+        updateView(view.subtitle)
+        view.appearance(settings)
+        view.setPlaying(playbackState == TtsPlaybackState.PLAYING)
+        if (appliedSettings != settings && geometryAnimator == null && !dragging) {
+            updateLayoutParams(params, settings)
+            appliedSettings = settings
+        }
 
         if (!overlayRegistered) {
             val registered = runCatching {
@@ -170,25 +211,33 @@ class FloatingSubtitleOverlayController @Inject constructor(
         }
         if (scrollRestartPending) {
             scrollRestartPending = false
-            restartSubtitleScroll(view)
+            restartSubtitleScroll(view.subtitle)
         }
     }
 
-    private fun createSubtitleView(): TextView = TextView(context).apply {
-        // Single-line TextView uses an extra-wide layout for horizontal scrolling. Horizontal
-        // centering can place that layout's text outside the visible window, so anchor at start.
-        gravity = Gravity.CENTER_VERTICAL or Gravity.START
-        includeFontPadding = false
-        isSingleLine = true
-        maxLines = 1
-        isHorizontalScrollBarEnabled = false
-        isHorizontalFadingEdgeEnabled = false
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-        // 不使用自动字号：逐句/逐词更新时字号会在 12–18sp 间跳动，看起来像闪烁；
-        // 超长句子交给横向滚动展示。
-        setPadding(dp(14f), 0, dp(14f), 0)
-        elevation = dp(4f).toFloat()
-        setOnTouchListener { _, event -> handleTouch(event) }
+    private fun createOverlayView() = FloatingSubtitleView(
+        context, ::handleTouch,
+        onSubtitleClick = {
+            transitionTo(if (mode == FloatingSubtitleMode.SUBTITLE) FloatingSubtitleMode.CONTROLS
+                else FloatingSubtitleMode.SUBTITLE)
+        },
+        onToggle = {
+            if (playbackState == TtsPlaybackState.PLAYING) ttsController.pause()
+            else if (playbackState == TtsPlaybackState.PAUSED) ttsController.resume()
+        },
+        onPrevious = { ttsController.skip(false) }, onNext = { ttsController.skip(true) },
+        onClose = { if (!previewActive) ttsController.stop() },
+        onReturn = {
+            ttsController.activeBookId.value?.let { bookId ->
+                context.startActivity(Intent(context, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    .putExtra(MainActivity.EXTRA_OPEN_BOOK_ID, bookId))
+            }
+        }
+    ).also {
+        mode = FloatingSubtitleMode.SUBTITLE
+        it.showMode(mode, false)
+        it.setCover(coverBitmap)
     }
 
     private fun createLayoutParams(settings: FloatingSubtitleSettings): WindowManager.LayoutParams {
@@ -209,7 +258,7 @@ class FloatingSubtitleOverlayController @Inject constructor(
         }
     }
 
-    private fun updateView(view: TextView, settings: FloatingSubtitleSettings) {
+    private fun updateView(view: TextView) {
         val resolvedText = subtitleText?.takeIf(String::isNotBlank)
             ?: context.getString(
                 if (previewActive) R.string.floating_subtitle_preview_text
@@ -221,33 +270,24 @@ class FloatingSubtitleOverlayController @Inject constructor(
         }
         // 关闭动态效果时退回省略号显示，否则由水平滚动展示完整句子。
         view.ellipsize = if (motionReduced) TextUtils.TruncateAt.END else null
-        val baseColor = Color.parseColor(settings.backgroundColorHex)
-        val backgroundColor = ColorUtils.setAlphaComponent(
-            baseColor,
-            (settings.backgroundOpacity * 255f).toInt().coerceIn(0, 255)
-        )
-        view.setTextColor(if (ColorUtils.calculateLuminance(baseColor) < 0.46) Color.WHITE else Color.BLACK)
-        view.background = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            color = android.content.res.ColorStateList.valueOf(backgroundColor)
-            cornerRadius = settings.cornerRadiusDp * context.resources.displayMetrics.density
-        }
     }
 
     private fun updateLayoutParams(
         params: WindowManager.LayoutParams,
-        settings: FloatingSubtitleSettings,
-        view: TextView
+        settings: FloatingSubtitleSettings
     ) {
         val safeBounds = safeDisplayBounds()
-        val width = dp(settings.widthDp).coerceAtMost(safeBounds.width()).coerceAtLeast(1)
-        val height = dp(settings.heightDp).coerceAtMost(safeBounds.height()).coerceAtLeast(1)
+        val (width, height) = dimensions(settings)
         if (width != params.width) scrollRestartPending = true
         params.width = width
         params.height = height
         val travelX = (safeBounds.width() - width).coerceAtLeast(0)
         val travelY = (safeBounds.height() - height).coerceAtLeast(0)
-        params.x = safeBounds.left + (travelX * settings.xFraction).toInt()
+        params.x = when (mode) {
+            FloatingSubtitleMode.LEFT -> safeBounds.left
+            FloatingSubtitleMode.RIGHT -> safeBounds.right - width
+            else -> safeBounds.left + (travelX * settings.xFraction).toInt()
+        }
         params.y = safeBounds.top + (travelY * settings.yFraction).toInt()
     }
 
@@ -255,6 +295,10 @@ class FloatingSubtitleOverlayController @Inject constructor(
         val params = layoutParams ?: return false
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                geometryAnimator?.cancel()
+                geometryAnimator = null
+                dragging = true
+                moved = false
                 // 拖动窗口时停止滚动，避免和手指位移叠加。
                 cancelSubtitleScroll(reset = true)
                 dragStartRawX = event.rawX
@@ -264,6 +308,10 @@ class FloatingSubtitleOverlayController @Inject constructor(
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
+                val slop = ViewConfiguration.get(context).scaledTouchSlop
+                if (!moved && abs(event.rawX - dragStartRawX) < slop &&
+                    abs(event.rawY - dragStartRawY) < slop) return true
+                moved = true
                 val bounds = safeDisplayBounds()
                 val maxX = (bounds.right - params.width).coerceAtLeast(bounds.left)
                 val maxY = (bounds.bottom - params.height).coerceAtLeast(bounds.top)
@@ -271,18 +319,95 @@ class FloatingSubtitleOverlayController @Inject constructor(
                     .coerceIn(bounds.left, maxX)
                 params.y = (dragStartWindowY + (event.rawY - dragStartRawY).toInt())
                     .coerceIn(bounds.top, maxY)
-                subtitleView?.let { view ->
+                overlayView?.let { view ->
                     runCatching { windowManager.updateViewLayout(view, params) }
                 }
                 return true
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                persistDraggedPosition(params)
-                subtitleView?.let { view -> restartSubtitleScroll(view) }
+                dragging = false
+                if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                    persistDraggedPosition(params)
+                } else if (moved) {
+                    val bounds = safeDisplayBounds()
+                    val target = when {
+                        params.x <= bounds.left + dp(24f) -> FloatingSubtitleMode.LEFT
+                        params.x + params.width >= bounds.right - dp(24f) -> FloatingSubtitleMode.RIGHT
+                        mode == FloatingSubtitleMode.LEFT || mode == FloatingSubtitleMode.RIGHT -> FloatingSubtitleMode.SUBTITLE
+                        else -> mode
+                    }
+                    transitionTo(target)
+                } else {
+                    overlayView?.subtitle?.performClick()
+                }
                 return true
             }
         }
         return false
+    }
+
+    private fun dimensions(settings: FloatingSubtitleSettings): Pair<Int, Int> {
+        val bounds = safeDisplayBounds()
+        val docked = mode == FloatingSubtitleMode.LEFT || mode == FloatingSubtitleMode.RIGHT
+        val width = if (docked) dp(148f) else dp(if (mode == FloatingSubtitleMode.CONTROLS)
+            maxOf(240f, settings.widthDp) else settings.widthDp)
+        val height = if (docked) dp(56f) else dp(settings.heightDp) +
+            if (mode == FloatingSubtitleMode.CONTROLS) dp(56f) else 0
+        return width.coerceIn(1, bounds.width()) to height.coerceIn(1, bounds.height())
+    }
+
+    private fun transitionTo(target: FloatingSubtitleMode) {
+        val params = layoutParams ?: return
+        val view = overlayView ?: return
+        geometryAnimator?.cancel()
+        val oldMode = mode
+        val start = intArrayOf(params.x, params.y, params.width, params.height)
+        mode = target
+        val settings = effectiveSettings()
+        val bounds = safeDisplayBounds()
+        val (width, height) = dimensions(settings)
+        val x = when {
+            target == FloatingSubtitleMode.LEFT -> bounds.left
+            target == FloatingSubtitleMode.RIGHT -> bounds.right - width
+            !moved && oldMode == FloatingSubtitleMode.LEFT -> bounds.left + dp(12f)
+            !moved && oldMode == FloatingSubtitleMode.RIGHT -> bounds.right - width - dp(12f)
+            else -> params.x + (params.width - width) / 2
+        }.coerceIn(bounds.left, maxOf(bounds.left, bounds.right - width))
+        val y = params.y.coerceIn(bounds.top, maxOf(bounds.top, bounds.bottom - height))
+        val end = intArrayOf(x, y, width, height)
+        view.showMode(target, !motionReduced)
+        view.appearance(settings)
+        cancelSubtitleScroll(true)
+        fun applyFrame(fraction: Float) {
+            params.x = (start[0] + (end[0] - start[0]) * fraction).toInt()
+            params.y = (start[1] + (end[1] - start[1]) * fraction).toInt()
+            params.width = (start[2] + (end[2] - start[2]) * fraction).toInt()
+            params.height = (start[3] + (end[3] - start[3]) * fraction).toInt()
+            if (overlayRegistered) runCatching { windowManager.updateViewLayout(view, params) }
+        }
+        if (motionReduced) {
+            applyFrame(1f)
+            persistDraggedPosition(params)
+            restartSubtitleScroll(view.subtitle)
+        } else {
+            geometryAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = 280
+                interpolator = DecelerateInterpolator(1.5f)
+                addUpdateListener { applyFrame(it.animatedValue as Float) }
+                addListener(object : android.animation.AnimatorListenerAdapter() {
+                    private var cancelled = false
+                    override fun onAnimationCancel(animation: android.animation.Animator) { cancelled = true }
+                    override fun onAnimationEnd(animation: android.animation.Animator) {
+                        geometryAnimator = null
+                        if (!cancelled) {
+                            persistDraggedPosition(params)
+                            restartSubtitleScroll(view.subtitle)
+                        }
+                    }
+                })
+                start()
+            }
+        }
     }
 
     private fun persistDraggedPosition(params: WindowManager.LayoutParams) {
@@ -301,6 +426,7 @@ class FloatingSubtitleOverlayController @Inject constructor(
             xFraction = normalizedX,
             yFraction = normalizedY
         )
+        appliedSettings = effectiveSettings()
         scope.launch {
             dataStoreManager.saveFloatingSubtitlePosition(normalizedX, normalizedY)
         }
@@ -329,15 +455,20 @@ class FloatingSubtitleOverlayController @Inject constructor(
     }
 
     private fun removeOverlay() {
+        geometryAnimator?.cancel()
+        geometryAnimator = null
         cancelSubtitleScroll(reset = false)
-        subtitleView?.let { view ->
+        overlayView?.let { view ->
             if (overlayRegistered) {
                 runCatching { windowManager.removeViewImmediate(view) }
             }
         }
         overlayRegistered = false
         subtitleView = null
+        overlayView = null
         layoutParams = null
+        appliedSettings = null
+        dragging = false
     }
 
     /** 重新从句子开头滚一次（只在文本变化、尺寸变化或拖动结束后触发）。 */

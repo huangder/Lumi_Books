@@ -79,12 +79,12 @@ internal fun ObserveListeningResume(
     DisposableEffect(owner, viewModel) {
         val observer = LifecycleEventObserver { _, _ ->
             foreground = owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
-            if (!foreground) viewModel.hideListeningReader()
+            if (!foreground) viewModel.suspendListeningReader()
         }
         owner.lifecycle.addObserver(observer)
         onDispose {
             owner.lifecycle.removeObserver(observer)
-            viewModel.hideListeningReader()
+            viewModel.suspendListeningReader()
         }
     }
     LaunchedEffect(ready, foreground, readerActive) {
@@ -94,8 +94,10 @@ internal fun ObserveListeningResume(
             val currentVisibleCharacters = visibleCharactersState?.value ?: visibleCharacters
             viewModel.checkListeningResume(readingChapter, readingPage, visibleStart, visibleEnd,
                 allowPageFallback, currentVisibleCharacters, visibleChapters)
-        } else if (!foreground || !readerActive) {
+        } else if (!readerActive) {
             viewModel.hideListeningReader()
+        } else if (!foreground) {
+            viewModel.suspendListeningReader()
         }
     }
 }

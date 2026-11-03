@@ -25,7 +25,7 @@ data class FloatingSubtitleSettings(
         const val DEFAULT_Y_FRACTION = 0.2f
         const val DEFAULT_BACKGROUND_COLOR = "#202124"
         const val DEFAULT_BACKGROUND_OPACITY = 0.72f
-        const val DEFAULT_CORNER_RADIUS_DP = 8f
+        const val DEFAULT_CORNER_RADIUS_DP = 28f
         const val DEFAULT_WIDTH_DP = 320f
         const val DEFAULT_HEIGHT_DP = 56f
 

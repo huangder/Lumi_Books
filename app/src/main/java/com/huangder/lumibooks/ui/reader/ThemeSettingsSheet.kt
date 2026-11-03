@@ -1554,17 +1554,35 @@ private fun rememberSuiteFontFamily(
     val customPath = customFonts.firstOrNull { fontType == "custom:${it.id}" }?.path
     val fangSongFamilyValue = fangSongFamily()
     val serifFamily = rememberReaderSerifFontFamily(settings.bodyFontWeight)
-    return remember(fontType, customPath, fangSongFamilyValue, serifFamily) {
+    val customFamily = rememberCustomReaderFontFamily(fontType, customPath, settings.bodyFontWeight)
+    return remember(fontType, customFamily, fangSongFamilyValue, serifFamily) {
         when {
             fontType == "serif" -> serifFamily
             fontType == "fangsong" -> fangSongFamilyValue
             fontType == "kaiti" -> KaiTi
-            customPath != null -> runCatching {
-                FontFamily(android.graphics.Typeface.createFromFile(File(customPath)))
-            }.getOrDefault(FontFamily.Default)
+            customPath != null -> customFamily
             else -> FontFamily.Default
         }
     }
+}
+
+@Composable
+private fun rememberCustomReaderFontFamily(
+    fontType: String,
+    path: String?,
+    weight: Int = 400
+): FontFamily {
+    val context = LocalContext.current
+    val family by androidx.compose.runtime.produceState<FontFamily>(
+        FontFamily.Default, context, fontType, path, weight
+    ) {
+        value = if (fontType.startsWith("custom") && path != null) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                FontFamily(resolveReaderTypeface(context, fontType, path, weight).typeface)
+            }
+        } else FontFamily.Default
+    }
+    return family
 }
 
 private fun suiteBackgroundColor(
@@ -2563,15 +2581,9 @@ fun AdvancedSettingsSheet(
     }
 
     // 预览文本用的字体（自定义字体从文件路径加载，与阅读页保持一致）
-    val customPreviewFontFamily = remember(customFontPath) {
-        if (customFontPath != null) {
-            runCatching {
-                val file = java.io.File(customFontPath)
-                if (file.exists()) FontFamily(android.graphics.Typeface.createFromFile(file))
-                else FontFamily.Default
-            }.getOrDefault(FontFamily.Default)
-        } else FontFamily.Default
-    }
+    val previewCustomPath = customFonts.firstOrNull { it.fontTypeKey == currentFontType }?.path
+        ?: customFontPath
+    val customPreviewFontFamily = rememberCustomReaderFontFamily(currentFontType, previewCustomPath)
     val previewFont = when {
         currentFontType == "serif" -> rememberReaderSerifFontFamily()
         currentFontType == "fangsong" -> fangSongFamily()
@@ -2596,13 +2608,12 @@ fun AdvancedSettingsSheet(
     val previewParagraphSpacing = currentParagraphSpacing
     val previewFirstLineIndent = currentFirstLineIndent
     val previewContext = LocalContext.current
-    val verticalPreviewTypeface = remember(previewContext, currentFontType, customFontPath) {
-        resolveReaderTypeface(
-            context = previewContext,
-            fontType = currentFontType,
-            customFontPath = customFontPath,
-            weight = 400
-        ).typeface
+    val verticalPreviewTypeface by androidx.compose.runtime.produceState(
+        android.graphics.Typeface.DEFAULT, previewContext, currentFontType, previewCustomPath
+    ) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            resolveReaderTypeface(previewContext, currentFontType, previewCustomPath, 400).typeface
+        }
     }
 
     LiquidGlassMenuHost(modifier = Modifier.fillMaxSize()) {
@@ -4770,13 +4781,7 @@ private fun FontSelector(
                         }
                         is FontSelectorItem.Custom -> {
                             val preset = item.preset
-                            val fontFamily = remember(preset.path) {
-                                runCatching {
-                                    val f = java.io.File(preset.path)
-                                    if (f.exists()) FontFamily(android.graphics.Typeface.createFromFile(f))
-                                    else FontFamily.Default
-                                }.getOrDefault(FontFamily.Default)
-                            }
+                            val fontFamily = rememberCustomReaderFontFamily(preset.fontTypeKey, preset.path)
                             val isSelected = currentFont == preset.fontTypeKey
                             val isDeleteArmed = deleteArmedId == preset.id
                             Box(

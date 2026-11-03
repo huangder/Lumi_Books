@@ -1,0 +1,9 @@
+<resources>
+    <string name="kindle_error_encrypted">This Kindle book is encrypted. Only books without DRM are supported.</string>
+    <string name="kindle_error_invalid">This Kindle file is invalid or damaged.</string>
+    <string name="kindle_error_unsupported">This Kindle format is not supported. Use an unencrypted MOBI, AZW or AZW3 book.</string>
+    <string name="kindle_error_limit">This Kindle book exceeds the supported processing size.</string>
+    <string name="kindle_error_no_space">Not enough storage to prepare this Kindle book. Free some space and try again.</string>
+    <string name="kindle_error_io">Unable to read or prepare this Kindle book. Check file access and try again.</string>
+    <string name="kindle_error_conversion">Unable to prepare this Kindle book. Try opening it again or use an EPUB copy.</string>
+</resources>

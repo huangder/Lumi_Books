@@ -1929,7 +1929,8 @@ private fun isPolicyBullet(line: String): Boolean =
 
 private fun isPolicyNotice(line: String): Boolean = listOf(
     "核心原则", "核心原則", "Core principle", "Core Principle",
-    "基本方針", "基本原則", "핵심 원칙", "핵심 원칙："
+    "基本方針", "基本原則", "핵심 원칙", "핵심 원칙：",
+    "重要提示", "Important notice", "重要なお知らせ", "중요 안내"
 ).any(line::startsWith)
 
 private fun isPolicyMetadataLine(line: String): Boolean = listOf(

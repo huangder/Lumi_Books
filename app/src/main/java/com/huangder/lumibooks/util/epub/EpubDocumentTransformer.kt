@@ -3208,6 +3208,19 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
     }
   }
 
+  var autoReadingTouchDown = false;
+  var autoReadingResumeAfter = 0;
+  var autoReadingObservedY = 0;
+  document.addEventListener('touchstart', function () {
+    autoReadingTouchDown = true;
+  }, { passive: true, capture: true });
+  function releaseAutoReadingTouch(event) {
+    autoReadingTouchDown = !!(event.touches && event.touches.length);
+    autoReadingResumeAfter = Date.now() + 700;
+  }
+  document.addEventListener('touchend', releaseAutoReadingTouch, { passive: true, capture: true });
+  document.addEventListener('touchcancel', releaseAutoReadingTouch, { passive: true, capture: true });
+
   function setAutoScrollSpeed(speed) {
     speed = Math.max(0, Number(speed) || 0);
     if (Math.abs(state.autoScrollSpeed - speed) < 0.01) return;
@@ -3223,6 +3236,20 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
       }
       // Loading/repagination can temporarily report a one-screen document.
       if (!state.ready || state.paginating) {
+        state.autoScrollLastTime = 0;
+        state.autoScrollFrame = requestAnimationFrame(tick);
+        return;
+      }
+      // Keep speed while touch input and its inertial scroll temporarily own the viewport.
+      var observedY = window.scrollY;
+      if (autoReadingTouchDown || (Date.now() < autoReadingResumeAfter &&
+          Math.abs(observedY - autoReadingObservedY) > 0.1)) {
+        autoReadingResumeAfter = Date.now() + 700;
+      }
+      autoReadingObservedY = observedY;
+      var selection = window.getSelection && window.getSelection();
+      if (autoReadingTouchDown || Date.now() < autoReadingResumeAfter ||
+          (selection && !selection.isCollapsed) || document.getElementById('lumi-footnote-popover')) {
         state.autoScrollLastTime = 0;
         state.autoScrollFrame = requestAnimationFrame(tick);
         return;
@@ -4591,7 +4618,7 @@ private const val READER_SCRIPT_PART_3B = """
     var dx = touch.clientX - touchStartX;
     var dy = touch.clientY - touchStartY;
     if (state.flow === 'scrolled' && !state.fixed && Math.abs(dy) >= 12) {
-      setAutoScrollSpeed(0);
+      autoReadingResumeAfter = Date.now() + 700;
     }
     if (state.flow === 'scrolled' && !state.fixed && !state.ttsFollowSuspended && Math.abs(dy) >= 12) {
       // Stop locally before a queued highlight update or the native bridge can move the viewport.

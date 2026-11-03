@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tts_restore_reader_controls">Restore listening controls</string>
+    <string name="tts_fullscreen">Fullscreen listening</string>
+    <string name="tts_expand_controls">Expand listening controls</string>
+    <string name="tts_collapse_controls">Collapse listening controls</string>
+    <string name="tts_exit_title">Keep listening outside the book?</string>
+    <string name="tts_exit_setting">Listening when leaving a book</string>
+    <string name="tts_exit_message">Floating subtitles stay visible outside the reader. Opening another book stops playback.</string>
+    <string name="tts_exit_message_without_subtitles">Playback continues in the background with floating subtitles off. Opening another book stops playback.</string>
+    <string name="tts_exit_continue">Keep listening</string>
+    <string name="tts_exit_stop">Stop and exit</string>
+    <string name="tts_overlay_permission_needed">Allow floating windows to keep listening</string>
+    <string name="tts_return_to_book">Return to the playing book</string>
+    <string name="tts_return_reading_progress">Return to reading position</string>
+    <string name="tts_restore_subtitle">Expand floating subtitles</string>
+</resources>

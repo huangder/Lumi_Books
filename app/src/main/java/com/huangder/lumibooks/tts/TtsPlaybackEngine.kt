@@ -21,6 +21,13 @@ interface TtsPlaybackEngine {
 
     suspend fun speak(text: String, utteranceId: String): Result<Unit>
 
+    /** Native playback can accept one following utterance before audible completion. */
+    val supportsQueuedPlayback: Boolean get() = false
+
+    /** Queue without publishing playback state. speak() with this ID later adopts the request. */
+    suspend fun queueNext(text: String, utteranceId: String): Result<Unit> =
+        Result.failure(UnsupportedOperationException("Queued playback is unavailable"))
+
     /** Best-effort memory-only prefetch. Implementations may ignore it. */
     suspend fun prefetch(text: String) = Unit
 

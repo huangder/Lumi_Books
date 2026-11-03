@@ -72,7 +72,7 @@ internal class ReaderPageIndexCache private constructor(
 
     companion object {
         // Increment whenever pagination, character coordinates, or the persisted schema changes.
-        internal const val ENGINE_VERSION = 1
+        internal const val ENGINE_VERSION = 2
 
         suspend fun open(context: Context, book: Book, signature: String, chapterCount: Int): ReaderPageIndexCache =
             withContext(Dispatchers.IO) {

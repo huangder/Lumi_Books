@@ -110,9 +110,9 @@ internal fun rememberGlassSnapshot(
     frozen: Boolean = false,
     provider: suspend () -> GlassBitmapBackdrop?
 ): GlassSnapshotState {
-    val state = remember(identity) { GlassSnapshotState() }
+    val state = remember { GlassSnapshotState() }
     val latestProvider by rememberUpdatedState(provider)
-    LaunchedEffect(state, enabled, frozen) {
+    LaunchedEffect(state, identity, enabled, frozen) {
         if (!enabled) {
             state.backdrop = null
             state.ready = false
@@ -125,8 +125,8 @@ internal fun rememberGlassSnapshot(
             withFrameNanos { }
             next = latestProvider()
         }
-        if (next != null) state.backdrop = next
-        else Log.w("GlassSnapshot", "No current-page pixels; keeping readable fallback")
+        state.backdrop = next
+        if (next == null) Log.w("GlassSnapshot", "No current-page pixels; keeping readable fallback")
         state.ready = true
     }
     val snapshot = state.backdrop

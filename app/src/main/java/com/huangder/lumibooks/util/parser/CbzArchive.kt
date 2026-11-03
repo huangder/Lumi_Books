@@ -20,7 +20,7 @@ import java.util.zip.ZipFile
  * its central directory. Pages are decoded straight out of the ZIP, so nothing is extracted to disk.
  */
 internal class OpenedCbzArchive(
-    private val lease: SeekableBookSource?,
+    private val lease: Closeable?,
     val readablePath: String,
     val zipFile: ZipFile,
     val index: CbzIndex,

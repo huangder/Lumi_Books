@@ -8,6 +8,40 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class OriginalLayoutEpubTtsPageSourceTest {
+    @Test fun offsetSeekUsesRendererCoordinatesAndCanSeekAfterReaderDetach() = runBlocking {
+        val rendered = "First. Second. Third."
+        val starts = listOf(0, 7, 15, rendered.length)
+        val source = OriginalLayoutEpubTtsPageSource(1, { chapter, page ->
+            if (page in 0..2) EpubPageText(chapter, page, 3,
+                rendered.substring(starts[page], starts[page + 1]), rendered, starts[page], starts[page + 1]) else null
+        }, { "Parser whitespace differs." }, prefetchDispatcher = Dispatchers.Unconfined)
+        try {
+            assertEquals(1, source.locatePage(0, 9)?.location?.pageIndex)
+            assertEquals(rendered, source.getChapter(0)?.text)
+            source.detachReader()
+            val whole = source.locatePage(0, 17)!!
+            assertEquals(rendered, whole.text)
+            assertEquals(0, whole.startCharacterOffset)
+        } finally { source.close() }
+    }
+
+    @Test fun leavingReaderStopsWebRequestsAndReadsFollowingChapters() = runBlocking {
+        var webRequests = 0
+        val source = OriginalLayoutEpubTtsPageSource(
+            chapterCount = 2,
+            webPageProvider = { _, _ -> webRequests++; null },
+            chapterTextProvider = { if (it == 0) "First chapter." else "Second chapter." },
+            prefetchDispatcher = Dispatchers.Unconfined
+        )
+        source.detachReader()
+        val first = source.getPage(0, 0)!!
+        val second = source.getPage(first.next!!.chapterIndex, first.next!!.pageIndex)!!
+        assertEquals("First chapter.", first.text)
+        assertEquals("Second chapter.", second.text)
+        assertEquals(0, webRequests)
+        source.close()
+    }
+
     @Test
     fun webFailureContinuesFromLastUnreadCharacter() = runBlocking {
         val chapter = "First.Second.Third."

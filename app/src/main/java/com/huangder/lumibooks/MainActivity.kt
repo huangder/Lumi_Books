@@ -199,6 +199,9 @@ class MainActivity : ComponentActivity() {
     lateinit var ttsController: TtsController
 
     @Inject
+    lateinit var floatingSubtitleOverlayController: com.huangder.lumibooks.service.FloatingSubtitleOverlayController
+
+    @Inject
     lateinit var authorizedFolderSnapshotStore: AuthorizedFolderSnapshotStore
 
     @Inject
@@ -859,6 +862,9 @@ class MainActivity : ComponentActivity() {
                             navCurrentEntry?.destination?.route,
                             navVisibleEntries.map { it.destination.route }
                         )
+                        LaunchedEffect(onReaderRoute) {
+                            floatingSubtitleOverlayController.setReaderVisible(onReaderRoute)
+                        }
                         val globalGlassDialogVisible = !onReaderRoute && (
                             pendingAppUpdate != null ||
                                 pendingRemoteNotice != null ||
@@ -913,7 +919,6 @@ class MainActivity : ComponentActivity() {
                                     requestedOpenFolderId = requestedOpenFolderId,
                                     requestedOpenHiddenLibrary = requestedOpenHiddenLibrary,
                                     onOpenHiddenLibraryRequestConsumed = { requestedOpenHiddenLibrary = false },
-                                    onBeforeOpenDifferentBook = ttsController::stop,
                                     onOpenBookRequestConsumed = {
                                         requestedOpenBookId = null
                                         requestedOpenBookDirect = false

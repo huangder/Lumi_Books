@@ -295,6 +295,12 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
     var showEngineDialog by remember { mutableStateOf(false) }
     var showTtsStartDialog by remember { mutableStateOf(false) }
     var showListeningResumeDialog by remember { mutableStateOf(false) }
+    var showTtsExitChoiceDialog by remember { mutableStateOf(false) }
+    val ttsExitOptions = listOf(
+        null to stringResource(R.string.tts_start_ask_each_time),
+        true to stringResource(R.string.tts_exit_continue),
+        false to stringResource(R.string.tts_exit_stop)
+    )
     val ttsStartOptions = listOf(
         null to stringResource(R.string.tts_start_ask_each_time),
         TtsStartChoice.CURRENT_PAGE to stringResource(R.string.tts_start_current_page),
@@ -343,6 +349,11 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
             listeningResumeOptions.first { it.first == uiState.ttsReaderResumeChoice }.second) {
             showListeningResumeDialog = true
         }
+        SettingsDivider()
+        SettingsNavigationRow(stringResource(R.string.tts_exit_setting),
+            ttsExitOptions.first { it.first == uiState.ttsContinueOnReaderExit }.second) {
+            showTtsExitChoiceDialog = true
+        }
     }
 
     Spacer(Modifier.height(12.dp))
@@ -353,6 +364,25 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
             checked = uiState.applyToBodyOnly,
             onCheckedChange = viewModel::saveApplyToBodyOnly
         )
+    }
+
+    if (showTtsExitChoiceDialog) {
+        LiquidGlassAlertDialog(
+            onDismissRequest = { showTtsExitChoiceDialog = false },
+            titleText = stringResource(R.string.tts_exit_setting),
+            text = {
+                Column {
+                    ttsExitOptions.forEach { (choice, label) ->
+                        TtsProviderOptionRow(title = label, selected = uiState.ttsContinueOnReaderExit == choice,
+                            onClick = {
+                                viewModel.saveTtsContinueOnReaderExit(choice)
+                                showTtsExitChoiceDialog = false
+                            })
+                    }
+                }
+            },
+            actions = listOf(AppDialogAction(text = stringResource(R.string.cancel),
+                onClick = { showTtsExitChoiceDialog = false }, role = AppDialogActionRole.Cancel)))
     }
 
     if (showTtsStartDialog) {

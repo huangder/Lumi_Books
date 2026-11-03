@@ -4,9 +4,26 @@ import com.huangder.lumibooks.ui.icons.AppIcons
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.platform.testTag
+import com.huangder.lumibooks.tts.ReaderTtsDock
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.material3.LocalRippleConfiguration
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -20,11 +37,14 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.BlendMode
@@ -43,6 +64,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -53,6 +75,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuAnchorKind
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
@@ -67,13 +90,42 @@ import com.huangder.lumibooks.tts.TtsPlaybackState
 import com.huangder.lumibooks.tts.TtsProsodyMode
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.theme.AppColors
-import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
-import kotlinx.coroutines.delay
+import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
+import com.huangder.lumibooks.ui.animation.AppEasing
+import com.huangder.lumibooks.ui.animation.LumiMotion
 import java.util.Locale
 
 @Composable
-fun TtsPlayerPanel(
+internal fun TtsPlayerOverlay(
+    visible: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    val eInkMode = LocalEInkMode.current
+    val motionEnabled = LocalMotionEnabled.current
+    AnimatedVisibility(
+        visible = visible,
+        enter = when {
+            eInkMode -> EnterTransition.None
+            !motionEnabled -> fadeIn(tween(120))
+            else -> slideInVertically(
+                tween(LumiMotion.MenuEnterMillis, delayMillis = LumiMotion.MenuExitMillis, easing = AppEasing.Smooth)
+            ) { it / 2 } + fadeIn(tween(LumiMotion.MenuEnterMillis, delayMillis = LumiMotion.MenuExitMillis))
+        },
+        exit = when {
+            eInkMode -> ExitTransition.None
+            !motionEnabled -> fadeOut(tween(100))
+            else -> slideOutVertically(tween(LumiMotion.MenuExitMillis, easing = AppEasing.Accelerate)) { it / 2 } +
+                fadeOut(tween(LumiMotion.MenuExitMillis))
+        },
+        modifier = modifier
+    ) { content() }
+}
+
+@Composable
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+internal fun TtsPlayerPanel(
     chapterTitle: String = "",
     playbackState: TtsPlaybackState,
     speechRate: Float,
@@ -86,6 +138,7 @@ fun TtsPlayerPanel(
     followUserPageTurns: Boolean = false,
     onPlayPause: () -> Unit,
     onStop: () -> Unit,
+    onOpenFullscreen: () -> Unit = {},
     onSkipForward: () -> Unit,
     onSkipBackward: () -> Unit,
     onRateChange: (Float) -> Unit,
@@ -102,6 +155,7 @@ fun TtsPlayerPanel(
     readerBackgroundColor: Color,
     readerContentColor: Color,
     forceSolidSurface: Boolean = false,
+    placement: ReaderTtsPlacement? = null,
     modifier: Modifier = Modifier
 ) {
     val rateOptions = remember {
@@ -124,20 +178,29 @@ fun TtsPlayerPanel(
     var capsuleBounds by remember { mutableStateOf(Rect.Zero) }
     val followEngineLabel = stringResource(R.string.tts_follow_engine)
     val cancelTimerLabel = stringResource(R.string.tts_timer_cancel)
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val eInkMode = LocalEInkMode.current
-    var actionsHidden by remember { mutableStateOf(false) }
-    var interactionSerial by remember { mutableStateOf(0) }
-    val markInteraction = {
-        actionsHidden = false
-        interactionSerial += 1
+    val motionEnabled = LocalMotionEnabled.current && !eInkMode
+    var actionsExpanded by remember { mutableStateOf(false) }
+    val stopListening = {
+        menuHost?.dismiss()
+        actionsExpanded = false
+        onStop()
     }
-    LaunchedEffect(readerMenuVisible, interactionSerial) {
-        actionsHidden = false
-        delay(5_000L)
-        if (playbackState != TtsPlaybackState.IDLE) {
-            actionsHidden = true
-            menuHost?.dismiss()
+    DisposableEffect(menuHost) {
+        onDispose {
+            if (menuHost?.activeMenu?.sourceId in listOf(rateId, pitchId, timerId)) menuHost?.dismiss()
+        }
+    }
+    LaunchedEffect(placement?.collapseKey) {
+        actionsExpanded = false
+        if (menuHost?.activeMenu?.sourceId in listOf(rateId, pitchId, timerId)) menuHost?.dismiss()
+    }
+    LaunchedEffect(readerMenuVisible) {
+        if (readerMenuVisible) {
+            actionsExpanded = false
+            if (menuHost?.activeMenu?.sourceId in listOf(rateId, pitchId, timerId)) {
+                menuHost?.dismiss()
+            }
         }
     }
     val panelFallbackColor = if (readerContentColor.luminance() > 0.58f) {
@@ -157,19 +220,7 @@ fun TtsPlayerPanel(
     } else {
         Color.White.copy(alpha = 0.12f)
     }
-    val chapterScrollState = rememberScrollState()
-
-    // Long chapter names remain discoverable without changing the capsule's geometry.
-    LaunchedEffect(chapterTitle) {
-        chapterScrollState.scrollTo(0)
-        delay(1_400L)
-        if (chapterScrollState.maxValue > 0) {
-            chapterScrollState.animateScrollTo(chapterScrollState.maxValue)
-        }
-    }
-
     fun openMenu(kind: TtsMenuKind, toggle: Boolean = true) {
-        markInteraction()
         val id = when (kind) {
             TtsMenuKind.Rate -> rateId
             TtsMenuKind.Pitch -> pitchId
@@ -179,25 +230,23 @@ fun TtsPlayerPanel(
             TtsMenuKind.Rate -> rateOptions.map { rate ->
                 TtsMenuChoice(formatSpeechRate(rate),
                     rate == speechRate && (!usesAndroidTts || speechRateMode == TtsProsodyMode.OVERRIDE)
-                ) { markInteraction(); onRateChange(rate) }
+                ) { onRateChange(rate) }
             }
             TtsMenuKind.Pitch -> pitchOptions.map { value ->
                 TtsMenuChoice(formatPitch(value),
                     value == pitch && pitchMode == TtsProsodyMode.OVERRIDE
-                ) { markInteraction(); onPitchChange(value) }
+                ) { onPitchChange(value) }
             }
             TtsMenuKind.Timer -> timerOptionsMinutes.mapIndexed { index, minutes ->
                 val remaining = sleepTimerRemainingMs?.let { ((it + 59_999) / 60_000).toInt() }
-                TtsMenuChoice(timerOptionLabels[index], minutes == remaining) { markInteraction(); onSetSleepTimer(minutes) }
+                TtsMenuChoice(timerOptionLabels[index], minutes == remaining) { onSetSleepTimer(minutes) }
             } + if (timerActive) listOf(TtsMenuChoice(cancelTimerLabel, destructive = true) {
-                markInteraction()
                 onCancelSleepTimer()
             }) else emptyList()
         }
         val followEngine = if (usesAndroidTts && (kind == TtsMenuKind.Rate || kind == TtsMenuKind.Pitch)) {
             val selected = if (kind == TtsMenuKind.Rate) speechRateMode else pitchMode
             TtsMenuChoice(followEngineLabel, selected == TtsProsodyMode.FOLLOW_ENGINE) {
-                markInteraction()
                 if (kind == TtsMenuKind.Rate) onRateModeChange(TtsProsodyMode.FOLLOW_ENGINE)
                 else onPitchModeChange(TtsProsodyMode.FOLLOW_ENGINE)
             }
@@ -223,6 +272,10 @@ fun TtsPlayerPanel(
         if (toggle) menuHost?.toggle(spec) else menuHost?.show(spec)
     }
     val actionScrollState = rememberScrollState()
+    LaunchedEffect(actionsExpanded) {
+        if (actionsExpanded) actionScrollState.scrollTo(0)
+    }
+    CompositionLocalProvider(LocalRippleConfiguration provides null) {
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -230,16 +283,34 @@ fun TtsPlayerPanel(
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalAlignment = Alignment.Start
         ) {
             AnimatedVisibility(
-                visible = !actionsHidden,
-                enter = fadeIn(tween(if (eInkMode) 0 else 200)),
-                exit = fadeOut(tween(if (eInkMode) 0 else 280))
+                visible = actionsExpanded && !readerMenuVisible,
+                enter = EnterTransition.None,
+                exit = ExitTransition.None
             ) {
+                // Children share this visibility transition, so the row stays in place
+                // until the last capsule finishes its reverse-order exit.
+                fun Modifier.staggeredAction(index: Int): Modifier {
+                    val enterDelay = if (motionEnabled) index * 32 else 0
+                    val exitDelay = if (motionEnabled) (5 - index) * 32 else 0
+                    val enterSpec = tween<Float>(if (motionEnabled) 240 else 0, enterDelay)
+                    val exitSpec = tween<Float>(if (motionEnabled) 160 else 0, exitDelay)
+                    return animateEnterExit(
+                        enter = fadeIn(enterSpec) + scaleIn(enterSpec, initialScale = 0.86f,
+                            transformOrigin = TransformOrigin(0.5f, 1f)) +
+                            slideInVertically(tween(if (motionEnabled) 240 else 0, enterDelay)) { it / 3 },
+                        exit = fadeOut(exitSpec) + scaleOut(exitSpec, targetScale = 0.86f,
+                            transformOrigin = TransformOrigin(0.5f, 1f)) +
+                            slideOutVertically(tween(if (motionEnabled) 160 else 0, exitDelay)) { it / 3 }
+                    )
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .padding(start = placement?.horizontalInset ?: 0.dp,
+                            end = placement?.horizontalInset ?: 0.dp, bottom = 10.dp)
                         .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                         .drawWithContent {
                             drawContent()
@@ -268,41 +339,42 @@ fun TtsPlayerPanel(
                         TtsActionPill(
                             label = stringResource(R.string.tts_return_to_progress),
                             contentDescription = stringResource(R.string.tts_return_to_reading_page),
-                            enabled = canReturnToProgress,
+                            enabled = actionsExpanded && canReturnToProgress,
                             backgroundColor = panelFallbackColor,
                             contentColor = panelContentColor,
                             glassScrim = glassScrim,
                             forceSolid = forceSolidSurface,
-                            modifier = Modifier.width(96.dp),
-                            onClick = { markInteraction(); onReturnToProgress() }
+                            modifier = Modifier.width(96.dp).staggeredAction(0),
+                            onClick = onReturnToProgress
                         )
                         TtsActionPill(
                             label = stringResource(R.string.tts_from_this_page),
                             contentDescription = stringResource(R.string.tts_from_this_page),
-                            enabled = true,
+                            enabled = actionsExpanded,
                             backgroundColor = panelFallbackColor,
                             contentColor = panelContentColor,
                             glassScrim = glassScrim,
                             forceSolid = forceSolidSurface,
-                            modifier = Modifier.width(80.dp),
-                            onClick = { markInteraction(); onStartFromCurrentPage() }
+                            modifier = Modifier.width(80.dp).staggeredAction(1),
+                            onClick = onStartFromCurrentPage
                         )
                         TtsActionPill(
                             label = stringResource(R.string.tts_follow_page_turns),
                             contentDescription = stringResource(R.string.tts_follow_page_turns),
-                            enabled = true,
+                            enabled = actionsExpanded,
                             active = followUserPageTurns,
                             backgroundColor = panelFallbackColor,
                             contentColor = panelContentColor,
                             glassScrim = glassScrim,
                             forceSolid = forceSolidSurface,
-                            modifier = Modifier.width(104.dp).semantics {
+                            modifier = Modifier.width(104.dp).staggeredAction(2).semantics {
                                 selected = followUserPageTurns
                             },
-                            onClick = { markInteraction(); onFollowUserPageTurnsChange(!followUserPageTurns) }
+                            onClick = { onFollowUserPageTurnsChange(!followUserPageTurns) }
                         )
                         TtsTimerPill(
                             contentDescription = stringResource(R.string.tts_timer_label),
+                            enabled = actionsExpanded,
                             active = timerActive,
                             remainingMs = sleepTimerRemainingMs,
                             durationMs = sleepTimerDurationMs,
@@ -310,31 +382,31 @@ fun TtsPlayerPanel(
                             contentColor = panelContentColor,
                             glassScrim = glassScrim,
                             forceSolid = forceSolidSurface,
-                            modifier = Modifier.width(68.dp).height(48.dp)
+                            modifier = Modifier.width(68.dp).height(48.dp).staggeredAction(3)
                                 .liquidGlassMenuAnchor(timerId, LiquidGlassMenuAnchorKind.Embedded),
                             onClick = { openMenu(TtsMenuKind.Timer) }
                         )
                         TtsActionPill(
                             label = stringResource(R.string.tts_speech_rate),
                             contentDescription = stringResource(R.string.tts_speech_rate),
-                            enabled = true,
+                            enabled = actionsExpanded,
                             backgroundColor = panelFallbackColor,
                             contentColor = panelContentColor,
                             glassScrim = glassScrim,
                             forceSolid = forceSolidSurface,
-                            modifier = Modifier.width(68.dp)
+                            modifier = Modifier.width(68.dp).staggeredAction(4)
                                 .liquidGlassMenuAnchor(rateId, LiquidGlassMenuAnchorKind.Embedded),
                             onClick = { openMenu(TtsMenuKind.Rate) }
                         )
                         TtsActionPill(
                             label = stringResource(R.string.tts_pitch_label),
                             contentDescription = stringResource(R.string.tts_pitch_label),
-                            enabled = usesAndroidTts,
+                            enabled = actionsExpanded && usesAndroidTts,
                             backgroundColor = panelFallbackColor,
                             contentColor = panelContentColor,
                             glassScrim = glassScrim,
                             forceSolid = forceSolidSurface,
-                            modifier = Modifier.width(68.dp)
+                            modifier = Modifier.width(68.dp).staggeredAction(5)
                                 .liquidGlassMenuAnchor(pitchId, LiquidGlassMenuAnchorKind.Embedded),
                             onClick = { openMenu(TtsMenuKind.Pitch) }
                         )
@@ -342,70 +414,157 @@ fun TtsPlayerPanel(
                 }
             }
 
-            LiquidGlassSurface(
-                    role = com.huangder.lumibooks.ui.theme.AppSurfaceRole.Control,
-                    controlEdge = true,
-                    shape = AppRoundedCornerShape(36.dp),
-                    fallbackColor = panelFallbackColor,
-                    contentScrimColor = glassScrim,
-                    forceFallback = forceSolidSurface,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    contentAlignment = Alignment.CenterStart
+            BoxWithConstraints(Modifier.fillMaxWidth().height(48.dp)) {
+            val availableWidth = maxWidth
+            val anchorX = placement?.capsuleX ?: 0.dp
+            val dockProgress = placement?.dockProgress ?: 0f
+            val dock = placement?.dock ?: ReaderTtsDock.NONE
+            val expandLeft = placement?.expandLeft ?: false
+            val inset = (placement?.horizontalInset ?: 0.dp)
+                .coerceAtMost(((availableWidth - 288.dp) / 2).coerceAtLeast(0.dp))
+            val actionWidth = 48.dp
+            val actionReach = actionWidth * 3 + 16.dp
+            val fittedX = if (!actionsExpanded || readerMenuVisible || dock != ReaderTtsDock.NONE) anchorX
+                else if (expandLeft) anchorX.coerceAtLeast(inset + actionReach)
+                else anchorX.coerceAtMost((availableWidth - inset - 128.dp - actionReach).coerceAtLeast(0.dp))
+            // Keep the menu handoff on one vector path.  A second anchor animation
+            // made the capsule travel in two visible segments when it moved above
+            // the catalog or made room for the action buttons.
+            val capsuleX = fittedX
+            LaunchedEffect(capsuleX) { placement?.onAnchorChanged?.invoke(capsuleX) }
+            androidx.compose.animation.AnimatedVisibility(
+                visible = actionsExpanded && !readerMenuVisible && dock == ReaderTtsDock.NONE,
+                enter = if (motionEnabled) fadeIn(tween(180)) + scaleIn(tween(180), initialScale = .9f) else EnterTransition.None,
+                exit = if (motionEnabled) fadeOut(tween(140)) else ExitTransition.None,
+                modifier = Modifier.offset(x = if (expandLeft) capsuleX - actionReach else capsuleX + 136.dp)
+            ) {
+                Row(Modifier.height(48.dp), horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    listOf(
+                        Triple(AppIcons.SkipBackFilled, R.string.tts_previous_sentence, onSkipBackward),
+                        Triple(AppIcons.SkipForwardFilled, R.string.tts_next_sentence, onSkipForward),
+                        Triple(AppIcons.X, R.string.tts_stop, stopListening)
+                    ).forEach { (icon, description, action) ->
+                        TtsIconPill(icon, stringResource(description), enabled = actionsExpanded,
+                            backgroundColor = panelFallbackColor, contentColor = panelContentColor,
+                            glassScrim = glassScrim, forceSolid = forceSolidSurface,
+                            modifier = Modifier.size(actionWidth), onClick = action)
+                    }
+                }
+            }
+            Box(Modifier.offset(x = capsuleX).width(placement?.capsuleWidth ?: 128.dp).height(48.dp)
+                .then(placement?.dragModifier ?: Modifier)) {
+            val handleRight = capsuleX > availableWidth / 2
+            if (dockProgress < 1f) LiquidGlassSurface(
+                role = com.huangder.lumibooks.ui.theme.AppSurfaceRole.Control,
+                controlEdge = true,
+                shape = AppRoundedCornerShape(24.dp),
+                fallbackColor = panelFallbackColor,
+                contentScrimColor = glassScrim,
+                forceFallback = forceSolidSurface,
+                modifier = Modifier
+                    .wrapContentSize(Alignment.TopStart, unbounded = true)
+                    .width(128.dp)
+                    .height(48.dp)
+                    .graphicsLayer { alpha = 1f - dockProgress; clip = true }
+                    .testTag("reader-tts-capsule")
+                    .semantics { stateDescription = chapterTitle },
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 14.dp, end = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    IconButton(
+                        onClick = onPlayPause,
+                        enabled = playbackState != TtsPlaybackState.INITIALIZING && dock == ReaderTtsDock.NONE,
+                        modifier = Modifier.size(40.dp)
                     ) {
-                        Text(
-                            text = chapterTitle,
-                            color = panelContentColor,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            softWrap = false,
-                            overflow = TextOverflow.Clip,
-                            modifier = Modifier
-                                .weight(1f)
-                                .horizontalScroll(chapterScrollState)
-                        )
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(0.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        if (playbackState == TtsPlaybackState.INITIALIZING) {
+                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = panelContentColor)
+                        } else {
+                            Icon(
+                                if (playbackState == TtsPlaybackState.PLAYING) AppIcons.PauseFilled else AppIcons.PlayFilled,
+                                stringResource(if (playbackState == TtsPlaybackState.PLAYING) R.string.tts_pause else R.string.tts_play),
+                                tint = panelContentColor,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = { menuHost?.dismiss(); onOpenFullscreen() },
+                        enabled = playbackState != TtsPlaybackState.IDLE && dock == ReaderTtsDock.NONE,
+                        colors = IconButtonDefaults.iconButtonColors(disabledContentColor = panelContentColor),
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(AppIcons.CornersOut, stringResource(R.string.tts_fullscreen),
+                            tint = panelContentColor, modifier = Modifier.size(18.dp))
+                    }
+                    val toggleActions = {
+                            menuHost?.dismiss()
+                            if (!readerMenuVisible) actionsExpanded = !actionsExpanded
+                    }
+                    val exitLabel = stringResource(R.string.tts_stop)
+                    val moreLabel = stringResource(if (actionsExpanded) R.string.tts_collapse_controls else R.string.tts_expand_controls)
+                    Box(
+                        modifier = Modifier.size(40.dp)
+                            .combinedClickable(
+                                enabled = dock == ReaderTtsDock.NONE,
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                role = Role.Button,
+                                onClick = toggleActions,
+                                onDoubleClick = stopListening
+                            )
+                            .semantics {
+                                selected = actionsExpanded
+                                contentDescription = moreLabel
+                                customActions = listOf(CustomAccessibilityAction(exitLabel) { stopListening(); true })
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier.size(32.dp)
+                                .background(panelContentColor.copy(alpha = if (actionsExpanded) 0.16f else 0.08f), CircleShape),
+                            contentAlignment = Alignment.Center
                         ) {
-                            IconButton(onClick = { markInteraction(); onSkipBackward() }, modifier = Modifier.size(44.dp)) {
-                                Icon(AppIcons.SkipBackFilled, stringResource(R.string.tts_previous_sentence), tint = panelContentColor)
-                            }
-                            IconButton(
-                                onClick = { markInteraction(); onPlayPause() },
-                                enabled = playbackState != TtsPlaybackState.INITIALIZING,
-                                modifier = Modifier.size(44.dp)
-                            ) {
-                                if (playbackState == TtsPlaybackState.INITIALIZING) {
-                                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = panelContentColor)
-                                } else {
-                                    Icon(
-                                        if (playbackState == TtsPlaybackState.PLAYING) AppIcons.PauseFilled else AppIcons.PlayFilled,
-                                        stringResource(if (playbackState == TtsPlaybackState.PLAYING) R.string.tts_pause else R.string.tts_play),
-                                        tint = panelContentColor
-                                    )
-                                }
-                            }
-                            IconButton(onClick = { markInteraction(); onSkipForward() }, modifier = Modifier.size(44.dp)) {
-                                Icon(AppIcons.SkipForwardFilled, stringResource(R.string.tts_next_sentence), tint = panelContentColor)
-                            }
-                            IconButton(onClick = { markInteraction(); onStop() }, modifier = Modifier.size(44.dp)) {
-                                Icon(AppIcons.X, stringResource(R.string.tts_stop), tint = panelContentColor.copy(alpha = 0.72f), modifier = Modifier.size(19.dp))
-                            }
+                            Icon(
+                                AppIcons.DotsThreeVertical,
+                                null,
+                                tint = panelContentColor,
+                                modifier = Modifier.size(18.dp).rotate(90f)
+                            )
                         }
                     }
                 }
             }
+            if (dockProgress > 0f) {
+                val restoreLabel = stringResource(R.string.tts_restore_reader_controls)
+                Canvas(Modifier.align(if (handleRight) Alignment.CenterEnd else Alignment.CenterStart)
+                    .size(40.dp, 48.dp)
+                    .testTag("reader-tts-edge-handle")
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null,
+                        role = Role.Button, onClickLabel = restoreLabel) { placement?.onRestore?.invoke() }
+                    .semantics { contentDescription = restoreLabel }) {
+                    val right = handleRight
+                    val path = Path().apply {
+                        val endpoint = if (right) size.width - 12.dp.toPx() else 12.dp.toPx()
+                        val control = if (right) endpoint - 8.dp.toPx() else endpoint + 8.dp.toPx()
+                        moveTo(endpoint, 4.dp.toPx())
+                        quadraticTo(control, size.height / 2f, endpoint, size.height - 4.dp.toPx())
+                    }
+                    drawPath(path, panelContentColor.copy(alpha = .22f * dockProgress),
+                        style = Stroke(3.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round))
+                }
+            }
+            }
+            }
         }
     }
+    }
+}
+
 @Composable
 private fun TtsActionPill(
     label: String,
@@ -456,6 +615,7 @@ private fun TtsActionPill(
 private fun TtsIconPill(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
+    enabled: Boolean = true,
     backgroundColor: Color,
     contentColor: Color,
     glassScrim: Color,
@@ -471,8 +631,9 @@ private fun TtsIconPill(
         fallbackColor = backgroundColor,
         contentScrimColor = glassScrim,
         forceFallback = forceSolid,
+        enabled = enabled,
         onClick = onClick,
-        modifier = modifier.size(44.dp),
+        modifier = modifier.size(48.dp),
         contentAlignment = Alignment.Center
     ) {
         Icon(
@@ -487,6 +648,7 @@ private fun TtsIconPill(
 @Composable
 private fun TtsTimerPill(
     contentDescription: String,
+    enabled: Boolean = true,
     active: Boolean,
     remainingMs: Long?,
     durationMs: Long?,
@@ -504,6 +666,7 @@ private fun TtsTimerPill(
         fallbackColor = backgroundColor,
         contentScrimColor = glassScrim,
         forceFallback = forceSolid,
+        enabled = enabled,
         onClick = onClick,
         modifier = modifier.height(48.dp).semantics(mergeDescendants = true) {
             this.contentDescription = contentDescription

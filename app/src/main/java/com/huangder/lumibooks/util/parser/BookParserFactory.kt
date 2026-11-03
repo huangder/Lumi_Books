@@ -17,7 +17,7 @@ object BookParserFactory {
             BookFormat.EPUB -> EpubParser(context)
             BookFormat.PDF -> PdfParser(context)
             BookFormat.TXT -> TxtParser(context)
-            BookFormat.MOBI -> MobiParser(context)
+            BookFormat.MOBI, BookFormat.AZW, BookFormat.AZW3 -> KindleParser(context)
             BookFormat.CBZ -> CbzParser(context)
             BookFormat.MARKDOWN -> MarkdownParser(context)
         }

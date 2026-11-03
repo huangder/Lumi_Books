@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tts_full_cover">Cover mode</string>
+    <string name="tts_full_subtitles">Subtitle mode</string>
+    <string name="tts_full_previous_chapter">Previous chapter</string>
+    <string name="tts_full_next_chapter">Next chapter</string>
+    <string name="tts_full_previous_page">Previous page</string>
+    <string name="tts_full_next_page">Next page</string>
+    <string name="tts_full_progress">Chapter progress</string>
+    <string name="tts_full_engine">Engine</string>
+    <string name="tts_full_system">System default</string>
+    <string name="tts_full_ai">AI voice</string>
+    <string name="tts_full_engine_failed">Could not switch. Previous voice engine restored.</string>
+    <string name="tts_full_chapter">Chapter %1$d / %2$d</string>
+    <string name="tts_full_page">Page %1$d / %2$d</string>
+    <string name="tts_full_close">Minimize listening</string>
+    <string name="tts_full_empty">Preparing narration…</string>
+    <string name="tts_full_rate_value">Speed %1$sx</string>
+    <string name="tts_full_pitch_value">Pitch %1$sx</string>
+</resources>
