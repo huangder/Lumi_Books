@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_listening_preferences">듣기 설정</string>
+    <string name="settings_visual_motion">시각 효과 및 모션</string>
+    <string name="settings_section_reader_layout">읽기 레이아웃</string>
+    <string name="settings_section_reader_selection">선택 및 주석</string>
+    <string name="settings_section_listening">듣기</string>
+    <string name="settings_section_reader_toc">목차 규칙</string>
+    <string name="settings_section_listening_behavior">듣기 동작</string>
+    <string name="settings_section_app_appearance">앱 모양</string>
+    <string name="settings_section_app_fonts">앱 글꼴</string>
+    <string name="settings_section_startup_bookshelf">시작 및 책장</string>
+    <string name="settings_section_display_adaptation">화면 설정</string>
+    <string name="settings_section_more_visual">시각 효과</string>
+    <string name="settings_section_glass">Liquid Glass</string>
+    <string name="settings_section_visual_accessibility">보기 편의</string>
+    <string name="settings_section_motion">모션 및 전환</string>
+    <string name="settings_section_services_reading">읽기 도구</string>
+    <string name="settings_section_services_listening">듣기 서비스</string>
+    <string name="settings_section_services_sync">동기화 및 원격 서재</string>
+    <string name="settings_find_reader_layout">기본 읽기 테마와 두 쪽 보기</string>
+    <string name="settings_find_listening_preferences">듣기 시작, 재개 및 종료 설정</string>
+    <string name="settings_find_visual_motion">시각 효과와 모션 설정</string>
+    <string name="settings_find_visual_glass">Liquid Glass와 모션 설정</string>
+</resources>

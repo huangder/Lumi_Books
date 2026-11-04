@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_listening_preferences">Listening preferences</string>
+    <string name="settings_visual_motion">Visual effects and motion</string>
+    <string name="settings_section_reader_layout">Layout and page turning</string>
+    <string name="settings_section_reader_selection">Selection and annotations</string>
+    <string name="settings_section_listening">Listening</string>
+    <string name="settings_section_reader_toc">Table of contents</string>
+    <string name="settings_section_listening_behavior">Listening behavior</string>
+    <string name="settings_section_app_appearance">App appearance</string>
+    <string name="settings_section_app_fonts">App fonts</string>
+    <string name="settings_section_startup_bookshelf">Startup and bookshelf</string>
+    <string name="settings_section_display_adaptation">Display adaptation</string>
+    <string name="settings_section_more_visual">Visual effects</string>
+    <string name="settings_section_glass">Liquid Glass</string>
+    <string name="settings_section_visual_accessibility">Visual comfort</string>
+    <string name="settings_section_motion">Motion and transitions</string>
+    <string name="settings_section_services_reading">Reading tools</string>
+    <string name="settings_section_services_listening">Listening services</string>
+    <string name="settings_section_services_sync">Sync and remote libraries</string>
+    <string name="settings_find_reader_layout">the default reading theme and two-page spread</string>
+    <string name="settings_find_listening_preferences">listening start, resume and exit settings</string>
+    <string name="settings_find_visual_motion">visual effects and motion settings</string>
+    <string name="settings_find_visual_glass">Liquid Glass and motion settings</string>
+</resources>

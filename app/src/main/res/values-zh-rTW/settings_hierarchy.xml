@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_listening_preferences">聽書偏好</string>
+    <string name="settings_visual_motion">視覺與動效</string>
+    <string name="settings_section_reader_layout">閱讀版面</string>
+    <string name="settings_section_reader_selection">選區與註釋</string>
+    <string name="settings_section_listening">聽書</string>
+    <string name="settings_section_reader_toc">目錄規則</string>
+    <string name="settings_section_listening_behavior">聽書行為</string>
+    <string name="settings_section_app_appearance">應用外觀</string>
+    <string name="settings_section_app_fonts">應用字型</string>
+    <string name="settings_section_startup_bookshelf">啟動與書架</string>
+    <string name="settings_section_display_adaptation">顯示調整</string>
+    <string name="settings_section_more_visual">視覺效果</string>
+    <string name="settings_section_glass">液態玻璃</string>
+    <string name="settings_section_visual_accessibility">視覺舒適度</string>
+    <string name="settings_section_motion">動效與過渡</string>
+    <string name="settings_section_services_reading">閱讀工具</string>
+    <string name="settings_section_services_listening">聽書服務</string>
+    <string name="settings_section_services_sync">同步與遠端書庫</string>
+    <string name="settings_find_reader_layout">預設閱讀主題、雙頁閱讀</string>
+    <string name="settings_find_listening_preferences">聽書開始、閱讀恢復與退出設定</string>
+    <string name="settings_find_visual_motion">視覺效果與動效設定</string>
+    <string name="settings_find_visual_glass">液態玻璃與視覺動效設定</string>
+</resources>

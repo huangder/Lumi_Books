@@ -29,11 +29,16 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,7 +46,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -63,6 +70,9 @@ import com.huangder.lumibooks.ui.theme.LocalLiquidGlassCapability
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.Backdrop
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlin.math.roundToInt
 
 /** Toolbar row height below the status bar. */
 private val SettingsToolbarHeight = 56.dp
@@ -118,6 +128,16 @@ internal fun CollapsingSettingsScaffold(
     val toolbarTotalHeight = statusBarTopPadding + SettingsToolbarHeight
     val bandHeight = toolbarTotalHeight + SettingsToolbarBlurTail
     val toolbarBottomPx = with(LocalDensity.current) { toolbarTotalHeight.toPx() }
+    val sectionNavigator = remember { SettingsSectionNavigator() }
+    val targetSection = LocalSettingsTargetSection.current
+    var targetConsumed by rememberSaveable(targetSection) { mutableStateOf(false) }
+    LaunchedEffect(targetSection, sectionNavigator) {
+        if (targetSection != null && !targetConsumed && lazyListState == null) {
+            val offset = snapshotFlow { sectionNavigator.offsets[targetSection] }.filterNotNull().first()
+            scrollState.scrollTo((offset - toolbarBottomPx.roundToInt()).coerceAtLeast(0))
+            targetConsumed = true
+        }
+    }
 
     // 单一进度源：模糊强度与大小标题过渡都读它，二者不会失步。
     val collapseProgress = remember(scrollState, lazyListState, toolbarBottomPx) {
@@ -159,9 +179,13 @@ internal fun CollapsingSettingsScaffold(
                 }
             } else {
                 Column(contentModifier.verticalScroll(scrollState)) {
-                    heading()
-                    content()
-                    Spacer(Modifier.height(120.dp))
+                    Column(Modifier.fillMaxWidth().onGloballyPositioned(sectionNavigator::updateContent)) {
+                        heading()
+                        CompositionLocalProvider(LocalSettingsSectionNavigator provides sectionNavigator) {
+                            content()
+                        }
+                        Spacer(Modifier.height(120.dp))
+                    }
                 }
             }
         }
@@ -193,6 +217,7 @@ internal fun CollapsingSettingsScaffold(
                 .fillMaxWidth()
                 .statusBarsPadding()
                 .height(SettingsToolbarHeight)
+                .testTag("settings-toolbar")
                 .padding(horizontal = if (alignToolbarToContent) AppSpace.lg else AppSpace.sm),
             verticalAlignment = Alignment.CenterVertically
         ) {

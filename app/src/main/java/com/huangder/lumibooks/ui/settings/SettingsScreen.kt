@@ -287,6 +287,7 @@ fun ThirdPartyServicesDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
 
+    SettingsSectionTitle(stringResource(R.string.settings_section_services_reading), "services_reading")
     SettingsCategoryGroup {
         CategoryItem(
             label = stringResource(R.string.dictionary_title),
@@ -315,7 +316,11 @@ fun ThirdPartyServicesDetail(viewModel: SettingsViewModel) {
         ) {
             context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "mineru"))
         }
-        SettingsGroupDivider()
+    }
+
+    Spacer(Modifier.height(AppSpace.sm))
+    SettingsSectionTitle(stringResource(R.string.settings_section_services_listening), "services_listening")
+    SettingsCategoryGroup {
         CategoryItem(
             label = stringResource(R.string.category_external_tts),
             supportingText = when {
@@ -330,7 +335,11 @@ fun ThirdPartyServicesDetail(viewModel: SettingsViewModel) {
         ) {
             context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "external_tts"))
         }
-        SettingsGroupDivider()
+    }
+
+    Spacer(Modifier.height(AppSpace.sm))
+    SettingsSectionTitle(stringResource(R.string.settings_section_services_sync), "services_sync")
+    SettingsCategoryGroup {
         CategoryItem(
             label = stringResource(R.string.category_webdav),
             supportingText = when {

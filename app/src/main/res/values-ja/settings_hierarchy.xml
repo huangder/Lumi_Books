@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_listening_preferences">読み上げ設定</string>
+    <string name="settings_visual_motion">視覚効果とモーション</string>
+    <string name="settings_section_reader_layout">読書レイアウト</string>
+    <string name="settings_section_reader_selection">選択と注釈</string>
+    <string name="settings_section_listening">読み上げ</string>
+    <string name="settings_section_reader_toc">目次ルール</string>
+    <string name="settings_section_listening_behavior">読み上げ動作</string>
+    <string name="settings_section_app_appearance">アプリの外観</string>
+    <string name="settings_section_app_fonts">アプリのフォント</string>
+    <string name="settings_section_startup_bookshelf">起動と本棚</string>
+    <string name="settings_section_display_adaptation">表示の調整</string>
+    <string name="settings_section_more_visual">視覚効果</string>
+    <string name="settings_section_glass">Liquid Glass</string>
+    <string name="settings_section_visual_accessibility">見やすさ</string>
+    <string name="settings_section_motion">モーションと切り替え</string>
+    <string name="settings_section_services_reading">読書ツール</string>
+    <string name="settings_section_services_listening">読み上げサービス</string>
+    <string name="settings_section_services_sync">同期とリモート書庫</string>
+    <string name="settings_find_reader_layout">読書テーマ・見開き表示</string>
+    <string name="settings_find_listening_preferences">読み上げの開始・再開・終了設定</string>
+    <string name="settings_find_visual_motion">視覚効果とモーションの設定</string>
+    <string name="settings_find_visual_glass">Liquid Glass とモーションの設定</string>
+</resources>
