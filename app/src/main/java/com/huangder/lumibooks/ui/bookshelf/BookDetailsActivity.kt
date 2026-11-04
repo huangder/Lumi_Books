@@ -346,6 +346,7 @@ fun BookDetailsScreen(
                     BookReviewActivity.start(context, book.id, book.title, book.author, book.coverPath)
                 }
             }
+            item { com.huangder.lumibooks.ui.statistics.BookReadingArchive(book.id) }
             item {
                 InfoCard(
                     book,

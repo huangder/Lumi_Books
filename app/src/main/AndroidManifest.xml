@@ -49,6 +49,8 @@
         android:networkSecurityConfig="@xml/network_security_config"
         tools:targetApi="34">
 
+        <activity android:name=".ui.bookshare.BookShareActivity" android:exported="false" android:theme="@style/Theme.EBookReader" />
+
         <receiver android:name=".dictionary.DictionaryDownloadReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />

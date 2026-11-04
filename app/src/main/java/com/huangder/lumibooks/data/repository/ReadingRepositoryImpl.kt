@@ -37,6 +37,9 @@ class ReadingRepositoryImpl @Inject constructor(
     private val syncIdentityStore: SyncIdentityStore,
     private val database: AppDatabase
 ) : ReadingRepository {
+    override fun getDailyActivity(startDate: String, endDate: String) = readingRecordDao.getDailyActivity(startDate, endDate)
+    override fun getBookActivity(startDate: String, endDate: String) = readingRecordDao.getBookActivity(startDate, endDate)
+    override fun getBookDailyActivity(bookId: String) = readingRecordDao.getBookDailyActivity(bookId)
     override suspend fun appendActivityDuration(bookId: String, date: String, readingDuration: Long, listeningDuration: Long, startTime: Long, endTime: Long) {
         require(readingDuration >= 0 && listeningDuration >= 0)
         if (readingDuration == 0L && listeningDuration == 0L) return

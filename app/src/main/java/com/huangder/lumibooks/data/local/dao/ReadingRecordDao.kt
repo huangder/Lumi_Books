@@ -14,6 +14,14 @@ private const val NOT_HIDDEN_BOOK = "bookId NOT IN (SELECT id FROM books WHERE i
 
 @Dao
 interface ReadingRecordDao {
+    @Query("SELECT date, SUM(duration) AS readingDuration, SUM(listeningDuration) AS listeningDuration FROM reading_records WHERE date BETWEEN :startDate AND :endDate AND $NOT_HIDDEN_BOOK GROUP BY date HAVING SUM(duration + listeningDuration) > 0 ORDER BY date")
+    fun getDailyActivity(startDate: String, endDate: String): Flow<List<com.huangder.lumibooks.domain.model.ReadingDayActivity>>
+
+    @Query("SELECT bookId, MIN(date) AS firstDate, MAX(date) AS lastDate, SUM(duration) AS readingDuration, SUM(listeningDuration) AS listeningDuration, COUNT(DISTINCT date) AS activeDays FROM reading_records WHERE date BETWEEN :startDate AND :endDate AND (duration + listeningDuration) > 0 AND $NOT_HIDDEN_BOOK GROUP BY bookId ORDER BY SUM(duration + listeningDuration) DESC, bookId")
+    fun getBookActivity(startDate: String, endDate: String): Flow<List<com.huangder.lumibooks.domain.model.ReadingBookActivity>>
+
+    @Query("SELECT date, SUM(duration) AS readingDuration, SUM(listeningDuration) AS listeningDuration FROM reading_records WHERE bookId = :bookId GROUP BY date HAVING SUM(duration + listeningDuration) > 0 ORDER BY date")
+    fun getBookDailyActivity(bookId: String): Flow<List<com.huangder.lumibooks.domain.model.ReadingDayActivity>>
     @Query("SELECT COALESCE(SUM(duration), 0) AS readingDuration, COALESCE(SUM(listeningDuration), 0) AS listeningDuration FROM reading_records WHERE bookId = :bookId")
     fun getActivityDurationByBookId(bookId: String): Flow<ActivityDuration>
 

@@ -8,8 +8,19 @@ import com.huangder.lumibooks.domain.model.DailyTotal
 import com.huangder.lumibooks.domain.model.Note
 import com.huangder.lumibooks.domain.model.ReadingRecord
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import com.huangder.lumibooks.domain.model.ReadingDayActivity
+import com.huangder.lumibooks.domain.model.ReadingBookActivity
+import com.huangder.lumibooks.domain.model.aggregateReadingDays
+import com.huangder.lumibooks.domain.model.aggregateReadingBooks
 
 interface ReadingRepository {
+    fun getDailyActivity(startDate: String, endDate: String): Flow<List<ReadingDayActivity>> =
+        getRecordsBetweenDates(startDate, endDate).map(::aggregateReadingDays)
+    fun getBookActivity(startDate: String, endDate: String): Flow<List<ReadingBookActivity>> =
+        getRecordsBetweenDates(startDate, endDate).map(::aggregateReadingBooks)
+    fun getBookDailyActivity(bookId: String): Flow<List<ReadingDayActivity>> =
+        getRecordsBetweenDates("1970-01-01", "9999-12-31").map { rows -> aggregateReadingDays(rows.filter { it.bookId == bookId }) }
     suspend fun appendActivityDuration(bookId: String, date: String, readingDuration: Long, listeningDuration: Long, startTime: Long, endTime: Long)
     fun getActivityDurationByBookId(bookId: String): Flow<ActivityDuration>
     fun getActivityDurationBetweenDates(startDate: String, endDate: String): Flow<ActivityDuration>

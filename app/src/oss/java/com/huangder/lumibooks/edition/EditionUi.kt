@@ -14,7 +14,7 @@ internal fun EditionHomeMembershipPrompt() = Unit
 internal fun EditionTagManagementSettingsEntry() = Unit
 
 @Composable
-internal fun EditionReportEntry(period: ReadingReportPeriod) = Unit
+internal fun EditionReadingReviewEntry(period: ReadingReportPeriod) = Unit
 
 @Composable
 internal fun EditionTagManagementButton(type: String, modifier: Modifier = Modifier, toolbar: Boolean = false) = Unit
