@@ -79,7 +79,7 @@ fun WebdavSettingsDetail(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = AppSpace.md, vertical = AppSpace.sm),
+            .padding(horizontal = AppSpace.page, vertical = AppSpace.sm),
         verticalArrangement = Arrangement.spacedBy(AppSpace.md)
     ) {
         // Status card
@@ -241,7 +241,7 @@ fun WebdavConfigurationDetail(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = AppSpace.md, vertical = AppSpace.sm),
+            .padding(horizontal = AppSpace.page, vertical = AppSpace.sm),
         verticalArrangement = Arrangement.spacedBy(AppSpace.md)
     ) {
         WebdavSectionCard {
@@ -331,8 +331,8 @@ private fun WebdavSectionCard(content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(AppRoundedCornerShape(AppRadius.md))
-            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
+            .clip(AppRoundedCornerShape(AppRadius.lg))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
             .padding(AppSpace.md),
         verticalArrangement = Arrangement.spacedBy(AppSpace.sm),
         content = content
@@ -349,8 +349,8 @@ private fun WebdavStatusCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(AppRoundedCornerShape(AppRadius.md))
-            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
+            .clip(AppRoundedCornerShape(AppRadius.lg))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
             .padding(AppSpace.md)
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {

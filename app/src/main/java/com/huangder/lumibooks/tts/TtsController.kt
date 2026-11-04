@@ -1276,6 +1276,7 @@ class TtsController(
         var target = location
         var selectedPage: TtsPageContent? = null
         var selectedSegments: List<TtsTextSegment> = emptyList()
+        var chapterSnapshot: TtsChapterSnapshot? = null
         var attempts = 0
         while (attempts < 50 && selectedPage == null) {
             val page = try {
@@ -1288,15 +1289,44 @@ class TtsController(
                 return false
             }
             if (page == null) return token != pageLoadToken
-            val pageSegments = textExtractor.splitIntoSegments(
+            var playablePage = page
+            var pageSegments = textExtractor.splitIntoSegments(
                 text = page.text,
                 baseCharacterOffset = page.startCharacterOffset,
                 startCharacterOffset = startCharacterOffset.takeIf { page.location == location }
             ).filter { segment -> textExtractor.hasSpeakableContent(segment.text) }
+            if (pageSegments.isEmpty() && page.endCharacterOffset > page.startCharacterOffset) {
+                val chapter = chapterSnapshot?.takeIf { it.index == page.location.chapterIndex }
+                    ?: try {
+                        source.getChapter(page.location.chapterIndex)?.also { chapterSnapshot = it }
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (_: Exception) {
+                        null
+                    }
+                val recovered = chapter?.let { recoverTtsPageText(page, it) }
+                val recoveredSegments = recovered?.let { recoveredPage ->
+                    textExtractor.splitIntoSegments(
+                        text = recoveredPage.text,
+                        baseCharacterOffset = recoveredPage.startCharacterOffset,
+                        startCharacterOffset = startCharacterOffset.takeIf { recoveredPage.location == location }
+                    ).filter { segment -> textExtractor.hasSpeakableContent(segment.text) }
+                }.orEmpty()
+                if (recovered != null && recoveredSegments.isNotEmpty()) {
+                    playablePage = recovered
+                    pageSegments = recoveredSegments
+                    logTtsEvent("page_text_recovered", location = page.location,
+                        result = "chapter_range", characterStart = recovered.startCharacterOffset,
+                        characterEnd = recovered.endCharacterOffset, textLength = recovered.text.length)
+                }
+            }
             if (pageSegments.isNotEmpty()) {
-                selectedPage = page
+                selectedPage = playablePage
                 selectedSegments = pageSegments
             } else {
+                logTtsEvent("page_skipped", location = page.location, result = "no_speakable_text",
+                    characterStart = page.startCharacterOffset, characterEnd = page.endCharacterOffset,
+                    textLength = page.text.length)
                 target = if (startAtEnd) page.previous ?: return false else page.next ?: return false
             }
             attempts++
@@ -1836,6 +1866,9 @@ class TtsController(
         requestId: Long? = null,
         utteranceId: String? = null,
         sentenceOffset: Int? = null,
+        characterStart: Int? = null,
+        characterEnd: Int? = null,
+        textLength: Int? = null,
         errorType: String? = null,
         retryAttempt: Int? = null,
         result: String? = null
@@ -1856,6 +1889,9 @@ class TtsController(
                 requestId?.let { put("requestId", it) }
                 utteranceId?.let { put("utteranceId", it) }
                 sentenceOffset?.let { put("sentenceOffset", it) }
+                characterStart?.let { put("characterStart", it) }
+                characterEnd?.let { put("characterEnd", it) }
+                textLength?.let { put("textLength", it) }
                 errorType?.let { put("errorType", it) }
                 retryAttempt?.let { put("retryAttempt", it) }
                 result?.let { put("result", it) }

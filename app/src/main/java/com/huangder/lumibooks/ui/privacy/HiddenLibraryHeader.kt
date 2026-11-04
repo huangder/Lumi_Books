@@ -84,8 +84,8 @@ internal fun HiddenLibraryHeader(
                     size = 46.dp,
                     iconSize = 21.dp,
                     contentColor = Color.White,
-                    normalContainerColor = Color(0xFFD92D3A),
-                    liquidContainerColor = Color(0xFFD92D3A),
+                    normalContainerColor = AppColors.Destructive,
+                    liquidContainerColor = AppColors.Destructive,
                     liquidScrimColor = Color(0xB8D92D3A)
                 )
             } else {

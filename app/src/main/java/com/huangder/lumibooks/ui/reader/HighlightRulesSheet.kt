@@ -112,6 +112,7 @@ import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
+import com.huangder.lumibooks.ui.theme.AppSpace
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -120,6 +121,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import com.huangder.lumibooks.ui.components.AppSheetHeader
+import com.huangder.lumibooks.ui.theme.AppPresentation
+import com.huangder.lumibooks.ui.components.AppDropdownMenu
 
 private val HighlightRuleDanger: Color
     @Composable get() = if (LocalEInkMode.current) {
@@ -259,7 +263,7 @@ fun HighlightRulesSheet(
                 .navigationBarsPadding()
                 .padding(start = 24.dp, top = 20.dp, end = 24.dp, bottom = 16.dp),
             fallbackColor = AppColors.CardBg,
-            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            shape = AppRoundedCornerShape(topStart = AppPresentation.SheetCorner, topEnd = AppPresentation.SheetCorner),
             backdrop = backdrop,
             forceFallback = eInkModeEnabled
         ) {
@@ -267,20 +271,6 @@ fun HighlightRulesSheet(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.highlight_rules_title),
-                        color = AppColors.TextPrimary,
-                        fontSize = 20.sp,
-                        fontFamily = resolveAppFontFamily(KaiTi),
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = stringResource(R.string.highlight_rules_subtitle),
-                        color = AppColors.TextSecondary,
-                        fontSize = AppType.Caption
-                    )
-                }
                 LiquidGlassIconButton(
                     imageVector = AppIcons.X,
                     contentDescription = stringResource(R.string.close),
@@ -290,6 +280,21 @@ fun HighlightRulesSheet(
                     contentColor = AppColors.TextPrimary,
                     normalContainerColor = AppColors.BgGray
                 )
+                Spacer(Modifier.width(AppSpace.sm))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.highlight_rules_title),
+                        color = AppColors.TextPrimary,
+                        fontSize = AppType.Section,
+                        fontFamily = resolveAppFontFamily(KaiTi),
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = stringResource(R.string.highlight_rules_subtitle),
+                        color = AppColors.TextSecondary,
+                        fontSize = AppType.Caption
+                    )
+                }
             }
 
             LazyColumn(
@@ -851,34 +856,13 @@ private fun HighlightRuleEditorSheet(
                 .navigationBarsPadding()
                 .padding(start = 24.dp, top = 20.dp, end = 24.dp, bottom = 16.dp),
             fallbackColor = AppColors.CardBg,
-            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            shape = AppRoundedCornerShape(topStart = AppPresentation.SheetCorner, topEnd = AppPresentation.SheetCorner),
             backdrop = backdrop,
             forceFallback = forceFallback
         ) {
             Column(Modifier.fillMaxSize()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        if (rule.name.isBlank()) stringResource(R.string.highlight_rule_new_title)
-                        else stringResource(R.string.highlight_rule_edit_title),
-                        color = AppColors.TextPrimary,
-                        fontSize = 20.sp,
-                        fontFamily = resolveAppFontFamily(KaiTi),
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f)
-                    )
-                    LiquidGlassIconButton(
-                        imageVector = AppIcons.X,
-                        contentDescription = stringResource(R.string.close),
-                        onClick = { isClosing = true },
-                        size = 44.dp,
-                        iconSize = 20.dp,
-                        contentColor = AppColors.TextPrimary,
-                        normalContainerColor = AppColors.BgGray
-                    )
-                }
+                AppSheetHeader(title = if (rule.name.isBlank()) stringResource(R.string.highlight_rule_new_title)
+                        else stringResource(R.string.highlight_rule_edit_title), onClose = { isClosing = true })
                 Spacer(Modifier.height(12.dp))
                 Column(
                     modifier = Modifier
@@ -1203,7 +1187,7 @@ private fun RuleEditorTextField(
 ) {
     val shape = AppRoundedCornerShape(8.dp)
     Column(modifier = modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, fontSize = 12.sp, color = AppColors.TextSecondary)
+        Text(label, fontSize = AppType.Caption, color = AppColors.TextSecondary)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1225,7 +1209,7 @@ private fun RuleEditorTextField(
                 maxLines = maxLines,
                 textStyle = TextStyle(
                     color = AppColors.TextPrimary,
-                    fontSize = 14.sp,
+                    fontSize = AppType.BodySmall,
                     lineHeight = 20.sp
                 ),
                 decorationBox = { innerTextField ->
@@ -1233,7 +1217,7 @@ private fun RuleEditorTextField(
                         Text(
                             placeholder,
                             color = AppColors.TextSecondary,
-                            fontSize = 14.sp,
+                            fontSize = AppType.BodySmall,
                             lineHeight = 20.sp
                         )
                     }
@@ -1542,13 +1526,9 @@ private fun RuleFontSelector(
                 modifier = Modifier.align(Alignment.CenterEnd).size(18.dp)
             )
         }
-        DropdownMenu(
+        AppDropdownMenu(
             expanded = expanded,
-            onDismissRequest = { expanded = false },
-            shape = AppRoundedCornerShape(18.dp),
-            containerColor = AppColors.CardBg,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp
+            onDismissRequest = { expanded = false }
         ) {
             options.forEach { option ->
                 DropdownMenuItem(
@@ -1603,9 +1583,9 @@ private fun HighlightRuleColorSlider(
     onValueChange: (Float) -> Unit
 ) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, fontSize = 13.sp, color = AppColors.TextSecondary)
+        Text(label, fontSize = AppType.Footnote, color = AppColors.TextSecondary)
         Spacer(Modifier.weight(1f))
-        Text(value.toInt().toString(), fontSize = 12.sp, color = AppColors.TextSecondary)
+        Text(value.toInt().toString(), fontSize = AppType.Caption, color = AppColors.TextSecondary)
     }
     com.huangder.lumibooks.ui.components.PillSlider(
         value = value,

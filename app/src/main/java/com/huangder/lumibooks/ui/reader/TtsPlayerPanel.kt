@@ -92,6 +92,7 @@ import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
+import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.animation.LumiMotion
 import java.util.Locale
@@ -601,7 +602,7 @@ private fun TtsActionPill(
             text = label,
             color = (if (active) AppColors.OnAccent else contentColor)
                 .copy(alpha = if (enabled) 1f else 0.38f),
-            fontSize = 12.sp,
+            fontSize = AppType.Caption,
             fontWeight = FontWeight.SemiBold,
             maxLines = 2,
             textAlign = TextAlign.Center,
@@ -749,7 +750,7 @@ private fun TtsChoice(
             choice.destructive -> Color(0xFFE53935)
             choice.selected -> AppColors.Accent
             else -> contentColor
-        }, fontSize = 13.sp, fontWeight = if (choice.selected) FontWeight.SemiBold else FontWeight.Medium,
+        }, fontSize = AppType.Footnote, fontWeight = if (choice.selected) FontWeight.SemiBold else FontWeight.Medium,
             textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }

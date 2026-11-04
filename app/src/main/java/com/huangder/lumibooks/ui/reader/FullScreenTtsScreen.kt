@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyLayoutScrollScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
@@ -274,8 +275,8 @@ internal fun FullScreenTtsScreen(
                 val coverY = lerpDp(h * .12f, h * .055f, mode)
                 Box(Modifier.offset(x = xInset + coverX, y = coverY).size(coverW, coverH)
                     .then(layer(0)).zIndex(1f).testTag("listening-cover").onGloballyPositioned { coverBounds = it.boundsInRoot() }
-                    .shadow(if (eInk) 0.dp else 24.dp, RoundedCornerShape(8.dp))
-                    .clip(RoundedCornerShape(8.dp)).background(Color(0xFF44596F))
+                    .shadow(if (eInk) 0.dp else 24.dp, AppRoundedCornerShape(8.dp))
+                    .clip(AppRoundedCornerShape(8.dp)).background(Color(0xFF44596F))
                     .clickable(enabled = !closing, indication = null, interactionSource = remember { MutableInteractionSource() }) {
                         touch(); actions.toggleMode()
                     }) {
@@ -398,7 +399,7 @@ private fun ListeningPressControl(
         Box(Modifier.matchParentSize().graphicsLayer {
             scaleX = scale; scaleY = scale; translationX = nudge.value * density
             alpha = if (enabled) 1f else .35f
-        }.clip(RoundedCornerShape(30.dp)).background(
+        }.clip(AppRoundedCornerShape(30.dp)).background(
             foreground.copy(alpha = if (pill) if (pressed && enabled) .24f else .13f else if (pressed && enabled) .10f else 0f)),
             contentAlignment = Alignment.Center, content = content)
     }
@@ -460,7 +461,7 @@ private fun ListeningSettings(
                         contentColor = foreground, forceSolid = solid))
                 }) {
                 Crossfade(labels[index], animationSpec = if (animated) tween(120) else snap(), label = "setting value") { value ->
-                    Text(value, color = foreground, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    Text(value, color = foreground, fontSize = AppType.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(horizontal = 5.dp))
                 }
             }

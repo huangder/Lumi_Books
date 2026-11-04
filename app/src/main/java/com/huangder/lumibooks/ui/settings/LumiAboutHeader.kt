@@ -31,6 +31,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.LumiEasterEgg
 import com.huangder.lumibooks.ui.components.ReplacingToast
+import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
@@ -82,10 +83,10 @@ internal fun LumiAboutHeader(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = AppSpace.md)
+            .padding(horizontal = AppSpace.page)
             .aspectRatio(1.46f)
             .testTag("lumi_about_header")
-            .shadow(8.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .shadow(8.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
             .clip(AppRoundedCornerShape(AppRadius.lg))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },

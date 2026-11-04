@@ -719,7 +719,7 @@ private fun ThemeSuiteRow(
                         }
                     )
                 })
-                .shadow(8.dp, shape, ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+                .shadow(8.dp, shape, ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
                 .cardOutline(shape)
                 .clip(shape)
                 .lumiCardSurface(shape = shape)

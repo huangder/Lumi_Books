@@ -28,6 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
+import com.huangder.lumibooks.ui.theme.AppType
 
 @Composable
 internal fun EpubNavigationLoadingOverlay(
@@ -97,7 +98,7 @@ internal fun EpubNavigationLoadingOverlay(
                 text = status,
                 modifier = Modifier.padding(top = 8.dp),
                 color = contentColor.copy(alpha = 0.68f),
-                fontSize = 14.sp
+                fontSize = AppType.BodySmall
             )
             TextButton(
                 onClick = onCancel,
@@ -142,7 +143,7 @@ internal fun EpubNavigationFailureBar(
             Text(
                 text = message,
                 color = contentColor,
-                fontSize = 14.sp
+                fontSize = AppType.BodySmall
             )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             TextButton(onClick = onRetry) {

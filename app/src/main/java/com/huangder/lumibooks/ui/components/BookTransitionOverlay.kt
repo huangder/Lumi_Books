@@ -55,6 +55,7 @@ import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
+import com.huangder.lumibooks.ui.theme.AppType
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.coroutineScope
@@ -291,7 +292,7 @@ private fun BookTransitionLoadingDetails(visible: Boolean) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = stringResource(R.string.loading_text),
-                fontSize = 14.sp,
+                fontSize = AppType.BodySmall,
                 color = AppColors.TextSecondary,
                 textAlign = TextAlign.Center
             )
@@ -309,7 +310,7 @@ private fun BookTransitionLoadingDetails(visible: Boolean) {
             Text(
                 text = stringResource(R.string.reader_first_open_hint),
                 modifier = Modifier.padding(horizontal = AppSpace.lg),
-                fontSize = 12.sp,
+                fontSize = AppType.Caption,
                 lineHeight = 18.sp,
                 color = AppColors.TextSecondary.copy(alpha = 0.78f),
                 textAlign = TextAlign.Center

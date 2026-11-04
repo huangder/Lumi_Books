@@ -72,6 +72,7 @@ import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import com.huangder.lumibooks.ui.components.DisclosureChevron
 
 @AndroidEntryPoint
 class SponsorActivity : ComponentActivity() {
@@ -190,7 +191,7 @@ private fun SponsorPage(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = AppSpace.lg)
-                .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+                .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
                 .clip(AppRoundedCornerShape(AppRadius.lg))
                 .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
                 .padding(AppSpace.lg),
@@ -449,12 +450,7 @@ private fun DeveloperCard(contributor: Contributor, onClick: () -> Unit) {
             }
         }
         Spacer(Modifier.width(AppSpace.sm))
-        Icon(
-            imageVector = AppIcons.CaretRight,
-            contentDescription = null,
-            tint = AppColors.TextSecondary,
-            modifier = Modifier.size(20.dp)
-        )
+        DisclosureChevron()
     }
 }
 

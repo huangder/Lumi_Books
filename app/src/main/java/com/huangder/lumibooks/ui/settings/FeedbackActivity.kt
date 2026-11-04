@@ -87,6 +87,7 @@ import com.huangder.lumibooks.util.diagnostics.DiagnosticLogger
 import com.huangder.lumibooks.util.diagnostics.DiagnosticSessionManager
 import kotlinx.coroutines.launch
 import java.io.File
+import com.huangder.lumibooks.ui.components.DisclosureChevron
 
 @AndroidEntryPoint
 class FeedbackActivity : ComponentActivity() {
@@ -165,7 +166,7 @@ private fun FeedbackOverviewPage(onBack: () -> Unit) {
             onClick = { context.startActivity(Intent(context, DiagnosticActivity::class.java)) }
         )
         Spacer(Modifier.height(AppSpace.lg))
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpace.lg).shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000)).clip(AppRoundedCornerShape(AppRadius.lg)).lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg)).padding(AppSpace.lg), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpace.lg).shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow).clip(AppRoundedCornerShape(AppRadius.lg)).lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg)).padding(AppSpace.lg), horizontalAlignment = Alignment.CenterHorizontally) {
             Image(painterResource(R.drawable.feedback_qr), stringResource(R.string.feedback_qr_desc), Modifier.size(220.dp).clip(AppRoundedCornerShape(AppRadius.md)), contentScale = ContentScale.Fit)
             Spacer(Modifier.height(AppSpace.md))
             Text(stringResource(R.string.feedback_thanks), fontSize = AppType.Body, fontWeight = FontWeight.Medium, color = AppColors.TextPrimary, textAlign = TextAlign.Center)
@@ -753,12 +754,7 @@ private fun FeedbackLinkSection(
                 modifier = Modifier.weight(1f)
             )
             Spacer(Modifier.width(AppSpace.sm))
-            Icon(
-                imageVector = AppIcons.CaretRight,
-                contentDescription = null,
-                tint = AppColors.TextSecondary,
-                modifier = Modifier.size(20.dp)
-            )
+            DisclosureChevron()
         }
     }
 }
@@ -789,7 +785,7 @@ private fun FeedbackLinksCard(
                     Text(title, fontSize = AppType.Body, color = AppColors.TextPrimary)
                 }
                 Spacer(Modifier.width(AppSpace.sm))
-                Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+                DisclosureChevron()
             }
             if (index != links.lastIndex) {
                 Box(Modifier.fillMaxWidth().padding(horizontal = AppSpace.md).height(1.dp).background(AppColors.Divider))

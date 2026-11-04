@@ -687,7 +687,7 @@ private fun BookshelfSearchResultCard(
                 Text(
                     text = book.author,
                     color = AppColors.TextSecondary,
-                    fontSize = 13.sp,
+                    fontSize = AppType.Footnote,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

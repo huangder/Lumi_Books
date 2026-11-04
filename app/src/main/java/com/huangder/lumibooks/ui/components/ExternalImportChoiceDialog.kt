@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.AppType
 
 /** One authorized folder offered as a destination for an externally opened book. */
 data class ExternalImportFolder(
@@ -65,7 +66,7 @@ fun ExternalImportChoiceDialog(
                     stringResource(R.string.external_import_message)
                 },
                 color = AppColors.TextSecondary,
-                fontSize = 13.sp,
+                fontSize = AppType.Footnote,
                 lineHeight = 19.sp
             )
             Spacer(Modifier.height(4.dp))
@@ -74,7 +75,7 @@ fun ExternalImportChoiceDialog(
                     Text(
                         text = stringResource(R.string.external_import_choose_folder),
                         color = AppColors.TextPrimary,
-                        fontSize = 13.sp,
+                        fontSize = AppType.Footnote,
                         fontWeight = FontWeight.SemiBold
                     )
                 }
@@ -148,7 +149,7 @@ private fun ExternalImportOption(
             Text(
                 text = title,
                 color = if (primary) AppColors.OnAccent else AppColors.TextPrimary,
-                fontSize = 15.sp,
+                fontSize = AppType.Subhead,
                 fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
                 maxLines = 2,
@@ -162,7 +163,7 @@ private fun ExternalImportOption(
                     } else {
                         AppColors.TextSecondary
                     },
-                    fontSize = 12.sp,
+                    fontSize = AppType.Caption,
                     textAlign = TextAlign.Center,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis

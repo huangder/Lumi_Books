@@ -630,7 +630,7 @@ internal fun HighlightNoteItem(
                 Spacer(Modifier.width(12.dp))
                 Text(
                     text = if (expanded) note.selectedText else note.selectedText.replace('\n', ' '),
-                    fontSize = 14.sp,
+                    fontSize = AppType.BodySmall,
                     color = AppColors.TextPrimary,
                     maxLines = if (expanded) Int.MAX_VALUE else 2,
                     overflow = TextOverflow.Ellipsis,
@@ -640,7 +640,7 @@ internal fun HighlightNoteItem(
             }
 
             if (note.isStale) {
-                Text(stringResource(R.string.markdown_original_changed), fontSize = 12.sp, color = AppColors.Accent)
+                Text(stringResource(R.string.markdown_original_changed), fontSize = AppType.Caption, color = AppColors.Accent)
             }
             // 笔记内容（如果有）
             if (note.note.isNotBlank()) {
@@ -666,12 +666,12 @@ internal fun HighlightNoteItem(
             ) {
                 Text(
                     text = stringResource(R.string.chapter_number, note.chapterIndex + 1),
-                    fontSize = 12.sp,
+                    fontSize = AppType.Caption,
                     color = AppColors.Accent
                 )
                 Text(
                     text = dateText,
-                    fontSize = 12.sp,
+                    fontSize = AppType.Caption,
                     color = AppColors.Accent
                 )
             }

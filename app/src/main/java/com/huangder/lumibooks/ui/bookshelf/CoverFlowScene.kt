@@ -59,6 +59,7 @@ import com.huangder.lumibooks.ui.animation.bookCoverMemoryCacheKey
 import com.huangder.lumibooks.ui.animation.bookCoverTransitionAnchor
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
+import com.huangder.lumibooks.ui.theme.AppType
 import kotlinx.coroutines.CoroutineScope
 import kotlin.math.abs
 import kotlin.math.floor
@@ -282,7 +283,7 @@ internal fun CoverFlowCover(book: Book, modifier: Modifier = Modifier) {
         ambientColor = Color.Black.copy(alpha = 0.12f), spotColor = Color.Black.copy(alpha = 0.20f))
         .clip(shape).background(AppColors.BgGray), contentAlignment = Alignment.Center) {
         // The fallback remains beneath the image, including when an old cover file is unavailable.
-        Text(book.title.take(40), fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+        Text(book.title.take(40), fontSize = AppType.BodySmall, fontWeight = FontWeight.SemiBold,
             color = AppColors.TextSecondary, textAlign = TextAlign.Center, maxLines = 4,
             overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(12.dp))
         if (book.coverPath != null) AsyncImage(request, contentDescription = null,

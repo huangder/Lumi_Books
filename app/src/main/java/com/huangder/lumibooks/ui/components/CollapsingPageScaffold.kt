@@ -79,7 +79,7 @@ internal fun CollapsingPageLargeTitle(title: String, progress: () -> Float, modi
         alpha = largeTitleAlpha(fraction)
         transformOrigin = TransformOrigin(0f, 0.5f)
     }, fontSize = AppType.Display, lineHeight = AppType.Display * 1.2f, fontWeight = FontWeight.Bold,
-        fontFamily = resolveAppFontFamily(fangSongFamily()), color = AppColors.TextPrimary,
+        fontFamily = resolveAppFontFamily(KaiTi), color = AppColors.TextPrimary,
         maxLines = maxLines, overflow = TextOverflow.Ellipsis)
 }
 
@@ -91,7 +91,7 @@ internal fun CollapsingPageSmallTitle(title: String, progress: () -> Float, modi
         scaleY = scaleX
         alpha = smallTitleAlpha(fraction)
     }, fontSize = AppType.Section, fontWeight = FontWeight.Bold,
-        fontFamily = resolveAppFontFamily(fangSongFamily()), color = AppColors.TextPrimary,
+        fontFamily = resolveAppFontFamily(KaiTi), color = AppColors.TextPrimary,
         maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 

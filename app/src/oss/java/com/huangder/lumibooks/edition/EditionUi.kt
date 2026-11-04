@@ -8,6 +8,9 @@ import com.huangder.lumibooks.ui.statistics.report.ReadingReportPeriod
 internal fun EditionMembershipEntry() = Unit
 
 @Composable
+internal fun EditionHomeMembershipPrompt() = Unit
+
+@Composable
 internal fun EditionTagManagementSettingsEntry() = Unit
 
 @Composable

@@ -58,6 +58,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import com.huangder.lumibooks.ui.components.DisclosureChevron
+import com.huangder.lumibooks.ui.components.GroupedCard
+import com.huangder.lumibooks.ui.theme.cardOutline
+import com.huangder.lumibooks.ui.components.GroupedRowDivider
+import com.huangder.lumibooks.ui.components.SettingsIconTile
+import com.huangder.lumibooks.ui.components.SettingsIconTileGap
+import com.huangder.lumibooks.ui.components.SettingsIconTileSize
+import com.huangder.lumibooks.ui.components.SettingsTileColors
 
 // ─── 设置主页（分类列表）────────────────────────────────────────
 
@@ -133,18 +141,18 @@ fun SettingsScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = AppSpace.md)
-                        .padding(bottom = AppSpace.sm)
-                        .shadow(8.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+                        .padding(horizontal = AppSpace.page)
+                        .padding(bottom = AppSpace.lg)
+                        .shadow(8.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
                         .clip(AppRoundedCornerShape(AppRadius.lg))
                         .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
-                        .padding(AppSpace.md),
+                        .padding(horizontal = AppSpace.md, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                 // 头像——点击打开相册
                 Box(
                     modifier = Modifier
-                        .size(56.dp)
+                        .size(64.dp)
                         .clip(CircleShape)
                         .background(AppColors.BgGray)
                         .border(1.dp, AppColors.Divider, CircleShape)
@@ -171,7 +179,7 @@ fun SettingsScreen(
                             AppIcons.UserCircle,
                             stringResource(R.string.default_avatar),
                             tint = AppColors.TextSecondary,
-                            modifier = Modifier.size(48.dp)
+                            modifier = Modifier.size(56.dp)
                         )
                     }
                 }
@@ -186,67 +194,67 @@ fun SettingsScreen(
                             onClick = { showNicknameDialog = true }
                         )
                 ) {
-                    Text(uiState.nickname, fontSize = AppType.Body, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary)
-                    Text(stringResource(R.string.tap_to_change_nickname), fontSize = AppType.Caption, color = AppColors.TextSecondary)
+                    Text(uiState.nickname, fontSize = AppType.Section, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary,
+                        maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    Spacer(Modifier.height(2.dp))
+                    Text(stringResource(R.string.tap_to_change_nickname), fontSize = AppType.Footnote, color = AppColors.TextSecondary)
                 }
-                Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+                DisclosureChevron()
             }
 
                 com.huangder.lumibooks.edition.EditionMembershipEntry()
 
-                CategoryItem(AppIcons.FolderOpen, stringResource(R.string.authorized_folders_title)) {
+                CategoryItem(AppIcons.Tile.Folders, stringResource(R.string.authorized_folders_title), tileColor = SettingsTileColors.Blue) {
                     context.startActivity(Intent(context, AuthorizedFoldersActivity::class.java))
                 }
-                Spacer(Modifier.height(AppSpace.sm))
+                Spacer(Modifier.height(AppSpace.lg))
 
                 com.huangder.lumibooks.edition.EditionTagManagementSettingsEntry()
 
                 // 分类列表：按设置域分组，组内使用细分隔线保持扫描节奏。
                 SettingsCategoryGroup {
-                    CategoryItem(AppIcons.TextAa, stringResource(R.string.title_reading_settings), grouped = true) {
+                    CategoryItem(AppIcons.Tile.Reading, stringResource(R.string.title_reading_settings), grouped = true, tileColor = SettingsTileColors.Orange) {
                         context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "reading"))
                     }
-                    SettingsGroupDivider()
-                    CategoryItem(AppIcons.SunDim, stringResource(R.string.category_display), grouped = true) {
+                    SettingsTileDivider()
+                    CategoryItem(AppIcons.Tile.Display, stringResource(R.string.category_display), grouped = true, tileColor = SettingsTileColors.Blue) {
                         context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "display"))
                     }
-                    SettingsGroupDivider()
-                    CategoryItem(AppIcons.Translate, stringResource(R.string.category_language), grouped = true) {
+                    SettingsTileDivider()
+                    CategoryItem(AppIcons.Tile.Language, stringResource(R.string.category_language), grouped = true, tileColor = SettingsTileColors.Gray) {
                         context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "language"))
                     }
-                    SettingsGroupDivider()
-                    CategoryItem(AppIcons.Shield, stringResource(R.string.category_privacy), grouped = true) {
+                    SettingsTileDivider()
+                    CategoryItem(AppIcons.Tile.Privacy, stringResource(R.string.category_privacy), grouped = true, tileColor = SettingsTileColors.Indigo) {
                         context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "privacy"))
                     }
-                    SettingsGroupDivider()
-                    CategoryItem(AppIcons.Trash, stringResource(R.string.category_storage), grouped = true) {
+                    SettingsTileDivider()
+                    CategoryItem(AppIcons.Tile.Storage, stringResource(R.string.category_storage), grouped = true, tileColor = SettingsTileColors.Green) {
                         context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "storage"))
                     }
-                    SettingsGroupDivider()
-                    CategoryItem(AppIcons.Archive, stringResource(R.string.category_backup), grouped = true) {
+                    SettingsTileDivider()
+                    CategoryItem(AppIcons.Tile.Backup, stringResource(R.string.category_backup), grouped = true, tileColor = SettingsTileColors.Teal) {
                         context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "backup"))
                     }
                 }
-                Spacer(Modifier.height(AppSpace.sm))
+                Spacer(Modifier.height(AppSpace.lg))
                 SettingsCategoryGroup {
-                    CategoryItem(AppIcons.Cloud, stringResource(R.string.category_third_party_services), grouped = true) {
+                    CategoryItem(AppIcons.Tile.Services, stringResource(R.string.category_third_party_services), grouped = true, tileColor = SettingsTileColors.Cyan) {
                         context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "third_party_services"))
                     }
-                    SettingsGroupDivider()
-                    CategoryItem(AppIcons.Info, stringResource(R.string.category_about), grouped = true) {
+                    SettingsTileDivider()
+                    CategoryItem(AppIcons.Tile.About, stringResource(R.string.category_about), grouped = true, tileColor = SettingsTileColors.Gray) {
                         context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "about"))
                     }
-                    SettingsGroupDivider()
-                    CategoryItem(AppIcons.Heart.regular, stringResource(R.string.category_sponsor), grouped = true) {
+                    SettingsTileDivider()
+                    CategoryItem(AppIcons.Tile.Sponsor, stringResource(R.string.category_sponsor), grouped = true, tileColor = SettingsTileColors.Pink) {
                         context.startActivity(Intent(context, SponsorActivity::class.java))
                     }
-                    SettingsGroupDivider()
-                    CategoryItem(AppIcons.Bug, stringResource(R.string.category_feedback), grouped = true) {
+                    SettingsTileDivider()
+                    CategoryItem(AppIcons.Tile.Feedback, stringResource(R.string.category_feedback), grouped = true, tileColor = SettingsTileColors.Red) {
                         context.startActivity(Intent(context, FeedbackActivity::class.java))
                     }
                 }
-
-                Spacer(Modifier.height(120.dp))
         }
     }
 
@@ -366,20 +374,28 @@ internal fun CategoryItem(
     label: String,
     supportingText: String? = null,
     grouped: Boolean = false,
+    tileColor: Color? = null,
+    value: String? = null,
     onClick: () -> Unit
 ) {
-    val shape = AppRoundedCornerShape(AppRadius.md)
+    val shape = AppRoundedCornerShape(AppRadius.lg)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (grouped) Modifier else Modifier.padding(horizontal = AppSpace.md, vertical = 1.dp))
-            .then(if (grouped) Modifier else Modifier.shadow(6.dp, shape, ambientColor = Color(0x04000000), spotColor = Color(0x04000000)))
-            .then(if (grouped) Modifier else Modifier.clip(shape).lumiCardSurface(shape = shape))
+            .then(if (grouped) Modifier else Modifier.padding(horizontal = AppSpace.page, vertical = 1.dp))
+            .then(if (grouped) Modifier else Modifier.shadow(8.dp, shape, ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow))
+            .then(if (grouped) Modifier else Modifier.cardOutline(shape).clip(shape).lumiCardSurface(shape = shape))
             .clickable(onClick = onClick)
-            .padding(horizontal = AppSpace.md, vertical = AppSpace.md + 2.dp),
+            .padding(
+                horizontal = AppSpace.md,
+                vertical = if (icon != null && tileColor != null) 11.dp else AppSpace.md
+            ),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (icon != null) {
+        if (icon != null && tileColor != null) {
+            SettingsIconTile(icon, tileColor)
+            Spacer(Modifier.width(SettingsIconTileGap))
+        } else if (icon != null) {
             Icon(icon, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(AppSpace.md))
         }
@@ -390,30 +406,26 @@ internal fun CategoryItem(
                 Text(supportingText, fontSize = AppType.Caption, color = AppColors.TextSecondary)
             }
         }
-        Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+        if (value != null) {
+            Text(value, fontSize = AppType.Body, color = AppColors.TextSecondary, maxLines = 1,
+                modifier = Modifier.padding(start = AppSpace.sm, end = AppSpace.xs))
+        }
+        DisclosureChevron()
     }
 }
 
 @Composable
 private fun SettingsCategoryGroup(content: @Composable () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = AppSpace.md)
-            .clip(AppRoundedCornerShape(AppRadius.lg))
-            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
-    ) {
-        content()
-    }
+    GroupedCard { content() }
 }
 
 @Composable
 private fun SettingsGroupDivider() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 54.dp)
-            .height(0.5.dp)
-            .background(AppColors.Divider)
-    )
+    GroupedRowDivider(startInset = 54.dp)
+}
+
+/** Divider of tiled rows, aligned with the label after the tile. */
+@Composable
+private fun SettingsTileDivider() {
+    GroupedRowDivider(startInset = AppSpace.md + SettingsIconTileSize + SettingsIconTileGap)
 }

@@ -201,6 +201,9 @@ import java.util.LinkedHashMap
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.Backdrop
+import com.huangder.lumibooks.ui.components.AppSheetHeader
+import com.huangder.lumibooks.ui.theme.AppPresentation
+import com.huangder.lumibooks.ui.components.LiquidGlassSwitch
 
 internal enum class PdfMultiTouchMode {
     UNDECIDED,
@@ -1337,7 +1340,7 @@ fun RasterReaderScreen(
                             } else {
                                 stringResource(R.string.pdf_page_load_failed, currentPage + 1)
                             },
-                            fontSize = 14.sp,
+                            fontSize = AppType.BodySmall,
                             color = AppColors.TextSecondary
                         )
                     }
@@ -2665,7 +2668,7 @@ private fun PdfTopBar(
                 ) {
                     Text(
                         text = pageLabel,
-                        fontSize = 12.sp,
+                        fontSize = AppType.Caption,
                         color = if (isLiquidGlass) AppColors.TextPrimary else Color.White,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(horizontal = 12.dp)
@@ -2715,7 +2718,7 @@ private fun PdfTopBar(
                             Spacer(Modifier.width(4.dp))
                             Text(
                                 text = renderModeLabel,
-                                fontSize = 12.sp,
+                                fontSize = AppType.Caption,
                                 fontWeight = FontWeight.Medium,
                                 color = if (isLiquidGlass) AppColors.TextPrimary else AppColors.TextSecondary
                             )
@@ -2978,7 +2981,7 @@ private fun PdfConversionCapsule(
                 } else {
                     stringResource(R.string.pdf_convert_running, running.progress)
                 },
-                fontSize = 14.sp,
+                fontSize = AppType.BodySmall,
                 fontWeight = FontWeight.SemiBold,
                 color = AppColors.TextPrimary
             )
@@ -2986,7 +2989,7 @@ private fun PdfConversionCapsule(
                 Spacer(Modifier.weight(1f))
                 Text(
                     text = "${running.currentPage} / ${running.totalPages}",
-                    fontSize = 12.sp,
+                    fontSize = AppType.Caption,
                     color = AppColors.TextSecondary
                 )
             }
@@ -3063,7 +3066,7 @@ private fun PdfConversionBottomSheet(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 24.dp),
             fallbackColor = AppColors.CardBg,
-            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            shape = AppRoundedCornerShape(topStart = AppPresentation.SheetCorner, topEnd = AppPresentation.SheetCorner),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Box(
@@ -3322,14 +3325,14 @@ private fun PdfConversionMethodButton(
         Column(Modifier.weight(1f)) {
             Text(
                 text = title,
-                fontSize = 15.sp,
+                fontSize = AppType.Subhead,
                 fontWeight = FontWeight.SemiBold,
                 color = AppColors.TextPrimary
             )
             Spacer(Modifier.height(4.dp))
             Text(
                 text = description,
-                fontSize = 12.sp,
+                fontSize = AppType.Caption,
                 lineHeight = 18.sp,
                 color = AppColors.TextSecondary
             )
@@ -3341,14 +3344,14 @@ private fun PdfConversionMethodButton(
 private fun PdfSheetText(title: String, message: String) {
     Text(
         text = title,
-        fontSize = 20.sp,
+        fontSize = AppType.Section,
         fontWeight = FontWeight.Bold,
         fontFamily = resolveAppFontFamily(KaiTi),
         color = AppColors.TextPrimary
     )
     Text(
         text = message,
-        fontSize = 14.sp,
+        fontSize = AppType.BodySmall,
         lineHeight = 22.sp,
         color = AppColors.TextSecondary
     )
@@ -3368,7 +3371,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.PdfConversionProgress
                 R.string.pdf_convert_progress_title
             }
         ),
-        fontSize = 20.sp,
+        fontSize = AppType.Section,
         fontWeight = FontWeight.Bold,
         fontFamily = resolveAppFontFamily(KaiTi),
         color = AppColors.TextPrimary
@@ -3395,7 +3398,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.PdfConversionProgress
             )
             Text(
                 text = "$progress%",
-                fontSize = 14.sp,
+                fontSize = AppType.BodySmall,
                 fontWeight = FontWeight.Bold,
                 color = AppColors.TextPrimary
             )
@@ -3412,7 +3415,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.PdfConversionProgress
             stringResource(R.string.pdf_convert_preparing)
         },
         modifier = Modifier.align(Alignment.CenterHorizontally),
-        fontSize = 13.sp,
+        fontSize = AppType.Footnote,
         color = AppColors.TextSecondary
     )
     Spacer(Modifier.height(4.dp))
@@ -3426,7 +3429,7 @@ private fun PdfSheetButton(
     onClick: () -> Unit
 ) {
     val background = when {
-        destructive -> Color(0xFFE85D5D)
+        destructive -> AppColors.Destructive
         primary -> AppColors.Accent
         else -> AppColors.BgGray
     }
@@ -3446,7 +3449,7 @@ private fun PdfSheetButton(
     ) {
         Text(
             text = label,
-            fontSize = 14.sp,
+            fontSize = AppType.BodySmall,
             fontWeight = FontWeight.SemiBold,
             color = contentColor
         )
@@ -3577,7 +3580,7 @@ private fun PdfCatalogCapsule(
                             AppRoundedCornerShape(8.dp)
                         )
                         .padding(horizontal = 10.dp, vertical = 4.dp),
-                    fontSize = 14.sp,
+                    fontSize = AppType.BodySmall,
                     fontWeight = FontWeight.SemiBold,
                     color = AppColors.TextPrimary
                 )
@@ -3627,11 +3630,11 @@ private fun PdfCatalogCapsule(
                 val foreground = if (isLiquidGlass || displayProgress <= 5f) AppColors.TextPrimary else Color.White
                 Icon(AppIcons.Bookmark.filled, null, tint = foreground, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.pdf_toc), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = foreground)
+                Text(stringResource(R.string.pdf_toc), fontSize = AppType.BodySmall, fontWeight = FontWeight.SemiBold, color = foreground)
                 Spacer(Modifier.weight(1f))
                 Text(
                     formatReadingProgressPercent(displayProgress),
-                    fontSize = 13.sp,
+                    fontSize = AppType.Footnote,
                     fontWeight = FontWeight.Bold,
                     color = if (!isLiquidGlass && displayProgress > 70f) Color.White.copy(alpha = 0.9f)
                     else AppColors.TextSecondary
@@ -4627,28 +4630,10 @@ private fun PdfTocSheet(
                 .navigationBarsPadding()
                 .padding(start = 24.dp, top = 24.dp, end = 24.dp),
             fallbackColor = AppColors.CardBg,
-            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+            shape = AppRoundedCornerShape(topStart = AppPresentation.SheetCorner, topEnd = AppPresentation.SheetCorner)
         ) {
             // 标题栏
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(R.string.pdf_toc),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = resolveAppFontFamily(KaiTi),
-                    color = AppColors.TextPrimary
-                )
-                Spacer(Modifier.weight(1f))
-                LiquidGlassIconButton(
-                    imageVector = AppIcons.X,
-                    contentDescription = stringResource(R.string.pdf_close),
-                    onClick = { isClosing = true },
-                    size = 44.dp,
-                    iconSize = 20.dp,
-                    contentColor = AppColors.TextPrimary,
-                    normalContainerColor = AppColors.BgGray
-                )
-            }
+            AppSheetHeader(title = stringResource(R.string.pdf_toc), onClose = { isClosing = true })
 
             Spacer(Modifier.height(16.dp))
 
@@ -4721,7 +4706,7 @@ private sealed interface PdfTocGridEntry {
 private fun ChapterHeaderLabel(label: String) {
     Text(
         text = label,
-        fontSize = 13.sp,
+        fontSize = AppType.Footnote,
         fontWeight = FontWeight.SemiBold,
         color = AppColors.TextSecondary,
         modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
@@ -4777,21 +4762,9 @@ private fun PdfBookmarksSheet(
             contentModifier = Modifier.fillMaxSize().navigationBarsPadding()
                 .padding(horizontal = 24.dp, vertical = 24.dp),
             fallbackColor = AppColors.CardBg,
-            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+            shape = AppRoundedCornerShape(topStart = AppPresentation.SheetCorner, topEnd = AppPresentation.SheetCorner)
         ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.reader_bookmark), fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(KaiTi),
-                    color = AppColors.TextPrimary)
-                Spacer(Modifier.weight(1f))
-                LiquidGlassIconButton(
-                    imageVector = AppIcons.X,
-                    contentDescription = stringResource(R.string.pdf_close),
-                    onClick = { closing = true }, size = 44.dp, iconSize = 20.dp,
-                    contentColor = AppColors.TextPrimary,
-                    normalContainerColor = AppColors.BgGray
-                )
-            }
+            AppSheetHeader(title = stringResource(R.string.reader_bookmark), onClose = { closing = true })
             Spacer(Modifier.height(14.dp))
             Row(
                 Modifier.fillMaxWidth().heightIn(min = 52.dp)
@@ -4801,9 +4774,9 @@ private fun PdfBookmarksSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(stringResource(R.string.bookmark_remark_prompt_setting),
-                    modifier = Modifier.weight(1f), fontSize = 14.sp,
+                    modifier = Modifier.weight(1f), fontSize = AppType.BodySmall,
                     color = AppColors.TextPrimary)
-                Switch(checked = bookmarkRemarkPromptEnabled,
+                LiquidGlassSwitch(checked = bookmarkRemarkPromptEnabled,
                     onCheckedChange = onBookmarkRemarkPromptEnabledChange)
             }
             Spacer(Modifier.height(10.dp))
@@ -4850,7 +4823,7 @@ private fun PdfBookmarkEntries(
                     Text(
                         stringResource(R.string.no_bookmarks),
                         color = AppColors.TextSecondary,
-                        fontSize = 14.sp
+                        fontSize = AppType.BodySmall
                     )
                 }
             } else {
@@ -4884,7 +4857,7 @@ private fun PdfBookmarkEntries(
                                 Column(Modifier.weight(1f)) {
                                     Text(
                                         bookmark.title.ifBlank { stringResource(R.string.reader_bookmark) },
-                                        fontSize = 14.sp,
+                                        fontSize = AppType.BodySmall,
                                         color = AppColors.TextPrimary,
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis
@@ -4892,11 +4865,11 @@ private fun PdfBookmarkEntries(
                                     Spacer(Modifier.height(2.dp))
                                     Text(
                                         stringResource(R.string.pdf_page_desc, bookmark.chapterIndex + 1),
-                                        fontSize = 12.sp,
+                                        fontSize = AppType.Caption,
                                         color = AppColors.TextSecondary
                                     )
                                     if (bookmark.remark.isNotBlank()) {
-                                        Text(bookmark.remark, fontSize = 12.sp,
+                                        Text(bookmark.remark, fontSize = AppType.Caption,
                                             color = AppColors.TextSecondary)
                                     }
                                     com.huangder.lumibooks.ui.components.AnnotationTagChips(
@@ -4965,7 +4938,7 @@ private fun PdfThumbnailItem(
         ) {
             Text(
                 "${pageIndex + 1}",
-                fontSize = 11.sp,
+                fontSize = AppType.Caption2,
                 color = AppColors.TextSecondary,
                 maxLines = 1
             )

@@ -47,6 +47,7 @@ import com.huangder.lumibooks.ui.icons.AppIcons
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppType
+import com.huangder.lumibooks.ui.theme.AppSpace
 
 @Composable
 fun TranslationSettingsDetail(viewModel: TranslationSettingsViewModel = hiltViewModel()) {
@@ -82,7 +83,7 @@ internal fun TranslationSettingsContent(
     }
     LaunchedEffect(action.saved) { if (action.saved) token = "" }
 
-    Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
+    Column(Modifier.fillMaxWidth().padding(horizontal = AppSpace.page, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(stringResource(R.string.translation_description), color = AppColors.TextSecondary, fontSize = AppType.Body)
         TranslationSectionCard {
@@ -148,8 +149,8 @@ private fun TranslationSectionCard(content: @Composable ColumnScope.() -> Unit) 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(AppRoundedCornerShape(AppRadius.md))
-            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
+            .clip(AppRoundedCornerShape(AppRadius.lg))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
         content = content

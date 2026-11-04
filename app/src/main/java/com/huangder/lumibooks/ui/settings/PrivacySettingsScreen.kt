@@ -43,6 +43,8 @@ import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import com.huangder.lumibooks.ui.theme.cardOutline
+import com.huangder.lumibooks.ui.components.GroupedCard
+import com.huangder.lumibooks.ui.components.GroupedRowDivider
 
 /** Settings → 隐私. Every entry that changes access first asks for the current passcode. */
 @Composable
@@ -143,7 +145,7 @@ private fun PrivacySettingsContent(
             PrivacyCard {
                 SettingsNavigationRow(label = stringResource(R.string.privacy_change_passcode), onClick = onChangePasscode)
                 if (biometricAvailable) {
-                    Box(Modifier.fillMaxWidth().padding(horizontal = AppSpace.md).height(0.5.dp).background(AppColors.Divider))
+                    GroupedRowDivider()
                     SettingsSwitchRow(
                         label = stringResource(R.string.privacy_biometric_unlock),
                         supportingText = stringResource(R.string.privacy_biometric_unlock_summary),
@@ -164,14 +166,5 @@ private fun PrivacySettingsContent(
 
 @Composable
 private fun PrivacyCard(content: @Composable () -> Unit) {
-    val shape = AppRoundedCornerShape(AppRadius.lg)
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = AppSpace.md)
-            .shadow(8.dp, shape, ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
-            .cardOutline(shape)
-            .clip(shape)
-            .lumiCardSurface(shape = shape)
-    ) { content() }
+    GroupedCard { content() }
 }

@@ -16,7 +16,6 @@ import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -29,14 +28,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.Book
-import com.huangder.lumibooks.ui.components.LiquidGlassDialog
-import com.huangder.lumibooks.ui.components.usesCardSheets
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import androidx.compose.ui.res.stringResource
+import com.huangder.lumibooks.ui.components.AppBottomSheet
 
 /**
  * 「自定义封面」来源选择容器：选择图片 / 网络搜索
@@ -85,30 +83,7 @@ fun CustomCoverSourceSheet(
         }
     }
 
-    val cardSheets = usesCardSheets()
-    if (isLiquidGlass || cardSheets) {
-        LiquidGlassDialog(
-            onDismissRequest = onDismiss,
-            alignment = Alignment.BottomCenter,
-            shape = AppRoundedCornerShape(28.dp),
-            contentScrimColor = AppColors.CardBg.copy(alpha = 0.24f),
-            backgroundScrimColor = Color.Black.copy(alpha = 0.12f)
-        ) {
-            sheetContent()
-        }
-    } else {
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ModalBottomSheet(
-            onDismissRequest = onDismiss,
-            sheetState = sheetState,
-            containerColor = AppColors.CardBg,
-            contentColor = AppColors.TextPrimary,
-            scrimColor = Color.Black.copy(alpha = 0.12f),
-            shape = AppRoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
-        ) {
-            sheetContent()
-        }
-    }
+    AppBottomSheet(onDismissRequest = onDismiss) { sheetContent() }
 }
 
 @Composable

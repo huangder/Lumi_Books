@@ -175,6 +175,11 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
+import com.huangder.lumibooks.ui.components.AppDropdownMenu
+import com.huangder.lumibooks.ui.components.GroupedCard
+import com.huangder.lumibooks.ui.components.GroupedRowDivider
+import com.huangder.lumibooks.ui.components.GroupedSectionTitle
+import com.huangder.lumibooks.ui.components.DisclosureChevron
 
 // ─── 详情页通用框架 ──────────────────────────────────────────
 
@@ -609,7 +614,7 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
                     Text(stringResource(R.string.floating_subtitle_permission_missing), fontSize = AppType.Body, color = AppColors.TextPrimary)
                     Text(stringResource(R.string.floating_subtitle_permission_missing_desc), fontSize = AppType.Caption, color = AppColors.TextSecondary)
                 }
-                Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+                DisclosureChevron()
             }
         }
     }
@@ -669,7 +674,7 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
                     .border(1.dp, AppColors.Divider, AppRoundedCornerShape(6.dp))
             )
             Spacer(Modifier.width(AppSpace.sm))
-            Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+            DisclosureChevron()
         }
         SettingsDivider()
         SettingsSliderItem(
@@ -881,7 +886,7 @@ private fun TxtTocRulesManagerRow(viewModel: SettingsViewModel) {
                         Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text(rule.name, color = AppColors.TextPrimary)
-                                Text(rule.chapterRegex, color = AppColors.TextSecondary, fontSize = 11.sp, maxLines = 2)
+                                Text(rule.chapterRegex, color = AppColors.TextSecondary, fontSize = AppType.Caption2, maxLines = 2)
                             }
                             IconButton(onClick = {
                                 viewModel.saveTxtTocCustomRules(rules.filterNot { it.id == rule.id })
@@ -897,7 +902,7 @@ private fun TxtTocRulesManagerRow(viewModel: SettingsViewModel) {
                     Text(
                         stringResource(R.string.txt_toc_compat_description),
                         color = AppColors.TextSecondary,
-                        fontSize = 11.sp
+                        fontSize = AppType.Caption2
                     )
                     if (thirdPartyRules.isEmpty()) {
                         Text(
@@ -916,7 +921,7 @@ private fun TxtTocRulesManagerRow(viewModel: SettingsViewModel) {
                                         ""
                                     },
                                     color = AppColors.TextSecondary,
-                                    fontSize = 11.sp,
+                                    fontSize = AppType.Caption2,
                                     maxLines = 2
                                 )
                             }
@@ -1078,13 +1083,7 @@ private fun FloatingSubtitleValueInputDialog(
 
 @Composable
 private fun FloatingSubtitleSectionTitle(text: String) {
-    Text(
-        text = text,
-        modifier = Modifier.padding(start = AppSpace.lg, end = AppSpace.lg, top = 22.dp, bottom = 8.dp),
-        fontSize = AppType.BodySmall,
-        fontWeight = FontWeight.Medium,
-        color = AppColors.TextSecondary
-    )
+    GroupedSectionTitle(text)
 }
 
 // ─── 显示与外观 ──────────────────────────────────────────────
@@ -1352,12 +1351,7 @@ private fun ThemeColorSettingRow(
         Spacer(Modifier.width(AppSpace.sm))
         Text(normalized, fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
         Spacer(Modifier.width(AppSpace.xs))
-        Icon(
-            AppIcons.CaretRight,
-            contentDescription = null,
-            tint = AppColors.TextSecondary,
-            modifier = Modifier.size(20.dp)
-        )
+        DisclosureChevron()
     }
 }
 
@@ -1775,7 +1769,7 @@ fun StorageBooksDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val info = uiState.storageInfo
 
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpace.md)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpace.page)) {
         if (info.isCalculating && info.bookDetails.isEmpty()) {
             Text(
                 text = stringResource(R.string.calculating),
@@ -1821,28 +1815,13 @@ fun StorageBooksDetail(viewModel: SettingsViewModel) {
 /** HyperOS 分组小标题（miuix SmallTitle 复刻：28dp 缩进 + 次要色） */
 @Composable
 private fun StorageGroupTitle(text: String) {
-    Text(
-        text,
-        modifier = Modifier.padding(start = 28.dp, top = 12.dp, bottom = 6.dp),
-        fontSize = AppType.BodySmall,
-        fontWeight = FontWeight.Medium,
-        color = AppColors.TextSecondary
-    )
+    GroupedSectionTitle(text)
 }
 
 /** HyperOS 分组卡片（miuix Card 复刻：16dp 圆角） */
 @Composable
 private fun StorageCard(content: @Composable () -> Unit) {
-    val shape = AppRoundedCornerShape(16.dp)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = AppSpace.md)
-            .shadow(8.dp, shape, ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
-            .cardOutline(shape)
-            .clip(shape)
-            .lumiCardSurface(shape = shape)
-    ) { content() }
+    GroupedCard { content() }
 }
 
 @Composable
@@ -2482,7 +2461,7 @@ fun BackupRestoreDetail(viewModel: SettingsViewModel) {
                     androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = AppColors.Accent)
                     Spacer(Modifier.width(AppSpace.md))
                 }
-                Text(uiState.backupStatus, fontSize = AppType.BodySmall, color = if (uiState.backupFailed) Color.Red else AppColors.TextSecondary)
+                Text(uiState.backupStatus, fontSize = AppType.BodySmall, color = if (uiState.backupFailed) AppColors.Destructive else AppColors.TextSecondary)
             }
         }
     }
@@ -2582,7 +2561,7 @@ fun AboutDetail(viewModel: SettingsViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val update = uiState.updateCheck
-    val sectionHorizontalPadding = AppSpace.md
+    val sectionHorizontalPadding = AppSpace.page
 
     fun openDoc(title: String, file: String) {
         context.startActivity(
@@ -2729,7 +2708,7 @@ fun ChangelogDetail() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = AppSpace.md, vertical = AppSpace.sm)
+            .padding(horizontal = AppSpace.page, vertical = AppSpace.sm)
     ) {
         entries.forEachIndexed { index, entry ->
             val isLatest = index == 0
@@ -2832,7 +2811,7 @@ fun HighlightColorDetail(viewModel: SettingsViewModel) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = AppSpace.md)
+                .padding(horizontal = AppSpace.page)
                 .animateContentSize(animationSpec = tween(360))
                 .lumiCardSurface(shape = g2CardShape)
         ) {
@@ -3182,24 +3161,15 @@ private fun parseChangelog(text: String): List<ChangelogEntry> {
 
 @Composable
 private fun DetailCard(
-    horizontalPadding: Dp = AppSpace.md,
+    horizontalPadding: Dp = AppSpace.page,
     content: @Composable () -> Unit
 ) {
-    val shape = AppRoundedCornerShape(AppRadius.lg)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = horizontalPadding)
-            .shadow(8.dp, shape, ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
-            .cardOutline(shape)
-            .clip(shape)
-            .lumiCardSurface(shape = shape)
-    ) { content() }
+    GroupedCard(horizontalPadding = horizontalPadding) { content() }
 }
 
 @Composable
 private fun SettingsDivider() {
-    Box(Modifier.fillMaxWidth().padding(horizontal = AppSpace.md).height(0.5.dp).background(AppColors.Divider))
+    GroupedRowDivider()
 }
 
 @Composable
@@ -3256,7 +3226,7 @@ internal fun SettingsNavigationRow(
                 Text(it, fontSize = AppType.Caption, color = AppColors.TextSecondary)
             }
         }
-        Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+        DisclosureChevron()
     }
 }
 
@@ -3501,15 +3471,10 @@ private fun SettingsDropdownControl(
             )
         }
 
-        DropdownMenu(
+        AppDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier.width(selectorWidth),
-            shape = AppRoundedCornerShape(16.dp),
-            containerColor = AppColors.WindowBg,
-            border = BorderStroke(1.dp, AppColors.Divider),
-            shadowElevation = 0.dp,
-            tonalElevation = 0.dp
+            modifier = Modifier.width(selectorWidth)
         ) {
             options.forEach { (key, display) ->
                 DropdownMenuItem(
@@ -3543,11 +3508,11 @@ internal fun ActionRow(icon: ImageVector? = null, label: String, labelColor: Col
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (icon != null) {
-            Icon(icon, null, tint = if (labelColor == Color.Red) Color.Red else AppColors.TextSecondary, modifier = Modifier.size(22.dp))
+            Icon(icon, null, tint = if (labelColor == AppColors.Destructive) labelColor else AppColors.TextSecondary, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(AppSpace.md))
         }
         Text(label, fontSize = AppType.Body, color = labelColor, modifier = Modifier.weight(1f))
-        Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+        DisclosureChevron()
     }
 }
 

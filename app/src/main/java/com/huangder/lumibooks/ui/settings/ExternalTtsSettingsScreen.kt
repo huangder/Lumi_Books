@@ -43,13 +43,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -85,12 +83,13 @@ import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
-import com.huangder.lumibooks.ui.components.LiquidGlassDialog
-import com.huangder.lumibooks.ui.components.usesCardSheets
 import com.huangder.lumibooks.ui.components.LiquidGlassButton
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
 import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
+import com.huangder.lumibooks.ui.components.AppBottomSheet
+import com.huangder.lumibooks.ui.components.AppDropdownMenu
+import com.huangder.lumibooks.ui.components.DisclosureChevron
 private val OPENAI_VOICE_PRESETS = listOf(
     "alloy",
     "ash",
@@ -131,7 +130,7 @@ fun ExternalTtsSettingsDetail(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = AppSpace.md, vertical = AppSpace.sm),
+            .padding(horizontal = AppSpace.page, vertical = AppSpace.sm),
         verticalArrangement = Arrangement.spacedBy(AppSpace.md)
     ) {
         ExternalTtsSectionCard {
@@ -266,7 +265,7 @@ fun ExternalTtsConfigurationDetail(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = AppSpace.md, vertical = AppSpace.sm),
+            .padding(horizontal = AppSpace.page, vertical = AppSpace.sm),
         verticalArrangement = Arrangement.spacedBy(AppSpace.md)
     ) {
         ExternalTtsSectionCard {
@@ -603,15 +602,10 @@ private fun ExternalTtsVoiceSelection(
                     )
                 }
 
-                DropdownMenu(
+                AppDropdownMenu(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false },
-                    modifier = Modifier.width(selectorMenuWidth),
-                    shape = AppRoundedCornerShape(16.dp),
-                    containerColor = AppColors.WindowBg,
-                    border = BorderStroke(1.dp, AppColors.Divider),
-                    shadowElevation = 0.dp,
-                    tonalElevation = 0.dp
+                    modifier = Modifier.width(selectorMenuWidth)
                 ) {
                     presetVoices.forEach { preset ->
                         DropdownMenuItem(
@@ -684,8 +678,8 @@ private fun ExternalTtsSectionCard(content: @Composable ColumnScope.() -> Unit) 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(AppRoundedCornerShape(AppRadius.md))
-            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
+            .clip(AppRoundedCornerShape(AppRadius.lg))
+            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
             .padding(AppSpace.md),
         verticalArrangement = Arrangement.spacedBy(AppSpace.sm),
         content = content
@@ -750,12 +744,7 @@ private fun ExternalTtsStatusCard(
                 )
             }
         }
-        Icon(
-            AppIcons.CaretRight,
-            contentDescription = null,
-            tint = AppColors.TextSecondary,
-            modifier = Modifier.size(24.dp)
-        )
+        DisclosureChevron()
     }
 }
 
@@ -1044,38 +1033,7 @@ private fun ExternalTtsConsentSheet(
         }
     }
 
-    val cardSheets = usesCardSheets()
-    if (isLiquidGlass || cardSheets) {
-        LiquidGlassDialog(
-            onDismissRequest = onDismiss,
-            alignment = Alignment.BottomCenter,
-            shape = AppRoundedCornerShape(28.dp),
-            contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
-            backgroundScrimColor = Color.Black.copy(alpha = 0.12f)
-        ) {
-            sheetContent()
-        }
-    } else {
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ModalBottomSheet(
-            onDismissRequest = onDismiss,
-            sheetState = sheetState,
-            containerColor = AppColors.CardBg,
-            contentColor = AppColors.TextPrimary,
-            scrimColor = Color.Black.copy(alpha = 0.12f),
-            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            dragHandle = {
-                Box(
-                    Modifier
-                        .padding(top = 12.dp)
-                        .size(width = 36.dp, height = 4.dp)
-                        .background(AppColors.TextSecondary.copy(alpha = 0.25f), AppRoundedCornerShape(2.dp))
-                )
-            }
-        ) {
-            sheetContent()
-        }
-    }
+    AppBottomSheet(onDismissRequest = onDismiss) { sheetContent() }
 }
 
 // ─── HTTP Warning Sheet ────────────────────────────────────
@@ -1160,38 +1118,7 @@ private fun ExternalTtsHttpWarningSheet(
         }
     }
 
-    val cardSheets = usesCardSheets()
-    if (isLiquidGlass || cardSheets) {
-        LiquidGlassDialog(
-            onDismissRequest = onDismiss,
-            alignment = Alignment.BottomCenter,
-            shape = AppRoundedCornerShape(28.dp),
-            contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
-            backgroundScrimColor = Color.Black.copy(alpha = 0.12f)
-        ) {
-            sheetContent()
-        }
-    } else {
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ModalBottomSheet(
-            onDismissRequest = onDismiss,
-            sheetState = sheetState,
-            containerColor = AppColors.CardBg,
-            contentColor = AppColors.TextPrimary,
-            scrimColor = Color.Black.copy(alpha = 0.12f),
-            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            dragHandle = {
-                Box(
-                    Modifier
-                        .padding(top = 12.dp)
-                        .size(width = 36.dp, height = 4.dp)
-                        .background(AppColors.TextSecondary.copy(alpha = 0.25f), AppRoundedCornerShape(2.dp))
-                )
-            }
-        ) {
-            sheetContent()
-        }
-    }
+    AppBottomSheet(onDismissRequest = onDismiss) { sheetContent() }
 }
 
 // ─── Risk Item ─────────────────────────────────────────────

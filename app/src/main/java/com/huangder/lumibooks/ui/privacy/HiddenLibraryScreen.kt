@@ -73,6 +73,7 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import com.huangder.lumibooks.ui.components.EmptyState
 
 /**
  * Hidden books in the shelf's own grid or list. The long-press menu drops shelf organising
@@ -303,35 +304,10 @@ fun HiddenLibraryScreen(
 
 @Composable
 private fun HiddenLibraryEmptyState(modifier: Modifier = Modifier) {
-    val motion = LocalMotionEnabled.current && !LocalEInkMode.current
-    val appear = remember { Animatable(if (motion) 0f else 1f) }
-    LaunchedEffect(Unit) { appear.animateTo(1f, tween(240, easing = AppEasing.Decelerate)) }
-    Column(
-        modifier
-            .padding(horizontal = AppSpace.xl)
-            .graphicsLayer {
-                alpha = appear.value
-                translationY = (1f - appear.value) * 12.dp.toPx()
-            },
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        androidx.compose.material3.Icon(
-            imageVector = com.huangder.lumibooks.ui.icons.AppIcons.Lock,
-            contentDescription = null,
-            tint = AppColors.TextSecondary,
-            modifier = Modifier.size(48.dp)
-        )
-        Spacer(Modifier.height(AppSpace.md))
-        Text(
-            stringResource(R.string.hidden_library_empty_title),
-            color = AppColors.TextPrimary, fontSize = AppType.Body, fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center
-        )
-        Spacer(Modifier.height(AppSpace.xs))
-        Text(
-            stringResource(R.string.hidden_library_empty_body),
-            color = AppColors.TextSecondary, fontSize = AppType.BodySmall, textAlign = TextAlign.Center
-        )
-    }
+    EmptyState(
+        message = stringResource(R.string.hidden_library_empty_body),
+        modifier = modifier,
+        icon = com.huangder.lumibooks.ui.icons.AppIcons.Lock,
+        title = stringResource(R.string.hidden_library_empty_title)
+    )
 }

@@ -9,7 +9,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRadius
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppType
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -71,14 +73,14 @@ internal fun ReaderReturnChip(
             contentAlignment = if (side == ReaderReturnSide.LEFT) Alignment.CenterStart else Alignment.CenterEnd
         ) {
             Row(Modifier.height(24.dp)
-                .background(paper.copy(alpha = if (eInkMode) 1f else 0.88f), RoundedCornerShape(12.dp))
-                .border(0.5.dp, ink.copy(alpha = if (eInkMode) 0.35f else 0.18f), RoundedCornerShape(12.dp))
+                .background(paper.copy(alpha = if (eInkMode) 1f else 0.88f), AppRoundedCornerShape(AppRadius.md))
+                .border(0.5.dp, ink.copy(alpha = if (eInkMode) 0.35f else 0.18f), AppRoundedCornerShape(AppRadius.md))
                 .padding(horizontal = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 if (side == ReaderReturnSide.RIGHT && pageLabel != null) {
-                    Text(pageLabel, color = ink, fontSize = 12.sp, modifier = Modifier.padding(start = 3.dp))
+                    Text(pageLabel, color = ink, fontSize = AppType.Caption, modifier = Modifier.padding(start = 3.dp))
                 }
                 Box(Modifier.size(18.dp).background(ink, CircleShape), contentAlignment = Alignment.Center) {
                     Icon(if (headphones) AppIcons.Headphones else AppIcons.ArrowLeft,
@@ -88,7 +90,7 @@ internal fun ReaderReturnChip(
                         })
                 }
                 if (side == ReaderReturnSide.LEFT && pageLabel != null) {
-                    Text(pageLabel, color = ink, fontSize = 12.sp, modifier = Modifier.padding(end = 3.dp))
+                    Text(pageLabel, color = ink, fontSize = AppType.Caption, modifier = Modifier.padding(end = 3.dp))
                 }
             }
         }

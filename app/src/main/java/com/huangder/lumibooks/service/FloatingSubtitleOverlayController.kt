@@ -19,6 +19,7 @@ import android.widget.TextView
 import androidx.core.view.doOnLayout
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.MainActivity
+import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.widget.decodeWidgetCover
 import com.huangder.lumibooks.data.local.DataStoreManager
@@ -27,6 +28,7 @@ import com.huangder.lumibooks.tts.SUBTITLE_SCROLL_MIN_DURATION_MS
 import com.huangder.lumibooks.tts.SUBTITLE_SCROLL_SPEED_DP_PER_SECOND
 import com.huangder.lumibooks.tts.SUBTITLE_SCROLL_START_DELAY_MS
 import com.huangder.lumibooks.tts.TtsController
+import com.huangder.lumibooks.tts.TtsListeningFrame
 import com.huangder.lumibooks.tts.TtsPlaybackState
 import com.huangder.lumibooks.tts.TtsTextSegment
 import com.huangder.lumibooks.tts.subtitleScrollDistancePx
@@ -75,6 +77,9 @@ class FloatingSubtitleOverlayController @Inject constructor(
     private var dragging = false
     private var moved = false
     private var coverBitmap: android.graphics.Bitmap? = null
+    private var bookTitle: String? = null
+    private var bookIsPdf = false
+    private var listeningFrame = TtsListeningFrame()
     private var layoutParams: WindowManager.LayoutParams? = null
     private var overlayRegistered = false
 
@@ -89,13 +94,23 @@ class FloatingSubtitleOverlayController @Inject constructor(
         scope.launch {
             ttsController.activeBookId.collectLatest { bookId ->
                 coverBitmap = null
+                bookTitle = null
                 overlayView?.setCover(null)
+                updateInfo()
                 if (bookId != null) {
-                    coverBitmap = withContext(Dispatchers.IO) {
-                        decodeWidgetCover(bookRepository.getBookById(bookId)?.coverPath, dp(72f))
-                    }
+                    val book = withContext(Dispatchers.IO) { bookRepository.getBookById(bookId) }
+                    bookTitle = book?.title
+                    bookIsPdf = book?.format == BookFormat.PDF
+                    updateInfo()
+                    coverBitmap = withContext(Dispatchers.IO) { decodeWidgetCover(book?.coverPath, dp(96f)) }
                     overlayView?.setCover(coverBitmap)
                 }
+            }
+        }
+        scope.launch {
+            ttsController.listeningFrame.collect { frame ->
+                listeningFrame = frame
+                updateInfo()
             }
         }
         scope.launch {
@@ -135,7 +150,13 @@ class FloatingSubtitleOverlayController @Inject constructor(
     )
 
     fun setAppInForeground(inForeground: Boolean) {
+        if (appInForeground == inForeground) return
         appInForeground = inForeground
+        if (inForeground) {
+            scrollRestartPending = true
+        } else {
+            cancelSubtitleScroll(reset = false)
+        }
         reconcile()
     }
 
@@ -188,6 +209,7 @@ class FloatingSubtitleOverlayController @Inject constructor(
         updateView(view.subtitle)
         view.appearance(settings)
         view.setPlaying(playbackState == TtsPlaybackState.PLAYING)
+        updateInfo()
         if (appliedSettings != settings && geometryAnimator == null && !dragging) {
             updateLayoutParams(params, settings)
             appliedSettings = settings
@@ -213,6 +235,17 @@ class FloatingSubtitleOverlayController @Inject constructor(
             scrollRestartPending = false
             restartSubtitleScroll(view.subtitle)
         }
+    }
+
+    private fun updateInfo() {
+        val view = overlayView ?: return
+        val frame = listeningFrame
+        val index = frame.page?.location?.chapterIndex
+        val count = frame.chapter?.count ?: 0
+        val chapter = if (index != null && count > 0) context.getString(
+            if (bookIsPdf) R.string.tts_full_page else R.string.tts_full_chapter, index + 1, count) else null
+        view.setInfo(bookTitle, chapter)
+        view.setProgress(listeningProgress(frame))
     }
 
     private fun createOverlayView() = FloatingSubtitleView(
@@ -349,10 +382,10 @@ class FloatingSubtitleOverlayController @Inject constructor(
     private fun dimensions(settings: FloatingSubtitleSettings): Pair<Int, Int> {
         val bounds = safeDisplayBounds()
         val docked = mode == FloatingSubtitleMode.LEFT || mode == FloatingSubtitleMode.RIGHT
-        val width = if (docked) dp(148f) else dp(if (mode == FloatingSubtitleMode.CONTROLS)
-            maxOf(240f, settings.widthDp) else settings.widthDp)
-        val height = if (docked) dp(56f) else dp(settings.heightDp) +
-            if (mode == FloatingSubtitleMode.CONTROLS) dp(56f) else 0
+        val width = if (docked) dp(FloatingSubtitleView.DOCK_WIDTH_DP) else dp(if (mode == FloatingSubtitleMode.CONTROLS)
+            maxOf(FloatingSubtitleView.CARD_MIN_WIDTH_DP, settings.widthDp) else settings.widthDp)
+        val height = if (docked) dp(FloatingSubtitleView.DOCK_HEIGHT_DP) else dp(settings.heightDp) +
+            if (mode == FloatingSubtitleMode.CONTROLS) dp(FloatingSubtitleView.DETAILS_HEIGHT_DP) else 0
         return width.coerceIn(1, bounds.width()) to height.coerceIn(1, bounds.height())
     }
 
@@ -483,7 +516,7 @@ class FloatingSubtitleOverlayController @Inject constructor(
     }
 
     private fun startSubtitleScrollIfNeeded(view: TextView) {
-        if (motionReduced || subtitleView !== view) return
+        if (!appInForeground || motionReduced || subtitleView !== view) return
         scrollAnimator?.cancel()
         scrollAnimator = null
         view.scrollX = 0
@@ -523,4 +556,13 @@ class FloatingSubtitleOverlayController @Inject constructor(
     private companion object {
         const val REDUCED_MOTION_VALUE = "reduced"
     }
+}
+
+/** Position of the spoken sentence within its chapter (or PDF page), matching the full-screen player. */
+internal fun listeningProgress(frame: TtsListeningFrame): Float {
+    val page = frame.page ?: return 0f
+    val offset = frame.utterance?.startCharacterOffset ?: page.startCharacterOffset
+    val length = frame.chapter?.takeIf { it.index == page.location.chapterIndex }?.text?.length
+        ?: page.endCharacterOffset
+    return if (length > 0) (offset.toFloat() / length).coerceIn(0f, 1f) else 0f
 }

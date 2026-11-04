@@ -194,7 +194,7 @@ fun StatisticsScreen(
                             Text(
                                 text = stringResource(R.string.stats_finished_books, uiState.finishedBookCount),
                                 modifier = Modifier.weight(1f),
-                                fontSize = 14.sp,
+                                fontSize = AppType.BodySmall,
                                 fontWeight = FontWeight.Light,
                                 color = AppColors.TextSecondary.copy(alpha = 0.78f),
                                 maxLines = 2,
@@ -469,7 +469,7 @@ private fun WeeklyOverview(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
-            .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
             .cardOutline(AppRoundedCornerShape(AppRadius.lg))
             .clip(AppRoundedCornerShape(AppRadius.lg))
             .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
@@ -618,7 +618,7 @@ private fun MonthlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsView
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
-            .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
             .cardOutline(AppRoundedCornerShape(AppRadius.lg))
             .clip(AppRoundedCornerShape(AppRadius.lg))
             .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
@@ -707,7 +707,7 @@ private fun MonthlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsView
             weekLabels.forEach { label ->
                 Text(
                     text = label,
-                    fontSize = 11.sp,
+                    fontSize = AppType.Caption2,
                     color = AppColors.TextSecondary,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.weight(1f)
@@ -818,7 +818,7 @@ private fun YearlyHeatmap(uiState: StatisticsUiState, viewModel: StatisticsViewM
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
-            .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
             .cardOutline(AppRoundedCornerShape(AppRadius.lg))
             .clip(AppRoundedCornerShape(AppRadius.lg))
             .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
@@ -1006,7 +1006,7 @@ private fun MostReadBooks(books: List<MostReadBook>, onOpen: (String) -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
-            .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
             .cardOutline(AppRoundedCornerShape(AppRadius.lg))
             .clip(AppRoundedCornerShape(AppRadius.lg))
             .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
@@ -1076,7 +1076,7 @@ private fun ReadingStreakCard(uiState: StatisticsUiState) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
-            .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
             .cardOutline(AppRoundedCornerShape(AppRadius.lg))
             .clip(AppRoundedCornerShape(AppRadius.lg))
             .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
@@ -1112,7 +1112,7 @@ private fun AnnotationsOverview(summary: AnnotationPeriodSummary, onOpen: () -> 
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
-            .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
             .cardOutline(AppRoundedCornerShape(AppRadius.lg))
             .clip(AppRoundedCornerShape(AppRadius.lg))
             .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))

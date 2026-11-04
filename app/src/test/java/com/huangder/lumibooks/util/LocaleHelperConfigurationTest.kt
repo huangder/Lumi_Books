@@ -2,6 +2,8 @@ package com.huangder.lumibooks.util
 
 import android.app.Application
 import android.content.res.Configuration
+import androidx.core.content.ContextCompat
+import com.huangder.lumibooks.R
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -31,5 +33,20 @@ class LocaleHelperConfigurationTest {
         assertEquals(900, localized.resources.configuration.screenHeightDp)
         assertEquals(Configuration.ORIENTATION_PORTRAIT, localized.resources.configuration.orientation)
         assertEquals("en", localized.resources.configuration.locales[0].language)
+    }
+
+    @Test
+    fun languageOverridePreservesNightMode() {
+        val base = RuntimeEnvironment.getApplication()
+        val configuration = Configuration(base.resources.configuration).apply {
+            uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
+                Configuration.UI_MODE_NIGHT_YES
+        }
+        val nightContext = base.createConfigurationContext(configuration)
+        val localized = LocaleHelper.wrapContext(nightContext, "en")
+
+        assertEquals(Configuration.UI_MODE_NIGHT_YES,
+            localized.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK)
+        assertEquals(0xFFF5F5F7.toInt(), ContextCompat.getColor(localized, R.color.widget_text_primary))
     }
 }

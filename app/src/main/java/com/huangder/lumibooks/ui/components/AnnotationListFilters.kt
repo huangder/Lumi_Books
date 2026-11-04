@@ -147,7 +147,7 @@ private fun <T> AnnotationFilterMenu(
             }
         }
         Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+            fontSize = AppType.Footnote, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
         Spacer(Modifier.width(4.dp))
         Icon(AppIcons.CaretDown, null, modifier = Modifier.size(12.dp))
     }

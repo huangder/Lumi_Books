@@ -31,26 +31,30 @@ class FloatingSubtitleViewTest {
         appearance(FloatingSubtitleSettings())
     }
 
-    @Test fun subtitleExpandsToFiveCenteredWorkingControls() {
+    @Test fun barKeepsPlayInPlaceAndCardAddsDetailsAndControls() {
         val view = view()
+        view.setInfo("The Long Way", "Chapter 3 / 12")
+        view.setProgress(.4f)
         view.showMode(FloatingSubtitleMode.SUBTITLE, false)
         layout(view, 320, 56)
-        assertEquals(android.view.Gravity.CENTER, view.subtitle.gravity)
-        val textLayout = view.subtitle.layout
-        assertTrue(textLayout.getLineLeft(0) > 0)
-        assertTrue(textLayout.getLineRight(0) <= view.subtitle.width - view.subtitle.paddingLeft - view.subtitle.paddingRight)
-        assertEquals(emptyList<View>(), visible(view, R.string.tts_play))
+        assertEquals(1, view.subtitle.layout.lineCount)
+        val barPlay = visible(view, R.string.tts_play).single()
+        assertEquals(40, barPlay.width)
+        assertTrue(barPlay.right <= 320 - 4)
+        assertTrue(visible(view, R.string.tts_stop).isEmpty())
         capture(view, "subtitle")
         view.subtitle.performClick()
         view.showMode(FloatingSubtitleMode.CONTROLS, false)
-        layout(view, 320, 112)
-        val controls = listOf(R.string.tts_previous_sentence, R.string.tts_play,
-            R.string.tts_next_sentence, R.string.tts_return_to_book, R.string.tts_stop)
-            .map { visible(view, it).single() }
-        assertEquals(50, controls.first().left)
-        assertEquals(270, controls.last().right)
-        controls.forEach { assertEquals(44, it.width); it.performClick() }
-        assertEquals(listOf("subtitle", "previous", "play", "next", "return", "close"), actions)
+        layout(view, 320, 56 + FloatingSubtitleView.DETAILS_HEIGHT_DP.toInt())
+        val play = visible(view, R.string.tts_play).single()
+        assertEquals(barPlay.left, play.left)
+        val controls = listOf(R.string.tts_previous_sentence, R.string.tts_next_sentence,
+            R.string.tts_return_to_book, R.string.tts_stop).map { visible(view, it).single() }
+        controls.zipWithNext().forEach { (a, b) -> assertTrue(a.right <= b.left) }
+        controls.forEach { assertEquals(44, it.width) }
+        assertEquals(320 - controls.last().right, controls.first().left)
+        (listOf(play) + controls).forEach { it.performClick() }
+        assertEquals(listOf("subtitle", "play", "previous", "next", "return", "close"), actions)
         capture(view, "controls")
         view.setPlaying(true)
         assertEquals(1, visible(view, R.string.tts_pause).size)
@@ -69,34 +73,39 @@ class FloatingSubtitleViewTest {
         capture(view, "long-subtitle")
     }
 
-    @Test fun edgeStripsMirrorCoverAndActionsWithSafePadding() {
+    @Test fun edgeTabsRestoreTheSubtitleOnTap() {
         val view = view()
+        val cover = Bitmap.createBitmap(30, 45, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(android.graphics.Color.rgb(196, 120, 72))
+        }
+        view.setCover(cover)
+        view.setProgress(.65f)
+        val width = FloatingSubtitleView.DOCK_WIDTH_DP.toInt()
+        val height = FloatingSubtitleView.DOCK_HEIGHT_DP.toInt()
+        for (mode in listOf(FloatingSubtitleMode.RIGHT, FloatingSubtitleMode.LEFT)) {
+            view.showMode(mode, false)
+            view.appearance(FloatingSubtitleSettings())
+            layout(view, width, height)
+            assertTrue(visible(view, R.string.tts_play).isEmpty())
+            assertTrue(visible(view, R.string.tts_stop).isEmpty())
+            visible(view, R.string.tts_restore_subtitle).single().performClick()
+            capture(view, mode.name.lowercase() + if (mode == FloatingSubtitleMode.RIGHT) "-paused" else "")
+        }
+        view.setPlaying(true)
         view.showMode(FloatingSubtitleMode.RIGHT, false)
-        view.appearance(FloatingSubtitleSettings())
-        layout(view, 148, 56)
-        val cover = visible(view, R.string.tts_restore_subtitle).filterIsInstance<ImageView>().single()
-        assertEquals(null, cover.drawable)
-        val coverColor = (cover.background as android.graphics.drawable.GradientDrawable).color!!.defaultColor
-        assertTrue(androidx.core.graphics.ColorUtils.calculateLuminance(coverColor) > 0.7)
-        val rightPlay = visible(view, R.string.tts_play).single()
-        val rightClose = visible(view, R.string.tts_stop).single()
-        val rightPlayX = rightPlay.left
-        val rightCloseX = rightClose.left
-        assertTrue(rightPlayX < rightCloseX)
-        assertEquals(136, rightClose.right)
+        layout(view, width, height)
         capture(view, "right")
-        view.showMode(FloatingSubtitleMode.LEFT, false)
-        view.appearance(FloatingSubtitleSettings())
-        layout(view, 148, 56)
-        val leftPlay = visible(view, R.string.tts_play).single()
-        val leftClose = visible(view, R.string.tts_stop).single()
-        assertEquals(148 - rightCloseX - 44, leftClose.left)
-        assertEquals(148 - rightPlayX - 44, leftPlay.left)
-        assertEquals(12, leftClose.left)
-        leftPlay.performClick()
-        leftClose.performClick()
-        assertEquals(listOf("play", "close"), actions)
-        capture(view, "left")
+        assertEquals(listOf("subtitle", "subtitle"), actions)
+    }
+
+    @Test fun progressFollowsTheSpokenSentenceWithinTheChapter() {
+        val location = com.huangder.lumibooks.tts.TtsPageLocation(chapterIndex = 2, pageIndex = 0)
+        val page = com.huangder.lumibooks.tts.TtsPageContent(location, "x".repeat(50), null, null, 100)
+        val chapter = com.huangder.lumibooks.tts.TtsChapterSnapshot(2, 10, "x".repeat(400))
+        val utterance = com.huangder.lumibooks.tts.TtsTextSegment("x", 100, 101)
+        assertEquals(.25f, listeningProgress(com.huangder.lumibooks.tts.TtsListeningFrame(chapter, page, utterance)), 1e-4f)
+        assertEquals(100f / 150f, listeningProgress(com.huangder.lumibooks.tts.TtsListeningFrame(null, page, null)), 1e-4f)
+        assertEquals(0f, listeningProgress(com.huangder.lumibooks.tts.TtsListeningFrame()), 0f)
     }
 
     private fun visible(view: View, label: Int): List<View> {

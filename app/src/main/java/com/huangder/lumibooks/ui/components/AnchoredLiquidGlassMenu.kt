@@ -122,6 +122,7 @@ import com.huangder.lumibooks.ui.icons.AppIcons
 import com.huangder.lumibooks.ui.icons.directionalIcon
 import com.huangder.lumibooks.domain.model.MenuAnimationStyle
 import com.huangder.lumibooks.ui.theme.LocalMenuAnimationStyle
+import com.huangder.lumibooks.ui.theme.AppType
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.rememberBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -855,7 +856,7 @@ private fun LiquidGlassMenuRow(
             )
             item.subtitle?.let {
                 Text(it, color = itemColor.copy(alpha = itemColor.alpha * 0.70f),
-                    fontSize = 11.sp, lineHeight = 16.sp)
+                    fontSize = AppType.Caption2, lineHeight = 16.sp)
             }
         }
         if (item.submenuItems.isNotEmpty()) {
@@ -1304,7 +1305,7 @@ private fun AnchoredLiquidGlassMenu(
                             )
                         }
                         if (isLiquidGlass && item.groupTitle != null) {
-                            Text(item.groupTitle, color = textColor.copy(alpha = 0.55f), fontSize = 11.sp, lineHeight = 14.sp,
+                            Text(item.groupTitle, color = textColor.copy(alpha = 0.55f), fontSize = AppType.Caption2, lineHeight = 14.sp,
                                 modifier = Modifier.padding(start = 12.dp, top = 3.dp, bottom = 3.dp))
                         }
                         LiquidGlassMenuRow(

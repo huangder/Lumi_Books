@@ -32,6 +32,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
+import com.huangder.lumibooks.ui.theme.AppType
 
 internal object CoverFlowEntranceMotion {
     private val floating = CubicBezierEasing(0.16f, 0.82f, 0.22f, 1f)
@@ -144,7 +145,7 @@ internal fun CoverFlowEntranceOverlay(state: CoverFlowEntranceState) {
                         }
                     })
             Text("Beta", color = (if (dark) Color(0xFFB9B7C2) else Color(0xFF787780)).copy(alpha = 0.48f),
-                fontFamily = FontFamily.Serif, fontSize = 14.sp, letterSpacing = 0.sp,
+                fontFamily = FontFamily.Serif, fontSize = AppType.BodySmall, letterSpacing = 0.sp,
                 modifier = Modifier.padding(top = 8.dp))
         }
     }

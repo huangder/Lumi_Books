@@ -30,10 +30,8 @@ import androidx.compose.foundation.lazy.items
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,7 +53,6 @@ import com.huangder.lumibooks.domain.model.LibraryFolder
 import com.huangder.lumibooks.ui.components.EditInputDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassButton
 import com.huangder.lumibooks.ui.components.LiquidGlassDialog
-import com.huangder.lumibooks.ui.components.usesCardSheets
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.theme.AppColors
@@ -65,6 +62,7 @@ import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.util.AuthorizedStorageManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.huangder.lumibooks.ui.components.AppBottomSheet
 
 @Composable
 internal fun FolderNameDialog(
@@ -250,32 +248,13 @@ internal fun FolderActionsSheet(
             FolderActionRow(
                 icon = AppIcons.Trash,
                 title = stringResource(R.string.delete_folder),
-                tint = Color(0xFFD92D3A),
+                tint = AppColors.Destructive,
                 onClick = onDelete
             )
         }
     }
 
-    val cardSheets = usesCardSheets()
-    if (isLiquidGlass || cardSheets) {
-        LiquidGlassDialog(
-            onDismissRequest = onDismiss,
-            alignment = Alignment.BottomCenter,
-            shape = AppRoundedCornerShape(28.dp),
-            contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
-            backgroundScrimColor = Color.Black.copy(alpha = 0.12f)
-        ) { content() }
-    } else {
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ModalBottomSheet(
-            onDismissRequest = onDismiss,
-            sheetState = sheetState,
-            containerColor = AppColors.CardBg,
-            contentColor = AppColors.TextPrimary,
-            scrimColor = Color.Black.copy(alpha = 0.12f),
-            shape = AppRoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
-        ) { content() }
-    }
+    AppBottomSheet(onDismissRequest = onDismiss) { content() }
 }
 
 @Composable
@@ -305,7 +284,7 @@ private fun FolderActionRow(
             Spacer(Modifier.width(12.dp))
             Text(
                 text = title,
-                color = if (tint == Color(0xFFD92D3A)) tint else AppColors.TextPrimary,
+                color = if (tint == AppColors.Destructive) tint else AppColors.TextPrimary,
                 fontSize = AppType.Body,
                 fontWeight = FontWeight.Medium
             )
@@ -431,26 +410,7 @@ internal fun FolderMoveSheet(
         }
     }
 
-    val cardSheets = usesCardSheets()
-    if (isLiquidGlass || cardSheets) {
-        LiquidGlassDialog(
-            onDismissRequest = onDismiss,
-            alignment = Alignment.BottomCenter,
-            shape = AppRoundedCornerShape(28.dp),
-            contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
-            backgroundScrimColor = Color.Black.copy(alpha = 0.12f)
-        ) { content() }
-    } else {
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ModalBottomSheet(
-            onDismissRequest = onDismiss,
-            sheetState = sheetState,
-            containerColor = AppColors.CardBg,
-            contentColor = AppColors.TextPrimary,
-            scrimColor = Color.Black.copy(alpha = 0.12f),
-            shape = AppRoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
-        ) { content() }
-    }
+    AppBottomSheet(onDismissRequest = onDismiss) { content() }
 
     if (showCreateDialog) {
         FolderNameDialog(
@@ -593,26 +553,7 @@ internal fun FolderRelocationSheet(
         }
     }
 
-    val cardSheets = usesCardSheets()
-    if (isLiquidGlass || cardSheets) {
-        LiquidGlassDialog(
-            onDismissRequest = onDismiss,
-            alignment = Alignment.BottomCenter,
-            shape = AppRoundedCornerShape(28.dp),
-            contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
-            backgroundScrimColor = Color.Black.copy(alpha = 0.12f)
-        ) { content() }
-    } else {
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ModalBottomSheet(
-            onDismissRequest = onDismiss,
-            sheetState = sheetState,
-            containerColor = AppColors.CardBg,
-            contentColor = AppColors.TextPrimary,
-            scrimColor = Color.Black.copy(alpha = 0.12f),
-            shape = AppRoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
-        ) { content() }
-    }
+    AppBottomSheet(onDismissRequest = onDismiss) { content() }
 
     if (showCreateDialog) {
         FolderNameDialog(
@@ -678,7 +619,7 @@ internal fun FolderBreadcrumb(
                     Icon(
                         imageVector = AppIcons.Link,
                         contentDescription = stringResource(R.string.folder_storage_linked),
-                        tint = if (folder.storageMissing) Color(0xFFD92D3A) else AppColors.Accent,
+                        tint = if (folder.storageMissing) AppColors.Destructive else AppColors.Accent,
                         modifier = Modifier
                             .padding(start = 3.dp)
                             .size(14.dp)
@@ -721,7 +662,7 @@ private fun FolderDestinationRow(folder: LibraryFolder, onClick: () -> Unit) {
                 Icon(
                     imageVector = AppIcons.Link,
                     contentDescription = stringResource(R.string.folder_storage_linked),
-                    tint = if (folder.storageMissing) Color(0xFFD92D3A) else AppColors.Accent,
+                    tint = if (folder.storageMissing) AppColors.Destructive else AppColors.Accent,
                     modifier = Modifier
                         .padding(start = 4.dp)
                         .size(15.dp)
@@ -730,7 +671,7 @@ private fun FolderDestinationRow(folder: LibraryFolder, onClick: () -> Unit) {
             if (folder.storageMissing) {
                 Text(
                     text = stringResource(R.string.folder_storage_missing),
-                    color = Color(0xFFD92D3A),
+                    color = AppColors.Destructive,
                     fontSize = AppType.Caption,
                     maxLines = 1
                 )

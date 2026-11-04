@@ -7,6 +7,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.icons.AppIcons
@@ -29,10 +30,12 @@ fun AppSheetHeader(
         LiquidGlassIconButton(
             imageVector = if (onBack != null) directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight) else AppIcons.X,
             contentDescription = if (onBack != null) backContentDescription else stringResource(R.string.close),
-            onClick = onBack ?: onClose, size = 44.dp, iconSize = 20.dp
+            onClick = onBack ?: onClose, size = 44.dp, iconSize = 20.dp,
+            normalContainerColor = AppColors.BgGray
         )
         Text(title, color = AppColors.TextPrimary, fontSize = AppType.Section,
             fontWeight = FontWeight.Bold, fontFamily = resolveAppFontFamily(KaiTi),
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).padding(horizontal = AppSpace.sm))
         actions()
         if (onConfirm != null) {

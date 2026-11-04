@@ -53,12 +53,14 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
+import com.huangder.lumibooks.ui.theme.AppType
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
 import kotlin.math.floor
+import com.huangder.lumibooks.ui.components.EmptyState
 
 @Composable
 internal fun CoverFlowBookshelf(
@@ -204,7 +206,7 @@ internal fun CoverFlowBookshelf(
             if (books.isEmpty()) {
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     if (isLoading) CircularProgressIndicator(color = AppColors.Accent)
-                    else Text(stringResource(R.string.no_books), color = AppColors.TextSecondary)
+                    else EmptyState(message = stringResource(R.string.no_books), icon = AppIcons.Books)
                 }
             } else {
                 BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
@@ -364,7 +366,7 @@ private fun CoverFlowMetadata(
                         if (book.id in syncedIds) Icon(AppIcons.CloudFilled, null, tint = AppColors.TextSecondary,
                             modifier = Modifier.padding(start = 5.dp).size(13.dp))
                     }
-                    Text(book.author, color = AppColors.TextSecondary, fontSize = 14.sp,
+                    Text(book.author, color = AppColors.TextSecondary, fontSize = AppType.BodySmall,
                         fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold,
                         maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
                     BookProgressStatus(
@@ -374,7 +376,7 @@ private fun CoverFlowMetadata(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                     if (book.isMissing) Text(stringResource(R.string.book_file_unavailable),
-                        color = androidx.compose.ui.graphics.Color(0xFFD92D3A), fontSize = 12.sp, maxLines = 1)
+                        color = AppColors.Destructive, fontSize = AppType.Caption, maxLines = 1)
                 }
             }
         }

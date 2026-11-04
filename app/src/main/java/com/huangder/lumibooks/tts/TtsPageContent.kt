@@ -24,6 +24,18 @@ data class TtsPageContent(
             endCharacterOffset
         )
 }
+
+internal fun recoverTtsPageText(
+    page: TtsPageContent,
+    chapter: TtsChapterSnapshot
+): TtsPageContent? {
+    if (chapter.index != page.location.chapterIndex) return null
+    val start = page.startCharacterOffset.coerceIn(0, chapter.text.length)
+    val end = page.endCharacterOffset.coerceIn(start, chapter.text.length)
+    if (start == end) return null
+    return page.copy(text = chapter.text.substring(start, end))
+}
+
 data class TtsTextSegment(
     val text: String,
     val startCharacterOffset: Int,

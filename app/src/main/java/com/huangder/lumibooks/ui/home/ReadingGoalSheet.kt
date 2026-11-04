@@ -70,9 +70,11 @@ import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
+import com.huangder.lumibooks.ui.theme.AppType
 import java.util.Calendar
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import com.huangder.lumibooks.ui.theme.AppPresentation
 
 @Composable
 fun ReadingGoalSheet(
@@ -230,7 +232,7 @@ private fun ReadingGoalContainer(
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     LiquidGlassColumnSheetContainer(
         fallbackColor = AppColors.CardBg,
-        shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        shape = AppRoundedCornerShape(topStart = AppPresentation.SheetCorner, topEnd = AppPresentation.SheetCorner),
         // The caller's adaptiveSheetFrame positions and sizes the sheet (card on tablets).
         modifier = modifier
             .materialBottomSheetMotion(entryOffset, predictiveBackProgress),
@@ -251,7 +253,6 @@ private fun ReadingGoalContainer(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Spacer(modifier = Modifier.weight(1f))
             LiquidGlassIconButton(
                 imageVector = AppIcons.X,
                 contentDescription = stringResource(R.string.close),
@@ -261,6 +262,7 @@ private fun ReadingGoalContainer(
                 contentColor = AppColors.TextPrimary,
                 normalContainerColor = AppColors.BgGray
             )
+            Spacer(modifier = Modifier.weight(1f))
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -293,13 +295,13 @@ private fun TodayReadingContent(
 
     Text(
         text = if (hasGoal) stringResource(R.string.today_reading_label) else todayStatusText,
-        fontSize = 20.sp,
+        fontSize = AppType.Section,
         fontWeight = FontWeight.Bold,
         fontFamily = resolveAppFontFamily(KaiTi),
         color = textPrimary
     )
 
-    Text(stringResource(R.string.activity_includes_listening), fontSize = 12.sp, color = textSecondary)
+    Text(stringResource(R.string.activity_includes_listening), fontSize = AppType.Caption, color = textSecondary)
 
     Spacer(modifier = Modifier.height(32.dp))
 
@@ -318,7 +320,7 @@ private fun TodayReadingContent(
             Spacer(modifier = Modifier.width(4.dp))
             Text(
                 text = stringResource(R.string.minutes_label),
-                fontSize = 16.sp,
+                fontSize = AppType.Body,
                 color = textSecondary,
                 modifier = Modifier.padding(bottom = 10.dp)
             )
@@ -327,7 +329,7 @@ private fun TodayReadingContent(
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = stringResource(R.string.goal_minutes_label, dailyGoal),
-            fontSize = 14.sp,
+            fontSize = AppType.BodySmall,
             color = textSecondary,
             modifier = Modifier.fillMaxWidth(),
             textAlign = TextAlign.Center
@@ -351,7 +353,7 @@ private fun TodayReadingContent(
             } else {
                 stringResource(R.string.goal_reached)
             },
-            fontSize = 12.sp,
+            fontSize = AppType.Caption,
             color = textSecondary,
             modifier = Modifier.fillMaxWidth(),
             textAlign = TextAlign.Center
@@ -366,7 +368,7 @@ private fun TodayReadingContent(
         Spacer(modifier = Modifier.height(10.dp))
         Text(
             text = todayStatusText,
-            fontSize = 32.sp,
+            fontSize = AppType.Display,
             fontWeight = FontWeight.Bold,
             color = textPrimary,
             modifier = Modifier.fillMaxWidth(),
@@ -377,7 +379,7 @@ private fun TodayReadingContent(
             text = stringResource(
                 if (hasReadToday) R.string.today_read_message_done else R.string.today_read_message_empty
             ),
-            fontSize = 13.sp,
+            fontSize = AppType.Footnote,
             color = textSecondary,
             modifier = Modifier.fillMaxWidth(),
             textAlign = TextAlign.Center
@@ -398,7 +400,7 @@ private fun TodayReadingContent(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = currentBook.title,
-                    fontSize = 16.sp,
+                    fontSize = AppType.Body,
                     fontWeight = FontWeight.SemiBold,
                     color = textPrimary
                 )
@@ -408,7 +410,7 @@ private fun TodayReadingContent(
                 } else {
                     Text(
                         text = "${(currentBook.readingProgress * 100).toInt()}%",
-                        fontSize = 13.sp,
+                        fontSize = AppType.Footnote,
                         color = textSecondary
                     )
                 }
@@ -432,7 +434,7 @@ private fun TodayReadingContent(
     ) {
         Text(
             text = stringResource(R.string.edit_daily_goal),
-            fontSize = 14.sp,
+            fontSize = AppType.BodySmall,
             fontWeight = FontWeight.SemiBold,
             color = textPrimary,
             maxLines = 1,
@@ -472,11 +474,11 @@ private fun WeeklyCheckIn(
                     contentAlignment = Alignment.Center
                 ) {
                     if (achieved) {
-                        Text("✓", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text("✓", fontSize = AppType.BodySmall, fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
                 Spacer(modifier = Modifier.height(6.dp))
-                Text(text = data.dayLabel, fontSize = 11.sp, color = textSecondary)
+                Text(text = data.dayLabel, fontSize = AppType.Caption2, color = textSecondary)
             }
         }
     }
@@ -484,7 +486,7 @@ private fun WeeklyCheckIn(
     Spacer(modifier = Modifier.height(14.dp))
     Text(
         text = stringResource(R.string.streak_days, streakDays),
-        fontSize = 14.sp,
+        fontSize = AppType.BodySmall,
         fontWeight = FontWeight.SemiBold,
         color = textSecondary,
         modifier = Modifier.fillMaxWidth(),
@@ -510,7 +512,7 @@ private fun GoalPicker(
 
     Text(
         text = stringResource(R.string.set_daily_goal),
-        fontSize = 20.sp,
+        fontSize = AppType.Section,
         fontWeight = FontWeight.Bold,
         fontFamily = resolveAppFontFamily(KaiTi),
         color = textPrimary
@@ -558,7 +560,7 @@ private fun GoalPicker(
         tintedColor = bgGray.takeUnless { LocalAppTheme.current == "liquid_glass" },
         contentColor = textSecondary
     ) {
-        Text(stringResource(R.string.cancel), fontSize = 16.sp, color = textSecondary, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        Text(stringResource(R.string.cancel), fontSize = AppType.Body, color = textSecondary, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
     }
 }
 
@@ -577,7 +579,7 @@ private fun CustomGoalInputPanel(
     val panelContent: @Composable ColumnScope.() -> Unit = {
         Text(
             text = stringResource(R.string.goal_custom_target),
-            fontSize = 14.sp,
+            fontSize = AppType.BodySmall,
             fontWeight = FontWeight.SemiBold,
             color = textPrimary
         )
@@ -611,7 +613,7 @@ private fun CustomGoalInputPanel(
                         contentAlignment = Alignment.CenterStart
                     ) {
                         if (value.isBlank()) {
-                            Text(stringResource(R.string.goal_minutes_input_hint), fontSize = 16.sp, color = textSecondary)
+                            Text(stringResource(R.string.goal_minutes_input_hint), fontSize = AppType.Body, color = textSecondary)
                         }
                         innerTextField()
                     }
@@ -619,7 +621,7 @@ private fun CustomGoalInputPanel(
             )
             Text(
                 text = stringResource(R.string.minutes_label),
-                fontSize = 14.sp,
+                fontSize = AppType.BodySmall,
                 color = textSecondary
             )
             Spacer(modifier = Modifier.width(12.dp))
@@ -633,7 +635,7 @@ private fun CustomGoalInputPanel(
             ) {
                 Text(
                     text = stringResource(R.string.confirm),
-                    fontSize = 14.sp,
+                    fontSize = AppType.BodySmall,
                     fontWeight = FontWeight.SemiBold,
                     color = if (isValid) AppColors.OnAccent else textSecondary,
                     maxLines = 1,
@@ -645,7 +647,7 @@ private fun CustomGoalInputPanel(
         Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = stringResource(R.string.goal_minutes_invalid),
-            fontSize = 12.sp,
+            fontSize = AppType.Caption,
             color = if (value.isBlank() || isValid) textSecondary else AppColors.Accent
         )
     }
@@ -696,14 +698,14 @@ private fun GoalOptionButton(
         Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
             Text(
                 text = title,
-                fontSize = 16.sp,
+                fontSize = AppType.Body,
                 fontWeight = FontWeight.SemiBold,
                 color = textPrimary
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = subtitle,
-                fontSize = 12.sp,
+                fontSize = AppType.Caption,
                 color = textSecondary
             )
         }

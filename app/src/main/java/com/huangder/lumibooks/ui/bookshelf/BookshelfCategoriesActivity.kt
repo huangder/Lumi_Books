@@ -386,7 +386,7 @@ private fun BookshelfCategoriesScreen(
                         deleteFolder = null
                     },
                     role = AppDialogActionRole.Destructive,
-                    tintedColor = Color(0xFFD92D3A)
+                    tintedColor = AppColors.Destructive
                 ),
                 AppDialogAction(
                     text = stringResource(R.string.cancel),
@@ -1261,8 +1261,8 @@ private fun CategoryBooksHeader(
                     size = 46.dp,
                     iconSize = 21.dp,
                     contentColor = Color.White,
-                    normalContainerColor = Color(0xFFD92D3A),
-                    liquidContainerColor = Color(0xFFD92D3A),
+                    normalContainerColor = AppColors.Destructive,
+                    liquidContainerColor = AppColors.Destructive,
                     liquidScrimColor = Color(0xB8D92D3A)
                 )
                 Spacer(Modifier.width(10.dp))

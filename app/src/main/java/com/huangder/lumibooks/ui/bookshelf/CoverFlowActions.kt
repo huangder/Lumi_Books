@@ -30,6 +30,7 @@ import com.huangder.lumibooks.domain.model.LibraryFolder
 import com.huangder.lumibooks.ui.components.*
 import com.huangder.lumibooks.ui.icons.AppIcons
 import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.util.FileUtils
 
 /** Callbacks deliberately terminate in BookshelfScreen's existing operations and dialogs. */
@@ -121,7 +122,7 @@ private fun CoverFlowAction(icon: ImageVector, label: String, onClick: () -> Uni
         verticalArrangement = Arrangement.Center
     ) {
         Icon(icon, contentDescription = null, tint = AppColors.TextPrimary, modifier = Modifier.size(18.dp))
-        Text(label, color = AppColors.TextPrimary, fontSize = 11.sp, maxLines = 1,
+        Text(label, color = AppColors.TextPrimary, fontSize = AppType.Caption2, maxLines = 1,
             textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(), overflow = TextOverflow.Ellipsis)
     }
 }
@@ -177,11 +178,11 @@ internal fun CoverFlowFolderNavigation(
                     Row(Modifier.heightIn(min = 44.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(AppIcons.Folder, null, tint = AppColors.Accent, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text(folder.name, color = AppColors.TextPrimary, fontSize = 13.sp,
+                        Text(folder.name, color = AppColors.TextPrimary, fontSize = AppType.Footnote,
                             maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 130.dp))
-                        Text("  ${counts[folder.id] ?: 0}", color = AppColors.TextSecondary, fontSize = 11.sp)
+                        Text("  ${counts[folder.id] ?: 0}", color = AppColors.TextSecondary, fontSize = AppType.Caption2)
                         if (folder.storageMissing) Icon(AppIcons.Link, stringResource(R.string.book_file_unavailable),
-                            tint = androidx.compose.ui.graphics.Color(0xFFD92D3A), modifier = Modifier.size(14.dp))
+                            tint = AppColors.Destructive, modifier = Modifier.size(14.dp))
                     }
                 }
             }

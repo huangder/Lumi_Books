@@ -116,6 +116,8 @@ import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
+import com.huangder.lumibooks.ui.theme.AppPresentation
+import com.huangder.lumibooks.ui.components.LiquidGlassSwitch
 
 @Composable
 fun TxtEditorScreen(
@@ -754,7 +756,7 @@ private fun TxtEditorActionCapsule(
             )
             if (label != null) {
                 Spacer(Modifier.size(6.dp))
-                Text(label, fontSize = 13.sp, color = AppColors.TextPrimary, maxLines = 1)
+                Text(label, fontSize = AppType.Footnote, color = AppColors.TextPrimary, maxLines = 1)
             }
         }
     }
@@ -802,7 +804,7 @@ private fun TxtEditorSearchSheet(
                 .fillMaxSize()
                 .background(AppColors.Scrim.copy(alpha = 0.18f * (1f - sheetOffset.value)))
         )
-        val sheetShape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+        val sheetShape = AppRoundedCornerShape(topStart = AppPresentation.SheetCorner, topEnd = AppPresentation.SheetCorner)
         LiquidGlassSurface(
             shape = sheetShape,
             fallbackColor = AppColors.CardBg,
@@ -836,7 +838,7 @@ private fun TxtEditorSearchSheet(
                                 R.string.txt_editor_replace
                             }
                         ),
-                        fontSize = 20.sp,
+                        fontSize = AppType.Section,
                         fontWeight = FontWeight.Bold,
                         fontFamily = resolveAppFontFamily(KaiTi),
                         color = AppColors.TextPrimary
@@ -902,11 +904,11 @@ private fun TxtEditorSearchSheet(
                     Spacer(Modifier.size(12.dp))
                     Text(
                         stringResource(R.string.txt_editor_match_case),
-                        fontSize = 13.sp,
+                        fontSize = AppType.Footnote,
                         color = AppColors.TextSecondary
                     )
                     Spacer(Modifier.size(6.dp))
-                    Switch(checked = uiState.matchCase, onCheckedChange = onMatchCaseChange)
+                    LiquidGlassSwitch(checked = uiState.matchCase, onCheckedChange = onMatchCaseChange)
                 }
                 Spacer(Modifier.height(10.dp))
                 val resultText = when {
@@ -919,7 +921,7 @@ private fun TxtEditorSearchSheet(
                     )
                     else -> stringResource(R.string.txt_editor_no_matches)
                 }
-                Text(resultText, fontSize = 13.sp, color = AppColors.TextSecondary)
+                Text(resultText, fontSize = AppType.Footnote, color = AppColors.TextSecondary)
                 Spacer(Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1005,7 +1007,7 @@ private fun TxtEditorInput(
         value = value,
         onValueChange = onValueChange,
         modifier = modifier.fillMaxWidth(),
-        placeholder = { Text(placeholder, fontSize = 14.sp) },
+        placeholder = { Text(placeholder, fontSize = AppType.BodySmall) },
         singleLine = true,
         trailingIcon = trailing,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -1044,7 +1046,7 @@ private fun TxtScopeSelector(
                         R.string.txt_editor_scope_book
                     }
                 ),
-                fontSize = 12.sp,
+                fontSize = AppType.Caption,
                 fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                 color = if (isSelected) AppColors.TextPrimary.copy(alpha = 0.86f) else AppColors.TextSecondary,
                 maxLines = 1
@@ -1088,7 +1090,7 @@ private fun TxtScopeOption(
     ) {
         Text(
             text,
-            fontSize = 12.sp,
+            fontSize = AppType.Caption,
             color = if (selected) Color.White else AppColors.TextSecondary,
             maxLines = 1
         )

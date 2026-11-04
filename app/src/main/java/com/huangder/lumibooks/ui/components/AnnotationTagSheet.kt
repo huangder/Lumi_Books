@@ -52,6 +52,7 @@ import com.huangder.lumibooks.ui.animation.VisualMotion
 import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
+import com.huangder.lumibooks.ui.theme.AppPresentation
 
 private data class TagSheetPage(
     val categories: Boolean,
@@ -176,7 +177,7 @@ fun AnnotationTagSheet(
             contentModifier = Modifier.fillMaxWidth().navigationBarsPadding()
                 .padding(horizontal = 20.dp, vertical = if (compactHeight) 10.dp else 20.dp),
             fallbackColor = AppColors.CardBg,
-            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            shape = AppRoundedCornerShape(topStart = AppPresentation.SheetCorner, topEnd = AppPresentation.SheetCorner),
             backdrop = sheetBackdrop
         ) {
             AppSheetHeader(
@@ -251,7 +252,7 @@ fun AnnotationTagSheet(
                                         Text(groupNames[id] ?: stringResource(R.string.tag_picker_uncategorized), color = AppColors.TextPrimary, fontSize = AppType.Body)
                                         Text(stringResource(R.string.tag_picker_group_count, members.size, members.count { it in chosen }), color = AppColors.TextSecondary, fontSize = AppType.Caption)
                                     }
-                                    Icon(AppIcons.CaretRight, null, tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp))
+                                    DisclosureChevron()
                                 }
                             }
                         }

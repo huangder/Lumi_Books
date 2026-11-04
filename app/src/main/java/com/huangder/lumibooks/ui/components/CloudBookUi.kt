@@ -38,6 +38,7 @@ import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.BookDeleteMode
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalCoverReadingProgressEnabled
+import com.huangder.lumibooks.ui.theme.AppType
 
 @Composable
 fun CloudBookDownloadDialog(
@@ -93,7 +94,7 @@ fun CloudAwareBookDeleteDialog(
                 Text(
                     text = stringResource(R.string.force_delete_hint),
                     color = AppColors.TextSecondary,
-                    fontSize = 13.sp
+                    fontSize = AppType.Footnote
                 )
             }
         },

@@ -179,7 +179,7 @@ fun ExcerptSheet(request: ExcerptRequest, onClose: () -> Unit, glassBackdrop: Ba
         LiquidGlassColumnSheetContainer(
             modifier = adaptiveSheetFrame(maxHeight = maxHeight).materialBottomSheetMotion(offset.value, backProgress),
             fallbackColor = AppColors.CardBg,
-            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            shape = AppRoundedCornerShape(topStart = AppPresentation.SheetCorner, topEnd = AppPresentation.SheetCorner),
             backdrop = glassBackdrop
         ) {
             ExcerptPreview(request, onClose = { closing = true },

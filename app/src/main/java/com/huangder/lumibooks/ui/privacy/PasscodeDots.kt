@@ -5,7 +5,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -20,20 +19,13 @@ import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
-import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
-import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 
 internal enum class DotTone { Normal, Error, Success }
 
 /** Error tint of the lock flows, matching the destructive red used elsewhere. */
 internal val PasscodeErrorColor: Color
-    @Composable get() = when {
-        LocalEInkMode.current -> Color.Black
-        LocalUseMaterial3Theme.current -> MaterialTheme.colorScheme.error
-        LocalIsDarkTheme.current -> Color(0xFFFF6B6B)
-        else -> Color(0xFFD92D3A)
-    }
+    @Composable get() = AppColors.Destructive
 
 @Composable
 internal fun PasscodeDots(filled: Int, length: Int, tone: DotTone, modifier: Modifier = Modifier) {

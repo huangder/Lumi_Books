@@ -1570,7 +1570,7 @@ fun BookshelfScreen(
                             deleteFolder = null
                         },
                         role = AppDialogActionRole.Destructive,
-                        tintedColor = Color(0xFFD92D3A)
+                        tintedColor = AppColors.Destructive
                     ),
                     AppDialogAction(
                         text = stringResource(R.string.cancel),
@@ -1994,7 +1994,7 @@ private fun BookshelfTitle(
             Spacer(Modifier.width(8.dp))
             Text(
                 text = stringResource(R.string.bookshelf_library_summary, bookCount, finishedBookCount),
-                fontSize = 13.sp,
+                fontSize = AppType.Footnote,
                 fontWeight = FontWeight.Light,
                 color = AppColors.TextSecondary.copy(alpha = 0.82f),
                 maxLines = 1
@@ -2270,7 +2270,7 @@ private fun BookshelfCapsuleHeader(
                     Spacer(Modifier.width(6.dp))
                 }
                 Text(folderPath.lastOrNull()?.name ?: stringResource(R.string.bookshelf_title),
-                    color = AppColors.TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                    color = AppColors.TextPrimary, fontSize = AppType.Section, fontWeight = FontWeight.Bold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f).padding(end = 8.dp).coverFlowEntranceItem(1))
                 LiquidGlassIconButton(imageVector = AppIcons.ListBullets,
@@ -2343,8 +2343,8 @@ private fun BookshelfCapsuleHeader(
                             size = 46.dp,
                             iconSize = 21.dp,
                             contentColor = Color.White,
-                            normalContainerColor = Color(0xFFD92D3A),
-                            liquidContainerColor = Color(0xFFD92D3A),
+                            normalContainerColor = AppColors.Destructive,
+                            liquidContainerColor = AppColors.Destructive,
                             liquidScrimColor = Color(0xB8D92D3A)
                         )
                         LiquidGlassIconButton(
@@ -2816,7 +2816,7 @@ private fun BookGridItem(
                     scaleX = coverScale
                     scaleY = coverScale
                 }
-                .shadow(12.dp, AppRoundedCornerShape(coverCorner), ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+                .shadow(12.dp, AppRoundedCornerShape(coverCorner), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
                 .clip(AppRoundedCornerShape(coverCorner))
                 .background(AppColors.BgGray)
         ) {
@@ -2841,7 +2841,7 @@ private fun BookGridItem(
                 ) {
                     Text(
                         text = book.title.take(8),
-                        fontSize = 14.sp,
+                        fontSize = AppType.BodySmall,
                         fontWeight = FontWeight.SemiBold,
                         color = AppColors.TextSecondary,
                         maxLines = 2,
@@ -2911,7 +2911,7 @@ private fun BookGridItem(
             Text(
                 text = stringResource(R.string.book_file_unavailable),
                 fontSize = AppType.Caption,
-                color = Color(0xFFD92D3A),
+                color = AppColors.Destructive,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -3000,7 +3000,7 @@ private fun FolderListItem(
                             Icon(
                                 imageVector = AppIcons.Link,
                                 contentDescription = stringResource(R.string.folder_storage_linked),
-                                tint = if (folder.storageMissing) Color(0xFFD92D3A) else AppColors.Accent,
+                                tint = if (folder.storageMissing) AppColors.Destructive else AppColors.Accent,
                                 modifier = Modifier
                                     .padding(start = 5.dp)
                                     .size(16.dp)
@@ -3011,7 +3011,7 @@ private fun FolderListItem(
                     Text(
                         text = stringResource(R.string.bookshelf_book_counts_summary, bookCount, finishedBookCount),
                         color = AppColors.TextSecondary,
-                        fontSize = 13.sp,
+                        fontSize = AppType.Footnote,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -3140,7 +3140,7 @@ private fun FolderGridItem(
                 Icon(
                     imageVector = AppIcons.Link,
                     contentDescription = stringResource(R.string.folder_storage_linked),
-                    tint = if (folder.storageMissing) Color(0xFFD92D3A) else AppColors.Accent,
+                    tint = if (folder.storageMissing) AppColors.Destructive else AppColors.Accent,
                     modifier = Modifier
                         .padding(start = 4.dp)
                         .size(15.dp)

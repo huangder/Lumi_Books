@@ -65,7 +65,7 @@ internal fun AuthorizedFoldersContent(
         modifier = Modifier.fillMaxSize()
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpace.md),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpace.page),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(

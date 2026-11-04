@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppType
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -47,7 +48,7 @@ internal fun ReaderTitleCapsule(
             ) {
                 Text(
                     text = title,
-                    fontSize = 12.sp,
+                    fontSize = AppType.Caption,
                     color = contentColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -58,7 +59,7 @@ internal fun ReaderTitleCapsule(
         } else {
             Text(
                 text = title,
-                fontSize = 12.sp,
+                fontSize = AppType.Caption,
                 color = contentColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

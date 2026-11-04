@@ -347,6 +347,8 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import coil.load
 import android.text.Spanned
 import androidx.compose.ui.layout.ContentScale
+import com.huangder.lumibooks.ui.components.AppSheetHeader
+import com.huangder.lumibooks.ui.theme.AppPresentation
 
 private data class ReaderLinkLocation(
     val chapterIndex: Int,
@@ -4695,7 +4697,7 @@ private fun ReaderScreenContent(
                     Text(
                         text = stringResource(R.string.auto_reading_next_chapter),
                         color = menuContentColor,
-                        fontSize = 14.sp,
+                        fontSize = AppType.BodySmall,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp)
                     )
@@ -6463,7 +6465,7 @@ private fun TxtEncodingDialog(
                     Text(
                         text = stringResource(R.string.txt_encoding_dialog_message, activeCharsetName),
                         color = AppColors.TextSecondary,
-                        fontSize = 13.sp
+                        fontSize = AppType.Footnote
                     )
                     if (isEncodingChanging) {
                         CircularProgressIndicator(
@@ -6561,7 +6563,7 @@ private fun TxtEncodingCapsule(
             Text(
                 text = label,
                 color = contentColor,
-                fontSize = 12.sp,
+                fontSize = AppType.Caption,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                 maxLines = 2,
                 textAlign = TextAlign.Center
@@ -6808,7 +6810,7 @@ private fun ReaderMoreMenu(
                     Text(
                         text = label,
                         color = contentColor,
-                        fontSize = 14.sp,
+                        fontSize = AppType.BodySmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -6960,10 +6962,10 @@ private fun AutoReadingControl(
                         content = { enabled, select ->
                             Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(speedLabel, color = contentColor, fontSize = 13.sp,
+                                    Text(speedLabel, color = contentColor, fontSize = AppType.Footnote,
                                         modifier = Modifier.weight(1f))
                                     Text("${"%.2f".format(java.util.Locale.ROOT, previewSpeed)}x",
-                                        color = contentColor.copy(alpha = 0.72f), fontSize = 12.sp)
+                                        color = contentColor.copy(alpha = 0.72f), fontSize = AppType.Caption)
                                 }
                                 com.huangder.lumibooks.ui.components.PillSlider(
                                     value = previewSpeed,
@@ -6987,7 +6989,7 @@ private fun AutoReadingControl(
                                     ) {
                                         Icon(item.icon!!, null, tint = contentColor, modifier = Modifier.size(18.dp))
                                         Spacer(Modifier.width(8.dp))
-                                        Text(item.label, color = contentColor, fontSize = 13.sp)
+                                        Text(item.label, color = contentColor, fontSize = AppType.Footnote)
                                     }
                                 }
                             }
@@ -7018,7 +7020,7 @@ private fun rememberReaderSideRailItemSize(): DpSize {
         stringResource(R.string.reader_theme)
     )
     val textMeasurer = rememberTextMeasurer()
-    val style = LocalTextStyle.current.copy(fontSize = 13.sp)
+    val style = LocalTextStyle.current.copy(fontSize = AppType.Footnote)
     val density = LocalDensity.current
     val labelSizes = labels.map { label ->
         textMeasurer.measure(label, style, softWrap = false, maxLines = 1).size
@@ -7331,7 +7333,7 @@ private fun ReaderMenuStatus(
             Text(
                 text = chapterTitle,
                 color = contentColor.copy(alpha = 0.72f),
-                fontSize = 11.sp,
+                fontSize = AppType.Caption2,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
@@ -7340,14 +7342,14 @@ private fun ReaderMenuStatus(
             Text(
                 text = formatReadingProgressPercent(bookProgressPercent),
                 color = contentColor.copy(alpha = 0.72f),
-                fontSize = 11.sp,
+                fontSize = AppType.Caption2,
                 maxLines = 1
             )
             Spacer(Modifier.width(10.dp))
             Text(
                 text = globalPageLabel,
                 color = contentColor.copy(alpha = 0.72f),
-                fontSize = 11.sp,
+                fontSize = AppType.Caption2,
                 maxLines = 1
             )
             Spacer(Modifier.width(10.dp))
@@ -7443,7 +7445,7 @@ private fun CatalogCapsule(
                 Text(
                     text = previewChapterTitle,
                     color = contentColor,
-                    fontSize = 13.sp,
+                    fontSize = AppType.Footnote,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -7524,9 +7526,9 @@ private fun CatalogCapsule(
             ) {
                 Icon(AppIcons.List, contentDescription = null, tint = leftColor, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.reader_toc), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = leftColor)
+                Text(stringResource(R.string.reader_toc), fontSize = AppType.BodySmall, fontWeight = FontWeight.SemiBold, color = leftColor)
                 Spacer(Modifier.weight(1f))
-                Text(formatReadingProgressPercent(displayProgress), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = rightColor)
+                Text(formatReadingProgressPercent(displayProgress), fontSize = AppType.Footnote, fontWeight = FontWeight.Bold, color = rightColor)
             }
         }
 
@@ -7679,7 +7681,7 @@ internal fun ActionCapsule(
     val density = LocalDensity.current
     val textMeasurer = rememberTextMeasurer()
     val labelWidth = with(density) {
-        textMeasurer.measure(label, LocalTextStyle.current.copy(fontSize = 13.sp), softWrap = false).size.width.toDp()
+        textMeasurer.measure(label, LocalTextStyle.current.copy(fontSize = AppType.Footnote), softWrap = false).size.width.toDp()
     }
     LiquidGlassSurface(
         role = com.huangder.lumibooks.ui.theme.AppSurfaceRole.Control,
@@ -7699,7 +7701,7 @@ internal fun ActionCapsule(
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(18.dp))
-                    Text(label, fontSize = 13.sp, color = contentColor, maxLines = 1,
+                    Text(label, fontSize = AppType.Footnote, color = contentColor, maxLines = 1,
                         softWrap = false, overflow = TextOverflow.Ellipsis)
                 }
             } else {
@@ -7707,7 +7709,7 @@ internal fun ActionCapsule(
                     horizontalArrangement = Arrangement.Center) {
                     Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text(label, fontSize = 13.sp, color = contentColor, maxLines = 1, softWrap = false)
+                    Text(label, fontSize = AppType.Footnote, color = contentColor, maxLines = 1, softWrap = false)
                 }
             }
         }
@@ -9356,14 +9358,24 @@ private fun TocSheet(
                 .navigationBarsPadding()
                 .padding(start = 24.dp, top = 24.dp, end = 24.dp),
             fallbackColor = AppColors.CardBg,
-            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+            shape = AppRoundedCornerShape(topStart = AppPresentation.SheetCorner, topEnd = AppPresentation.SheetCorner)
         ) {
             // 标题栏
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                LiquidGlassIconButton(
+                    imageVector = AppIcons.X,
+                    contentDescription = stringResource(R.string.reader_close),
+                    onClick = { isClosing = true },
+                    size = 44.dp,
+                    iconSize = 20.dp,
+                    contentColor = AppColors.TextPrimary,
+                    normalContainerColor = LightBgGray
+                )
+                Spacer(Modifier.width(AppSpace.sm))
                 Text(
                     text = stringResource(R.string.reader_toc),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontSize = AppType.Section,
+                    fontWeight = FontWeight.Bold,
                     fontFamily = resolveAppFontFamily(KaiTi),
                     color = if (activeSection == "toc") AppColors.TextPrimary else LightTextSecondary,
                     modifier = Modifier
@@ -9374,14 +9386,14 @@ private fun TocSheet(
                 )
                 Text(
                     text = "  ",
-                    fontSize = 20.sp,
+                    fontSize = AppType.Section,
                     fontFamily = resolveAppFontFamily(KaiTi),
                     color = LightTextSecondary
                 )
                 Text(
                     text = stringResource(R.string.tab_bookmark),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontSize = AppType.Section,
+                    fontWeight = FontWeight.Bold,
                     fontFamily = resolveAppFontFamily(KaiTi),
                     color = if (activeSection == "bookmark") AppColors.TextPrimary else LightTextSecondary,
                     modifier = Modifier
@@ -9427,17 +9439,6 @@ private fun TocSheet(
                     contentColor = AppColors.TextPrimary,
                     normalContainerColor = LightBgGray,
                     enabled = if (activeSection == "toc") visibleEntries.isNotEmpty() else sortedBookmarks.isNotEmpty()
-                )
-                Spacer(Modifier.width(8.dp))
-                // 关闭按钮
-                LiquidGlassIconButton(
-                    imageVector = AppIcons.X,
-                    contentDescription = stringResource(R.string.reader_close),
-                    onClick = { isClosing = true },
-                    size = 44.dp,
-                    iconSize = 20.dp,
-                    contentColor = AppColors.TextPrimary,
-                    normalContainerColor = LightBgGray
                 )
             }
 
@@ -9520,7 +9521,7 @@ private fun TocSheet(
                                                 imageVector = AppIcons.CaretDown,
                                                 contentDescription = if (collapsed) stringResource(R.string.reader_toc_group_expand)
                                                 else stringResource(R.string.reader_toc_group_collapse),
-                                                tint = Color.Gray,
+                                                tint = LightTextSecondary,
                                                 modifier = Modifier.graphicsLayer { rotationZ = arrowRotation }
                                             )
                                         }
@@ -9529,9 +9530,9 @@ private fun TocSheet(
                                     }
                                     Text(
                                         text = entry.title,
-                                        fontSize = 15.sp,
+                                        fontSize = AppType.Subhead,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isCurrent) AccentColor else Color.Gray,
+                                        color = if (isCurrent) AccentColor else LightTextSecondary,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -9562,7 +9563,7 @@ private fun TocSheet(
                                 ) {
                                     Text(
                                         text = entry.title.ifBlank { stringResource(R.string.reader_chapter_fallback, entry.chapterIndex + 1) },
-                                        fontSize = 15.sp,
+                                        fontSize = AppType.Subhead,
                                         fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
                                         color = if (isCurrent) AccentColor else AppColors.TextPrimary,
                                         maxLines = 1,
@@ -9633,7 +9634,7 @@ private fun TocSheet(
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Text(
                                 text = stringResource(R.string.no_bookmarks_yet),
-                                fontSize = 14.sp,
+                                fontSize = AppType.BodySmall,
                                 color = LightTextSecondary
                             )
                         }
@@ -9809,7 +9810,7 @@ private fun TxtTocRuleDialog(
                 Text(
                     stringResource(R.string.txt_toc_rule_auto_message),
                     color = AppColors.TextSecondary,
-                    fontSize = 13.sp
+                    fontSize = AppType.Footnote
                 )
                 Spacer(Modifier.height(8.dp))
                 TxtTocRuleOption(
@@ -9840,7 +9841,7 @@ private fun TxtTocRuleDialog(
                                 " · ${stringResource(R.string.txt_toc_rule_match_note)}"
                             } ?: ""),
                         color = AppColors.TextSecondary,
-                        fontSize = 12.sp
+                        fontSize = AppType.Caption
                     )
                 }
                 customRules.forEach { rule ->
@@ -9863,7 +9864,7 @@ private fun TxtTocRuleDialog(
                     Text(
                         stringResource(R.string.txt_toc_compat_description),
                         color = AppColors.TextSecondary,
-                        fontSize = 13.sp
+                        fontSize = AppType.Footnote
                     )
                     Spacer(Modifier.height(8.dp))
                     thirdPartyRules.forEach { rule ->
@@ -9886,7 +9887,7 @@ private fun TxtTocRuleDialog(
                 Text(
                     stringResource(R.string.txt_toc_rule_custom_help),
                     color = AppColors.TextSecondary,
-                    fontSize = 13.sp
+                    fontSize = AppType.Footnote
                 )
                 TxtTocRuleExample()
                 Spacer(Modifier.height(6.dp))
@@ -9899,7 +9900,7 @@ private fun TxtTocRuleDialog(
                     Text(
                         it,
                         color = Color(0xFFB3261E),
-                        fontSize = 12.sp
+                        fontSize = AppType.Caption
                     )
                 }
             }
@@ -10014,13 +10015,13 @@ private fun TxtTocRuleOption(
                 Text(
                     text = title,
                     color = titleColor,
-                    fontSize = 14.sp,
+                    fontSize = AppType.BodySmall,
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
                 )
                 Text(
                     text = description,
                     color = descriptionColor,
-                    fontSize = 12.sp,
+                    fontSize = AppType.Caption,
                     lineHeight = 17.sp,
                     modifier = Modifier.padding(top = 2.dp)
                 )
@@ -10050,53 +10051,53 @@ private fun TxtTocRuleExample() {
         Text(
             text = stringResource(R.string.txt_toc_rule_example_title),
             color = AppColors.TextPrimary,
-            fontSize = 12.sp,
+            fontSize = AppType.Caption,
             fontWeight = FontWeight.Medium
         )
         Text(
             text = stringResource(R.string.txt_toc_rule_example_lines),
             color = AppColors.TextSecondary,
-            fontSize = 12.sp,
+            fontSize = AppType.Caption,
             lineHeight = 18.sp,
             modifier = Modifier.padding(top = 3.dp)
         )
         Text(
             text = stringResource(R.string.txt_toc_rule_example_regex),
             color = AppColors.TextSecondary,
-            fontSize = 12.sp,
+            fontSize = AppType.Caption,
             lineHeight = 18.sp,
             modifier = Modifier.padding(top = 5.dp)
         )
         Text(
             text = stringResource(R.string.txt_toc_rule_example_template),
             color = AppColors.TextSecondary,
-            fontSize = 12.sp,
+            fontSize = AppType.Caption,
             lineHeight = 18.sp
         )
         Text(
             text = stringResource(R.string.txt_toc_rule_example_blank),
             color = AppColors.TextSecondary,
-            fontSize = 12.sp,
+            fontSize = AppType.Caption,
             lineHeight = 18.sp
         )
         Spacer(Modifier.height(9.dp))
         Text(
             text = stringResource(R.string.txt_toc_rule_symbol_example_title),
             color = AppColors.TextPrimary,
-            fontSize = 12.sp,
+            fontSize = AppType.Caption,
             fontWeight = FontWeight.Medium
         )
         Text(
             text = stringResource(R.string.txt_toc_rule_symbol_example_lines),
             color = AppColors.TextSecondary,
-            fontSize = 12.sp,
+            fontSize = AppType.Caption,
             lineHeight = 18.sp,
             modifier = Modifier.padding(top = 3.dp)
         )
         Text(
             text = stringResource(R.string.txt_toc_rule_symbol_example_regex),
             color = AppColors.TextSecondary,
-            fontSize = 12.sp,
+            fontSize = AppType.Caption,
             lineHeight = 18.sp,
             modifier = Modifier.padding(top = 5.dp)
         )
@@ -10106,12 +10107,12 @@ private fun TxtTocRuleExample() {
 @Composable
 private fun TocRuleInput(label: String, value: String, onValueChange: (String) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        Text(label, color = AppColors.TextSecondary, fontSize = 12.sp)
+        Text(label, color = AppColors.TextSecondary, fontSize = AppType.Caption)
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier.fillMaxWidth().background(LightBgGray, AppRoundedCornerShape(8.dp)).padding(10.dp),
-            textStyle = TextStyle(color = AppColors.TextPrimary, fontSize = 14.sp),
+            textStyle = TextStyle(color = AppColors.TextPrimary, fontSize = AppType.BodySmall),
             singleLine = true
         )
     }
@@ -10154,22 +10155,22 @@ private fun TocBookmarkItem(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = bookmark.title,
-                    fontSize = 14.sp,
+                    fontSize = AppType.BodySmall,
                     color = AppColors.TextPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (bookmark.isStale) Text(stringResource(R.string.markdown_original_changed), fontSize = 12.sp, color = AccentColor)
+                if (bookmark.isStale) Text(stringResource(R.string.markdown_original_changed), fontSize = AppType.Caption, color = AccentColor)
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = if (chapterTitle.isBlank()) chapterNumber else "$chapterNumber · $chapterTitle",
-                    fontSize = 12.sp,
+                    fontSize = AppType.Caption,
                     color = LightTextSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 if (bookmark.remark.isNotBlank()) {
-                    Text(bookmark.remark, fontSize = 12.sp, color = LightTextSecondary)
+                    Text(bookmark.remark, fontSize = AppType.Caption, color = LightTextSecondary)
                 }
                 AnnotationTagChips(bookmark.tags, modifier = Modifier.padding(top = 4.dp))
             }
@@ -10317,7 +10318,7 @@ private fun DraggableScrollbar(
             ) {
                 Text(
                     text = hint,
-                    fontSize = 12.sp,
+                    fontSize = AppType.Caption,
                     color = AppColors.TextPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -10393,30 +10394,11 @@ internal fun SearchSheet(
                 .navigationBarsPadding()
                 .padding(24.dp),
             fallbackColor = AppColors.CardBg,
-            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+            shape = AppRoundedCornerShape(topStart = AppPresentation.SheetCorner, topEnd = AppPresentation.SheetCorner)
         ) {
             Column {
                 // 标题栏
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        stringResource(R.string.reader_search),
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = resolveAppFontFamily(KaiTi),
-                        color = AppColors.TextPrimary
-                    )
-                    Spacer(Modifier.weight(1f))
-                    // 关闭按钮
-                    LiquidGlassIconButton(
-                        imageVector = AppIcons.X,
-                        contentDescription = stringResource(R.string.reader_close),
-                        onClick = { isClosing = true },
-                        size = 44.dp,
-                        iconSize = 20.dp,
-                        contentColor = AppColors.TextPrimary,
-                        normalContainerColor = LightBgGray
-                    )
-                }
+                AppSheetHeader(title = stringResource(R.string.reader_search), onClose = { isClosing = true })
 
                 Spacer(Modifier.height(16.dp))
 
@@ -10434,8 +10416,8 @@ internal fun SearchSheet(
                         androidx.compose.material3.TextField(
                             value = query,
                             onValueChange = onQueryChange,
-                            placeholder = { Text(stringResource(R.string.search_placeholder), fontSize = 14.sp, color = LightTextSecondary) },
-                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = AppColors.TextPrimary),
+                            placeholder = { Text(stringResource(R.string.search_placeholder), fontSize = AppType.BodySmall, color = LightTextSecondary) },
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = AppType.BodySmall, color = AppColors.TextPrimary),
                             singleLine = true,
                             colors = androidx.compose.material3.TextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,
@@ -10459,7 +10441,7 @@ internal fun SearchSheet(
                         if (isSearching) {
                             CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = AppColors.OnAccent)
                         } else {
-                            Text(stringResource(R.string.reader_search), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false, color = if (query.isNotBlank()) AppColors.OnAccent else LightTextSecondary)
+                            Text(stringResource(R.string.reader_search), fontSize = AppType.BodySmall, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false, color = if (query.isNotBlank()) AppColors.OnAccent else LightTextSecondary)
                         }
                     }
                 }
@@ -10469,7 +10451,7 @@ internal fun SearchSheet(
                     Spacer(Modifier.height(16.dp))
                     Text(
                         stringResource(R.string.search_results_found, results.size),
-                        fontSize = 12.sp,
+                        fontSize = AppType.Caption,
                         color = LightTextSecondary
                     )
                     Spacer(Modifier.height(8.dp))
@@ -10496,14 +10478,14 @@ internal fun SearchSheet(
                                 Column {
                                     Text(
                                         text = r.chapterTitle,
-                                        fontSize = 12.sp,
+                                        fontSize = AppType.Caption,
                                         color = AccentColor,
                                         maxLines = 1
                                     )
                                     Spacer(Modifier.height(4.dp))
                                     Text(
                                         text = r.context,
-                                        fontSize = 14.sp,
+                                        fontSize = AppType.BodySmall,
                                         color = AppColors.TextPrimary,
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis
@@ -10519,7 +10501,7 @@ internal fun SearchSheet(
                         Modifier.fillMaxWidth(),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(stringResource(R.string.search_no_results), fontSize = 14.sp, color = LightTextSecondary)
+                        Text(stringResource(R.string.search_no_results), fontSize = AppType.BodySmall, color = LightTextSecondary)
                     }
                     Spacer(Modifier.height(8.dp))
                 }
@@ -11737,31 +11719,13 @@ private fun ReplaceInputSheet(
                 .navigationBarsPadding()
                 .padding(24.dp),
             fallbackColor = AppColors.CardBg,
-            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            shape = AppRoundedCornerShape(topStart = AppPresentation.SheetCorner, topEnd = AppPresentation.SheetCorner),
             backdrop = glassBackdrop
         ) {
             val replaceAccent = Color(0xFFFF6268)
             Column {
                 // 标题栏
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        stringResource(R.string.menu_replace),
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = resolveAppFontFamily(KaiTi),
-                        color = AppColors.TextPrimary
-                    )
-                    Spacer(Modifier.weight(1f))
-                    LiquidGlassIconButton(
-                        imageVector = AppIcons.X,
-                        contentDescription = stringResource(R.string.reader_close),
-                        onClick = { isClosing = true },
-                        size = 44.dp,
-                        iconSize = 20.dp,
-                        contentColor = AppColors.TextPrimary,
-                        normalContainerColor = LightBgGray
-                    )
-                }
+                AppSheetHeader(title = stringResource(R.string.menu_replace), onClose = { isClosing = true })
 
                 Spacer(Modifier.height(18.dp))
 
@@ -11773,13 +11737,13 @@ private fun ReplaceInputSheet(
                     Text(
                         text = stringResource(R.string.menu_replace),
                         modifier = Modifier.width(64.dp),
-                        fontSize = 15.sp,
+                        fontSize = AppType.Subhead,
                         color = AppColors.TextSecondary.copy(alpha = 0.72f)
                     )
                     Text(
                         text = selectedText,
                         modifier = Modifier.weight(1f),
-                        fontSize = 16.sp,
+                        fontSize = AppType.Body,
                         color = AppColors.TextSecondary,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
@@ -11796,7 +11760,7 @@ private fun ReplaceInputSheet(
                     Text(
                         text = stringResource(R.string.replace_with_label),
                         modifier = Modifier.width(64.dp),
-                        fontSize = 16.sp,
+                        fontSize = AppType.Body,
                         fontWeight = FontWeight.Medium,
                         color = replaceAccent
                     )
@@ -11821,7 +11785,7 @@ private fun ReplaceInputSheet(
                             singleLine = true,
                             textStyle = TextStyle(
                                 color = AppColors.TextPrimary,
-                                fontSize = 16.sp
+                                fontSize = AppType.Body
                             ),
                             cursorBrush = SolidColor(replaceAccent),
                             decorationBox = { innerTextField ->
@@ -11832,7 +11796,7 @@ private fun ReplaceInputSheet(
                                     if (replacement.isEmpty()) {
                                         Text(
                                             text = stringResource(R.string.replace_input_hint),
-                                            fontSize = 15.sp,
+                                            fontSize = AppType.Subhead,
                                             color = AppColors.TextSecondary.copy(alpha = 0.55f),
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
@@ -11865,7 +11829,7 @@ private fun ReplaceInputSheet(
                     ) {
                         Text(
                             text = stringResource(R.string.replace_all),
-                            fontSize = 16.sp,
+                            fontSize = AppType.Body,
                             fontWeight = FontWeight.SemiBold,
                             color = replaceAllTextColor,
                             maxLines = 1,
@@ -11890,7 +11854,7 @@ private fun ReplaceInputSheet(
                     ) {
                         Text(
                             text = stringResource(R.string.replace_this),
-                            fontSize = 16.sp,
+                            fontSize = AppType.Body,
                             fontWeight = FontWeight.SemiBold,
                             color = AppColors.OnAccent,
                             maxLines = 1,
@@ -12287,7 +12251,7 @@ private fun NoteInputSheetContent(
                 .navigationBarsPadding()
                 .padding(AppSpace.lg),
             fallbackColor = AppColors.CardBg,
-            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            shape = AppRoundedCornerShape(topStart = AppPresentation.SheetCorner, topEnd = AppPresentation.SheetCorner),
             backdrop = glassBackdrop,
             forceFallback = forceSolid
         ) {
@@ -12325,10 +12289,10 @@ private fun NoteInputSheetContent(
                     androidx.compose.foundation.text.BasicTextField(
                         value = initialText,
                         onValueChange = onTextChange,
-                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = AppColors.TextPrimary),
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = AppType.BodySmall, color = AppColors.TextPrimary),
                         cursorBrush = SolidColor(AppColors.Accent),
                         decorationBox = { inner -> Box {
-                            if (initialText.isEmpty()) Text(placeholder ?: stringResource(R.string.note_input_placeholder), fontSize = 14.sp, color = AppColors.TextSecondary)
+                            if (initialText.isEmpty()) Text(placeholder ?: stringResource(R.string.note_input_placeholder), fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
                             inner()
                         } },
                         modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp, max = 200.dp)
@@ -12339,7 +12303,7 @@ private fun NoteInputSheetContent(
                     AnnotationTagChips(tags, onEdit = { keyboard?.hide(); showTagSheet = true }, modifier = Modifier.padding(top = 8.dp))
                     if (footer != null) {
                         Spacer(Modifier.height(12.dp))
-                        Text(footer, fontSize = 12.sp, color = AppColors.TextSecondary)
+                        Text(footer, fontSize = AppType.Caption, color = AppColors.TextSecondary)
                     }
                 }
             }
@@ -12449,33 +12413,12 @@ internal fun NotesListSheet(
                 .navigationBarsPadding()
                 .padding(start = 20.dp, top = if (compactHeight) 12.dp else 20.dp, end = 20.dp),
             fallbackColor = LightCardBg,
-            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            shape = AppRoundedCornerShape(topStart = AppPresentation.SheetCorner, topEnd = AppPresentation.SheetCorner),
             backdrop = glassBackdrop,
             forceFallback = forceSolid
         ) {
             // 标题栏
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(R.string.highlights_notes_title),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = resolveAppFontFamily(KaiTi),
-                    color = AppColors.TextPrimary,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                // 关闭按钮
-                LiquidGlassIconButton(
-                    imageVector = AppIcons.X,
-                    contentDescription = stringResource(R.string.reader_close),
-                    onClick = { isClosing = true },
-                    size = 44.dp,
-                    iconSize = 20.dp,
-                    contentColor = AppColors.TextPrimary,
-                    normalContainerColor = LightBgGray
-                )
-            }
+            AppSheetHeader(title = stringResource(R.string.highlights_notes_title), onClose = { isClosing = true })
 
             Spacer(Modifier.height(if (compactHeight) 8.dp else 12.dp))
 
@@ -12511,7 +12454,7 @@ internal fun NotesListSheet(
                                 else -> R.string.no_notes
                             }
                         ),
-                        fontSize = 14.sp,
+                        fontSize = AppType.BodySmall,
                         color = LightTextSecondary
                     )
                 }
@@ -12573,7 +12516,7 @@ private fun HighlightNoteTabSwitcher(
         ) { index, isSelected ->
             Text(
                 text = stringResource(tabs[index].second),
-                fontSize = 14.sp,
+                fontSize = AppType.BodySmall,
                 fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                 color = if (isSelected) AppColors.TextPrimary.copy(alpha = 0.86f) else LightTextSecondary
             )
@@ -12627,7 +12570,7 @@ private fun HighlightNoteTabSwitcher(
                 ) {
                     Text(
                         stringResource(labelRes),
-                        fontSize = 14.sp,
+                        fontSize = AppType.BodySmall,
                         fontWeight = if (activeTag == tag) FontWeight.SemiBold else FontWeight.Normal,
                         color = if (activeTag == tag) AppColors.TextPrimary else LightTextSecondary
                     )
@@ -12700,7 +12643,7 @@ internal fun HighlightNoteItem(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     if (expanded) item.selectedText else item.selectedText.replace('\n', ' '),
-                    fontSize = 14.sp,
+                    fontSize = AppType.BodySmall,
                     color = AppColors.TextPrimary,
                     maxLines = if (expanded) Int.MAX_VALUE else 2,
                     overflow = TextOverflow.Ellipsis
@@ -12709,13 +12652,13 @@ internal fun HighlightNoteItem(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         item.note,
-                        fontSize = 13.sp,
+                        fontSize = AppType.Footnote,
                         color = LightTextSecondary,
                         maxLines = if (expanded) Int.MAX_VALUE else 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                if (item.isStale) Text(stringResource(R.string.markdown_original_changed), fontSize = 12.sp, color = AccentColor)
+                if (item.isStale) Text(stringResource(R.string.markdown_original_changed), fontSize = AppType.Caption, color = AccentColor)
                 AnnotationTagChips(item.tags, modifier = Modifier.padding(top = 6.dp))
                 Spacer(Modifier.height(4.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
@@ -12724,14 +12667,14 @@ internal fun HighlightNoteItem(
                     Text(
                         stringResource(if (usePageLabels) R.string.pdf_page_number else R.string.reader_chapter_fallback,
                             item.chapterIndex + 1),
-                        fontSize = 12.sp,
+                        fontSize = AppType.Caption,
                         color = AccentColor,
                         modifier = Modifier.clickable(enabled = !revealed, onClick = onClick)
                             .padding(vertical = 6.dp)
                     )
                     Text(
                         java.text.SimpleDateFormat("MM/dd", java.util.Locale.getDefault()).format(java.util.Date(item.createdAt)),
-                        fontSize = 12.sp,
+                        fontSize = AppType.Caption,
                         color = AccentColor
                     )
                 }

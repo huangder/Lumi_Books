@@ -38,7 +38,6 @@ import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import com.huangder.lumibooks.ui.theme.AppType
 
-private val ErrorColor = Color(0xFFD92D3A)
 
 /**
  * Labelled input in the Lumi settings style (as on the translation settings page): label above a
@@ -63,7 +62,7 @@ internal fun RemoteTextField(
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val shape = AppRoundedCornerShape(AppRadius.lg)
     val rimColor = when {
-        isError -> ErrorColor.copy(alpha = 0.75f)
+        isError -> AppColors.Destructive.copy(alpha = 0.75f)
         focused -> AppColors.Accent.copy(alpha = 0.45f)
         else -> Color.Transparent
     }
@@ -122,7 +121,7 @@ internal fun RemoteTextField(
         if (supportingText != null) {
             Text(
                 text = supportingText,
-                color = if (isError) ErrorColor else AppColors.TextSecondary,
+                color = if (isError) AppColors.Destructive else AppColors.TextSecondary,
                 fontSize = AppType.Caption
             )
         }

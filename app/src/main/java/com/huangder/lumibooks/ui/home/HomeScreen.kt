@@ -122,6 +122,7 @@ import com.huangder.lumibooks.ui.animation.bookCoverTransitionAnchor
 import com.huangder.lumibooks.ui.layout.currentAdaptiveWindowInfo
 import com.huangder.lumibooks.util.TimeUtils
 import com.huangder.lumibooks.util.ReaderBackgroundBlurTransformation
+import com.huangder.lumibooks.ui.components.AppDropdownMenu
 
 @Composable
 fun HomeScreen(
@@ -377,6 +378,8 @@ private fun HomeHeader(
             color = AppColors.TextPrimary
         )
         Spacer(Modifier.weight(1f))
+        // 版本会员提示：仅官方版提供，点过一次或进过会员页即消失
+        com.huangder.lumibooks.edition.EditionHomeMembershipPrompt()
         // 头像（点击进入设置页）
         Box(
             modifier = Modifier
@@ -596,7 +599,7 @@ private fun ContinueReadingCard(
                 Text(
                     text = stringResource(R.string.book_file_unavailable),
                     fontSize = AppType.Caption,
-                    color = Color(0xFFD92D3A),
+                    color = AppColors.Destructive,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -655,15 +658,10 @@ private fun ContinueReadingCard(
                 modifier = Modifier.liquidGlassMenuAnchor().onGloballyPositioned { menuAnchorBounds = it.boundsInRoot() }
             )
             }
-            DropdownMenu(
+            AppDropdownMenu(
                 expanded = menuExpanded,
                 onDismissRequest = { menuExpanded = false },
-                modifier = Modifier.width(116.dp),
-                shape = AppRoundedCornerShape(AppRadius.xl),
-                containerColor = AppColors.WindowBg,
-                border = BorderStroke(1.dp, AppColors.Divider),
-                shadowElevation = 0.dp,
-                tonalElevation = 0.dp
+                modifier = Modifier.width(116.dp)
             ) {
                 Row(
                     modifier = Modifier
@@ -732,87 +730,6 @@ private fun SectionHeader(title: String) {
         color = AppColors.TextPrimary,
         modifier = Modifier.padding(horizontal = AppSpace.lg)
     )
-}
-
-// ─── 最近阅读卡片 ──────────────────────────────────────────────
-
-@Composable
-private fun RecentBookCard(
-    book: Book,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    fixedWidth: Boolean = true
-) {
-    Row(
-        modifier = modifier
-            .then(if (fixedWidth) Modifier.width(260.dp) else Modifier)
-            .shadow(10.dp, AppRoundedCornerShape(AppRadius.md), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
-            .cardOutline(AppRoundedCornerShape(AppRadius.md))
-            .clip(AppRoundedCornerShape(AppRadius.md))
-            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.md))
-            .cardPressEffect()
-            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onClick)
-            .padding(AppSpace.sm),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(56.dp, 74.dp)
-                .bookCoverTransitionAnchor(
-                    bookId = book.id,
-                    cornerRadiusDp = 6f,
-                    titleStyle = BookCoverTitleStyle(
-                        fontSizeSp = 10f,
-                        maxLines = 3,
-                        paddingDp = AppSpace.sm.value,
-                        color = BookCoverTitleColor.Primary,
-                        useKaiTi = true,
-                        textAlignCenter = true
-                    )
-                )
-                .clip(AppRoundedCornerShape(6.dp))
-                .background(AppColors.BgGray),
-            contentAlignment = Alignment.Center
-        ) {
-            if (book.coverPath == null) {
-                DefaultBookCoverTitle(
-                    title = book.title,
-                    fontSize = 10.sp
-                )
-            } else {
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(book.coverPath)
-                        .memoryCacheKey(
-                            bookCoverMemoryCacheKey(book.id, book.coverPath)
-                        )
-                        .build(),
-                    contentDescription = book.title,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            }
-            BookCoverStatusBadge(book = book, compact = true)
-        }
-        Spacer(Modifier.width(AppSpace.sm))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = book.title,
-                fontSize = AppType.BodySmall,
-                fontWeight = FontWeight.SemiBold,
-                color = AppColors.TextPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = book.author,
-                fontSize = AppType.Caption,
-                color = AppColors.TextSecondary,
-                maxLines = 1
-            )
-            BookProgressStatus(book = book)
-        }
-    }
 }
 
 // ─── 阅读目标卡片 ──────────────────────────────────────────────
@@ -989,7 +906,7 @@ private fun WeeklyCheckIn(weeklyData: List<DailyReading> = emptyList(), dailyGoa
                     }
                     Text(
                         text = data.dayLabel,
-                        fontSize = 11.sp,
+                        fontSize = AppType.Caption2,
                         color = when {
                             isToday -> Color.White
                             goalMet && (isPast || !hasGoal) -> Color.White

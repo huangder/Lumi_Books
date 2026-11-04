@@ -110,6 +110,9 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import com.huangder.lumibooks.ui.components.AppDropdownMenu
+import com.huangder.lumibooks.ui.components.DisclosureChevron
+import com.huangder.lumibooks.ui.components.EmptyState
 
 /**
  * State of the folder books page. Lives in the Activity so the system back gesture, the header
@@ -852,14 +855,10 @@ private fun FolderBooksSortButton(
         )
 
         if (!isLiquidGlass || menuHost == null) {
-            DropdownMenu(
+            AppDropdownMenu(
                 expanded = sortExpanded,
                 onDismissRequest = { sortExpanded = false },
-                modifier = Modifier.width(196.dp),
-                shape = AppRoundedCornerShape(AppRadius.md),
-                containerColor = AppColors.WindowBg,
-                tonalElevation = 0.dp,
-                shadowElevation = 0.dp
+                modifier = Modifier.width(196.dp)
             ) {
                 FolderBooksSortMode.entries.forEach { mode ->
                     FolderBooksSortMenuItem(
@@ -1036,12 +1035,16 @@ private fun FolderBooksEmptyState(
                     strokeWidth = 2.dp
                 )
             }
-            Text(
-                text = emptyText,
-                color = AppColors.TextSecondary,
-                fontSize = AppType.BodySmall,
-                maxLines = 3
-            )
+            if (isScanning) {
+                Text(
+                    text = emptyText,
+                    color = AppColors.TextSecondary,
+                    fontSize = AppType.BodySmall,
+                    maxLines = 3
+                )
+            } else {
+                EmptyState(message = emptyText, icon = AppIcons.FolderOpen)
+            }
         }
     }
 }
@@ -1083,12 +1086,7 @@ private fun FolderBooksFolderRow(
             )
         }
         Spacer(Modifier.width(AppSpace.sm))
-        Icon(
-            imageVector = AppIcons.CaretRight,
-            contentDescription = null,
-            tint = AppColors.TextSecondary,
-            modifier = Modifier.size(18.dp)
-        )
+        DisclosureChevron()
     }
 }
 

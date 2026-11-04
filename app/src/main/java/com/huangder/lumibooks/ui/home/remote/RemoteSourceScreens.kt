@@ -34,9 +34,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -62,8 +60,6 @@ import com.huangder.lumibooks.data.remote.RemoteSource
 import com.huangder.lumibooks.data.remote.RemoteSourceType
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassButton
-import com.huangder.lumibooks.ui.components.LiquidGlassDialog
-import com.huangder.lumibooks.ui.components.usesCardSheets
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.SwipeRevealItem
 import com.huangder.lumibooks.ui.components.RequestLocalNetworkPermission
@@ -78,6 +74,9 @@ import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.kyant.backdrop.backdrops.layerBackdrop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.huangder.lumibooks.ui.components.AppBottomSheet
+import com.huangder.lumibooks.ui.components.DisclosureChevron
+import com.huangder.lumibooks.ui.components.EmptyState
 
 @Composable
 internal fun RemoteSourceListScreen(
@@ -191,7 +190,7 @@ internal fun RemoteSourceListScreen(
                         onDelete(source)
                     },
                     role = AppDialogActionRole.Destructive,
-                    tintedColor = androidx.compose.ui.graphics.Color(0xFFD92D3A)
+                    tintedColor = AppColors.Destructive
                 ),
                 AppDialogAction(
                     text = stringResource(R.string.cancel),
@@ -227,7 +226,7 @@ private fun RemoteSourceRow(
                 Text(source.url, color = AppColors.TextSecondary, fontSize = AppType.Caption,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            Icon(AppIcons.CaretRight, contentDescription = null, tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+            DisclosureChevron()
         }
     }
 }
@@ -284,30 +283,12 @@ internal fun RemoteEmptyState(
     onAction: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = AppSpace.xl * 2),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(AppSpace.md)
-    ) {
-        Text(
-            text = message,
-            color = AppColors.TextSecondary,
-            fontSize = AppType.BodySmall,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-        )
-        if (actionLabel != null && onAction != null) {
-            LiquidGlassButton(
-                onClick = onAction,
-                shape = AppRoundedCornerShape(AppRadius.full),
-                tintedColor = AppColors.Accent,
-                contentColor = AppColors.OnAccent
-            ) {
-                Text(text = actionLabel, color = AppColors.OnAccent, fontSize = AppType.BodySmall, fontWeight = FontWeight.SemiBold)
-            }
-        }
-    }
+    EmptyState(
+        message = message,
+        modifier = modifier.fillMaxWidth().padding(vertical = AppSpace.xl * 2),
+        actionLabel = actionLabel,
+        onAction = onAction
+    )
 }
 
 /**
@@ -595,30 +576,7 @@ private fun RemoteLibraryLegalSheet(
         }
     }
 
-    val cardSheets = usesCardSheets()
-    if (isLiquidGlass || cardSheets) {
-        LiquidGlassDialog(
-            onDismissRequest = onDismiss,
-            alignment = Alignment.BottomCenter,
-            shape = AppRoundedCornerShape(28.dp),
-            contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
-            backgroundScrimColor = Color.Black.copy(alpha = 0.12f)
-        ) {
-            content()
-        }
-    } else {
-        ModalBottomSheet(
-            onDismissRequest = onDismiss,
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = AppColors.CardBg,
-            contentColor = AppColors.TextPrimary,
-            scrimColor = Color.Black.copy(alpha = 0.12f),
-            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            dragHandle = null
-        ) {
-            content()
-        }
-    }
+    AppBottomSheet(onDismissRequest = onDismiss) { content() }
 }
 
 @Composable
@@ -629,7 +587,7 @@ internal fun RemoteInlineNotice(text: String, isError: Boolean = false) {
             .fillMaxWidth()
             .clip(shape)
             .background(
-                (if (isError) androidx.compose.ui.graphics.Color(0xFFD92D3A) else AppColors.Accent).copy(alpha = 0.10f),
+                (if (isError) AppColors.Destructive else AppColors.Accent).copy(alpha = 0.10f),
                 shape
             )
             .padding(horizontal = AppSpace.md, vertical = AppSpace.sm),
@@ -638,7 +596,7 @@ internal fun RemoteInlineNotice(text: String, isError: Boolean = false) {
         Icon(
             imageVector = if (isError) AppIcons.Warning else AppIcons.Info,
             contentDescription = null,
-            tint = if (isError) androidx.compose.ui.graphics.Color(0xFFD92D3A) else AppColors.Accent,
+            tint = if (isError) AppColors.Destructive else AppColors.Accent,
             modifier = Modifier.size(18.dp)
         )
         Spacer(Modifier.width(AppSpace.sm))

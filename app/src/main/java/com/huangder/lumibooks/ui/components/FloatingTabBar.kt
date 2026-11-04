@@ -107,6 +107,7 @@ import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
+import com.huangder.lumibooks.ui.theme.AppType
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
@@ -677,7 +678,7 @@ fun FloatingTabBar(
 
 @Composable
 private fun tabLabelStyle() =
-    LocalTextStyle.current.copy(fontSize = 11.sp, lineHeight = 13.sp, fontWeight = FontWeight.Medium)
+    LocalTextStyle.current.copy(fontSize = AppType.Caption2, lineHeight = 13.sp, fontWeight = FontWeight.Medium)
 
 /** Cross-axis size of the vertical tab rail: the widest tab label must fit without ellipsis. */
 @Composable
@@ -943,7 +944,7 @@ private fun TabItemView(
             androidx.compose.material3.Text(
                 text = stringResource(tab.titleRes),
                 color = if (isSelected) selectedContentColor else contentColor,
-                fontSize = 11.sp,
+                fontSize = AppType.Caption2,
                 fontWeight = FontWeight.Medium,
                 lineHeight = 13.sp,
                 softWrap = false,

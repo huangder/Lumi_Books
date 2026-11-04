@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.sp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.ReaderImageAdjustments
 import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 
 @Composable
@@ -25,14 +26,14 @@ internal fun ImageAdjustmentControls(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         if (showSavedHint) {
-            Text(stringResource(R.string.reader_image_adjustment_saved_hint), fontSize = 12.sp, color = AppColors.TextSecondary)
+            Text(stringResource(R.string.reader_image_adjustment_saved_hint), fontSize = AppType.Caption, color = AppColors.TextSecondary)
         }
         SettingSlider(stringResource(R.string.reader_image_brightness), settings.brightness, -1f..1f, 0.05f,
             { String.format("%+.2f", it) }, onBrightness, onBrightness)
         SettingSlider(stringResource(R.string.reader_image_contrast), settings.contrast, 0.5f..2f, 0.05f,
             { String.format("%.2fx", it) }, onContrast, onContrast)
         if (eInk) {
-            Text(stringResource(R.string.reader_image_sharpen_eink), fontSize = 12.sp, color = AppColors.TextSecondary)
+            Text(stringResource(R.string.reader_image_sharpen_eink), fontSize = AppType.Caption, color = AppColors.TextSecondary)
         } else {
             SettingSlider(stringResource(R.string.reader_image_sharpen), settings.sharpen, 0f..1f, 0.05f,
                 { "${(it * 100).toInt()}%" }, onSharpen, onSharpen)

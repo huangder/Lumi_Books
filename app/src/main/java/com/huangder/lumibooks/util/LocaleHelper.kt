@@ -66,10 +66,11 @@ object LocaleHelper {
     fun wrapContext(context: Context, language: String): Context {
         if (language == "system") return context
         val locale = getLocaleForLanguage(language)
-        // Override only the locale. Copying the current Configuration also overrides
-        // width, height, orientation, density and uiMode with their values at launch,
-        // preventing this Context from following later window/configuration changes.
-        val config = Configuration()
+        // Override the locale and uiMode while allowing size/orientation to keep
+        // following later window and device configuration changes.
+        val config = Configuration().apply {
+            uiMode = context.resources.configuration.uiMode
+        }
         config.setLocale(locale)
         return context.createConfigurationContext(config)
     }

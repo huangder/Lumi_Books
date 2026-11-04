@@ -41,6 +41,7 @@ import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
 import com.huangder.lumibooks.ui.icons.AppIcons
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppType
 
 /** PDF and comic actions share the same available-width policy, including system text scaling. */
 @Composable
@@ -61,7 +62,7 @@ internal fun RasterReaderActionRow(
     val density = LocalDensity.current
     val textDensity = Density(density.density, density.fontScale)
     val measurer = rememberTextMeasurer()
-    val style = LocalTextStyle.current.copy(fontSize = 13.sp)
+    val style = LocalTextStyle.current.copy(fontSize = AppType.Footnote)
     val actionWidth = with(density) {
         listOf(annotationLabel, bookmarksLabel, adjustmentLabel).maxOf {
             measurer.measure(it, style, softWrap = false, maxLines = 1, density = textDensity).size.width
@@ -95,7 +96,7 @@ internal fun RasterReaderActionRow(
         }
         val menuWidth = maxOf(208.dp, with(density) {
             moreItems.maxOfOrNull {
-                measurer.measure(it.label, style.copy(fontSize = 14.sp), softWrap = false, density = textDensity).size.width
+                measurer.measure(it.label, style.copy(fontSize = AppType.BodySmall), softWrap = false, density = textDensity).size.width
             }?.toDp() ?: 0.dp
         } + 60.dp)
 
@@ -145,7 +146,7 @@ internal fun PdfActionCapsule(
     val density = LocalDensity.current
     val textDensity = Density(density.density, density.fontScale)
     val measurer = rememberTextMeasurer()
-    val style = LocalTextStyle.current.copy(fontSize = 13.sp)
+    val style = LocalTextStyle.current.copy(fontSize = AppType.Footnote)
     val labelWidth = with(density) {
         measurer.measure(label, style, softWrap = false, maxLines = 1, density = textDensity).size.width.toDp()
     }

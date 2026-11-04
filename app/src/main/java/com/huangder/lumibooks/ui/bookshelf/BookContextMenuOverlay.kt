@@ -211,8 +211,8 @@ private fun HighlightedCover(
             .shadow(
                 12.dp,
                 coverShape,
-                ambientColor = Color(0x06000000),
-                spotColor = Color(0x06000000)
+                ambientColor = AppColors.CardShadow,
+                spotColor = AppColors.CardShadow
             )
             .clip(coverShape)
     ) {
@@ -235,7 +235,7 @@ private fun HighlightedCover(
             ) {
                 Text(
                     text = book.title.take(8),
-                    fontSize = 14.sp,
+                    fontSize = AppType.BodySmall,
                     fontWeight = FontWeight.SemiBold,
                     color = AppColors.TextSecondary,
                     maxLines = 2,

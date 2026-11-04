@@ -72,6 +72,7 @@ import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import com.huangder.lumibooks.ui.theme.cardOutline
 import com.kyant.backdrop.Backdrop
+import com.huangder.lumibooks.ui.theme.AppPresentation
 
 /** Label shared by the reader's selection menu and the settings editor. */
 @StringRes
@@ -221,7 +222,7 @@ private fun SelectionMenuActionCard(
         modifier = modifier
             .fillMaxWidth()
             .testTag("selection-menu-${action.storageKey}")
-            .shadow(8.dp, shape, ambientColor = Color(0x06000000), spotColor = Color(0x06000000))
+            .shadow(8.dp, shape, ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
             .cardOutline(shape)
             .clip(shape)
             .lumiCardSurface(shape = shape)
@@ -268,7 +269,7 @@ private fun SelectionMenuActionCard(
 private fun TxtOnlyTag() {
     Text(
         stringResource(R.string.selection_menu_txt_only),
-        fontSize = 11.sp,
+        fontSize = AppType.Caption2,
         lineHeight = 16.sp,
         fontWeight = FontWeight.Medium,
         color = AppColors.TextSecondary,
@@ -360,7 +361,7 @@ fun SelectionMenuSettingsDialog(
                 .navigationBarsPadding()
                 .padding(horizontal = 20.dp, vertical = 20.dp),
             fallbackColor = AppColors.CardBg,
-            shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            shape = AppRoundedCornerShape(topStart = AppPresentation.SheetCorner, topEnd = AppPresentation.SheetCorner),
             backdrop = backdrop ?: LocalLiquidGlassBackdrop.current
         ) {
             AppSheetHeader(title = stringResource(R.string.selection_menu_settings), onClose = discard)

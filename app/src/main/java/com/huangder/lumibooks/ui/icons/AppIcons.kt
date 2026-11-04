@@ -160,6 +160,22 @@ object AppIcons {
     val Translate = FluentIcons.Regular.Translate
     val Eye = FluentIcons.Regular.Eye
     val EyeSlash = FluentIcons.Regular.EyeOff
+
+    /** Filled glyphs drawn in white on the colored tiles of the settings home page. */
+    object Tile {
+        val Folders = FluentIcons.Filled.FolderOpen
+        val Tags = FluentIcons.Filled.Tag
+        val Reading = FluentIcons.Filled.TextFont
+        val Display = FluentIcons.Filled.WeatherSunny
+        val Language = FluentIcons.Filled.Translate
+        val Privacy = FluentIcons.Filled.ShieldLock
+        val Storage = FluentIcons.Filled.Storage
+        val Backup = FluentIcons.Filled.Archive
+        val Services = FluentIcons.Filled.Cloud
+        val About = FluentIcons.Filled.Info
+        val Sponsor = FluentIcons.Filled.Heart
+        val Feedback = FluentIcons.Filled.Bug
+    }
 }
 
 /** Resolve a logical start/end icon without relying on Material's auto-mirror metadata. */

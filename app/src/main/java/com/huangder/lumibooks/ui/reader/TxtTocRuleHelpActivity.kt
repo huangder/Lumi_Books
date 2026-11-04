@@ -30,6 +30,7 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
+import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.util.LaunchThemeController
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -159,7 +160,7 @@ private fun HelpSection(title: String, body: String) {
         Text(
             text = body,
             color = AppColors.TextSecondary,
-            fontSize = 14.sp,
+            fontSize = AppType.BodySmall,
             lineHeight = 22.sp
         )
     }

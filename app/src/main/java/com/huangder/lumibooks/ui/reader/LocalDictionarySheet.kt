@@ -96,7 +96,7 @@ internal fun LocalDictionarySheetContent(query: String, result: DictionaryLookup
             modifier = adaptiveSheetFrame(heightFraction = 0.7f)
                 .materialBottomSheetMotion(offset.value, if (detailId == null) backProgress else 0f),
             contentModifier = Modifier.fillMaxSize().navigationBarsPadding().padding(horizontal = 24.dp, vertical = 16.dp),
-            fallbackColor = AppColors.CardBg, shape = AppRoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            fallbackColor = AppColors.CardBg, shape = AppRoundedCornerShape(topStart = AppPresentation.SheetCorner, topEnd = AppPresentation.SheetCorner),
             backdrop = glassBackdrop, forceFallback = forceSolid || LocalEInkMode.current
         ) {
                 AnimatedContent(targetState = detailId, modifier = Modifier.fillMaxWidth(),
