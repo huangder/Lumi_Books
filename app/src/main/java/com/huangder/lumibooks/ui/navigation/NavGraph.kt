@@ -1,5 +1,8 @@
 @file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.flowOn
 package com.huangder.lumibooks.ui.navigation
 
 import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
@@ -522,7 +525,10 @@ fun MainNavGraph(
             isPreparingImport = false
         }
     }
-    val homeUiState by homeViewModel.uiState.collectAsState()
+    val navigationState = remember(homeViewModel) {
+        homeViewModel.uiState.map { it.forNavigation() }.distinctUntilChanged().flowOn(Dispatchers.Default)
+    }
+    val homeUiState by navigationState.collectAsStateWithLifecycle(initialValue = homeViewModel.uiState.value.forNavigation())
     val folderBooksLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->

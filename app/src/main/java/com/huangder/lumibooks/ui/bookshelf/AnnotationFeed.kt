@@ -6,6 +6,10 @@ import com.huangder.lumibooks.domain.model.Note
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 enum class AnnotationFeedType { ALL, HIGHLIGHTS, UNDERLINES, NOTES, BOOKMARKS }
 
@@ -26,6 +30,66 @@ sealed interface AnnotationFeedEntry {
         override val createdAt: Long get() = bookmark.createdAt
         override val key: String get() = "bookmark-${bookmark.id}"
         override val tags: List<String> get() = bookmark.tags
+    }
+}
+
+/** Fully formatted rows, prepared with the filtered feed on a background dispatcher. */
+sealed interface AnnotationFeedRow {
+    val key: String
+    val contentType: String
+
+    data class Day(val day: LocalDate, val label: String) : AnnotationFeedRow {
+        override val key: String get() = "day-$day"
+        override val contentType: String get() = "day"
+    }
+
+    data class Entry(val entry: AnnotationFeedEntry, val timeText: String) : AnnotationFeedRow {
+        override val key: String get() = entry.key
+        override val contentType: String get() = when (entry) {
+            is AnnotationFeedEntry.NoteEntry -> "note"
+            is AnnotationFeedEntry.BookmarkEntry -> "bookmark"
+        }
+    }
+}
+
+internal data class AnnotationFeedDisplayEnvironment(
+    val locale: Locale,
+    val zone: ZoneId,
+    val today: LocalDate,
+    val timePattern: String,
+    val dayPattern: String,
+    val otherYearPattern: String,
+    val todayLabel: String,
+    val yesterdayLabel: String
+)
+
+internal fun List<AnnotationFeedEntry>.toDisplayRows(
+    environment: AnnotationFeedDisplayEnvironment
+): List<AnnotationFeedRow> {
+    val zone = TimeZone.getTimeZone(environment.zone)
+    fun formatter(pattern: String) = SimpleDateFormat(pattern, environment.locale).apply {
+        timeZone = zone
+    }
+    // DateFormat is mutable: each background calculation owns its formatters.
+    val timeFormat = formatter(environment.timePattern)
+    val dayFormat = formatter(environment.dayPattern)
+    val otherYearFormat = formatter(environment.otherYearPattern)
+    val yesterday = environment.today.minusDays(1)
+    return buildList {
+        groupedByDay(environment.zone).forEach { (day, entries) ->
+            val label = when (day) {
+                environment.today -> environment.todayLabel
+                yesterday -> environment.yesterdayLabel
+                else -> {
+                    val format = if (day.year == environment.today.year) dayFormat else otherYearFormat
+                    format.format(Date.from(day.atStartOfDay(environment.zone).toInstant()))
+                }
+            }
+            add(AnnotationFeedRow.Day(day, label))
+            entries.forEach { entry ->
+                add(AnnotationFeedRow.Entry(entry, timeFormat.format(Date(entry.createdAt))))
+            }
+        }
     }
 }
 

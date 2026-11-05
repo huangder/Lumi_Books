@@ -24,6 +24,7 @@ import javax.inject.Inject
 
 data class AnnotationFeedUiState(
     val entries: List<AnnotationFeedEntry> = emptyList(),
+    val rows: List<AnnotationFeedRow> = emptyList(),
     val type: AnnotationFeedType = AnnotationFeedType.ALL,
     val selectedTag: String? = null,
     val selectedColor: String? = null,
@@ -46,6 +47,11 @@ class AnnotationFeedViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val queryState = MutableStateFlow(AnnotationFeedQuery())
+    private val displayEnvironment = MutableStateFlow<AnnotationFeedDisplayEnvironment?>(null)
+
+    internal fun setDisplayEnvironment(environment: AnnotationFeedDisplayEnvironment) {
+        displayEnvironment.value = environment
+    }
 
     private val feed = combine(
         bookRepository.getAllBooks(),
@@ -54,11 +60,14 @@ class AnnotationFeedViewModel @Inject constructor(
     ) { books, notes, bookmarks -> buildAnnotationFeed(books, notes, bookmarks) }
 
     val uiState: StateFlow<AnnotationFeedUiState> = combine(
-        feed, queryState, readingRepository.observeAnnotationTags()
-    ) { all, query, catalog ->
+        feed, queryState, readingRepository.observeAnnotationTags(), displayEnvironment
+    ) { all, query, catalog, environment ->
+        if (environment == null) return@combine AnnotationFeedUiState()
+        val entries = all.matching(query)
         val styleTab = query.type == AnnotationFeedType.HIGHLIGHTS || query.type == AnnotationFeedType.UNDERLINES
         AnnotationFeedUiState(
-            entries = all.matching(query),
+            entries = entries,
+            rows = entries.toDisplayRows(environment),
             type = query.type,
             selectedTag = query.filter.tag,
             selectedColor = query.filter.color,

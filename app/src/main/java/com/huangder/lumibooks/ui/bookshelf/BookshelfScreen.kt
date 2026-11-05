@@ -1,6 +1,7 @@
 @file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package com.huangder.lumibooks.ui.bookshelf
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import com.huangder.lumibooks.ui.components.AppDialogAction
 import com.huangder.lumibooks.ui.components.AppDialogActionRole
@@ -191,7 +192,7 @@ fun BookshelfScreen(
     onOpenHiddenLibrary: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val effectiveLayoutMode = if (uiState.bookshelfLayoutModeLoaded) {
         uiState.bookshelfLayoutMode
     } else {
