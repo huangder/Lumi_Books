@@ -177,6 +177,9 @@ class EpubRenderSession private constructor(
         return EpubDocumentTransformer.extractSearchText(resource)
     }
 
+    override fun imageTextOffsets(chapterIndex: Int): List<Int> =
+        readLogicalSource(chapterIndex)?.let(EpubDocumentTransformer::imageTextOffsets).orEmpty()
+
     override fun chapterIndexForUrl(url: String): Int? {
         val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return null
         if (uri.host != ASSET_DOMAIN) return null

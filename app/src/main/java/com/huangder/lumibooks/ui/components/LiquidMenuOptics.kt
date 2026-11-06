@@ -80,7 +80,7 @@ internal fun LiquidMenuSurface(
                     fallbackBlurPx = AppPresentation.OverlayFallbackBlur.toPx() + extraBlur,
                     resetEffects = { renderEffect = baseEffect; padding = basePadding },
                     blur = { radius -> blur(radius) },
-                    refract = { optics!!.effect(frame(), padding, density, content = false).let { effect(it) } },
+                    refract = { optics!!.effect(frame(), padding, density, content = false, samplingScale = samplingScale).let { effect(it) } },
                     onFailure = { Log.w("LiquidMenuOptics", "Refraction unavailable; using blur fallback", it) }
                 )
             },
@@ -141,14 +141,14 @@ internal fun rememberMenuOptics(): LiquidMenuOptics? {
 internal class LiquidMenuOptics {
     private val shader = RuntimeShader(MenuLensShader)
 
-    fun effect(frame: LiquidMenuFrame, padding: Float, density: Float, content: Boolean): RenderEffect {
-        shader.setFloatUniform("size", frame.bounds.width, frame.bounds.height)
-        shader.setFloatUniform("padding", padding)
-        shader.setFloatUniform("radius", frame.radius)
+    fun effect(frame: LiquidMenuFrame, padding: Float, density: Float, content: Boolean, samplingScale: Float = 1f): RenderEffect {
+        shader.setFloatUniform("size", frame.bounds.width * samplingScale, frame.bounds.height * samplingScale)
+        shader.setFloatUniform("padding", padding * samplingScale)
+        shader.setFloatUniform("radius", frame.radius * samplingScale)
         shader.setFloatUniform("neck", frame.neck)
         shader.setFloatUniform("side", frame.nearX, frame.nearY)
-        shader.setFloatUniform("band", (if (content) 28f else 16f + 4f * frame.distortion) * density)
-        shader.setFloatUniform("amount", (if (content) 17f * frame.distortion else 24f + 9f * frame.distortion) * density)
+        shader.setFloatUniform("band", (if (content) 28f else 16f + 4f * frame.distortion) * density * samplingScale)
+        shader.setFloatUniform("amount", (if (content) 17f * frame.distortion else 24f + 9f * frame.distortion) * density * samplingScale)
         shader.setFloatUniform("warpContent", if (content) frame.distortion else 0f)
         shader.setFloatUniform("surfaceLens", if (content) 0f else 1f)
         return RenderEffect.createRuntimeShaderEffect(shader, "content")

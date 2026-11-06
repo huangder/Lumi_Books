@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="liquid_glass_sampling_quality">유리 샘플링 품질</string>
+    <string name="liquid_glass_sampling_original">원본 (1×)</string>
+    <string name="liquid_glass_sampling_clear">선명 (⅔×)</string>
+    <string name="liquid_glass_sampling_balanced">균형 (½×)</string>
+    <string name="liquid_glass_sampling_performance">성능 (⅓×)</string>
+</resources>

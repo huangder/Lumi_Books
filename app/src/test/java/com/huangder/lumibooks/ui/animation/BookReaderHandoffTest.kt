@@ -60,6 +60,39 @@ class BookReaderHandoffTest {
         advanceUntilIdle()
     }
 
+    @Test fun `zoom only opening shows its loading page until the zoom has finished`() = runTest {
+        val state = transition()
+        state.startOpen(book, null, source, 0f, sourcePresentation = BookReaderPresentation.CoverFlow, zoomOnly = true)
+        state.markReaderReady()
+        advanceTimeBy(300)
+        assertEquals(BookReaderTransitionPhase.ReaderLoading, state.phase)
+        assertEquals(0f, state.readerRevealSnapshot.value, 0f)
+        advanceUntilIdle()
+        assertEquals(BookReaderTransitionPhase.Reader, state.phase)
+    }
+
+    @Test fun `zoom only opening keeps cover flow motion and clears after closing`() = runTest {
+        val state = transition()
+        state.startOpen(book, null, source, 0f, sourcePresentation = BookReaderPresentation.CoverFlow, zoomOnly = true)
+        assertTrue(state.zoomOnly)
+        assertEquals(BookReaderPresentation.CoverFlow, state.presentation)
+        state.markReaderReady()
+        advanceUntilIdle()
+        assertEquals(BookReaderTransitionPhase.Reader, state.phase)
+        assertTrue(state.startClose())
+        // Nothing reports a return cover for a zoom: the close must not wait for one.
+        // Reader text fades for 180 ms, then the zoom reverses at once (no 18-frame wait).
+        advanceTimeBy(340)
+        assertTrue(state.coverFlowProgressSnapshot.value < 1f)
+        advanceUntilIdle()
+        assertEquals(BookReaderTransitionPhase.Library, state.phase)
+        assertFalse(state.zoomOnly)
+        // A Window opening never zooms, even if asked to.
+        state.startOpen(book, null, source, 8f, zoomOnly = true)
+        assertFalse(state.zoomOnly)
+        advanceUntilIdle()
+    }
+
     @Test fun `closing retraces the same geometry and cover switch at every timeline position`() = runTest {
         val state = transition()
         state.startOpen(book, null, source, 8f)

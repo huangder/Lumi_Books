@@ -212,11 +212,14 @@ class ReaderSettingsPreviewActivity : ComponentActivity() {
             val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = launchTheme.menuAnimationStyle)
             val liquidGlassStyle by dataStoreManager.liquidGlassStyle
                 .collectAsState(initial = launchTheme.liquidGlassStyle)
+            val liquidGlassSamplingQuality by dataStoreManager.liquidGlassSamplingQuality
+                .collectAsState(initial = launchTheme.liquidGlassSamplingQuality)
             val reduceTransparencyEnabled by dataStoreManager.reduceTransparencyEnabled
                 .collectAsState(initial = launchTheme.reduceTransparencyEnabled)
             EBookReaderTheme(
                 eInkMode = eInkMode,
                 liquidGlassStyle = liquidGlassStyle,
+                liquidGlassSamplingQuality = liquidGlassSamplingQuality,
                 reduceTransparencyEnabled = reduceTransparencyEnabled,
                 menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
                 darkTheme = isDark,
@@ -1399,15 +1402,15 @@ internal fun TextPanel(
         ) { onUpdate(settings.copy(fontType = it)) }
         SettingSlider(
             stringResource(R.string.body_font_weight),
-            settings.bodyFontWeight.toFloat(),
+            settings.bodyFontWeight,
             100f..900f,
-            7,
+            7999,
             "",
             onPreview = {
-                onPreviewUpdate(settings.copy(bodyFontWeight = (it / 100).roundToInt() * 100))
+                onPreviewUpdate(settings.copy(bodyFontWeight = (it * 10f).roundToInt() / 10f))
             },
             onChange = {
-                onUpdate(settings.copy(bodyFontWeight = (it / 100).roundToInt() * 100))
+                onUpdate(settings.copy(bodyFontWeight = (it * 10f).roundToInt() / 10f))
             }
         )
         SettingSlider(

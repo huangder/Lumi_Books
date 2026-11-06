@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.icons.AppIcons
+import com.huangder.lumibooks.ui.icons.LocalAppUiIconStyle
 import com.huangder.lumibooks.ui.icons.directionalIcon
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
@@ -99,19 +100,41 @@ internal object SettingsTileColors {
 internal val SettingsIconTileSize = 30.dp
 internal val SettingsIconTileGap = 14.dp
 
-/** Rounded colored square with a white glyph, as on the iOS Settings home page. */
+/** Settings category icon; line styles omit the tile and monochrome tiles use neutral contrast. */
 @Composable
 internal fun SettingsIconTile(icon: ImageVector, color: Color, modifier: Modifier = Modifier) {
-    // E-ink panels cannot show the hues, so tiles fall back to solid black.
-    val background = if (LocalEInkMode.current) Color.Black else color
+    val style = LocalAppUiIconStyle.current
+    val eInk = LocalEInkMode.current
+    val tileStyle = style.usesFilledGlyph
+    val iconTint = when {
+        style.isColorful && tileStyle -> Color.White
+        style.isColorful && eInk -> Color.Black
+        style.isColorful -> color
+        tileStyle -> AppColors.PageBg
+        else -> AppColors.TextPrimary
+    }
     Box(
         modifier
             .size(SettingsIconTileSize)
-            .clip(AppRoundedCornerShape(7.dp))
-            .background(background),
+            .then(
+                if (tileStyle) {
+                    Modifier.clip(AppRoundedCornerShape(7.dp)).background(
+                        when {
+                            !style.isColorful -> AppColors.TextPrimary
+                            eInk -> Color.Black
+                            else -> color
+                        }
+                    )
+                } else Modifier
+            ),
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(19.dp))
+        Icon(
+            AppIcons.styled(icon, style),
+            contentDescription = null,
+            tint = iconTint,
+            modifier = Modifier.size(if (tileStyle) 19.dp else 22.dp)
+        )
     }
 }
 
@@ -124,4 +147,15 @@ internal fun DisclosureChevron(modifier: Modifier = Modifier) {
         tint = AppColors.TextSecondary,
         modifier = modifier.size(18.dp)
     )
+}
+
+/** The [GroupedCard] surface as a modifier (soft shadow, outline, clip, card colour) for custom cards. */
+@Composable
+internal fun Modifier.lumiGroupedSurface(radius: Dp = AppRadius.lg): Modifier {
+    val shape = AppRoundedCornerShape(radius)
+    return this
+        .shadow(8.dp, shape, ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
+        .cardOutline(shape)
+        .clip(shape)
+        .lumiCardSurface(shape = shape)
 }

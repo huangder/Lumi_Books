@@ -60,7 +60,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -216,44 +215,8 @@ fun ImportBooksActionSheet(
     onAuthorizeDirectory: () -> Unit,
     onOpenFolderBooks: () -> Unit,
     onImportWebdav: () -> Unit,
-    onImportOpds: () -> Unit,
-    anchorBounds: Rect? = null,
-    sourceId: Any? = null
+    onImportOpds: () -> Unit
 ) {
-    val menuHost = LocalLiquidGlassMenuHost.current
-    if (LocalAppTheme.current == "liquid_glass" && menuHost != null && anchorBounds != null && sourceId != null) {
-        val currentDismiss by rememberUpdatedState(onDismiss)
-        val content: @Composable (Boolean) -> Unit = { interactive ->
-            ImportActionsStage(
-                floatingContainer = true, isPreparing = isPreparing,
-                authorizedDirectoryUris = authorizedDirectoryUris,
-                onSelectFiles = onSelectFiles, onAuthorizeDirectory = onAuthorizeDirectory,
-                onOpenFolderBooks = onOpenFolderBooks, onImportWebdav = onImportWebdav,
-                onImportOpds = onImportOpds, anchored = true, interactive = interactive
-            )
-        }
-        val latestContent by rememberUpdatedState(content)
-        val disposing = remember { booleanArrayOf(false) }
-        val spec = remember(menuHost, sourceId, anchorBounds) {
-            LiquidGlassMenuSpec(
-                anchorBounds = anchorBounds, sourceId = sourceId, width = 320.dp,
-                preferAbove = true, maxVisibleItems = 12, items = emptyList(),
-                keepTriggerInteractive = false,
-                // The picker continues this workflow. Its result owns cleanup after selection.
-                onDismiss = { if (!disposing[0]) currentDismiss() },
-                content = { enabled, _ -> latestContent(enabled) }
-            )
-        }
-        DisposableEffect(menuHost, spec) {
-            disposing[0] = false
-            menuHost.show(spec)
-            onDispose {
-                disposing[0] = true
-                if (menuHost.isActive(spec)) menuHost.dismiss()
-            }
-        }
-        return
-    }
     ImportBooksContainer(
         expanded = false,
         onDismiss = onDismiss
@@ -389,18 +352,16 @@ private fun ImportActionsStage(
     onAuthorizeDirectory: () -> Unit,
     onOpenFolderBooks: () -> Unit,
     onImportWebdav: () -> Unit,
-    onImportOpds: () -> Unit,
-    anchored: Boolean = false,
-    interactive: Boolean = true
+    onImportOpds: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (anchored) Modifier else Modifier.navigationBarsPadding())
-            .then(if (anchored) Modifier else Modifier.verticalScroll(rememberScrollState()))
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
             .padding(
-                start = if (anchored) 16.dp else 24.dp,
-                end = if (anchored) 16.dp else 24.dp,
+                start = 24.dp,
+                end = 24.dp,
                 top = 22.dp,
                 bottom = if (floatingContainer) 20.dp else 16.dp
             )
@@ -423,19 +384,19 @@ private fun ImportActionsStage(
         ImportActionButton(
             text = stringResource(R.string.import_select_files),
             onClick = onSelectFiles,
-            enabled = !isPreparing && interactive
+            enabled = !isPreparing
         )
         Spacer(Modifier.height(8.dp))
         ImportActionButton(
             text = stringResource(R.string.import_authorize_directory),
             onClick = onAuthorizeDirectory,
-            enabled = !isPreparing && interactive
+            enabled = !isPreparing
         )
         Spacer(Modifier.height(8.dp))
         ImportActionButton(
             text = stringResource(R.string.import_select_folder_books),
             onClick = onOpenFolderBooks,
-            enabled = !isPreparing && interactive
+            enabled = !isPreparing
         )
         Spacer(Modifier.height(8.dp))
         // Keep the half-width pair aligned with the tighter vertical button spacing.
@@ -446,13 +407,13 @@ private fun ImportActionsStage(
             ImportActionButton(
                 text = stringResource(R.string.import_webdav),
                 onClick = onImportWebdav,
-                enabled = !isPreparing && interactive,
+                enabled = !isPreparing,
                 modifier = Modifier.weight(1f)
             )
             ImportActionButton(
                 text = stringResource(R.string.import_opds),
                 onClick = onImportOpds,
-                enabled = !isPreparing && interactive,
+                enabled = !isPreparing,
                 modifier = Modifier.weight(1f)
             )
         }

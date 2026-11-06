@@ -32,7 +32,10 @@ class ReaderGlassMenuPreviewActivity : ComponentActivity() {
             val dark = intent.getBooleanExtra("dark", false)
             val blurOnly = intent.getBooleanExtra("blurOnly", false)
             val transparency = intent.getFloatExtra("transparency", 0.55f)
-            EBookReaderTheme(appTheme = "liquid_glass", darkTheme = dark,
+            EBookReaderTheme(
+                liquidGlassSamplingQuality = com.huangder.lumibooks.domain.model.LiquidGlassSamplingQuality
+                    .fromStoredValue(intent.getStringExtra("samplingQuality")),
+                appTheme = "liquid_glass", darkTheme = dark,
                 liquidGlassTransparency = transparency) {
                 val backdrop = rememberLayerBackdrop()
                 var showing by remember { mutableStateOf(true) }

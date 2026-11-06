@@ -22,6 +22,9 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import com.kyant.backdrop.Backdrop
+import com.huangder.lumibooks.domain.model.LiquidGlassSamplingQuality
+import com.huangder.lumibooks.ui.theme.LocalLiquidGlassSamplingQuality
+import androidx.compose.ui.graphics.FilterQuality
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.math.roundToInt
@@ -44,7 +47,8 @@ internal class GlassBitmapBackdrop(
         val image = pixels ?: return
         val origin = coordinates?.takeIf { it.isAttached }?.localToScreen(Offset.Zero) ?: return
         if (!origin.x.isFinite() || !origin.y.isFinite()) return
-        drawImage(image, dstOffset = glassSnapshotOffset(screenOrigin, origin), dstSize = viewportSize)
+        drawImage(image, dstOffset = glassSnapshotOffset(screenOrigin, origin), dstSize = viewportSize,
+            filterQuality = FilterQuality.Low)
     }
 
     override fun close() {
@@ -63,18 +67,30 @@ private fun Context.snapshotActivity(): Activity? = when (this) {
     else -> null
 }
 
+/** Explicit quality keeps native providers current when settings change. */
+internal typealias GlassSnapshotProvider = (LiquidGlassSamplingQuality) -> GlassBitmapBackdrop?
+
+/** Retain the existing window-capture cap, then apply the selected linear quality. */
+internal fun windowGlassSampleSize(viewport: IntSize, quality: LiquidGlassSamplingQuality): IntSize {
+    val cap = minOf(1f, 1440f / maxOf(viewport.width, viewport.height).coerceAtLeast(1))
+    return quality.sampleSize(IntSize(
+        (viewport.width * cap).roundToInt().coerceAtLeast(1),
+        (viewport.height * cap).roundToInt().coerceAtLeast(1)
+    ))
+}
+
 /** Capture before displaying an overlay. PixelCopy does not record native Views into Compose. */
-internal suspend fun captureWindowGlassBackdrop(view: View): GlassBitmapBackdrop? {
+internal suspend fun captureWindowGlassBackdrop(
+    view: View,
+    quality: LiquidGlassSamplingQuality = LiquidGlassSamplingQuality.BALANCED
+): GlassBitmapBackdrop? {
     val window = view.context.snapshotActivity()?.window ?: return null
     if (!view.isAttachedToWindow || view.width <= 0 || view.height <= 0) return null
     val inWindow = IntArray(2).also(view::getLocationInWindow)
     val onScreen = IntArray(2).also(view::getLocationOnScreen)
     val rect = Rect(inWindow[0], inWindow[1], inWindow[0] + view.width, inWindow[1] + view.height)
-    val scale = minOf(1f, 1440f / maxOf(view.width, view.height))
-    val bitmap = Bitmap.createBitmap(
-        (view.width * scale).roundToInt().coerceAtLeast(1),
-        (view.height * scale).roundToInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888
-    )
+    val sampleSize = windowGlassSampleSize(IntSize(view.width, view.height), quality)
+    val bitmap = Bitmap.createBitmap(sampleSize.width, sampleSize.height, Bitmap.Config.ARGB_8888)
     return suspendCancellableCoroutine { continuation ->
         try {
             PixelCopy.request(window, rect, bitmap, { result ->
@@ -110,9 +126,10 @@ internal fun rememberGlassSnapshot(
     frozen: Boolean = false,
     provider: suspend () -> GlassBitmapBackdrop?
 ): GlassSnapshotState {
+    val quality = LocalLiquidGlassSamplingQuality.current
     val state = remember { GlassSnapshotState() }
     val latestProvider by rememberUpdatedState(provider)
-    LaunchedEffect(state, identity, enabled, frozen) {
+    LaunchedEffect(state, identity, enabled, frozen, quality) {
         if (!enabled) {
             state.backdrop = null
             state.ready = false
@@ -137,5 +154,6 @@ internal fun rememberGlassSnapshot(
 @Composable
 internal fun rememberWindowGlassSnapshot(enabled: Boolean, identity: Any?): GlassSnapshotState {
     val view = LocalView.current
-    return rememberGlassSnapshot(enabled, identity) { captureWindowGlassBackdrop(view) }
+    val quality = LocalLiquidGlassSamplingQuality.current
+    return rememberGlassSnapshot(enabled, identity) { captureWindowGlassBackdrop(view, quality) }
 }

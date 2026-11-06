@@ -138,4 +138,10 @@ class CoverFlowGeometryTest {
         assertEquals(2, BookshelfLayout.conventional(4))
         (1..3).forEach { assertEquals(it, BookshelfLayout.normalize(it)); assertEquals(it, BookshelfLayout.conventional(it)) }
     }
+
+    @Test fun `spine layout is stored but never becomes an import or category grid`() {
+        assertEquals(5, BookshelfLayout.normalize(5))
+        assertEquals(5, BookshelfLayout.normalize(9))
+        assertEquals(2, BookshelfLayout.conventional(5))
+    }
 }

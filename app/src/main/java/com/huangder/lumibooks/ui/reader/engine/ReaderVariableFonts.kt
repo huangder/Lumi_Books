@@ -12,6 +12,7 @@ import android.util.LruCache
 import androidx.core.content.res.ResourcesCompat
 import com.huangder.lumibooks.R
 import java.io.File
+import kotlin.math.roundToInt
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -90,18 +91,22 @@ internal fun readerVariableWeightRange(context: Context, fontType: String,
 private val serifCache = LruCache<String, Typeface>(16)
 
 /** Real VF instances, with matching italic and bold faces for StyleSpan/bionic text. */
-internal fun readerSerifTypeface(context: Context, requestedWeight: Int = 400): Typeface {
-    val weight = requestedWeight.coerceIn(200, 900)
+internal fun readerSerifTypeface(context: Context, requestedWeight: Int = 400): Typeface =
+    readerSerifTypeface(context, requestedWeight.toFloat())
+
+internal fun readerSerifTypeface(context: Context, requestedWeight: Float): Typeface {
+    val weight = (requestedWeight * 10f).roundToInt().coerceIn(2000, 9000) / 10f
     val cacheKey = weight.toString()
     synchronized(serifCache) {
         serifCache.get(cacheKey)?.let { return it }
         val face = if (Build.VERSION.SDK_INT >= 29) {
             var family: FontFamily.Builder? = null
-            for (w in setOf(weight, 700)) for (italic in listOf(false, true)) {
+            val familyWeights = setOf(weight, 700f)
+            for (w in familyWeights) for (italic in listOf(false, true)) {
                 val font = Font.Builder(context.resources,
                     if (italic) R.font.source_serif4_italic else R.font.source_serif4_regular)
                     .setFontVariationSettings("'wght' $w")
-                    .setWeight(w)
+                    .setWeight(w.roundToInt())
                     .setSlant(if (italic) FontStyle.FONT_SLANT_ITALIC else FontStyle.FONT_SLANT_UPRIGHT)
                     .build()
                 if (family == null) family = FontFamily.Builder(font) else family.addFont(font)
@@ -109,12 +114,12 @@ internal fun readerSerifTypeface(context: Context, requestedWeight: Int = 400): 
             // Missing CJK glyphs use the phone's serif family.
             Typeface.CustomFallbackBuilder(family!!.build())
                 .setSystemFallback("serif")
-                .setStyle(FontStyle(weight, FontStyle.FONT_SLANT_UPRIGHT)).build()
+                .setStyle(FontStyle(weight.roundToInt(), FontStyle.FONT_SLANT_UPRIGHT)).build()
         } else {
             val resource = android.util.TypedValue()
             context.resources.getValue(R.font.source_serif4_regular, resource, true)
             Typeface.Builder(context.assets, resource.string.toString())
-                .setFontVariationSettings("'wght' $weight").setWeight(weight)
+                .setFontVariationSettings("'wght' $weight").setWeight(weight.roundToInt())
                 .setFallback("serif").build()
                 ?: ResourcesCompat.getFont(context, R.font.source_serif4) ?: Typeface.SERIF
         }

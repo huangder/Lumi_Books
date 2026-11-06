@@ -20,6 +20,29 @@ import org.robolectric.annotation.Config
 class GlassSnapshotLifecycleTest {
     @get:Rule val compose = createComposeRule()
 
+    @Test fun qualityChangesRefreshSnapshotWithoutChangingThePageIdentity() {
+        val quality = mutableStateOf(com.huangder.lumibooks.domain.model.LiquidGlassSamplingQuality.CLEAR)
+        var captures = 0
+        lateinit var result: GlassSnapshotState
+        compose.setContent {
+            CompositionLocalProvider(com.huangder.lumibooks.ui.theme.LocalLiquidGlassSamplingQuality provides quality.value) {
+                result = rememberGlassSnapshot(true, "same-page") {
+                    captures++
+                    GlassBitmapBackdrop(Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888), Offset.Zero, IntSize(4, 4))
+                }
+            }
+        }
+        compose.waitUntil { result.ready }
+        val first = result.backdrop!!
+        compose.runOnIdle { quality.value = com.huangder.lumibooks.domain.model.LiquidGlassSamplingQuality.BALANCED }
+        compose.waitUntil { result.backdrop !== first }
+        compose.runOnIdle {
+            assertEquals(2, captures)
+            assertTrue(first.isClosed)
+            assertFalse(result.backdrop!!.isClosed)
+        }
+    }
+
     @Test fun pageChangesKeepThePreviousLeaseUntilTheReplacementIsReady() {
         val enabled = mutableStateOf(true)
         val frozen = mutableStateOf(false)

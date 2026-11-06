@@ -48,7 +48,9 @@ data class PortableBook(
     val remoteFileSha256: String?,
     val isPinned: Boolean = false,
     val isManuallyMarkedRead: Boolean = false,
-    val isHidden: Boolean = false
+    val isHidden: Boolean = false,
+    /** Null distinguishes an older sender from an explicit restore. */
+    val isArchived: Boolean? = null
 )
 
 data class PortableSnapshot(
@@ -172,6 +174,7 @@ private fun bookToJson(book: PortableBook) = JSONObject().apply {
     put("isPinned", book.isPinned)
     put("isManuallyMarkedRead", book.isManuallyMarkedRead)
     put("isHidden", book.isHidden)
+    book.isArchived?.let { put("isArchived", it) }
 }
 
 private fun bookFromJson(json: JSONObject) = PortableBook(
@@ -194,7 +197,8 @@ private fun bookFromJson(json: JSONObject) = PortableBook(
     remoteFileSha256 = json.nullableString("remoteFileSha256"),
     isPinned = json.optBoolean("isPinned", false),
     isManuallyMarkedRead = json.optBoolean("isManuallyMarkedRead", json.optDouble("readingProgress") >= 1.0),
-    isHidden = json.optBoolean("isHidden", false)
+    isHidden = json.optBoolean("isHidden", false),
+    isArchived = if (json.has("isArchived")) json.optBoolean("isArchived") else null
 )
 
 private fun folderToJson(item: FolderEntity) = JSONObject().apply {

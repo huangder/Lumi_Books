@@ -155,6 +155,7 @@ fun HiddenLibraryScreen(
     Box(modifier.fillMaxSize().background(AppColors.PageBg)) {
         CollapsingPageScaffold(
             drawContentBehindHeader = true,
+            bottomBarOverlay = true,
             title = stringResource(R.string.hidden_library_title),
             onBack = {
                 if (isEditing) {
@@ -175,9 +176,16 @@ fun HiddenLibraryScreen(
                     onSelectAll = {
                         selectedIds = if (books.all { it.id in selectedIds }) emptySet() else books.mapTo(LinkedHashSet()) { it.id }
                     },
+                    modifier = Modifier,
+                    allSelected = books.isNotEmpty() && books.all { it.id in selectedIds }
+                )
+            },
+            bottomBar = {
+                HiddenLibraryActionBar(
+                    isEditing = isEditing,
+                    selectedCount = selectedIds.size,
                     onUnhide = { unhide(selectedIds) },
-                    onDelete = { pendingDelete = books.filter { it.id in selectedIds } },
-                    modifier = Modifier
+                    onDelete = { pendingDelete = books.filter { it.id in selectedIds } }
                 )
             }
         ) {
@@ -210,7 +218,7 @@ fun HiddenLibraryScreen(
                         downloadStates = uiState.downloadStates,
                         expandedListBookId = expandedListBookId,
                         topPadding = LocalCollapsingPageTopInset.current + 12.dp,
-                        bottomPadding = 32.dp,
+                        bottomPadding = com.huangder.lumibooks.ui.components.LocalCollapsingPageBottomInset.current + 32.dp,
                         onHaptic = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
                         onSelectionToggle = { book ->
                             selectedIds = if (book.id in selectedIds) selectedIds - book.id else selectedIds + book.id

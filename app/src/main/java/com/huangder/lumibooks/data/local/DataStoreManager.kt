@@ -29,6 +29,7 @@ import com.huangder.lumibooks.domain.model.CustomFontPresetCodec
 import com.huangder.lumibooks.domain.model.HighlightPalette
 import com.huangder.lumibooks.domain.model.HighlightPaletteCodec
 import com.huangder.lumibooks.domain.model.AppIconStyle
+import com.huangder.lumibooks.domain.model.AppUiIconStyle
 import com.huangder.lumibooks.domain.model.LumiEasterEgg
 import com.huangder.lumibooks.domain.model.BookOpenTransition
 import com.huangder.lumibooks.domain.model.WebdavConfig
@@ -57,9 +58,11 @@ import com.huangder.lumibooks.domain.model.ReaderPageTransition
 import com.huangder.lumibooks.domain.model.ReaderFirstOpenHintPolicy
 import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
 import com.huangder.lumibooks.domain.model.LiquidGlassStyle
+import com.huangder.lumibooks.domain.model.LiquidGlassSamplingQuality
 import com.huangder.lumibooks.util.LaunchThemeController
 import com.huangder.lumibooks.util.LaunchThemeSnapshot
 import com.huangder.lumibooks.util.WelcomeLaunchSnapshot
+import kotlin.math.roundToInt
 import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.util.parser.TxtTocRule
 import com.huangder.lumibooks.util.parser.TxtTocRuleBuiltIns
@@ -161,7 +164,7 @@ data class ReaderPreferencesSnapshot(
     val lineGuideEnabled: Boolean,
     val lineGuideDimLevel: Int,
     val autoReadingSpeed: Float,
-    val bodyFontWeight: Int,
+    val bodyFontWeight: Float,
     val eInkModeEnabled: Boolean,
     val twoPageSpreadEnabled: Boolean,
     /** 栅格页面（PDF / CBZ）解码清晰度："normal" | "high" | "native"。 */
@@ -397,6 +400,7 @@ class DataStoreManager @Inject constructor(
         private val TTS_READER_RESUME_CHOICE = stringPreferencesKey("tts_reader_resume_choice")
         private val TTS_READER_RESUME_HINT_MIGRATED = booleanPreferencesKey("tts_reader_resume_hint_migrated_v1")
         private val BODY_FONT_WEIGHT = intPreferencesKey("body_font_weight")
+        private val BODY_FONT_WEIGHT_PRECISE = floatPreferencesKey("body_font_weight_precise")
         private val APPLY_TO_BODY_ONLY = booleanPreferencesKey("apply_to_body_only")
         private val PARAGRAPH_SPACING = floatPreferencesKey("paragraph_spacing")
         private val FIRST_LINE_INDENT = floatPreferencesKey("first_line_indent")
@@ -432,6 +436,7 @@ class DataStoreManager @Inject constructor(
 
         // 应用设置
         private val APP_ICON_STYLE = stringPreferencesKey("app_icon_style")
+        private val APP_UI_ICON_STYLE = stringPreferencesKey("app_ui_icon_style")
         private val APP_THEME = stringPreferencesKey("app_theme")
         private val LUMI_EASTER_EGG_UNLOCKED = booleanPreferencesKey("lumi_easter_egg_unlocked")
         private val STARTUP_SCREEN = stringPreferencesKey("startup_screen")
@@ -439,6 +444,7 @@ class DataStoreManager @Inject constructor(
         private val APP_FONT_SIZE = stringPreferencesKey("app_font_size")
         private val GLOBAL_FONT_MODE = stringPreferencesKey("global_font_mode")
         private val REDUCE_TRANSPARENCY_ENABLED = booleanPreferencesKey("reduce_transparency_enabled")
+        private val LIQUID_GLASS_SAMPLING_QUALITY = stringPreferencesKey("liquid_glass_sampling_quality")
         private val LIQUID_GLASS_STYLE = stringPreferencesKey("liquid_glass_style")
         private val LIQUID_GLASS_TRANSPARENCY = floatPreferencesKey("liquid_glass_transparency")
         private val LIQUID_GLASS_HDR_HIGHLIGHT_ENABLED = booleanPreferencesKey("liquid_glass_hdr_highlight_enabled")
@@ -652,7 +658,8 @@ class DataStoreManager @Inject constructor(
                 rasterManualCropEnabled = preferences[booleanPreferencesKey("raster_manual_crop_enabled_$bookId")] ?: false,
                 rasterManualCrop = com.huangder.lumibooks.ui.reader.RasterManualCrop.decode(
                     preferences[stringPreferencesKey("raster_manual_crop_$bookId")]),
-                bodyFontWeight = preferences[BODY_FONT_WEIGHT] ?: 400,
+                bodyFontWeight = preferences[BODY_FONT_WEIGHT_PRECISE]
+                    ?: (preferences[BODY_FONT_WEIGHT] ?: 400).toFloat(),
                 eInkModeEnabled = preferences[E_INK_MODE_ENABLED] ?: false,
                 twoPageSpreadEnabled = preferences[TWO_PAGE_SPREAD_ENABLED] ?: true,
                 pageRenderMode = PageRenderMode.normalizeKey(preferences[PAGE_RENDER_MODE]),
@@ -884,7 +891,9 @@ class DataStoreManager @Inject constructor(
                 (preferences[EXTERNAL_TTS_CONSENT_VERSION] ?: 0) >= ExternalTtsConfig.CONSENT_VERSION
         )
     }
-    val bodyFontWeight: Flow<Int> = context.dataStore.data.map { it[BODY_FONT_WEIGHT] ?: 400 }
+    val bodyFontWeight: Flow<Float> = context.dataStore.data.map { preferences ->
+        preferences[BODY_FONT_WEIGHT_PRECISE] ?: (preferences[BODY_FONT_WEIGHT] ?: 400).toFloat()
+    }
     val applyToBodyOnly: Flow<Boolean> = context.dataStore.data.map { it[APPLY_TO_BODY_ONLY] ?: false }
 
     val preserveEpubBackground: Flow<Boolean> = context.dataStore.data.map { preferences ->
@@ -1040,6 +1049,10 @@ class DataStoreManager @Inject constructor(
         )
     }
 
+    val appUiIconStyle: Flow<String> = context.dataStore.data.map { preferences ->
+        AppUiIconStyle.normalize(preferences[APP_UI_ICON_STYLE])
+    }
+
     val lumiEasterEggUnlocked: Flow<Boolean> = context.dataStore.data.map {
         it[LUMI_EASTER_EGG_UNLOCKED] ?: false
     }.distinctUntilChanged()
@@ -1069,6 +1082,10 @@ class DataStoreManager @Inject constructor(
 
     val reduceTransparencyEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[REDUCE_TRANSPARENCY_ENABLED] ?: false
+    }.distinctUntilChanged()
+
+    val liquidGlassSamplingQuality: Flow<LiquidGlassSamplingQuality> = context.dataStore.data.map { preferences ->
+        LiquidGlassSamplingQuality.fromStoredValue(preferences[LIQUID_GLASS_SAMPLING_QUALITY])
     }.distinctUntilChanged()
 
     val liquidGlassStyle: Flow<LiquidGlassStyle> = context.dataStore.data.map { preferences ->
@@ -1187,6 +1204,7 @@ class DataStoreManager @Inject constructor(
             appFontSize = AppFontSize.fromStoredValue(preferences[APP_FONT_SIZE]),
             globalFontMode = if (preferences[GLOBAL_FONT_MODE] == "default") "default" else "system",
             reduceTransparencyEnabled = preferences[REDUCE_TRANSPARENCY_ENABLED] ?: false,
+            liquidGlassSamplingQuality = LiquidGlassSamplingQuality.fromStoredValue(preferences[LIQUID_GLASS_SAMPLING_QUALITY]),
             liquidGlassStyle = LiquidGlassStyle.fromStoredValue(preferences[LIQUID_GLASS_STYLE]),
             liquidGlassTransparency = preferences[LIQUID_GLASS_TRANSPARENCY] ?: 0.55f,
             liquidGlassHdrHighlightEnabled =
@@ -1864,10 +1882,11 @@ class DataStoreManager @Inject constructor(
         }
     }
 
-    suspend fun saveBodyFontWeight(weight: Int) {
+    suspend fun saveBodyFontWeight(weight: Float) {
         context.dataStore.edit { preferences ->
-            val sanitized = weight.coerceIn(100, 900)
-            preferences[BODY_FONT_WEIGHT] = sanitized
+            val sanitized = (weight * 10f).roundToInt().coerceIn(1000, 9000) / 10f
+            preferences[BODY_FONT_WEIGHT_PRECISE] = sanitized
+            preferences[BODY_FONT_WEIGHT] = sanitized.roundToInt()
             preferences.updateActiveReaderThemeSuite { copy(bodyFontWeight = sanitized) }
         }
     }
@@ -2138,6 +2157,18 @@ class DataStoreManager @Inject constructor(
             ) {
                 preferences.applyReaderThemeSettings(updated.first { it.id == suiteId }.settings)
             }
+        }
+    }
+
+    suspend fun updateReaderThemeSuiteDarkMask(suiteId: String, opacity: Float) {
+        context.dataStore.edit { preferences ->
+            val suites = readThemeSuites(preferences)
+            if (suites.none { it.id == suiteId }) return@edit
+            val updated = ReaderThemeSuites.normalized(suites.map { suite ->
+                if (suite.id == suiteId) suite.copy(darkMaskOpacity = opacity) else suite
+            })
+            preferences[READER_THEME_SUITES] = ReaderThemeSuiteCodec.encode(updated)
+            preferences[READER_THEME_SUITES_VERSION] = READER_THEME_SUITES_VERSION_VALUE
         }
     }
 
@@ -2739,6 +2770,12 @@ class DataStoreManager @Inject constructor(
         return LaunchThemeController.applyIconStyle(context, normalized)
     }
 
+    suspend fun saveAppUiIconStyle(style: String) {
+        context.dataStore.edit { preferences ->
+            preferences[APP_UI_ICON_STYLE] = AppUiIconStyle.normalize(style)
+        }
+    }
+
     override suspend fun saveTtsProviderSelection(selection: TtsProviderSelection) {
         context.dataStore.edit { preferences ->
             preferences[TTS_PROVIDER_SELECTION] = selection.storedValue
@@ -2777,6 +2814,11 @@ class DataStoreManager @Inject constructor(
         LaunchThemeController.updateReduceTransparencySnapshot(
             context, saved[REDUCE_TRANSPARENCY_ENABLED] ?: false
         )
+    }
+
+    suspend fun saveLiquidGlassSamplingQuality(quality: LiquidGlassSamplingQuality) {
+        context.dataStore.edit { it[LIQUID_GLASS_SAMPLING_QUALITY] = quality.storedValue }
+        LaunchThemeController.updateLiquidGlassSamplingQualitySnapshot(context, quality)
     }
 
     suspend fun saveLiquidGlassStyle(style: LiquidGlassStyle) {
@@ -3222,7 +3264,8 @@ class DataStoreManager @Inject constructor(
         textColor = this[READER_TEXT_COLOR],
         fontSize = this[FONT_SIZE] ?: 16f,
         fontType = this[FONT_TYPE] ?: "system",
-        bodyFontWeight = this[BODY_FONT_WEIGHT] ?: 400,
+        bodyFontWeight = this[BODY_FONT_WEIGHT_PRECISE]
+            ?: (this[BODY_FONT_WEIGHT] ?: 400).toFloat(),
         lineHeight = this[LINE_HEIGHT] ?: 1.5f,
         letterSpacing = this[LETTER_SPACING] ?: 0f,
         textAlignment = ReaderTextAlignment.fromKey(this[TEXT_ALIGNMENT]),
@@ -3484,7 +3527,8 @@ class DataStoreManager @Inject constructor(
         this[LETTER_SPACING] = settings.letterSpacing
         this[TEXT_ALIGNMENT] = settings.textAlignment.key
         this[FONT_TYPE] = settings.fontType
-        this[BODY_FONT_WEIGHT] = settings.bodyFontWeight
+        this[BODY_FONT_WEIGHT_PRECISE] = settings.bodyFontWeight
+        this[BODY_FONT_WEIGHT] = settings.bodyFontWeight.roundToInt()
         this[MARGIN_LEFT] = settings.marginLeft
         this[MARGIN_RIGHT] = settings.marginRight
         this[MARGIN_TOP] = settings.marginTop

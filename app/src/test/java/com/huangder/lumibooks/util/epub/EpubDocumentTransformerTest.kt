@@ -9,6 +9,15 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EpubDocumentTransformerTest {
+    @Test fun imageOffsetsMatchSearchTextWithoutCountingScriptsOrImageAltText() {
+        val resource = EpubResource("OPS/chapter.xhtml", "application/xhtml+xml",
+            ("<html><body><img src='cover.png'/>前🌅<img src='inline.png' alt='not text'/>" +
+                "<style>ignored</style><script>ignored</script><noscript>ignored<img src='hidden.png'/></noscript>" +
+                "后<img src='missing.png'/></body></html>").toByteArray())
+        assertEquals("前🌅后", EpubDocumentTransformer.extractSearchText(resource))
+        assertEquals(listOf(0, 3, 4), EpubDocumentTransformer.imageTextOffsets(resource))
+    }
+
     @Test
     fun injectedScriptAndStylesRemainValidInBothXhtmlAndHtml() {
         val source = """<html xmlns="http://www.w3.org/1999/xhtml"><head/><body><p>A &amp; B</p></body></html>"""

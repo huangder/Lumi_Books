@@ -116,6 +116,7 @@ data class HomeUiState(
     val books: List<Book> = emptyList(),
     /** Books of the hidden library, shown only behind the passcode. */
     val hiddenBooks: List<Book> = emptyList(),
+    val archivedBooks: List<Book> = emptyList(),
     val todayReadingTime: Long = 0,
     val dailyGoal: Int = 30, // 分钟
     val avatarUri: String? = null,
@@ -186,7 +187,7 @@ class HomeViewModel @Inject constructor(
     ): Pair<Int, String?> = withContext(Dispatchers.Default) {
         val preferences = dataStoreManager.readerPreferences(book.id).first()
         val paperColor = preferences.resolveOpeningPaperColor(book, appIsDark)
-        val pageKey = display?.takeUnless { book.isHidden }
+        val pageKey = display?.takeUnless { book.isHidden || book.isArchived }
             ?.let { openingSnapshotStore.keyFor(book, preferences, it) }
         paperColor to pageKey
     }
@@ -276,10 +277,11 @@ class HomeViewModel @Inject constructor(
                         }
                     }
                     val (hiddenBooks, visibleBooks) = sortBooks(books, _uiState.value.sortBy).partition { it.isHidden }
-                    val sortedBooks = visibleBooks
+                    val sortedBooks = visibleBooks.filterNot { it.isArchived }
                     _uiState.value = _uiState.value.copy(
                         books = sortedBooks,
                         hiddenBooks = hiddenBooks,
+                        archivedBooks = visibleBooks.filter { it.isArchived },
                         syncedBookIds = books.asSequence()
                             .filter { it.remoteFileName != null }
                             .mapTo(mutableSetOf()) { it.id },
@@ -569,7 +571,7 @@ class HomeViewModel @Inject constructor(
         } else {
             viewModelScope.launch {
                 bookRepository.searchBooks(query).collectLatest { books ->
-                    val sortedBooks = sortBooks(books.filterNot { it.isHidden }, _uiState.value.sortBy)
+                    val sortedBooks = sortBooks(books.filterNot { it.isHidden || it.isArchived }, _uiState.value.sortBy)
                     _uiState.value = _uiState.value.copy(
                         books = sortedBooks,
                         isSearchActive = true
@@ -2059,7 +2061,7 @@ class HomeViewModel @Inject constructor(
         mode: BookDeleteMode
     ): List<String> {
         // Hidden books still own their files and covers; never delete what they share.
-        val librarySnapshot = _uiState.value.books + _uiState.value.hiddenBooks
+        val librarySnapshot = _uiState.value.books + _uiState.value.hiddenBooks + _uiState.value.archivedBooks
         val requestedIds = books.mapTo(mutableSetOf()) { it.id }
         val pathsUsedByRemainingBooks = librarySnapshot.asSequence()
             .filterNot { it.id in requestedIds }
@@ -2177,10 +2179,26 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /** Looks a book up in both libraries, for entry points that receive only an id. */
+    fun archiveBook(bookId: String) {
+        openingSnapshotStore.delete(setOf(bookId))
+        viewModelScope.launch {
+            try {
+                bookRepository.setBooksArchived(listOf(bookId), true)
+                _uiState.value = _uiState.value.copy(importMessage = application.getString(R.string.archive_book_success))
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
+            } catch (_: Exception) {
+                _uiState.value = _uiState.value.copy(error = application.getString(R.string.archive_book_failed))
+            }
+        }
+    }
+
+    suspend fun latestBook(bookId: String): Book? = bookRepository.getBookById(bookId)
+
+    /** Looks a book up across shelf, hidden and archived libraries. */
     fun findBook(bookId: String): Book? =
         _uiState.value.books.firstOrNull { it.id == bookId }
             ?: _uiState.value.hiddenBooks.firstOrNull { it.id == bookId }
+            ?: _uiState.value.archivedBooks.firstOrNull { it.id == bookId }
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)

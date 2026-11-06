@@ -196,7 +196,7 @@ internal class FloatingSubtitleView(
         play.setColorFilter(ink)
         controlButtons.forEach { it.setColorFilter(ink) }
         progressBar.ink = ink
-        dock.apply(color, ink, hairline, mode == FloatingSubtitleMode.LEFT)
+        dock.apply(ink, mode == FloatingSubtitleMode.LEFT)
         val height = dp(settings.heightDp)
         bar.layoutParams = LinearLayout.LayoutParams(-1, height)
         // The cover is inset evenly from the bar's top, bottom and start, so it follows the bar height.
@@ -304,26 +304,22 @@ private class ProgressLine(context: Context) : View(context) {
 }
 
 /**
- * Edge tab: flush against the display edge and rounded on the outer side, holding a round cover
- * with a chapter progress ring. While paused the cover dims under a play glyph.
+ * A round cover and chapter progress ring beside the display edge, with no backing tab.
+ * While paused the cover dims under a play glyph.
  */
 private class DockTab(context: Context) : View(context) {
     private val density = resources.displayMetrics.density
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
     }
     private val image = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val shaderMatrix = Matrix()
-    private val tab = RectF()
     private val arc = RectF()
     private val headphones = FloatingVectorDrawable(AppIcons.Headphones)
     private val playGlyph = FloatingVectorDrawable(AppIcons.Play)
-    private var tabColor = Color.DKGRAY
     private var ink = Color.WHITE
-    private var hairline = Color.TRANSPARENT
     var leftEdge = false
         set(value) { field = value; invalidate() }
     var playing = false
@@ -340,25 +336,14 @@ private class DockTab(context: Context) : View(context) {
             invalidate()
         }
 
-    fun apply(background: Int, ink: Int, hairline: Int, left: Boolean) {
-        tabColor = background
+    fun apply(ink: Int, left: Boolean) {
         this.ink = ink
-        this.hairline = hairline
         leftEdge = left
     }
 
     override fun onDraw(canvas: Canvas) {
         val w = width.toFloat()
         val h = height.toFloat()
-        val radius = h / 2f
-        // Extend the flat side past the view so only the outer end shows its rounding.
-        if (leftEdge) tab.set(-radius, 0f, w, h) else tab.set(0f, 0f, w + radius, h)
-        fill.color = tabColor
-        canvas.drawRoundRect(tab, radius, radius, fill)
-        stroke.color = hairline
-        stroke.strokeWidth = max(1f, density * .5f)
-        canvas.drawRoundRect(tab, radius, radius, stroke)
-
         val ringWidth = 2.5f * density
         val outer = 22f * density
         val cx = if (leftEdge) w - 8f * density - outer else 8f * density + outer

@@ -1,12 +1,16 @@
 package com.huangder.lumibooks.ui.icons
 
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.LocalLayoutDirection
+import com.huangder.lumibooks.domain.model.AppUiIconStyle
 import fluent.ui.system.icons.FluentIcons
 import fluent.ui.system.icons.filled.*
 import fluent.ui.system.icons.regular.*
+
+val LocalAppUiIconStyle = staticCompositionLocalOf { AppUiIconStyle.DEFAULT }
 
 /** A semantic pair used when an icon has a selected and an unselected state. */
 data class IconPair(
@@ -18,6 +22,41 @@ data class IconPair(
 
 /** Application-level icon vocabulary. Keep third-party icon names out of screens. */
 object AppIcons {
+    private val styleVariants: List<IconPair> = listOf(
+        IconPair(FluentIcons.Regular.FolderOpen, FluentIcons.Filled.FolderOpen),
+        IconPair(FluentIcons.Regular.Tag, FluentIcons.Filled.Tag),
+        IconPair(FluentIcons.Regular.TextFont, FluentIcons.Filled.TextFont),
+        IconPair(FluentIcons.Regular.WeatherSunny, FluentIcons.Filled.WeatherSunny),
+        IconPair(FluentIcons.Regular.Translate, FluentIcons.Filled.Translate),
+        IconPair(FluentIcons.Regular.Shield, FluentIcons.Filled.ShieldLock),
+        IconPair(FluentIcons.Regular.Storage, FluentIcons.Filled.Storage),
+        IconPair(FluentIcons.Regular.Archive, FluentIcons.Filled.Archive),
+        IconPair(FluentIcons.Regular.Cloud, FluentIcons.Filled.Cloud),
+        IconPair(FluentIcons.Regular.Info, FluentIcons.Filled.Info),
+        IconPair(FluentIcons.Regular.Heart, FluentIcons.Filled.Heart),
+        IconPair(FluentIcons.Regular.Bug, FluentIcons.Filled.Bug),
+        IconPair(FluentIcons.Regular.Timer, FluentIcons.Filled.Timer),
+        IconPair(FluentIcons.Regular.DataBarVertical, FluentIcons.Filled.DataBarVertical),
+        IconPair(FluentIcons.Regular.Library, FluentIcons.Filled.Library),
+        IconPair(FluentIcons.Regular.Flash, FluentIcons.Filled.Flash),
+        IconPair(FluentIcons.Regular.CheckmarkCircle, FluentIcons.Filled.CheckmarkCircle),
+        IconPair(FluentIcons.Regular.Headphones, FluentIcons.Filled.Headphones),
+        IconPair(FluentIcons.Regular.Edit, FluentIcons.Filled.Edit),
+        IconPair(FluentIcons.Regular.Pulse, FluentIcons.Filled.Pulse),
+        IconPair(FluentIcons.Regular.BookOpen, FluentIcons.Filled.BookOpen)
+    )
+    private val styleVariantsByIcon: Map<ImageVector, IconPair> = buildMap {
+        styleVariants.forEach { pair ->
+            put(pair.regular, pair)
+            put(pair.filled, pair)
+        }
+    }
+
+    fun styled(icon: ImageVector, style: AppUiIconStyle): ImageVector {
+        if (style == AppUiIconStyle.FILLED_COLORFUL) return icon
+        return styleVariantsByIcon[icon]?.resolve(style.usesFilledGlyph) ?: icon
+    }
+
     val Plus = FluentIcons.Regular.Add
     val PlusFilled = FluentIcons.Filled.Add
     val ArrowLeft = FluentIcons.Regular.ArrowLeft

@@ -75,13 +75,43 @@ class ReaderThemeSuiteCodecTest {
     fun v1ThemeDecodesWithNewDefaults() {
         val raw = """[{"id":"day","settings":{"background":"day","fontSize":18,"fontType":"serif"}}]"""
 
-        val settings = ReaderThemeSuiteCodec.decode(raw).single().settings
+        val suite = ReaderThemeSuiteCodec.decode(raw).single()
+        val settings = suite.settings
 
         assertEquals("day", settings.backgroundColorSelection)
         assertEquals(1f, settings.backgroundImageOpacity)
         assertEquals(0f, settings.backgroundImageBlurDp)
-        assertEquals(400, settings.bodyFontWeight)
+        assertEquals(400f, settings.bodyFontWeight)
+        assertEquals(0f, suite.darkMaskOpacity)
         assertNull(settings.textColor)
+    }
+
+    @Test
+    fun fractionalTypographyAndSuiteMaskRoundTripAndClamp() {
+        val suite = ReaderThemeSuite(
+            id = "dimmed", customName = "Dimmed",
+            settings = ReaderThemeSettings(fontSize = 18.3f, bodyFontWeight = 425.7f),
+            lightSettings = ReaderThemeSettings(fontSize = 18.3f, bodyFontWeight = 425.7f),
+            darkSettings = ReaderThemeSettings(fontSize = 18.3f, bodyFontWeight = 425.7f),
+            darkMaskOpacity = 0.73f
+        )
+
+        val restored = ReaderThemeSuiteCodec.decode(ReaderThemeSuiteCodec.encodeExact(listOf(suite))).single()
+        assertEquals(suite, restored)
+        assertEquals(suite, LumiThemeBundleCodec.decode(LumiThemeBundleCodec.encode(listOf(suite))).single())
+
+        val normalized = ReaderThemeSuites.normalized(listOf(suite.copy(
+            settings = suite.settings.copy(fontSize = 18.36f, bodyFontWeight = 425.76f),
+            darkMaskOpacity = 0.95f
+        ))).first { it.id == suite.id }
+        assertEquals(18.4f, normalized.settings.fontSize)
+        assertEquals(425.8f, normalized.settings.bodyFontWeight)
+        assertEquals(0.8f, normalized.darkMaskOpacity)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun portableBundleRejectsMaskAboveEightyPercent() {
+        LumiThemeBundleCodec.decode("""[{"id":"bad-mask","darkMaskOpacity":0.81,"settings":{"background":"day"}}]""")
     }
 
     @Test
@@ -95,13 +125,13 @@ class ReaderThemeSuiteCodecTest {
                     backgroundColorSelection = "sepia",
                     backgroundImageOpacity = 0.35f,
                     backgroundImageBlurDp = 24f,
-                    bodyFontWeight = 700
+                    bodyFontWeight = 700f
                 )
             ),
             ReaderThemeSuite(
                 id = "custom-b",
                 customName = "B",
-                settings = ReaderThemeSettings(bodyFontWeight = 300)
+                settings = ReaderThemeSettings(bodyFontWeight = 300f)
             )
         )
 
@@ -110,8 +140,8 @@ class ReaderThemeSuiteCodecTest {
         assertEquals(0.35f, decoded[0].settings.backgroundImageOpacity)
         assertEquals(24f, decoded[0].settings.backgroundImageBlurDp)
         assertEquals("sepia", decoded[0].settings.backgroundColorSelection)
-        assertEquals(700, decoded[0].settings.bodyFontWeight)
-        assertEquals(300, decoded[1].settings.bodyFontWeight)
+        assertEquals(700f, decoded[0].settings.bodyFontWeight)
+        assertEquals(300f, decoded[1].settings.bodyFontWeight)
     }
 
     @Test
@@ -122,7 +152,7 @@ class ReaderThemeSuiteCodecTest {
             settings = ReaderThemeSettings(
                 backgroundImageOpacity = 2f,
                 backgroundImageBlurDp = -4f,
-                bodyFontWeight = 1200
+                bodyFontWeight = 1200f
             )
         )
 
@@ -130,7 +160,7 @@ class ReaderThemeSuiteCodecTest {
 
         assertEquals(1f, settings.backgroundImageOpacity)
         assertEquals(0f, settings.backgroundImageBlurDp)
-        assertEquals(900, settings.bodyFontWeight)
+        assertEquals(900f, settings.bodyFontWeight)
     }
 
     @Test

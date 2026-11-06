@@ -46,6 +46,7 @@
     <string name="font_settings">フォント設定</string>
     <string name="theme_settings">テーマ設定</string>
     <string name="brightness">明るさ</string>
+    <string name="reader_dark_mask">暗色マスク</string>
     <string name="add_bookmark">ブックマーク追加</string>
     <string name="bookmarks">ブックマーク</string>
     <string name="notes">メモ</string>
@@ -1139,7 +1140,7 @@
     <string name="import_no_new_books">新しい書籍は見つかりませんでした</string>
     <string name="import_select_folder_books">フォルダの書籍を選択</string>
     <string name="import_folder_books_refresh">更新</string>
-    <string name="folder_books_level_summary">%1$d フォルダ · %2$d 冊 · 選択 %3$d 冊</string>
+    <string name="folder_books_level_summary">%1$d フォルダ · %2$d 冊</string>
     <string name="folder_books_folder_count">%1$d 冊</string>
     <string name="folder_books_empty_folder">このフォルダに書籍はありません</string>
     <string name="folder_books_sort_name">名前で並べ替え</string>
@@ -1489,6 +1490,18 @@
     <string name="pdf_annotation_highlighter">蛍光ペン</string>
     <string name="pdf_annotation_eraser">消しゴム</string>
     <string name="bookshelf_cover_flow">Cover Flow</string>
+    <string name="bookshelf_spine_shelf">背表紙</string>
+    <string name="spine_shelf_folder_count">%1$d 冊</string>
+    <string name="spine_menu_tags">タグ</string>
+    <string name="spine_menu_notes">メモ</string>
+    <string name="spine_menu_edit">編集</string>
+    <string name="spine_menu_cover">表紙</string>
+    <string name="spine_menu_restore_cover">元の表紙</string>
+    <string name="spine_menu_move">移動</string>
+    <string name="spine_menu_hide">非表示</string>
+    <string name="spine_menu_archive">アーカイブ</string>
+    <string name="spine_menu_progress">%1$d%% 読了</string>
+    <string name="spine_menu_unread">未読</string>
     <string name="coverflow_open">開く</string>
     <string name="coverflow_info">情報</string>
     <string name="coverflow_more">その他</string>

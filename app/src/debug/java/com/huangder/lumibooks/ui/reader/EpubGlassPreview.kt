@@ -15,16 +15,17 @@ import com.huangder.lumibooks.ui.theme.*
 @Composable
 internal fun EpubGlassPreview(
     chapter: Int, page: Int, ready: Boolean,
-    reader: @Composable (((() -> GlassBitmapBackdrop?)?) -> Unit, () -> Unit) -> Unit
+    reader: @Composable ((GlassSnapshotProvider?) -> Unit, () -> Unit) -> Unit
 ) {
-    var provider by remember { mutableStateOf<(() -> GlassBitmapBackdrop?)?>(null) }
+    var provider by remember { mutableStateOf<GlassSnapshotProvider?>(null) }
     var dialog by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf(false) }
     var text by remember { mutableStateOf("") }
     var controls by remember { mutableStateOf(true) }
     val view = LocalView.current
+    val quality = LocalLiquidGlassSamplingQuality.current
     val snapshot = rememberGlassSnapshot(ready, listOf(chapter, page, provider), dialog || note) {
-        provider?.invoke() ?: if (!dialog && !note) captureWindowGlassBackdrop(view) else null
+        provider?.invoke(quality) ?: if (!dialog && !note) captureWindowGlassBackdrop(view, quality) else null
     }
     LaunchedEffect(snapshot.backdrop) {
         Log.d("EpubGlassPreview", "page=$chapter/$page snapshot=${snapshot.backdrop != null}")

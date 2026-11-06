@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="archive_book">Archive</string>
+    <string name="archived_books_title">Archived books</string>
+    <string name="archive_summary">Archived books stay off your bookshelf. Restore them to read again. Reading statistics and notes are kept.</string>
+    <string name="archive_empty">No archived books</string>
+    <string name="restore_book">Restore</string>
+    <string name="archive_book_success">Book archived</string>
+    <string name="archive_book_failed">Could not archive book. Try again.</string>
+    <string name="archive_restore_success">Book restored</string>
+    <string name="archive_restore_failed">Could not restore book. Try again.</string>
+    <string name="archive_load_failed">Could not load archived books</string>
+    <string name="archive_reader_message">This book is archived. Restore it from Archived books before reading.</string>
+    <string name="archive_retry">Retry</string>
+    <string name="archive_restoring">Restoring…</string>
+</resources>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="archive_book">歸檔</string>
+    <string name="archived_books_title">已歸檔的圖書</string>
+    <string name="archive_summary">歸檔的圖書不顯示在書架中。恢復後可繼續閱讀，閱讀統計和筆記始終保留。</string>
+    <string name="archive_empty">暫無已歸檔的圖書</string>
+    <string name="restore_book">恢復</string>
+    <string name="archive_book_success">圖書已歸檔</string>
+    <string name="archive_book_failed">歸檔失敗，請重試</string>
+    <string name="archive_restore_success">圖書已恢復</string>
+    <string name="archive_restore_failed">恢復失敗，請重試</string>
+    <string name="archive_load_failed">無法載入已歸檔的圖書</string>
+    <string name="archive_reader_message">此圖書已歸檔，請先在「已歸檔的圖書」中恢復後再閱讀。</string>
+    <string name="archive_retry">重試</string>
+    <string name="archive_restoring">恢復中…</string>
+</resources>

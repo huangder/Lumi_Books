@@ -534,7 +534,7 @@ internal fun EpubWebViewReader(
     fontType: String,
     fontFilePath: String?,
     customFonts: List<com.huangder.lumibooks.domain.model.CustomFontPreset> = emptyList(),
-    bodyFontWeight: Int = 400,
+    bodyFontWeight: Float = 400f,
     textColorOverride: Int?,
     theme: String,
     coverBackgroundColor: Int?,
@@ -588,7 +588,7 @@ internal fun EpubWebViewReader(
     onPageTextProviderReady: ((suspend (chapterIndex: Int, pageIndex: Int) -> EpubPageText?)?) -> Unit,
     onPageTurnHandlerReady: (((direction: Int) -> Boolean)?) -> Unit,
     onReleaseHandlerReady: (((onReleased: () -> Unit) -> Unit)?) -> Unit = {},
-    onGlassSnapshotProviderReady: ((() -> com.huangder.lumibooks.ui.components.GlassBitmapBackdrop?)?) -> Unit = {},
+    onGlassSnapshotProviderReady: (com.huangder.lumibooks.ui.components.GlassSnapshotProvider?) -> Unit = {},
     onPageChanged: (chapterIndex: Int, pageIndex: Int, pageCount: Int, locatorJson: String?) -> Unit,
     paginationContentIdentity: String = "",
     onPaginationConfigured: (String) -> Unit = {},
@@ -3528,7 +3528,7 @@ internal fun EpubWebViewReader(
     }
 
     DisposableEffect(session) {
-        latestGlassSnapshotProviderReady.value { pageTurnHostState.value?.captureGlassBackdrop() }
+        latestGlassSnapshotProviderReady.value { quality -> pageTurnHostState.value?.captureGlassBackdrop(quality) }
         latestReleaseHandlerReady.value { onReleased ->
             // Closing must quiesce native drawing before Navigation starts its exit animation.
             navigationStartHandler.value = null
@@ -3657,7 +3657,7 @@ private fun configKey(
     textSpacing: EpubTextSpacing,
     fontType: String,
     fontFilePath: String?,
-    bodyFontWeight: Int,
+    bodyFontWeight: Float,
     textColorOverride: Int?,
     theme: String,
     coverBackgroundColor: Int?,
@@ -3732,7 +3732,7 @@ private fun configureReader(
     fontFilePath: String?,
     letterSpacingDp: Float,
     textSpacing: EpubTextSpacing,
-    bodyFontWeight: Int,
+    bodyFontWeight: Float,
     textColorOverride: Int?,
     theme: String,
     coverBackgroundColor: Int?,
@@ -3818,7 +3818,7 @@ private fun configureReader(
         .putOpt("fontItalicUrl", if (fontType == "serif" && fontFilePath != null)
             session.readerFontUrl(java.io.File(java.io.File(fontFilePath).parentFile,
                 "source_serif4_italic_v1.ttf").path) else null)
-        .put("bodyFontWeight", bodyFontWeight.coerceIn(100, 900))
+        .put("bodyFontWeight", bodyFontWeight.coerceIn(100f, 900f).toDouble())
         .putOpt("textColor", textColorOverride?.let { String.format("#%06X", it and 0xFFFFFF) })
         .putOpt(
             "coverBackgroundColor",

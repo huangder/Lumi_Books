@@ -9,6 +9,7 @@ import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
 import android.graphics.Shader
 import android.view.View
+import android.os.Build
 import kotlin.math.sin
 
 /** Reveals the next or previous page through a soft, finger-tracked color sweep. */
@@ -23,10 +24,12 @@ class WavePageAnim(
     private val maskPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
     }
+    private val revealPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG)
     private val waveAmplitude = 0.014f
     private val edgeBandWidth get() = 52f * readView.resources.displayMetrics.density
     private var oldSnapshot: Bitmap? = null
     private var newSnapshot: Bitmap? = null
+    private var revealShader: WavePageRevealShader? = null
     private var snapshotDirection = Direction.NONE
     private var snapshotWidth = 0
     private var snapshotHeight = 0
@@ -56,10 +59,27 @@ class WavePageAnim(
         }
         val sweepFromRight = horizontalTurnSign(direction) < 0f
         val band = edgeBandWidth.coerceIn(12f, width / 2f)
-        // The whole feathered edge, including its wave, must leave the viewport.
-        // Clamping its center/gradient to the screen leaves half a band visible
-        // until the terminal frame replaces it with the new page.
         val overscan = band + height * waveAmplitude
+        val shader = revealShader
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && canvas.isHardwareAccelerated && shader != null) {
+            shader.draw(canvas, revealPaint, width, height, progress, band, overscan,
+                height * waveAmplitude, sweepFromRight)
+            return
+        }
+        drawStripReveal(canvas, width, height, progress, band, overscan, sweepFromRight, newPage)
+    }
+
+    private fun drawStripReveal(
+        canvas: Canvas,
+        width: Int,
+        height: Int,
+        progress: Float,
+        band: Float,
+        overscan: Float,
+        sweepFromRight: Boolean,
+        newPage: Bitmap
+    ) {
+        // Keep the original strip renderer as a visual fallback on older APIs and software canvases.
         val stripHeight = (height / 48f).coerceAtLeast(1f)
         var top = 0f
         while (top < height) {
@@ -126,6 +146,11 @@ class WavePageAnim(
         oldSnapshot = capture(readView.curPageView, width, height)
         val target = if (pageDirection == Direction.NEXT) readView.nextPageView else readView.prevPageView
         newSnapshot = capture(target, width, height)
+        revealShader = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            newSnapshot?.let { bitmap -> runCatching { WavePageRevealShader(bitmap) }.getOrNull() }
+        } else {
+            null
+        }
     }
 
     private fun capture(view: View, width: Int, height: Int): Bitmap? = runCatching {
@@ -143,11 +168,14 @@ class WavePageAnim(
     }.getOrNull()
 
     private fun recycleSnapshots() {
-        listOf(oldSnapshot, newSnapshot)
-            .distinct()
-            .forEach { bitmap -> if (bitmap != null && !bitmap.isRecycled) bitmap.recycle() }
+        revealPaint.shader = null
+        revealShader = null
+        val old = oldSnapshot
+        val next = newSnapshot
         oldSnapshot = null
         newSnapshot = null
+        if (old != null && !old.isRecycled) old.recycle()
+        if (next != null && next !== old && !next.isRecycled) next.recycle()
         snapshotDirection = Direction.NONE
         snapshotWidth = 0
         snapshotHeight = 0

@@ -13,6 +13,7 @@ import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
 import com.huangder.lumibooks.domain.model.AppIconStyle
 import com.huangder.lumibooks.domain.model.MenuAnimationStyle
 import com.huangder.lumibooks.domain.model.LiquidGlassStyle
+import com.huangder.lumibooks.domain.model.LiquidGlassSamplingQuality
 
 data class LaunchThemeSnapshot(
     val iconStyle: String = AppIconStyle.LUMI_2.storedValue,
@@ -22,6 +23,7 @@ data class LaunchThemeSnapshot(
     val appFontSize: AppFontSize = AppFontSize.STANDARD,
     val globalFontMode: String = "system",
     val reduceTransparencyEnabled: Boolean = false,
+    val liquidGlassSamplingQuality: LiquidGlassSamplingQuality = LiquidGlassSamplingQuality.BALANCED,
     val liquidGlassStyle: LiquidGlassStyle = LiquidGlassStyle.DEFAULT,
     val liquidGlassTransparency: Float = 0.55f,
     val liquidGlassHdrHighlightEnabled: Boolean = false,
@@ -54,6 +56,7 @@ object LaunchThemeController {
     private const val APP_FONT_SIZE = "app_font_size"
     private const val GLOBAL_FONT_MODE = "global_font_mode"
     private const val REDUCE_TRANSPARENCY_ENABLED = "reduce_transparency_enabled"
+    private const val LIQUID_GLASS_SAMPLING_QUALITY = "liquid_glass_sampling_quality"
     private const val LIQUID_GLASS_STYLE = "liquid_glass_style"
     private const val LIQUID_GLASS_TRANSPARENCY = "liquid_glass_transparency"
     private const val LIQUID_GLASS_HDR_HIGHLIGHT_ENABLED = "liquid_glass_hdr_highlight_enabled"
@@ -103,6 +106,7 @@ object LaunchThemeController {
             appFontSize = AppFontSize.fromStoredValue(preferences.getString(APP_FONT_SIZE, null)),
             globalFontMode = preferences.getString(GLOBAL_FONT_MODE, "system") ?: "system",
             reduceTransparencyEnabled = preferences.getBoolean(REDUCE_TRANSPARENCY_ENABLED, false),
+            liquidGlassSamplingQuality = LiquidGlassSamplingQuality.fromStoredValue(preferences.getString(LIQUID_GLASS_SAMPLING_QUALITY, null)),
             liquidGlassStyle = LiquidGlassStyle.fromStoredValue(preferences.getString(LIQUID_GLASS_STYLE, null)),
             liquidGlassTransparency = preferences.getFloat(LIQUID_GLASS_TRANSPARENCY, 0.55f),
             liquidGlassHdrHighlightEnabled = preferences.getBoolean(
@@ -143,6 +147,11 @@ object LaunchThemeController {
             preferences.contains(HAS_COMPLETED_WELCOME_LANGUAGE_SETUP)
     }
 
+    fun updateLiquidGlassSamplingQualitySnapshot(context: Context, quality: LiquidGlassSamplingQuality) {
+        context.getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
+            .edit().putString(LIQUID_GLASS_SAMPLING_QUALITY, quality.storedValue).apply()
+    }
+
     fun updateLiquidGlassStyleSnapshot(context: Context, style: LiquidGlassStyle) {
         context.getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
             .edit().putString(LIQUID_GLASS_STYLE, style.storedValue).apply()
@@ -158,6 +167,7 @@ object LaunchThemeController {
             .putString(APP_FONT_SIZE, snapshot.appFontSize.storedValue)
             .putString(GLOBAL_FONT_MODE, snapshot.globalFontMode)
             .putBoolean(REDUCE_TRANSPARENCY_ENABLED, snapshot.reduceTransparencyEnabled)
+            .putString(LIQUID_GLASS_SAMPLING_QUALITY, snapshot.liquidGlassSamplingQuality.storedValue)
             .putString(LIQUID_GLASS_STYLE, snapshot.liquidGlassStyle.storedValue)
             .putFloat(LIQUID_GLASS_TRANSPARENCY, snapshot.liquidGlassTransparency)
             .putBoolean(

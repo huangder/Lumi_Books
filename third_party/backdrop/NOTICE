@@ -1,0 +1,7 @@
+Backdrop 1.0.6
+Copyright 2025 Kyant
+https://github.com/Kyant0/AndroidLiquidGlass
+
+Local modifications by Lumi Books: configurable sampling resolution for backdrop
+effect buffers, with matching blur and lens coordinates. Source recording, foreground
+content, highlights and shadows retain their original coordinate space.

@@ -2,6 +2,7 @@ package com.huangder.lumibooks.ui.components
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.snap
 import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import androidx.compose.foundation.background
@@ -16,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,10 +41,23 @@ import com.huangder.lumibooks.ui.icons.AppIcons
 import com.huangder.lumibooks.ui.theme.AppColors
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
+import com.huangder.lumibooks.ui.theme.LocalEInkMode
+import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import kotlinx.coroutines.launch
 import kotlin.math.exp
 
-/** A card that reveals edit and delete actions after a left swipe. */
+data class SwipeRevealAction(
+    val icon: ImageVector,
+    val description: String,
+    val color: Color,
+    val onClick: () -> Unit
+)
+
+/** A card that reveals actions after a left swipe. */
 @Composable
 fun SwipeRevealItem(
     onEdit: (() -> Unit)? = null,
@@ -55,11 +68,18 @@ fun SwipeRevealItem(
     onRevealedChanged: (Boolean) -> Unit = {},
     onEditTags: (() -> Unit)? = null,
     onShare: (() -> Unit)? = null,
+    actions: List<SwipeRevealAction> = emptyList(),
+    enabled: Boolean = true,
+    // Confirmation flows keep the card in place until their caller completes the deletion.
+    dismissOnDelete: Boolean = true,
     content: @Composable RowScope.() -> Unit
 ) {
     val density = LocalDensity.current
+    val motion = LocalMotionEnabled.current && !LocalEInkMode.current
+    val settleSpec = if (motion) spring<Float>(dampingRatio = 0.6f, stiffness = 300f) else snap()
+    val deleteDescription = stringResource(R.string.delete)
     // Leave a small breathing space between the card and the revealed actions.
-    val actionCount = 1 + (if (onEdit != null) 1 else 0) + (if (onEditTags != null) 1 else 0) + (if (onShare != null) 1 else 0)
+    val actionCount = 1 + actions.size + (if (onEdit != null) 1 else 0) + (if (onEditTags != null) 1 else 0) + (if (onShare != null) 1 else 0)
     val revealPx = with(density) { (16 + actionCount * 52).dp.toPx() }
     val deletePx = with(density) { 500.dp.toPx() }
     val scope = rememberCoroutineScope()
@@ -69,17 +89,41 @@ fun SwipeRevealItem(
     var revealed by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
 
+    LaunchedEffect(enabled) {
+        if (!enabled) {
+            revealed = false
+            dragging = false
+            rawOffset = 0f
+            offset.snapTo(0f)
+        }
+    }
     LaunchedEffect(resetRevealedKey) {
         if (resetRevealedKey > 0 && revealed) {
             revealed = false
-            offset.animateTo(0f, spring(dampingRatio = 0.6f, stiffness = 300f))
+            offset.animateTo(0f, settleSpec)
             rawOffset = 0f
         }
     }
     LaunchedEffect(revealed) { onRevealedChanged(revealed) }
 
-    val displayOffset = if (dragging) rawOffset else offset.value
-    val progress = (-displayOffset / revealPx).coerceAtLeast(0f)
+    fun closeAndRun(action: () -> Unit) {
+        revealed = false
+        scope.launch { offset.animateTo(0f, settleSpec) }
+        action()
+    }
+    fun delete() {
+        if (dismissOnDelete) {
+            deleting = true
+            scope.launch {
+                offset.animateTo(-deletePx, if (motion) tween(250, easing = FastOutSlowInEasing) else snap())
+                onDelete()
+            }
+        } else closeAndRun(onDelete)
+    }
+
+    // Continuous drag/settle state is read by placement and layers, not composition.
+    val displayOffset: () -> Float = { if (dragging) rawOffset else offset.value }
+    val revealProgress: () -> Float = { (-displayOffset() / revealPx).coerceIn(0f, 1f) }
     fun damp(excess: Float): Float {
         if (excess == 0f) return 0f
         val d = density.density
@@ -90,21 +134,30 @@ fun SwipeRevealItem(
         Row(
             modifier = Modifier
                 .matchParentSize()
-                .padding(end = 16.dp),
+                .padding(end = 16.dp)
+                .then(if (actions.isNotEmpty() && !revealed) Modifier.clearAndSetSemantics { } else Modifier),
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            actions.forEach { action ->
+                RevealAction(
+                    icon = action.icon,
+                    description = action.description,
+                    color = action.color,
+                    progress = revealProgress,
+                    enabled = enabled && revealed && !deleting,
+                    onClick = { closeAndRun(action.onClick) }
+                )
+            }
             if (onShare != null) {
                 RevealAction(
                     icon = AppIcons.ShareNetwork,
                     description = stringResource(R.string.excerpt_share),
                     color = Color(0xFF398B78),
-                    progress = progress.coerceIn(0f, 1f),
-                    enabled = revealed && !deleting,
+                    progress = revealProgress,
+                    enabled = enabled && revealed && !deleting,
                     onClick = {
-                        revealed = false
-                        scope.launch { offset.animateTo(0f, spring(dampingRatio = 0.6f, stiffness = 300f)) }
-                        onShare()
+                        closeAndRun(onShare)
                     }
                 )
             }
@@ -113,12 +166,10 @@ fun SwipeRevealItem(
                     icon = AppIcons.Tag,
                     description = stringResource(R.string.annotation_tags),
                     color = AppColors.Accent,
-                    progress = progress.coerceIn(0f, 1f),
-                    enabled = revealed && !deleting,
+                    progress = revealProgress,
+                    enabled = enabled && revealed && !deleting,
                     onClick = {
-                        revealed = false
-                        scope.launch { offset.animateTo(0f, spring(dampingRatio = 0.6f, stiffness = 300f)) }
-                        onEditTags()
+                        closeAndRun(onEditTags)
                     }
                 )
             }
@@ -127,40 +178,35 @@ fun SwipeRevealItem(
                     icon = AppIcons.PencilSimple,
                     description = stringResource(R.string.bookmark_remark_edit),
                     color = Color(0xFF4F7DFF),
-                    progress = progress.coerceIn(0f, 1f),
-                    enabled = revealed && !deleting,
+                    progress = revealProgress,
+                    enabled = enabled && revealed && !deleting,
                     onClick = {
-                        revealed = false
-                        scope.launch { offset.animateTo(0f, spring(dampingRatio = 0.6f, stiffness = 300f)) }
-                        onEdit()
+                        closeAndRun(onEdit)
                     }
                 )
             }
             RevealAction(
                 icon = AppIcons.Trash,
-                description = stringResource(R.string.delete),
+                description = deleteDescription,
                 color = Color(0xFFE53935),
-                progress = progress.coerceIn(0f, 1f),
-                enabled = revealed && !deleting,
-                onClick = {
-                    deleting = true
-                    scope.launch {
-                        offset.animateTo(-deletePx, tween(250, easing = FastOutSlowInEasing))
-                        onDelete()
-                    }
-                }
+                progress = revealProgress,
+                enabled = enabled && revealed && !deleting,
+                onClick = ::delete
             )
         }
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .offset { IntOffset(displayOffset.toInt(), 0) }
+                .offset { IntOffset(displayOffset().toInt(), 0) }
                 .graphicsLayer {
-                    if (deleting) alpha = 1f - (-displayOffset / deletePx).coerceIn(0f, 1f)
-                    if (progress > 1f) scaleX = 1f - (progress - 1f) * 0.01f
+                    val x = displayOffset()
+                    val progress = (-x / revealPx).coerceAtLeast(0f)
+                    alpha = if (deleting) 1f - (-x / deletePx).coerceIn(0f, 1f) else 1f
+                    scaleX = if (progress > 1f) 1f - (progress - 1f) * 0.01f else 1f
                 }
-                .pointerInput(Unit) {
+                .pointerInput(enabled, deleting, revealPx) {
+                    if (!enabled || deleting) return@pointerInput
                     detectHorizontalDragGestures(
                         onDragStart = {
                             rawOffset = offset.value
@@ -173,15 +219,15 @@ fun SwipeRevealItem(
                                 if (revealed) {
                                     if (-rawOffset < revealPx * 0.3f) {
                                         revealed = false
-                                        offset.animateTo(0f, spring(dampingRatio = 0.6f, stiffness = 300f))
+                                        offset.animateTo(0f, settleSpec)
                                     } else {
-                                        offset.animateTo(-revealPx, spring(dampingRatio = 0.6f, stiffness = 300f))
+                                        offset.animateTo(-revealPx, settleSpec)
                                     }
                                 } else if (-rawOffset > revealPx * 0.4f) {
                                     revealed = true
-                                    offset.animateTo(-revealPx, spring(dampingRatio = 0.6f, stiffness = 300f))
+                                    offset.animateTo(-revealPx, settleSpec)
                                 } else {
-                                    offset.animateTo(0f, spring(dampingRatio = 0.6f, stiffness = 300f))
+                                    offset.animateTo(0f, settleSpec)
                                 }
                                 rawOffset = 0f
                             }
@@ -189,7 +235,7 @@ fun SwipeRevealItem(
                         onDragCancel = {
                             dragging = false
                             scope.launch {
-                                offset.animateTo(if (revealed) -revealPx else 0f, spring(dampingRatio = 0.6f, stiffness = 300f))
+                                offset.animateTo(if (revealed) -revealPx else 0f, settleSpec)
                                 rawOffset = 0f
                             }
                         },
@@ -203,12 +249,17 @@ fun SwipeRevealItem(
                         }
                     )
                 }
-                .clickable(
-                    enabled = !revealed && onClick != null,
+                .then(if (revealed || onClick != null) Modifier.clickable(
+                    enabled = enabled && !deleting,
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
-                    onClick = { onClick?.invoke() }
-                ),
+                    onClick = { if (revealed) closeAndRun {} else onClick?.invoke() }
+                ) else Modifier)
+                .then(if (enabled && !deleting && actions.isNotEmpty()) Modifier.semantics {
+                    customActions = actions.map { action ->
+                        CustomAccessibilityAction(action.description) { closeAndRun(action.onClick); true }
+                    } + CustomAccessibilityAction(deleteDescription) { delete(); true }
+                } else Modifier),
             content = content
         )
     }
@@ -219,7 +270,7 @@ private fun RevealAction(
     icon: ImageVector,
     description: String,
     color: Color,
-    progress: Float,
+    progress: () -> Float,
     enabled: Boolean,
     onClick: () -> Unit
 ) {
@@ -227,8 +278,9 @@ private fun RevealAction(
         modifier = Modifier
             .size(44.dp)
             .graphicsLayer {
-                alpha = progress
-                translationX = (1f - progress) * 24.dp.toPx()
+                val value = progress()
+                alpha = value
+                translationX = (1f - value) * 24.dp.toPx()
             }
             .clip(CircleShape)
             .background(color)

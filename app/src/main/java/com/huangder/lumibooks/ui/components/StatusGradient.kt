@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.AppColors
@@ -31,8 +32,20 @@ fun StatusGradientOverlay(
     exportedBackdrop: LayerBackdrop? = null,
     height: Dp = 96.dp,
     blurRadius: Dp = 30.dp,
-    solidFraction: Float = 0.12f
+    solidFraction: Float = 0.12f,
+    /**
+     * Optional 0..1 visibility read in the draw phase. Scrolling pages pass their scroll so the
+     * overlay is invisible at rest (the large title, eyebrow and atmosphere stay clear) and only
+     * fades in once content actually scrolls under the status bar.
+     */
+    visibility: (() -> Float)? = null
 ) {
+    if (visibility != null) {
+        Box(Modifier.graphicsLayer { alpha = visibility().coerceIn(0f, 1f) }) {
+            StatusGradientOverlay(backdrop, exportedBackdrop, height, blurRadius, solidFraction, null)
+        }
+        return
+    }
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val activeBackdrop = com.huangder.lumibooks.ui.theme.LocalLumiBackgroundBackdrop.current ?: backdrop
     if (isLiquidGlass && activeBackdrop != null && LocalReduceTransparency.current) {

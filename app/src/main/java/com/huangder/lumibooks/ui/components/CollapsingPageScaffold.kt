@@ -44,6 +44,8 @@ internal class CollapsingPageState(initialProgress: Float = 0f) {
         if (height.isFinite() && height > 0f) titleHeightPx = height
     }
 
+    internal fun remainingTitleHeightPx(): Float = titleHeightPx * (1f - progress)
+
     /** Finger coordinates: negative collapses, positive expands. Returns only the consumed distance. */
     fun consumeDelta(delta: Float): Float {
         if (!delta.isFinite() || titleHeightPx <= 0f) return 0f
@@ -64,6 +66,25 @@ internal fun rememberCollapsingPageState(): CollapsingPageState = rememberSaveab
 
 /** Padding for a page's own scroll content, inside its list or scroll modifier, never outside it. */
 internal val LocalCollapsingPageTopInset = compositionLocalOf { 0.dp }
+
+/** Lazy content reads this during measurement, keeping scroll-driven insets out of composition. */
+internal val LocalCollapsingPageTopPaddingValues = compositionLocalOf<PaddingValues> { PaddingValues(0.dp) }
+
+/** Height of an overlaid bottom bar; scrolling content pads its end by this much. */
+internal val LocalCollapsingPageBottomInset = compositionLocalOf { 0.dp }
+
+private class DynamicCollapsingTopPaddingValues(
+    private val state: CollapsingPageState,
+    private val density: androidx.compose.ui.unit.Density,
+    private val fixedInsetPx: Float
+) : PaddingValues {
+    override fun calculateLeftPadding(layoutDirection: androidx.compose.ui.unit.LayoutDirection) = 0.dp
+    override fun calculateRightPadding(layoutDirection: androidx.compose.ui.unit.LayoutDirection) = 0.dp
+    override fun calculateBottomPadding() = 0.dp
+    override fun calculateTopPadding(): androidx.compose.ui.unit.Dp = with(density) {
+        (fixedInsetPx + state.remainingTitleHeightPx()).toDp()
+    }
+}
 
 internal val PageToolbarButtonSize = 48.dp
 internal val PageToolbarIconSize = 20.dp
@@ -111,6 +132,13 @@ internal fun CollapsingPageScaffold(
     contentScrollEnabled: Boolean = true,
     headerGesturesEnabled: Boolean = true,
     drawContentBehindHeader: Boolean = false,
+    /**
+     * Float [bottomBar] over the content instead of stacking it below.
+     * Content must pad its scroll end with [LocalCollapsingPageBottomInset].
+     */
+    bottomBarOverlay: Boolean = false,
+    /** Draw a blur or fallback scrim behind an overlaid bottom bar. */
+    bottomBarOverlayBackground: Boolean = true,
     state: CollapsingPageState = rememberCollapsingPageState(),
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -122,7 +150,10 @@ internal fun CollapsingPageScaffold(
                 return Offset(0f, state.consumeDelta(available.y))
             }
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                if (!currentScrollEnabled || source != NestedScrollSource.UserInput || available.y <= 0f) return Offset.Zero
+                // Fling momentum that reaches the list top keeps going into the header, so one
+                // upward fling from deep in the list lands on the expanded large title (iOS-like).
+                if (!currentScrollEnabled || available.y <= 0f) return Offset.Zero
+                if (source != NestedScrollSource.UserInput && source != NestedScrollSource.SideEffect) return Offset.Zero
                 return Offset(0f, state.consumeDelta(available.y))
             }
         }
@@ -131,12 +162,19 @@ internal fun CollapsingPageScaffold(
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val toolbarHeight = statusTop + 56.dp
     var pinnedHeightPx by remember { mutableIntStateOf(0) }
+    var bottomBarHeightPx by remember { mutableIntStateOf(0) }
+    val bottomBarHeight = with(density) { bottomBarHeightPx.toDp() }
     val backdrop = rememberLayerBackdrop()
     val capability = LocalLiquidGlassCapability.current
     val eInkMode = LocalEInkMode.current
     val blurEnabled = progressiveBlurEnabled(capability.supported, eInkMode, LocalReduceTransparency.current)
     val remainingTitleHeight = with(density) { (state.titleHeightPx * (1f - state.progress)).toDp() }
     val pinnedHeight = with(density) { pinnedHeightPx.toDp() }
+    val dynamicTopPadding = remember(state, density, toolbarHeight, pinnedHeightPx, drawContentBehindHeader) {
+        if (drawContentBehindHeader) {
+            DynamicCollapsingTopPaddingValues(state, density, with(density) { toolbarHeight.toPx() + pinnedHeightPx })
+        } else PaddingValues(0.dp)
+    }
     // Browsing pages expand only when their content reaches the top. A native preview owns its
     // gestures, so its header can instead be dragged in either direction independently.
     val drag = rememberDraggableState { delta ->
@@ -146,10 +184,30 @@ internal fun CollapsingPageScaffold(
         Column(Modifier.fillMaxSize().then(if (blurEnabled) Modifier.layerBackdrop(backdrop) else Modifier)) {
             val topInset = toolbarHeight + remainingTitleHeight + pinnedHeight
             if (!drawContentBehindHeader) Spacer(Modifier.height(topInset))
-            CompositionLocalProvider(LocalCollapsingPageTopInset provides if (drawContentBehindHeader) topInset else 0.dp) {
+            CompositionLocalProvider(LocalCollapsingPageTopInset provides if (drawContentBehindHeader) topInset else 0.dp,
+                LocalCollapsingPageTopPaddingValues provides dynamicTopPadding,
+                LocalCollapsingPageBottomInset provides if (bottomBarOverlay && bottomBar != null) bottomBarHeight else 0.dp) {
                 Column(Modifier.weight(1f).fillMaxWidth().nestedScroll(connection), content = content)
             }
-            bottomBar?.invoke()
+            if (!bottomBarOverlay) bottomBar?.invoke()
+        }
+        if (bottomBarOverlay && bottomBar != null) {
+            // Keep the floating controls outside the content's captured layer.
+            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+                if (bottomBarOverlayBackground) {
+                    // Tight band: blur only right behind the bar, fading out by its top edge.
+                    val band = bottomBarHeight * .8f
+                    if (blurEnabled) {
+                        ProgressiveBottomBlur(backdrop = backdrop, bandHeight = band, modifier = Modifier.align(Alignment.BottomCenter),
+                            tint = AppColors.WindowBg.copy(alpha = 4f * if (LocalIsDarkTheme.current) PROGRESSIVE_BLUR_TINT_ALPHA_DARK else PROGRESSIVE_BLUR_TINT_ALPHA))
+                    } else if (progressiveTopScrimEnabled(capability.supported, eInkMode, LocalReduceTransparency.current)) {
+                        ProgressiveBottomScrim(bandHeight = band, tint = AppColors.WindowBg, modifier = Modifier.align(Alignment.BottomCenter))
+                    } else if (eInkMode) {
+                        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(bottomBarHeight).background(AppColors.WindowBg))
+                    }
+                }
+                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged { bottomBarHeightPx = it.height }) { bottomBar() }
+            }
         }
         val strength = quantizeBlurStrength(state.progress)
         if (blurEnabled) {

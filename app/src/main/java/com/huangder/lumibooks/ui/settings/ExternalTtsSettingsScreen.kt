@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.settings
 
+import com.huangder.lumibooks.ui.components.lumiGroupedSurface
 import com.huangder.lumibooks.ui.components.lumiCardSurface
 import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
 import com.huangder.lumibooks.ui.icons.AppIcons
@@ -308,7 +309,7 @@ fun ExternalTtsConfigurationDetail(
         }
 
         ExternalTtsSectionCard {
-            OutlinedTextField(
+            com.huangder.lumibooks.ui.components.LumiTextField(
             value = draftBaseUrl,
             onValueChange = {
                 draftBaseUrl = it
@@ -333,7 +334,7 @@ fun ExternalTtsConfigurationDetail(
             shape = AppRoundedCornerShape(AppRadius.md)
         )
 
-            OutlinedTextField(
+            com.huangder.lumibooks.ui.components.LumiTextField(
             value = draftModel,
             onValueChange = {
                 draftModel = it
@@ -362,7 +363,7 @@ fun ExternalTtsConfigurationDetail(
             }
         )
 
-            OutlinedTextField(
+            com.huangder.lumibooks.ui.components.LumiTextField(
             value = draftStyle,
             onValueChange = {
                 draftStyle = it
@@ -376,7 +377,7 @@ fun ExternalTtsConfigurationDetail(
             shape = AppRoundedCornerShape(AppRadius.md)
         )
 
-            OutlinedTextField(
+            com.huangder.lumibooks.ui.components.LumiTextField(
             value = token,
             onValueChange = {
                 token = it
@@ -458,7 +459,7 @@ fun ExternalTtsConfigurationDetail(
                     color = AppColors.TextSecondary
                 )
             }
-            Checkbox(
+            com.huangder.lumibooks.ui.components.LumiCheckbox(
                 checked = draftAllowHttp,
                 onCheckedChange = { checked ->
                     if (checked) {
@@ -659,7 +660,7 @@ private fun ExternalTtsVoiceSelection(
                 fadeOut(animationSpec = tween(130)),
             modifier = Modifier.fillMaxWidth()
         ) {
-            OutlinedTextField(
+            com.huangder.lumibooks.ui.components.LumiTextField(
                 value = voice,
                 onValueChange = onVoiceChange,
                 modifier = Modifier
@@ -678,8 +679,7 @@ private fun ExternalTtsSectionCard(content: @Composable ColumnScope.() -> Unit) 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(AppRoundedCornerShape(AppRadius.lg))
-            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
+            .lumiGroupedSurface()
             .padding(AppSpace.md),
         verticalArrangement = Arrangement.spacedBy(AppSpace.sm),
         content = content
@@ -773,7 +773,7 @@ private fun ExternalTtsProtocolCard(
             Spacer(Modifier.height(4.dp))
             Text(description, fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
         }
-        RadioButton(
+        com.huangder.lumibooks.ui.components.LumiRadio(
             selected = selected,
             onClick = onClick,
             colors = RadioButtonDefaults.colors(selectedColor = AppColors.Accent)
@@ -988,7 +988,7 @@ private fun ExternalTtsConsentSheet(
                     .padding(vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Checkbox(
+                com.huangder.lumibooks.ui.components.LumiCheckbox(
                     checked = confirmed,
                     onCheckedChange = { confirmed = it },
                     colors = CheckboxDefaults.colors(checkedColor = AppColors.Accent)
@@ -1078,7 +1078,7 @@ private fun ExternalTtsHttpWarningSheet(
                     .padding(vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Checkbox(
+                com.huangder.lumibooks.ui.components.LumiCheckbox(
                     checked = confirmed,
                     onCheckedChange = { confirmed = it },
                     colors = CheckboxDefaults.colors(checkedColor = AppColors.Accent)

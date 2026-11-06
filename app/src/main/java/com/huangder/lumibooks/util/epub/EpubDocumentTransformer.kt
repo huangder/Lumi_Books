@@ -280,6 +280,25 @@ object EpubDocumentTransformer {
         return extractSearchText(parseAndSanitize(resource))
     }
 
+    internal fun imageTextOffsets(resource: EpubResource): List<Int> =
+        imageTextOffsets(parseAndSanitize(resource))
+
+    internal fun imageTextOffsets(document: Document): List<Int> {
+        // Match extractSearchText's UTF-16 offsets, including source whitespace.
+        val body = document.body().clone()
+        body.select("style, noscript, script").remove()
+        var offset = 0
+        return buildList {
+            NodeTraversor.traverse(object : NodeVisitor {
+                override fun head(node: org.jsoup.nodes.Node, depth: Int) {
+                    if (node is TextNode) offset += node.wholeText.length
+                    else if (node.nodeName().equals("img", true) || node.nodeName().equals("svg", true)) add(offset)
+                }
+                override fun tail(node: org.jsoup.nodes.Node, depth: Int) = Unit
+            }, body)
+        }
+    }
+
     internal fun extractSearchText(document: Document): String {
         val body = document.body()
         val text = StringBuilder()
@@ -2729,7 +2748,7 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
     var existing = document.getElementById('lumi-reader-overrides');
     var family = config.fontFamily ? String(config.fontFamily) : '';
     var fontUrl = config.fontUrl ? String(config.fontUrl) : '';
-    var bodyFontWeight = Math.max(100, Math.min(900, Math.round(Number(config.bodyFontWeight) || 400)));
+    var bodyFontWeight = Math.max(100, Math.min(900, Number(config.bodyFontWeight) || 400));
     var textAlignment = String(config.textAlignment || '');
     // 原排版的「自然对齐」保留书籍 CSS（包括标题居中、段落继承和署名右对齐）。
     // 只有用户明确选择的对齐方式才覆盖原书；恢复自然对齐时也要移除旧覆盖。

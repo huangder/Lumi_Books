@@ -30,7 +30,7 @@
     <string name="insights_new_reading">New reading activity</string>
     <string name="insights_more_time">%1$s more reading</string>
     <string name="insights_less_time">%1$s less reading</string>
-    <string name="insights_review">Reading review</string>
+    <string name="insights_review">Reading memories</string>
     <string name="insights_through">Through %1$s</string>
     <string name="insights_generate">Generate report</string>
     <string name="insights_save_image">Save image</string>
@@ -50,4 +50,24 @@
     <string name="insights_monthly_activity">Monthly reading activity</string>
     <string name="insights_personal_review">My review</string>
     <string name="insights_retry">Retry</string>
+    <string name="insights_read_minutes">R %1$d</string>
+    <string name="insights_listen_minutes">L %1$d</string>
+    <string name="insights_day_marks">✎ %1$d</string>
+    <string name="insights_tap_hint">Tap a day for details</string>
+    <string name="insights_previous_period">Previous period</string>
+    <string name="insights_next_period">Next period</string>
+    <string name="insights_reading">Reading</string>
+    <string name="insights_listening">Listening</string>
+    <string name="insights_vs_previous">vs %1$s</string>
+    <string name="insights_days_value">%1$d days</string>
+    <string name="insights_books_value">%1$d books</string>
+    <string name="insights_best_day_label">Best day</string>
+    <string name="insights_goal_days_label">Goal days</string>
+    <string name="insights_first_read_label">First read</string>
+    <string name="insights_last_read_label">Latest</string>
+    <string name="insights_today">Today</string>
+    <string name="insights_generating">Generating…</string>
+    <string name="insights_top_tags">Top tags</string>
+    <string name="insights_since">Since %1$s</string>
+    <string name="insights_read_listen_split">Read &amp; listen</string>
 </resources>

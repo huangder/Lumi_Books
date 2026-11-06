@@ -1,6 +1,7 @@
 @file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package com.huangder.lumibooks.ui.home
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
@@ -63,6 +64,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
@@ -90,14 +92,11 @@ import com.huangder.lumibooks.data.sync.BookDownloadState
 import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.animation.OverscrollBounceState
 import com.huangder.lumibooks.ui.animation.cardPressEffect
-import com.huangder.lumibooks.ui.components.StatusGradientOverlay
 import com.huangder.lumibooks.ui.components.LocalMainNavigationInsets
 import com.huangder.lumibooks.ui.components.LumiImportFab
 import com.huangder.lumibooks.ui.components.BookCoverStatusBadge
 import com.huangder.lumibooks.ui.components.BookProgressStatus
 import com.huangder.lumibooks.ui.components.CloudAwareBookDeleteDialog
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
 import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
@@ -123,6 +122,18 @@ import com.huangder.lumibooks.ui.layout.currentAdaptiveWindowInfo
 import com.huangder.lumibooks.util.TimeUtils
 import com.huangder.lumibooks.util.ReaderBackgroundBlurTransformation
 import com.huangder.lumibooks.ui.components.AppDropdownMenu
+import com.huangder.lumibooks.ui.components.AmbientGlow
+import com.huangder.lumibooks.ui.components.MainTabHeader
+import com.huangder.lumibooks.ui.components.MainTabTitle
+import com.huangder.lumibooks.ui.components.rememberCoverColors
+import com.huangder.lumibooks.ui.statistics.InsightsOvershoot
+import com.huangder.lumibooks.ui.statistics.ProvideInsightsMotion
+import com.huangder.lumibooks.ui.statistics.insightsCardSurface
+import com.huangder.lumibooks.ui.statistics.insightsDate
+import com.huangder.lumibooks.ui.statistics.insightsDuration
+import com.huangder.lumibooks.ui.statistics.insightsMotion
+import com.huangder.lumibooks.ui.statistics.rememberPlayOnce
+import com.huangder.lumibooks.ui.statistics.styledFigure
 
 @Composable
 fun HomeScreen(
@@ -139,11 +150,9 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val isMaterial3 = LocalUseMaterial3Theme.current
     val useWideLayout = currentAdaptiveWindowInfo().isMediumWidthOrLarger
     val navigationInsets = LocalMainNavigationInsets.current
-    val topBlurBackdrop = rememberLayerBackdrop()
     val statusBarTopPadding = WindowInsets.statusBarsIgnoringVisibility
         .asPaddingValues()
         .calculateTopPadding()
@@ -169,7 +178,8 @@ fun HomeScreen(
         uiState.books.sortedByDescending { it.lastReadTime }
     }
     val lastReadBook = booksByLastRead.firstOrNull()
-    val recentBooks = booksByLastRead.take(12)
+    // The most recent book already headlines the Continue-reading card; don't repeat it here.
+    val recentBooks = booksByLastRead.drop(1).take(12)
 
     // 顶部下拉「松手继续阅读」：只读取下拉位移，判定与回弹都由 OverscrollBounce 维持原样。
     val bounceState = remember { OverscrollBounceState() }
@@ -186,6 +196,10 @@ fun HomeScreen(
         }
     }
 
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val glowColors = rememberCoverColors(lastReadBook?.coverPath)
+    val today = remember { java.time.LocalDate.now() }
+    ProvideInsightsMotion {
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
@@ -193,6 +207,10 @@ fun HomeScreen(
             .semantics { testTagsAsResourceId = true }
             .testTag(HOME_SCREEN_TAG)
     ) {
+        // Atmosphere: a soft background glow tinted by the book being read, fading as the page scrolls.
+        AmbientGlow(glowColors, scrollOffset = {
+            if (listState.firstVisibleItemIndex > 0) Float.MAX_VALUE else listState.firstVisibleItemScrollOffset.toFloat()
+        })
         // Inset individual cards, not the scrolling viewport: the book row must reach under
         // the floating rail all the way to the window edge while keeping its initial alignment.
         val availableWidth = (maxWidth - navigationInsets.start).coerceAtLeast(0.dp)
@@ -202,21 +220,18 @@ fun HomeScreen(
         val contentEnd = centeredMargin
         val contentInsets = Modifier.padding(start = contentStart, end = contentEnd)
         OverscrollBounce(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(
-                    if (isLiquidGlass) Modifier.layerBackdrop(topBlurBackdrop) else Modifier
-                ),
+            modifier = Modifier.fillMaxSize(),
             state = bounceState,
             onTopPullRelease = onTopPullRelease
         ) {
             LazyColumn(
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                state = listState
             ) {
                 item(key = "header") {
-                    Spacer(Modifier.height(statusBarTopPadding + AppSpace.md))
                     PageEntranceItem(play = playEntranceAnimation, index = 0, modifier = contentInsets) {
                         HomeHeader(
+                            eyebrow = insightsDate(today, "MMMMdEEEE"),
                             avatarUri = uiState.avatarUri,
                             onAvatarClick = {
                                 context.startActivity(
@@ -225,7 +240,7 @@ fun HomeScreen(
                             }
                         )
                     }
-                    Spacer(Modifier.height(AppSpace.lg))
+                    Spacer(Modifier.height(AppSpace.lg + AppSpace.sm))
                 }
 
                 if (uiState.books.isEmpty()) {
@@ -295,9 +310,7 @@ fun HomeScreen(
             }
         } // OverscrollBounce 结束
 
-        StatusGradientOverlay(backdrop = topBlurBackdrop.takeIf { isLiquidGlass })
-
-        // 提示绘制在顶部渐隐之上，避免文字被窗口色渐变冲淡；无书时整个手势都不可用。
+        // 提示绘制在滚动内容之上；无书时整个手势都不可用。
         if (lastReadBook != null) {
             HomePullToResumeHint(
                 bounceState = bounceState,
@@ -354,30 +367,18 @@ fun HomeScreen(
             }
         }
     } // 外层 Box 结束
+    }
 }
 
 // ─── Header ──────────────────────────────────────────────────────
 
 @Composable
 private fun HomeHeader(
+    eyebrow: String?,
     avatarUri: String? = null,
     onAvatarClick: () -> Unit = {}
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = AppSpace.lg, vertical = AppSpace.md),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = stringResource(R.string.home_page),
-            fontSize = AppType.Display,
-            fontWeight = FontWeight.Bold,
-            fontFamily = resolveAppFontFamily(KaiTi),
-            letterSpacing = (-0.02).sp,
-            color = AppColors.TextPrimary
-        )
-        Spacer(Modifier.weight(1f))
+    MainTabHeader(eyebrow = eyebrow, title = { MainTabTitle(stringResource(R.string.home_page)) }, trailing = {
         // 版本会员提示：仅官方版提供，点过一次或进过会员页即消失
         com.huangder.lumibooks.edition.EditionHomeMembershipPrompt()
         // 头像（点击进入设置页）
@@ -410,7 +411,7 @@ private fun HomeHeader(
                 )
             }
         }
-    }
+    })
 }
 
 // ─── 空书库 ────────────────────────────────────────────────────
@@ -748,17 +749,13 @@ private fun ReadingGoalCard(
     val todayStatusText = stringResource(
         if (hasReadToday) R.string.today_read_status_done else R.string.today_read_status_empty
     )
-    val todayEmoji = if (hasReadToday) "📖 ✨ 🌿" else "🌙 ☕ 📚"
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = AppSpace.lg)
-            .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
-            .cardOutline(AppRoundedCornerShape(AppRadius.lg))
-            .clip(AppRoundedCornerShape(AppRadius.lg))
-            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
             .cardPressEffect()
+            .insightsCardSurface()
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onCardClick)
             .padding(AppSpace.lg),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -775,12 +772,7 @@ private fun ReadingGoalCard(
         Spacer(Modifier.height(AppSpace.sm))
 
         // 大数字
-        Text(
-            text = TimeUtils.formatDurationShort(readingTime),
-            fontSize = AppType.Huge,
-            fontWeight = FontWeight.Bold,
-            color = AppColors.TextPrimary
-        )
+        Text(styledFigure(insightsDuration(readingTime), AppType.Huge, 16.sp), maxLines = 1)
         Text(
             text = stringResource(R.string.goal_label, dailyGoal),
             fontSize = AppType.Caption,
@@ -788,12 +780,15 @@ private fun ReadingGoalCard(
         )
         } else {
             Spacer(Modifier.height(AppSpace.sm))
-            Text(
-                text = todayEmoji,
-                fontSize = 34.sp,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center
-            )
+            val tileColor = if (LocalEInkMode.current) Color.Black else AppColors.Accent
+            Box(
+                Modifier.size(56.dp).clip(CircleShape)
+                    .background(tileColor.copy(alpha = if (LocalEInkMode.current) 1f else .14f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(if (hasReadToday) AppIcons.BookOpen else AppIcons.MoonStars, null,
+                    tint = if (LocalEInkMode.current) Color.White else tileColor, modifier = Modifier.size(28.dp))
+            }
             Spacer(Modifier.height(AppSpace.sm))
             Text(
                 text = todayStatusText,
@@ -826,6 +821,12 @@ private fun ReadingGoalCard(
 @Composable
 private fun ArcProgressBar(progress: Float, modifier: Modifier = Modifier) {
     val accentColor = AppColors.Accent
+    val trackColor = AppColors.BgGray
+    // Sweeps in once per page, then follows progress with a spring; values are read in draw only.
+    val grow = rememberPlayOnce("goal-arc", 1100)
+    val animated by androidx.compose.animation.core.animateFloatAsState(progress,
+        if (insightsMotion()) androidx.compose.animation.core.spring(dampingRatio = .85f, stiffness = 140f)
+        else androidx.compose.animation.core.snap(), label = "goalArc")
     Canvas(modifier = modifier) {
         val stroke = 10.dp.toPx()
         val radius = (minOf(size.width, size.height * 2) - stroke) / 2
@@ -836,7 +837,7 @@ private fun ArcProgressBar(progress: Float, modifier: Modifier = Modifier) {
         val topLeft = Offset(cx - radius, cy - radius)
 
         drawArc(
-            color = Color(0xFFE5E5EA),
+            color = trackColor,
             startAngle = 180f,
             sweepAngle = 180f,
             useCenter = false,
@@ -847,7 +848,7 @@ private fun ArcProgressBar(progress: Float, modifier: Modifier = Modifier) {
         drawArc(
             color = accentColor,
             startAngle = 180f,
-            sweepAngle = 180f * progress,
+            sweepAngle = 180f * animated * grow.value,
             useCenter = false,
             topLeft = topLeft,
             size = Size(diameter, diameter),
@@ -866,6 +867,8 @@ private fun WeeklyCheckIn(weeklyData: List<DailyReading> = emptyList(), dailyGoa
     val hasGoal = dailyGoal > 0
     val goalMs = dailyGoal * 60 * 1000L
     val accentColor = AppColors.Accent
+    val pop = rememberPlayOnce("week-dots", 900)
+    val motion = insightsMotion()
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -879,7 +882,13 @@ private fun WeeklyCheckIn(weeklyData: List<DailyReading> = emptyList(), dailyGoa
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
-                    modifier = Modifier.size(34.dp),
+                    modifier = Modifier.size(34.dp).graphicsLayer {
+                        if (motion) {
+                            val p = ((pop.value - index * .07f) / .58f).coerceIn(0f, 1f)
+                            val s = .4f + .6f * InsightsOvershoot.transform(p)
+                            scaleX = s; scaleY = s; alpha = p
+                        }
+                    },
                     contentAlignment = Alignment.Center
                 ) {
                     if (isPast || isToday) {

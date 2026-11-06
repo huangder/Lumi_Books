@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="liquid_glass_sampling_quality">玻璃采样质量</string>
+    <string name="liquid_glass_sampling_original">原始（1×）</string>
+    <string name="liquid_glass_sampling_clear">清晰（⅔×）</string>
+    <string name="liquid_glass_sampling_balanced">均衡（½×）</string>
+    <string name="liquid_glass_sampling_performance">性能（⅓×）</string>
+</resources>

@@ -185,7 +185,7 @@ class ReaderBackgroundLoadingTest {
             lineHeightMult = 1.5f, letterSpacingDp = 0f, textAlignment = ReaderTextAlignment.NATURAL,
             fontType = "system", customFontPath = null, marginLeftDp = 20f, marginRightDp = 20f,
             marginTopDp = 20f, marginBottomDp = 20f, paragraphSpacingDp = 2f, firstLineIndent = 2f,
-            bodyFontWeight = 400, bionicReadingEnabled = false, useDisplayDensityForSpans = false,
+            bodyFontWeight = 400f, bionicReadingEnabled = false, useDisplayDensityForSpans = false,
             writingMode = ReaderWritingMode.HORIZONTAL, twoPageSpread = true
         ),
         background = ReaderBackgroundConfig(Color.WHITE, Color.BLACK, imagePath, 1f, 0f),

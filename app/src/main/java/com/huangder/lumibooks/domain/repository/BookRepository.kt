@@ -16,10 +16,14 @@ interface BookRepository {
     suspend fun updateBookMetadata(book: Book)
     /** Moves books into or out of the hidden library in one write. */
     suspend fun setBooksHidden(bookIds: Collection<String>, hidden: Boolean)
+    /** Archives without changing reading history or shelf organisation. */
+    suspend fun setBooksArchived(bookIds: Collection<String>, archived: Boolean)
     suspend fun deleteBook(book: Book)
     suspend fun markBookCloudOnly(bookId: String)
     suspend fun markBookDownloaded(bookId: String, filePath: String)
     suspend fun clearRemoteAssociation(bookId: String)
     suspend fun updateLastReadTime(bookId: String, timestamp: Long)
     suspend fun updateReadingProgress(bookId: String, progress: Float, locatorJson: String? = null)
+    /** Replaces the saved reading position, including clearing an obsolete locator. */
+    suspend fun updateReadingPosition(bookId: String, progress: Float, locatorJson: String?)
 }

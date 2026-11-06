@@ -39,7 +39,7 @@ internal data class NativeEpubCallbacks(
     val image: (EpubImagePreviewRequest) -> Unit
 )
 internal data class NativeEpubReaderStyle(val fontSizeSp: Float, val fontType: String, val fontPath: String?,
-    val weight: Int, val color: Int?, val paper: Int, val publisherColors: Boolean,
+    val weight: Float, val color: Int?, val paper: Int, val publisherColors: Boolean,
     val top: Float, val right: Float, val bottom: Float, val left: Float,
     val textSpacing: EpubTextSpacing, val publisherNightShade: Boolean = false,
     val longPressSelectionRange: LongPressSelectionRange = LongPressSelectionRange.DEFAULT)

@@ -56,7 +56,7 @@ data class ReaderRenderSettingsState(
     val marginBottomDp: Float = 64f,
     val paragraphSpacing: Float = 2f,
     val firstLineIndent: Float = 2f,
-    val bodyFontWeight: Int = 400,
+    val bodyFontWeight: Float = 400f,
     val readerTheme: String = "day",
     val readerBackgroundSelection: String = "day",
     val readerBackgroundColorSelection: String = "day",
@@ -249,6 +249,11 @@ internal fun ReaderUiState.activeThemeSuiteId(): String =
 
 internal fun ReaderUiState.activeThemeSuite(): ReaderThemeSuite? =
     readerThemeSuites.firstOrNull { it.id == activeThemeSuiteId() }
+
+internal fun ReaderUiState.activeThemeDarkMaskOpacity(
+    layout: ReaderLayoutTarget = readerLayoutTarget()
+): Float = readerThemeSuites.firstOrNull { it.id == activeThemeSuiteIdFor(layout) }
+    ?.darkMaskOpacity ?: 0f
 
 /** 「原排版」套装：阅读器不参与配色，原书自己的底色与文字颜色照原样渲染。 */
 internal fun ReaderUiState.keepsPublisherPaint(): Boolean =

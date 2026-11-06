@@ -178,10 +178,13 @@ class CoverSearchActivity : ComponentActivity() {
             val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = launchTheme.menuAnimationStyle)
             val liquidGlassStyle by dataStoreManager.liquidGlassStyle
                 .collectAsState(initial = launchTheme.liquidGlassStyle)
+            val liquidGlassSamplingQuality by dataStoreManager.liquidGlassSamplingQuality
+                .collectAsState(initial = launchTheme.liquidGlassSamplingQuality)
             val reduceTransparencyEnabled by dataStoreManager.reduceTransparencyEnabled
                 .collectAsState(initial = launchTheme.reduceTransparencyEnabled)
             EBookReaderTheme(
                 liquidGlassStyle = liquidGlassStyle,
+                liquidGlassSamplingQuality = liquidGlassSamplingQuality,
                 reduceTransparencyEnabled = reduceTransparencyEnabled,
                 menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
                 darkTheme = isDark,
@@ -459,7 +462,7 @@ private fun CoverSearchScreen(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(horizontal = AppSpace.md - AppSpace.xs)
+                .padding(horizontal = AppSpace.lg)
                 .clip(AppRoundedCornerShape(22.dp))
                 .background(AppColors.BgGray)
                 .border(
@@ -545,68 +548,25 @@ private fun CoverSearchBottomBar(
             .fillMaxWidth()
             .navigationBarsPadding()
             .imePadding()
-            .padding(horizontal = AppSpace.md - AppSpace.xs, vertical = AppSpace.sm + AppSpace.xs)
+            .padding(horizontal = AppSpace.lg, vertical = AppSpace.sm + AppSpace.xs)
             .graphicsLayer { alpha = if (hidden) 0f else 1f },
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(AppSpace.sm),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            CoverSearchEngine.entries.forEach { engine ->
-                val selected = engine == selectedEngine
-                val label = when (engine) {
-                    CoverSearchEngine.BING -> stringResource(R.string.cover_search_engine_bing)
-                    CoverSearchEngine.BAIDU -> stringResource(R.string.cover_search_engine_baidu)
-                    CoverSearchEngine.GOOGLE -> stringResource(R.string.cover_search_engine_google)
-                }
-                val shape = AppRoundedCornerShape(50)
-                LiquidGlassSurface(
-                    controlEdge = true,
-                    shape = shape,
-                    fallbackColor = if (selected) AppColors.Accent else AppColors.CardBg,
-                    contentScrimColor = if (isLiquidGlass) {
-                        if (selected) {
-                            AppColors.Accent.copy(alpha = 0.86f)
-                        } else {
-                            AppColors.CardBg.copy(alpha = 0.82f)
-                        }
-                    } else {
-                        Color.Transparent
-                    },
-                    transparencyOverride = 0.28f.takeIf { isLiquidGlass },
-                    onClick = { onEngineSelected(engine) },
-                    decorationModifier = if (isLiquidGlass) {
-                        Modifier
-                    } else {
-                        Modifier
-                            .shadow(
-                                elevation = 5.dp,
-                                shape = shape,
-                                ambientColor = Color.Black.copy(alpha = 0.08f),
-                                spotColor = Color.Black.copy(alpha = 0.12f)
-                            )
-                            .border(
-                                width = 1.dp,
-                                color = if (selected) Color.Transparent else AppColors.Divider.copy(alpha = 0.55f),
-                                shape = shape
-                            )
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(48.dp)
-                        .semantics { this.selected = selected }
-                ) {
-                    Text(
-                        text = label,
-                        color = if (selected) AppColors.OnAccent else AppColors.TextPrimary,
-                        fontSize = AppType.BodySmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+        // Engine choice is the app-wide segmented control (Role.Tab, sliding pill).
+        val engineLabels = CoverSearchEngine.entries.map { engine ->
+            when (engine) {
+                CoverSearchEngine.BING -> stringResource(R.string.cover_search_engine_bing)
+                CoverSearchEngine.BAIDU -> stringResource(R.string.cover_search_engine_baidu)
+                CoverSearchEngine.GOOGLE -> stringResource(R.string.cover_search_engine_google)
             }
         }
+        com.huangder.lumibooks.ui.components.LumiSegmentedControl(
+            labels = engineLabels,
+            selectedIndex = CoverSearchEngine.entries.indexOf(selectedEngine).coerceAtLeast(0),
+            onSelect = { onEngineSelected(CoverSearchEngine.entries[it]) },
+            modifier = Modifier.weight(1f),
+            height = 46.dp
+        )
 
         AnimatedVisibility(
             visible = showConfirm,

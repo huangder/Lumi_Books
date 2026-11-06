@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import com.huangder.lumibooks.data.local.DataStoreManager
+import com.huangder.lumibooks.domain.model.AppUiIconStyle
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.MotionPreference
 import com.huangder.lumibooks.ui.theme.AppColors
@@ -54,6 +55,7 @@ class SettingsActivity : ComponentActivity() {
 
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = launchTheme.appTheme)
+            val appUiIconStyle by dataStoreManager.appUiIconStyle.collectAsState(initial = AppUiIconStyle.DEFAULT.storedValue)
             val appAccentColor by dataStoreManager.appAccentColor.collectAsState(initial = launchTheme.appAccentColor)
             val appFontSize by dataStoreManager.appFontSize.collectAsState(initial = launchTheme.appFontSize)
             val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = launchTheme.globalFontMode)
@@ -75,16 +77,20 @@ class SettingsActivity : ComponentActivity() {
             val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = launchTheme.menuAnimationStyle)
             val liquidGlassStyle by dataStoreManager.liquidGlassStyle
                 .collectAsState(initial = launchTheme.liquidGlassStyle)
+            val liquidGlassSamplingQuality by dataStoreManager.liquidGlassSamplingQuality
+                .collectAsState(initial = launchTheme.liquidGlassSamplingQuality)
             val reduceTransparencyEnabled by dataStoreManager.reduceTransparencyEnabled
                 .collectAsState(initial = launchTheme.reduceTransparencyEnabled)
             EBookReaderTheme(
                 liquidGlassStyle = liquidGlassStyle,
+                liquidGlassSamplingQuality = liquidGlassSamplingQuality,
                 reduceTransparencyEnabled = reduceTransparencyEnabled,
                 menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
                 eInkMode = eInkMode,
                 darkTheme = isDark,
                 dynamicColor = effectiveAppTheme == "material3",
                 appTheme = appTheme,
+                appUiIconStyle = AppUiIconStyle.fromStoredValue(appUiIconStyle),
                 lumiBackgroundScene = com.huangder.lumibooks.ui.theme.LumiBackgroundScene.SECONDARY,
                 appAccentColor = appAccentColor,
                 liquidGlassTransparency = liquidGlassTransparency,

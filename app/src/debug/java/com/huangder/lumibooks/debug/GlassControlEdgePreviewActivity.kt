@@ -36,6 +36,8 @@ class GlassControlEdgePreviewActivity : ComponentActivity() {
         setContent {
             val dark = intent.getBooleanExtra("dark", false)
             EBookReaderTheme(
+                liquidGlassSamplingQuality = com.huangder.lumibooks.domain.model.LiquidGlassSamplingQuality
+                    .fromStoredValue(intent.getStringExtra("samplingQuality")),
                 appTheme = intent.getStringExtra("theme") ?: "liquid_glass",
                 darkTheme = dark,
                 motionPreference = if (intent.getBooleanExtra("reduced", false)) MotionPreference.REDUCED else MotionPreference.STANDARD

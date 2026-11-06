@@ -735,6 +735,28 @@ class TtsController(
         }
     }
 
+    /** A real gesture supersedes animation callbacks from the previous audio-driven turn. */
+    fun onReaderNavigationStarted(bookId: String) {
+        scope.launch {
+            commandMutex.withLock {
+                if (_activeBookId.value != bookId || !_followUserPageTurns.value ||
+                    _playbackState.value == TtsPlaybackState.IDLE
+                ) return@withLock
+                readerAttached = true
+                followReaderPageTurns = true
+                val pending = pendingPageTurn
+                cancelPageTurnAckTimeout()
+                pendingPageTurn = null
+                acknowledgedPageTurn = null
+                clearPageTurnReplay()
+                pageTurnSequence++
+                if (pending?.resumeWhenAcknowledged == true &&
+                    _playbackState.value == TtsPlaybackState.PLAYING && activeUtteranceId == null
+                ) speakCurrentSegment()
+            }
+        }
+    }
+
     fun onPageVisible(
         bookId: String,
         chapterIndex: Int,
@@ -760,6 +782,17 @@ class TtsController(
                     return@withLock
                 }
                 if (origin != TtsPageChangeOrigin.USER) return@withLock
+                if (_followUserPageTurns.value) {
+                    acknowledgedPageTurn = null
+                    clearPageTurnReplay()
+                    pageTurnSequence++
+                    followReaderPageTurns = true
+                    if (!moveToPage(location, startAtEnd = false, publishLocation = false)) {
+                        _errors.tryEmit(pageContentError ?: IllegalStateException("No readable text found"))
+                        stopInternal()
+                    }
+                    return@withLock
+                }
                 // The reader moved elsewhere while playback was waiting for it. Never block playback.
                 cancelPageTurnAckTimeout()
                 pendingPageTurn = null

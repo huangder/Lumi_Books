@@ -1,5 +1,11 @@
 package com.huangder.lumibooks.ui.bookshelf
 
+import com.huangder.lumibooks.ui.theme.cardOutline
+import com.huangder.lumibooks.ui.components.lumiCardSurface
+import androidx.compose.ui.draw.shadow
+import com.huangder.lumibooks.ui.animation.lumiPressable
+import com.huangder.lumibooks.ui.components.lumiPressTint
+import com.huangder.lumibooks.ui.theme.AppRadius
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import com.huangder.lumibooks.ui.components.LocalCollapsingPageTopInset
@@ -142,10 +148,13 @@ class BookshelfCategoriesActivity : ComponentActivity() {
             val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = launchTheme.menuAnimationStyle)
             val liquidGlassStyle by dataStoreManager.liquidGlassStyle
                 .collectAsState(initial = launchTheme.liquidGlassStyle)
+            val liquidGlassSamplingQuality by dataStoreManager.liquidGlassSamplingQuality
+                .collectAsState(initial = launchTheme.liquidGlassSamplingQuality)
             val reduceTransparencyEnabled by dataStoreManager.reduceTransparencyEnabled
                 .collectAsState(initial = launchTheme.reduceTransparencyEnabled)
             EBookReaderTheme(
                 liquidGlassStyle = liquidGlassStyle,
+                liquidGlassSamplingQuality = liquidGlassSamplingQuality,
                 reduceTransparencyEnabled = reduceTransparencyEnabled,
                 menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
                 motionPreference = com.huangder.lumibooks.ui.theme.MotionPreference.fromStoredValue(motion),
@@ -248,8 +257,9 @@ private fun BookshelfCategoriesScreen(
     val haptic = LocalHapticFeedback.current
     val uiState by viewModel.uiState.collectAsState()
     val tagsById = remember(uiState.tags) { uiState.tags.associateBy { it.id } }
-    val tagIdsByBook = remember(uiState.bookTagLinks, tagsById) {
-        uiState.bookTagLinks.groupBy { it.bookId }
+    val visibleBookIds = remember(uiState.books) { uiState.books.mapTo(HashSet()) { it.id } }
+    val tagIdsByBook = remember(uiState.bookTagLinks, tagsById, visibleBookIds) {
+        uiState.bookTagLinks.filter { it.bookId in visibleBookIds }.groupBy { it.bookId }
             .mapValues { (_, links) -> links.flatMapTo(mutableSetOf()) { it.effectiveTagIds(tagsById) } }
     }
     var managedFolder by remember { mutableStateOf<LibraryFolder?>(null) }
@@ -293,7 +303,7 @@ private fun BookshelfCategoriesScreen(
         tags = uiState.tags,
         tagIdsByBook = tagIdsByBook,
         folders = uiState.folders,
-        folderBookCounts = folderBookCounts(uiState.folders, uiState.bookFolderLinks),
+        folderBookCounts = folderBookCounts(uiState.folders, uiState.bookFolderLinks.filter { it.bookId in visibleBookIds }),
         onBack = onBack,
         onTargetSelected = onTargetSelected,
         onFolderSelected = onFolderSelected,
@@ -423,8 +433,9 @@ internal fun BookshelfCategoryBooksRoute(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val tagsById = remember(uiState.tags) { uiState.tags.associateBy { it.id } }
-    val tagIdsByBook = remember(uiState.bookTagLinks, tagsById) {
-        uiState.bookTagLinks.groupBy { it.bookId }
+    val visibleBookIds = remember(uiState.books) { uiState.books.mapTo(HashSet()) { it.id } }
+    val tagIdsByBook = remember(uiState.bookTagLinks, tagsById, visibleBookIds) {
+        uiState.bookTagLinks.filter { it.bookId in visibleBookIds }.groupBy { it.bookId }
             .mapValues { (_, links) -> links.flatMapTo(mutableSetOf()) { it.effectiveTagIds(tagsById) } }
     }
     val tagNamesByBook = remember(uiState.tags, uiState.bookTagLinks) {
@@ -710,18 +721,22 @@ private fun CategorySectionTitle(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
         color = AppColors.TextSecondary,
-        fontSize = AppType.Caption,
-        fontWeight = FontWeight.SemiBold,
+        fontSize = AppType.Footnote,
+        fontWeight = FontWeight.Medium,
         modifier = modifier.padding(bottom = 4.dp)
     )
 }
 
 @Composable
 private fun CategoryGroup(title: String, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    // Same card language as GroupedCard (radius, soft shadow, outline), sized for the side panel.
+    val shape = AppRoundedCornerShape(AppRadius.lg)
     Column(
         modifier = Modifier.fillMaxWidth()
-            .clip(AppRoundedCornerShape(16.dp))
-            .background(AppColors.CardBg)
+            .shadow(6.dp, shape, ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
+            .cardOutline(shape)
+            .clip(shape)
+            .lumiCardSurface(shape = shape)
     ) {
         CategorySectionTitle(title, Modifier.padding(start = 14.dp, end = 14.dp, top = 10.dp))
         content()
@@ -730,11 +745,7 @@ private fun CategoryGroup(title: String, content: @Composable androidx.compose.f
 
 @Composable
 private fun CategoryRowDivider() {
-    androidx.compose.material3.HorizontalDivider(
-        modifier = Modifier.padding(start = 48.dp, end = 12.dp),
-        thickness = 0.5.dp,
-        color = AppColors.TextSecondary.copy(alpha = 0.18f)
-    )
+    com.huangder.lumibooks.ui.components.GroupedRowDivider(startInset = 40.dp)
 }
 
 @Composable
@@ -752,19 +763,34 @@ private fun CategoryRow(
     modifier: Modifier = Modifier
 ) {
     val compactRowHeight = maxOf(46f, 42f * androidx.compose.ui.platform.LocalDensity.current.fontScale).dp
-    val rowModifier = modifier
-        .padding(start = startIndent)
-        .fillMaxWidth()
-        .height(if (compact) compactRowHeight else 64.dp)
-        .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+    val interaction = remember { MutableInteractionSource() }
     if (compact) {
+        val rowModifier = modifier
+            .padding(start = startIndent)
+            .fillMaxWidth()
+            .height(compactRowHeight)
+            .lumiPressTint(interaction)
+            .combinedClickable(interactionSource = interaction, indication = null, onClick = onClick, onLongClick = onLongClick)
         CategoryRowContent(title, count, icon, linked, disclosure, reserveDisclosureSpace, rowModifier, compact)
-    } else com.huangder.lumibooks.ui.components.LiquidGlassSurface(
-        shape = AppRoundedCornerShape(22.dp),
-        fallbackColor = AppColors.CardBg,
-        modifier = rowModifier
-    ) {
-        CategoryRowContent(title, count, icon, linked, disclosure, reserveDisclosureSpace, Modifier.fillMaxSize(), compact)
+    } else {
+        // One light content card per row (no per-row glass: cheap with many folders), with the
+        // shared press tint and a slight press scale.
+        val shape = AppRoundedCornerShape(AppRadius.lg)
+        Box(
+            modifier
+                .padding(start = startIndent)
+                .fillMaxWidth()
+                .height(maxOf(60f, 56f * androidx.compose.ui.platform.LocalDensity.current.fontScale).dp)
+                .lumiPressable(interaction, pressedScale = .98f, pressedAlpha = 1f)
+                .shadow(6.dp, shape, ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
+                .cardOutline(shape)
+                .clip(shape)
+                .lumiCardSurface(shape = shape)
+                .lumiPressTint(interaction)
+                .combinedClickable(interactionSource = interaction, indication = null, onClick = onClick, onLongClick = onLongClick)
+        ) {
+            CategoryRowContent(title, count, icon, linked, disclosure, reserveDisclosureSpace, Modifier.fillMaxSize(), compact)
+        }
     }
 }
 
@@ -831,7 +857,7 @@ private data class CategoryDisclosure(
     val onToggle: () -> Unit
 )
 
-private val CategoryDisclosureSlot = 34.dp
+private val CategoryDisclosureSlot = 44.dp
 
 @Composable
 private fun CategoryDisclosureButton(disclosure: CategoryDisclosure) {
@@ -897,6 +923,23 @@ private fun CategoryBooksPage(
     var coverSourceBook by remember { mutableStateOf<Book?>(null) }
     var moveTargetBook by remember { mutableStateOf<Book?>(null) }
     var pendingCrossStorageMove by remember { mutableStateOf<PendingCrossStorageBookMove?>(null) }
+    var pendingArchiveBookId by remember { mutableStateOf<String?>(null) }
+    val operationState by viewModel.uiState.collectAsState()
+    LaunchedEffect(operationState.importMessage, operationState.error) {
+        val message = operationState.error ?: operationState.importMessage
+        if (message != null) {
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            if (operationState.error != null) viewModel.clearError() else viewModel.clearImportMessage()
+        }
+    }
+    LaunchedEffect(pendingArchiveBookId) {
+        val id = pendingArchiveBookId ?: return@LaunchedEffect
+        if (contextMenuState.phase != ContextMenuPhase.Idle) {
+            snapshotFlow { contextMenuState.phase }.first { it == ContextMenuPhase.Idle }
+        }
+        viewModel.archiveBook(id)
+        pendingArchiveBookId = null
+    }
 
     val coverPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         val book = coverTargetBook
@@ -969,6 +1012,7 @@ private fun CategoryBooksPage(
         ) {
             CollapsingPageScaffold(
                 drawContentBehindHeader = true,
+                bottomBarOverlay = true,
                 title = title,
                 onBack = {
                     if (isEditing) {
@@ -978,19 +1022,37 @@ private fun CategoryBooksPage(
                 },
                 pinnedContent = {
                     CategoryBooksHeader(
+                        bookCount = books.size,
                         isEditing = isEditing,
                         selectedCount = selectedBookIds.size,
+                        allSelected = books.isNotEmpty() && books.all { it.id in selectedBookIds },
                         onEditToggle = {
                             isEditing = !isEditing
                             if (!isEditing) selectedBookIds = emptySet()
                         },
-                        onDelete = {
-                            pendingDeleteBooks = books.filter { it.id in selectedBookIds }
-                            showDeleteConfirm = true
+                        onSelectAll = {
+                            selectedBookIds = if (books.all { it.id in selectedBookIds }) emptySet()
+                                else books.mapTo(LinkedHashSet()) { it.id }
                         },
-                        onTags = { showBatchTagSheet = true },
-                        onMove = { showBatchMoveSheet = true },
                         modifier = Modifier
+                    )
+                },
+                bottomBar = {
+                    com.huangder.lumibooks.ui.components.SelectionActionBar(
+                        visible = isEditing,
+                        enabled = selectedBookIds.isNotEmpty(),
+                        actions = listOf(
+                            com.huangder.lumibooks.ui.components.SelectionAction(AppIcons.FolderSimple, stringResource(R.string.move_books)) {
+                                showBatchMoveSheet = true
+                            },
+                            com.huangder.lumibooks.ui.components.SelectionAction(AppIcons.Tag, stringResource(R.string.tag_sheet_title)) {
+                                showBatchTagSheet = true
+                            },
+                            com.huangder.lumibooks.ui.components.SelectionAction(AppIcons.Trash, stringResource(R.string.delete), destructive = true) {
+                                pendingDeleteBooks = books.filter { it.id in selectedBookIds }
+                                showDeleteConfirm = true
+                            }
+                        )
                     )
                 }
             ) {
@@ -1008,7 +1070,7 @@ private fun CategoryBooksPage(
                     downloadStates = viewModel.uiState.value.downloadStates,
                     expandedListBookId = expandedListBookId,
                     topPadding = LocalCollapsingPageTopInset.current + 12.dp,
-                    bottomPadding = 32.dp,
+                    bottomPadding = com.huangder.lumibooks.ui.components.LocalCollapsingPageBottomInset.current + 32.dp,
                     onHaptic = { haptic.performHapticFeedback(HapticFeedbackType.LongPress) },
                     onSelectionToggle = { book ->
                         selectedBookIds = if (book.id in selectedBookIds) {
@@ -1017,6 +1079,7 @@ private fun CategoryBooksPage(
                             selectedBookIds + book.id
                         }
                     },
+                    onArchive = { viewModel.archiveBook(it.id) },
                     onExpandedBookChange = { expandedListBookId = it },
                     onBookClick = { book, _ -> onOpenBook(book) },
                     onAddBook = {},
@@ -1044,6 +1107,7 @@ private fun CategoryBooksPage(
 
             BookContextMenuOverlay(
                 state = contextMenuState,
+                onArchive = { pendingArchiveBookId = it.id },
                 onDelete = {
                     pendingDeleteBooks = listOf(it)
                     showDeleteConfirm = true
@@ -1213,96 +1277,22 @@ private fun CategoryBooksPage(
 
 @Composable
 private fun CategoryBooksHeader(
+    bookCount: Int,
     isEditing: Boolean,
     selectedCount: Int,
+    allSelected: Boolean,
     onEditToggle: () -> Unit,
-    onDelete: () -> Unit,
-    onTags: () -> Unit,
-    onMove: () -> Unit,
+    onSelectAll: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(AppColors.WindowBg.copy(alpha = 0.94f))
-            .padding(horizontal = AppSpace.lg, vertical = 12.dp)
-    ) {
-        if (isEditing) Text(stringResource(R.string.selected_books_count_compact, selectedCount),
-            color = AppColors.TextSecondary, fontSize = AppType.Caption,
-            modifier = Modifier.padding(bottom = AppSpace.sm), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            if (isEditing) {
-                LiquidGlassButton(
-                    onClick = onEditToggle,
-                    tintedColor = AppColors.CardBg.takeUnless { isLiquidGlass },
-                    contentColor = AppColors.TextPrimary,
-                    prominentShadow = true,
-                    modifier = Modifier
-                        .widthIn(min = 88.dp)
-                        .heightIn(min = 46.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.done),
-                        color = AppColors.TextPrimary,
-                        fontSize = AppType.BodySmall,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                    )
-                }
-                Spacer(Modifier.width(10.dp))
-                LiquidGlassIconButton(
-                    imageVector = AppIcons.Trash,
-                    contentDescription = stringResource(R.string.delete),
-                    onClick = onDelete,
-                    enabled = selectedCount > 0,
-                    size = 46.dp,
-                    iconSize = 21.dp,
-                    contentColor = Color.White,
-                    normalContainerColor = AppColors.Destructive,
-                    liquidContainerColor = AppColors.Destructive,
-                    liquidScrimColor = Color(0xB8D92D3A)
-                )
-                Spacer(Modifier.width(10.dp))
-                LiquidGlassIconButton(
-                    imageVector = AppIcons.Tag,
-                    contentDescription = stringResource(R.string.tag_sheet_title),
-                    onClick = onTags,
-                    enabled = selectedCount > 0,
-                    size = 46.dp,
-                    iconSize = 21.dp,
-                    contentColor = AppColors.TextPrimary,
-                    normalContainerColor = AppColors.CardBg,
-                    liquidContainerColor = AppColors.CardBg,
-                    liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f)
-                )
-                Spacer(Modifier.width(10.dp))
-                LiquidGlassIconButton(
-                    imageVector = AppIcons.FolderSimple,
-                    contentDescription = stringResource(R.string.move_books),
-                    onClick = onMove,
-                    enabled = selectedCount > 0,
-                    size = 46.dp,
-                    iconSize = 21.dp,
-                    contentColor = AppColors.TextPrimary,
-                    normalContainerColor = AppColors.CardBg,
-                    liquidContainerColor = AppColors.CardBg,
-                    liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f)
-                )
-            } else {
-                Spacer(Modifier.weight(1f))
-                LiquidGlassButton(
-                    onClick = onEditToggle,
-                    tintedColor = AppColors.CardBg,
-                    modifier = Modifier
-                        .widthIn(min = 78.dp)
-                        .heightIn(min = 48.dp)
-                ) {
-                    Text(stringResource(R.string.edit), color = AppColors.TextPrimary, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                }
-            }
-        }
-    }
+    com.huangder.lumibooks.ui.components.SelectionHeader(
+        summary = stringResource(R.string.bookshelf_category_book_count, bookCount),
+        isEditing = isEditing,
+        selectedCount = selectedCount,
+        allSelected = allSelected,
+        onEditToggle = onEditToggle,
+        onSelectAll = onSelectAll,
+        modifier = modifier,
+        showEdit = bookCount > 0
+    )
 }

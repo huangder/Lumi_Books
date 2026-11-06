@@ -153,7 +153,7 @@ internal fun FolderNameDialog(
                                         .padding(horizontal = 12.dp, vertical = 12.dp),
                                     verticalAlignment = Alignment.Top
                                 ) {
-                                    RadioButton(
+                                    com.huangder.lumibooks.ui.components.LumiRadio(
                                         selected = selectedStorage == uri,
                                         onClick = null,
                                         modifier = Modifier.size(24.dp)
@@ -315,7 +315,7 @@ internal fun FolderMoveSheet(
             modifier = Modifier
                 .widthIn(max = 520.dp)
                 .fillMaxWidth()
-                .heightIn(max = 620.dp)
+                .heightIn(max = com.huangder.lumibooks.ui.components.appSheetMaxHeight())
                 .imePadding()
                 .navigationBarsPadding()
                 .padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
@@ -456,7 +456,7 @@ internal fun FolderRelocationSheet(
             modifier = Modifier
                 .widthIn(max = 520.dp)
                 .fillMaxWidth()
-                .heightIn(max = 620.dp)
+                .heightIn(max = com.huangder.lumibooks.ui.components.appSheetMaxHeight())
                 .imePadding()
                 .navigationBarsPadding()
                 .padding(horizontal = AppSpace.lg, vertical = AppSpace.md)

@@ -80,7 +80,7 @@ class ContinuousScrollReaderTest {
         background: androidx.compose.runtime.State<Int> = mutableStateOf(Color.WHITE),
         revision: androidx.compose.runtime.State<Long> = mutableStateOf(0L),
         fontSize: androidx.compose.runtime.State<Float> = mutableStateOf(18f),
-        bodyFontWeight: androidx.compose.runtime.State<Int> = mutableStateOf(400),
+        bodyFontWeight: androidx.compose.runtime.State<Float> = mutableStateOf(400f),
         lineHeight: Float = 1.5f,
         lineGuide: Boolean = false,
         bionic: Boolean = false,
@@ -92,6 +92,7 @@ class ContinuousScrollReaderTest {
         onMenuToggle: () -> Unit = {},
         ttsSentence: androidx.compose.runtime.State<TtsSentencePosition?> = mutableStateOf(null),
         ttsFollow: androidx.compose.runtime.State<Boolean> = mutableStateOf(true),
+        ttsFollowUserPageTurns: Boolean = false,
         onManualScrollStarted: () -> Unit = {},
         notes: List<com.huangder.lumibooks.domain.model.Note> = emptyList(),
         onChapterVisible: (Int, Float) -> Unit = { _, _ -> }
@@ -136,6 +137,7 @@ class ContinuousScrollReaderTest {
                     bodyFontWeight = bodyFontWeight.value,
                     ttsCurrentSentence = ttsSentence.value,
                     ttsFollowEnabled = ttsFollow.value,
+                    ttsFollowUserPageTurns = ttsFollowUserPageTurns,
                     onManualScrollStarted = onManualScrollStarted
                 )
             }
@@ -551,7 +553,7 @@ class ContinuousScrollReaderTest {
         currentChapter = 0
         chapterCount = 1
         val font = mutableStateOf(18f)
-        val weight = mutableStateOf(400)
+        val weight = mutableStateOf(400f)
         show(fontSize = font, bodyFontWeight = weight)
         compose.waitUntil(15_000) { restored }
         compose.waitUntil(15_000) {
@@ -564,7 +566,7 @@ class ContinuousScrollReaderTest {
         assertEquals(18f * initialSize.second, initialSize.first, 0.01f)
         compose.runOnIdle {
             font.value = 24f
-            weight.value = 700
+            weight.value = 700f
         }
 
         compose.mainClock.advanceTimeBy(1_000)
@@ -940,6 +942,34 @@ class ContinuousScrollReaderTest {
         compose.runOnIdle {
             assertTrue("Explicit return should advance from $browsingOffset toward paragraph 100; " +
                 "actual=${list.firstVisibleItemScrollOffset}, scrolling=${list.isScrollInProgress}",
+                list.firstVisibleItemScrollOffset > browsingOffset + 500)
+        }
+    }
+
+    @Test fun enabledPageFollowResumesAfterAudioAdoptsTheManualScrollDestination() {
+        currentChapter = 0
+        chapterCount = 1
+        fun sentence(paragraph: Int): TtsSentencePosition {
+            val start = text.indexOf("Paragraph $paragraph:")
+            return TtsSentencePosition(0, start, text.indexOf('\n', start).takeIf { it >= 0 } ?: text.length)
+        }
+        val highlighted = mutableStateOf<TtsSentencePosition?>(sentence(70))
+        var manualScrollStarted = false
+        var manualPositionReported = false
+        show(ttsSentence = highlighted, ttsFollowUserPageTurns = true,
+            onManualScrollStarted = { manualScrollStarted = true },
+            onChapterVisible = { _, _ -> if (manualScrollStarted) manualPositionReported = true })
+        compose.waitUntil(15_000) { restored && list.firstVisibleItemScrollOffset > 1_000 }
+        compose.onRoot().performTouchInput { swipeUp(durationMillis = 300) }
+        compose.waitUntil(15_000) { manualPositionReported }
+        var browsingOffset = 0
+        compose.runOnIdle {
+            browsingOffset = list.firstVisibleItemScrollOffset
+            highlighted.value = sentence(100)
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertTrue("Following should resume with the new audio position",
                 list.firstVisibleItemScrollOffset > browsingOffset + 500)
         }
     }

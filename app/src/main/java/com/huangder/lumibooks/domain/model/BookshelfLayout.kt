@@ -6,7 +6,10 @@ internal object BookshelfLayout {
     const val Grid = 2
     const val CompactGrid = 3
     const val CoverFlow = 4
+    /** Book spines on wooden shelves. */
+    const val Spine = 5
 
-    fun normalize(value: Int): Int = value.coerceIn(List, CoverFlow)
-    fun conventional(value: Int): Int = if (value == CoverFlow) Grid else value.coerceIn(List, CompactGrid)
+    fun normalize(value: Int): Int = value.coerceIn(List, Spine)
+    fun conventional(value: Int): Int =
+        if (value == CoverFlow || value == Spine) Grid else value.coerceIn(List, CompactGrid)
 }

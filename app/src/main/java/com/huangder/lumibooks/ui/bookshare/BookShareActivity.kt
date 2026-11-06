@@ -10,7 +10,31 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.*
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import com.huangder.lumibooks.ui.animation.ShimmerBox
+import com.huangder.lumibooks.ui.animation.VisualMotion
+import com.huangder.lumibooks.ui.animation.lumiPressable
+import com.huangder.lumibooks.ui.icons.AppIcons
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.*
@@ -93,14 +117,14 @@ internal class BookShareViewModel @Inject constructor(
         createBookShareSnapshot(it.book, it.review, it.rating, it.daily, date, LocalDate.now())
     } }
     val valid = snapshot?.let { shareHasContent(it, kind) } == true
-    val document by produceState<ExcerptDocument?>(null, snapshot, kind, activeStyle, retry) {
+    val document by key(snapshot, kind, activeStyle, retry) { produceState<ExcerptDocument?>(null) {
         value = null; failed = false
         if (snapshot != null && valid) try {
             value = withContext(Dispatchers.Default) { BookShareRenderer.prepare(context, snapshot, kind, activeStyle) }
         } catch (e: CancellationException) { throw e }
         catch (_: Exception) { failed = true }
         catch (_: OutOfMemoryError) { failed = true }
-    }
+    } }
     fun export(share: Boolean) {
         val rendered = document ?: return
         if (busy || failed) return
@@ -116,74 +140,145 @@ internal class BookShareViewModel @Inject constructor(
                 else Toast.makeText(context, R.string.insights_saved, Toast.LENGTH_SHORT).show()
             } catch (e: CancellationException) { throw e }
             catch (_: Exception) { Toast.makeText(context, R.string.insights_export_failed, Toast.LENGTH_LONG).show() }
+            catch (_: OutOfMemoryError) { Toast.makeText(context, R.string.insights_export_failed, Toast.LENGTH_LONG).show() }
             finally { busy = false }
         }
     }
     val storage = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) permission(activeStyle) { export(false) }
     }
-    CollapsingPageScaffold(
-        title = stringResource(R.string.insights_share_card), onBack = onBack,
-        modifier = Modifier.fillMaxSize().background(AppColors.PageBg),
-        pinnedContent = {
-            Column(Modifier.fillMaxWidth().padding(horizontal = AppSpace.md)) {
-                Row {
-                    BookShareKind.entries.forEach { value ->
-                        TextButton(onClick = { kind = value }, enabled = !busy, modifier = Modifier.weight(1f)) {
-                            Text(stringResource(if (value == BookShareKind.REVIEW) R.string.insights_review_card else R.string.insights_check_in),
-                                color = if (kind == value) AppColors.Accent else AppColors.TextSecondary)
+    val pageBackdrop = rememberLayerBackdrop()
+    val backdrop = pageBackdrop.takeIf { LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current }
+    val canExport = document != null && valid && !busy && !failed
+    Box(Modifier.fillMaxSize().background(AppColors.PageBg)) {
+        // Capture the background only: the glass controls below must never sample themselves.
+        Box(Modifier.fillMaxSize().then(backdrop?.let { Modifier.layerBackdrop(it) } ?: Modifier).background(AppColors.PageBg))
+        ProvideLiquidGlassBackdrop(backdrop) {
+            CollapsingPageScaffold(
+                title = stringResource(R.string.insights_share_card), onBack = onBack, bottomBarOverlay = true,
+                pinnedContent = {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = AppSpace.md + 4.dp).padding(bottom = AppSpace.sm),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        InsightSegmented(listOf(stringResource(R.string.insights_review_card), stringResource(R.string.insights_check_in)),
+                            BookShareKind.entries.indexOf(kind), { kind = BookShareKind.entries[it] }, enabled = !busy)
+                        // Equal-width chips spanning the same edges as the segmented control above.
+                        if (BookShareEdition.styles.size > 1) Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            BookShareEdition.styles.forEach { value ->
+                                ShareStyleChip(value, value == activeStyle, enabled = !busy, Modifier.weight(1f).fillMaxHeight()) { style = value }
+                            }
+                        }
+                        if (kind == BookShareKind.CHECK_IN) Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(stringResource(R.string.insights_select_date), color = AppColors.TextSecondary, fontSize = AppType.Footnote,
+                                modifier = Modifier.weight(1f))
+                            InsightsCapsuleButton(dayTitle(date), { chooseDate = true }, enabled = !busy, icon = AppIcons.CaretDown)
+                        }
+                    }
+                },
+                bottomBar = {
+                    Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = AppSpace.md + 4.dp, vertical = AppSpace.md),
+                        horizontalArrangement = Arrangement.spacedBy(AppSpace.sm)) {
+                        LiquidGlassButton(onClick = { permission(activeStyle) { export(true) } }, enabled = canExport, modifier = Modifier.weight(1f)) {
+                            Icon(AppIcons.ShareNetwork, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.insights_share), fontWeight = FontWeight.SemiBold)
+                            BookShareExportBadge(activeStyle)
+                        }
+                        LiquidGlassButton(onClick = { permission(activeStyle) {
+                            if (Build.VERSION.SDK_INT < 29 && ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)
+                                storage.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                            else export(false)
+                        } }, enabled = canExport, modifier = Modifier.weight(1f), tintedColor = AppColors.Accent) {
+                            if (busy) CircularProgressIndicator(Modifier.size(16.dp), color = AppColors.OnAccent, strokeWidth = 2.dp)
+                            else Icon(AppIcons.DownloadSimple, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.insights_save_image), fontWeight = FontWeight.SemiBold)
+                            BookShareExportBadge(activeStyle)
                         }
                     }
                 }
-                Row {
-                    BookShareEdition.styles.forEach { value ->
-                        TextButton(onClick = { style = value }, enabled = !busy, modifier = Modifier.weight(1f)) {
-                            Text(stringResource(when (value) { BookShareStyle.SIMPLE -> R.string.insights_style_simple; BookShareStyle.COVER -> R.string.insights_style_cover; BookShareStyle.TICKET -> R.string.insights_style_ticket }),
-                                color = if (value == activeStyle) AppColors.Accent else AppColors.TextSecondary)
+            ) {
+                val view: ShareView = when {
+                    state.loading -> ShareView.Loading
+                    input == null -> ShareView.Message(R.string.insights_load_failed)
+                    !valid -> ShareView.Message(R.string.insights_no_day_activity)
+                    failed -> ShareView.Failed
+                    document != null -> ShareView.Ready(document!!)
+                    else -> ShareView.Loading
+                }
+                val body: @Composable (ShareView) -> Unit = { current ->
+                    val messageInset = if (current is ShareView.Ready) 0.dp else LocalCollapsingPageBottomInset.current
+                    Box(Modifier.fillMaxSize().padding(start = AppSpace.lg, end = AppSpace.lg, bottom = messageInset), Alignment.Center) {
+                        when (current) {
+                            ShareView.Loading -> Box(Modifier.fillMaxWidth(.82f).aspectRatio(.62f).clip(AppRoundedCornerShape(18.dp))) {
+                                if (insightsMotion()) ShimmerBox(Modifier.fillMaxSize()) else Box(Modifier.fillMaxSize().background(AppColors.BgGray))
+                            }
+                            is ShareView.Message -> EmptyState(stringResource(current.text), icon = AppIcons.Image)
+                            ShareView.Failed -> EmptyState(stringResource(R.string.insights_export_failed), icon = AppIcons.ImageBroken,
+                                actionLabel = stringResource(R.string.insights_retry), onAction = { retry++ })
+                            is ShareView.Ready -> ShareDocumentPreview(current.document, Modifier.fillMaxSize().widthIn(max = 520.dp),
+                                contentPadding = PaddingValues(top = 16.dp, bottom = LocalCollapsingPageBottomInset.current + 16.dp)) { failed = true }
                         }
                     }
                 }
-                if (kind == BookShareKind.CHECK_IN) TextButton(onClick = { chooseDate = true }, enabled = !busy) {
-                    Text(date.toString() + " · " + stringResource(R.string.insights_select_date), color = AppColors.Accent)
-                }
-            }
-        },
-        bottomBar = {
-            Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(AppSpace.md), horizontalArrangement = Arrangement.spacedBy(AppSpace.sm)) {
-                LiquidGlassButton(onClick = { permission(activeStyle) {
-                    if (Build.VERSION.SDK_INT < 29 && ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)
-                        storage.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                    else export(false)
-                } }, enabled = document != null && valid && !busy && !failed, modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.insights_save_image))
-                }
-                LiquidGlassButton(onClick = { permission(activeStyle) { export(true) } },
-                    enabled = document != null && valid && !busy && !failed, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.insights_share)) }
-            }
-        }
-    ) {
-        Box(Modifier.fillMaxSize().padding(horizontal = AppSpace.md), Alignment.Center) {
-            when {
-                state.loading -> CircularProgressIndicator(color = AppColors.Accent)
-                input == null -> InsightLabel(stringResource(R.string.insights_load_failed))
-                !valid -> InsightLabel(stringResource(R.string.insights_no_day_activity))
-                failed -> Column { InsightLabel(stringResource(R.string.insights_export_failed)); TextButton(onClick = { retry++ }) { Text(stringResource(R.string.insights_retry)) } }
-                document != null -> ShareDocumentPreview(document!!, Modifier.fillMaxSize()) { failed = true }
-                else -> CircularProgressIndicator(color = AppColors.Accent)
+                if (!insightsMotion()) body(view)
+                else AnimatedContent(view, Modifier.fillMaxSize(), transitionSpec = {
+                    (fadeIn(VisualMotion.tween(260)) + scaleIn(VisualMotion.spring(dampingRatio = .8f, stiffness = 300f), initialScale = .94f))
+                        .togetherWith(fadeOut(VisualMotion.tween(140)) + scaleOut(VisualMotion.tween(140), targetScale = .98f))
+                }, contentKey = { (it as? ShareView.Ready)?.document ?: it::class }, label = "sharePreview") { body(it) }
             }
         }
     }
     if (chooseDate) AppBottomSheet({ chooseDate = false }) {
-        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp).navigationBarsPadding(), contentPadding = PaddingValues(AppSpace.md)) {
+        LazyColumn(Modifier.fillMaxWidth().heightIn(max = insightsSheetMaxHeight()), contentPadding = insightsSheetPadding()) {
             item { AppSheetHeader(stringResource(R.string.insights_select_date), onClose = { chooseDate = false }) }
             val days = input?.daily.orEmpty().filter { it.value.totalDuration > 0 && it.key <= LocalDate.now() }.keys.sortedDescending()
             if (days.isEmpty()) item { InsightLabel(stringResource(R.string.no_reading_records)) }
             items(days.size) { index ->
                 val day = days[index]
-                TextButton(onClick = { dateString = day.toString(); chooseDate = false }) {
-                    Text(day.toString() + " · " + activityDurationText(input!!.daily.getValue(day).totalDuration), color = AppColors.TextPrimary)
+                if (index > 0) InsightsDivider(0.dp)
+                Row(Modifier.fillMaxWidth().clickable { dateString = day.toString(); chooseDate = false }.padding(vertical = 12.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text(dayTitle(day), color = AppColors.TextPrimary, fontSize = AppType.Subhead, modifier = Modifier.weight(1f),
+                        fontWeight = if (day == date) FontWeight.SemiBold else FontWeight.Normal)
+                    Text(insightsDuration(input!!.daily.getValue(day).totalDuration), color = AppColors.TextSecondary, fontSize = AppType.Footnote)
+                    Spacer(Modifier.width(8.dp))
+                    Box(Modifier.size(18.dp)) { if (day == date) Icon(AppIcons.Check, null, tint = AppColors.Accent, modifier = Modifier.size(18.dp)) }
                 }
             }
         }
+    }
+}
+
+private sealed interface ShareView {
+    data object Loading : ShareView
+    data object Failed : ShareView
+    data class Message(val text: Int) : ShareView
+    data class Ready(val document: ExcerptDocument) : ShareView
+}
+
+@Composable private fun ShareStyleChip(style: BookShareStyle, selected: Boolean, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val shape = AppRoundedCornerShape(AppRadius.full)
+    val eInk = LocalEInkMode.current
+    val accent = if (eInk) Color.Black else AppColors.Accent
+    val interaction = remember { MutableInteractionSource() }
+    val swatch = when (style) {
+        BookShareStyle.SIMPLE -> listOf(Color(0xFFF7F4EE), Color(0xFFE6E0D4))
+        BookShareStyle.COVER -> listOf(Color(0xFF4E7165), Color(0xFF2B3F38))
+        BookShareStyle.TICKET -> listOf(Color(0xFFF2D7A0), Color(0xFFC9955B))
+    }
+    Row(modifier.heightIn(min = 40.dp).lumiPressable(interaction, pressedScale = .95f).clip(shape)
+        .background(if (selected) accent.copy(alpha = .14f) else AppColors.BgGray)
+        .then(if (selected) Modifier.border(1.5.dp, accent, shape) else Modifier)
+        .selectable(selected, enabled = enabled, role = Role.RadioButton, interactionSource = interaction, indication = null, onClick = onClick)
+        .padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center) {
+        Box(Modifier.size(20.dp).clip(CircleShape).background(Brush.linearGradient(swatch)).border(.5.dp, AppColors.Divider, CircleShape))
+        Spacer(Modifier.width(6.dp))
+        Text(stringResource(when (style) { BookShareStyle.SIMPLE -> R.string.insights_style_simple; BookShareStyle.COVER -> R.string.insights_style_cover; BookShareStyle.TICKET -> R.string.insights_style_ticket }),
+            color = if (selected) accent else AppColors.TextPrimary, fontSize = AppType.BodySmall,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        if (style.premium) Spacer(Modifier.width(4.dp))
+        BookShareExportBadge(style)
     }
 }

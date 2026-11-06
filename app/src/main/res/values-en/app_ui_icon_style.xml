@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_ui_icon_style_title">In-app icon style</string>
+    <string name="app_ui_icon_style_filled_colorful">Filled color</string>
+    <string name="app_ui_icon_style_outline_colorful">Outline color</string>
+    <string name="app_ui_icon_style_filled_monochrome">Filled monochrome</string>
+    <string name="app_ui_icon_style_outline_monochrome">Outline monochrome</string>
+</resources>

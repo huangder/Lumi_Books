@@ -36,12 +36,14 @@ internal class EpubHardwareSnapshot(val width: Int, val height: Int) : AutoClose
         node.setPosition(0, 0, width, height)
         renderer.setSurface(reader.surface); renderer.setContentRoot(node)
     }
-    fun capture(view: View, reusable: Bitmap?, density: Int, background: (Canvas) -> Unit): Bitmap? {
+    fun capture(view: View, reusable: Bitmap?, density: Int, scaleX: Float = 1f, scaleY: Float = 1f,
+        background: (Canvas) -> Unit): Bitmap? {
         check(!closed)
         reader.acquireLatestImage()?.close()
         val recording = node.beginRecording(width, height)
         val alpha = view.alpha; val tx = view.translationX; val ty = view.translationY
         try {
+            recording.scale(scaleX, scaleY)
             background(recording); view.alpha = 1f; view.translationX = 0f; view.translationY = 0f
             view.draw(recording)
         } finally { view.alpha = alpha; view.translationX = tx; view.translationY = ty; node.endRecording() }

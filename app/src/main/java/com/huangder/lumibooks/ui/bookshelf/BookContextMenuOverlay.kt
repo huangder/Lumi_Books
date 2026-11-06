@@ -74,6 +74,7 @@ sealed class ContextMenuAction {
     data object Tags : ContextMenuAction()
     data object EditInfo : ContextMenuAction()
     data object ToggleHidden : ContextMenuAction()
+    data object Archive : ContextMenuAction()
 }
 
 /**
@@ -101,6 +102,7 @@ fun BookContextMenuOverlay(
     onMoveToFolder: (Book) -> Unit = {},
     /** Shows「隐藏」, or「取消隐藏」in the hidden library; null leaves the item out. */
     onToggleHidden: ((Book) -> Unit)? = null,
+    onArchive: ((Book) -> Unit)? = null,
     /** The hidden library drops shelf-organising actions (favourite, pin, tags, folders). */
     hiddenLibrary: Boolean = false
 ) {
@@ -165,10 +167,12 @@ fun BookContextMenuOverlay(
                         is ContextMenuAction.Tags -> onTags(book)
                         is ContextMenuAction.EditInfo -> onEditInfo(book)
                         is ContextMenuAction.ToggleHidden -> onToggleHidden?.invoke(book)
+                        is ContextMenuAction.Archive -> onArchive?.invoke(book)
                     }
                 },
                 hiddenLibrary = hiddenLibrary,
                 canToggleHidden = onToggleHidden != null,
+                canArchive = onArchive != null && !hiddenLibrary,
                 onEditInfo = {
                     state.dismiss()
                     onEditInfo(book)
@@ -261,6 +265,7 @@ private fun ContextMenuLayout(
     onAction: (ContextMenuAction) -> Unit,
     hiddenLibrary: Boolean,
     canToggleHidden: Boolean,
+    canArchive: Boolean,
     onEditInfo: () -> Unit
 ) {
     val density = LocalDensity.current
@@ -338,6 +343,7 @@ private fun ContextMenuLayout(
             isReadingFinished = book.isReadingFinished,
             hiddenLibrary = hiddenLibrary,
             canToggleHidden = canToggleHidden,
+            canArchive = canArchive,
             onAction = onAction
         )
         }
@@ -442,6 +448,7 @@ private fun MenuActionsPanel(
     isReadingFinished: Boolean = false,
     hiddenLibrary: Boolean = false,
     canToggleHidden: Boolean = false,
+    canArchive: Boolean = false,
     onAction: (ContextMenuAction) -> Unit
 ) {
     val shape = AppRoundedCornerShape(
@@ -474,6 +481,7 @@ private fun MenuActionsPanel(
                 )
             )
         }
+        if (canArchive) add(MenuItem(stringResource(R.string.archive_book), AppIcons.Archive, ContextMenuAction.Archive))
         add(MenuItem(stringResource(R.string.delete), AppIcons.Trash, ContextMenuAction.Delete))
     }
     LiquidGlassSurface(

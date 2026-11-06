@@ -125,16 +125,16 @@ import com.huangder.lumibooks.ui.theme.AppPresentation
 
 // 设计规范颜色 - 浅色模式
 private val AccentColor: Color @Composable get() = AppColors.Accent
-private val LightTextSecondary = Color(0xFF6E6E73)
-private val LightBgGray = Color(0xFFF2F2F7)
-private val LightBackground = Color(0xFFFBFBFC)
-private val LightCardBg = Color.White
+// Theme tokens (same hues as before in light/dark, and now also honour Material3 and e-ink).
+private val LightTextSecondary: Color @Composable get() = AppColors.TextSecondary
+private val LightBgGray: Color @Composable get() = AppColors.BgGray
+private val LightBackground: Color @Composable get() = AppColors.WindowBg
+private val LightCardBg: Color @Composable get() = AppColors.CardBg
 
-// 深色模式颜色
-private val DarkTextSecondary = Color(0xFF98989D)
-private val DarkBgGray = Color(0xFF2C2C2E)
-private val DarkBackground = Color(0xFF000000)
-private val DarkCardBg = Color(0xFF1C1C1E)
+private val DarkTextSecondary: Color @Composable get() = AppColors.TextSecondary
+private val DarkBgGray: Color @Composable get() = AppColors.BgGray
+private val DarkBackground: Color @Composable get() = AppColors.WindowBg
+private val DarkCardBg: Color @Composable get() = AppColors.CardBg
 private val WelcomeContentMaxWidth = 560.dp
 
 internal enum class WelcomePage {

@@ -47,7 +47,7 @@ interface NoteDao {
             "notes.selectedText AS selectedText, notes.note AS noteText, " +
             "books.title AS bookTitle, books.author AS bookAuthor " +
             "FROM notes INNER JOIN books ON books.id = notes.bookId " +
-            "WHERE TRIM(notes.selectedText) <> '' AND books.isHidden = 0 " +
+            "WHERE TRIM(notes.selectedText) <> '' AND books.isHidden = 0 AND books.isArchived = 0 " +
             "ORDER BY RANDOM() LIMIT 1"
     )
     suspend fun getRandomWidgetQuote(): QuoteWidgetData?
@@ -57,7 +57,7 @@ interface NoteDao {
             "notes.selectedText AS selectedText, notes.note AS noteText, " +
             "books.title AS bookTitle, books.author AS bookAuthor " +
             "FROM notes INNER JOIN books ON books.id = notes.bookId " +
-            "WHERE TRIM(notes.selectedText) <> '' AND books.isHidden = 0 " +
+            "WHERE TRIM(notes.selectedText) <> '' AND books.isHidden = 0 AND books.isArchived = 0 " +
             "ORDER BY notes.id"
     )
     fun observeWidgetQuotes(): Flow<List<QuoteWidgetData>>

@@ -3278,10 +3278,10 @@ internal class EpubPageTurnHost(
     }
 
     /** Independent glass pixels: never lend a mutable page-animation bitmap to Compose. */
-    internal fun captureGlassBackdrop(): com.huangder.lumibooks.ui.components.GlassBitmapBackdrop? {
+    internal fun captureGlassBackdrop(quality: com.huangder.lumibooks.domain.model.LiquidGlassSamplingQuality): com.huangder.lumibooks.ui.components.GlassBitmapBackdrop? {
         if (released || overlayActive || waitingForTarget != null || width <= 0 || height <= 0) return null
         val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            hardwareSnapshot(activeWebView, null)
+            hardwareSnapshot(activeWebView, null, quality.sampleSize(androidx.compose.ui.unit.IntSize(width, height)))
         } else null
         if (bitmap == null) return null
         val origin = IntArray(2).also(this::getLocationOnScreen)
@@ -3337,14 +3337,19 @@ internal class EpubPageTurnHost(
     }
 
     @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
-    private fun hardwareSnapshot(view: View, reusable: Bitmap?): Bitmap? = try {
+    private fun hardwareSnapshot(
+        view: View,
+        reusable: Bitmap?,
+        sampleSize: androidx.compose.ui.unit.IntSize = androidx.compose.ui.unit.IntSize(width, height)
+    ): Bitmap? = try {
         var pipeline = hardwareCapture
-        if (pipeline == null || pipeline.width != width || pipeline.height != height) {
+        if (pipeline == null || pipeline.width != sampleSize.width || pipeline.height != sampleSize.height) {
             releaseHardwareCapture()
-            pipeline = EpubHardwareSnapshot(width, height)
+            pipeline = EpubHardwareSnapshot(sampleSize.width, sampleSize.height)
             hardwareCapture = pipeline
         }
-        pipeline.capture(view, reusable, resources.displayMetrics.densityDpi) { canvas ->
+        pipeline.capture(view, reusable, resources.displayMetrics.densityDpi,
+            scaleX = sampleSize.width.toFloat() / width, scaleY = sampleSize.height.toFloat() / height) { canvas ->
             canvas.drawColor(pageBackgroundColor)
             drawReaderBackground(canvas)
         }

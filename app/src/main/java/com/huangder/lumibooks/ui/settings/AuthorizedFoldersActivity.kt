@@ -75,10 +75,13 @@ class AuthorizedFoldersActivity : ComponentActivity() {
             val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = launchTheme.menuAnimationStyle)
             val liquidGlassStyle by dataStoreManager.liquidGlassStyle
                 .collectAsState(initial = launchTheme.liquidGlassStyle)
+            val liquidGlassSamplingQuality by dataStoreManager.liquidGlassSamplingQuality
+                .collectAsState(initial = launchTheme.liquidGlassSamplingQuality)
             val reduceTransparencyEnabled by dataStoreManager.reduceTransparencyEnabled
                 .collectAsState(initial = launchTheme.reduceTransparencyEnabled)
             EBookReaderTheme(
                 liquidGlassStyle = liquidGlassStyle,
+                liquidGlassSamplingQuality = liquidGlassSamplingQuality,
                 reduceTransparencyEnabled = reduceTransparencyEnabled,
                 menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
                 eInkMode = eInkMode,

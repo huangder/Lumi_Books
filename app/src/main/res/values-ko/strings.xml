@@ -46,6 +46,7 @@
     <string name="font_settings">글꼴 설정</string>
     <string name="theme_settings">테마 설정</string>
     <string name="brightness">밝기</string>
+    <string name="reader_dark_mask">어두운 마스크</string>
     <string name="add_bookmark">북마크 추가</string>
     <string name="bookmarks">북마크</string>
     <string name="notes">메모</string>
@@ -1139,7 +1140,7 @@
     <string name="import_no_new_books">새 책을 찾지 못했습니다</string>
     <string name="import_select_folder_books">폴더 책 선택</string>
     <string name="import_folder_books_refresh">새로 고침</string>
-    <string name="folder_books_level_summary">폴더 %1$d개 · 책 %2$d권 · 선택 %3$d권</string>
+    <string name="folder_books_level_summary">폴더 %1$d개 · 책 %2$d권</string>
     <string name="folder_books_folder_count">%1$d권</string>
     <string name="folder_books_empty_folder">이 폴더에는 책이 없습니다</string>
     <string name="folder_books_sort_name">이름순</string>
@@ -1489,6 +1490,18 @@
     <string name="pdf_annotation_highlighter">형광펜</string>
     <string name="pdf_annotation_eraser">지우개</string>
     <string name="bookshelf_cover_flow">Cover Flow</string>
+    <string name="bookshelf_spine_shelf">책등</string>
+    <string name="spine_shelf_folder_count">%1$d권</string>
+    <string name="spine_menu_tags">태그</string>
+    <string name="spine_menu_notes">메모</string>
+    <string name="spine_menu_edit">편집</string>
+    <string name="spine_menu_cover">표지</string>
+    <string name="spine_menu_restore_cover">원래 표지</string>
+    <string name="spine_menu_move">이동</string>
+    <string name="spine_menu_hide">숨기기</string>
+    <string name="spine_menu_archive">보관</string>
+    <string name="spine_menu_progress">%1$d%% 읽음</string>
+    <string name="spine_menu_unread">시작 전</string>
     <string name="coverflow_open">열기</string>
     <string name="coverflow_info">정보</string>
     <string name="coverflow_more">더보기</string>

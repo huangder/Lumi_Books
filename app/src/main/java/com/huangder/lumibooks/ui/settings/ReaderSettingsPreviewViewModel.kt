@@ -482,7 +482,7 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
                 textColor = textColor,
                 fontSize = config.optDouble("textSize", 16.0).toFloat(),
                 fontType = sharedFontType,
-                bodyFontWeight = config.optInt("textBold", 400).coerceIn(100, 900),
+                bodyFontWeight = config.optDouble("textBold", 400.0).toFloat().coerceIn(100f, 900f),
                 lineHeight = (1.35f + config.optDouble("lineSpacingExtra", 0.0).toFloat() /
                     config.optDouble("textSize", 16.0).toFloat().coerceAtLeast(1f)).coerceIn(ReaderThemeSettings.LINE_HEIGHT_RANGE),
                 letterSpacing = config.optDouble("letterSpacing", 0.0).toFloat(),

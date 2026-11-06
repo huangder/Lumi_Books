@@ -60,18 +60,18 @@ internal fun ListeningPreferencesContent(
     )
     DetailCard {
         SettingsNavigationRow(
-            stringResource(R.string.tts_start_setting),
-            startOptions.first { it.first == uiState.ttsStartChoice }.second
+            label = stringResource(R.string.tts_start_setting),
+            value = startOptions.first { it.first == uiState.ttsStartChoice }.second
         ) { showStartDialog = true }
         SettingsDivider()
         SettingsNavigationRow(
-            stringResource(R.string.tts_listening_resume_setting),
-            resumeOptions.first { it.first == uiState.ttsReaderResumeChoice }.second
+            label = stringResource(R.string.tts_listening_resume_setting),
+            value = resumeOptions.first { it.first == uiState.ttsReaderResumeChoice }.second
         ) { showResumeDialog = true }
         SettingsDivider()
         SettingsNavigationRow(
-            stringResource(R.string.tts_exit_setting),
-            exitOptions.first { it.first == uiState.ttsContinueOnReaderExit }.second
+            label = stringResource(R.string.tts_exit_setting),
+            value = exitOptions.first { it.first == uiState.ttsContinueOnReaderExit }.second
         ) { showExitDialog = true }
     }
 

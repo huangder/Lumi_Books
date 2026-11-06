@@ -252,7 +252,13 @@ fun BookNotesScreen(
             }
         ) {
             val filter = ReadingMarkFilter(selectedTag, selectedColor, selectedLine)
-            when (selectedTab) {
+            // Tabs cross-fade their content instead of snapping (instant on e-ink / reduced motion).
+            val tabMotion = com.huangder.lumibooks.ui.theme.LocalMotionEnabled.current &&
+                !com.huangder.lumibooks.ui.theme.LocalEInkMode.current
+            androidx.compose.animation.Crossfade(selectedTab,
+                animationSpec = if (tabMotion) com.huangder.lumibooks.ui.animation.VisualMotion.tween(200)
+                    else androidx.compose.animation.core.snap(), label = "notesTab") { tab ->
+            when (tab) {
                 0 -> NoteList(
                     onShare = shareNote,
                     notes = uiState.highlights.filter(filter::matches),
@@ -285,6 +291,7 @@ fun BookNotesScreen(
                     },
                     onDelete = { viewModel.deleteBookmark(it) }
                 )
+            }
             }
         }
 
@@ -412,63 +419,14 @@ internal fun SegmentedTabBar(
         return
     }
 
-    val isDark = LocalIsDarkTheme.current
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(tabHeight)
-            .clip(AppRoundedCornerShape(20.dp))
-            .background(AppColors.BgGray)
-            .padding(2.dp)
-    ) {
-        // 选中指示器（graphicsLayer translationX 实现平滑滑动）
-        val indicatorOffset by animateFloatAsState(
-            targetValue = selectedTab.toFloat(),
-            animationSpec = tween(200),
-            label = "tabIndicator"
-        )
-        val tabFraction = 1f / tabs.size
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(tabFraction)
-                .fillMaxSize()
-                .graphicsLayer {
-                    translationX = indicatorOffset * size.width
-                }
-                .clip(AppRoundedCornerShape(18.dp))
-                .shadow(2.dp, AppRoundedCornerShape(18.dp))
-                .background(if (isDark) AppColors.CardBg else Color.White)
-        )
-
-        // Tab 文字
-        Row(modifier = Modifier.fillMaxSize()) {
-            tabs.forEachIndexed { index, label ->
-                val isSelected = index == selectedTab
-                val interactionSource = remember { MutableInteractionSource() }
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxSize()
-                        .clickable(
-                            indication = null,
-                            interactionSource = interactionSource,
-                            onClick = { onTabSelected(index) }
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = label,
-                        fontSize = labelFontSize,
-                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                        color = if (isSelected) AppColors.TextPrimary else AppColors.TextSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
-    }
+    // Shared Lumi track (Role.Tab semantics, unclipped pill shadow) for non-glass themes.
+    com.huangder.lumibooks.ui.components.LumiSegmentedTrack(
+        labels = tabs,
+        selectedIndex = selectedTab,
+        onSelect = onTabSelected,
+        modifier = modifier.fillMaxWidth(),
+        height = tabHeight
+    )
 }
 
 // ─── 内容列表 ────────────────────────────────────────────────────
@@ -487,10 +445,9 @@ private fun NoteList(
             modifier = Modifier.fillMaxSize().padding(top = topInset),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = stringResource(R.string.no_content),
-                fontSize = AppType.Body,
-                color = AppColors.TextSecondary
+            com.huangder.lumibooks.ui.components.EmptyState(
+                message = stringResource(R.string.no_content),
+                icon = AppIcons.FileText
             )
         }
     } else {
@@ -520,12 +477,14 @@ private fun NoteList(
                 items = notes,
                 key = { note -> note.id }
             ) { note ->
-                HighlightNoteItem(
-                    note = note,
-                    onShare = { onShare(note) },
-                    onEditTags = { onEditTags(note) },
-                    onDelete = { onDelete(note) }
-                )
+                Box(Modifier.animateItem()) {
+                    HighlightNoteItem(
+                        note = note,
+                        onShare = { onShare(note) },
+                        onEditTags = { onEditTags(note) },
+                        onDelete = { onDelete(note) }
+                    )
+                }
             }
         }
     }
@@ -545,10 +504,9 @@ private fun BookmarkList(
             modifier = Modifier.fillMaxSize().padding(top = topInset),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = stringResource(R.string.no_bookmarks),
-                fontSize = AppType.Body,
-                color = AppColors.TextSecondary
+            com.huangder.lumibooks.ui.components.EmptyState(
+                message = stringResource(R.string.no_bookmarks),
+                icon = AppIcons.Bookmark.regular
             )
         }
     } else {
@@ -562,14 +520,16 @@ private fun BookmarkList(
             ),
             verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
         ) {
-            items(bookmarks) { bookmark ->
-                BookmarkItem(
-                    bookmark = bookmark,
-                    onShare = { onShare(bookmark) },
-                    onEditTags = { onEditTags(bookmark) },
-                    onEditRemark = { onEditRemark(bookmark) },
-                    onDelete = { onDelete(bookmark) }
-                )
+            items(bookmarks, key = { it.id }) { bookmark ->
+                Box(Modifier.animateItem()) {
+                    BookmarkItem(
+                        bookmark = bookmark,
+                        onShare = { onShare(bookmark) },
+                        onEditTags = { onEditTags(bookmark) },
+                        onEditRemark = { onEditRemark(bookmark) },
+                        onDelete = { onDelete(bookmark) }
+                    )
+                }
             }
         }
     }

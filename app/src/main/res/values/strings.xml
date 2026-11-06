@@ -70,6 +70,7 @@
     <string name="font_settings">字体设置</string>
     <string name="theme_settings">主题设置</string>
     <string name="brightness">亮度</string>
+    <string name="reader_dark_mask">遮罩</string>
     <string name="add_bookmark">添加书签</string>
     <string name="bookmarks">书签</string>
     <string name="notes">笔记</string>
@@ -1233,7 +1234,7 @@
     <string name="import_authorize_directory">授权一个书籍文件夹</string>
     <string name="import_select_folder_books">选择文件夹书籍</string>
     <string name="import_folder_books_refresh">刷新</string>
-    <string name="folder_books_level_summary">%1$d 个文件夹 · %2$d 本书 · 已选 %3$d 本</string>
+    <string name="folder_books_level_summary">%1$d 个文件夹 · %2$d 本书</string>
     <string name="folder_books_folder_count">%1$d 本</string>
     <string name="folder_books_empty_folder">这个文件夹里没有书籍</string>
     <string name="folder_books_sort_name">名称排序</string>
@@ -1677,6 +1678,18 @@
     <string name="epub_renderer_recovered">原排版渲染已停止，已切换到重排模式</string>
     <string name="tts_prosody_rejected_error">当前语音引擎不支持所选语速或声调，已保留上一个设置</string>
     <string name="bookshelf_cover_flow">Cover Flow</string>
+    <string name="bookshelf_spine_shelf">书脊</string>
+    <string name="spine_shelf_folder_count">%1$d 本</string>
+    <string name="spine_menu_tags">标签</string>
+    <string name="spine_menu_notes">笔记</string>
+    <string name="spine_menu_edit">编辑</string>
+    <string name="spine_menu_cover">封面</string>
+    <string name="spine_menu_restore_cover">原封面</string>
+    <string name="spine_menu_move">移动</string>
+    <string name="spine_menu_hide">隐藏</string>
+    <string name="spine_menu_archive">归档</string>
+    <string name="spine_menu_progress">已读 %1$d%%</string>
+    <string name="spine_menu_unread">未开始</string>
     <string name="coverflow_open">打开</string>
     <string name="coverflow_info">信息</string>
     <string name="coverflow_more">更多</string>

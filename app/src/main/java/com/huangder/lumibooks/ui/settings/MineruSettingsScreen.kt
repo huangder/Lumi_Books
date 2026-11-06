@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.settings
+import com.huangder.lumibooks.ui.components.lumiGroupedSurface
 import androidx.compose.foundation.layout.heightIn
 import com.huangder.lumibooks.ui.icons.AppIcons
 import com.huangder.lumibooks.ui.icons.IconPair
@@ -122,13 +123,12 @@ fun MineruSettingsDetail(viewModel: SettingsViewModel) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(AppRoundedCornerShape(AppRadius.lg))
-                .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
+                .lumiGroupedSurface()
                 .padding(AppSpace.md),
             verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
         ) {
             MineruStatusCard(currentMode)
-            Box(Modifier.fillMaxWidth().height(1.dp).background(AppColors.Divider))
+            com.huangder.lumibooks.ui.components.GroupedRowDivider(startInset = 0.dp)
             Text(
                 text = stringResource(R.string.mineru_choose_mode),
                 fontSize = AppType.BodySmall,
@@ -140,7 +140,7 @@ fun MineruSettingsDetail(viewModel: SettingsViewModel) {
                 selected = selectedMode == MineruMode.AGENT,
                 onClick = { selectedMode = MineruMode.AGENT }
             )
-            Box(Modifier.fillMaxWidth().height(1.dp).background(AppColors.Divider))
+            com.huangder.lumibooks.ui.components.GroupedRowDivider(startInset = 0.dp)
             MineruModeCard(
                 title = stringResource(R.string.mineru_mode_precise_title),
                 description = stringResource(R.string.mineru_mode_precise_description),
@@ -148,8 +148,8 @@ fun MineruSettingsDetail(viewModel: SettingsViewModel) {
                 onClick = { selectedMode = MineruMode.PRECISE }
             )
 
-            if (selectedMode == MineruMode.PRECISE) {
-                OutlinedTextField(
+            com.huangder.lumibooks.ui.components.LumiReveal(selectedMode == MineruMode.PRECISE) {
+                com.huangder.lumibooks.ui.components.LumiTextField(
                     value = token,
                     onValueChange = {
                         token = it
@@ -277,8 +277,7 @@ private fun MineruManualSection(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(AppRoundedCornerShape(AppRadius.lg))
-            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
+            .lumiGroupedSurface()
             .border(1.dp, AppColors.Divider, AppRoundedCornerShape(AppRadius.md))
             .padding(AppSpace.md),
         verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
@@ -374,7 +373,7 @@ internal fun MineruModeCard(
             Spacer(Modifier.height(4.dp))
             Text(description, fontSize = AppType.BodySmall, color = AppColors.TextSecondary)
         }
-        RadioButton(
+        com.huangder.lumibooks.ui.components.LumiRadio(
             selected = selected,
             onClick = onClick,
             colors = RadioButtonDefaults.colors(selectedColor = AppColors.Accent)
@@ -567,7 +566,7 @@ private fun MineruConsentSheet(onDismiss: () -> Unit, onAccept: () -> Unit) {
                     .padding(vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Checkbox(
+                com.huangder.lumibooks.ui.components.LumiCheckbox(
                     checked = confirmed,
                     onCheckedChange = { confirmed = it },
                     colors = CheckboxDefaults.colors(checkedColor = AppColors.Accent)

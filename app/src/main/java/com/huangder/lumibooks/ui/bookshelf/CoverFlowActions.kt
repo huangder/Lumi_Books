@@ -45,7 +45,8 @@ internal data class CoverFlowBookActions(
     val notes: (Book) -> Unit,
     val move: (Book) -> Unit,
     val delete: (Book) -> Unit,
-    val hide: ((Book) -> Unit)? = null
+    val hide: ((Book) -> Unit)? = null,
+    val archive: ((Book) -> Unit)? = null
 )
 
 @Composable
@@ -64,6 +65,7 @@ internal fun CoverFlowActionBar(
     val tagsLabel = stringResource(R.string.add_tag)
     val notesLabel = stringResource(R.string.bookmarks_notes)
     val moveLabel = stringResource(R.string.move_to_folder)
+    val archiveLabel = stringResource(R.string.archive_book)
     val hideLabel = stringResource(R.string.hidden_library_hide)
     val deleteLabel = stringResource(R.string.delete)
     var ownsMenu by remember { mutableStateOf(false) }
@@ -100,6 +102,9 @@ internal fun CoverFlowActionBar(
                         add(LiquidGlassMenuItem(tagsLabel, AppIcons.Tag) { run(actions.tags) })
                         add(LiquidGlassMenuItem(notesLabel, AppIcons.Bookmark.regular) { run(actions.notes) })
                         add(LiquidGlassMenuItem(moveLabel, AppIcons.FolderSimple) { run(actions.move) })
+                        actions.archive?.let { archive ->
+                            add(LiquidGlassMenuItem(archiveLabel, AppIcons.Archive) { run(archive) })
+                        }
                         actions.hide?.let { hide ->
                             add(LiquidGlassMenuItem(hideLabel, AppIcons.EyeSlash) { run(hide) })
                         }

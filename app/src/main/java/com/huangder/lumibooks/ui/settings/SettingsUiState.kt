@@ -4,8 +4,10 @@ import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.model.AppFontSize
 import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
 import com.huangder.lumibooks.domain.model.AppIconStyle
+import com.huangder.lumibooks.domain.model.AppUiIconStyle
 import com.huangder.lumibooks.domain.model.BookOpenTransition
 import com.huangder.lumibooks.domain.model.LiquidGlassStyle
+import com.huangder.lumibooks.domain.model.LiquidGlassSamplingQuality
 import com.huangder.lumibooks.domain.model.SelectionMenuSettings
 
 /** 单本书的文件大小明细 */
@@ -75,6 +77,7 @@ data class SettingsUiState(
 
     // 显示与外观
     val appIconStyle: String = AppIconStyle.LUMI_2.storedValue,
+    val appUiIconStyle: String = AppUiIconStyle.DEFAULT.storedValue,
     val appTheme: String = "lumi",         // "lumi" / "material3" / "liquid_glass" / "lumi_chan"
     val lumiEasterEggUnlocked: Boolean = false,
     val startupScreen: String = DataStoreManager.DEFAULT_STARTUP_SCREEN,
@@ -82,6 +85,7 @@ data class SettingsUiState(
     val appFontSize: AppFontSize = AppFontSize.STANDARD,
     val globalFontMode: String = "system", // "default" / "system"
     val reduceTransparencyEnabled: Boolean = false,
+    val liquidGlassSamplingQuality: LiquidGlassSamplingQuality = LiquidGlassSamplingQuality.BALANCED,
     val liquidGlassStyle: LiquidGlassStyle = LiquidGlassStyle.DEFAULT,
     val liquidGlassTransparency: Float = 0.55f,
     val liquidGlassHdrHighlightEnabled: Boolean = false,
@@ -148,6 +152,6 @@ data class SettingsUiState(
     val activeHighlightPaletteId: String? = null,
     val floatingSubtitleSettings: com.huangder.lumibooks.tts.FloatingSubtitleSettings =
         com.huangder.lumibooks.tts.FloatingSubtitleSettings(),
-    val bodyFontWeight: Int = 400,
+    val bodyFontWeight: Float = 400f,
     val applyToBodyOnly: Boolean = false
 )

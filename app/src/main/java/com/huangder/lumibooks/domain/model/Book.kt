@@ -32,7 +32,8 @@ data class Book(
     val sourceLastModified: Long = 0L,
     val isMissing: Boolean = false,
     val isHidden: Boolean = false,
-    val isManuallyMarkedRead: Boolean = false
+    val isManuallyMarkedRead: Boolean = false,
+    val isArchived: Boolean = false
 ) {
     val isReadingFinished: Boolean
         get() = isManuallyMarkedRead || (readingProgress.isFinite() && readingProgress >= 1f)

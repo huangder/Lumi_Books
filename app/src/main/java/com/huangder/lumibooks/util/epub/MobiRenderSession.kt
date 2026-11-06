@@ -230,6 +230,10 @@ class MobiRenderSession internal constructor(
         EpubDocumentTransformer.extractSearchText(chapterDocument(chapterIndex))
     }
 
+    override fun imageTextOffsets(chapterIndex: Int): List<Int> = synchronized(documentLock) {
+        EpubDocumentTransformer.imageTextOffsets(chapterDocument(chapterIndex))
+    }
+
     @Synchronized
     override fun close() {
         documentCache.clear()

@@ -10,3 +10,5 @@ internal object BookShareEdition {
 }
 @Composable internal fun rememberBookShareExportPermission(): (BookShareStyle, () -> Unit) -> Unit =
     { _, action -> action() }
+
+@Composable internal fun BookShareExportBadge(style: BookShareStyle) = Unit

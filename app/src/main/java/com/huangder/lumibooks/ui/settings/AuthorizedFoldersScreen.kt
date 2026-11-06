@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.settings
 
+import com.huangder.lumibooks.ui.components.lumiGroupedSurface
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -74,25 +75,24 @@ internal fun AuthorizedFoldersContent(
                 fontSize = AppType.Caption,
                 lineHeight = 18.sp,
                 modifier = Modifier.padding(
-                    horizontal = AppSpace.lg - AppSpace.md,
+                    horizontal = AppSpace.md,
                     vertical = AppSpace.sm
                 )
             )
             when {
-                state.loading -> Text(stringResource(R.string.loading), color = AppColors.TextSecondary)
-                state.folders.isEmpty() -> Text(
-                    stringResource(R.string.authorized_folders_empty),
-                    color = AppColors.TextSecondary,
-                    fontSize = AppType.Body,
-                    modifier = Modifier.padding(vertical = AppSpace.lg)
+                state.loading -> com.huangder.lumibooks.ui.components.LumiLoading(caption = stringResource(R.string.loading))
+                state.folders.isEmpty() -> com.huangder.lumibooks.ui.components.EmptyState(
+                    message = stringResource(R.string.authorized_folders_empty),
+                    icon = AppIcons.FolderOpen,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = AppSpace.xl)
                 )
                 else -> state.folders.forEach { folder ->
                     key(folder.uri, state.retryKey) {
                         SwipeRevealItem(onDelete = { onRemove(folder) }) {
                             val shape = AppRoundedCornerShape(AppRadius.lg)
                             Row(
-                                modifier = Modifier.fillMaxWidth().clip(shape)
-                                    .lumiCardSurface(shape = shape)
+                                modifier = Modifier.fillMaxWidth()
+                                    .lumiGroupedSurface()
                                     .padding(horizontal = AppSpace.md, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {

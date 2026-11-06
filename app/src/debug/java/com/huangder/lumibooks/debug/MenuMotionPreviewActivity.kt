@@ -40,6 +40,8 @@ class MenuMotionPreviewActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             EBookReaderTheme(
+                liquidGlassSamplingQuality = com.huangder.lumibooks.domain.model.LiquidGlassSamplingQuality
+                    .fromStoredValue(intent.getStringExtra("samplingQuality")),
                 appTheme = intent.getStringExtra("theme") ?: "liquid_glass",
                 lumiBackgroundScene = if (intent.getStringExtra("theme") == "lumi_chan") LumiBackgroundScene.BOOKSHELF else null,
                 dynamicColor = intent.getStringExtra("theme") == "material3",

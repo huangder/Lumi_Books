@@ -126,10 +126,13 @@ class FeedbackActivity : ComponentActivity() {
             val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = launchTheme.menuAnimationStyle)
             val liquidGlassStyle by dataStoreManager.liquidGlassStyle
                 .collectAsState(initial = launchTheme.liquidGlassStyle)
+            val liquidGlassSamplingQuality by dataStoreManager.liquidGlassSamplingQuality
+                .collectAsState(initial = launchTheme.liquidGlassSamplingQuality)
             val reduceTransparencyEnabled by dataStoreManager.reduceTransparencyEnabled
                 .collectAsState(initial = launchTheme.reduceTransparencyEnabled)
             EBookReaderTheme(
                 liquidGlassStyle = liquidGlassStyle,
+                liquidGlassSamplingQuality = liquidGlassSamplingQuality,
                 reduceTransparencyEnabled = reduceTransparencyEnabled,
                 menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
                 motionPreference = com.huangder.lumibooks.ui.theme.MotionPreference.fromStoredValue(motion),
@@ -512,7 +515,7 @@ private fun DiagnosticComposer(
                 }
             }
         }
-        TextField(
+        com.huangder.lumibooks.ui.components.LumiTextField(
             value = description,
             onValueChange = onDescriptionChange,
             modifier = Modifier.fillMaxWidth(),
@@ -520,26 +523,7 @@ private fun DiagnosticComposer(
             placeholder = { Text(stringResource(R.string.diagnostic_description_hint)) },
             minLines = 3,
             maxLines = 6,
-            singleLine = false,
-            shape = AppRoundedCornerShape(26.dp),
-            colors = TextFieldDefaults.colors(
-                focusedTextColor = AppColors.TextPrimary,
-                unfocusedTextColor = AppColors.TextPrimary,
-                disabledTextColor = AppColors.TextSecondary,
-                focusedLabelColor = AppColors.Accent,
-                unfocusedLabelColor = AppColors.TextSecondary,
-                disabledLabelColor = AppColors.TextSecondary,
-                focusedPlaceholderColor = AppColors.TextSecondary,
-                unfocusedPlaceholderColor = AppColors.TextSecondary,
-                disabledPlaceholderColor = AppColors.TextSecondary,
-                cursorColor = AppColors.Accent,
-                focusedContainerColor = AppColors.BgGray,
-                unfocusedContainerColor = AppColors.BgGray,
-                disabledContainerColor = AppColors.BgGray,
-                focusedIndicatorColor = Color.Transparent,
-                unfocusedIndicatorColor = Color.Transparent,
-                disabledIndicatorColor = Color.Transparent
-            )
+            singleLine = false
         )
         LiquidGlassButton(
             onClick = onAddScreenshot,

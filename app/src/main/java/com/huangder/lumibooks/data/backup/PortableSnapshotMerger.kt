@@ -168,6 +168,7 @@ object PortableSnapshotMerger {
                         readingProgress = progressWinner.readingProgress,
                         isManuallyMarkedRead = progressWinner.isManuallyMarkedRead,
                         isHidden = metadataWinner.isHidden,
+                        isArchived = metadataWinner.isArchived ?: localBook.isArchived ?: remoteBook.isArchived,
                         locatorJson = progressWinner.locatorJson,
                         bodyAssetId = localBook.bodyAssetId ?: remoteBook.bodyAssetId,
                         isCloudOnly = localBook.bodyAssetId == null && remoteBook.bodyAssetId == null,

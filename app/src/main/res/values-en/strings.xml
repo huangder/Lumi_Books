@@ -69,6 +69,7 @@
     <string name="font_settings">Font Settings</string>
     <string name="theme_settings">Theme Settings</string>
     <string name="brightness">Brightness</string>
+    <string name="reader_dark_mask">Dark mask</string>
     <string name="add_bookmark">Add Bookmark</string>
     <string name="bookmarks">Bookmarks</string>
     <string name="notes">Notes</string>
@@ -1156,7 +1157,7 @@
     <string name="import_authorize_directory">Authorize a book folder</string>
     <string name="import_select_folder_books">Choose folder books</string>
     <string name="import_folder_books_refresh">Refresh</string>
-    <string name="folder_books_level_summary">%1$d folders · %2$d books · %3$d selected</string>
+    <string name="folder_books_level_summary">%1$d folders · %2$d books</string>
     <string name="folder_books_folder_count">%1$d books</string>
     <string name="folder_books_empty_folder">This folder has no books</string>
     <string name="folder_books_sort_name">Sort by name</string>
@@ -1657,6 +1658,18 @@
     <string name="epub_renderer_recovered">Original-layout rendering stopped. Switched to reflow mode.</string>
     <string name="tts_prosody_rejected_error">The selected speech rate or pitch is not supported by this TTS engine. The previous setting was kept.</string>
     <string name="bookshelf_cover_flow">Cover Flow</string>
+    <string name="bookshelf_spine_shelf">Spines</string>
+    <string name="spine_shelf_folder_count">%1$d books</string>
+    <string name="spine_menu_tags">Tags</string>
+    <string name="spine_menu_notes">Notes</string>
+    <string name="spine_menu_edit">Edit</string>
+    <string name="spine_menu_cover">Cover</string>
+    <string name="spine_menu_restore_cover">Original</string>
+    <string name="spine_menu_move">Move</string>
+    <string name="spine_menu_hide">Hide</string>
+    <string name="spine_menu_archive">Archive</string>
+    <string name="spine_menu_progress">%1$d%% read</string>
+    <string name="spine_menu_unread">Not started</string>
     <string name="coverflow_open">Open</string>
     <string name="coverflow_info">Info</string>
     <string name="coverflow_more">More</string>

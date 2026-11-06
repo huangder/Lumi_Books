@@ -2,6 +2,7 @@ package com.huangder.lumibooks.domain.model
 
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.math.roundToInt
 
 data class ReaderThemeSettings(
     val backgroundSelection: String = ReaderThemeSuites.DAY_ID,
@@ -11,7 +12,7 @@ data class ReaderThemeSettings(
     val textColor: Int? = null,
     val fontSize: Float = 16f,
     val fontType: String = "system",
-    val bodyFontWeight: Int = 400,
+    val bodyFontWeight: Float = 400f,
     val lineHeight: Float = 1.5f,
     val letterSpacing: Float = 0f,
     val textAlignment: ReaderTextAlignment = ReaderTextAlignment.NATURAL,
@@ -52,7 +53,8 @@ data class ReaderThemeSuite(
     val bookLayoutSettings: ReaderThemeSettings = settings,
     /** Optional light/dark overrides. Legacy suites use [settings] for both modes. */
     val lightSettings: ReaderThemeSettings? = null,
-    val darkSettings: ReaderThemeSettings? = null
+    val darkSettings: ReaderThemeSettings? = null,
+    val darkMaskOpacity: Float = 0f
 ) {
     val isBuiltIn: Boolean get() = id in ReaderThemeSuites.BUILT_IN_IDS
 
@@ -206,7 +208,8 @@ object ReaderThemeSuites {
                     settings = suite.settings.sanitized(),
                     bookLayoutSettings = suite.bookLayoutSettings.sanitized(),
                     lightSettings = suite.lightSettings?.sanitized(),
-                    darkSettings = suite.darkSettings?.sanitized()
+                    darkSettings = suite.darkSettings?.sanitized(),
+                    darkMaskOpacity = suite.darkMaskOpacity.coerceIn(0f, 0.8f)
                 )
                 suite.customName.isNullOrBlank() -> null
                 else -> suite.copy(
@@ -214,7 +217,8 @@ object ReaderThemeSuites {
                     settings = suite.settings.sanitized(),
                     bookLayoutSettings = suite.bookLayoutSettings.sanitized(),
                     lightSettings = suite.lightSettings?.sanitized(),
-                    darkSettings = suite.darkSettings?.sanitized()
+                    darkSettings = suite.darkSettings?.sanitized(),
+                    darkMaskOpacity = suite.darkMaskOpacity.coerceIn(0f, 0.8f)
                 )
             }
         }.toMutableList()
@@ -231,9 +235,9 @@ object ReaderThemeSuites {
         backgroundImageOpacity = backgroundImageOpacity.coerceIn(0f, 1f),
         backgroundImageBlurDp = backgroundImageBlurDp.coerceIn(0f, 40f),
         // Same limits as the theme sheet's sliders.
-        fontSize = fontSize.coerceIn(12f, 28f),
+        fontSize = (fontSize * 10f).roundToInt().coerceIn(120, 280) / 10f,
         fontType = fontType.takeIf(String::isNotBlank) ?: "system",
-        bodyFontWeight = bodyFontWeight.coerceIn(100, 900),
+        bodyFontWeight = (bodyFontWeight * 10f).roundToInt().coerceIn(1000, 9000) / 10f,
         lineHeight = lineHeight.coerceIn(ReaderThemeSettings.LINE_HEIGHT_RANGE),
         letterSpacing = letterSpacing.coerceIn(ReaderThemeSettings.LETTER_SPACING_RANGE),
         paragraphSpacing = paragraphSpacing.coerceIn(0f, 30f),
@@ -281,9 +285,10 @@ object ReaderThemeSuiteCodec {
                                 id = id,
                                 customName = item.optString("name").takeIf(String::isNotBlank),
                                 settings = settings,
-                                bookLayoutSettings = bookLayoutSettings
-                                , lightSettings = lightSettings
-                                , darkSettings = darkSettings
+                                bookLayoutSettings = bookLayoutSettings,
+                                lightSettings = lightSettings,
+                                darkSettings = darkSettings,
+                                darkMaskOpacity = item.optDouble("darkMaskOpacity", 0.0).toFloat()
                             )
                         )
                     }
@@ -300,7 +305,7 @@ object ReaderThemeSuiteCodec {
         textColor?.let { put("textColor", it) }
         put("fontSize", fontSize.toDouble())
         put("fontType", fontType)
-        put("bodyFontWeight", bodyFontWeight)
+        put("bodyFontWeight", bodyFontWeight.toDouble())
         put("lineHeight", lineHeight.toDouble())
         put("letterSpacing", letterSpacing.toDouble())
         put("textAlignment", textAlignment.key)
@@ -325,6 +330,7 @@ object ReaderThemeSuiteCodec {
         put("bookLayoutSettings", bookLayoutSettings.toJson())
         lightSettings?.let { put("light", it.toJson()) }
         darkSettings?.let { put("dark", it.toJson()) }
+        put("darkMaskOpacity", darkMaskOpacity.toDouble())
     }
 
     private fun JSONObject.toThemeSettings(): ReaderThemeSettings {
@@ -340,7 +346,7 @@ object ReaderThemeSuiteCodec {
         textColor = if (has("textColor") && !isNull("textColor")) optInt("textColor") else null,
         fontSize = optDouble("fontSize", 16.0).toFloat(),
         fontType = optString("fontType", "system"),
-        bodyFontWeight = optInt("bodyFontWeight", 400),
+        bodyFontWeight = optDouble("bodyFontWeight", 400.0).toFloat(),
         lineHeight = optDouble("lineHeight", 1.5).toFloat(),
         letterSpacing = optDouble("letterSpacing", 0.0).toFloat(),
         textAlignment = ReaderTextAlignment.fromKey(optString("textAlignment")),
@@ -390,6 +396,7 @@ object LumiThemeBundleCodec {
                 val theme = legacy.optJSONObject(index)
                     ?: throw IllegalArgumentException("Invalid legacy theme at index $index")
                 require(theme.optString("id").isNotBlank()) { "Missing legacy theme id" }
+                if (theme.has("darkMaskOpacity")) validateNumber(theme, "darkMaskOpacity", 0.0, 0.8, "theme")
                 validateSettings(theme.optJSONObject("settings"), "settings")
                 theme.optJSONObject("bookLayoutSettings")?.let { validateSettings(it, "bookLayoutSettings") }
             }
@@ -410,6 +417,7 @@ object LumiThemeBundleCodec {
                 ?: throw IllegalArgumentException("Invalid theme at index $index")
             val id = theme.optString("id").trim()
             require(id.isNotEmpty() && ids.add(id)) { "Invalid or duplicate theme id" }
+            if (theme.has("darkMaskOpacity")) validateNumber(theme, "darkMaskOpacity", 0.0, 0.8, "theme")
             validateSettings(theme.optJSONObject("settings"), "settings")
             theme.optJSONObject("bookLayoutSettings")?.let { validateSettings(it, "bookLayoutSettings") }
             theme.optJSONObject("light")?.let { validateSettings(it, "light") }
@@ -429,7 +437,7 @@ object LumiThemeBundleCodec {
         validateColor(settings, label)
         validateNumber(settings, "fontSize", 12.0, 28.0, label)
         if (settings.has("fontType")) validateOptionalString(settings, "fontType", label)
-        validateInteger(settings, "bodyFontWeight", 100, 900, label)
+        validateNumber(settings, "bodyFontWeight", 100.0, 900.0, label)
         validateNumber(settings, "lineHeight", ReaderThemeSettings.LINE_HEIGHT_RANGE.start.toDouble(),
             ReaderThemeSettings.LINE_HEIGHT_RANGE.endInclusive.toDouble(), label)
         validateNumber(settings, "letterSpacing", ReaderThemeSettings.LETTER_SPACING_RANGE.start.toDouble(),

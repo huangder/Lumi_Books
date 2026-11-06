@@ -4,6 +4,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import com.huangder.lumibooks.data.local.DataStoreManager
+import com.huangder.lumibooks.domain.model.AppUiIconStyle
 import com.huangder.lumibooks.domain.model.MenuAnimationStyle
 import com.huangder.lumibooks.ui.theme.*
 import com.huangder.lumibooks.util.LaunchThemeController
@@ -12,10 +13,13 @@ import com.huangder.lumibooks.util.LaunchThemeController
     val context = LocalContext.current
     val initial = remember { LaunchThemeController.themeSnapshot(context) }
     val theme by manager.launchThemeSnapshot.collectAsState(initial = initial)
+    val appUiIconStyle by manager.appUiIconStyle.collectAsState(initial = AppUiIconStyle.DEFAULT.storedValue)
     val dark = when (theme.darkMode) { "dark" -> true; "light" -> false; else -> isSystemInDarkTheme() }
     EBookReaderTheme(
+        liquidGlassSamplingQuality = theme.liquidGlassSamplingQuality,
         liquidGlassStyle = theme.liquidGlassStyle, reduceTransparencyEnabled = theme.reduceTransparencyEnabled,
         darkTheme = dark, dynamicColor = theme.appTheme == "material3", appTheme = theme.appTheme,
+        appUiIconStyle = AppUiIconStyle.fromStoredValue(appUiIconStyle),
         appAccentColor = theme.appAccentColor, appFontSize = theme.appFontSize, globalFontMode = theme.globalFontMode,
         liquidGlassTransparency = theme.liquidGlassTransparency, liquidGlassHdrHighlightEnabled = theme.liquidGlassHdrHighlightEnabled,
         eInkMode = theme.eInkModeEnabled, motionPreference = MotionPreference.fromStoredValue(theme.motionPreference),

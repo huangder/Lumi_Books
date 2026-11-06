@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="selection_deselect_all">전체 해제</string>
+    <string name="folder_import_count">%1$d권 가져오기 확인</string>
+    <string name="txt_toc_rules_label">TXT 목차 규칙</string>
+    <string name="txt_toc_rules_empty">사용자 규칙이 없습니다</string>
+    <string name="txt_toc_rules_import">가져오기</string>
+    <string name="txt_toc_rules_export">내보내기</string>
+    <string name="book_review_unsaved_title">저장하지 않은 변경을 버릴까요?</string>
+    <string name="book_review_unsaved_message">리뷰나 평점을 변경했습니다. 지금 나가면 저장되지 않습니다.</string>
+    <string name="book_review_discard">버리기</string>
+</resources>

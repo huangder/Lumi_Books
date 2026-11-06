@@ -30,7 +30,7 @@
     <string name="insights_new_reading">새로운 독서 활동</string>
     <string name="insights_more_time">%1$s 더 읽음</string>
     <string name="insights_less_time">%1$s 덜 읽음</string>
-    <string name="insights_review">독서 돌아보기</string>
+    <string name="insights_review">독서의 기억</string>
     <string name="insights_through">%1$s까지</string>
     <string name="insights_generate">보고서 생성</string>
     <string name="insights_save_image">이미지 저장</string>
@@ -50,4 +50,24 @@
     <string name="insights_monthly_activity">월별 독서 시간</string>
     <string name="insights_personal_review">내 서평</string>
     <string name="insights_retry">다시 시도</string>
+    <string name="insights_read_minutes">읽기 %1$d</string>
+    <string name="insights_listen_minutes">듣기 %1$d</string>
+    <string name="insights_day_marks">표시 %1$d</string>
+    <string name="insights_tap_hint">날짜를 눌러 상세 보기</string>
+    <string name="insights_previous_period">이전 기간</string>
+    <string name="insights_next_period">다음 기간</string>
+    <string name="insights_reading">독서</string>
+    <string name="insights_listening">듣기</string>
+    <string name="insights_vs_previous">%1$s 대비</string>
+    <string name="insights_days_value">%1$d일</string>
+    <string name="insights_books_value">%1$d권</string>
+    <string name="insights_best_day_label">최고 기록일</string>
+    <string name="insights_goal_days_label">목표 달성일</string>
+    <string name="insights_first_read_label">처음 읽은 날</string>
+    <string name="insights_last_read_label">최근</string>
+    <string name="insights_today">오늘</string>
+    <string name="insights_generating">생성 중…</string>
+    <string name="insights_top_tags">자주 쓰는 태그</string>
+    <string name="insights_since">%1$s부터</string>
+    <string name="insights_read_listen_split">독서와 듣기</string>
 </resources>

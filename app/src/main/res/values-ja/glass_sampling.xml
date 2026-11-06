@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="liquid_glass_sampling_quality">ガラスのサンプリング品質</string>
+    <string name="liquid_glass_sampling_original">オリジナル（1×）</string>
+    <string name="liquid_glass_sampling_clear">鮮明（⅔×）</string>
+    <string name="liquid_glass_sampling_balanced">バランス（½×）</string>
+    <string name="liquid_glass_sampling_performance">パフォーマンス（⅓×）</string>
+</resources>

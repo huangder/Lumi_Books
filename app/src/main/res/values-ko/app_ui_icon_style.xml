@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_ui_icon_style_title">앱 내 아이콘 스타일</string>
+    <string name="app_ui_icon_style_filled_colorful">채움 컬러</string>
+    <string name="app_ui_icon_style_outline_colorful">선형 컬러</string>
+    <string name="app_ui_icon_style_filled_monochrome">채움 흑백</string>
+    <string name="app_ui_icon_style_outline_monochrome">선형 흑백</string>
+</resources>

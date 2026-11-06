@@ -21,7 +21,7 @@ data class ReaderLayoutConfig(
     val marginBottomDp: Float,
     val paragraphSpacingDp: Float,
     val firstLineIndent: Float,
-    val bodyFontWeight: Int,
+    val bodyFontWeight: Float,
     val bionicReadingEnabled: Boolean,
     val useDisplayDensityForSpans: Boolean,
     val writingMode: ReaderWritingMode,

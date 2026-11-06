@@ -217,7 +217,8 @@ class PortableSnapshotManager internal constructor(
                         // coverPath 同理，保留本机真实的“已下载/仅云端”状态，避免 bodyless
                         // 快照用推导结果把已下载书籍翻回仅云端。
                         existingIsCloudOnly = existing?.isCloudOnly
-                            ?.takeIf { !replaceAssetDirectories && book.bodyAssetId == null }
+                            ?.takeIf { !replaceAssetDirectories && book.bodyAssetId == null },
+                        existingIsArchived = existing?.isArchived ?: false
                     ).let { restored ->
                         if (book.format == "MARKDOWN" && !replaceAssetDirectories && existing != null) {
                             restored.copy(sourceUri = existing.sourceUri, sourceDocumentKey = existing.sourceDocumentKey,
@@ -590,7 +591,7 @@ class PortableSnapshotManager internal constructor(
     private fun BookEntity.toPortable(bodyAssetId: String?, coverAssetId: String?) = PortableBook(
         id, title, author, format, lastReadTime, readingProgress, locatorJson, createdAt, isFavorite,
         isCloudOnly, metadataUpdatedAt, bodyAssetId, coverAssetId, remoteLibraryKey, remoteFileName,
-        remoteFileSize, remoteFileSha256, isPinned, isManuallyMarkedRead, isHidden
+        remoteFileSize, remoteFileSha256, isPinned, isManuallyMarkedRead, isHidden, isArchived
     )
 
 }
@@ -598,7 +599,8 @@ class PortableSnapshotManager internal constructor(
 internal fun PortableBook.toEntity(
     filePath: String,
     coverPath: String?,
-    existingIsCloudOnly: Boolean? = null
+    existingIsCloudOnly: Boolean? = null,
+    existingIsArchived: Boolean = false
 ) = BookEntity(
     id = id, title = title, author = author, filePath = filePath, coverPath = coverPath,
     format = format, lastReadTime = lastReadTime, readingProgress = readingProgress,
@@ -608,7 +610,8 @@ internal fun PortableBook.toEntity(
     remoteLibraryKey = remoteLibraryKey, remoteFileName = remoteFileName,
     remoteFileSize = remoteFileSize, remoteFileSha256 = remoteFileSha256,
     metadataUpdatedAt = metadataUpdatedAt, isPinned = isPinned,
-    isManuallyMarkedRead = isManuallyMarkedRead, isHidden = isHidden
+    isManuallyMarkedRead = isManuallyMarkedRead, isHidden = isHidden,
+    isArchived = isArchived ?: existingIsArchived
 )
 
 private fun stableSuffix(value: String): String = MessageDigest.getInstance("SHA-256")

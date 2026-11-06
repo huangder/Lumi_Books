@@ -122,6 +122,7 @@ class SettingsPreferenceScreensTest {
             }
         }
         compose.onNodeWithText(label(R.string.liquid_glass_style)).assertIsDisplayed()
+        compose.onNodeWithText(label(R.string.liquid_glass_sampling_quality)).assertIsDisplayed()
         compose.onNodeWithText(label(R.string.liquid_glass_hdr_highlight)).performScrollTo().performClick()
         compose.runOnIdle { assertTrue(state.liquidGlassHdrHighlightEnabled) }
         capture(view, "visual-large-font-light")
@@ -131,8 +132,10 @@ class SettingsPreferenceScreensTest {
         compose.onNodeWithText(label(R.string.liquid_glass_hdr_highlight)).assertDoesNotExist()
         compose.runOnIdle { supported = false }
         compose.onNodeWithText(label(R.string.liquid_glass_style)).assertDoesNotExist()
+        compose.onNodeWithText(label(R.string.liquid_glass_sampling_quality)).assertDoesNotExist()
         compose.runOnIdle { supported = true; eInk = true }
         compose.onNodeWithText(label(R.string.liquid_glass_style)).assertDoesNotExist()
+        compose.onNodeWithText(label(R.string.liquid_glass_sampling_quality)).assertDoesNotExist()
         compose.onNodeWithText(label(R.string.reduce_transparency_label)).performScrollTo().assertIsDisplayed()
         capture(view, "visual-large-font-eink")
         compose.runOnIdle {

@@ -189,11 +189,12 @@ internal fun ReaderTtsFloatingHost(
         )
         // The capsule width changes as soon as a docked handle is restored.  The
         // position animation still starts at the handle's old point, so clamp the
-        // transient frame to the full capsule's rails.  This keeps the restoring
-        // capsule fully visible while it travels on the same straight path.
+        // transient frame to the current width's rails. Docked handles need their
+        // own 40dp rails so the right handle can reach the screen edge; restoring
+        // switches to the full capsule's rails immediately to keep it visible.
         val animatedX = animatedPosition.x.coerceIn(
             0f,
-            area.copy(compact = false).maxX
+            area.copy(compact = dock != ReaderTtsDock.NONE).maxX
         )
         val animatedY = animatedPosition.y
         val currentArea by rememberUpdatedState(area)

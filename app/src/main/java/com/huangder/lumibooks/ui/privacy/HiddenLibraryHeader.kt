@@ -30,7 +30,7 @@ import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 
-/** Same layout as the category pages' header; editing swaps in unhide and delete. */
+/** Pinned header of the hidden library: shared selection header (actions sit in the bottom bar). */
 @Composable
 internal fun HiddenLibraryHeader(
     bookCount: Int,
@@ -38,98 +38,31 @@ internal fun HiddenLibraryHeader(
     selectedCount: Int,
     onEditToggle: () -> Unit,
     onSelectAll: () -> Unit,
-    onUnhide: () -> Unit,
-    onDelete: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    allSelected: Boolean = false
 ) {
-    val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
-    Column(
-        modifier
-            .fillMaxWidth()
-            .background(AppColors.WindowBg.copy(alpha = 0.94f))
-            .padding(horizontal = AppSpace.lg, vertical = 12.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (isEditing) {
-                LiquidGlassButton(
-                    onClick = onEditToggle,
-                    tintedColor = AppColors.CardBg.takeUnless { isLiquidGlass },
-                    contentColor = AppColors.TextPrimary,
-                    modifier = Modifier.widthIn(min = 88.dp).heightIn(min = 46.dp)
-                ) {
-                    Text(
-                        stringResource(R.string.done), color = AppColors.TextPrimary, fontSize = AppType.BodySmall,
-                        fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Spacer(Modifier.width(10.dp))
-                LiquidGlassIconButton(
-                    imageVector = AppIcons.Eye,
-                    contentDescription = stringResource(R.string.hidden_library_unhide),
-                    onClick = onUnhide,
-                    enabled = selectedCount > 0,
-                    size = 46.dp,
-                    iconSize = 21.dp,
-                    contentColor = AppColors.TextPrimary,
-                    normalContainerColor = AppColors.CardBg,
-                    liquidContainerColor = AppColors.CardBg,
-                    liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f)
-                )
-                Spacer(Modifier.width(10.dp))
-                LiquidGlassIconButton(
-                    imageVector = AppIcons.Trash,
-                    contentDescription = stringResource(R.string.delete),
-                    onClick = onDelete,
-                    enabled = selectedCount > 0,
-                    size = 46.dp,
-                    iconSize = 21.dp,
-                    contentColor = Color.White,
-                    normalContainerColor = AppColors.Destructive,
-                    liquidContainerColor = AppColors.Destructive,
-                    liquidScrimColor = Color(0xB8D92D3A)
-                )
-            } else {
-                androidx.compose.material3.Icon(
-                    imageVector = AppIcons.Lock, contentDescription = null,
-                    tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        pluralStringResource(R.plurals.hidden_library_book_count, bookCount, bookCount),
-                        color = AppColors.TextSecondary, fontSize = AppType.Caption, maxLines = 1
-                    )
-                }
-                if (bookCount > 0) {
-                    Spacer(Modifier.width(AppSpace.sm))
-                    LiquidGlassButton(
-                        onClick = onEditToggle,
-                        tintedColor = AppColors.CardBg,
-                        modifier = Modifier.widthIn(min = 78.dp).heightIn(min = 48.dp)
-                    ) {
-                        Text(stringResource(R.string.edit), color = AppColors.TextPrimary, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-            }
-        }
-        AnimatedVisibility(visible = isEditing) {
-            Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(R.string.selected_books_count_compact, selectedCount),
-                    color = AppColors.TextSecondary, fontSize = AppType.Caption, fontWeight = FontWeight.Medium,
-                    maxLines = 1, modifier = Modifier.weight(1f)
-                )
-                LiquidGlassButton(
-                    onClick = onSelectAll,
-                    tintedColor = AppColors.Accent,
-                    contentColor = AppColors.OnAccent,
-                    modifier = Modifier.heightIn(min = 40.dp)
-                ) {
-                    Text(
-                        stringResource(R.string.select_all), color = AppColors.OnAccent, fontSize = AppType.BodySmall,
-                        fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
-    }
+    com.huangder.lumibooks.ui.components.SelectionHeader(
+        summary = pluralStringResource(R.plurals.hidden_library_book_count, bookCount, bookCount),
+        isEditing = isEditing,
+        selectedCount = selectedCount,
+        allSelected = allSelected,
+        onEditToggle = onEditToggle,
+        onSelectAll = onSelectAll,
+        modifier = modifier,
+        leadingIcon = AppIcons.Lock,
+        showEdit = bookCount > 0
+    )
+}
+
+/** Bottom actions of the hidden library while selecting. */
+@Composable
+internal fun HiddenLibraryActionBar(isEditing: Boolean, selectedCount: Int, onUnhide: () -> Unit, onDelete: () -> Unit) {
+    com.huangder.lumibooks.ui.components.SelectionActionBar(
+        visible = isEditing,
+        enabled = selectedCount > 0,
+        actions = listOf(
+            com.huangder.lumibooks.ui.components.SelectionAction(AppIcons.Eye, stringResource(R.string.hidden_library_unhide), onClick = onUnhide),
+            com.huangder.lumibooks.ui.components.SelectionAction(AppIcons.Trash, stringResource(R.string.delete), destructive = true, onClick = onDelete)
+        )
+    )
 }

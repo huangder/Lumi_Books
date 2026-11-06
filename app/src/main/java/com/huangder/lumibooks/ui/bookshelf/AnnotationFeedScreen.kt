@@ -1,6 +1,6 @@
 package com.huangder.lumibooks.ui.bookshelf
 
-import com.huangder.lumibooks.ui.components.LocalCollapsingPageTopInset
+import com.huangder.lumibooks.ui.components.LocalCollapsingPageTopPaddingValues
 import com.huangder.lumibooks.ui.components.CollapsingPageScaffold
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
@@ -15,7 +15,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Icon
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.unit.Dp
 import com.huangder.lumibooks.ui.animation.LumiMotion
 import com.huangder.lumibooks.ui.components.LocalLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.theme.AppRadius
@@ -48,10 +47,11 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -78,6 +78,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.Book
@@ -107,15 +108,15 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.ZoneId
-import java.util.Date
-import java.util.Locale
 
 @Composable
 internal fun AnnotationFeedScreen(
     onNavigateBack: () -> Unit,
     viewModel: AnnotationFeedViewModel = hiltViewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val displayEnvironment = rememberAnnotationFeedDisplayEnvironment()
+    LaunchedEffect(displayEnvironment) { viewModel.setDisplayEnvironment(displayEnvironment) }
     com.huangder.lumibooks.ui.components.ReconcileAnnotationTagDraft(listOfNotNull(uiState.selectedTag)) {
         viewModel.setTag(it.firstOrNull())
     }
@@ -245,7 +246,6 @@ internal fun AnnotationFeedScreen(
             AnnotationFeedList(
                 uiState = uiState,
                 listState = listState,
-                topPadding = LocalCollapsingPageTopInset.current,
                 modifier = Modifier
                     .fillMaxSize()
                     .background(AppColors.PageBg),
@@ -312,7 +312,6 @@ internal fun AnnotationFeedScreen(
 private fun AnnotationFeedList(
     uiState: AnnotationFeedUiState,
     listState: LazyListState,
-    topPadding: Dp,
     modifier: Modifier = Modifier,
     onShare: (AnnotationFeedEntry) -> Unit,
     onEditNoteTags: (Note) -> Unit,
@@ -322,27 +321,36 @@ private fun AnnotationFeedList(
     onDeleteBookmark: (Bookmark) -> Unit,
     onToggleRuleHighlights: () -> Unit
 ) {
-    // Room answers quickly; showing nothing first avoids flashing the empty message.
-    if (uiState.isLoading) return
-    val locale = LocalConfiguration.current.locales[0]
-    val context = LocalContext.current
-    val timeFormat = remember(locale) { android.text.format.DateFormat.getTimeFormat(context) }
-    val zone = remember { ZoneId.systemDefault() }
-    val today = remember { LocalDate.now(zone) }
-    val groups = remember(uiState.entries, zone) { uiState.entries.groupedByDay(zone) }
+    val collapsingTopPadding = LocalCollapsingPageTopPaddingValues.current
+    val bottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + AppSpace.xl
+    val contentPadding = remember(collapsingTopPadding, bottomPadding) {
+        object : PaddingValues {
+            override fun calculateLeftPadding(layoutDirection: androidx.compose.ui.unit.LayoutDirection) = AppSpace.lg
+            override fun calculateRightPadding(layoutDirection: androidx.compose.ui.unit.LayoutDirection) = AppSpace.lg
+            override fun calculateTopPadding() = collapsingTopPadding.calculateTopPadding() + AppSpace.sm
+            override fun calculateBottomPadding() = bottomPadding
+        }
+    }
+    // Room usually answers within a frame, so stay blank first (no flash) and only show the
+    // skeleton when loading genuinely takes a moment.
+    if (uiState.isLoading) {
+        var showSkeleton by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) { kotlinx.coroutines.delay(250); showSkeleton = true }
+        if (showSkeleton) LazyColumn(state = listState, modifier = modifier, contentPadding = contentPadding) {
+            item(key = "loading", contentType = "loading") {
+                com.huangder.lumibooks.ui.components.LumiListSkeleton(rows = 5, rowHeight = 92.dp)
+            }
+        }
+        return
+    }
     LazyColumn(
         state = listState,
         modifier = modifier,
-        contentPadding = PaddingValues(
-            start = AppSpace.lg,
-            top = topPadding + AppSpace.sm,
-            end = AppSpace.lg,
-            bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + AppSpace.xl
-        ),
+        contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
     ) {
         if (uiState.ruleHighlightCount > 0) {
-            item(key = "rule_toggle") {
+            item(key = "rule_toggle", contentType = "rule-toggle") {
                 RuleHighlightToggle(
                     count = uiState.ruleHighlightCount,
                     shown = uiState.includeRuleHighlights,
@@ -350,42 +358,45 @@ private fun AnnotationFeedList(
                 )
             }
         }
-        if (groups.isEmpty()) {
-            item(key = "empty") {
-                Text(
-                    text = stringResource(R.string.no_content),
-                    fontSize = AppType.Body,
-                    color = AppColors.TextSecondary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(top = 96.dp)
+        if (uiState.entries.isEmpty()) {
+            item(key = "empty", contentType = "empty") {
+                com.huangder.lumibooks.ui.components.EmptyState(
+                    message = stringResource(R.string.no_content),
+                    icon = com.huangder.lumibooks.ui.icons.AppIcons.PencilSimple,
+                    modifier = Modifier.fillMaxWidth().padding(top = 72.dp)
                 )
             }
         }
-        groups.forEach { (day, entries) ->
-            item(key = "day-$day") { DayHeader(day = day, today = today, locale = locale) }
-            items(entries, key = { it.key }) { entry ->
-                val time = timeFormat.format(Date(entry.createdAt))
-                when (entry) {
-                    is AnnotationFeedEntry.NoteEntry -> HighlightNoteItem(
-                        note = entry.note,
-                        onShare = { onShare(entry) },
-                        onEditTags = { onEditNoteTags(entry.note) },
-                        onDelete = { onDeleteNote(entry.note) },
-                        header = { FeedBookHeader(entry.book) },
-                        dateText = time,
-                        expandable = true,
-                        cornerRadius = AppRadius.lg
-                    )
-                    is AnnotationFeedEntry.BookmarkEntry -> BookmarkItem(
-                        bookmark = entry.bookmark,
-                        onShare = { onShare(entry) },
-                        onEditRemark = { onEditBookmarkRemark(entry.bookmark) },
-                        onEditTags = { onEditBookmarkTags(entry.bookmark) },
-                        onDelete = { onDeleteBookmark(entry.bookmark) },
-                        header = { FeedBookHeader(entry.book) },
-                        dateText = time,
-                        cornerRadius = AppRadius.lg
-                    )
+        items(uiState.rows, key = { it.key }, contentType = { it.contentType }) { row ->
+            when (row) {
+                is AnnotationFeedRow.Day -> Box(Modifier.animateItem()) { DayHeader(row.label) }
+                is AnnotationFeedRow.Entry -> {
+                    val entry = row.entry
+                    // Filters, tabs and deletions move rows instead of snapping them.
+                    Box(Modifier.animateItem()) {
+                        when (entry) {
+                            is AnnotationFeedEntry.NoteEntry -> HighlightNoteItem(
+                                note = entry.note,
+                                onShare = { onShare(entry) },
+                                onEditTags = { onEditNoteTags(entry.note) },
+                                onDelete = { onDeleteNote(entry.note) },
+                                header = { FeedBookHeader(entry.book) },
+                                dateText = row.timeText,
+                                expandable = true,
+                                cornerRadius = AppRadius.lg
+                            )
+                            is AnnotationFeedEntry.BookmarkEntry -> BookmarkItem(
+                                bookmark = entry.bookmark,
+                                onShare = { onShare(entry) },
+                                onEditRemark = { onEditBookmarkRemark(entry.bookmark) },
+                                onEditTags = { onEditBookmarkTags(entry.bookmark) },
+                                onDelete = { onDeleteBookmark(entry.bookmark) },
+                                header = { FeedBookHeader(entry.book) },
+                                dateText = row.timeText,
+                                cornerRadius = AppRadius.lg
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -447,16 +458,7 @@ internal fun AnnotationFeedSearchField(
 }
 
 @Composable
-private fun DayHeader(day: LocalDate, today: LocalDate, locale: Locale) {
-    val label = when (day) {
-        today -> stringResource(R.string.annotation_feed_today)
-        today.minusDays(1) -> stringResource(R.string.annotation_feed_yesterday)
-        else -> {
-            val skeleton = if (day.year == today.year) "MMMMdEEE" else "yMMMMdEEE"
-            val pattern = android.text.format.DateFormat.getBestDateTimePattern(locale, skeleton)
-            SimpleDateFormat(pattern, locale).format(Date.from(day.atStartOfDay(ZoneId.systemDefault()).toInstant()))
-        }
-    }
+private fun DayHeader(label: String) {
     Text(
         text = label,
         fontSize = AppType.Caption,
@@ -464,6 +466,68 @@ private fun DayHeader(day: LocalDate, today: LocalDate, locale: Locale) {
         color = AppColors.TextSecondary,
         modifier = Modifier.padding(top = AppSpace.sm, start = AppSpace.xs)
     )
+}
+
+@Composable
+private fun rememberAnnotationFeedDisplayEnvironment(): AnnotationFeedDisplayEnvironment {
+    val context = LocalContext.current
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    val locale = LocalConfiguration.current.locales[0]
+    val todayLabel = stringResource(R.string.annotation_feed_today)
+    val yesterdayLabel = stringResource(R.string.annotation_feed_yesterday)
+    var revision by remember { mutableIntStateOf(0) }
+
+    DisposableEffect(context, lifecycle) {
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+                revision++
+            }
+        }
+        val filter = android.content.IntentFilter().apply {
+            addAction(android.content.Intent.ACTION_TIME_CHANGED)
+            addAction(android.content.Intent.ACTION_TIMEZONE_CHANGED)
+            addAction(android.content.Intent.ACTION_DATE_CHANGED)
+        }
+        androidx.core.content.ContextCompat.registerReceiver(
+            context, receiver, filter, androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        val lifecycleObserver = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) revision++
+        }
+        lifecycle.addObserver(lifecycleObserver)
+        val timeFormatObserver = object : android.database.ContentObserver(
+            android.os.Handler(android.os.Looper.getMainLooper())
+        ) {
+            override fun onChange(selfChange: Boolean) { revision++ }
+        }
+        context.contentResolver.registerContentObserver(
+            android.provider.Settings.System.getUriFor(android.provider.Settings.System.TIME_12_24),
+            false,
+            timeFormatObserver
+        )
+        onDispose {
+            context.unregisterReceiver(receiver)
+            lifecycle.removeObserver(lifecycleObserver)
+            context.contentResolver.unregisterContentObserver(timeFormatObserver)
+        }
+    }
+
+    return remember(locale, todayLabel, yesterdayLabel, revision) {
+        val zone = ZoneId.systemDefault()
+        val timePattern =
+            (android.text.format.DateFormat.getTimeFormat(context) as? SimpleDateFormat)?.toPattern()
+                ?: if (android.text.format.DateFormat.is24HourFormat(context)) "HH:mm" else "h:mm a"
+        AnnotationFeedDisplayEnvironment(
+            locale = locale,
+            zone = zone,
+            today = LocalDate.now(zone),
+            timePattern = timePattern,
+            dayPattern = android.text.format.DateFormat.getBestDateTimePattern(locale, "MMMMdEEE"),
+            otherYearPattern = android.text.format.DateFormat.getBestDateTimePattern(locale, "yMMMMdEEE"),
+            todayLabel = todayLabel,
+            yesterdayLabel = yesterdayLabel
+        )
+    }
 }
 
 @Composable

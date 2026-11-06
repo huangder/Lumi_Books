@@ -12,9 +12,11 @@ import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.domain.model.normalizeAppAccentHex
 import com.huangder.lumibooks.domain.model.AppFontSize
 import com.huangder.lumibooks.domain.model.AppIconStyle
+import com.huangder.lumibooks.domain.model.AppUiIconStyle
 import com.huangder.lumibooks.domain.model.BookOpenTransition
 import com.huangder.lumibooks.domain.model.LongPressSelectionRange
 import com.huangder.lumibooks.domain.model.LiquidGlassStyle
+import com.huangder.lumibooks.domain.model.LiquidGlassSamplingQuality
 import com.huangder.lumibooks.util.BookFileAccess
 import com.huangder.lumibooks.util.FileUtils
 import com.huangder.lumibooks.util.UpdateChecker
@@ -37,6 +39,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 import android.net.Uri
 import java.io.File
 import java.text.SimpleDateFormat
@@ -216,6 +219,11 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            dataStoreManager.appUiIconStyle.collectLatest { style ->
+                _uiState.update { it.copy(appUiIconStyle = style) }
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.appTheme.collectLatest { theme ->
                 _uiState.value = _uiState.value.copy(appTheme = theme)
             }
@@ -248,6 +256,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.reduceTransparencyEnabled.collectLatest { enabled ->
                 _uiState.update { it.copy(reduceTransparencyEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.liquidGlassSamplingQuality.collectLatest { quality ->
+                _uiState.update { it.copy(liquidGlassSamplingQuality = quality) }
             }
         }
         viewModelScope.launch {
@@ -563,6 +576,13 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun saveAppUiIconStyle(style: String) {
+        val normalized = AppUiIconStyle.normalize(style)
+        if (_uiState.value.appUiIconStyle == normalized) return
+        _uiState.update { it.copy(appUiIconStyle = normalized) }
+        viewModelScope.launch { dataStoreManager.saveAppUiIconStyle(normalized) }
+    }
+
     fun saveAppTheme(theme: String) {
         if (theme == "lumi_chan" && !_uiState.value.lumiEasterEggUnlocked) {
             Toast.makeText(context, "诶？这是什么Σ(°△°|||)︴", Toast.LENGTH_SHORT).show()
@@ -643,6 +663,13 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun saveLiquidGlassSamplingQuality(value: String) {
+        val quality = LiquidGlassSamplingQuality.fromStoredValue(value)
+        if (_uiState.value.liquidGlassSamplingQuality == quality) return
+        _uiState.update { it.copy(liquidGlassSamplingQuality = quality) }
+        viewModelScope.launch { dataStoreManager.saveLiquidGlassSamplingQuality(quality) }
+    }
+
     fun saveLiquidGlassStyle(value: String) {
         val style = LiquidGlassStyle.fromStoredValue(value)
         if (_uiState.value.liquidGlassStyle == style) return
@@ -686,10 +713,11 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun saveBodyFontWeight(weight: Int) {
+    fun saveBodyFontWeight(weight: Float) {
+        val normalized = (weight * 10f).roundToInt().coerceIn(1000, 9000) / 10f
         viewModelScope.launch {
-            dataStoreManager.saveBodyFontWeight(weight)
-            _uiState.value = _uiState.value.copy(bodyFontWeight = weight)
+            dataStoreManager.saveBodyFontWeight(normalized)
+            _uiState.value = _uiState.value.copy(bodyFontWeight = normalized)
         }
     }
 
@@ -1141,7 +1169,7 @@ class SettingsViewModel @Inject constructor(
 
             // SAF 与应用内部文件统一取真实大小，并按大小降序展示。
             // 隐藏书库的书不列出书名，只把体积计入「其他」。
-            val (hiddenBooks, visibleBooks) = bookRepository.getAllBooks().first().partition { it.isHidden }
+            val (hiddenBooks, visibleBooks) = bookRepository.getAllBooks().first().partition { it.isHidden || it.isArchived }
             val bookDetails = visibleBooks.map { book ->
                 BookSizeItem(
                     bookId = book.id,

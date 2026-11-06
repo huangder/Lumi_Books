@@ -40,7 +40,7 @@ android {
         minSdk = 26
         targetSdk = 37
         versionCode = 17
-        versionName = "2.3.11-O"
+        versionName = "2.3.11"
 
         buildConfigField("boolean", "DIAGNOSTIC_BUILD", "false")
         buildConfigField("boolean", "STARTUP_TRACE_ENABLED", "false")
@@ -166,7 +166,7 @@ dependencies {
     // Vendored subset of Fluent UI System Icons containing only vectors used by AppIcons.
     implementation(files("libs/fluentui-system-icons-used.jar"))
     implementation("dev.chrisbanes.haze:haze:1.1.1")
-    implementation("io.github.kyant0:backdrop:1.0.6")
+    implementation(project(":third_party:backdrop"))
     implementation("io.github.kyant0:shapes:1.2.0")
 
     // Navigation

@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.settings
 
+import com.huangder.lumibooks.ui.components.lumiGroupedSurface
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -149,8 +150,7 @@ private fun TranslationSectionCard(content: @Composable ColumnScope.() -> Unit) 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(AppRoundedCornerShape(AppRadius.lg))
-            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
+            .lumiGroupedSurface()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
         content = content

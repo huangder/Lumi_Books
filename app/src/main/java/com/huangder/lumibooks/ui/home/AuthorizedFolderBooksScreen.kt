@@ -11,8 +11,6 @@ import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animateFloatAsState
-import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -25,7 +23,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -43,13 +40,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items as lazyListItems
-import androidx.compose.foundation.shape.CircleShape
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -62,25 +54,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.draw.shadow
@@ -93,7 +77,6 @@ import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
 import com.huangder.lumibooks.ui.components.LocalPredictiveBackEnabled
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
-import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.icons.AppIcons
@@ -275,8 +258,7 @@ internal fun AuthorizedFolderBooksRoute(
         else -> stringResource(
             R.string.folder_books_level_summary,
             items.count { it.isFolder },
-            levelBooks.size,
-            effectiveSelection.size
+            levelBooks.size
         )
     }
 
@@ -393,6 +375,26 @@ internal fun AuthorizedFolderBooksScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         CollapsingPageScaffold(
             drawContentBehindHeader = true,
+            bottomBarOverlay = true,
+            bottomBar = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
+                ) {
+                    ProvideLiquidGlassBackdrop(backdrop.takeIf { useBackdrop }) {
+                        BookPickerSelectionBar(
+                            confirmText = if (selection.isEmpty()) stringResource(R.string.import_confirm)
+                                else stringResource(R.string.folder_import_count, selection.size),
+                            confirmEnabled = selection.isNotEmpty(),
+                            selectAllEnabled = levelBooks.isNotEmpty(),
+                            onConfirm = onConfirm,
+                            onSelectAll = onSelectAll
+                        )
+                    }
+                }
+            },
             title = breadcrumb.lastOrNull()?.name ?: stringResource(R.string.import_select_folder_books),
             state = androidx.compose.runtime.key(breadcrumb.lastOrNull()?.key ?: "root") { com.huangder.lumibooks.ui.components.rememberCollapsingPageState() },
             onBack = if (isSearching) onSearchClose else onBack,
@@ -405,7 +407,6 @@ internal fun AuthorizedFolderBooksScreen(
                     isScanning = isScanning,
                     isSearching = isSearching,
                     searchQuery = searchQuery,
-                    showSelectAll = levelBooks.isNotEmpty(),
                     layoutMode = normalizedLayoutMode,
                     sortMode = sortMode,
                     sortAscending = sortAscending,
@@ -413,7 +414,6 @@ internal fun AuthorizedFolderBooksScreen(
                     onSearchOpen = onSearchOpen,
                     onSearchQueryChange = onSearchQueryChange,
                     onSearchClose = onSearchClose,
-                    onSelectAll = onSelectAll,
                     onSortModeChange = onSortModeChange,
                     onSortAscendingChange = onSortAscendingChange,
                     onLayoutModeChange = { onLayoutModeChange(normalizedLayoutMode % 3 + 1) }
@@ -465,22 +465,6 @@ internal fun AuthorizedFolderBooksScreen(
                 }
             }
         }
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
-        ) {
-            if (useBackdrop) {
-                ProvideLiquidGlassBackdrop(backdrop) {
-                    FolderBooksConfirmButton(enabled = selection.isNotEmpty(), onClick = onConfirm)
-                }
-            } else {
-                FolderBooksConfirmButton(enabled = selection.isNotEmpty(), onClick = onConfirm)
-            }
-        }
     }
 }
 
@@ -492,7 +476,6 @@ internal fun FolderBooksHeader(
     isScanning: Boolean,
     isSearching: Boolean,
     searchQuery: String,
-    showSelectAll: Boolean,
     layoutMode: Int,
     sortMode: FolderBooksSortMode,
     sortAscending: Boolean,
@@ -500,288 +483,25 @@ internal fun FolderBooksHeader(
     onSearchOpen: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
     onSearchClose: () -> Unit,
-    onSelectAll: () -> Unit,
     onSortModeChange: (FolderBooksSortMode) -> Unit,
     onSortAscendingChange: (Boolean) -> Unit,
     onLayoutModeChange: () -> Unit
 ) {
-    val selectAllLabel = stringResource(R.string.import_select_all)
-    val layoutModeLabel = stringResource(R.string.import_layout_mode)
-    val motionEnabled = LocalMotionEnabled.current
-    val eInkMode = LocalEInkMode.current
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = AppSpace.sm)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = AppSpace.lg),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            BoxWithConstraints(modifier = Modifier.weight(1f)) {
-                val collapsedWidth = 44.dp
-                val expandedWidth = maxWidth
-                val rawExpansion by animateFloatAsState(
-                    targetValue = if (isSearching) 1f else 0f,
-                    animationSpec = when {
-                        !motionEnabled || eInkMode -> tween(120)
-                        // Opening stretches past the target and springs back; closing is a plain
-                        // critically damped spring so the shrink eases out without bouncing or
-                        // looking linear.
-                        isSearching -> spring(dampingRatio = 0.45f, stiffness = 280f)
-                        else -> spring(dampingRatio = 1f, stiffness = 320f)
-                    },
-                    label = "folderBooksSearchExpansion"
-                )
-                val expansion = rawExpansion.coerceIn(0f, 1f)
-                // Layout width cannot exceed the row, so the visible overshoot is drawn: the pill
-                // stretches past its full width from its right edge, then settles back.
-                val overshoot = (rawExpansion - 1f).coerceAtLeast(0f)
-                val titleAlpha = 1f - expansion
-                val fieldExpansion = expansion
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .fillMaxWidth()
-                        .alpha(titleAlpha)
-                ) {
-                    if (path.isNotBlank()) {
-                        Text(
-                            text = path,
-                            color = AppColors.TextSecondary,
-                            fontSize = AppType.Caption,
-                            maxLines = 1,
-                            overflow = TextOverflow.StartEllipsis
-                        )
-                    }
-                }
-                FolderBooksSearchPill(
-                    query = searchQuery,
-                    expanded = isSearching,
-                    contentAlpha = fieldExpansion,
-                    onQueryChange = onSearchQueryChange,
-                    onExpand = onSearchOpen,
-                    modifier = Modifier
-                        .testTag("folder-search-pill")
-                    .align(Alignment.CenterEnd)
-                        .width(collapsedWidth + (expandedWidth - collapsedWidth) * expansion)
-                        .height(44.dp)
-                        .graphicsLayer {
-                            scaleX = 1f + overshoot * 0.5f
-                            transformOrigin = TransformOrigin(1f, 0.5f)
-                        }
-                )
-            }
-            Spacer(Modifier.width(AppSpace.sm))
-            if (isScanning) {
-                Box(modifier = Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
-                        color = AppColors.Accent,
-                        strokeWidth = 2.dp
-                    )
-                }
-            } else {
-                LiquidGlassIconButton(
-                    imageVector = AppIcons.ArrowClockwise,
-                    contentDescription = stringResource(R.string.import_folder_books_refresh),
-                    onClick = onRefresh,
-                    size = 44.dp,
-                    iconSize = 20.dp,
-                    normalContainerColor = AppColors.BgGray,
-                    liquidContainerColor = AppColors.CardBg,
-                    liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f)
-                )
-            }
+    BookPickerHeader(
+        path = path,
+        levelSummary = levelSummary,
+        isScanning = isScanning,
+        isSearching = isSearching,
+        searchQuery = searchQuery,
+        layoutMode = layoutMode,
+        onRefresh = onRefresh,
+        onSearchOpen = onSearchOpen,
+        onSearchQueryChange = onSearchQueryChange,
+        onLayoutModeChange = onLayoutModeChange,
+        sortControl = {
+            FolderBooksSortButton(sortMode, sortAscending, onSortModeChange, onSortAscendingChange)
         }
-        Spacer(Modifier.height(AppSpace.sm))
-        androidx.compose.foundation.layout.BoxWithConstraints(
-            Modifier.fillMaxWidth().padding(horizontal = AppSpace.lg)
-        ) {
-            val controls: @Composable () -> Unit = {
-                if (showSelectAll) {
-                    LiquidGlassButton(
-                        onClick = onSelectAll,
-                        modifier = Modifier.heightIn(min = 44.dp),
-                        shape = AppRoundedCornerShape(AppRadius.capsule),
-                        tintedColor = AppColors.Accent,
-                        prominentShadow = false,
-                        contentColor = AppColors.OnAccent
-                    ) {
-                        Text(
-                            text = selectAllLabel,
-                            color = AppColors.OnAccent,
-                            fontSize = AppType.BodySmall,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            softWrap = false,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                        )
-                    }
-                }
-                FolderBooksSortButton(
-                    sortMode = sortMode,
-                    sortAscending = sortAscending,
-                    onSortModeChange = onSortModeChange,
-                    onSortAscendingChange = onSortAscendingChange
-                )
-                LiquidGlassSurface(
-                    controlEdge = true,
-                    shape = CircleShape,
-                    fallbackColor = AppColors.BgGray,
-                    contentScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
-                    onClick = onLayoutModeChange,
-                    effectPadding = 1.dp,
-                    modifier = Modifier.size(44.dp)
-                ) {
-                    Icon(
-                        imageVector = if (layoutMode == 1) AppIcons.List else AppIcons.SquaresFour,
-                        contentDescription = layoutModeLabel,
-                        tint = AppColors.TextPrimary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-            val wrapControls = maxWidth < 360.dp || androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.15f
-            if (wrapControls) {
-                Column(verticalArrangement = Arrangement.spacedBy(AppSpace.sm)) {
-                    Text(levelSummary, color = AppColors.TextSecondary, fontSize = AppType.Caption,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth())
-                    androidx.compose.foundation.layout.FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(AppSpace.sm, Alignment.End),
-                        verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
-                    ) { controls() }
-                }
-            } else {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AppSpace.sm),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Text(levelSummary, color = AppColors.TextSecondary, fontSize = AppType.Caption,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                    controls()
-                }
-            }
-        }
-        Spacer(Modifier.height(AppSpace.xs))
-    }
-}
-
-@Composable
-private fun FolderBooksSearchPill(
-    query: String,
-    expanded: Boolean,
-    contentAlpha: Float,
-    onQueryChange: (String) -> Unit,
-    onExpand: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val focusRequester = remember { FocusRequester() }
-    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
-    var retainedQuery by remember { mutableStateOf(query) }
-    androidx.compose.runtime.SideEffect { if (expanded) retainedQuery = query }
-    val displayedQuery = if (expanded) query else retainedQuery
-    LaunchedEffect(expanded) {
-        if (expanded) {
-            focusRequester.requestFocus()
-            keyboardController?.show()
-        } else {
-            focusManager.clearFocus()
-            keyboardController?.hide()
-        }
-    }
-    LiquidGlassSurface(
-        controlEdge = true,
-        shape = CircleShape,
-        fallbackColor = AppColors.BgGray,
-        contentScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
-        onClick = if (expanded) null else onExpand,
-        effectPadding = 1.dp,
-        modifier = modifier,
-        contentAlignment = Alignment.Center
-    ) {
-        if (expanded || contentAlpha > 0f) {
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .alpha(contentAlpha)
-                    .padding(start = AppSpace.md, end = AppSpace.xs),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = AppIcons.MagnifyingGlass,
-                    contentDescription = null,
-                    tint = AppColors.TextSecondary,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(Modifier.width(AppSpace.sm))
-                BasicTextField(
-                    value = displayedQuery,
-                    onValueChange = onQueryChange,
-                    enabled = expanded,
-                    modifier = Modifier
-                        .weight(1f)
-                        .focusRequester(focusRequester),
-                    singleLine = true,
-                    textStyle = TextStyle(
-                        color = AppColors.TextPrimary,
-                        fontSize = AppType.BodySmall,
-                        fontWeight = FontWeight.Medium
-                    ),
-                    cursorBrush = SolidColor(AppColors.Accent),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
-                    decorationBox = { innerTextField ->
-                        Box {
-                            if (displayedQuery.isEmpty()) {
-                                Text(
-                                    text = stringResource(R.string.import_search_placeholder),
-                                    color = AppColors.TextSecondary,
-                                    fontSize = AppType.BodySmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            innerTextField()
-                        }
-                    }
-                )
-                if (displayedQuery.isNotEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .clickable(
-                                indication = null,
-                                interactionSource = remember { MutableInteractionSource() }
-                            ) { onQueryChange("") },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = AppIcons.X,
-                            contentDescription = stringResource(R.string.import_search_clear),
-                            tint = AppColors.TextSecondary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-            }
-        } else {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = AppIcons.MagnifyingGlass,
-                    contentDescription = stringResource(R.string.search),
-                    tint = AppColors.TextPrimary,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-        }
-    }
+    )
 }
 
 @Composable
@@ -959,11 +679,12 @@ private fun FolderBooksLevel(
                 start = AppSpace.lg,
                 end = AppSpace.lg,
                 top = topPadding + AppSpace.xs,
-                bottom = 118.dp
+                bottom = com.huangder.lumibooks.ui.components.LocalCollapsingPageBottomInset.current + AppSpace.lg
             ),
             verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
         ) {
             lazyListItems(items, key = { it.key }) { item ->
+                Box(Modifier.animateItem()) {
                 if (item.isFolder) {
                     FolderBooksFolderRow(folder = item.folder!!, onClick = onOpenFolder)
                 } else {
@@ -978,6 +699,7 @@ private fun FolderBooksLevel(
                         )
                     }
                 }
+                }
             }
         }
         return
@@ -989,7 +711,7 @@ private fun FolderBooksLevel(
             start = AppSpace.lg,
             end = AppSpace.lg,
             top = topPadding + AppSpace.xs,
-            bottom = 118.dp
+            bottom = com.huangder.lumibooks.ui.components.LocalCollapsingPageBottomInset.current + AppSpace.lg
         ),
         horizontalArrangement = Arrangement.spacedBy(AppSpace.sm),
         verticalArrangement = Arrangement.spacedBy(AppSpace.md)
@@ -1299,32 +1021,7 @@ private fun FolderThumb(
 /** Compact radio-style marker: selected rows show a white check inside the accent circle. */
 @Composable
 private fun SelectionIndicator(isSelected: Boolean) {
-    Box(
-        modifier = Modifier
-            .size(20.dp)
-            .clip(CircleShape)
-            .then(
-                if (isSelected) {
-                    Modifier.background(AppColors.Accent)
-                } else {
-                    Modifier.border(
-                        width = 1.5.dp,
-                        color = AppColors.TextSecondary.copy(alpha = 0.6f),
-                        shape = CircleShape
-                    )
-                }
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        if (isSelected) {
-            Icon(
-                imageVector = AppIcons.Check,
-                contentDescription = null,
-                tint = AppColors.OnAccent,
-                modifier = Modifier.size(13.dp)
-            )
-        }
-    }
+    com.huangder.lumibooks.ui.components.LumiCheckbox(checked = isSelected, onCheckedChange = null, size = 20.dp)
 }
 
 @Composable
@@ -1341,46 +1038,6 @@ private fun ImportedBadge() {
             fontSize = AppType.Caption,
             fontWeight = FontWeight.Medium,
             maxLines = 1
-        )
-    }
-}
-
-@Composable
-private fun FolderBooksConfirmButton(
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    val shape = AppRoundedCornerShape(AppRadius.lg)
-    LiquidGlassButton(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 58.dp)
-            .then(
-                if (enabled && LocalAppTheme.current != "liquid_glass") {
-                    Modifier.shadow(
-                        elevation = 28.dp, shape = shape, clip = false,
-                        ambientColor = Color.Black.copy(alpha = 0.10f),
-                        spotColor = Color.Black.copy(alpha = 0.08f)
-                    )
-                } else {
-                    Modifier
-                }
-            ),
-        shape = shape,
-        tintedColor = if (enabled) AppColors.Accent else AppColors.BgGray,
-        prominentShadow = enabled,
-        contentColor = if (enabled) AppColors.OnAccent else AppColors.TextSecondary
-    ) {
-        Text(
-            text = stringResource(R.string.import_confirm),
-            color = if (enabled) AppColors.OnAccent else AppColors.TextSecondary,
-            fontSize = AppType.Body,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            softWrap = false,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
     }
 }

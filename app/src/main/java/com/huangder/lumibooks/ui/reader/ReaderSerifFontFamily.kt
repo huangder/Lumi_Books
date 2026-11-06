@@ -13,3 +13,10 @@ internal fun rememberReaderSerifFontFamily(weight: Int = 400): FontFamily {
     val locale = LocalConfiguration.current.locales[0]
     return remember(context, weight, locale) { FontFamily(readerSerifTypeface(context, weight)) }
 }
+
+@Composable
+internal fun rememberReaderSerifFontFamily(weight: Float): FontFamily {
+    val context = LocalContext.current
+    val locale = LocalConfiguration.current.locales[0]
+    return remember(context, weight, locale) { FontFamily(readerSerifTypeface(context, weight)) }
+}

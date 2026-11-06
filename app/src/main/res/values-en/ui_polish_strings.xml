@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="selection_deselect_all">Deselect all</string>
+    <string name="folder_import_count">Confirm import of %1$d books</string>
+    <string name="txt_toc_rules_label">TXT chapter rules</string>
+    <string name="txt_toc_rules_empty">No custom rules yet</string>
+    <string name="txt_toc_rules_import">Import</string>
+    <string name="txt_toc_rules_export">Export</string>
+    <string name="book_review_unsaved_title">Discard unsaved changes?</string>
+    <string name="book_review_unsaved_message">You changed the review or rating. Leaving now won’t keep those changes.</string>
+    <string name="book_review_discard">Discard</string>
+</resources>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="archive_book">보관</string>
+    <string name="archived_books_title">보관된 도서</string>
+    <string name="archive_summary">보관된 도서는 책장에 표시되지 않습니다. 복원하면 다시 읽을 수 있습니다. 독서 통계와 노트는 유지됩니다.</string>
+    <string name="archive_empty">보관된 도서가 없습니다</string>
+    <string name="restore_book">복원</string>
+    <string name="archive_book_success">도서를 보관했습니다</string>
+    <string name="archive_book_failed">도서를 보관하지 못했습니다. 다시 시도하세요.</string>
+    <string name="archive_restore_success">도서를 복원했습니다</string>
+    <string name="archive_restore_failed">도서를 복원하지 못했습니다. 다시 시도하세요.</string>
+    <string name="archive_load_failed">보관된 도서를 불러오지 못했습니다</string>
+    <string name="archive_reader_message">보관된 도서입니다. 보관된 도서에서 먼저 복원한 후 읽어 주세요.</string>
+    <string name="archive_retry">다시 시도</string>
+    <string name="archive_restoring">복원 중…</string>
+</resources>

@@ -44,6 +44,7 @@ import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.data.sync.LocalNetworkAccessManager
 import com.huangder.lumibooks.data.sync.WebdavAutoSyncScheduler
 import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
+import com.huangder.lumibooks.domain.model.AppUiIconStyle
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.domain.repository.BookRepository
@@ -723,6 +724,7 @@ class MainActivity : ComponentActivity() {
         val appFontLaunchSnapshot = com.huangder.lumibooks.util.LaunchThemeController.themeSnapshot(this)
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = LaunchThemeController.themeSnapshot(this).appTheme)
+            val appUiIconStyle by dataStoreManager.appUiIconStyle.collectAsState(initial = AppUiIconStyle.DEFAULT.storedValue)
             val startupScreen by produceState<String?>(initialValue = null, dataStoreManager) {
                 value = dataStoreManager.startupScreen.first()
             }
@@ -805,15 +807,19 @@ class MainActivity : ComponentActivity() {
             val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = com.huangder.lumibooks.util.LaunchThemeController.themeSnapshot(this).menuAnimationStyle)
             val liquidGlassStyle by dataStoreManager.liquidGlassStyle
                 .collectAsState(initial = appFontLaunchSnapshot.liquidGlassStyle)
+            val liquidGlassSamplingQuality by dataStoreManager.liquidGlassSamplingQuality
+                .collectAsState(initial = appFontLaunchSnapshot.liquidGlassSamplingQuality)
             val reduceTransparencyEnabled by dataStoreManager.reduceTransparencyEnabled
                 .collectAsState(initial = appFontLaunchSnapshot.reduceTransparencyEnabled)
             EBookReaderTheme(
                 liquidGlassStyle = liquidGlassStyle,
+                liquidGlassSamplingQuality = liquidGlassSamplingQuality,
                 reduceTransparencyEnabled = reduceTransparencyEnabled,
                 menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
                 darkTheme = isDark,
                 dynamicColor = effectiveAppTheme == "material3",
                 appTheme = appTheme,
+                appUiIconStyle = AppUiIconStyle.fromStoredValue(appUiIconStyle),
                 appAccentColor = appAccentColor,
                 liquidGlassTransparency = liquidGlassTransparency,
                 liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled && !eInkModeEnabled,

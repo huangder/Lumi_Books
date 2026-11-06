@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="archive_book">归档</string>
+    <string name="archived_books_title">已归档的图书</string>
+    <string name="archive_summary">归档的图书不显示在书架中。恢复后可继续阅读，阅读统计和笔记始终保留。</string>
+    <string name="archive_empty">暂无已归档的图书</string>
+    <string name="restore_book">恢复</string>
+    <string name="archive_book_success">图书已归档</string>
+    <string name="archive_book_failed">归档失败，请重试</string>
+    <string name="archive_restore_success">图书已恢复</string>
+    <string name="archive_restore_failed">恢复失败，请重试</string>
+    <string name="archive_load_failed">无法加载已归档的图书</string>
+    <string name="archive_reader_message">此图书已归档，请先在“已归档的图书”中恢复后再阅读。</string>
+    <string name="archive_retry">重试</string>
+    <string name="archive_restoring">恢复中…</string>
+</resources>

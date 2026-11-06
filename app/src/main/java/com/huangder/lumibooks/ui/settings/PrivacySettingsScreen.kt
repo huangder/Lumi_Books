@@ -46,7 +46,7 @@ import com.huangder.lumibooks.ui.theme.cardOutline
 import com.huangder.lumibooks.ui.components.GroupedCard
 import com.huangder.lumibooks.ui.components.GroupedRowDivider
 
-/** Settings → 隐私. Every entry that changes access first asks for the current passcode. */
+/** Settings → 隐私. Only hidden-library access is gated; archives open directly. */
 @Composable
 fun PrivacySettingsRoute(onBack: () -> Unit, lockViewModel: HiddenLibraryLockViewModel = hiltViewModel()) {
     val context = LocalContext.current
@@ -72,6 +72,7 @@ fun PrivacySettingsRoute(onBack: () -> Unit, lockViewModel: HiddenLibraryLockVie
                     hasPasscode = lock.hasPasscode,
                     biometricAvailable = biometricAvailable,
                     biometricEnabled = lock.biometricEnabled,
+                    onOpenArchivedBooks = { com.huangder.lumibooks.ui.privacy.openArchivedBooks(context) },
                     onOpenHiddenLibrary = { gatePurpose = PasscodeGatePurpose.Unlock },
                     onChangePasscode = { gatePurpose = PasscodeGatePurpose.ChangePasscode },
                     onBiometricChange = { enabled ->
@@ -116,11 +117,12 @@ fun PrivacySettingsRoute(onBack: () -> Unit, lockViewModel: HiddenLibraryLockVie
 }
 
 @Composable
-private fun PrivacySettingsContent(
+internal fun PrivacySettingsContent(
     hasPasscode: Boolean,
     biometricAvailable: Boolean,
     biometricEnabled: Boolean,
     onOpenHiddenLibrary: () -> Unit,
+    onOpenArchivedBooks: () -> Unit,
     onChangePasscode: () -> Unit,
     onBiometricChange: (Boolean) -> Unit
 ) {
@@ -133,6 +135,10 @@ private fun PrivacySettingsContent(
                 ),
                 onClick = onOpenHiddenLibrary
             )
+        }
+        androidx.compose.foundation.layout.Spacer(Modifier.height(12.dp))
+        PrivacyCard {
+            SettingsNavigationRow(label = stringResource(R.string.archived_books_title), onClick = onOpenArchivedBooks)
         }
         if (hasPasscode) {
             Text(

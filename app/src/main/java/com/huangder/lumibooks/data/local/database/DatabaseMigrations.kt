@@ -5,6 +5,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.huangder.lumibooks.domain.model.AnnotationTags
 
 object DatabaseMigrations {
+    val MIGRATION_26_27 = object : Migration(26, 27) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE books ADD COLUMN isArchived INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
     val MIGRATION_25_26 = object : Migration(25, 26) {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("CREATE TABLE IF NOT EXISTS tag_groups (id TEXT NOT NULL PRIMARY KEY, type TEXT NOT NULL, name TEXT NOT NULL, normalizedName TEXT NOT NULL, updatedAt INTEGER NOT NULL, isDeleted INTEGER NOT NULL DEFAULT 0)")

@@ -402,7 +402,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var currentBottomOverlayInsetDp: Float = 0f
     private var currentParagraphSpacingDp: Float = 0f
     private var currentFirstLineIndent: Float = 2f
-    private var currentBodyFontWeight: Int = 400
+    private var currentBodyFontWeight: Float = 400f
     private var currentBionicReadingEnabled: Boolean = false
     private var currentUseDisplayDensityForSpans: Boolean = false
     private var currentChineseMode: String = "original"
@@ -927,7 +927,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         bottomOverlayInsetDp: Float = 0f,
         paragraphSpacingDp: Float = 2f,
         firstLineIndent: Float = 2f,
-        bodyFontWeight: Int = 400,
+        bodyFontWeight: Float = 400f,
         bionicReadingEnabled: Boolean = false,
         useDisplayDensityForSpans: Boolean = false,
         writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL,
@@ -959,7 +959,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             currentBottomOverlayInsetDp = bottomOverlayInsetDp
             currentParagraphSpacingDp = paragraphSpacingDp
             currentFirstLineIndent = firstLineIndent
-            currentBodyFontWeight = bodyFontWeight.coerceIn(100, 900)
+            currentBodyFontWeight = (bodyFontWeight * 10f).roundToInt().coerceIn(1000, 9000) / 10f
             currentBionicReadingEnabled = bionicReadingEnabled
             currentUseDisplayDensityForSpans = useDisplayDensityForSpans
             currentWritingMode = writingMode
@@ -984,7 +984,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             Math.abs(currentBottomOverlayInsetDp - bottomOverlayInsetDp) > 0.5f
         val paragraphSpacingChanged = Math.abs(currentParagraphSpacingDp - paragraphSpacingDp) > 0.01f
         val firstLineIndentChanged = Math.abs(currentFirstLineIndent - firstLineIndent) > 0.01f
-        val normalizedBodyFontWeight = bodyFontWeight.coerceIn(100, 900)
+        val normalizedBodyFontWeight = (bodyFontWeight * 10f).roundToInt().coerceIn(1000, 9000) / 10f
         val bodyFontWeightChanged = currentBodyFontWeight != normalizedBodyFontWeight
         val bionicReadingChanged = currentBionicReadingEnabled != bionicReadingEnabled
         val paginationLayoutChanged =
@@ -1340,7 +1340,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     /** 正文字重开关（PR #19 #24）：仅横排分页生效 */
     fun setBoldText(enabled: Boolean) {
-        setBodyFontWeight(if (enabled) 700 else 400)
+        setBodyFontWeight(if (enabled) 700f else 400f)
     }
 
     fun setLongPressSelectionRange(range: LongPressSelectionRange) {
@@ -1438,8 +1438,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         if (previous?.edgeTapMode != config.edgeTapMode) setEdgeTapMode(config.edgeTapMode)
     }
 
-    fun setBodyFontWeight(weight: Int) {
-        val normalized = weight.coerceIn(100, 900)
+    fun setBodyFontWeight(weight: Float) {
+        val normalized = (weight * 10f).roundToInt().coerceIn(1000, 9000) / 10f
         if (currentBodyFontWeight == normalized) return
         currentBodyFontWeight = normalized
         updatePaginationLayoutIdentity()

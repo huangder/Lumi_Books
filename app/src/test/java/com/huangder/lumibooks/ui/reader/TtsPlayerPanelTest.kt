@@ -182,6 +182,10 @@ class TtsPlayerPanelTest {
             compose.runOnIdle { position.value = ReaderTtsPosition(if (side == ReaderTtsDock.LEFT) 0f else 1f, .5f, side, true) }
             compose.waitForIdle()
             compose.onNodeWithTag("reader-tts-edge-handle").assertIsDisplayed()
+            val handleBounds = compose.onNodeWithTag("reader-tts-edge-handle").fetchSemanticsNode().boundsInRoot
+            assertEquals("Docked handle must reach its screen edge",
+                if (side == ReaderTtsDock.LEFT) 0f else 360f,
+                if (side == ReaderTtsDock.LEFT) handleBounds.left else handleBounds.right, .01f)
             capture("handle-${side.name.lowercase()}")
             compose.onNodeWithTag("reader-tts-edge-handle").performTouchInput {
                 swipe(center, center + Offset(if (side == ReaderTtsDock.LEFT) 80f else -80f, -60f), 500)

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="selection_deselect_all">すべて解除</string>
+    <string name="folder_import_count">%1$d 冊のインポートを確認</string>
+    <string name="txt_toc_rules_label">TXT 目次ルール</string>
+    <string name="txt_toc_rules_empty">カスタムルールはまだありません</string>
+    <string name="txt_toc_rules_import">読み込む</string>
+    <string name="txt_toc_rules_export">書き出す</string>
+    <string name="book_review_unsaved_title">保存していない変更を破棄しますか？</string>
+    <string name="book_review_unsaved_message">レビューや評価の変更は、このまま戻ると保存されません。</string>
+    <string name="book_review_discard">破棄</string>
+</resources>

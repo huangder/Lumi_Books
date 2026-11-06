@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.components
 
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
@@ -61,4 +63,22 @@ internal fun AppSheetGrabber(modifier: Modifier = Modifier) {
             .size(width = 36.dp, height = 5.dp)
             .background(AppColors.TextSecondary.copy(alpha = 0.3f), AppRoundedCornerShape(2.5.dp))
     )
+}
+
+/**
+ * Standard sheet geometry: height capped to 80% of the real screen (never past the window on
+ * short or split screens), with top/bottom gaps that clear the navigation bar even when a dialog
+ * window reports no insets. Sheet content should use these instead of fixed heights/paddings.
+ */
+@androidx.compose.runtime.Composable
+internal fun appSheetMaxHeight(): androidx.compose.ui.unit.Dp =
+    (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * .8f).dp
+
+@androidx.compose.runtime.Composable
+internal fun appSheetPadding(horizontal: androidx.compose.ui.unit.Dp = com.huangder.lumibooks.ui.theme.AppSpace.lg): androidx.compose.foundation.layout.PaddingValues {
+    val navigation = androidx.compose.foundation.layout.WindowInsets.navigationBars
+        .asPaddingValues().calculateBottomPadding()
+    return androidx.compose.foundation.layout.PaddingValues(start = horizontal, end = horizontal,
+        top = com.huangder.lumibooks.ui.theme.AppSpace.md + 4.dp,
+        bottom = maxOf(navigation, com.huangder.lumibooks.ui.theme.AppSpace.md) + com.huangder.lumibooks.ui.theme.AppSpace.lg)
 }

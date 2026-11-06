@@ -2765,7 +2765,7 @@ private fun ReaderScreenContent(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = stringResource(R.string.reader_load_failed),
+                    text = stringResource(if (uiState.book?.isArchived == true) R.string.archived_books_title else R.string.reader_load_failed),
                     fontSize = AppType.Section,
                     fontWeight = FontWeight.Bold,
                     color = AppColors.TextPrimary
@@ -2777,6 +2777,12 @@ private fun ReaderScreenContent(
                     color = AppColors.TextSecondary
                 )
                 Spacer(Modifier.height(16.dp))
+                if (uiState.book?.isArchived == true) {
+                    TextButton(onClick = {
+                        com.huangder.lumibooks.ui.privacy.openArchivedBooks(context)
+                        exitReader()
+                    }) { Text(stringResource(R.string.archived_books_title), color = AppColors.Accent) }
+                }
                 TextButton(onClick = exitReader) {
                     Text(stringResource(R.string.back), color = AppColors.Accent)
                 }
@@ -2924,6 +2930,7 @@ private fun ReaderScreenContent(
     } else {
         menuBgColor.copy(alpha = 0.18f)
     }
+    val glassSamplingQuality = com.huangder.lumibooks.ui.theme.LocalLiquidGlassSamplingQuality.current
     val readerGlassBackdrop = rememberLayerBackdrop(onDraw = {
         // The lens must sample the paper as well as the transparent reader content.
         drawRect(composeBgColor)
@@ -2931,7 +2938,7 @@ private fun ReaderScreenContent(
     })
     val nativeGlassReader = isBookLayout && !isMarkdownNative
     var nativeGlassProvider by remember(bookId) {
-        mutableStateOf<(() -> com.huangder.lumibooks.ui.components.GlassBitmapBackdrop?)?>(null)
+        mutableStateOf<com.huangder.lumibooks.ui.components.GlassSnapshotProvider?>(null)
     }
     val glassView = androidx.compose.ui.platform.LocalView.current
     val glassConfiguration = LocalConfiguration.current
@@ -2943,8 +2950,8 @@ private fun ReaderScreenContent(
             renderingTheme, readerBackgroundColorInt, nativeGlassProvider),
         frozen = freezeGlass
     ) {
-        nativeGlassProvider?.invoke() ?: if (!freezeGlass) {
-            com.huangder.lumibooks.ui.components.captureWindowGlassBackdrop(glassView)
+        nativeGlassProvider?.invoke(glassSamplingQuality) ?: if (!freezeGlass) {
+            com.huangder.lumibooks.ui.components.captureWindowGlassBackdrop(glassView, glassSamplingQuality)
         } else null
     }
     // Keep the newest settled page for the next hero opening. Only an unobstructed, static page
@@ -3615,6 +3622,7 @@ private fun ReaderScreenContent(
                     comicModeEnabled = uiState.comicModeEnabled,
                     ttsFollowEnabled = ttsReaderFollowEnabled,
                     onManualScrollStarted = ::beginManualReaderBrowsing,
+                    ttsFollowUserPageTurns = ttsState.followUserPageTurns,
                     imageAdjustments = uiState.imageAdjustments.forDisplay(eInkMode),
                     bodyFontWeight = uiState.bodyFontWeight
                 )
@@ -4759,6 +4767,15 @@ private fun ReaderScreenContent(
                 )
             }
 
+            val darkMaskOpacity = uiState.activeThemeDarkMaskOpacity()
+            if (darkMaskOpacity > 0f) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = darkMaskOpacity))
+                )
+            }
+
             // 目录底部弹出
             TocSheet(
                 visible = showToc,
@@ -4892,6 +4909,7 @@ private fun ReaderScreenContent(
                 customFonts = uiState.customFonts,
                 currentPreserveEpubBackground = effectivePreserveEpubBackground,
                 currentBrightness = uiState.brightness,
+                currentDarkMaskOpacity = uiState.activeThemeDarkMaskOpacity(),
                 currentOptimizeLayout = uiState.optimizeLayout,
                 currentUseEpubCss = uiState.useEpubCss,
                 supportsBookLayout = supportsBookLayout && !isMarkdownNative,
@@ -4927,6 +4945,8 @@ private fun ReaderScreenContent(
                 onReaderButtonContrastChange = viewModel::saveReaderButtonContrastEnabled,
                 onPreserveEpubBackgroundChange = viewModel::savePreserveEpubBackground,
                 onBrightnessChange = { viewModel.saveBrightness(it) },
+                onDarkMaskOpacityChange = viewModel::saveReaderDarkMaskOpacity,
+                onDarkMaskOpacityPreview = viewModel::previewReaderDarkMaskOpacity,
                 onOptimizeLayoutChange = { viewModel.saveOptimizeLayout(it) },
                 onUseEpubCssChange = { viewModel.saveUseEpubCss(it) },
                 onRenderModeChange = viewModel::saveRenderMode,
@@ -7845,11 +7865,12 @@ internal fun ContinuousScrollReader(
     onSelectionCleared: () -> Unit = {},
     onViewportAnchor: (ContinuousViewportAnchor?) -> Unit = {},
     onVisibleCharacters: (List<ReaderVisibleCharacters>) -> Unit = {},
-    bodyFontWeight: Int = 400,
+    bodyFontWeight: Float = 400f,
     autoScrollRunning: Boolean = false,
     autoScrollSpeed: Float = 1f,
     onAutoScrollEnd: () -> Unit = {},
     ttsFollowEnabled: Boolean = true,
+    ttsFollowUserPageTurns: Boolean = false,
     onManualScrollStarted: () -> Unit = {},
     listState: androidx.compose.foundation.lazy.LazyListState =
         rememberLazyListState(
@@ -8220,13 +8241,28 @@ internal fun ContinuousScrollReader(
     var userScrollGeneration by remember { mutableIntStateOf(0) }
     var userDragging by remember { mutableStateOf(false) }
     var manualScrollBlocksTts by remember { mutableStateOf(false) }
+    var awaitingManualTtsPosition by remember { mutableStateOf(false) }
+    var manualTtsPositionBeforeCommit by remember { mutableStateOf<TtsSentencePosition?>(null) }
     val latestManualScrollStarted by rememberUpdatedState(onManualScrollStarted)
     val latestTtsFollowEnabled by rememberUpdatedState(ttsFollowEnabled)
-    // Only an explicit return/start changes false back to true. Finger-up does not resume following.
+    val latestTtsFollowUserPageTurns by rememberUpdatedState(ttsFollowUserPageTurns)
+    val latestTtsSentence by rememberUpdatedState(ttsCurrentSentence)
+    // With manual page-follow off, only an explicit return/start resumes visual following.
     LaunchedEffect(ttsFollowEnabled) {
         if (ttsFollowEnabled) manualScrollBlocksTts = false
     }
+    // Wait for audio to adopt the manual destination before following it again; clearing the
+    // block at finger-up would briefly scroll back to the sentence from the previous page.
+    LaunchedEffect(ttsCurrentSentence, ttsFollowUserPageTurns, awaitingManualTtsPosition) {
+        if (latestTtsFollowUserPageTurns && awaitingManualTtsPosition &&
+            ttsCurrentSentence != manualTtsPositionBeforeCommit
+        ) {
+            awaitingManualTtsPosition = false
+            manualScrollBlocksTts = false
+        }
+    }
     fun beginManualScroll() {
+        awaitingManualTtsPosition = false
         if (!manualScrollBlocksTts) {
             manualScrollBlocksTts = true
             latestManualScrollStarted()
@@ -8674,6 +8710,10 @@ internal fun ContinuousScrollReader(
             }
             userScrollPending = false
             val fraction = (-stableOffset).toFloat().div(stableSize).coerceIn(0f, 0.9999f)
+            if (latestTtsFollowUserPageTurns) {
+                manualTtsPositionBeforeCommit = latestTtsSentence
+                awaitingManualTtsPosition = true
+            }
             onChapterVisible(stableIndex, fraction, TtsPageChangeOrigin.USER)
         }
     }

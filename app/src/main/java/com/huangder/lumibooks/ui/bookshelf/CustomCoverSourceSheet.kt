@@ -54,7 +54,7 @@ fun CustomCoverSourceSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 24.dp, end = 24.dp, top = 22.dp, bottom = 20.dp)
+                .padding(com.huangder.lumibooks.ui.components.appSheetPadding())
         ) {
             com.huangder.lumibooks.ui.components.AppSheetHeader(
                 title = stringResource(R.string.cover_source_title), onClose = onDismiss)

@@ -7,6 +7,7 @@ import androidx.core.content.res.ResourcesCompat
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.util.DownloadedFonts
 import java.io.File
+import kotlin.math.roundToInt
 
 /** Typeface and weight used by every reader renderer. */
 internal data class ResolvedReaderTypeface(
@@ -20,7 +21,16 @@ internal fun resolveReaderTypeface(
     customFontPath: String?,
     weight: Int
 ): ResolvedReaderTypeface {
-    val normalizedWeight = weight.coerceIn(100, 900)
+    return resolveReaderTypeface(context, fontType, customFontPath, weight.toFloat())
+}
+
+internal fun resolveReaderTypeface(
+    context: Context,
+    fontType: String,
+    customFontPath: String?,
+    weight: Float
+): ResolvedReaderTypeface {
+    val normalizedWeight = (weight * 10f).roundToInt().coerceIn(1000, 9000) / 10f
     if (fontType == "serif") return ResolvedReaderTypeface(readerSerifTypeface(context, normalizedWeight), false)
     if (fontType.startsWith("custom") && customFontPath != null) {
         readerFileFont(File(customFontPath)).resolve(normalizedWeight)?.let { return it }
@@ -42,10 +52,10 @@ internal fun resolveReaderTypeface(
     // Android's weight factory is reliable for platform families, but can lose
     // the family metadata of file-backed fonts and make them fall back.
     val typeface = if (!isCustomFamily && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-        Typeface.create(base, normalizedWeight, false)
+        Typeface.create(base, normalizedWeight.roundToInt(), false)
     } else {
         base
     }
-    val fakeBold = isCustomFamily && normalizedWeight >= 600
+    val fakeBold = isCustomFamily && normalizedWeight >= 600f
     return ResolvedReaderTypeface(typeface, fakeBold)
 }

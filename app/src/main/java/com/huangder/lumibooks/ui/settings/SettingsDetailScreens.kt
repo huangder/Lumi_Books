@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.settings
 
+import com.huangder.lumibooks.ui.components.lumiRowClickable
 import com.huangder.lumibooks.ui.components.AppDialogAction
 import com.huangder.lumibooks.ui.components.AppDialogActionRole
 
@@ -158,6 +159,7 @@ import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.domain.model.HighlightPalette
 import com.huangder.lumibooks.domain.model.AppIconStyle
+import com.huangder.lumibooks.domain.model.AppUiIconStyle
 import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
 import com.huangder.lumibooks.domain.model.appAccentHex
 import com.huangder.lumibooks.domain.model.normalizeAppAccentHex
@@ -568,7 +570,7 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
                 if (enabled && !hasOverlayPermission) showPermissionDialog = true
             }
         )
-        if (!hasOverlayPermission) {
+        com.huangder.lumibooks.ui.components.LumiReveal(!hasOverlayPermission) {
             SettingsDivider()
             Row(
                 modifier = Modifier.fillMaxWidth().clickable { openOverlayPermissionSettings() }.padding(AppSpace.md),
@@ -836,7 +838,7 @@ private fun TxtTocRulesManagerRow(viewModel: SettingsViewModel) {
     }
 
     SettingsNavigationRow(
-        label = "TXT目录规则",
+        label = stringResource(R.string.txt_toc_rules_label),
         supportingText = stringResource(R.string.txt_toc_library_summary, rules.size, thirdPartyRules.size),
         onClick = { dialogVisible = true }
     )
@@ -844,10 +846,10 @@ private fun TxtTocRulesManagerRow(viewModel: SettingsViewModel) {
     if (dialogVisible) {
         LiquidGlassAlertDialog(
             onDismissRequest = { dialogVisible = false },
-            titleText = "TXT目录规则库",
+            titleText = stringResource(R.string.txt_toc_rules_label),
             text = {
                 Column(Modifier.fillMaxWidth().heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
-                    if (rules.isEmpty()) Text("暂无自定义规则", color = AppColors.TextSecondary)
+                    if (rules.isEmpty()) Text(stringResource(R.string.txt_toc_rules_empty), color = AppColors.TextSecondary)
                     rules.forEach { rule ->
                         Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
@@ -856,7 +858,7 @@ private fun TxtTocRulesManagerRow(viewModel: SettingsViewModel) {
                             }
                             IconButton(onClick = {
                                 viewModel.saveTxtTocCustomRules(rules.filterNot { it.id == rule.id })
-                            }) { Icon(AppIcons.TrashSimple, "删除", tint = AppColors.TextSecondary) }
+                            }) { Icon(AppIcons.TrashSimple, stringResource(R.string.delete), tint = AppColors.TextSecondary) }
                         }
                     }
                     Spacer(Modifier.height(AppSpace.sm))
@@ -893,7 +895,7 @@ private fun TxtTocRulesManagerRow(viewModel: SettingsViewModel) {
                             }
                             IconButton(onClick = {
                                 viewModel.saveTxtTocThirdPartyRules(thirdPartyRules.filterNot { it.id == rule.id })
-                            }) { Icon(AppIcons.TrashSimple, "删除", tint = AppColors.TextSecondary) }
+                            }) { Icon(AppIcons.TrashSimple, stringResource(R.string.delete), tint = AppColors.TextSecondary) }
                         }
                     }
                     FlowRow {
@@ -924,12 +926,12 @@ private fun TxtTocRulesManagerRow(viewModel: SettingsViewModel) {
             },
             actions = listOf(
                 AppDialogAction(
-                    "导入",
+                    stringResource(R.string.txt_toc_rules_import),
                     { importLauncher.launch(arrayOf("application/json", "text/*")) },
                     AppDialogActionRole.Secondary
                 ),
                 AppDialogAction(
-                    "导出",
+                    stringResource(R.string.txt_toc_rules_export),
                     {
                         viewModel.exportTxtTocRules { payload ->
                             pendingExport = payload
@@ -939,7 +941,7 @@ private fun TxtTocRulesManagerRow(viewModel: SettingsViewModel) {
                     AppDialogActionRole.Secondary
                 ),
                 AppDialogAction(
-                    "完成",
+                    stringResource(R.string.done),
                     { dialogVisible = false }
                 )
             ))
@@ -1013,7 +1015,7 @@ private fun FloatingSubtitleValueInputDialog(
                     fontSize = AppType.Caption,
                     color = AppColors.TextSecondary
                 )
-                OutlinedTextField(
+                com.huangder.lumibooks.ui.components.LumiTextField(
                     value = input,
                     onValueChange = { candidate ->
                         if (candidate.count { it == '.' } <= 1 && candidate.all { it.isDigit() || it == '.' }) {
@@ -1115,6 +1117,18 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
         ) {
             context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "icon_style"))
         }
+        SettingsDivider()
+        DropdownSettingRow(
+            label = stringResource(R.string.app_ui_icon_style_title),
+            options = listOf(
+                AppUiIconStyle.FILLED_COLORFUL.storedValue to stringResource(R.string.app_ui_icon_style_filled_colorful),
+                AppUiIconStyle.OUTLINE_COLORFUL.storedValue to stringResource(R.string.app_ui_icon_style_outline_colorful),
+                AppUiIconStyle.FILLED_MONOCHROME.storedValue to stringResource(R.string.app_ui_icon_style_filled_monochrome),
+                AppUiIconStyle.OUTLINE_MONOCHROME.storedValue to stringResource(R.string.app_ui_icon_style_outline_monochrome)
+            ),
+            selected = AppUiIconStyle.normalize(uiState.appUiIconStyle),
+            onSelect = viewModel::saveAppUiIconStyle
+        )
     }
 
     SettingsSectionTitle(stringResource(R.string.settings_section_app_fonts), "display_fonts")
@@ -1246,28 +1260,13 @@ internal fun TtsProviderOptionRow(
     onClick: () -> Unit,
     supportingText: String? = null
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 10.dp, horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RadioButton(selected = selected, onClick = onClick)
-        Spacer(Modifier.width(AppSpace.sm))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontSize = AppType.Body, color = AppColors.TextPrimary)
-            supportingText?.let {
-                Text(
-                    text = it,
-                    fontSize = AppType.Caption,
-                    color = AppColors.TextSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-    }
+    // Dialog choice list: iOS checkmark selection instead of a Material radio button.
+    com.huangder.lumibooks.ui.components.LumiCheckRow(
+        title = title,
+        selected = selected,
+        onClick = onClick,
+        subtitle = supportingText
+    )
 }
 
 @Composable
@@ -1406,7 +1405,7 @@ internal fun ThemeColorDialog(
                 }
             )
             Spacer(Modifier.height(AppSpace.sm))
-            OutlinedTextField(
+            com.huangder.lumibooks.ui.components.LumiTextField(
                 value = hexInput,
                 onValueChange = { value ->
                     hexInput = value.take(7)
@@ -1530,17 +1529,9 @@ private val FormatColors = mapOf(
 /** 等宽数字排版（苹果细节：数值列位数对齐、不跳动） */
 private val TabularFigures = TextStyle(fontFeatureSettings = "tnum")
 
-/** 苹果式 iOS 警示红（M3 动态色回退 error、墨水屏回退黑色） */
+/** Destructive tint: the shared theme token (handles Material3 and e-ink fallbacks). */
 private val DestructiveRed: Color
-    @Composable get() = if (LocalEInkMode.current) {
-        Color.Black
-    } else if (LocalUseMaterial3Theme.current) {
-        MaterialTheme.colorScheme.error.copy(alpha = 0.84f)
-    } else if (LocalIsDarkTheme.current) {
-        Color(0xFFE07871)
-    } else {
-        Color(0xFFD45F58)
-    }
+    @Composable get() = AppColors.Destructive
 
 @Composable
 fun StorageDetail(viewModel: SettingsViewModel, onOpenBooks: () -> Unit) {
@@ -1719,20 +1710,12 @@ fun StorageBooksDetail(viewModel: SettingsViewModel) {
 
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = AppSpace.page)) {
         if (info.isCalculating && info.bookDetails.isEmpty()) {
-            Text(
-                text = stringResource(R.string.calculating),
-                modifier = Modifier.fillMaxWidth().padding(vertical = AppSpace.xl),
-                color = AppColors.TextSecondary,
-                fontSize = AppType.BodySmall,
-                textAlign = TextAlign.Center
-            )
+            com.huangder.lumibooks.ui.components.LumiLoading(caption = stringResource(R.string.calculating))
         } else if (info.bookDetails.isEmpty()) {
-            Text(
-                text = stringResource(R.string.storage_books_empty),
-                modifier = Modifier.fillMaxWidth().padding(vertical = AppSpace.xl),
-                color = AppColors.TextSecondary,
-                fontSize = AppType.BodySmall,
-                textAlign = TextAlign.Center
+            com.huangder.lumibooks.ui.components.EmptyState(
+                message = stringResource(R.string.storage_books_empty),
+                icon = AppIcons.Books,
+                modifier = Modifier.fillMaxWidth().padding(vertical = AppSpace.xl)
             )
         } else {
             Text(
@@ -2539,17 +2522,9 @@ fun AboutDetail(viewModel: SettingsViewModel) {
         )
     }
 
-    val currentVersion = remember(context) {
-        try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.1.00"
-        } catch (_: Exception) {
-            "1.1.00"
-        }
-    }
-
     LumiAboutHeader(
         unlocked = uiState.lumiEasterEggUnlocked,
-        currentVersion = currentVersion,
+        currentVersion = "Filmy",
         isCheckingUpdate = update.isChecking,
         onCheckUpdate = { viewModel.checkUpdate(isAutoCheck = false) },
         onUnlock = viewModel::unlockLumiEasterEgg
@@ -2630,10 +2605,16 @@ fun ChangelogDetail() {
         }
     }
 
+    if (entries.isEmpty()) {
+        com.huangder.lumibooks.ui.components.EmptyState(stringResource(R.string.no_content),
+            Modifier.fillMaxWidth().padding(vertical = 64.dp), icon = AppIcons.FileText)
+        return
+    }
+    // Cards carry the page margin themselves; the column only spaces them vertically.
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = AppSpace.page, vertical = AppSpace.sm)
+            .padding(vertical = AppSpace.sm)
     ) {
         entries.forEachIndexed { index, entry ->
             val isLatest = index == 0
@@ -2655,7 +2636,7 @@ fun ChangelogDetail() {
                                     .background(AppColors.Accent)
                                     .padding(horizontal = AppSpace.sm, vertical = 2.dp)
                             ) {
-                                Text(stringResource(R.string.latest_label), fontSize = AppType.Caption, color = Color.White)
+                                Text(stringResource(R.string.latest_label), fontSize = AppType.Caption, color = AppColors.OnAccent)
                             }
                         }
                     }
@@ -3103,57 +3084,17 @@ internal fun SettingsSwitchRow(
     supportingText: String? = null,
     checked: Boolean,
     onCheckedChange: ((Boolean) -> Unit)?
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (onCheckedChange != null) {
-                    Modifier.clickable { onCheckedChange(!checked) }
-                } else {
-                    Modifier
-                }
-            )
-            .padding(AppSpace.md),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(label, fontSize = AppType.Body, color = AppColors.TextPrimary)
-            supportingText?.let {
-                Spacer(Modifier.height(2.dp))
-                Text(it, fontSize = AppType.Caption, color = AppColors.TextSecondary)
-            }
-        }
-        Spacer(Modifier.width(AppSpace.sm))
-        LiquidGlassSwitch(checked = checked, onCheckedChange = onCheckedChange)
-    }
-}
+) = com.huangder.lumibooks.ui.components.LumiSwitchRow(label, checked, onCheckedChange, subtitle = supportingText)
 
+/** Navigation row; [value] shows the current choice before the chevron (iOS Settings). */
 @Composable
 internal fun SettingsNavigationRow(
     label: String,
     supportingText: String? = null,
     icon: ImageVector? = null,
+    value: String? = null,
     onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(AppSpace.md),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        icon?.let {
-            Icon(it, null, tint = AppColors.TextSecondary, modifier = Modifier.size(22.dp))
-            Spacer(Modifier.width(AppSpace.md))
-        }
-        Column(Modifier.weight(1f)) {
-            Text(label, fontSize = AppType.Body, color = AppColors.TextPrimary)
-            supportingText?.let {
-                Spacer(Modifier.height(2.dp))
-                Text(it, fontSize = AppType.Caption, color = AppColors.TextSecondary)
-            }
-        }
-        DisclosureChevron()
-    }
-}
+) = com.huangder.lumibooks.ui.components.LumiNavigationRow(label, onClick, subtitle = supportingText, value = value, icon = icon)
 
 @Composable
 internal fun SettingsSliderItem(
@@ -3209,18 +3150,14 @@ private fun FontTypeRow(selected: String, onSelect: (String) -> Unit) {
         "serif" to stringResource(R.string.font_serif),
         "monospace" to stringResource(R.string.font_monospace)
     )
-    Row(Modifier.fillMaxWidth().padding(horizontal = AppSpace.md, vertical = AppSpace.md), verticalAlignment = Alignment.CenterVertically) {
-        Text(stringResource(R.string.font_label), fontSize = AppType.Body, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
-        Row(horizontalArrangement = Arrangement.spacedBy(AppSpace.xs)) {
-            options.forEach { (key, label) ->
-                val sel = key == selected
-                Box(
-                    Modifier.clip(AppRoundedCornerShape(AppRadius.sm)).background(if (sel) AppColors.Accent else AppColors.BgGray)
-                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onSelect(key) }
-                        .padding(horizontal = AppSpace.sm, vertical = AppSpace.xs)
-                ) { Text(label, fontSize = AppType.Caption, color = if (sel) Color.White else AppColors.TextSecondary, fontWeight = if (sel) FontWeight.Medium else FontWeight.Normal) }
-            }
-        }
+    Column(Modifier.fillMaxWidth().padding(horizontal = AppSpace.md, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(stringResource(R.string.font_label), fontSize = AppType.Body, color = AppColors.TextPrimary)
+        com.huangder.lumibooks.ui.components.LumiSegmentedControl(
+            labels = options.map { it.second },
+            selectedIndex = options.indexOfFirst { it.first == selected }.coerceAtLeast(0),
+            onSelect = { onSelect(options[it].first) }
+        )
     }
 }
 
@@ -3240,27 +3177,28 @@ private fun AppThemeGridSettingRow(
         Spacer(Modifier.height(AppSpace.sm))
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             options.chunked(2).forEach { rowOptions ->
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     rowOptions.forEach { (key, display) ->
                         val isSelected = key == selected
+                        val tileShape = AppRoundedCornerShape(AppRadius.md)
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .heightIn(min = 48.dp)
-                                .clip(AppRoundedCornerShape(AppRadius.sm))
-                                .background(if (isSelected) AppColors.Accent else AppColors.WindowBg)
-                                .border(1.dp, if (isSelected) AppColors.Accent else AppColors.Divider, AppRoundedCornerShape(AppRadius.sm))
-                                .clickable { onSelect(key) }
+                                .clip(tileShape)
+                                .background(if (isSelected) AppColors.Accent.copy(alpha = .12f) else AppColors.BgGray)
+                                .border(if (isSelected) 1.5.dp else 0.dp, if (isSelected) AppColors.Accent else Color.Transparent, tileShape)
+                                .lumiRowClickable(role = androidx.compose.ui.semantics.Role.RadioButton) { onSelect(key) }
                                 .padding(horizontal = 6.dp, vertical = 8.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = display,
                                 fontSize = AppType.Caption,
-                                color = if (isSelected) Color.White else AppColors.TextSecondary,
+                                color = if (isSelected) AppColors.Accent else AppColors.TextPrimary,
                                 fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
@@ -3427,19 +3365,10 @@ private fun SettingsDropdownControl(
 }
 
 @Composable
-internal fun ActionRow(icon: ImageVector? = null, label: String, labelColor: Color = AppColors.TextPrimary, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clickable { onClick() }.padding(AppSpace.md),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (icon != null) {
-            Icon(icon, null, tint = if (labelColor == AppColors.Destructive) labelColor else AppColors.TextSecondary, modifier = Modifier.size(22.dp))
-            Spacer(Modifier.width(AppSpace.md))
-        }
-        Text(label, fontSize = AppType.Body, color = labelColor, modifier = Modifier.weight(1f))
-        DisclosureChevron()
-    }
-}
+internal fun ActionRow(icon: ImageVector? = null, label: String, labelColor: Color = AppColors.TextPrimary,
+    external: Boolean = false, onClick: () -> Unit) =
+    com.huangder.lumibooks.ui.components.LumiRow(label, icon = icon, titleColor = labelColor,
+        showChevron = !external && labelColor != AppColors.Destructive, onClick = onClick)
 
 // ─── 语言设置 ────────────────────────────────────────────────
 
@@ -3457,34 +3386,16 @@ fun LanguageDetailScreen(viewModel: SettingsViewModel) {
     DetailCard {
         languageOptions.forEachIndexed { index, (key, displayName) ->
             val isSelected = key == uiState.appLanguage
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                        if (!isSelected) {
-                            pendingLanguage = key
-                            showRestartDialog = true
-                        }
+            com.huangder.lumibooks.ui.components.LumiCheckRow(
+                title = displayName,
+                selected = isSelected,
+                onClick = {
+                    if (!isSelected) {
+                        pendingLanguage = key
+                        showRestartDialog = true
                     }
-                    .padding(horizontal = AppSpace.md, vertical = AppSpace.md),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    displayName,
-                    fontSize = AppType.Body,
-                    color = if (isSelected) AppColors.Accent else AppColors.TextPrimary,
-                    fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
-                    modifier = Modifier.weight(1f)
-                )
-                if (isSelected) {
-                    Icon(
-                        AppIcons.Check,
-                        contentDescription = null,
-                        tint = AppColors.Accent,
-                        modifier = Modifier.size(20.dp)
-                    )
                 }
-            }
+            )
             if (index < languageOptions.size - 1) {
                 SettingsDivider()
             }

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="archive_book">アーカイブ</string>
+    <string name="archived_books_title">アーカイブした本</string>
+    <string name="archive_summary">アーカイブした本は本棚に表示されません。復元すると再び読めます。読書統計とノートは保持されます。</string>
+    <string name="archive_empty">アーカイブした本はありません</string>
+    <string name="restore_book">復元</string>
+    <string name="archive_book_success">本をアーカイブしました</string>
+    <string name="archive_book_failed">アーカイブできませんでした。もう一度お試しください。</string>
+    <string name="archive_restore_success">本を復元しました</string>
+    <string name="archive_restore_failed">復元できませんでした。もう一度お試しください。</string>
+    <string name="archive_load_failed">アーカイブした本を読み込めませんでした</string>
+    <string name="archive_reader_message">この本はアーカイブされています。「アーカイブした本」から復元してからお読みください。</string>
+    <string name="archive_retry">再試行</string>
+    <string name="archive_restoring">復元中…</string>
+</resources>

@@ -161,10 +161,13 @@ class BookDetailsActivity : ComponentActivity() {
             val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = launchTheme.menuAnimationStyle)
             val liquidGlassStyle by dataStoreManager.liquidGlassStyle
                 .collectAsState(initial = launchTheme.liquidGlassStyle)
+            val liquidGlassSamplingQuality by dataStoreManager.liquidGlassSamplingQuality
+                .collectAsState(initial = launchTheme.liquidGlassSamplingQuality)
             val reduceTransparencyEnabled by dataStoreManager.reduceTransparencyEnabled
                 .collectAsState(initial = launchTheme.reduceTransparencyEnabled)
             EBookReaderTheme(
                 liquidGlassStyle = liquidGlassStyle,
+                liquidGlassSamplingQuality = liquidGlassSamplingQuality,
                 reduceTransparencyEnabled = reduceTransparencyEnabled,
                 menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
                 motionPreference = com.huangder.lumibooks.ui.theme.MotionPreference.fromStoredValue(motion),
@@ -314,6 +317,8 @@ fun BookDetailsScreen(
     CollapsingPageScaffold(
         title = stringResource(R.string.book_details),
         drawContentBehindHeader = true,
+        bottomBarOverlay = true,
+        bottomBarOverlayBackground = false,
         onBack = onBack,
         modifier = Modifier.fillMaxSize().background(AppColors.PageBg),
         bottomBar = {
@@ -329,7 +334,8 @@ fun BookDetailsScreen(
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = AppSpace.md, end = AppSpace.md, top = LocalCollapsingPageTopInset.current + 10.dp, bottom = AppSpace.lg),
+            contentPadding = PaddingValues(start = AppSpace.md, end = AppSpace.md, top = LocalCollapsingPageTopInset.current + 10.dp,
+                bottom = com.huangder.lumibooks.ui.components.LocalCollapsingPageBottomInset.current + AppSpace.lg),
             verticalArrangement = Arrangement.spacedBy(AppSpace.md)
         ) {
             item { BookHero(book, folderName, onCover = { coverOpen = true }) }

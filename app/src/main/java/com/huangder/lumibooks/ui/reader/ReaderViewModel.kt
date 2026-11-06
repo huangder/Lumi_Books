@@ -397,7 +397,7 @@ data class ReaderUiState(
     val rasterManualCropEnabled: Boolean = false,
     val rasterManualCrop: RasterManualCrop = RasterManualCrop(),
     /** 正文字重（PR #19 #24）：>=600 视为加粗 */
-    val bodyFontWeight: Int = 400,
+    val bodyFontWeight: Float = 400f,
     val eInkModeEnabled: Boolean = false,
     val twoPageSpreadEnabled: Boolean = true,
     /** PDF / CBZ 栅格页面解码清晰度："normal" | "high" | "native" */
@@ -807,14 +807,23 @@ class ReaderViewModel @Inject constructor(
         if (listeningReaderSession.completeJump(position)) ttsController.setReaderAttached(bookId, true)
     }
 
-    /** Normal browsing detaches audio follow but keeps the opening hint's saved target. */
+    private fun followManualReaderNavigation(): Boolean {
+        if (!ttsController.followUserPageTurns.value || !isListeningToThisBook()) return false
+        listeningReaderSession.follow()
+        ttsController.onReaderNavigationStarted(bookId)
+        return true
+    }
+
+    /** Browsing keeps the audio attached when the capsule's page-follow option is enabled. */
     fun onListeningReaderPageTurn() {
+        if (followManualReaderNavigation()) return
         listeningReaderSession.pageTurn()
         ttsController.setReaderAttached(bookId, false)
     }
 
-    /** A deliberate jump ends the opening hint without changing audio playback. */
+    /** A deliberate jump ends the opening hint and applies the capsule's page-follow policy. */
     fun onListeningReaderManualNavigation() {
+        if (followManualReaderNavigation()) return
         listeningReaderSession.navigate()
         ttsController.setReaderAttached(bookId, false)
     }
@@ -824,7 +833,10 @@ class ReaderViewModel @Inject constructor(
         ttsController.setReaderAttached(bookId, true)
     }
 
-    fun setTtsFollowUserPageTurns(enabled: Boolean) = ttsController.setFollowUserPageTurns(enabled)
+    fun setTtsFollowUserPageTurns(enabled: Boolean) {
+        ttsController.setFollowUserPageTurns(enabled)
+        if (enabled && isListeningToThisBook()) enableListeningReaderFollow()
+    }
 
     private val _bookmarks = MutableStateFlow<List<Bookmark>>(emptyList())
     val bookmarks: StateFlow<List<Bookmark>> = _bookmarks.asStateFlow()
@@ -1726,14 +1738,36 @@ class ReaderViewModel @Inject constructor(
         previewCurrentThemeSettings { copy(fontSize = size) }
     }
 
-    fun saveBodyFontWeight(weight: Int) {
-        val target = weight.coerceIn(100, 900)
+    fun saveBodyFontWeight(weight: Float) {
+        val target = (weight * 10f).roundToInt().coerceIn(1000, 9000) / 10f
         updateCurrentThemeSettings { copy(bodyFontWeight = target) }
     }
 
-    fun previewBodyFontWeight(weight: Int) {
-        val target = weight.coerceIn(100, 900)
+    fun previewBodyFontWeight(weight: Float) {
+        val target = (weight * 10f).roundToInt().coerceIn(1000, 9000) / 10f
         previewCurrentThemeSettings { copy(bodyFontWeight = target) }
+    }
+
+    fun saveReaderDarkMaskOpacity(opacity: Float) {
+        updateReaderDarkMaskOpacity(opacity, persist = true)
+    }
+
+    fun previewReaderDarkMaskOpacity(opacity: Float) {
+        updateReaderDarkMaskOpacity(opacity, persist = false)
+    }
+
+    private fun updateReaderDarkMaskOpacity(opacity: Float, persist: Boolean) {
+        val state = _uiState.value
+        val suiteId = state.activeThemeSuiteIdFor(state.readerLayoutTarget())
+        val target = (opacity * 100f).roundToInt().coerceIn(0, 80) / 100f
+        if (state.readerThemeSuites.none { it.id == suiteId }) return
+        val updated = state.readerThemeSuites.map { suite ->
+            if (suite.id == suiteId) suite.copy(darkMaskOpacity = target) else suite
+        }
+        _uiState.value = state.copy(readerThemeSuites = updated)
+        if (persist) {
+            viewModelScope.launch { dataStoreManager.updateReaderThemeSuiteDarkMask(suiteId, target) }
+        }
     }
 
     fun saveLineHeight(lh: Float) {
@@ -3908,9 +3942,17 @@ class ReaderViewModel @Inject constructor(
 
     private suspend fun loadBook(
         preferences: ReaderPreferencesSnapshot,
-        book: Book?,
+        bookSnapshot: Book?,
         isCacheRecovery: Boolean = false
     ) = bookLoadMutex.withLock {
+            // Always check Room, including direct intents and cache-recovery paths.
+            val book = bookRepository.getBookById(bookId) ?: bookSnapshot
+            if (book?.isArchived == true) {
+                closeActiveBookSession()
+                _uiState.value = _uiState.value.copy(book = book, isLoading = false, pageReady = false,
+                    error = context.getString(R.string.archive_reader_message))
+                return@withLock
+            }
             val generationAtLoadStart = runCatching {
                 readerCacheStore.currentGeneration()
             }.getOrDefault(observedCacheGeneration)
@@ -5730,7 +5772,7 @@ class ReaderViewModel @Inject constructor(
                 textColor = textColor,
                 fontSize = textSize,
                 fontType = sharedFontType,
-                bodyFontWeight = config.optInt("textBold", 400).coerceIn(100, 900),
+                bodyFontWeight = config.optDouble("textBold", 400.0).toFloat().coerceIn(100f, 900f),
                 lineHeight = (1.35f + config.optDouble("lineSpacingExtra", 0.0).toFloat() / textSize).coerceIn(ReaderThemeSettings.LINE_HEIGHT_RANGE),
                 letterSpacing = config.optDouble("letterSpacing", 0.0).toFloat(),
                 paragraphSpacing = config.optDouble("paragraphSpacing", 2.0).toFloat(),
@@ -6830,7 +6872,7 @@ class ReaderViewModel @Inject constructor(
         position: ReaderCacheRecoveryPosition
     ) {
         if (externalPositionReloading) return
-        bookRepository.updateReadingProgress(book.id, position.readingProgress, position.locatorJson)
+        bookRepository.updateReadingPosition(book.id, position.readingProgress, position.locatorJson)
         bookRepository.updateLastReadTime(book.id, System.currentTimeMillis())
         // Trigger debounced WebDAV sync for reading progress
         webdavSyncManager.scheduleReadingProgressSync(book.id)
@@ -6860,7 +6902,7 @@ class ReaderViewModel @Inject constructor(
                     }
                     latest.copy(readingProgress = position.readingProgress, locatorJson = position.locatorJson)
                 }
-                if (book != null && !book.isHidden) {
+                if (book != null && !book.isHidden && !book.isArchived) {
                     val preferences = dataStoreManager.readerPreferences(bookId).first()
                     val key = withContext(Dispatchers.Default) {
                         openingSnapshotStore.keyFor(book, preferences, display)

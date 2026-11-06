@@ -56,8 +56,12 @@ internal fun RemoteLibraryRoute(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val state by viewModel.uiState.collectAsState()
-    var selectionMode by remember { mutableStateOf(false) }
-    var selection by remember { mutableStateOf<Set<String>>(emptySet()) }
+    // Keep the selected item data when navigating out of a remote folder so the final batch
+    // includes every checked book, just like the local folder picker.
+    var selectedBooks by remember(state.activeSource?.id) {
+        mutableStateOf<Map<String, RemoteBookItem>>(emptyMap())
+    }
+    val selection = selectedBooks.keys
     var pendingDownload by remember { mutableStateOf<List<Pair<RemoteBookItem, RemoteFormat>>?>(null) }
     val motionEnabled = LocalMotionEnabled.current
     val eInkMode = LocalEInkMode.current
@@ -81,14 +85,10 @@ internal fun RemoteLibraryRoute(
     val mayAddSource = com.huangder.lumibooks.edition.rememberRemoteSourcePermission(state.totalSourceCount)
     val addSource = { if (mayAddSource()) openForm(null) }
     val clearSelection = {
-        selectionMode = false
-        selection = emptySet()
+        selectedBooks = emptyMap()
     }
     val goBack: () -> Unit = {
-        when {
-            selectionMode -> clearSelection()
-            !viewModel.navigateBack() -> onExit()
-        }
+        if (!viewModel.navigateBack()) onExit()
     }
     val pickFolderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
         val items = pendingDownload
@@ -106,7 +106,7 @@ internal fun RemoteLibraryRoute(
     }
 
     CompositionLocalProvider(LocalPredictiveBackEnabled provides predictiveBackEnabled) {
-        ConfigurableBackHandler(enabled = screen != RemoteScreen.Sources || selectionMode, onBack = goBack)
+        ConfigurableBackHandler(enabled = screen != RemoteScreen.Sources, onBack = goBack)
     }
 
     AnimatedContent(
@@ -142,7 +142,6 @@ internal fun RemoteLibraryRoute(
                 }
             )
             RemoteScreen.Browse -> {
-                val books = state.levels.lastOrNull()?.page?.books.orEmpty()
                 val activeSource = state.activeSource
                 val imageLoader = remember(activeSource?.id) {
                     activeSource?.let { RemoteImageLoaders.create(context, it, viewModel.password(it.id)) }
@@ -152,7 +151,6 @@ internal fun RemoteLibraryRoute(
                     levels = state.levels,
                     searchAvailable = state.levels.firstOrNull()?.page?.searchTemplate != null,
                     searchQuery = state.searchQuery,
-                    selectionMode = selectionMode,
                     selection = selection,
                     importedKeys = state.importedKeys,
                     downloadStates = state.downloadStates,
@@ -168,30 +166,31 @@ internal fun RemoteLibraryRoute(
                     onSearchClose = { viewModel.setSearchQuery(null) },
                     onRefresh = viewModel::refresh,
                     onOpenFolder = { folder ->
-                        clearSelection()
+                        viewModel.setSearchQuery(null)
                         viewModel.openFolder(folder.url, folder.title)
                     },
                     onOpenBook = { book -> state.activeSource?.let { onOpenBookDetails(it, book) } },
                     onToggleBook = { book ->
-                        selection = if (book.key in selection) selection - book.key else selection + book.key
+                        if (book.preferredFormat != null) {
+                            selectedBooks = if (book.key in selection) selectedBooks - book.key
+                                else selectedBooks + (book.key to book)
+                        }
                     },
-                    onStartSelection = { book ->
-                        selectionMode = true
-                        selection = selection + book.key
+                    onSelectAll = { visibleBooks ->
+                        val selectable = visibleBooks.associateBy { it.key }
+                        selectedBooks = if (selection.containsAll(selectable.keys)) {
+                            selectedBooks - selectable.keys
+                        } else {
+                            selectedBooks + selectable
+                        }
                     },
-                    onSelectAll = {
-                        val keys = books.filter { it.preferredFormat != null }.mapTo(linkedSetOf()) { it.key }
-                        selectionMode = true
-                        selection = if (selection.containsAll(keys)) selection - keys else selection + keys
-                    },
-                    onExitSelection = clearSelection,
                     onSortModeChange = viewModel::setSortMode,
                     onSortAscendingChange = viewModel::setSortAscending,
                     onLayoutModeChange = viewModel::cycleLayoutMode,
                     onLoadMore = viewModel::loadMore,
                     onRetry = viewModel::retry,
                     onDownloadSelected = {
-                        val chosen = books.filter { it.key in selection }
+                        val chosen = selectedBooks.values
                             .mapNotNull { book -> book.preferredFormat?.let { book to it } }
                         if (chosen.isNotEmpty()) pendingDownload = chosen
                     }

@@ -23,6 +23,7 @@ fun VisualMotionDetail(viewModel: SettingsViewModel) {
     VisualMotionContent(
         uiState = uiState,
         onGlassStyle = viewModel::saveLiquidGlassStyle,
+        onGlassSamplingQuality = viewModel::saveLiquidGlassSamplingQuality,
         onGlassTransparency = viewModel::saveLiquidGlassTransparency,
         onPreviewGlassTransparency = viewModel::previewLiquidGlassTransparency,
         onHdrHighlight = viewModel::saveLiquidGlassHdrHighlightEnabled,
@@ -47,7 +48,8 @@ internal fun VisualMotionContent(
     onPredictiveBack: (Boolean) -> Unit,
     onMotion: (String) -> Unit,
     onMenuAnimation: (String) -> Unit,
-    onBookTransition: (String) -> Unit
+    onBookTransition: (String) -> Unit,
+    onGlassSamplingQuality: (String) -> Unit = {}
 ) {
     val capability = LocalLiquidGlassCapability.current
     val showGlassControls = uiState.appTheme == "liquid_glass" &&
@@ -60,6 +62,8 @@ internal fun VisualMotionContent(
         )
         DetailCard {
             LiquidGlassStyleSettingRow(uiState.liquidGlassStyle, onGlassStyle)
+            SettingsDivider()
+            LiquidGlassSamplingSettingRow(uiState.liquidGlassSamplingQuality, onGlassSamplingQuality)
             SettingsDivider()
             SettingsSliderItem(
                 label = stringResource(R.string.liquid_glass_transparency),

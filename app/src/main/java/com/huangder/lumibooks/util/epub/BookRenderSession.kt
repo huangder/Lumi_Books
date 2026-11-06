@@ -51,6 +51,9 @@ interface BookRenderSession : AutoCloseable {
     /** 章节纯文本（去除样式/脚本），用于原排版模式全文搜索。 */
     fun searchText(chapterIndex: Int): String
 
+    /** Image insertion points in [searchText], without reading or decoding image resources. */
+    fun imageTextOffsets(chapterIndex: Int): List<Int> = emptyList()
+
     override fun close()
 
     companion object {

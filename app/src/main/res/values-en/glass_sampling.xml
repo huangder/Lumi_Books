@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="liquid_glass_sampling_quality">Glass sampling quality</string>
+    <string name="liquid_glass_sampling_original">Original (1×)</string>
+    <string name="liquid_glass_sampling_clear">Clear (⅔×)</string>
+    <string name="liquid_glass_sampling_balanced">Balanced (½×)</string>
+    <string name="liquid_glass_sampling_performance">Performance (⅓×)</string>
+</resources>

@@ -569,6 +569,7 @@ fun RasterReaderScreen(
     var pendingModePage by remember { mutableStateOf<Int?>(null) }
     val eInkMode = LocalEInkMode.current || uiState.eInkModeEnabled
     val rasterBackgroundColor = if (eInkMode) Color.White else AppColors.WindowBg
+    val darkMaskOpacity = uiState.activeThemeDarkMaskOpacity()
     // NavHost keeps the outgoing reader composed during pop animations; it must not
     // overwrite the home screen's system-bar style after navigation has switched.
     if (readerActive) {
@@ -1911,44 +1912,6 @@ fun RasterReaderScreen(
                 )
             }
         }
-        if (showImageAdjustments) {
-            var adjustmentPageWidth by remember(pageSource, currentPage) { mutableStateOf<Int?>(null) }
-            LaunchedEffect(pageSource, currentPage) {
-                adjustmentPageWidth = pageOriginalWidths[currentPage]
-                    ?: pageSource?.pageWidth(currentPage)?.also { pageOriginalWidths[currentPage] = it }
-            }
-            RasterImageAdjustmentSheet(
-                settings = uiState.imageAdjustments,
-                eInk = eInkMode,
-                cropMode = if (manualCropEnabled) 2 else if (uiState.rasterHorizontalCropEnabled) 1 else 0,
-                manualCrop = manualCrop,
-                pageWidth = adjustmentPageWidth,
-                onCropModeChange = { mode ->
-                    when (mode) {
-                        0 -> {
-                            viewModel.saveRasterHorizontalCropEnabled(false)
-                            viewModel.saveRasterManualCrop(false)
-                        }
-                        1 -> viewModel.saveRasterHorizontalCropEnabled(true)
-                        2 -> viewModel.saveRasterManualCrop(true)
-                    }
-                },
-                onManualCropChange = { viewModel.saveRasterManualCrop(true, it) },
-                onManualCropPreview = viewModel::previewRasterManualCrop,
-                onBrightness = viewModel::saveImageBrightness,
-                onContrast = viewModel::saveImageContrast,
-                onSharpen = viewModel::saveImageSharpen,
-                onReset = {
-                    viewModel.saveImageAdjustments(com.huangder.lumibooks.domain.model.ReaderImageAdjustments())
-                    viewModel.saveRasterHorizontalCropEnabled(false)
-                    viewModel.saveRasterManualCrop(false, RasterManualCrop())
-                },
-                onDismiss = {
-                    if (viewModel.uiState.value.rasterManualCropEnabled) viewModel.saveRasterManualCrop(true)
-                    showImageAdjustments = false
-                }
-            )
-        }
         val annotationBottomPadding by animateDpAsState(
             targetValue = if (showMenu) 190.dp else 8.dp,
             animationSpec = tween(300, easing = AppEasing.Smooth),
@@ -2046,6 +2009,49 @@ fun RasterReaderScreen(
                 readerMenuVisible = showMenu,
                 readerBackgroundColor = rasterBackgroundColor,
                 readerContentColor = AppColors.TextPrimary
+            )
+        }
+
+        if (darkMaskOpacity > 0f) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = darkMaskOpacity)))
+        }
+
+        if (showImageAdjustments) {
+            var adjustmentPageWidth by remember(pageSource, currentPage) { mutableStateOf<Int?>(null) }
+            LaunchedEffect(pageSource, currentPage) {
+                adjustmentPageWidth = pageOriginalWidths[currentPage]
+                    ?: pageSource?.pageWidth(currentPage)?.also { pageOriginalWidths[currentPage] = it }
+            }
+            RasterImageAdjustmentSheet(
+                settings = uiState.imageAdjustments,
+                eInk = eInkMode,
+                cropMode = if (manualCropEnabled) 2 else if (uiState.rasterHorizontalCropEnabled) 1 else 0,
+                manualCrop = manualCrop,
+                pageWidth = adjustmentPageWidth,
+                onCropModeChange = { mode ->
+                    when (mode) {
+                        0 -> {
+                            viewModel.saveRasterHorizontalCropEnabled(false)
+                            viewModel.saveRasterManualCrop(false)
+                        }
+                        1 -> viewModel.saveRasterHorizontalCropEnabled(true)
+                        2 -> viewModel.saveRasterManualCrop(true)
+                    }
+                },
+                onManualCropChange = { viewModel.saveRasterManualCrop(true, it) },
+                onManualCropPreview = viewModel::previewRasterManualCrop,
+                onBrightness = viewModel::saveImageBrightness,
+                onContrast = viewModel::saveImageContrast,
+                onSharpen = viewModel::saveImageSharpen,
+                onReset = {
+                    viewModel.saveImageAdjustments(com.huangder.lumibooks.domain.model.ReaderImageAdjustments())
+                    viewModel.saveRasterHorizontalCropEnabled(false)
+                    viewModel.saveRasterManualCrop(false, RasterManualCrop())
+                },
+                onDismiss = {
+                    if (viewModel.uiState.value.rasterManualCropEnabled) viewModel.saveRasterManualCrop(true)
+                    showImageAdjustments = false
+                }
             )
         }
 

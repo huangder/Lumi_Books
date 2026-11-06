@@ -16,10 +16,17 @@ class ReadingInsightsTest {
     @Test fun comparisonsHandleShortPreviousMonthsAndHistoricalPeriods() {
         val current = comparisonPeriods(StatisticsSelection(StatisticsScope.MONTH, 2028, 2), LocalDate.of(2028,3,31))!!
         assertEquals(LocalDate.of(2028,2,29), current.second.endInclusive)
-        assertEquals(current.first.days.size, current.second.days.size)
+        assertEquals(LocalDate.of(2028,3,30), current.first.endInclusive)
         val historical = comparisonPeriods(StatisticsSelection(StatisticsScope.MONTH, 2028, 1), LocalDate.of(2028,4,2))!!
         assertEquals(29, historical.first.days.size)
         assertEquals(31, historical.second.days.size)
+    }
+    @Test fun annualComparisonUsesTheSameCalendarDateAcrossLeapYears() {
+        val periods = comparisonPeriods(StatisticsSelection(StatisticsScope.YEAR, 2028), LocalDate.of(2028,3,2))!!
+        assertEquals(LocalDate.of(2028,3,1), periods.first.endInclusive)
+        assertEquals(LocalDate.of(2027,3,1), periods.second.endInclusive)
+        assertEquals(61, periods.first.days.size)
+        assertEquals(60, periods.second.days.size)
     }
     @Test fun weekCrossesYearWithoutChangingSundayAnchor() {
         val period = StatisticsSelection(StatisticsScope.WEEK).range(LocalDate.of(2027,1,1))

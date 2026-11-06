@@ -9,10 +9,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
@@ -165,37 +163,36 @@ class AppDialogPresentationTest {
         compose.onNodeWithText("清晰内容").assertIsDisplayed()
     }
 
-    @Test fun anchoredImportKeepsPickerWorkflowAliveAndCancelsOnlyOnDismiss() {
+    @Test fun importActionsUseContainerDialogAndKeepPickerWorkflowAlive() {
         val showing = mutableStateOf(false)
         val preparing = mutableStateOf(false)
-        var bounds by mutableStateOf<Rect?>(null)
         var selections = 0
         var cancellations = 0
-        lateinit var host: LiquidGlassMenuHostState
+        lateinit var host: LiquidGlassDialogHostState
         val context = ApplicationProvider.getApplicationContext<Application>()
         compose.setContent {
             EBookReaderTheme {
                 CompositionLocalProvider(LocalAppTheme provides "liquid_glass",
                     LocalLiquidGlassCapability provides LiquidGlassCapability(false, false)) {
-                    LiquidGlassMenuHost(Modifier.fillMaxSize()) {
-                        host = LocalLiquidGlassMenuHost.current!!
-                        val source = remember { Any() }
-                        LiquidGlassTextButton("Import", { showing.value = true },
-                            Modifier.padding(40.dp).liquidGlassMenuAnchor(source)
-                                .onGloballyPositioned { bounds = it.boundsInWindow() })
-                        if (showing.value) ImportBooksActionSheet(
-                            isPreparing = preparing.value, authorizedDirectoryUris = emptyList(),
-                            anchorBounds = bounds, sourceId = source,
-                            onDismiss = { cancellations++; showing.value = false },
-                            onSelectFiles = { selections++ }, onAuthorizeDirectory = {},
-                            onOpenFolderBooks = {}, onImportWebdav = {}, onImportOpds = {}
-                        )
+                    val backdrop = rememberLayerBackdrop()
+                    LiquidGlassDialogHost(backdrop = backdrop, modifier = Modifier.fillMaxSize()) {
+                        host = LocalLiquidGlassDialogHost.current!!
+                        Box(Modifier.fillMaxSize().background(AppColors.WindowBg).layerBackdrop(backdrop)) {
+                            LiquidGlassTextButton("Import", { showing.value = true }, Modifier.padding(40.dp))
+                            if (showing.value) ImportBooksActionSheet(
+                                isPreparing = preparing.value, authorizedDirectoryUris = emptyList(),
+                                onDismiss = { cancellations++; showing.value = false },
+                                onSelectFiles = { selections++ }, onAuthorizeDirectory = {},
+                                onOpenFolderBooks = {}, onImportWebdav = {}, onImportOpds = {}
+                            )
+                        }
                     }
                 }
             }
         }
         compose.onNodeWithText("Import").performClick()
-        compose.waitUntil { host.activeMenu != null }
+        compose.waitUntil { host.visible }
+        assertEquals(Alignment.BottomCenter, host.spec?.alignment)
         val files = context.getString(R.string.import_select_files)
         compose.onNodeWithText(files).performScrollTo().performClick()
         assertEquals(1, selections)
@@ -206,12 +203,12 @@ class AppDialogPresentationTest {
         // A successful external picker result moves to the confirmation page, rather than cancelling.
         compose.runOnIdle { showing.value = false }
         compose.waitForIdle()
-        compose.waitUntil { host.activeMenu == null }
+        compose.waitUntil { !host.visible }
         assertEquals(0, cancellations)
         compose.runOnIdle { preparing.value = false; showing.value = true }
         compose.waitForIdle()
-        compose.waitUntil { host.activeMenu != null }
-        compose.runOnIdle { host.dismiss() }
+        compose.waitUntil { host.visible }
+        compose.runOnIdle { host.spec?.onDismissRequest?.invoke() }
         compose.waitUntil { !showing.value }
         assertEquals(1, cancellations)
     }

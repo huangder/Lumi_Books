@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_ui_icon_style_title">App内图标风格</string>
+    <string name="app_ui_icon_style_filled_colorful">实心多彩</string>
+    <string name="app_ui_icon_style_outline_colorful">线性多彩</string>
+    <string name="app_ui_icon_style_filled_monochrome">实心黑白</string>
+    <string name="app_ui_icon_style_outline_monochrome">线性黑白</string>
+</resources>

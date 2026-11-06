@@ -1,4 +1,7 @@
 package com.huangder.lumibooks.ui.settings
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
+import com.huangder.lumibooks.ui.components.lumiRowClickable
 import com.huangder.lumibooks.ui.icons.AppIcons
 
 import com.huangder.lumibooks.ui.components.lumiCardSurface
@@ -221,7 +224,9 @@ fun SettingsScreen(
                         context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "display"))
                     }
                     SettingsTileDivider()
-                    CategoryItem(AppIcons.Tile.Language, stringResource(R.string.category_language), grouped = true, tileColor = SettingsTileColors.Gray) {
+                    // iOS Settings shows the current choice before the chevron.
+                    CategoryItem(AppIcons.Tile.Language, stringResource(R.string.category_language), grouped = true, tileColor = SettingsTileColors.Gray,
+                        value = com.huangder.lumibooks.util.LocaleHelper.LANGUAGE_DISPLAY_NAMES[uiState.appLanguage]) {
                         context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "language"))
                     }
                     SettingsTileDivider()
@@ -394,7 +399,8 @@ internal fun CategoryItem(
             .then(if (grouped) Modifier else Modifier.padding(horizontal = AppSpace.page, vertical = 1.dp))
             .then(if (grouped) Modifier else Modifier.shadow(8.dp, shape, ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow))
             .then(if (grouped) Modifier else Modifier.cardOutline(shape).clip(shape).lumiCardSurface(shape = shape))
-            .clickable(onClick = onClick)
+            .lumiRowClickable(onClick = onClick)
+            .heightIn(min = 52.dp)
             .padding(
                 horizontal = AppSpace.md,
                 vertical = if (icon != null && tileColor != null) 11.dp else AppSpace.md
@@ -416,8 +422,9 @@ internal fun CategoryItem(
             }
         }
         if (value != null) {
-            Text(value, fontSize = AppType.Body, color = AppColors.TextSecondary, maxLines = 1,
-                modifier = Modifier.padding(start = AppSpace.sm, end = AppSpace.xs))
+            Text(value, fontSize = AppType.BodySmall, color = AppColors.TextSecondary, maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = AppSpace.sm, end = AppSpace.xs).widthIn(max = 160.dp))
         }
         DisclosureChevron()
     }

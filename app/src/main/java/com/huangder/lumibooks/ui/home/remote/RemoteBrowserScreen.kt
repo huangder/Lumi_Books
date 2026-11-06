@@ -1,7 +1,7 @@
 package com.huangder.lumibooks.ui.home.remote
 
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import com.huangder.lumibooks.ui.components.LocalCollapsingPageTopInset
 import com.huangder.lumibooks.ui.components.CollapsingPageScaffold
 
@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -46,10 +47,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -72,6 +71,10 @@ import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import com.huangder.lumibooks.ui.components.LiquidGlassButton
 import com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop
+import com.huangder.lumibooks.ui.components.LocalCollapsingPageBottomInset
+import com.huangder.lumibooks.ui.components.LumiCheckbox
+import com.huangder.lumibooks.ui.home.BookPickerHeader
+import com.huangder.lumibooks.ui.home.BookPickerSelectionBar
 import com.huangder.lumibooks.ui.components.lumiCardSurface
 import com.huangder.lumibooks.ui.icons.AppIcons
 import com.huangder.lumibooks.ui.icons.directionalIcon
@@ -90,16 +93,14 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 /**
- * Catalog browser laid out like the folder books page: header with search pill and refresh,
- * a summary row with select-all / sort / layout, list or 2–3 column grid, and the same
- * fade-and-slide level transition when opening or leaving a folder.
+ * Local and remote pickers share the search toolbar, status line and floating action layout.
+ * Tap a book to select it; long press keeps its remote details and format choices available.
  */
 @Composable
 internal fun RemoteBrowserScreen(
     levels: List<RemoteLevel>,
     searchAvailable: Boolean,
     searchQuery: String?,
-    selectionMode: Boolean,
     selection: Set<String>,
     importedKeys: Set<String>,
     downloadStates: Map<String, RemoteDownloadState>,
@@ -117,9 +118,7 @@ internal fun RemoteBrowserScreen(
     onOpenFolder: (RemoteFolder) -> Unit,
     onOpenBook: (RemoteBookItem) -> Unit,
     onToggleBook: (RemoteBookItem) -> Unit,
-    onStartSelection: (RemoteBookItem) -> Unit,
-    onSelectAll: () -> Unit,
-    onExitSelection: () -> Unit,
+    onSelectAll: (List<RemoteBookItem>) -> Unit,
     onSortModeChange: (RemoteSortMode) -> Unit,
     onSortAscendingChange: (Boolean) -> Unit,
     onLayoutModeChange: () -> Unit,
@@ -130,9 +129,9 @@ internal fun RemoteBrowserScreen(
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val motionEnabled = LocalMotionEnabled.current
     val eInkMode = LocalEInkMode.current
-    // One capture of the scrolling content: the floating button refracts it in liquid glass and
-    // the bottom progressive blur samples it in every theme.
+    // Capture only the scrolling content for the glass action, never the action itself.
     val backdrop = contentBackdrop ?: rememberLayerBackdrop()
+    val useBackdrop = isLiquidGlass && contentBackdrop != null
     val currentLevel = levels.lastOrNull() ?: return
 
     // The drawn level lags one animation behind the requested one, exactly like the folder books page.
@@ -170,21 +169,44 @@ internal fun RemoteBrowserScreen(
     // Same URL, new data (load finished, next page appended): show it immediately.
     val level = if (renderedLevel.url == currentLevel.url) currentLevel else renderedLevel
     val page = level.page
-    val books = remember(page?.books, sortMode, sortAscending) {
-        sortRemoteBooks(page?.books.orEmpty(), sortMode, sortAscending)
+    // Libraries without a server search endpoint still support filtering the loaded level.
+    val localQuery = if (searchAvailable) "" else searchQuery.orEmpty().trim()
+    val books = remember(page?.books, sortMode, sortAscending, localQuery) {
+        sortRemoteBooks(page?.books.orEmpty().filter { book ->
+            localQuery.isBlank() || book.title.contains(localQuery, ignoreCase = true) ||
+                book.authors.any { it.contains(localQuery, ignoreCase = true) }
+        }, sortMode, sortAscending)
     }
-    val folders = page?.folders.orEmpty()
+    val folders = page?.folders.orEmpty().filter {
+        localQuery.isBlank() || it.title.contains(localQuery, ignoreCase = true)
+    }
     val breadcrumb = levels.takeIf { it.size > 1 }?.joinToString(" › ") { it.title }.orEmpty()
     val summary = when {
         page == null && level.loading -> stringResource(R.string.remote_library_loading)
         page == null -> ""
-        selectionMode -> stringResource(R.string.remote_library_selected_count, selection.size)
-        else -> stringResource(R.string.remote_library_level_summary, folders.size, books.size)
+        else -> stringResource(R.string.folder_books_level_summary, folders.size, books.size)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
         CollapsingPageScaffold(
             drawContentBehindHeader = true,
+            bottomBarOverlay = true,
+            bottomBar = {
+                Box(
+                    Modifier.fillMaxWidth().navigationBarsPadding()
+                        .padding(horizontal = AppSpace.lg, vertical = AppSpace.md)
+                ) {
+                    ProvideLiquidGlassBackdrop(backdrop.takeIf { useBackdrop }) {
+                        BookPickerSelectionBar(
+                            confirmText = stringResource(R.string.remote_library_download_selected, selection.size),
+                            confirmEnabled = selection.isNotEmpty(),
+                            selectAllEnabled = books.any { it.preferredFormat != null },
+                            onSelectAll = { onSelectAll(books.filter { it.preferredFormat != null }) },
+                            onConfirm = onDownloadSelected
+                        )
+                    }
+                }
+            },
             title = level.title,
             state = androidx.compose.runtime.key(level.url) { com.huangder.lumibooks.ui.components.rememberCollapsingPageState() },
             onBack = if (searchQuery != null) onSearchClose else onBack,
@@ -195,8 +217,6 @@ internal fun RemoteBrowserScreen(
                     searchAvailable = searchAvailable,
                     searchQuery = searchQuery,
                     loading = level.loading,
-                    showSelectAll = books.isNotEmpty(),
-                    selectionMode = selectionMode,
                     layoutMode = layoutMode,
                     sortMode = sortMode,
                     sortAscending = sortAscending,
@@ -205,8 +225,6 @@ internal fun RemoteBrowserScreen(
                     onSearchSubmit = onSearchSubmit,
                     onSearchClose = onSearchClose,
                     onRefresh = onRefresh,
-                    onSelectAll = onSelectAll,
-                    onExitSelection = onExitSelection,
                     onSortModeChange = onSortModeChange,
                     onSortAscendingChange = onSortAscendingChange,
                     onLayoutModeChange = onLayoutModeChange
@@ -221,7 +239,7 @@ internal fun RemoteBrowserScreen(
                         this.alpha = alpha.value
                         translationY = offset.value.dp.toPx()
                     }
-                    .layerBackdrop(backdrop)
+                    .then(if (useBackdrop) Modifier.layerBackdrop(backdrop) else Modifier)
             ) {
                 when {
                     page == null && level.loading -> Box(Modifier.fillMaxSize().padding(top = LocalCollapsingPageTopInset.current), contentAlignment = Alignment.Center) {
@@ -233,9 +251,9 @@ internal fun RemoteBrowserScreen(
                         onAction = onRetry,
                         modifier = Modifier.padding(horizontal = AppSpace.lg).padding(top = LocalCollapsingPageTopInset.current)
                     )
-                    folders.isEmpty() && books.isEmpty() -> RemoteEmptyState(
+                    folders.isEmpty() && books.isEmpty() && page.nextUrl == null -> RemoteEmptyState(
                         message = stringResource(
-                            if (level.url.startsWith("search:")) R.string.search_no_results else R.string.remote_library_empty_folder
+                            if (localQuery.isNotBlank() || level.url.startsWith("search:")) R.string.search_no_results else R.string.remote_library_empty_folder
                         ),
                         modifier = Modifier.padding(top = LocalCollapsingPageTopInset.current)
                     )
@@ -260,14 +278,12 @@ internal fun RemoteBrowserScreen(
                             layoutMode = mode,
                             hasMore = page.nextUrl != null,
                             loadingMore = level.loadingMore,
-                            selectionMode = selectionMode,
                             selection = selection,
                             importedKeys = importedKeys,
                             downloadStates = downloadStates,
                             onOpenFolder = onOpenFolder,
                             onOpenBook = onOpenBook,
                             onToggleBook = onToggleBook,
-                            onStartSelection = onStartSelection,
                             onLoadMore = onLoadMore
                         )
                     }
@@ -275,19 +291,6 @@ internal fun RemoteBrowserScreen(
             }
         }
 
-        if (selectionMode) {
-            RemoteBottomBar(blurBackdrop = backdrop) {
-                // Only the floating button refracts the captured list (backdrop ownership rule).
-                ProvideLiquidGlassBackdrop(backdrop.takeIf { isLiquidGlass && contentBackdrop != null }) {
-                    RemotePrimaryButton(
-                        text = stringResource(R.string.remote_library_download_selected, selection.size),
-                        enabled = selection.isNotEmpty(),
-                        floating = true,
-                        onClick = onDownloadSelected
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -299,23 +302,23 @@ private fun RemoteLevelContent(
     layoutMode: Int,
     hasMore: Boolean,
     loadingMore: Boolean,
-    selectionMode: Boolean,
     selection: Set<String>,
     importedKeys: Set<String>,
     downloadStates: Map<String, RemoteDownloadState>,
     onOpenFolder: (RemoteFolder) -> Unit,
     onOpenBook: (RemoteBookItem) -> Unit,
     onToggleBook: (RemoteBookItem) -> Unit,
-    onStartSelection: (RemoteBookItem) -> Unit,
     onLoadMore: () -> Unit
 ) {
     val padding = PaddingValues(
         start = AppSpace.lg,
         end = AppSpace.lg,
         top = topPadding + AppSpace.xs,
-        bottom = RemoteBottomBarContentPadding
+        bottom = LocalCollapsingPageBottomInset.current + AppSpace.lg
     )
-    val bookClick: (RemoteBookItem) -> Unit = { if (selectionMode) onToggleBook(it) else onOpenBook(it) }
+    val bookClick: (RemoteBookItem) -> Unit = {
+        if (it.preferredFormat != null) onToggleBook(it) else onOpenBook(it)
+    }
     if (layoutMode == 1) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -323,17 +326,16 @@ private fun RemoteLevelContent(
             verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
         ) {
             items(folders, key = { "folder:${it.url}" }) { folder ->
-                RemoteFolderRow(folder = folder, enabled = !selectionMode, onClick = { onOpenFolder(folder) })
+                RemoteFolderRow(folder = folder, enabled = true, onClick = { onOpenFolder(folder) })
             }
             items(books, key = { "book:${it.key}" }) { book ->
                 RemoteBookRow(
                     book = book,
-                    selectionMode = selectionMode,
                     selected = book.key in selection,
                     imported = book.key in importedKeys,
                     downloadState = downloadStates[book.key],
                     onClick = { bookClick(book) },
-                    onLongClick = { onStartSelection(book) }
+                    onLongClick = { onOpenBook(book) }
                 )
             }
             if (hasMore) item(key = "more") { LoadMoreFooter(loadingMore, onLoadMore) }
@@ -348,18 +350,17 @@ private fun RemoteLevelContent(
         verticalArrangement = Arrangement.spacedBy(AppSpace.md)
     ) {
         items(folders, key = { "folder:${it.url}" }) { folder ->
-            RemoteFolderTile(folder = folder, compact = layoutMode == 3, enabled = !selectionMode, onClick = { onOpenFolder(folder) })
+            RemoteFolderTile(folder = folder, compact = layoutMode == 3, enabled = true, onClick = { onOpenFolder(folder) })
         }
         items(books, key = { "book:${it.key}" }) { book ->
             RemoteBookTile(
                 book = book,
                 compact = layoutMode == 3,
-                selectionMode = selectionMode,
                 selected = book.key in selection,
                 imported = book.key in importedKeys,
                 downloadState = downloadStates[book.key],
                 onClick = { bookClick(book) },
-                onLongClick = { onStartSelection(book) }
+                onLongClick = { onOpenBook(book) }
             )
         }
         if (hasMore) {
@@ -482,7 +483,6 @@ private fun RemoteBookItem.metaLine(sizeLabel: String?): String = listOfNotNull(
 @Composable
 private fun RemoteBookRow(
     book: RemoteBookItem,
-    selectionMode: Boolean,
     selected: Boolean,
     imported: Boolean,
     downloadState: RemoteDownloadState?,
@@ -505,9 +505,9 @@ private fun RemoteBookRow(
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     onLongClick()
                 },
-                role = if (selectionMode) Role.Checkbox else Role.Button
+                role = if (format != null) Role.Checkbox else Role.Button
             )
-            .semantics { if (selectionMode) this.selected = selected }
+            .semantics { if (format != null) this.selected = selected }
             .padding(AppSpace.sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -548,7 +548,7 @@ private fun RemoteBookRow(
             }
             RemoteDownloadProgress(downloadState)
         }
-        if (selectionMode) {
+        if (format != null) {
             Spacer(Modifier.width(AppSpace.sm))
             RemoteSelectionIndicator(selected)
             Spacer(Modifier.width(AppSpace.sm))
@@ -561,7 +561,6 @@ private fun RemoteBookRow(
 private fun RemoteBookTile(
     book: RemoteBookItem,
     compact: Boolean,
-    selectionMode: Boolean,
     selected: Boolean,
     imported: Boolean,
     downloadState: RemoteDownloadState?,
@@ -582,9 +581,9 @@ private fun RemoteBookTile(
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     onLongClick()
                 },
-                role = if (selectionMode) Role.Checkbox else Role.Button
+                role = if (format != null) Role.Checkbox else Role.Button
             )
-            .semantics { if (selectionMode) this.selected = selected }
+            .semantics { if (format != null) this.selected = selected }
             .padding(AppSpace.sm)
     ) {
         Box {
@@ -596,7 +595,7 @@ private fun RemoteBookTile(
                 placeholderFontSize = if (compact) AppType.Caption else AppType.BodySmall,
                 modifier = Modifier.fillMaxWidth().aspectRatio(0.72f)
             )
-            if (selectionMode) {
+            if (format != null) {
                 Box(Modifier.align(Alignment.TopEnd).padding(6.dp)) { RemoteSelectionIndicator(selected) }
             }
         }
@@ -663,22 +662,7 @@ private fun RemoteImportedBadge() {
 
 @Composable
 private fun RemoteSelectionIndicator(isSelected: Boolean) {
-    Box(
-        modifier = Modifier
-            .size(20.dp)
-            .clip(CircleShape)
-            .then(
-                if (isSelected) Modifier.background(AppColors.Accent)
-                else Modifier
-                    .background(AppColors.CardBg.copy(alpha = 0.7f))
-                    .border(1.5.dp, AppColors.TextSecondary.copy(alpha = 0.6f), CircleShape)
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        if (isSelected) {
-            Icon(AppIcons.Check, contentDescription = null, tint = AppColors.OnAccent, modifier = Modifier.size(13.dp))
-        }
-    }
+    LumiCheckbox(checked = isSelected, onCheckedChange = null, size = 20.dp)
 }
 
 @Composable
@@ -750,7 +734,6 @@ internal fun RemotePrimaryButton(
     }
 }
 
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 internal fun RemoteBrowserHeader(
     path: String,
@@ -758,8 +741,6 @@ internal fun RemoteBrowserHeader(
     searchAvailable: Boolean,
     searchQuery: String?,
     loading: Boolean,
-    showSelectAll: Boolean,
-    selectionMode: Boolean,
     layoutMode: Int,
     sortMode: RemoteSortMode,
     sortAscending: Boolean,
@@ -768,258 +749,28 @@ internal fun RemoteBrowserHeader(
     onSearchSubmit: () -> Unit,
     onSearchClose: () -> Unit,
     onRefresh: () -> Unit,
-    onSelectAll: () -> Unit,
-    onExitSelection: () -> Unit,
     onSortModeChange: (RemoteSortMode) -> Unit,
     onSortAscendingChange: (Boolean) -> Unit,
     onLayoutModeChange: () -> Unit
 ) {
-    val searching = searchQuery != null
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = AppSpace.sm)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = AppSpace.lg),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            RemoteSearchHeaderSlot(
-                title = "",
-                path = path,
-                searchAvailable = searchAvailable,
-                query = searchQuery,
-                onExpand = onSearchOpen,
-                onQueryChange = onSearchQueryChange,
-                onSubmit = onSearchSubmit,
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(Modifier.width(AppSpace.sm))
-            if (loading) {
-                Box(modifier = Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(modifier = Modifier.size(22.dp), color = AppColors.Accent, strokeWidth = 2.dp)
-                }
-            } else {
-                RemoteHeaderIconButton(
-                    icon = AppIcons.ArrowClockwise,
-                    description = stringResource(R.string.import_folder_books_refresh),
-                    onClick = onRefresh
-                )
-            }
-        }
-        Spacer(Modifier.height(AppSpace.sm))
-        androidx.compose.foundation.layout.BoxWithConstraints(
-            Modifier.fillMaxWidth().padding(horizontal = AppSpace.lg)
-        ) {
-            val controls: @Composable () -> Unit = {
-                if (selectionMode) {
-                    RemoteHeaderPill(stringResource(R.string.done), onExitSelection)
-                }
-                if (showSelectAll) {
-                    RemoteAccentPill(stringResource(R.string.import_select_all), onSelectAll)
-                }
-                RemoteSortButton(
-                    mode = sortMode,
-                    ascending = sortAscending,
-                    onModeChange = onSortModeChange,
-                    onAscendingChange = onSortAscendingChange
-                )
-                RemoteLayoutButton(layoutMode = layoutMode, onClick = onLayoutModeChange)
-            }
-            val wrapControls = maxWidth < 360.dp || androidx.compose.ui.platform.LocalDensity.current.fontScale > 1.15f
-            if (wrapControls) {
-                Column(verticalArrangement = Arrangement.spacedBy(AppSpace.sm)) {
-                    Text(summary, color = AppColors.TextSecondary, fontSize = AppType.Caption,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth())
-                    androidx.compose.foundation.layout.FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(AppSpace.sm, Alignment.End),
-                        verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
-                    ) { controls() }
-                }
-            } else {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AppSpace.sm),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Text(summary, color = AppColors.TextSecondary, fontSize = AppType.Caption,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                    controls()
-                }
-            }
-        }
-        Spacer(Modifier.height(AppSpace.sm))
-    }
-}
-
-/**
- * Title area that turns into a search field, with the folder books page's spring: the pill
- * grows from its right edge over the title, overshoots slightly and settles.
- */
-@Composable
-private fun RemoteSearchHeaderSlot(
-    title: String,
-    path: String,
-    searchAvailable: Boolean,
-    query: String?,
-    onExpand: () -> Unit,
-    onQueryChange: (String) -> Unit,
-    onSubmit: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val motionEnabled = LocalMotionEnabled.current
-    val eInkMode = LocalEInkMode.current
-    val searching = query != null
-    androidx.compose.foundation.layout.BoxWithConstraints(modifier = modifier) {
-        val collapsedWidth = 44.dp
-        val expandedWidth = maxWidth
-        val rawExpansion by androidx.compose.animation.core.animateFloatAsState(
-            targetValue = if (searching) 1f else 0f,
-            animationSpec = when {
-                !motionEnabled || eInkMode -> tween(120)
-                searching -> com.huangder.lumibooks.ui.animation.VisualMotion.spring(dampingRatio = 0.45f, stiffness = 280f)
-                else -> com.huangder.lumibooks.ui.animation.VisualMotion.spring(dampingRatio = 1f, stiffness = 320f)
-            },
-            label = "remoteSearchExpansion"
-        )
-        val expansion = rawExpansion.coerceIn(0f, 1f)
-        val overshoot = (rawExpansion - 1f).coerceAtLeast(0f)
-        Column(
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .fillMaxWidth()
-                .padding(end = if (searchAvailable) collapsedWidth + AppSpace.sm else 0.dp)
-                .graphicsLayer { alpha = 1f - expansion }
-        ) {
-            if (title.isNotBlank()) Text(
-                text = title,
-                color = AppColors.TextPrimary,
-                fontSize = AppType.Section,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (path.isNotBlank()) {
-                Text(
-                    text = path,
-                    color = AppColors.TextSecondary,
-                    fontSize = AppType.Caption,
-                    maxLines = 1,
-                    overflow = TextOverflow.StartEllipsis
-                )
-            }
-        }
-        if (searchAvailable) {
-            RemoteSearchPill(
-                query = query.orEmpty(),
-                expanded = searching,
-                contentAlpha = expansion,
-                onQueryChange = onQueryChange,
-                onExpand = onExpand,
-                onSubmit = onSubmit,
-                modifier = Modifier
-                    .testTag("remote-search-pill")
-                    .align(Alignment.CenterEnd)
-                    .width(collapsedWidth + (expandedWidth - collapsedWidth) * expansion)
-                    .height(44.dp)
-                    .graphicsLayer {
-                        scaleX = 1f + overshoot * 0.5f
-                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, 0.5f)
-                    }
-            )
-        }
-    }
-}
-
-@Composable
-private fun RemoteSearchPill(
-    query: String,
-    expanded: Boolean,
-    contentAlpha: Float,
-    onQueryChange: (String) -> Unit,
-    onExpand: () -> Unit,
-    onSubmit: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-    val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
-    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
-    var retainedQuery by remember { mutableStateOf(query) }
-    androidx.compose.runtime.SideEffect { if (expanded) retainedQuery = query }
-    val displayedQuery = if (expanded) query else retainedQuery
-    LaunchedEffect(expanded) {
-        if (expanded) {
-            runCatching { focusRequester.requestFocus() }
-            keyboardController?.show()
-        } else {
-            focusManager.clearFocus()
-            keyboardController?.hide()
-        }
-    }
-    com.huangder.lumibooks.ui.components.LiquidGlassSurface(
-        controlEdge = true,
-        shape = CircleShape,
-        fallbackColor = AppColors.BgGray,
-        contentScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
-        onClick = if (expanded) null else onExpand,
-        effectPadding = 1.dp,
-        modifier = modifier,
-        contentAlignment = Alignment.Center
-    ) {
-        if (expanded || contentAlpha > 0f) {
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = contentAlpha }
-                    .padding(start = AppSpace.md, end = AppSpace.xs),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(AppIcons.MagnifyingGlass, contentDescription = null, tint = AppColors.TextSecondary, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(AppSpace.sm))
-                androidx.compose.foundation.text.BasicTextField(
-                    value = displayedQuery,
-                    onValueChange = onQueryChange,
-                    enabled = expanded,
-                    modifier = Modifier
-                        .weight(1f)
-                        .focusRequester(focusRequester),
-                    singleLine = true,
-                    textStyle = androidx.compose.ui.text.TextStyle(
-                        color = AppColors.TextPrimary,
-                        fontSize = AppType.BodySmall,
-                        fontWeight = FontWeight.Medium
-                    ),
-                    cursorBrush = androidx.compose.ui.graphics.SolidColor(AppColors.Accent),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        imeAction = androidx.compose.ui.text.input.ImeAction.Search
-                    ),
-                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = {
-                        keyboardController?.hide()
-                        onSubmit()
-                    }),
-                    decorationBox = { inner ->
-                        Box {
-                            if (displayedQuery.isEmpty()) {
-                                Text(
-                                    text = stringResource(R.string.remote_library_search_placeholder),
-                                    color = AppColors.TextSecondary,
-                                    fontSize = AppType.BodySmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            inner()
-                        }
-                    }
-                )
-            }
-        } else {
-            Icon(
-                imageVector = AppIcons.MagnifyingGlass,
-                contentDescription = stringResource(R.string.search),
-                tint = AppColors.TextPrimary,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-    }
+    BookPickerHeader(
+        path = path,
+        levelSummary = summary,
+        isScanning = loading,
+        isSearching = searchQuery != null,
+        searchQuery = searchQuery.orEmpty(),
+        layoutMode = layoutMode,
+        onRefresh = onRefresh,
+        onSearchOpen = onSearchOpen,
+        onSearchQueryChange = onSearchQueryChange,
+        onLayoutModeChange = onLayoutModeChange,
+        sortControl = {
+            RemoteSortButton(sortMode, sortAscending, onSortModeChange, onSortAscendingChange)
+        },
+        searchPlaceholder = stringResource(
+            if (searchAvailable) R.string.remote_library_search_placeholder else R.string.import_search_placeholder
+        ),
+        searchTag = "remote-search-pill",
+        onSearchSubmit = onSearchSubmit
+    )
 }

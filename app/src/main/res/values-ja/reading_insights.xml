@@ -30,7 +30,7 @@
     <string name="insights_new_reading">新しい読書記録</string>
     <string name="insights_more_time">%1$s増加</string>
     <string name="insights_less_time">%1$s減少</string>
-    <string name="insights_review">読書の振り返り</string>
+    <string name="insights_review">読書の思い出</string>
     <string name="insights_through">%1$sまで</string>
     <string name="insights_generate">レポートを作成</string>
     <string name="insights_save_image">画像を保存</string>
@@ -50,4 +50,24 @@
     <string name="insights_monthly_activity">月別の読書時間</string>
     <string name="insights_personal_review">読書の感想</string>
     <string name="insights_retry">再試行</string>
+    <string name="insights_read_minutes">読 %1$d</string>
+    <string name="insights_listen_minutes">聴 %1$d</string>
+    <string name="insights_day_marks">注 %1$d</string>
+    <string name="insights_tap_hint">日付をタップして詳細を表示</string>
+    <string name="insights_previous_period">前の期間</string>
+    <string name="insights_next_period">次の期間</string>
+    <string name="insights_reading">読書</string>
+    <string name="insights_listening">聴く</string>
+    <string name="insights_vs_previous">%1$s と比較</string>
+    <string name="insights_days_value">%1$d 日</string>
+    <string name="insights_books_value">%1$d 冊</string>
+    <string name="insights_best_day_label">最高の日</string>
+    <string name="insights_goal_days_label">目標達成日数</string>
+    <string name="insights_first_read_label">初回</string>
+    <string name="insights_last_read_label">最近</string>
+    <string name="insights_today">今日</string>
+    <string name="insights_generating">生成中…</string>
+    <string name="insights_top_tags">よく使うタグ</string>
+    <string name="insights_since">%1$s から</string>
+    <string name="insights_read_listen_split">読書と聴く</string>
 </resources>

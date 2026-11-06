@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="selection_deselect_all">取消全选</string>
+    <string name="folder_import_count">确认导入%1$d本</string>
+    <string name="txt_toc_rules_label">TXT 目录规则库</string>
+    <string name="txt_toc_rules_empty">暂无自定义规则</string>
+    <string name="txt_toc_rules_import">导入</string>
+    <string name="txt_toc_rules_export">导出</string>
+    <string name="book_review_unsaved_title">放弃未保存的书评？</string>
+    <string name="book_review_unsaved_message">你修改了书评或评分，离开后这些修改不会保留。</string>
+    <string name="book_review_discard">放弃</string>
+</resources>

@@ -46,6 +46,7 @@
     <string name="font_settings">字型設定</string>
     <string name="theme_settings">主題設定</string>
     <string name="brightness">亮度</string>
+    <string name="reader_dark_mask">遮罩</string>
     <string name="add_bookmark">加入書籤</string>
     <string name="bookmarks">書籤</string>
     <string name="notes">筆記</string>
@@ -1138,7 +1139,7 @@
     <string name="import_no_new_books">沒有發現新書籍</string>
     <string name="import_select_folder_books">選擇資料夾書籍</string>
     <string name="import_folder_books_refresh">重新整理</string>
-    <string name="folder_books_level_summary">%1$d 個資料夾 · %2$d 本書籍 · 已選 %3$d 本</string>
+    <string name="folder_books_level_summary">%1$d 個資料夾 · %2$d 本書籍</string>
     <string name="folder_books_folder_count">%1$d 本</string>
     <string name="folder_books_empty_folder">這個資料夾裡沒有書籍</string>
     <string name="folder_books_sort_name">名稱排序</string>
@@ -1488,6 +1489,18 @@
     <string name="pdf_annotation_highlighter">螢光筆</string>
     <string name="pdf_annotation_eraser">擦膠</string>
     <string name="bookshelf_cover_flow">Cover Flow</string>
+    <string name="bookshelf_spine_shelf">書脊</string>
+    <string name="spine_shelf_folder_count">%1$d 本</string>
+    <string name="spine_menu_tags">標籤</string>
+    <string name="spine_menu_notes">筆記</string>
+    <string name="spine_menu_edit">編輯</string>
+    <string name="spine_menu_cover">封面</string>
+    <string name="spine_menu_restore_cover">原封面</string>
+    <string name="spine_menu_move">移動</string>
+    <string name="spine_menu_hide">隱藏</string>
+    <string name="spine_menu_archive">封存</string>
+    <string name="spine_menu_progress">已讀 %1$d%%</string>
+    <string name="spine_menu_unread">未開始</string>
     <string name="coverflow_open">開啟</string>
     <string name="coverflow_info">資訊</string>
     <string name="coverflow_more">更多</string>

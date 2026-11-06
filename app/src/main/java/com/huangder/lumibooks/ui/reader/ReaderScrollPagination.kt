@@ -20,8 +20,9 @@ internal fun configureScrollPagination(
 ) {
     val density = context.resources.displayMetrics.density
     val fontSize = state.fontSize * density
-    val face = resolveReaderTypeface(context, state.fontType, state.customFontPath, state.bodyFontWeight)
-    val fontKey = readerPaginationFontKey(context, state.fontType, state.customFontPath, state.bodyFontWeight)
+    val bodyFontWeight = state.bodyFontWeight
+    val face = resolveReaderTypeface(context, state.fontType, state.customFontPath, bodyFontWeight)
+    val fontKey = readerPaginationFontKey(context, state.fontType, state.customFontPath, bodyFontWeight)
     val margins = resolveReaderVerticalMargins(height, state.marginTopDp * density,
         state.marginBottomDp * density, fontSize, state.lineHeight, 2.5f * density, face.typeface)
     val spread = twoPageSpread && isLandscapeOrNearSquare(width, height)
@@ -40,7 +41,7 @@ internal fun configureScrollPagination(
     engine.configure(width = pageWidth, height = height, fontSizePx = fontSize,
         lineSpacingPx = 2.5f * density, lineSpacingMult = state.lineHeight,
         letterSpacingPx = state.letterSpacing * density, fontType = state.fontType,
-        typeface = face.typeface, fontWeight = state.bodyFontWeight,
+        typeface = face.typeface, fontWeight = bodyFontWeight,
         marginLeftPx = state.marginLeftDp * density, marginRightPx = rightMargin * density,
         marginTopPx = margins.topPx.toFloat(), marginBottomPx = margins.bottomPx.toFloat(),
         chapterCount = state.chapterCount, useDisplayDensityForSpans = state.book?.format?.name == "TXT",

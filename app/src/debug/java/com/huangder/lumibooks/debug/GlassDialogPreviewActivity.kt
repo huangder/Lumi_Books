@@ -34,7 +34,10 @@ class GlassDialogPreviewActivity : ComponentActivity() {
         setContent {
             val dark = intent.getBooleanExtra("dark", false)
             val native = intent.getBooleanExtra("native", false)
-            EBookReaderTheme(appTheme = "liquid_glass", darkTheme = dark,
+            EBookReaderTheme(
+                liquidGlassSamplingQuality = com.huangder.lumibooks.domain.model.LiquidGlassSamplingQuality
+                    .fromStoredValue(intent.getStringExtra("samplingQuality")),
+                appTheme = "liquid_glass", darkTheme = dark,
                 liquidGlassStyle = LiquidGlassStyle.fromStoredValue(intent.getStringExtra("style"))) {
                 val density = LocalDensity.current
                 CompositionLocalProvider(

@@ -175,10 +175,13 @@ class BookReviewActivity : ComponentActivity() {
             val resolvedTheme = effectiveAppTheme(appTheme, capability)
             val liquidGlassStyle by dataStoreManager.liquidGlassStyle
                 .collectAsState(initial = launchTheme.liquidGlassStyle)
+            val liquidGlassSamplingQuality by dataStoreManager.liquidGlassSamplingQuality
+                .collectAsState(initial = launchTheme.liquidGlassSamplingQuality)
             val reduceTransparencyEnabled by dataStoreManager.reduceTransparencyEnabled
                 .collectAsState(initial = launchTheme.reduceTransparencyEnabled)
             EBookReaderTheme(
                 liquidGlassStyle = liquidGlassStyle,
+                liquidGlassSamplingQuality = liquidGlassSamplingQuality,
                 reduceTransparencyEnabled = reduceTransparencyEnabled,
                 menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(animationStyle),
                 motionPreference = com.huangder.lumibooks.ui.theme.MotionPreference.fromStoredValue(motion),
@@ -236,6 +239,40 @@ private fun BookReviewScreen(
     val ownsBackdrop = isLiquidGlass && !hasLumiArtwork
     val pageBackdrop = rememberLayerBackdrop()
     val (actionColor, onActionColor) = reviewActionColors()
+    // Unsaved-changes guard: back (button or gesture) asks before throwing edits away.
+    var confirmDiscard by remember { mutableStateOf(false) }
+    val guardedBack: () -> Unit = { if (dirty) confirmDiscard = true else onBack() }
+    androidx.activity.compose.BackHandler(enabled = dirty) { confirmDiscard = true }
+    val save: () -> Unit = {
+        focusManager.clearFocus()
+        scope.launch {
+            dataStoreManager.saveBookReview(bookId, review, rating)
+            Toast.makeText(context, R.string.book_review_saved, Toast.LENGTH_SHORT).show()
+        }
+    }
+    if (confirmDiscard) {
+        com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog(
+            onDismissRequest = { confirmDiscard = false },
+            titleText = stringResource(R.string.book_review_unsaved_title),
+            text = { Text(stringResource(R.string.book_review_unsaved_message)) },
+            actions = listOf(
+                com.huangder.lumibooks.ui.components.AppDialogAction(stringResource(R.string.cancel), { confirmDiscard = false },
+                    com.huangder.lumibooks.ui.components.AppDialogActionRole.Cancel),
+                com.huangder.lumibooks.ui.components.AppDialogAction(stringResource(R.string.book_review_discard), {
+                    confirmDiscard = false; onBack()
+                }, com.huangder.lumibooks.ui.components.AppDialogActionRole.Destructive),
+                com.huangder.lumibooks.ui.components.AppDialogAction(stringResource(R.string.book_review_save), {
+                    confirmDiscard = false
+                    focusManager.clearFocus()
+                    scope.launch {
+                        dataStoreManager.saveBookReview(bookId, review, rating)
+                        Toast.makeText(context, R.string.book_review_saved, Toast.LENGTH_SHORT).show()
+                        onBack()
+                    }
+                })
+            )
+        )
+    }
 
     Box(Modifier.fillMaxSize()) {
         Box(
@@ -250,18 +287,12 @@ private fun BookReviewScreen(
             CollapsingPageScaffold(
                 title = stringResource(R.string.book_review),
                 drawContentBehindHeader = true,
-                onBack = onBack,
+                onBack = guardedBack,
                 actions = {
                     // Lives in the top bar so it stays reachable while the keyboard is open.
                     LiquidGlassTextButton(
                         text = stringResource(R.string.book_review_save),
-                        onClick = {
-                            focusManager.clearFocus()
-                            scope.launch {
-                                dataStoreManager.saveBookReview(bookId, review, rating)
-                                Toast.makeText(context, R.string.book_review_saved, Toast.LENGTH_SHORT).show()
-                            }
-                        },
+                        onClick = save,
                         enabled = dirty,
                         tintedColor = if (dirty) actionColor else AppColors.BgGray,
                         contentColor = if (dirty) onActionColor else AppColors.TextSecondary

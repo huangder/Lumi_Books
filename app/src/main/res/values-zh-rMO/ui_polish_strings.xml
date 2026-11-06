@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="selection_deselect_all">取消全選</string>
+    <string name="folder_import_count">確認匯入 %1$d 本</string>
+    <string name="txt_toc_rules_label">TXT 目錄規則庫</string>
+    <string name="txt_toc_rules_empty">暫無自訂規則</string>
+    <string name="txt_toc_rules_import">匯入</string>
+    <string name="txt_toc_rules_export">匯出</string>
+    <string name="book_review_unsaved_title">放棄未儲存的書評？</string>
+    <string name="book_review_unsaved_message">你修改了書評或評分，離開後這些修改不會保留。</string>
+    <string name="book_review_discard">放棄</string>
+</resources>

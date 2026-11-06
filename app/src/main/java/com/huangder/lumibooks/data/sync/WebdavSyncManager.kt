@@ -980,7 +980,8 @@ class WebdavSyncManager @Inject constructor(
         isFavorite = isFavorite,
         updatedAt = metadataUpdatedAt,
         isPinned = isPinned,
-        isHidden = isHidden
+        isHidden = isHidden,
+        isArchived = isArchived
     )
 
     private fun mergeRemoteBook(
@@ -1015,6 +1016,7 @@ class WebdavSyncManager @Inject constructor(
             isFavorite = metadata?.isFavorite ?: false,
             isPinned = metadata?.isPinned ?: false,
             isHidden = metadata?.isHidden ?: false,
+            isArchived = metadata?.isArchived ?: false,
             isCloudOnly = true,
             metadataUpdatedAt = metadata?.updatedAt ?: 0L
         )
@@ -1031,6 +1033,7 @@ class WebdavSyncManager @Inject constructor(
             isFavorite = if (remoteMetadataWins) metadata?.isFavorite ?: base.isFavorite else base.isFavorite,
             isPinned = if (remoteMetadataWins) metadata?.isPinned ?: base.isPinned else base.isPinned,
             isHidden = if (remoteMetadataWins) metadata?.isHidden ?: base.isHidden else base.isHidden,
+            isArchived = if (remoteMetadataWins) metadata?.isArchived ?: base.isArchived else base.isArchived,
             metadataUpdatedAt = if (remoteMetadataWins) metadata?.updatedAt ?: base.metadataUpdatedAt else base.metadataUpdatedAt,
             remoteLibraryKey = libraryKey,
             remoteFileName = remoteEntry.fileName,
@@ -1576,6 +1579,7 @@ class WebdavSyncManager @Inject constructor(
                     isFavorite = appliedMetadata.isFavorite,
                     isPinned = appliedMetadata.isPinned,
                     isHidden = appliedMetadata.isHidden ?: localBook.isHidden,
+                    isArchived = appliedMetadata.isArchived ?: localBook.isArchived,
                     metadataUpdatedAt = appliedMetadata.updatedAt
                 )
                 bookRepository.updateBook(updatedBook)

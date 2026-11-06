@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 abstract class TagDao {
-    @Query("SELECT tags.id AS `key`, tags.name, tags.groupId, COUNT(books.id) AS usageCount FROM tags LEFT JOIN book_tag_cross_refs AS links ON links.tagId = tags.id LEFT JOIN books ON books.id = links.bookId AND books.isHidden = 0 GROUP BY tags.id ORDER BY tags.normalizedName, tags.id")
+    @Query("SELECT tags.id AS `key`, tags.name, tags.groupId, COUNT(books.id) AS usageCount FROM tags LEFT JOIN book_tag_cross_refs AS links ON links.tagId = tags.id LEFT JOIN books ON books.id = links.bookId AND books.isHidden = 0 AND books.isArchived = 0 GROUP BY tags.id ORDER BY tags.normalizedName, tags.id")
     abstract fun observeCatalog(): Flow<List<ManagedTag>>
 
     @Query("SELECT * FROM tags")

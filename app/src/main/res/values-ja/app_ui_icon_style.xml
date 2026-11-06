@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_ui_icon_style_title">アプリ内アイコンのスタイル</string>
+    <string name="app_ui_icon_style_filled_colorful">塗りつぶしカラー</string>
+    <string name="app_ui_icon_style_outline_colorful">線画カラー</string>
+    <string name="app_ui_icon_style_filled_monochrome">塗りつぶし白黒</string>
+    <string name="app_ui_icon_style_outline_monochrome">線画白黒</string>
+</resources>

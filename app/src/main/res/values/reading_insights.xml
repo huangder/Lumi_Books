@@ -30,7 +30,7 @@
     <string name="insights_new_reading">新增阅读</string>
     <string name="insights_more_time">多读了 %1$s</string>
     <string name="insights_less_time">少读了 %1$s</string>
-    <string name="insights_review">阅读回顾</string>
+    <string name="insights_review">阅读记忆</string>
     <string name="insights_through">截至 %1$s</string>
     <string name="insights_generate">生成报告</string>
     <string name="insights_save_image">保存图片</string>
@@ -50,4 +50,24 @@
     <string name="insights_monthly_activity">月度阅读时长</string>
     <string name="insights_personal_review">我的书评</string>
     <string name="insights_retry">重试</string>
+    <string name="insights_read_minutes">读 %1$d</string>
+    <string name="insights_listen_minutes">听 %1$d</string>
+    <string name="insights_day_marks">标 %1$d</string>
+    <string name="insights_tap_hint">点按日期查看当天详情</string>
+    <string name="insights_previous_period">上一周期</string>
+    <string name="insights_next_period">下一周期</string>
+    <string name="insights_reading">阅读</string>
+    <string name="insights_listening">听书</string>
+    <string name="insights_vs_previous">对比 %1$s</string>
+    <string name="insights_days_value">%1$d 天</string>
+    <string name="insights_books_value">%1$d 本</string>
+    <string name="insights_best_day_label">最高阅读日</string>
+    <string name="insights_goal_days_label">达标天数</string>
+    <string name="insights_first_read_label">首次阅读</string>
+    <string name="insights_last_read_label">最近阅读</string>
+    <string name="insights_today">今天</string>
+    <string name="insights_generating">正在生成…</string>
+    <string name="insights_top_tags">常用标签</string>
+    <string name="insights_since">自 %1$s 起</string>
+    <string name="insights_read_listen_split">读听分布</string>
 </resources>

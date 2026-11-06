@@ -13,15 +13,15 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface BookDao {
-    @Query("SELECT * FROM books WHERE isHidden = 0 ORDER BY lastReadTime DESC")
+    @Query("SELECT * FROM books WHERE isHidden = 0 AND isArchived = 0 ORDER BY lastReadTime DESC")
     fun observeVisibleBooks(): Flow<List<BookEntity>>
 
-    @Query("SELECT * FROM books WHERE id = :id AND isHidden = 0")
+    @Query("SELECT * FROM books WHERE id = :id AND isHidden = 0 AND isArchived = 0")
     suspend fun getVisibleBookById(id: String): BookEntity?
 
     /** Rejects stale external-reader writes and books hidden since the snapshot was loaded. */
     @Query("UPDATE books SET readingProgress = :progress, locatorJson = :locator, lastReadTime = :timestamp " +
-        "WHERE id = :id AND isHidden = 0 AND readingProgress = :expectedProgress " +
+        "WHERE id = :id AND isHidden = 0 AND isArchived = 0 AND readingProgress = :expectedProgress " +
         "AND ((locatorJson IS NULL AND :expectedLocator IS NULL) OR locatorJson = :expectedLocator)")
     suspend fun compareAndSetVisibleReadingProgress(
         id: String, expectedProgress: Float, expectedLocator: String?,
@@ -51,13 +51,13 @@ interface BookDao {
 
     @Query(
         "SELECT id AS bookId, title, author, coverPath, readingProgress " +
-            "FROM books WHERE isHidden = 0 ORDER BY lastReadTime DESC LIMIT 1"
+            "FROM books WHERE isHidden = 0 AND isArchived = 0 ORDER BY lastReadTime DESC LIMIT 1"
     )
     suspend fun getContinueReadingWidgetData(): ContinueReadingWidgetData?
 
     @Query(
         "SELECT id AS bookId, title, author, coverPath, readingProgress " +
-            "FROM books WHERE isHidden = 0 ORDER BY lastReadTime DESC LIMIT 1"
+            "FROM books WHERE isHidden = 0 AND isArchived = 0 ORDER BY lastReadTime DESC LIMIT 1"
     )
     fun observeContinueReadingWidgetData(): Flow<ContinueReadingWidgetData?>
 
@@ -82,6 +82,9 @@ interface BookDao {
     /** Bumps metadataUpdatedAt so WebDAV and backup merges carry the change to other devices. */
     @Query("UPDATE books SET isHidden = :hidden, metadataUpdatedAt = :updatedAt WHERE id IN (:bookIds)")
     suspend fun setBooksHidden(bookIds: List<String>, hidden: Boolean, updatedAt: Long)
+
+    @Query("UPDATE books SET isArchived = :archived, metadataUpdatedAt = :updatedAt WHERE id IN (:bookIds)")
+    suspend fun setBooksArchived(bookIds: List<String>, archived: Boolean, updatedAt: Long)
 
     @Query("UPDATE books SET filePath = '', isCloudOnly = 1 WHERE id = :bookId")
     suspend fun markBookCloudOnly(bookId: String)
@@ -127,4 +130,7 @@ interface BookDao {
 
     @Query("UPDATE books SET readingProgress = :progress, locatorJson = COALESCE(:locatorJson, locatorJson) WHERE id = :bookId")
     suspend fun updateReadingProgress(bookId: String, progress: Float, locatorJson: String?)
+
+    @Query("UPDATE books SET readingProgress = :progress, locatorJson = :locatorJson WHERE id = :bookId")
+    suspend fun updateReadingPosition(bookId: String, progress: Float, locatorJson: String?)
 }

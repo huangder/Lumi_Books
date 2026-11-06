@@ -31,32 +31,33 @@ class BrowserHeaderInteractionTest {
     @get:Rule val compose = createComposeRule()
     private val DpRect.width get() = right - left
 
-    @Test fun remoteSearchAnimatesBothDirectionsAndKeepsClosingText() = verifySearch(remote = true)
+    @Test fun remotePickerKeepsToolsBesideSearchAndSupportsClearAndSubmit() = verifySearch(remote = true)
 
-    @Test fun folderSearchAnimatesBothDirectionsAndKeepsClosingText() = verifySearch(remote = false)
+    @Test fun folderPickerKeepsToolsBesideSearchAndSupportsClear() = verifySearch(remote = false)
 
     private fun verifySearch(remote: Boolean) {
         val query = mutableStateOf<String?>(null)
+        var submissions = 0
         compose.setContent {
             EBookReaderTheme(appTheme = "lumi", motionPreference = MotionPreference.STANDARD) {
                 CompositionLocalProvider(LocalDensity provides Density(1f, 1.5f)) {
                     Box(Modifier.width(360.dp)) {
                         if (remote) RemoteBrowserHeader(
                             path = "Library", summary = "3 books", searchAvailable = true,
-                            searchQuery = query.value, loading = false, showSelectAll = true,
-                            selectionMode = true, layoutMode = 1, sortMode = RemoteSortMode.DEFAULT,
+                            searchQuery = query.value, loading = false,
+                            layoutMode = 1, sortMode = RemoteSortMode.DEFAULT,
                             sortAscending = true, onSearchOpen = { query.value = "needle" },
-                            onSearchQueryChange = { query.value = it }, onSearchSubmit = {},
-                            onSearchClose = { query.value = null }, onRefresh = {}, onSelectAll = {},
-                            onExitSelection = {}, onSortModeChange = {}, onSortAscendingChange = {},
+                            onSearchQueryChange = { query.value = it }, onSearchSubmit = { submissions++ },
+                            onSearchClose = { query.value = null }, onRefresh = {},
+                            onSortModeChange = {}, onSortAscendingChange = {},
                             onLayoutModeChange = {}
                         ) else FolderBooksHeader(
                             path = "Library", levelSummary = "3 books", isScanning = false,
                             isSearching = query.value != null, searchQuery = query.value.orEmpty(),
-                            showSelectAll = true, layoutMode = 1, sortMode = FolderBooksSortMode.NAME,
+                            layoutMode = 1, sortMode = FolderBooksSortMode.NAME,
                             sortAscending = true, onRefresh = {}, onSearchOpen = { query.value = "needle" },
                             onSearchQueryChange = { query.value = it }, onSearchClose = { query.value = null },
-                            onSelectAll = {}, onSortModeChange = {}, onSortAscendingChange = {},
+                            onSortModeChange = {}, onSortAscendingChange = {},
                             onLayoutModeChange = {}
                         )
                     }
@@ -68,40 +69,25 @@ class BrowserHeaderInteractionTest {
             .getUnclippedBoundsInRoot()
         val layout = compose.onNodeWithContentDescription(context.getString(R.string.import_layout_mode))
             .getUnclippedBoundsInRoot()
-        assertTrue("Controls need a visible horizontal gap or a wrapped row gap",
-            layout.left.value - sort.right.value >= 8f || layout.top.value - sort.bottom.value >= 8f)
-        assertTrue("Controls must fit the narrow header", layout.right.value <= 360f)
+        val refresh = compose.onNodeWithContentDescription(context.getString(R.string.import_folder_books_refresh))
+            .getUnclippedBoundsInRoot()
+        assertTrue("Tools must stay in one row", layout.top == sort.top && refresh.top == sort.top)
+        assertTrue("Tools must have a gap", layout.left > sort.right && refresh.left > layout.right)
+        assertTrue("Tools must fit the narrow header", refresh.right.value <= 360f)
         val pill = compose.onNodeWithTag(if (remote) "remote-search-pill" else "folder-search-pill")
-        val collapsed = pill.getUnclippedBoundsInRoot().width.value
-        compose.mainClock.autoAdvance = false
+        val initialWidth = pill.getUnclippedBoundsInRoot().width
+        assertTrue("Search fills the remaining toolbar width", initialWidth > 100.dp)
         pill.performClick()
-        compose.mainClock.advanceTimeByFrame()
-        compose.mainClock.advanceTimeBy(64)
-        val opening = pill.getUnclippedBoundsInRoot().width.value
-        assertTrue("Search must grow across intermediate frames", opening > collapsed + 1f)
-        compose.mainClock.advanceTimeBy(1600)
-        val expanded = pill.getUnclippedBoundsInRoot().width.value
-        assertTrue("The field must expand beyond its intermediate width", expanded > opening + 1f)
-        compose.runOnIdle { query.value = null }
-        // A state write first needs a recomposition frame before animateFloatAsState receives
-        // its new target. Sample actual layout frames rather than assuming a fixed 64 ms starts
-        // at the animation's first frame (BoxWithConstraints also schedules subcomposition).
-        val closingSamples = mutableListOf<Float>()
-        var foundClosingFrame = false
-        repeat(12) {
-            if (!foundClosingFrame) {
-                compose.mainClock.advanceTimeByFrame()
-                val width = pill.getUnclippedBoundsInRoot().width.value
-                closingSamples += width
-                foundClosingFrame = width > collapsed + 1f && width < expanded - 1f
-            }
+        compose.onNode(hasSetTextAction()).assertTextEquals("needle")
+        pill.assertWidthIsEqualTo(initialWidth)
+        compose.onNodeWithContentDescription(context.getString(R.string.import_search_clear)).performClick()
+        compose.onNode(hasSetTextAction()).assert(hasText("")).performTextInput("new query")
+        if (remote) {
+            compose.onNode(hasSetTextAction()).performImeAction()
+            compose.runOnIdle { org.junit.Assert.assertEquals(1, submissions) }
         }
-        assertTrue("Search must have an intermediate closing width between $collapsed and $expanded; frames=$closingSamples",
-            foundClosingFrame)
-        compose.onNodeWithText("needle").assertExists()
-        compose.mainClock.advanceTimeBy(1600)
-        pill.assertWidthIsEqualTo(44.dp)
-        compose.onNodeWithText("needle").assertDoesNotExist()
-        compose.mainClock.autoAdvance = true
+        compose.runOnIdle { query.value = null }
+        pill.assertWidthIsEqualTo(initialWidth)
+        compose.onNodeWithText("new query").assertDoesNotExist()
     }
 }

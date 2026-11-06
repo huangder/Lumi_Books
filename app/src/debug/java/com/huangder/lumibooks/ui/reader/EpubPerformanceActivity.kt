@@ -200,7 +200,7 @@ class EpubPerformanceActivity : ComponentActivity() {
             } else renderSession?.let { book ->
                 val continuous = activeTransition == "continuous" || intent.getBooleanExtra("continuous", false)
                 val reader: @Composable (
-                    ((() -> com.huangder.lumibooks.ui.components.GlassBitmapBackdrop?)?) -> Unit,
+                    (com.huangder.lumibooks.ui.components.GlassSnapshotProvider?) -> Unit,
                     () -> Unit
                 ) -> Unit = { snapshotProvider, centerTap ->
                 EpubWebViewReader(
@@ -222,7 +222,13 @@ class EpubPerformanceActivity : ComponentActivity() {
                 )
                 }
                 if (intent.getBooleanExtra("glass", false)) {
-                    EpubGlassPreview(chapter, page, ready, reader)
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        com.huangder.lumibooks.ui.theme.LocalLiquidGlassSamplingQuality provides
+                            com.huangder.lumibooks.domain.model.LiquidGlassSamplingQuality
+                                .fromStoredValue(intent.getStringExtra("samplingQuality"))
+                    ) {
+                        EpubGlassPreview(chapter, page, ready, reader)
+                    }
                 } else reader({}, {})
             }
         }

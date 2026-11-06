@@ -23,12 +23,15 @@ import androidx.core.view.WindowCompat
 import com.huangder.lumibooks.ui.components.LocalLiquidGlassControlEdgeEnabled
 import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
 import com.huangder.lumibooks.domain.model.AppFontSize
+import com.huangder.lumibooks.domain.model.AppUiIconStyle
 import com.huangder.lumibooks.domain.model.appAccentContentArgb
 import com.huangder.lumibooks.domain.model.blendAppAccentArgb
 import com.huangder.lumibooks.domain.model.deriveDarkAppAccentArgb
 import com.huangder.lumibooks.domain.model.normalizeAppAccentHex
 import com.huangder.lumibooks.domain.model.parseAppAccentArgb
 import com.huangder.lumibooks.domain.model.LiquidGlassStyle
+import com.huangder.lumibooks.domain.model.LiquidGlassSamplingQuality
+import com.huangder.lumibooks.ui.icons.LocalAppUiIconStyle
 import com.huangder.lumibooks.ui.animation.VisualMotion
 
 private val LightColorScheme = lightColorScheme(
@@ -136,9 +139,11 @@ fun EBookReaderTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
     appTheme: String = "lumi",
+    appUiIconStyle: AppUiIconStyle = AppUiIconStyle.DEFAULT,
     appAccentColor: String = DEFAULT_APP_ACCENT_HEX,
     reduceTransparencyEnabled: Boolean = LocalReduceTransparency.current,
     liquidGlassStyle: LiquidGlassStyle = LocalLiquidGlassStyle.current,
+    liquidGlassSamplingQuality: LiquidGlassSamplingQuality = LocalLiquidGlassSamplingQuality.current,
     liquidGlassTransparency: Float = 0.55f,
     liquidGlassHdrHighlightEnabled: Boolean = false,
     cardOutlinesEnabled: Boolean = false,
@@ -161,6 +166,11 @@ fun EBookReaderTheme(
     val view = LocalView.current
     val liquidGlassCapability = rememberLiquidGlassCapability(eInkMode, view)
     val effectiveAppTheme = effectiveAppTheme(appTheme, liquidGlassCapability)
+    val effectiveGlassSamplingQuality = rememberAdaptiveLiquidGlassSamplingQuality(
+        selected = liquidGlassSamplingQuality,
+        enabled = effectiveAppTheme == "liquid_glass" && !eInkMode && !reduceTransparencyEnabled,
+        view = view
+    )
     val effectiveHdrHighlightEnabled = liquidGlassHdrHighlightEnabled && !eInkMode
     val normalizedAccentHex = normalizeAppAccentHex(appAccentColor)
     val lightAccentArgb = remember(normalizedAccentHex) { parseAppAccentArgb(normalizedAccentHex) }
@@ -220,6 +230,7 @@ fun EBookReaderTheme(
         LocalUseMaterial3Theme provides effectiveDynamicColor,
         LocalAppTheme provides effectiveAppTheme,
         LocalAppThemeVariant provides appTheme,
+        LocalAppUiIconStyle provides appUiIconStyle,
         LocalAppAccentHex provides normalizedAccentHex,
         LocalAppAccentColor provides effectiveAccentColor,
         LocalOnAppAccentColor provides effectiveOnAccentColor,
@@ -231,6 +242,9 @@ fun EBookReaderTheme(
         LocalGlobalFontMode provides GlobalFontMode.normalize(globalFontMode),
         LocalReduceTransparency provides reduceTransparencyEnabled,
         LocalLiquidGlassStyle provides liquidGlassStyle,
+        LocalLiquidGlassSamplingQuality provides effectiveGlassSamplingQuality,
+        com.kyant.backdrop.LocalBackdropSamplingScale provides
+            (if (effectiveAppTheme == "liquid_glass") effectiveGlassSamplingQuality.scale else 1f),
         LocalLiquidGlassControlEdgeEnabled provides (liquidGlassStyle == LiquidGlassStyle.DEFAULT),
         LocalLiquidGlassTransparency provides liquidGlassTransparency.coerceIn(0f, 1f),
         LocalLiquidGlassHdrHighlightEnabled provides hdrHighlightActive,
