@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.bookshelf
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import com.huangder.lumibooks.ui.excerpt.ExcerptLauncher
 import com.huangder.lumibooks.ui.excerpt.ExcerptRequest
 import com.huangder.lumibooks.ui.icons.AppIcons
@@ -726,7 +728,7 @@ private fun ExportBookmarksButton(
                 strokeWidth = 2.4.dp
             )
         } else {
-            Icon(
+            ControlIcon(
                 imageVector = AppIcons.DownloadSimple,
                 contentDescription = stringResource(R.string.export_bookmarks),
                 tint = Color.White,

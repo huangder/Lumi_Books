@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.LumiEasterEgg
+import com.huangder.lumibooks.ui.components.progressiveBlurEnabled
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.LayerBackdrop
@@ -40,6 +41,7 @@ enum class LumiBackgroundScene { HOME, BOOKSHELF, SECONDARY }
 
 val LocalLumiBackgroundPresent = staticCompositionLocalOf { false }
 val LocalLumiBackgroundBackdrop = staticCompositionLocalOf<Backdrop?> { null }
+internal val LocalProgressiveBlurBackgroundBackdrop = staticCompositionLocalOf<Backdrop?> { null }
 
 /** Only this sibling is recorded for glass; cards can never sample their own render nodes. */
 @Composable
@@ -57,15 +59,21 @@ fun LumiBackgroundHost(
     val localBackdrop = rememberLayerBackdrop()
     val backdrop = backgroundBackdrop ?: localBackdrop
     val glass = LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current
+    // Progressive edge blur also needs the real artwork behind otherwise transparent content.
+    val progressiveBackground = progressiveBlurEnabled(
+        LocalLiquidGlassCapability.current.supported, LocalEInkMode.current, LocalReduceTransparency.current
+    )
+    val captureBackground = glass || progressiveBackground
     Box(modifier) {
         LumiArtwork(
             scene = scene,
             bookshelfHeaderBottom = bookshelfHeaderBottom,
-            modifier = Modifier.matchParentSize().then(if (glass) Modifier.layerBackdrop(backdrop) else Modifier)
+            modifier = Modifier.matchParentSize().then(if (captureBackground) Modifier.layerBackdrop(backdrop) else Modifier)
         )
         CompositionLocalProvider(
             LocalLumiBackgroundPresent provides true,
-            LocalLumiBackgroundBackdrop provides backdrop.takeIf { glass }
+            LocalLumiBackgroundBackdrop provides backdrop.takeIf { glass },
+            LocalProgressiveBlurBackgroundBackdrop provides backdrop.takeIf { progressiveBackground }
         ) { content() }
     }
 }

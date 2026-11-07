@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.bookshelf
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import com.huangder.lumibooks.ui.components.LocalCollapsingPageTopInset
 import com.huangder.lumibooks.ui.components.CollapsingPageScaffold
 
@@ -42,7 +44,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -554,7 +555,7 @@ fun BookDetailsScreen(
     }
     val content = if (hasReview) actionColor else onActionColor
     LiquidGlassButton(onClick = onClick, tintedColor = container, contentColor = content) {
-        Icon(AppIcons.PencilSimple, contentDescription = null, tint = content, modifier = Modifier.size(16.dp))
+        ControlIcon(AppIcons.PencilSimple, contentDescription = null, tint = content, modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(AppSpace.xs))
         Text(
             stringResource(if (hasReview) R.string.book_review_edit else R.string.book_review_write),
@@ -724,7 +725,7 @@ internal fun shouldStackDetailRow(
         modifier = Modifier.width(92.dp).height(46.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            Icon(
+            ControlIcon(
                 AppIcons.BookOpen,
                 contentDescription = null,
                 tint = if (isDark) Color.White else Color.Black,

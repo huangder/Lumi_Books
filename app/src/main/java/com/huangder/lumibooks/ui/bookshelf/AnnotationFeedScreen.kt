@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.bookshelf
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import com.huangder.lumibooks.ui.components.LocalCollapsingPageTopPaddingValues
 import com.huangder.lumibooks.ui.components.CollapsingPageScaffold
 import android.widget.Toast
@@ -13,7 +15,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Icon
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import com.huangder.lumibooks.ui.animation.LumiMotion
 import com.huangder.lumibooks.ui.components.LocalLiquidGlassBackdrop
@@ -448,7 +449,7 @@ internal fun AnnotationFeedSearchField(
                             .clickable(enabled = open, onClick = onClose),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(AppIcons.X, stringResource(R.string.close), tint = AppColors.TextPrimary,
+                        ControlIcon(AppIcons.X, stringResource(R.string.close), tint = AppColors.TextPrimary,
                             modifier = Modifier.size(20.dp))
                     }
                 }

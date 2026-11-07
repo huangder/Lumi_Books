@@ -297,11 +297,19 @@ fun WelcomeScreen(
                 onEnableLiquidGlass = onEnableLiquidGlass
             )
 
-            WelcomePage.SUPPORT -> SupportProjectPage(
+            // 官方版替换为会员试用引导；OSS 保留原赞助页。
+            WelcomePage.SUPPORT -> com.huangder.lumibooks.edition.EditionWelcomeFinalPage(
                 isDark = isDark,
                 isLiquidGlass = isLiquidGlass,
-                onOpenSponsor = onOpenSponsor,
-                onFinished = onFinished
+                onFinished = onFinished,
+                default = {
+                    SupportProjectPage(
+                        isDark = isDark,
+                        isLiquidGlass = isLiquidGlass,
+                        onOpenSponsor = onOpenSponsor,
+                        onFinished = onFinished
+                    )
+                }
             )
         }
     }
@@ -1283,8 +1291,9 @@ private fun SupportProjectPage(
     }
 }
 
+/** Shared with the edition-specific last welcome page so both match the same button style. */
 @Composable
-private fun SupportWelcomeButton(
+internal fun SupportWelcomeButton(
     text: String,
     onClick: () -> Unit,
     primary: Boolean,

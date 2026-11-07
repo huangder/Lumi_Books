@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.settings
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import com.huangder.lumibooks.ui.components.AppDialogAction
 import com.huangder.lumibooks.ui.components.CollapsingPageScaffold
 import com.huangder.lumibooks.ui.components.AppDialogActionRole
@@ -1767,7 +1769,7 @@ private fun CapsuleButton(
             verticalAlignment = Alignment.CenterVertically
         ) {
             icon?.let {
-                Icon(it.resolve(selected), contentDescription = null, modifier = Modifier.size(17.dp))
+                ControlIcon(it.resolve(selected), contentDescription = null, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(5.dp))
             }
             Text(text, fontSize = AppType.Caption, fontWeight = FontWeight.SemiBold)
@@ -1839,7 +1841,7 @@ private fun CommandCapsuleButton(
             modifier = Modifier.padding(horizontal = AppSpace.md, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+            ControlIcon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(AppSpace.sm))
             Text(text, fontSize = AppType.BodySmall, fontWeight = FontWeight.SemiBold)
         }

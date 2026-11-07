@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.components
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -149,7 +151,7 @@ private fun <T> AnnotationFilterMenu(
         Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis,
             fontSize = AppType.Footnote, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
         Spacer(Modifier.width(4.dp))
-        Icon(AppIcons.CaretDown, null, modifier = Modifier.size(12.dp))
+        ControlIcon(AppIcons.CaretDown, null, modifier = Modifier.size(12.dp))
     }
 }
 

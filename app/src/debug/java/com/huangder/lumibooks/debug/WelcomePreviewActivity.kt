@@ -15,8 +15,10 @@ import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.MotionPreference
 import com.huangder.lumibooks.ui.welcome.WelcomeScreen
+import dagger.hilt.android.AndroidEntryPoint
 
 /** Debug-only walkthrough: theme and completion never write to the user's settings. */
+@AndroidEntryPoint
 class WelcomePreviewActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()

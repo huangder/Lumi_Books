@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.bookshelf
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import com.huangder.lumibooks.ui.theme.cardOutline
 import com.huangder.lumibooks.ui.components.lumiCardSurface
 import androidx.compose.ui.draw.shadow
@@ -876,7 +878,7 @@ private fun CategoryDisclosureButton(disclosure: CategoryDisclosure) {
             ),
         contentAlignment = Alignment.Center
     ) {
-        Icon(
+        ControlIcon(
             imageVector = AppIcons.CaretDown,
             contentDescription = stringResource(
                 if (disclosure.expanded) R.string.category_folder_collapse

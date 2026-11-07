@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.reader
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import com.huangder.lumibooks.ui.components.AppDialogAction
 import com.huangder.lumibooks.ui.components.AppDialogActionRole
 
@@ -961,7 +963,7 @@ fun ThemeSettingsSheet(
                     tintedColor = LightBgGray,
                     contentColor = AppColors.TextPrimary
                 ) {
-                    Icon(AppIcons.UploadSimple, contentDescription = null, modifier = Modifier.size(17.dp))
+                    ControlIcon(AppIcons.UploadSimple, contentDescription = null, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(6.dp))
                     Text(
                         stringResource(R.string.theme_bundle_import),
@@ -977,7 +979,7 @@ fun ThemeSettingsSheet(
                     tintedColor = LightBgGray,
                     contentColor = AppColors.TextPrimary
                 ) {
-                    Icon(AppIcons.DownloadSimple, contentDescription = null, modifier = Modifier.size(17.dp))
+                    ControlIcon(AppIcons.DownloadSimple, contentDescription = null, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(6.dp))
                     Text(
                         stringResource(R.string.theme_bundle_export),
@@ -1487,7 +1489,7 @@ private fun AddThemeSuiteCard(onClick: () -> Unit) {
                 fontWeight = FontWeight.SemiBold
             )
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Icon(
+                ControlIcon(
                     AppIcons.Plus,
                     contentDescription = stringResource(R.string.add_theme_suite),
                     tint = strokeColor,
@@ -1977,7 +1979,7 @@ private fun CustomBackgroundDialog(
                         .heightIn(min = 44.dp)
                         .border(1.dp, LightDivider, AppRoundedCornerShape(22.dp))
                 ) {
-                        Icon(
+                        ControlIcon(
                             imageVector = AppIcons.Image,
                             contentDescription = null,
                             tint = AppColors.TextPrimary,
@@ -2309,7 +2311,7 @@ private fun ReaderModeModule(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (showIcons) {
-                        Icon(
+                        ControlIcon(
                             imageVector = item.icon.resolve(isSelected),
                             contentDescription = null,
                             tint = contentColor,
@@ -2456,7 +2458,7 @@ private fun ReaderModeIconButton(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (icon != null) {
-            Icon(
+            ControlIcon(
                 imageVector = icon.resolve(isSelected),
                 contentDescription = null,
                 tint = when {
@@ -3643,7 +3645,7 @@ private fun ReaderCornerSelectionRow(
                     maxLines = 1,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Icon(
+                ControlIcon(
                     imageVector = AppIcons.CaretDown,
                     contentDescription = null,
                     tint = LightTextSecondary,
@@ -3747,7 +3749,7 @@ private fun TextAlignmentSetting(
                         .fillMaxWidth()
                         .padding(end = 16.dp)
                 )
-                Icon(
+                ControlIcon(
                     imageVector = AppIcons.CaretDown,
                     contentDescription = null,
                     tint = LightTextSecondary,
@@ -3861,7 +3863,7 @@ private fun ReaderEdgeTapModeSetting(
                         .fillMaxWidth()
                         .padding(end = 16.dp)
                 )
-                Icon(
+                ControlIcon(
                     imageVector = AppIcons.CaretDown,
                     contentDescription = null,
                     tint = LightTextSecondary,
@@ -3985,7 +3987,7 @@ private fun VolumeKeyActionDropdown(
                         maxLines = 1,
                         modifier = Modifier.fillMaxWidth().padding(end = 16.dp)
                     )
-                    Icon(
+                    ControlIcon(
                         imageVector = AppIcons.CaretDown,
                         contentDescription = null,
                         tint = LightTextSecondary,
@@ -4111,7 +4113,7 @@ private fun ScreenSleepTimeoutSetting(
                         .fillMaxWidth()
                         .padding(end = 16.dp)
                 )
-                Icon(
+                ControlIcon(
                     imageVector = AppIcons.CaretDown,
                     contentDescription = null,
                     tint = LightTextSecondary,
@@ -4373,7 +4375,7 @@ internal fun TextColorSetting(
             onClick = { showCustomColorDialog = true }
         ) {
             if (!isCustomColor) {
-                Icon(
+                ControlIcon(
                     imageVector = AppIcons.Plus,
                     contentDescription = null,
                     tint = LightTextSecondary,

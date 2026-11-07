@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.reader
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import com.huangder.lumibooks.domain.model.BookFormat
 
 import com.huangder.lumibooks.ui.components.AppDialogAction
@@ -6572,7 +6574,7 @@ private fun TxtEncodingCapsule(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (selected) {
-                Icon(
+                ControlIcon(
                     imageVector = AppIcons.Check,
                     contentDescription = null,
                     tint = contentColor,
@@ -6864,7 +6866,7 @@ private fun ReaderTopBarButton(
         onClick = onClick,
         contentAlignment = Alignment.Center
     ) {
-        Icon(
+        ControlIcon(
             imageVector = icon,
             contentDescription = contentDescription,
             tint = tint,
@@ -6926,7 +6928,7 @@ private fun ReaderLineGuideControl(
             },
             contentAlignment = Alignment.Center
         ) {
-            Icon(AppIcons.Rows, contentDescription = stringResource(R.string.line_guide),
+            ControlIcon(AppIcons.Rows, contentDescription = stringResource(R.string.line_guide),
                 tint = contentColor, modifier = Modifier.size(21.dp))
         }
     }
@@ -7007,7 +7009,7 @@ private fun AutoReadingControl(
                                             .padding(horizontal = 8.dp, vertical = 10.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(item.icon!!, null, tint = contentColor, modifier = Modifier.size(18.dp))
+                                        ControlIcon(item.icon!!, null, tint = contentColor, modifier = Modifier.size(18.dp))
                                         Spacer(Modifier.width(8.dp))
                                         Text(item.label, color = contentColor, fontSize = AppType.Footnote)
                                     }
@@ -7019,7 +7021,7 @@ private fun AutoReadingControl(
             },
             contentAlignment = Alignment.Center
         ) {
-            Icon(AppIcons.Speedometer, contentDescription = stringResource(R.string.auto_reading),
+            ControlIcon(AppIcons.Speedometer, contentDescription = stringResource(R.string.auto_reading),
                 tint = contentColor, modifier = Modifier.size(21.dp))
         }
     }
@@ -7544,7 +7546,7 @@ private fun CatalogCapsule(
                     .padding(horizontal = 64.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(AppIcons.List, contentDescription = null, tint = leftColor, modifier = Modifier.size(18.dp))
+                ControlIcon(AppIcons.List, contentDescription = null, tint = leftColor, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.reader_toc), fontSize = AppType.BodySmall, fontWeight = FontWeight.SemiBold, color = leftColor)
                 Spacer(Modifier.weight(1f))
@@ -7674,7 +7676,7 @@ private fun CatalogChapterButton(
             enabled = enabled,
             modifier = Modifier.size(36.dp)
         ) {
-            Icon(
+            ControlIcon(
                 imageVector = icon,
                 contentDescription = contentDescription,
                 tint = contentColor.copy(alpha = if (enabled) 1f else 0.3f),
@@ -7720,14 +7722,14 @@ internal fun ActionCapsule(
             if (stacked || labelWidth + 24.dp > maxWidth) {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(18.dp))
+                    ControlIcon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(18.dp))
                     Text(label, fontSize = AppType.Footnote, color = contentColor, maxLines = 1,
                         softWrap = false, overflow = TextOverflow.Ellipsis)
                 }
             } else {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center) {
-                    Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(18.dp))
+                    ControlIcon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text(label, fontSize = AppType.Footnote, color = contentColor, maxLines = 1, softWrap = false)
                 }
@@ -9557,7 +9559,7 @@ private fun TocSheet(
                                             onClick = toggleCollapse,
                                             modifier = Modifier.size(40.dp)
                                         ) {
-                                            Icon(
+                                            ControlIcon(
                                                 imageVector = AppIcons.CaretDown,
                                                 contentDescription = if (collapsed) stringResource(R.string.reader_toc_group_expand)
                                                 else stringResource(R.string.reader_toc_group_collapse),
@@ -10728,7 +10730,7 @@ internal fun NetworkSearchSheet(
                                 .padding(horizontal = 14.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
+                            ControlIcon(
                                 imageVector = AppIcons.MagnifyingGlass,
                                 contentDescription = null,
                                 tint = AppColors.TextSecondary,
@@ -12101,7 +12103,7 @@ private fun SelectionMenuSettingsButton(
             ) { onClick() },
         contentAlignment = Alignment.Center
     ) {
-        Icon(
+        ControlIcon(
             AppIcons.Gear,
             contentDescription = stringResource(R.string.menu_settings),
             tint = menuText.copy(alpha = 0.5f),

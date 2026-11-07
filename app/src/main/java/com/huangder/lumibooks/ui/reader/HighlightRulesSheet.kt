@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.reader
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import com.huangder.lumibooks.ui.components.AppDialogAction
 import com.huangder.lumibooks.ui.components.AppDialogActionRole
 
@@ -635,7 +637,7 @@ private fun RuleCommandButton(
         tintedColor = AppColors.BgGray,
         contentColor = AppColors.TextPrimary
     ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+        ControlIcon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(7.dp))
         Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }

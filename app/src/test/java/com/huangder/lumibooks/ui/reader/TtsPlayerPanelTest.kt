@@ -33,6 +33,7 @@ import com.huangder.lumibooks.ui.theme.*
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -54,17 +55,25 @@ class TtsPlayerPanelTest {
     private var next = 0
     private var stops = 0
     private var fullscreens = 0
+    private var selectedRate: Float? = null
+    private var selectedTimer: Int? = null
+    private lateinit var menus: com.huangder.lumibooks.ui.components.LiquidGlassMenuHostState
     private val position = mutableStateOf(ReaderTtsPosition())
     private val footerTop = mutableStateOf<Float?>(580f)
     private val catalogBounds = mutableStateOf(Rect(24f, 440f, 336f, 488f))
     private val revealKey = mutableStateOf(0)
 
     private fun label(id: Int) = RuntimeEnvironment.getApplication().getString(id)
-    private fun control(id: Int) = compose.onNodeWithContentDescription(label(id))
+    private fun control(id: Int) = when (id) {
+        R.string.tts_return_to_reading_page -> compose.onNodeWithText(label(R.string.tts_return_to_progress))
+        R.string.tts_from_this_page, R.string.tts_speech_rate, R.string.tts_pitch_label,
+        R.string.tts_timer_label, R.string.tts_follow_page_turns -> compose.onNodeWithText(label(id))
+        else -> compose.onNodeWithContentDescription(label(id))
+    }
     private fun more(id: Int) = control(id).performSemanticsAction(SemanticsActions.OnClick) { it() }
 
     private fun show(glass: Boolean = false, dark: Boolean = false, motion: Boolean = false,
-        floating: Boolean = true, eInk: Boolean = false, width: Int = 360) {
+        floating: Boolean = true, eInk: Boolean = false, width: Int = 360, androidTts: Boolean = true) {
         compose.setContent {
             EBookReaderTheme(appTheme = if (glass) "liquid_glass" else "lumi", darkTheme = dark) {
                 CompositionLocalProvider(
@@ -74,6 +83,8 @@ class TtsPlayerPanelTest {
                     LocalLiquidGlassCapability provides LiquidGlassCapability(true, false)
                 ) {
                     view = LocalView.current
+                    com.huangder.lumibooks.ui.components.LiquidGlassMenuHost(Modifier.width(width.dp).fillMaxHeight()) {
+                    menus = com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost.current!!
                     Box(Modifier.width(width.dp).fillMaxHeight().background(if (dark) Color(0xFF242424) else Color(0xFFE5E8EA))) {
                         val panel: @Composable (ReaderTtsPlacement?) -> Unit = { placement ->
                             TtsPlayerPanel(
@@ -81,13 +92,13 @@ class TtsPlayerPanelTest {
                                 chapterTitle = "Chapter one",
                                 playbackState = playback.value,
                                 speechRate = 1f, speechRateMode = TtsProsodyMode.OVERRIDE,
-                                pitch = 1f, pitchMode = TtsProsodyMode.OVERRIDE, usesAndroidTts = true,
+                                pitch = 1f, pitchMode = TtsProsodyMode.OVERRIDE, usesAndroidTts = androidTts,
                                 sleepTimerRemainingMs = null,
                                 onPlayPause = { plays++ }, onStop = { stops++ },
                                 onOpenFullscreen = { fullscreens++ },
                                 onSkipForward = { next++ }, onSkipBackward = { previous++ },
-                                onRateChange = {}, onRateModeChange = {}, onPitchChange = {}, onPitchModeChange = {},
-                                onSetSleepTimer = {}, onCancelSleepTimer = {},
+                                onRateChange = { selectedRate = it }, onRateModeChange = {}, onPitchChange = {}, onPitchModeChange = {},
+                                onSetSleepTimer = { selectedTimer = it }, onCancelSleepTimer = {},
                                 canReturnToProgress = true, readerMenuVisible = readerMenu.value,
                                 readerBackgroundColor = if (dark) Color.Black else Color.White,
                                 readerContentColor = if (dark) Color.White else Color.Black
@@ -101,6 +112,7 @@ class TtsPlayerPanelTest {
                             Modifier.align(Alignment.BottomStart).padding(horizontal = 24.dp, vertical = 24.dp)) {
                             panel(null)
                         }
+                    }
                     }
                 }
             }
@@ -365,6 +377,91 @@ class TtsPlayerPanelTest {
         control(R.string.tts_play).assertIsDisplayed()
         compose.onNodeWithTag("reader-tts-edge-handle").assertDoesNotExist()
         assertEquals(ReaderTtsDock.NONE, position.value.dock)
+    }
+
+    @Test fun rateAndTimerAreNestedMenusAndPlaybackStaysUsable() {
+        show()
+        more(R.string.tts_expand_controls)
+        val capsule = compose.onNodeWithTag("reader-tts-capsule").fetchSemanticsNode().boundsInRoot
+        val menu = compose.onNodeWithTag("menu-primary").fetchSemanticsNode().boundsInRoot
+        assertTrue("Menu must avoid the playback capsule", !menu.overlaps(capsule))
+        capture("menu-primary")
+        control(R.string.tts_speech_rate).performClick()
+        capture("menu-rate")
+        compose.onNodeWithText("1.25x").assertIsDisplayed().performClick()
+        assertEquals(1.25f, selectedRate!!, .001f)
+        control(R.string.tts_from_this_page).assertDoesNotExist()
+        more(R.string.tts_expand_controls)
+        control(R.string.tts_timer_label).performClick()
+        capture("menu-timer")
+        control(R.string.tts_play).performClick()
+        assertEquals(1, plays)
+        compose.onNodeWithTag("menu-submenu").assertExists()
+    }
+
+    @Test fun menusReadTheLiveAnchorAfterMovingTheCapsule() {
+        show()
+        for (saved in listOf(ReaderTtsPosition(.1f, .1f, saved = true),
+                ReaderTtsPosition(.95f, .1f, saved = true), ReaderTtsPosition(.1f, .95f, saved = true),
+                ReaderTtsPosition(.95f, .95f, saved = true))) {
+            compose.runOnIdle { position.value = saved }
+            more(R.string.tts_expand_controls)
+            val capsule = compose.onNodeWithTag("reader-tts-capsule").fetchSemanticsNode().boundsInRoot
+            val menu = compose.onNodeWithTag("menu-primary").fetchSemanticsNode().boundsInRoot
+            assertFalse("Menu cannot cover playback controls", menu.overlaps(capsule))
+            assertTrue(menu.left >= 0f && menu.right <= 360f)
+            if (saved.yFraction < .5f) assertTrue(menu.top >= capsule.bottom)
+            else assertTrue(menu.bottom <= capsule.top)
+            more(R.string.tts_collapse_controls)
+        }
+    }
+
+    @Test fun narrowNestedMenuAvoidsCapsuleAndExternalTtsDisablesPitch() {
+        position.value = ReaderTtsPosition(.95f, .5f, saved = true)
+        show(width = 320, androidTts = false)
+        more(R.string.tts_expand_controls)
+        control(R.string.tts_pitch_label).assertIsNotEnabled()
+        control(R.string.tts_timer_label).performClick()
+        val capsule = compose.onNodeWithTag("reader-tts-capsule").fetchSemanticsNode().boundsInRoot
+        val child = compose.onNodeWithTag("menu-submenu").fetchSemanticsNode().boundsInRoot
+        assertTrue(child.left >= 0f && child.right <= 320f)
+        assertFalse(child.overlaps(capsule))
+        capture("narrow-nested")
+        compose.onNodeWithText(RuntimeEnvironment.getApplication().getString(R.string.time_minutes, 10)).performClick()
+        assertEquals(10, selectedTimer)
+    }
+
+    @Test fun nestedAnimationFramesCoverOpeningReturningAndDismissingTogether() {
+        show(motion = true)
+        compose.mainClock.autoAdvance = false
+        more(R.string.tts_expand_controls)
+        advance(1200)
+        val primary = compose.onNodeWithTag("menu-primary").fetchSemanticsNode().boundsInRoot
+        val rendered = frame()
+        assertTrue("A menu opened before the source was drawn must still render",
+            rendered.getPixel((primary.left + 10f).toInt(), (primary.top + 50f).toInt()) != 0xFFE5E8EA.toInt())
+        rendered.recycle()
+        capture("nested-primary")
+        control(R.string.tts_speech_rate).performSemanticsAction(SemanticsActions.OnClick) { it() }
+        for (index in 0..5) {
+            advance(80)
+            capture("nested-open-$index")
+        }
+        compose.runOnIdle { menus.back() }
+        for (index in 0..4) {
+            advance(64)
+            capture("nested-return-$index")
+        }
+        control(R.string.tts_speech_rate).performSemanticsAction(SemanticsActions.OnClick) { it() }
+        advance(800)
+        compose.runOnIdle { menus.dismiss() }
+        for (index in 0..7) {
+            advance(64)
+            capture("nested-dismiss-$index")
+        }
+        advance(1000)
+        compose.runOnIdle { assertEquals(null, menus.displayedMenu) }
+        compose.mainClock.autoAdvance = true
     }
 
     private fun advance(milliseconds: Long) {

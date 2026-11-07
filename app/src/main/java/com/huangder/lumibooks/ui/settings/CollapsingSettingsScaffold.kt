@@ -4,7 +4,6 @@ import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import com.huangder.lumibooks.ui.icons.directionalIcon
 import com.huangder.lumibooks.ui.icons.AppIcons
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,7 +42,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -59,6 +57,7 @@ import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.ui.components.PROGRESSIVE_BLUR_TINT_ALPHA
 import com.huangder.lumibooks.ui.components.PROGRESSIVE_BLUR_TINT_ALPHA_DARK
 import com.huangder.lumibooks.ui.components.ProgressiveTopBlur
+import com.huangder.lumibooks.ui.components.ProgressiveTopScrim
 import com.huangder.lumibooks.ui.components.progressiveBlurEnabled
 import com.huangder.lumibooks.ui.components.progressiveTopScrimEnabled
 import com.huangder.lumibooks.ui.components.quantizeBlurStrength
@@ -285,17 +284,11 @@ private fun ProgressiveTopScrimBand(
     val strength by remember(progress) {
         derivedStateOf { quantizeBlurStrength(progress.value) }
     }
-    // Keep text behind the toolbar fully covered when blur is unavailable; dissolve only below it.
-    val brush = remember(tint, bandHeight, toolbarHeight) {
-        Brush.verticalGradient(
-            0f to tint,
-            (toolbarHeight / bandHeight).coerceIn(0f, 1f) to tint,
-            1f to tint.copy(alpha = 0f)
-        )
-    }
-    Box(
-        modifier = modifier.fillMaxWidth().height(bandHeight)
-            .graphicsLayer { alpha = strength }
-            .background(brush)
+    ProgressiveTopScrim(
+        strength = strength,
+        modifier = modifier,
+        bandHeight = bandHeight,
+        tint = tint,
+        solidFraction = (toolbarHeight / bandHeight).coerceIn(0f, 1f)
     )
 }

@@ -156,7 +156,7 @@ private fun PasscodeKeyButton(key: PasscodeKey, size: Dp, enabled: Boolean, onKe
             )
             PasscodeKey.Backspace -> BackspaceGlyph(AppColors.TextSecondary, Modifier.size(size * 0.38f))
             PasscodeKey.Biometric -> androidx.compose.material3.Icon(
-                painter = androidx.compose.ui.res.painterResource(R.drawable.ic_hidden_library_fingerprint),
+                painter = androidx.compose.ui.res.painterResource(R.drawable.ic_hidden_library_fingerprint_control),
                 contentDescription = null,
                 tint = AppColors.TextSecondary,
                 modifier = Modifier.size(26.dp)

@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.statistics
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.foundation.Canvas
@@ -697,7 +699,7 @@ internal class ReadingDayViewModel @Inject constructor(private val repository: R
         .clickable(interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
         .padding(horizontal = 16.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center) {
-        if (icon != null) { Icon(icon, null, tint = content, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)) }
+        if (icon != null) { ControlIcon(icon, null, tint = content, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)) }
         Text(text, color = content, fontSize = AppType.BodySmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

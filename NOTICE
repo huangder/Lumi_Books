@@ -89,3 +89,12 @@ Markwon 4.6.2 and Prism4j 2.0.0 are distributed under Apache License 2.0.
 JLatexMath Android 0.2.0 is GPL-2.0-or-later with an independent-module
 linking exception. Its code, fonts and exception retain their original licenses.
 See app/src/main/assets/licenses/markdown-native/ for complete texts and source.
+
+Lumi includes an adapted Miuix progressive blur subset:
+    Project: Miuix / miuix-blur
+    Source: https://github.com/compose-miuix-ui/miuix
+    Revision: 4873fc7392871cd6cf3ea263020f5c7032b3de2a
+    Copyright 2026, compose-miuix-ui contributors
+    License: Apache License 2.0
+    Source adaptations and modifications: third_party/backdrop/NOTICE
+    Complete license: app/src/main/assets/licenses/android-liquid-glass-apache-2.0.txt

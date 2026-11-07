@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.components
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import androidx.annotation.StringRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
@@ -301,7 +303,7 @@ fun SelectionMenuCapsuleButton(
             modifier = Modifier.padding(horizontal = AppSpace.md, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, contentDescription = null, tint = AppColors.TextPrimary, modifier = Modifier.size(18.dp))
+            ControlIcon(icon, contentDescription = null, tint = AppColors.TextPrimary, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
             Text(text, fontSize = AppType.BodySmall, fontWeight = FontWeight.SemiBold, color = AppColors.TextPrimary, maxLines = 1)
         }

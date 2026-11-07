@@ -259,7 +259,8 @@ fun EBookReaderTheme(
             if (lumiBackgroundScene != null) {
                 LumiBackgroundHost(scene = lumiBackgroundScene, modifier = androidx.compose.ui.Modifier.fillMaxSize()) { content() }
             } else {
-                CompositionLocalProvider(LocalLumiBackgroundPresent provides false, LocalLumiBackgroundBackdrop provides null) { content() }
+                CompositionLocalProvider(LocalLumiBackgroundPresent provides false, LocalLumiBackgroundBackdrop provides null,
+                    LocalProgressiveBlurBackgroundBackdrop provides null) { content() }
             }
         }
     }

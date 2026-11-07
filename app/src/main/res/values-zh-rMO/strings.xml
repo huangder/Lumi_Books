@@ -1509,7 +1509,7 @@
     <string name="menu_animation_style_label">展開選單動畫樣式</string>
     <string name="menu_animation_style_normal">普通</string>
     <string name="menu_animation_style_liquid">液態</string>
-    <string name="menu_animation_style_hint">普通更輕快；液態在玻璃主題下呈現水滴形變與折射。</string>
+    <string name="menu_animation_style_hint">普通採用輕快縮放與淡入淡出；液態採用彈性形變。適用於所有主題，選單材質隨主題保持。</string>
     <string name="epub_comic_switch">切換到漫畫閱讀器</string>
     <string name="epub_comic_switch_back">切換回 EPUB 閱讀器</string>
     <string name="epub_comic_preparing">正在準備漫畫圖片…</string>

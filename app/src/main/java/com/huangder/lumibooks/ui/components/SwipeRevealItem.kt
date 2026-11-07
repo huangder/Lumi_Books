@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.components
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.snap
@@ -17,7 +19,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -287,6 +288,6 @@ private fun RevealAction(
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, description, tint = Color.White, modifier = Modifier.size(20.dp))
+        ControlIcon(icon, description, tint = Color.White, modifier = Modifier.size(20.dp))
     }
 }

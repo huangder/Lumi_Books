@@ -1,6 +1,8 @@
 @file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package com.huangder.lumibooks.ui.components
+
+import com.huangder.lumibooks.ui.icons.ControlIcon
 import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
 import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
@@ -50,7 +52,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.NavigationBar
@@ -164,7 +165,7 @@ fun Material3BottomNavigationBar(
                 selected = selectedIndex == index,
                 onClick = { onTabSelected(index) },
                 icon = {
-                    Icon(
+                    ControlIcon(
                         imageVector = tab.icons.resolve(selectedIndex == index),
                         contentDescription = stringResource(tab.titleRes)
                     )
@@ -741,7 +742,7 @@ fun Material3NavigationRail(
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer
             ) {
-                Icon(AppIcons.Plus, contentDescription = stringResource(R.string.import_books))
+                ControlIcon(AppIcons.Plus, contentDescription = stringResource(R.string.import_books))
             }
         },
         windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical + WindowInsetsSides.Start)
@@ -753,7 +754,7 @@ fun Material3NavigationRail(
                 selected = selectedIndex == index,
                 onClick = { onTabSelected(index) },
                 icon = {
-                    Icon(
+                    ControlIcon(
                         imageVector = tab.icons.resolve(selectedIndex == index),
                         contentDescription = stringResource(tab.titleRes)
                     )
@@ -780,7 +781,7 @@ fun LumiImportFab(
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Icon(AppIcons.Plus, stringResource(R.string.import_books), tint = Color.White, modifier = Modifier.size(24.dp))
+        ControlIcon(AppIcons.Plus, stringResource(R.string.import_books), tint = Color.White, modifier = Modifier.size(24.dp))
     }
 }
 
@@ -827,7 +828,7 @@ fun LiquidGlassImportButton(
         onClick = onClick,
         contentAlignment = Alignment.Center
     ) {
-        Icon(
+        ControlIcon(
             imageVector = AppIcons.Plus,
             contentDescription = stringResource(R.string.import_books),
             tint = contentColor,
@@ -934,7 +935,7 @@ private fun TabItemView(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(
+            ControlIcon(
                 imageVector = tab.icons.resolve(isSelected),
                 contentDescription = stringResource(tab.titleRes),
                 tint = if (isSelected) selectedContentColor else contentColor,
@@ -977,7 +978,7 @@ private fun TabItemView(
                 ),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
+            ControlIcon(
                 imageVector = tab.icons.resolve(isSelected),
                 contentDescription = null,
                 tint = if (isSelected) selectedContentColor else contentColor,

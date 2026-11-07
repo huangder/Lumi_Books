@@ -1510,7 +1510,7 @@
     <string name="menu_animation_style_label">메뉴 애니메이션 스타일</string>
     <string name="menu_animation_style_normal">일반</string>
     <string name="menu_animation_style_liquid">리퀴드</string>
-    <string name="menu_animation_style_hint">일반은 더 가볍게 작동하며, 리퀴드는 유리 테마에서 물방울 변형과 굴절을 표현합니다.</string>
+    <string name="menu_animation_style_hint">일반은 빠른 크기 변화와 페이드, 액체는 탄력 있는 형태 변화를 사용합니다. 모든 테마에 적용되며 메뉴 재질은 테마를 따릅니다.</string>
     <string name="epub_comic_switch">만화 리더로 전환</string>
     <string name="epub_comic_switch_back">EPUB 리더로 돌아가기</string>
     <string name="epub_comic_preparing">만화 이미지 준비 중…</string>

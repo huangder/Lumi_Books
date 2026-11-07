@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.bookshare
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import android.Manifest
 import android.content.*
 import android.content.pm.PackageManager
@@ -179,7 +181,7 @@ internal class BookShareViewModel @Inject constructor(
                     Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = AppSpace.md + 4.dp, vertical = AppSpace.md),
                         horizontalArrangement = Arrangement.spacedBy(AppSpace.sm)) {
                         LiquidGlassButton(onClick = { permission(activeStyle) { export(true) } }, enabled = canExport, modifier = Modifier.weight(1f)) {
-                            Icon(AppIcons.ShareNetwork, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                            ControlIcon(AppIcons.ShareNetwork, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
                             Text(stringResource(R.string.insights_share), fontWeight = FontWeight.SemiBold)
                             BookShareExportBadge(activeStyle)
                         }
@@ -189,7 +191,7 @@ internal class BookShareViewModel @Inject constructor(
                             else export(false)
                         } }, enabled = canExport, modifier = Modifier.weight(1f), tintedColor = AppColors.Accent) {
                             if (busy) CircularProgressIndicator(Modifier.size(16.dp), color = AppColors.OnAccent, strokeWidth = 2.dp)
-                            else Icon(AppIcons.DownloadSimple, null, Modifier.size(18.dp))
+                            else ControlIcon(AppIcons.DownloadSimple, null, Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
                             Text(stringResource(R.string.insights_save_image), fontWeight = FontWeight.SemiBold)
                             BookShareExportBadge(activeStyle)

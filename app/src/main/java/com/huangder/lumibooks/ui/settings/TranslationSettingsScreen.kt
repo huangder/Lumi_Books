@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.settings
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import com.huangder.lumibooks.ui.components.lumiGroupedSurface
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.border
@@ -195,7 +197,7 @@ private fun TranslationChoice(label: String, value: String, choices: List<String
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(value, Modifier.weight(1f), color = AppColors.TextPrimary, fontSize = AppType.Body,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Icon(AppIcons.CaretDown, null, Modifier.size(18.dp), tint = AppColors.TextSecondary)
+            ControlIcon(AppIcons.CaretDown, null, Modifier.size(18.dp), tint = AppColors.TextSecondary)
         }
     }
 }

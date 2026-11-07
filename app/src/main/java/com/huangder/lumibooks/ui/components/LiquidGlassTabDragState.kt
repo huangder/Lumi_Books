@@ -9,14 +9,17 @@ package com.huangder.lumibooks.ui.components
 
 import android.graphics.RuntimeShader
 import android.os.Build
+import android.os.SystemClock
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.snap
 import com.huangder.lumibooks.ui.animation.VisualMotion.spring
-import androidx.compose.foundation.MutatorMutex
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -37,6 +40,8 @@ import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.android.awaitFrame
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
@@ -51,7 +56,7 @@ internal class LiquidGlassTabMotionState(
 ) {
     private val visibilityThreshold = 0.001f
     private val initialScale = 1f
-    private val pressedScale = 78f / 56f
+    private val pressedScale = if (motionEnabled) 78f / 56f else initialScale
 
     private val valueAnimationSpec = if (motionEnabled) {
         spring(1f, 1000f, visibilityThreshold)
@@ -79,71 +84,113 @@ internal class LiquidGlassTabMotionState(
         snap()
     }
 
-    private val valueAnimation = Animatable(initialValue, visibilityThreshold)
+    private val valueAnimation = Animatable(initialValue.coerceIn(valueRange), visibilityThreshold)
     private val velocityAnimation = Animatable(0f, 5f)
     private val pressProgressAnimation = Animatable(0f, 0.001f)
     private val scaleXAnimation = Animatable(initialScale, 0.001f)
     private val scaleYAnimation = Animatable(initialScale, 0.001f)
-    private val mutatorMutex = MutatorMutex()
+    private var requestedValue by mutableFloatStateOf(initialValue.coerceIn(valueRange))
+    private var pressed = false
+    private var moveGeneration = 0
+    private var moveJob: Job? = null
+    private var pressJob: Job? = null
+    private var releaseJob: Job? = null
+    private var velocityJob: Job? = null
     private val velocityTracker = VelocityTracker()
 
     val value: Float get() = valueAnimation.value
-    val targetValue: Float get() = valueAnimation.targetValue
+    val targetValue: Float get() = requestedValue
     val pressProgress: Float get() = pressProgressAnimation.value
     val scaleX: Float get() = scaleXAnimation.value
     val scaleY: Float get() = scaleYAnimation.value
     val velocity: Float get() = velocityAnimation.value
 
     fun press() {
+        // Every new interaction owns its lift and release. A delayed release from
+        // the previous gesture must never flatten the next held prism.
+        releaseJob?.cancel()
+        pressJob?.cancel()
+        moveGeneration++
+        moveJob?.cancel()
+        relaxVelocity()
+        pressed = true
+        requestedValue = value
         velocityTracker.resetTracking()
-        animationScope.launch {
-            launch { pressProgressAnimation.animateTo(1f, pressProgressAnimationSpec) }
-            launch { scaleXAnimation.animateTo(pressedScale, scaleXAnimationSpec) }
-            launch { scaleYAnimation.animateTo(pressedScale, scaleYAnimationSpec) }
+        velocityTracker.addPosition(SystemClock.uptimeMillis(), Offset(value, 0f))
+        pressJob = animationScope.launch {
+            coroutineScope {
+                launch { pressProgressAnimation.animateTo(1f, pressProgressAnimationSpec) }
+                launch { scaleXAnimation.animateTo(pressedScale, scaleXAnimationSpec) }
+                launch { scaleYAnimation.animateTo(pressedScale, scaleYAnimationSpec) }
+            }
         }
     }
 
     fun release() {
-        animationScope.launch {
+        pressed = false
+        // Always neutralize velocity, including a queued final drag update whose
+        // animation had not started when release was requested.
+        relaxVelocity()
+        releaseJob?.cancel()
+        val target = requestedValue
+        releaseJob = animationScope.launch {
             awaitFrame()
-            if (value != targetValue) {
-                val threshold = (valueRange.endInclusive - valueRange.start) * 0.025f
-                snapshotFlow { valueAnimation.value }
-                    .filter { abs(it - valueAnimation.targetValue) < threshold }
-                    .first()
+            val threshold = ((valueRange.endInclusive - valueRange.start) * 0.025f)
+                .coerceAtLeast(visibilityThreshold)
+            snapshotFlow { valueAnimation.value }
+                .filter { abs(it - target) <= threshold }
+                .first()
+            pressJob?.cancel()
+            coroutineScope {
+                launch { pressProgressAnimation.animateTo(0f, pressProgressAnimationSpec) }
+                launch { scaleXAnimation.animateTo(initialScale, scaleXAnimationSpec) }
+                launch { scaleYAnimation.animateTo(initialScale, scaleYAnimationSpec) }
             }
-            launch { pressProgressAnimation.animateTo(0f, pressProgressAnimationSpec) }
-            launch { scaleXAnimation.animateTo(initialScale, scaleXAnimationSpec) }
-            launch { scaleYAnimation.animateTo(initialScale, scaleYAnimationSpec) }
         }
     }
 
     fun updateValue(value: Float) {
-        val target = value.coerceIn(valueRange)
-        animationScope.launch {
-            valueAnimation.animateTo(target, valueAnimationSpec) { updateVelocity() }
-        }
+        if (!pressed) return
+        moveTo(value, trackVelocity = true)
     }
 
     fun animateToValue(value: Float) {
-        animationScope.launch {
-            mutatorMutex.mutate {
-                press()
-                val target = value.coerceIn(valueRange)
-                launch { valueAnimation.animateTo(target, valueAnimationSpec) }
-                if (velocity != 0f) {
-                    launch { velocityAnimation.animateTo(0f, velocityAnimationSpec) }
-                }
-                release()
+        press()
+        moveTo(value, trackVelocity = false)
+        release()
+    }
+
+    private fun moveTo(value: Float, trackVelocity: Boolean) {
+        val target = value.coerceIn(valueRange)
+        // Publish the requested destination before scheduling the animation, so
+        // rapid pointer events accumulate against the latest request.
+        requestedValue = target
+        val generation = ++moveGeneration
+        moveJob = animationScope.launch {
+            if (generation != moveGeneration) return@launch
+            // Let Animatable replace its own running mutation: cancelling it first
+            // would discard the current velocity/frame time on every drag sample.
+            valueAnimation.animateTo(target, valueAnimationSpec) {
+                if (generation == moveGeneration && trackVelocity && pressed && motionEnabled) updateVelocity()
             }
+            if (generation == moveGeneration && pressed) relaxVelocity()
+        }
+    }
+
+    private fun relaxVelocity() {
+        velocityJob?.cancel()
+        velocityJob = animationScope.launch {
+            velocityAnimation.animateTo(0f, velocityAnimationSpec)
         }
     }
 
     private fun updateVelocity() {
-        velocityTracker.addPosition(System.currentTimeMillis(), Offset(value, 0f))
+        velocityTracker.addPosition(SystemClock.uptimeMillis(), Offset(value, 0f))
         val rangeLength = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0.0001f)
-        val targetVelocity = velocityTracker.calculateVelocity().x / rangeLength
-        animationScope.launch {
+        val targetVelocity = (velocityTracker.calculateVelocity().x / rangeLength)
+            .let { if (it.isFinite()) it else 0f }
+        velocityJob?.cancel()
+        velocityJob = animationScope.launch {
             velocityAnimation.animateTo(targetVelocity, velocityAnimationSpec)
         }
     }
@@ -242,21 +289,25 @@ internal fun Modifier.liquidGlassTabDrag(
     onDragEnd: () -> Unit,
     onDragCancel: () -> Unit
 ): Modifier = pointerInput(state) {
-    inspectTabDragGestures(
-        onDragStart = {
-            onDragStart()
-            state.press()
-        },
-        onDragEnd = {
-            onDragEnd()
-            state.release()
-        },
-        onDragCancel = {
-            onDragCancel()
-            state.release()
+    try {
+        inspectTabDragGestures(
+            onDragStart = {
+                onDragStart()
+                state.press()
+            },
+            onDragEnd = {
+                onDragEnd()
+                state.release()
+            },
+            onDragCancel = {
+                onDragCancel()
+                state.release()
+            }
+        ) { _, dragAmount ->
+            onDrag(size, dragAmount)
         }
-    ) { _, dragAmount ->
-        onDrag(size, dragAmount)
+    } finally {
+        state.release()
     }
 }
 

@@ -13,10 +13,12 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.test.core.app.ApplicationProvider
+import com.huangder.lumibooks.BuildConfig
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.MotionPreference
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -34,6 +36,8 @@ class WelcomeThemeRenderTest {
     private val context get() = ApplicationProvider.getApplicationContext<Application>()
 
     private fun verify(theme: String, dark: Boolean = false, ink: Boolean = false, fontScale: Float = 1f) {
+        // The official build replaces the last page with the Hilt-backed trial invitation.
+        assumeFalse(BuildConfig.PREMIUM_EDITION)
         compose.setContent {
             view = LocalView.current
             CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale)) {

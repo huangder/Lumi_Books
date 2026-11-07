@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.settings
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import com.huangder.lumibooks.ui.components.lumiRowClickable
 import com.huangder.lumibooks.ui.components.AppDialogAction
 import com.huangder.lumibooks.ui.components.AppDialogActionRole
@@ -858,7 +860,7 @@ private fun TxtTocRulesManagerRow(viewModel: SettingsViewModel) {
                             }
                             IconButton(onClick = {
                                 viewModel.saveTxtTocCustomRules(rules.filterNot { it.id == rule.id })
-                            }) { Icon(AppIcons.TrashSimple, stringResource(R.string.delete), tint = AppColors.TextSecondary) }
+                            }) { ControlIcon(AppIcons.TrashSimple, stringResource(R.string.delete), tint = AppColors.TextSecondary) }
                         }
                     }
                     Spacer(Modifier.height(AppSpace.sm))
@@ -895,7 +897,7 @@ private fun TxtTocRulesManagerRow(viewModel: SettingsViewModel) {
                             }
                             IconButton(onClick = {
                                 viewModel.saveTxtTocThirdPartyRules(thirdPartyRules.filterNot { it.id == rule.id })
-                            }) { Icon(AppIcons.TrashSimple, stringResource(R.string.delete), tint = AppColors.TextSecondary) }
+                            }) { ControlIcon(AppIcons.TrashSimple, stringResource(R.string.delete), tint = AppColors.TextSecondary) }
                         }
                     }
                     FlowRow {
@@ -2771,7 +2773,7 @@ fun HighlightColorDetail(viewModel: SettingsViewModel) {
                     prominentShadow = true,
                     contentColor = AppColors.OnAccent
                 ) {
-                    Icon(
+                    ControlIcon(
                         AppIcons.Plus,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp),
@@ -2907,7 +2909,7 @@ private fun HighlightPaletteRow(
                 contentAlignment = Alignment.Center
             ) {
                 IconButton(onClick = onDelete, modifier = Modifier.fillMaxSize()) {
-                    Icon(
+                    ControlIcon(
                         AppIcons.TrashSimple,
                         contentDescription = stringResource(R.string.highlight_palette_delete),
                         tint = AppColors.OnAccent,
@@ -3018,7 +3020,7 @@ private fun HighlightPaletteSlot(
         contentAlignment = Alignment.Center
     ) {
         if (color == null) {
-            Icon(
+            ControlIcon(
                 AppIcons.Plus,
                 contentDescription = stringResource(R.string.highlight_palette_set_color),
                 tint = AppColors.TextSecondary.copy(alpha = 0.66f),
@@ -3326,7 +3328,7 @@ private fun SettingsDropdownControl(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.weight(1f)
             )
-            Icon(
+            ControlIcon(
                 AppIcons.CaretDown,
                 contentDescription = null,
                 tint = AppColors.TextSecondary,

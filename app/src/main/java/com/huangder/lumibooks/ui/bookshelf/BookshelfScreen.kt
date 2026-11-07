@@ -1,6 +1,8 @@
 @file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package com.huangder.lumibooks.ui.bookshelf
+
+import com.huangder.lumibooks.ui.icons.ControlIcon
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import com.huangder.lumibooks.ui.components.AppDialogAction
@@ -841,10 +843,11 @@ fun BookshelfScreen(
             if (reduceTransparency) 0f else with(density) { 28.dp.toPx() } * gateMotion.presence
         )
     }
-    // The pull lives on the scrolling layouts; Cover Flow scrolls sideways and has no top edge.
-    val hiddenPullEnabled = effectiveLayoutMode != BookshelfLayout.CoverFlow && !isEditing &&
-        !isSearchActive && !gateVisible && contextMenuState.phase == ContextMenuPhase.Idle &&
+    val hiddenPullEnabled = !isEditing && !isSearchActive && !gateVisible && !coverFlowMenuVisible &&
+        contextMenuState.phase == ContextMenuPhase.Idle &&
         folderContextMenuState.phase == ContextMenuPhase.Idle
+    val captureShelfVerticalDrag = hiddenPullEnabled &&
+        (effectiveLayoutMode == BookshelfLayout.Spine || effectiveLayoutMode == BookshelfLayout.CoverFlow)
     val onShelfPullRelease: (Float) -> Unit = { offset ->
         if (hiddenPullEnabled && hiddenPullState.release(offset)) {
             gateAnchor = hiddenPullState.anchorAt(offset)
@@ -908,6 +911,8 @@ fun BookshelfScreen(
                 OverscrollBounce(
                     modifier = Modifier.fillMaxSize(),
                     state = shelfBounceState,
+                    captureVerticalDrag = captureShelfVerticalDrag,
+                    translateContent = effectiveLayoutMode != BookshelfLayout.CoverFlow,
                     onTopPullRelease = onShelfPullRelease,
                     onTopPullDrag = { offset, delta -> hiddenPullState.onDrag(offset, delta) }
                 ) {
@@ -988,6 +993,8 @@ fun BookshelfScreen(
             OverscrollBounce(
                 modifier = Modifier.fillMaxSize(),
                 state = shelfBounceState,
+                captureVerticalDrag = captureShelfVerticalDrag,
+                translateContent = effectiveLayoutMode != BookshelfLayout.CoverFlow,
                 onTopPullRelease = onShelfPullRelease,
                 onTopPullDrag = { offset, delta -> hiddenPullState.onDrag(offset, delta) }
             ) {
@@ -2610,7 +2617,7 @@ private fun BookshelfFilterCapsule(
                     modifier = Modifier.widthIn(max = 84.dp)
                 )
                 Spacer(Modifier.width(6.dp))
-                Icon(
+                ControlIcon(
                     imageVector = AppIcons.CaretDown,
                     contentDescription = null,
                     tint = AppColors.TextPrimary,
@@ -2631,7 +2638,7 @@ private fun BookshelfFilterCapsule(
                     .padding(start = 14.dp, end = 18.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
+                ControlIcon(
                     imageVector = AppIcons.ListBullets,
                     contentDescription = stringResource(R.string.bookshelf_categories_title),
                     tint = AppColors.TextPrimary,
@@ -3287,7 +3294,7 @@ private fun AddBookItem(onClick: () -> Unit) {
                     )
                 )
             }
-            Icon(
+            ControlIcon(
                 AppIcons.Plus,
                 contentDescription = stringResource(R.string.import_books),
                 tint = AppColors.TextSecondary,

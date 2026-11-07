@@ -11,6 +11,7 @@ import androidx.compose.ui.window.PopupProperties
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
+import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 
 /**
  * Pull-down menu used where the anchored liquid glass menu is unavailable (non-glass themes).
@@ -33,7 +34,7 @@ internal fun AppDropdownMenu(
         properties = properties,
         shape = AppRoundedCornerShape(AppRadius.lg),
         containerColor = AppColors.CardBg,
-        border = BorderStroke(1.dp, AppColors.Divider),
+        border = BorderStroke(0.5.dp, AppColors.TextPrimary.copy(alpha = if (LocalIsDarkTheme.current) 0.14f else 0.08f)),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
         content = content

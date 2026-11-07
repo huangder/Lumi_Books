@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.home.remote
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
@@ -86,7 +88,7 @@ internal fun RemoteSortButton(
             imageVector = AppIcons.SortAscending,
             contentDescription = stringResource(R.string.import_sort),
             onClick = {
-                if (isLiquidGlass && menuHost != null && anchor != Rect.Zero) {
+                if (menuHost != null && anchor != Rect.Zero) {
                     if (expanded) {
                         menuHost.dismiss()
                     } else {
@@ -115,7 +117,7 @@ internal fun RemoteSortButton(
             liquidScrimColor = AppColors.CardBg.copy(alpha = 0.58f),
             modifier = Modifier.liquidGlassMenuAnchor().onGloballyPositioned { anchor = it.boundsInRoot() }
         )
-        if (!isLiquidGlass || menuHost == null) {
+        if (menuHost == null) {
             AppDropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
@@ -152,7 +154,7 @@ internal fun RemoteLayoutButton(layoutMode: Int, onClick: () -> Unit) {
         effectPadding = 1.dp,
         modifier = Modifier.size(44.dp)
     ) {
-        Icon(
+        ControlIcon(
             imageVector = if (layoutMode == 1) AppIcons.List else AppIcons.SquaresFour,
             contentDescription = stringResource(R.string.import_layout_mode),
             tint = AppColors.TextPrimary,

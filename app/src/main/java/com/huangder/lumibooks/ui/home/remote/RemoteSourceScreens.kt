@@ -1,5 +1,12 @@
 package com.huangder.lumibooks.ui.home.remote
 
+import com.huangder.lumibooks.ui.components.progressiveBlurEnabled
+import com.huangder.lumibooks.ui.theme.LocalEInkMode
+import com.huangder.lumibooks.ui.theme.LocalLiquidGlassCapability
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
+
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import com.huangder.lumibooks.ui.components.LocalCollapsingPageTopInset
@@ -150,7 +157,7 @@ internal fun RemoteSourceListScreen(
                         tintedColor = AppColors.Accent,
                         contentColor = AppColors.OnAccent
                     ) {
-                        Icon(AppIcons.Bug, contentDescription = null, tint = AppColors.OnAccent, modifier = Modifier.size(18.dp))
+                        ControlIcon(AppIcons.Bug, contentDescription = null, tint = AppColors.OnAccent, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(AppSpace.xs))
                         Text(
                             text = stringResource(R.string.remote_library_feedback),
@@ -364,6 +371,9 @@ internal fun RemoteSourceFormScreen(
         )
     }
 
+    val progressiveBlur = progressiveBlurEnabled(
+        LocalLiquidGlassCapability.current.supported, LocalEInkMode.current, LocalReduceTransparency.current
+    )
     val blurBackdrop = com.kyant.backdrop.backdrops.rememberLayerBackdrop()
     val urlPlaceholder = stringResource(
         if (type == RemoteSourceType.WEBDAV) R.string.remote_library_url_hint_webdav else R.string.remote_library_url_hint_opds
@@ -383,7 +393,7 @@ internal fun RemoteSourceFormScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .layerBackdrop(blurBackdrop)
+                    .then(if (progressiveBlur) Modifier.layerBackdrop(blurBackdrop) else Modifier)
                     .verticalScroll(rememberScrollState())
                     .padding(top = LocalCollapsingPageTopInset.current)
                     .padding(horizontal = AppSpace.lg, vertical = AppSpace.sm),
@@ -415,7 +425,7 @@ internal fun RemoteSourceFormScreen(
                             tintedColor = AppColors.BgGray,
                             contentColor = AppColors.TextPrimary
                         ) {
-                            Icon(AppIcons.Cloud, contentDescription = null, tint = AppColors.Accent, modifier = Modifier.size(18.dp))
+                            ControlIcon(AppIcons.Cloud, contentDescription = null, tint = AppColors.Accent, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(AppSpace.sm))
                             Text(
                                 text = stringResource(R.string.remote_library_use_sync_account),
@@ -459,7 +469,7 @@ internal fun RemoteSourceFormScreen(
                         } else null,
                         trailingContent = {
                             IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                Icon(
+                                ControlIcon(
                                     imageVector = if (passwordVisible) AppIcons.EyeSlash else AppIcons.Eye,
                                     contentDescription = stringResource(
                                         if (passwordVisible) R.string.webdav_hide_password else R.string.webdav_show_password

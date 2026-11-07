@@ -14,7 +14,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -217,15 +216,15 @@ internal fun CollapsingPageScaffold(
         } else {
             val headerHeight = toolbarHeight + remainingTitleHeight + pinnedHeight
             val bandHeight = headerHeight + if (eInkMode) 0.dp else 56.dp
-            val tint = AppColors.WindowBg.copy(alpha = 1f)
-            val brush = remember(tint, headerHeight, bandHeight) {
-                Brush.verticalGradient(0f to tint,
-                    (headerHeight / bandHeight).coerceIn(0f, 1f) to tint,
-                    1f to if (eInkMode) tint else tint.copy(alpha = 0f))
+            if (eInkMode) {
+                Box(Modifier.fillMaxWidth().height(bandHeight)
+                    .graphicsLayer { alpha = if (state.progress > 0f) 1f else strength }
+                    .background(AppColors.WindowBg))
+            } else {
+                ProgressiveTopScrim(strength = strength, bandHeight = bandHeight,
+                    tint = AppColors.WindowBg,
+                    solidFraction = (headerHeight / bandHeight).coerceIn(0f, 1f))
             }
-            Box(Modifier.fillMaxWidth().height(bandHeight)
-                .graphicsLayer { alpha = if (eInkMode && state.progress > 0f) 1f else strength }
-                .background(brush))
         }
         val headerDragModifier = if (headerGesturesEnabled) Modifier.draggable(drag, Orientation.Vertical) else Modifier
         Column(Modifier.align(Alignment.TopCenter).fillMaxWidth()) {

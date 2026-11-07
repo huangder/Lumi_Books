@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.reader
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -8,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -165,7 +166,7 @@ internal fun PdfActionCapsule(
             val contentModifier = Modifier.fillMaxWidth()
                 .padding(horizontal = horizontalPadding, vertical = 10.dp)
             val content: @Composable () -> Unit = {
-                Icon(icon, null, tint = contentColor, modifier = Modifier.size(18.dp))
+                ControlIcon(icon, null, tint = contentColor, modifier = Modifier.size(18.dp))
                 Text(label, style = style, color = contentColor, maxLines = 1,
                     softWrap = false, overflow = TextOverflow.Ellipsis)
             }

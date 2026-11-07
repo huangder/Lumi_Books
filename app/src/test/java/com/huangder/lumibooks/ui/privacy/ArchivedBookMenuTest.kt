@@ -82,7 +82,7 @@ class ArchivedBookMenuTest {
                 }
             }
         }
-        compose.onNodeWithText(context.getString(R.string.coverflow_more)).performClick()
+        compose.onNodeWithContentDescription(context.getString(R.string.coverflow_more)).performClick()
         compose.onNodeWithText(context.getString(R.string.archive_book)).performScrollTo().performClick()
         compose.runOnIdle { assertEquals(book, archived) }
     }

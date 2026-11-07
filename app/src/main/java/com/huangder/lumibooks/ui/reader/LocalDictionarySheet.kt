@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.reader
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -20,7 +22,6 @@ import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -204,7 +205,7 @@ private fun dictionaryPageTransition(fromDetail: Boolean, toDetail: Boolean, mot
 private fun DictionaryAction(text: String, icon: ImageVector, action: () -> Unit) {
     Row(Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp).clickable(onClick = action).padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = AppColors.TextSecondary)
+        ControlIcon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = AppColors.TextSecondary)
         Text(text, color = AppColors.TextSecondary, fontSize = AppType.BodySmall)
     }
 }

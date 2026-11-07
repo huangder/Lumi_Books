@@ -1,6 +1,8 @@
 @file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package com.huangder.lumibooks.ui.home
+
+import com.huangder.lumibooks.ui.icons.ControlIcon
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
@@ -101,6 +103,7 @@ import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
 import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
 import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
+import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.LocalLiquidGlassBackdrop
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
@@ -110,6 +113,7 @@ import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.cardOutline
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
+import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.huangder.lumibooks.ui.theme.SansSerif
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
@@ -121,6 +125,9 @@ import com.huangder.lumibooks.ui.animation.bookCoverTransitionAnchor
 import com.huangder.lumibooks.ui.layout.currentAdaptiveWindowInfo
 import com.huangder.lumibooks.util.TimeUtils
 import com.huangder.lumibooks.util.ReaderBackgroundBlurTransformation
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.huangder.lumibooks.ui.components.AppDropdownMenu
 import com.huangder.lumibooks.ui.components.AmbientGlow
 import com.huangder.lumibooks.ui.components.MainTabHeader
@@ -150,6 +157,8 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current
+    val avatarBackdrop = rememberLayerBackdrop()
     val isMaterial3 = LocalUseMaterial3Theme.current
     val useWideLayout = currentAdaptiveWindowInfo().isMediumWidthOrLarger
     val navigationInsets = LocalMainNavigationInsets.current
@@ -165,6 +174,8 @@ fun HomeScreen(
         else -> 120.dp
     }
     val context = LocalContext.current
+    // 版本启动提示（官方版：试用结束时弹出一次；OSS 为空实现）
+    com.huangder.lumibooks.edition.EditionLaunchNotice()
     var localShowGoalSheet by remember { mutableStateOf(false) }
     val showGoalSheet = if (renderReadingGoalSheet) localShowGoalSheet else showReadingGoalSheet
     val setShowGoalSheet: (Boolean) -> Unit = { visible ->
@@ -203,14 +214,18 @@ fun HomeScreen(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(AppColors.PageBg)
             .semantics { testTagsAsResourceId = true }
             .testTag(HOME_SCREEN_TAG)
     ) {
-        // Atmosphere: a soft background glow tinted by the book being read, fading as the page scrolls.
-        AmbientGlow(glowColors, scrollOffset = {
-            if (listState.firstVisibleItemIndex > 0) Float.MAX_VALUE else listState.firstVisibleItemScrollOffset.toFloat()
-        })
+        // Record only this sibling background. Sampling the navigation backdrop from the
+        // avatar would include the avatar itself and recurse in native RenderNode traversal.
+        Box(Modifier.matchParentSize()
+            .then(if (isLiquidGlass) Modifier.layerBackdrop(avatarBackdrop) else Modifier)
+            .background(AppColors.PageBg)) {
+            AmbientGlow(glowColors, scrollOffset = {
+                if (listState.firstVisibleItemIndex > 0) Float.MAX_VALUE else listState.firstVisibleItemScrollOffset.toFloat()
+            })
+        }
         // Inset individual cards, not the scrolling viewport: the book row must reach under
         // the floating rail all the way to the window edge while keeping its initial alignment.
         val availableWidth = (maxWidth - navigationInsets.start).coerceAtLeast(0.dp)
@@ -232,6 +247,7 @@ fun HomeScreen(
                     PageEntranceItem(play = playEntranceAnimation, index = 0, modifier = contentInsets) {
                         HomeHeader(
                             eyebrow = insightsDate(today, "MMMMdEEEE"),
+                            avatarBackdrop = avatarBackdrop,
                             avatarUri = uiState.avatarUri,
                             onAvatarClick = {
                                 context.startActivity(
@@ -375,39 +391,46 @@ fun HomeScreen(
 @Composable
 private fun HomeHeader(
     eyebrow: String?,
+    avatarBackdrop: Backdrop,
     avatarUri: String? = null,
     onAvatarClick: () -> Unit = {}
 ) {
+    val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current
+    val avatarSize = if (isLiquidGlass) 32.dp else 36.dp
+    val isDark = LocalIsDarkTheme.current
     MainTabHeader(eyebrow = eyebrow, title = { MainTabTitle(stringResource(R.string.home_page)) }, trailing = {
         // 版本会员提示：仅官方版提供，点过一次或进过会员页即消失
         com.huangder.lumibooks.edition.EditionHomeMembershipPrompt()
         // 头像（点击进入设置页）
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(AppColors.BgGray)
-                .clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() }
-                ) { onAvatarClick() },
-            contentAlignment = Alignment.Center
+        LiquidGlassSurface(
+            shape = CircleShape,
+            backdrop = avatarBackdrop,
+            fallbackColor = if (isLiquidGlass) AppColors.CardBg else AppColors.BgGray,
+            contentScrimColor = if (isLiquidGlass) {
+                AppColors.CardBg.copy(alpha = if (isDark) 0.60f else 0.72f)
+            } else Color.Transparent,
+            forceFallback = !isLiquidGlass,
+            controlEdge = isLiquidGlass,
+            interactive = isLiquidGlass,
+            pressFeedbackEnabled = isLiquidGlass,
+            onClick = onAvatarClick,
+            modifier = Modifier.size(if (isLiquidGlass) 40.dp else 36.dp)
         ) {
             if (avatarUri != null) {
                 AsyncImage(
                     model = java.io.File(avatarUri),
                     contentDescription = stringResource(R.string.avatar),
                     modifier = Modifier
-                        .fillMaxSize()
+                        .size(avatarSize)
                         .clip(CircleShape),
                     contentScale = ContentScale.Crop
                 )
             } else {
-                Icon(
+                ControlIcon(
                     imageVector = AppIcons.UserCircle,
                     contentDescription = stringResource(R.string.settings),
                     tint = AppColors.TextSecondary,
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(avatarSize)
                 )
             }
         }

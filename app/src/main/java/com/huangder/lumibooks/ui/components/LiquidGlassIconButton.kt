@@ -1,9 +1,10 @@
 package com.huangder.lumibooks.ui.components
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.runtime.Composable
@@ -49,7 +50,7 @@ fun LiquidGlassIconButton(
                 disabledContentColor = contentColor.copy(alpha = 0.38f)
             )
         ) {
-            Icon(
+            ControlIcon(
                 imageVector = imageVector,
                 contentDescription = contentDescription,
                 modifier = Modifier.size(iconSize)
@@ -90,7 +91,7 @@ fun LiquidGlassIconButton(
         modifier = resolvedModifier.size(size),
         decorationModifier = Modifier
     ) {
-        Icon(
+        ControlIcon(
             imageVector = imageVector,
             contentDescription = contentDescription,
             tint = contentColor,

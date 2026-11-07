@@ -62,11 +62,11 @@ class MenuAnimationStyleHostTest {
         forceSolid = true
     )
 
-    private fun show(glass: Boolean = false) {
+    private fun show(glass: Boolean = false, theme: String? = null) {
         compose.setContent {
             view = LocalView.current
             CompositionLocalProvider(
-                LocalAppTheme provides if (glass) "liquid_glass" else LocalAppTheme.current,
+                LocalAppTheme provides (theme ?: if (glass) "liquid_glass" else LocalAppTheme.current),
                 LocalLiquidGlassCapability provides if (glass) LiquidGlassCapability(true, false) else LocalLiquidGlassCapability.current,
                 LocalMenuAnimationStyle provides style.value,
                 LocalMotionEnabled provides motion.value
@@ -328,7 +328,7 @@ class MenuAnimationStyleHostTest {
         compose.runOnIdle { assertTrue(enabled.value) }
     }
 
-    @Test fun submenuExpandsInPlaceAndBackCollapsesBeforeDismissal() {
+    @Test fun submenuOpensAsSeparatePaneAndBackRestoresParentBeforeDismissal() {
         show(glass = true)
         val sortMenu = menu.copy(
             forceSolid = false,
@@ -347,13 +347,22 @@ class MenuAnimationStyleHostTest {
         compose.runOnIdle { host.show(sortMenu) }
         advance(300)
         compose.onNodeWithText("Title A-Z").assertDoesNotExist()
+        val primary = compose.onNodeWithTag("menu-primary").fetchSemanticsNode().boundsInRoot
         compose.onNodeWithText("Sort by").performClick()
-        advance(300)
+        advance(700)
         compose.onNodeWithText("Date added").assertIsSelected()
+        val retreated = compose.onNodeWithTag("menu-primary").fetchSemanticsNode().boundsInRoot
+        val child = compose.onNodeWithTag("menu-submenu").fetchSemanticsNode().boundsInRoot
+        assertEquals(primary.width * .96f, retreated.width, 1f)
+        assertEquals(primary.height * .96f, retreated.height, 1f)
+        assertTrue("The child must occupy a separate side pane", child.left != retreated.left)
+
         compose.runOnIdle { host.back() }
         advance(300)
         compose.runOnIdle { assertTrue(host.isActive(sortMenu)) }
         compose.onNodeWithText("Title A-Z").assertDoesNotExist()
+        val restored = compose.onNodeWithTag("menu-primary").fetchSemanticsNode().boundsInRoot
+        assertEquals(primary.width, restored.width, .01f)
 
         compose.onNodeWithText("Sort by").performClick()
         advance(300)
@@ -363,6 +372,114 @@ class MenuAnimationStyleHostTest {
             assertNull(host.activeMenu)
             assertEquals(1, selections)
         }
+    }
+
+    @Test fun material3LiquidMenuKeepsASolidSurfaceAndSupportsOrdinaryMotion() {
+        show(theme = "material3")
+        for (value in MenuAnimationStyle.entries) {
+            compose.runOnIdle { style.value = value; host.show(menu) }
+            advance(1200, renderFrames = true)
+            compose.runOnIdle {
+                assertEquals(value == MenuAnimationStyle.LIQUID, host.ownsDrawing(sourceId))
+            }
+            compose.onNodeWithText("Choose this").performClick()
+            advance(1000, renderFrames = true)
+        }
+        assertEquals(2, selections)
+    }
+
+    @Test fun dismissingBothLevelsRetainsChildForItsReturnAndCanReverseQuickly() {
+        style.value = MenuAnimationStyle.LIQUID
+        show()
+        val nested = menu.copy(items = listOf(
+            LiquidGlassMenuItem("Parent", submenuItems = listOf(LiquidGlassMenuItem("Child")))
+        ))
+        compose.runOnIdle { host.show(nested) }
+        advance(1200)
+        compose.onNodeWithText("Parent").performClick()
+        advance(900)
+        val before = compose.onNodeWithTag("menu-primary").fetchSemanticsNode().boundsInRoot
+        compose.runOnIdle { host.dismiss() }
+        advance(48)
+        compose.onNodeWithTag("menu-primary").assertExists()
+        compose.onNodeWithTag("menu-submenu").assertExists()
+        val during = compose.onNodeWithTag("menu-primary").fetchSemanticsNode().boundsInRoot
+        assertTrue(during.width <= before.width + 1f)
+        compose.runOnIdle { host.show(nested) }
+        advance(1200)
+        compose.onNodeWithText("Parent").performClick()
+        advance(48)
+        compose.runOnIdle { host.back() }
+        advance(32)
+        compose.onNodeWithText("Parent").performClick()
+        advance(1000)
+        compose.onNodeWithText("Child").assertExists()
+        compose.runOnIdle { host.dismiss() }
+        advance(1200)
+        compose.runOnIdle { assertNull(host.displayedMenu) }
+    }
+
+    @Test fun lumiSubmenuUsesOrdinaryMotionExceptForWholeStackReturn() =
+        assertOrdinarySubmenuMotion("lumi")
+
+    @Test fun material3SubmenuUsesOrdinaryMotionExceptForWholeStackReturn() =
+        assertOrdinarySubmenuMotion("material3")
+
+    @Test fun glassSubmenuUsesOrdinaryMotionExceptForWholeStackReturn() =
+        assertOrdinarySubmenuMotion("liquid_glass")
+
+    private fun assertOrdinarySubmenuMotion(theme: String) {
+        style.value = MenuAnimationStyle.LIQUID
+        show(glass = theme == "liquid_glass", theme = theme)
+        val nested = menu.copy(forceSolid = false, items = listOf(
+            LiquidGlassMenuItem("Parent", submenuItems = (1..5).map { LiquidGlassMenuItem("Child $it") })
+        ))
+        compose.runOnIdle { host.show(nested) }
+        advance(1200)
+        compose.onNodeWithText("Parent").performClick()
+        advance(64)
+        val entering = compose.onNodeWithTag("menu-submenu").fetchSemanticsNode().boundsInRoot
+        advance(500)
+        val settled = compose.onNodeWithTag("menu-submenu").fetchSemanticsNode().boundsInRoot
+        assertTrue("A secondary card fades/scales in at its full height in $theme",
+            entering.height >= settled.height * .90f)
+        compose.runOnIdle { host.back() }
+        advance(64)
+        val returningAlone = compose.onNodeWithTag("menu-submenu").fetchSemanticsNode().boundsInRoot
+        assertTrue("Closing only the secondary must keep its card shape in $theme",
+            returningAlone.height >= settled.height * .90f)
+        advance(300)
+        compose.onNodeWithTag("menu-submenu").assertDoesNotExist()
+        compose.runOnIdle { assertTrue(host.isActive(nested)) }
+        compose.onNodeWithText("Parent").performClick()
+        advance(500)
+        compose.runOnIdle { host.dismiss() }
+        advance(96)
+        val returningTogether = compose.onNodeWithTag("menu-submenu").fetchSemanticsNode().boundsInRoot
+        assertTrue("The secondary retracts only during whole-stack liquid dismissal in $theme",
+            returningTogether.height < settled.height * .90f)
+        advance(1200)
+        compose.runOnIdle { assertNull(host.displayedMenu) }
+    }
+
+    @Test fun dismissingWhileSecondaryIsFadingKeepsTheFirstReturnFrameContinuous() {
+        style.value = MenuAnimationStyle.LIQUID
+        show()
+        val nested = menu.copy(items = listOf(
+            LiquidGlassMenuItem("Parent", submenuItems = (1..5).map { LiquidGlassMenuItem("Child $it") })
+        ))
+        compose.runOnIdle { host.show(nested) }
+        advance(1200)
+        compose.onNodeWithText("Parent").performClick()
+        advance(48)
+        val before = compose.onNodeWithTag("menu-submenu").fetchSemanticsNode().boundsInRoot
+        compose.runOnIdle { host.dismiss() }
+        advance(16)
+        val after = compose.onNodeWithTag("menu-submenu").fetchSemanticsNode().boundsInRoot
+        assertEquals("Switching to the joint return must start at the drawn card's size",
+            before.height, after.height, before.height * .06f)
+        advance(1200)
+        compose.runOnIdle { assertNull(host.displayedMenu) }
     }
 
     @Test fun changingStyleDuringCloseRemeasuresTheSameSourceAndCanReopen() {
@@ -417,4 +534,61 @@ class MenuAnimationStyleHostTest {
             compose.onNodeWithTag("menuTrigger").assertExists()
         }
     }
+    private fun triggerPixels(): IntArray {
+        val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        return try {
+            view.draw(Canvas(bitmap))
+            val bounds = host.source(menu)!!.rootBounds
+            val left = (bounds.left.toInt() - 8).coerceAtLeast(0)
+            val top = (bounds.top.toInt() - 8).coerceAtLeast(0)
+            val width = (bounds.width.toInt() + 16).coerceAtMost(view.width - left)
+            val height = (bounds.height.toInt() + 16).coerceAtMost(view.height - top)
+            IntArray(width * height).also { bitmap.getPixels(it, 0, width, left, top, width, height) }
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    @Test fun glassReturnHandsBackAStationaryTriggerWithoutAnAftershock() {
+        style.value = MenuAnimationStyle.LIQUID
+        show(glass = true)
+        lateinit var restingPixels: IntArray
+        compose.runOnIdle { restingPixels = triggerPixels(); host.show(menu) }
+        advance(1200)
+        compose.runOnIdle { host.dismiss() }
+        var restoredFrames = 0
+        repeat(80) {
+            advance(16)
+            compose.runOnIdle {
+                if (host.displayedMenu == null) {
+                    restoredFrames++
+                    assertFalse(host.ownsDrawing(sourceId))
+                    assertArrayEquals("Every frame after handoff must match the resting button",
+                        restingPixels, triggerPixels())
+                }
+            }
+        }
+        assertTrue("The return must finish and leave several stationary frames", restoredFrames >= 10)
+    }
+
+    @Test fun reopeningDuringReturnAndReducingMotionStillRestoreTheTrigger() {
+        style.value = MenuAnimationStyle.LIQUID
+        show(glass = true)
+        compose.runOnIdle { host.show(menu) }
+        advance(1200)
+        compose.runOnIdle { host.dismiss() }
+        advance(160)
+        compose.runOnIdle { host.show(menu) }
+        advance(1200)
+        compose.runOnIdle { assertTrue(host.isActive(menu)); assertTrue(host.ownsDrawing(sourceId)) }
+        compose.runOnIdle { motion.value = false; host.dismiss() }
+        advance(200)
+        compose.runOnIdle {
+            assertNull(host.displayedMenu)
+            assertFalse(host.ownsDrawing(sourceId))
+            assertFalse(host.hidesSource(sourceId))
+            assertEquals(Color.Gray.toArgb(), triggerPixel())
+        }
+    }
+
 }

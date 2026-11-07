@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.statistics
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
@@ -228,7 +230,7 @@ internal val InsightsCardRadius = 22.dp
         .clickable(interaction, indication = null, role = Role.Button, onClick = onClick)
         .padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(text, color = AppColors.Accent, fontSize = AppType.Footnote, fontWeight = FontWeight.Medium)
-        Icon(directionalIcon(AppIcons.CaretRight, AppIcons.CaretLeft), null, tint = AppColors.Accent, modifier = Modifier.size(14.dp))
+        ControlIcon(directionalIcon(AppIcons.CaretRight, AppIcons.CaretLeft), null, tint = AppColors.Accent, modifier = Modifier.size(14.dp))
     }
 }
 
@@ -248,7 +250,7 @@ internal val InsightsCardRadius = 22.dp
                 filled -> content
                 else -> AppColors.TextPrimary
             }
-            Icon(AppIcons.styled(icon, iconStyle), null, tint = iconTint, modifier = Modifier.size(13.dp))
+            ControlIcon(AppIcons.styled(icon, iconStyle), null, tint = iconTint, modifier = Modifier.size(13.dp))
             Spacer(Modifier.width(3.dp))
         }
         Text(text, color = content, fontSize = AppType.Footnote, fontWeight = FontWeight.SemiBold, maxLines = 1)

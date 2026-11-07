@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.bookshelf
+
+import com.huangder.lumibooks.ui.icons.ControlIcon
 import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.app.Activity
@@ -590,7 +592,7 @@ private fun CoverSearchBottomBar(
                         .clickable(onClick = onConfirmCrop),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
+                    ControlIcon(
                         imageVector = AppIcons.Check,
                         contentDescription = stringResource(R.string.confirm),
                         tint = AppColors.OnAccent,
@@ -635,7 +637,7 @@ private fun CoverSearchBottomBar(
             },
             modifier = Modifier.size(48.dp)
         ) {
-            Icon(
+            ControlIcon(
                 imageVector = AppIcons.CornersOut,
                 contentDescription = stringResource(R.string.cover_pick_region),
                 tint = if (cropMode) AppColors.OnAccent else AppColors.TextPrimary,
@@ -655,7 +657,7 @@ private fun CoverSearchTopBar(
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
 
     val fieldContent: @Composable RowScope.() -> Unit = {
-        Icon(
+        ControlIcon(
             imageVector = AppIcons.MagnifyingGlass,
             contentDescription = null,
             tint = AppColors.TextSecondary,

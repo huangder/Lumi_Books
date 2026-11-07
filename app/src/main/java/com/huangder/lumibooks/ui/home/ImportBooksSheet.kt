@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.home
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
 import com.huangder.lumibooks.ui.icons.AppIcons
 
@@ -873,7 +875,7 @@ private fun ImportSearchField(
                         }
                         innerTextField()
                     }
-                    Icon(
+                    ControlIcon(
                         imageVector = AppIcons.MagnifyingGlass,
                         contentDescription = stringResource(R.string.search),
                         tint = AppColors.TextSecondary,
@@ -891,7 +893,7 @@ private fun ImportSearchField(
                                 ) { onQueryChange("") },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
+                            ControlIcon(
                                 imageVector = AppIcons.X,
                                 contentDescription = stringResource(R.string.import_search_clear),
                                 tint = AppColors.TextSecondary,
@@ -968,7 +970,7 @@ private fun ImportSortButton(
             modifier = Modifier.liquidGlassMenuAnchor().onGloballyPositioned { sortAnchorBounds = it.boundsInRoot() }
         )
 
-        if (!isLiquidGlass) {
+        if (menuHost == null) {
             AppDropdownMenu(
                 expanded = sortExpanded,
                 onDismissRequest = { sortExpanded = false },

@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.bookshelf
+
+import com.huangder.lumibooks.ui.icons.ControlIcon
 import com.huangder.lumibooks.ui.icons.AppIcons
 
 import androidx.activity.compose.BackHandler
@@ -153,7 +155,7 @@ internal fun BookshelfSearchLauncher(
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.weight(1f)
             )
-            Icon(
+            ControlIcon(
                 imageVector = AppIcons.MagnifyingGlass,
                 contentDescription = stringResource(R.string.search),
                 tint = AppColors.TextPrimary,
@@ -433,7 +435,7 @@ private fun ActiveBookshelfSearchField(
                         innerTextField()
                     }
                     Spacer(Modifier.width(12.dp))
-                    Icon(
+                    ControlIcon(
                         imageVector = AppIcons.MagnifyingGlass,
                         contentDescription = stringResource(R.string.search),
                         tint = AppColors.TextPrimary,
@@ -1038,7 +1040,7 @@ internal fun SearchActionButton(
             )
     ) {
         if (label == null) {
-            Icon(
+            ControlIcon(
                 imageVector = icon,
                 contentDescription = contentDescription,
                 tint = effectiveContentColor,
@@ -1050,7 +1052,7 @@ internal fun SearchActionButton(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
             ) {
-                Icon(
+                ControlIcon(
                     imageVector = icon,
                     contentDescription = null,
                     tint = effectiveContentColor,

@@ -1,6 +1,6 @@
 package com.huangder.lumibooks.ui.components
 
-import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -9,170 +9,82 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.LocalEInkMode
+import com.huangder.lumibooks.ui.theme.LocalLiquidGlassCapability
+import com.huangder.lumibooks.ui.theme.LocalLumiBackgroundBackdrop
+import com.huangder.lumibooks.ui.theme.LocalProgressiveBlurBackgroundBackdrop
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.LocalBackdropSamplingScale
+import com.kyant.backdrop.backdrops.LayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import com.kyant.backdrop.drawPlainBackdrop
-import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.MiuixProgressiveBlurEffect
+import com.kyant.backdrop.effects.ProgressiveBlurDirection
+import com.kyant.backdrop.effects.progressiveBlurFraction
 import kotlin.math.roundToInt
 
-/**
- * Progressive (gradient) backdrop blur for top bars.
- *
- * The blur strength ramps continuously from full at the top edge to zero at the bottom of the band,
- * so scrolling content dissolves into the bar instead of hitting a rectangular edge. It is built as
- * a level stack, mirroring Miuix's `progressiveTextureBlur` approach on top of the Backdrop pipeline
- * already used by this project:
- *
- * * three Gaussian levels (heavy / medium / light) are drawn lighter-first, so a heavier level always
- *   paints over a lighter one;
- * * each level is masked *after* its own blur (DstIn on the blurred layer), so the transition band
- *   holds genuinely intermediate blur radii instead of a sharp image cross-fading with a heavily
- *   blurred one;
- * * the level masks overlap, so the band stays covered while the radius walks heavy -> medium ->
- *   light -> clear with no visible seam.
- *
- * Costs three full-resolution RenderEffect passes, but only across the band: nothing outside it is
- * sampled or blurred, and the whole band is skipped while the strength is zero.
- */
-
-/** Discrete strength steps. Quantizing keeps the RenderEffect chain stable between frames. */
+/** Discrete scroll strengths keep the effect chain stable between frames. */
 internal const val PROGRESSIVE_BLUR_STEPS = 24
-
-/**
- * Normalized band position (0 = top edge) where each level has fully faded out. The strong end is
- * kept short and the lighter radii hold far down the band, so the radius walks towards zero over the
- * whole band instead of collapsing into a visible edge.
- */
-internal const val PROGRESSIVE_BLUR_HEAVY_STOP = 0.34f
-internal const val PROGRESSIVE_BLUR_MEDIUM_STOP = 0.64f
-internal const val PROGRESSIVE_BLUR_LIGHT_STOP = 1f
-
-/**
- * Positions where the lighter levels reach full opacity. They saturate before the heavier level has
- * finished fading, which keeps the band covered (no sharp content leaking through mid-transition).
- */
-internal const val PROGRESSIVE_BLUR_MEDIUM_RISE = 0.55f * PROGRESSIVE_BLUR_HEAVY_STOP
-internal const val PROGRESSIVE_BLUR_LIGHT_RISE = 0.80f * PROGRESSIVE_BLUR_HEAVY_STOP
-
-internal const val PROGRESSIVE_BLUR_LEVEL_LIGHT = 0
-internal const val PROGRESSIVE_BLUR_LEVEL_MEDIUM = 1
-internal const val PROGRESSIVE_BLUR_LEVEL_HEAVY = 2
-
-/** Blur radius of each level, as a fraction of the full-strength radius. */
-internal const val PROGRESSIVE_BLUR_HEAVY_RADIUS_RATIO = 1f
-internal const val PROGRESSIVE_BLUR_MEDIUM_RADIUS_RATIO = 0.45f
-internal const val PROGRESSIVE_BLUR_LIGHT_RADIUS_RATIO = 0.18f
-
-/** Gradient samples per level mask. The masks are smoothstep curves, not two-stop ramps. */
-private const val MASK_SAMPLE_COUNT = 16
-
-/** Tint scrim opacity at the top edge, before being scaled by the scroll-driven strength. */
 internal const val PROGRESSIVE_BLUR_TINT_ALPHA = 0.08f
 internal const val PROGRESSIVE_BLUR_TINT_ALPHA_DARK = 0.10f
+private const val GRADIENT_SAMPLE_COUNT = 32
 
-/** Opacity at the top edge when the device cannot blur and a plain scrim keeps the bar readable. */
-internal const val PROGRESSIVE_TOP_SCRIM_ALPHA = 0.62f
-
-/** Default full-strength blur radius and band height for a settings top bar. */
 val ProgressiveTopBlurMaxRadius: Dp = 28.dp
 val ProgressiveTopBlurBandHeight: Dp = 120.dp
 
 internal fun progressiveBlurStrength(strength: Float): Float =
     if (strength.isFinite()) strength.coerceIn(0f, 1f) else 0f
 
-/**
- * Snaps the scroll-driven strength to a fixed number of steps so the blur pipeline is rebuilt at
- * most [steps] times per scroll ramp instead of once per frame.
- */
 internal fun quantizeBlurStrength(strength: Float, steps: Int = PROGRESSIVE_BLUR_STEPS): Float {
     val clamped = progressiveBlurStrength(strength)
     if (steps <= 0) return clamped
     return ((clamped * steps).roundToInt().toFloat() / steps).coerceIn(0f, 1f)
 }
 
-/** Progressive blur is optional; e-ink always opts out of blur and its fallback scrim. */
+/** This API 33 gate is independent of Liquid Glass's API 31 RenderEffect support. */
 internal fun progressiveBlurEnabled(
     supported: Boolean,
     eInkMode: Boolean,
-    reduceTransparency: Boolean = false
-): Boolean = supported && !eInkMode && !reduceTransparency
+    reduceTransparency: Boolean = false,
+    sdkInt: Int = Build.VERSION.SDK_INT,
+): Boolean = sdkInt >= 33 && supported && !eInkMode && !reduceTransparency
 
-/** Whether the blur-free readability scrim should be used instead of the blur band. */
 internal fun progressiveTopScrimEnabled(
     supported: Boolean,
     eInkMode: Boolean,
-    reduceTransparency: Boolean = false
-): Boolean = (!supported || reduceTransparency) && !eInkMode
+    reduceTransparency: Boolean = false,
+    sdkInt: Int = Build.VERSION.SDK_INT,
+): Boolean = !eInkMode && !progressiveBlurEnabled(supported, eInkMode, reduceTransparency, sdkInt)
 
-private fun smoothStep(value: Float): Float {
-    val x = value.coerceIn(0f, 1f)
-    return x * x * (3f - 2f * x)
-}
+internal fun progressiveTintAlpha(fraction: Float): Float = 1f - progressiveBlurFraction(fraction)
 
-private fun rampWithHold(fraction: Float, riseEnd: Float, holdEnd: Float, fallEnd: Float): Float = when {
-    fraction <= 0f -> 0f
-    riseEnd <= 0f -> 1f
-    fraction < riseEnd -> smoothStep(fraction / riseEnd)
-    fraction <= holdEnd -> 1f
-    fraction >= fallEnd -> 0f
-    else -> 1f - smoothStep((fraction - holdEnd) / (fallEnd - holdEnd))
-}
+/** Fraction measured from the strong edge; reversing the gradient never mirrors the source. */
+internal fun progressiveEdgeFraction(fraction: Float, reverse: Boolean): Float =
+    if (reverse) 1f - fraction else fraction
 
-/**
- * Mask opacity of one blur level at [fraction] of the band height, 0 being the top edge.
- *
- * Heavy fades out across the strong end, the lighter levels hold full opacity under it and only
- * dissolve further down, so the visible radius walks continuously towards zero.
- */
-internal fun progressiveBlurLevelAlpha(level: Int, fraction: Float): Float {
-    if (!fraction.isFinite()) return 0f
-    val position = fraction.coerceIn(0f, 1f)
-    return when (level) {
-        PROGRESSIVE_BLUR_LEVEL_HEAVY -> 1f - smoothStep(position / PROGRESSIVE_BLUR_HEAVY_STOP)
-        PROGRESSIVE_BLUR_LEVEL_MEDIUM -> rampWithHold(
-            position,
-            riseEnd = PROGRESSIVE_BLUR_MEDIUM_RISE,
-            holdEnd = PROGRESSIVE_BLUR_HEAVY_STOP,
-            fallEnd = PROGRESSIVE_BLUR_MEDIUM_STOP
-        )
-        PROGRESSIVE_BLUR_LEVEL_LIGHT -> rampWithHold(
-            position,
-            riseEnd = PROGRESSIVE_BLUR_LIGHT_RISE,
-            holdEnd = PROGRESSIVE_BLUR_MEDIUM_STOP,
-            fallEnd = PROGRESSIVE_BLUR_LIGHT_STOP
-        )
-        else -> 0f
-    }
-}
-
-/**
- * Fraction of a band row covered by blurred content: 1 means fully covered, 0 means the row shows
- * the untouched content underneath.
- */
-internal fun progressiveBlurCoverage(fraction: Float): Float {
-    var clear = 1f
-    for (level in PROGRESSIVE_BLUR_LEVEL_LIGHT..PROGRESSIVE_BLUR_LEVEL_HEAVY) {
-        clear *= 1f - progressiveBlurLevelAlpha(level, fraction)
-    }
-    return 1f - clear
-}
-
-/** Tint scrim opacity profile: strongest at the top, fully dissolved by the middle stop. */
-internal fun progressiveTintAlpha(fraction: Float): Float {
-    if (!fraction.isFinite()) return 0f
-    return 1f - smoothStep(fraction.coerceIn(0f, 1f) / PROGRESSIVE_BLUR_MEDIUM_STOP)
+/** An opaque edge, optionally held behind the foreground toolbar, fading to transparent. */
+internal fun progressiveScrimColor(tint: Color, fraction: Float, solidFraction: Float = 0f): Color {
+    val hold = progressiveBlurStrength(solidFraction)
+    val alpha = if (hold >= 1f) 1f else progressiveTintAlpha((fraction - hold) / (1f - hold))
+    return tint.copy(alpha = alpha)
 }
 
 /** Large title scale at the end of the collapse ramp, matching Display -> Section type sizes. */
@@ -204,15 +116,7 @@ internal fun smallTitleScale(fraction: Float): Float {
     return 0.94f + 0.06f * alpha
 }
 
-/**
- * Draws the progressive blur band. Must be placed above the scrolling content and below the
- * foreground toolbar, and [backdrop] must capture the scrolling content only.
- *
- * @param strength Scroll-driven blur strength in `[0, 1]`. Values at or below zero draw nothing.
- * @param maxBlurRadius Full-strength blur radius at the top edge.
- * @param bandHeight Height of the dissolving band, measured from the top of the window.
- * @param tint Optional material tint drawn over the blurred levels for text contrast. `null` skips it.
- */
+/** The backdrop captures scrolling content only; foreground controls remain outside it. */
 @Composable
 fun ProgressiveTopBlur(
     backdrop: Backdrop,
@@ -222,94 +126,23 @@ fun ProgressiveTopBlur(
     bandHeight: Dp = ProgressiveTopBlurBandHeight,
     tint: Color? = null,
 ) {
-    ProgressiveBlurBand(backdrop, strength, modifier, maxBlurRadius, bandHeight, tint, fromBottom = false)
+    ProgressiveSurface(backdrop, strength, modifier.fillMaxWidth().height(bandHeight),
+        maxBlurRadius, tint, ProgressiveBlurDirection.Top)
 }
 
-/**
- * Shared band implementation. [fromBottom] anchors the strong end at the bottom edge by reversing
- * the mask profiles (never by flipping the layer, which would mirror the blurred content).
- */
-@Composable
-private fun ProgressiveBlurBand(
-    backdrop: Backdrop,
-    strength: Float,
-    modifier: Modifier,
-    maxBlurRadius: Dp,
-    bandHeight: Dp,
-    tint: Color?,
-    fromBottom: Boolean
-) {
-    if (LocalReduceTransparency.current) {
-        val fallbackTint = (tint ?: com.huangder.lumibooks.ui.theme.AppColors.WindowBg).copy(alpha = 1f)
-        if (fromBottom) {
-            ProgressiveBottomScrim(modifier, bandHeight, fallbackTint)
-        } else {
-            ProgressiveTopScrim(strength, modifier, bandHeight, fallbackTint)
-        }
-        return
-    }
-    val resolvedStrength = quantizeBlurStrength(strength)
-    if (resolvedStrength <= 0f) return
-
-    val masks = remember(fromBottom) { ProgressiveBlurMasks(fromBottom) }
-    val fullRadiusPx = with(LocalDensity.current) { maxBlurRadius.toPx() } * resolvedStrength
-
-    Box(modifier = modifier.fillMaxWidth().height(bandHeight)) {
-        // Lighter levels first: every later (stronger) level paints over the weaker ones.
-        ProgressiveBlurLevel(
-            backdrop = backdrop,
-            mask = masks.light,
-            radiusPx = fullRadiusPx * PROGRESSIVE_BLUR_LIGHT_RADIUS_RATIO
-        )
-        ProgressiveBlurLevel(
-            backdrop = backdrop,
-            mask = masks.medium,
-            radiusPx = fullRadiusPx * PROGRESSIVE_BLUR_MEDIUM_RADIUS_RATIO
-        )
-        ProgressiveBlurLevel(
-            backdrop = backdrop,
-            mask = masks.heavy,
-            radiusPx = fullRadiusPx * PROGRESSIVE_BLUR_HEAVY_RADIUS_RATIO
-        )
-        if (tint != null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = resolvedStrength }
-                    .background(remember(tint, fromBottom) { tintBrush(tint, fromBottom) })
-            )
-        }
-    }
-}
-
-/**
- * Blur-free fallback for devices without RenderEffect support: the same dissolve profile drawn as a
- * plain scrim so the foreground title stays readable while content scrolls underneath.
- */
 @Composable
 fun ProgressiveTopScrim(
     strength: Float,
     modifier: Modifier = Modifier,
     bandHeight: Dp = ProgressiveTopBlurBandHeight,
     tint: Color? = null,
+    solidFraction: Float = 0f,
 ) {
-    val resolvedStrength = quantizeBlurStrength(strength)
-    if (resolvedStrength <= 0f || tint == null) return
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(bandHeight)
-            .graphicsLayer { alpha = resolvedStrength * PROGRESSIVE_TOP_SCRIM_ALPHA }
-            .background(remember(tint) { tintBrush(tint, fromBottom = false) })
-    )
+    if (tint == null) return
+    ProgressiveSurface(null, strength, modifier.fillMaxWidth().height(bandHeight),
+        0.dp, tint, ProgressiveBlurDirection.Top, solidFraction)
 }
 
-/**
- * Bottom-edge counterpart of [ProgressiveTopBlur] for floating bottom actions: content scrolling
- * under the button dissolves into blur instead of being cut off by a hard edge. The strongest
- * blur sits at the bottom of the window.
- */
 @Composable
 fun ProgressiveBottomBlur(
     backdrop: Backdrop,
@@ -318,33 +151,20 @@ fun ProgressiveBottomBlur(
     bandHeight: Dp = ProgressiveTopBlurBandHeight,
     tint: Color? = null,
 ) {
-    ProgressiveBlurBand(backdrop, 1f, modifier, maxBlurRadius, bandHeight, tint, fromBottom = true)
+    ProgressiveSurface(backdrop, 1f, modifier.fillMaxWidth().height(bandHeight),
+        maxBlurRadius, tint, ProgressiveBlurDirection.Bottom)
 }
 
-/** Blur-free bottom fallback: the same dissolve as a scrim that fades out towards the content. */
 @Composable
 fun ProgressiveBottomScrim(
     modifier: Modifier = Modifier,
     bandHeight: Dp = ProgressiveTopBlurBandHeight,
     tint: Color,
 ) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(bandHeight)
-            .background(
-                remember(tint) {
-                    Brush.verticalGradient(
-                        0f to tint.copy(alpha = 0f),
-                        0.45f to tint.copy(alpha = tint.alpha * 0.72f),
-                        1f to tint
-                    )
-                }
-            )
-    )
+    ProgressiveSurface(null, 1f, modifier.fillMaxWidth().height(bandHeight),
+        0.dp, tint, ProgressiveBlurDirection.Bottom)
 }
 
-/** Start-edge dissolve for content scrolling into a side navigation rail. Never captures the rail. */
 @Composable
 internal fun ProgressiveStartBlur(
     backdrop: Backdrop?,
@@ -353,69 +173,95 @@ internal fun ProgressiveStartBlur(
     bandWidth: Dp = 40.dp,
     maxBlurRadius: Dp = 18.dp
 ) {
-    val reverse = LocalLayoutDirection.current == LayoutDirection.Rtl
-    val masks = remember(reverse) { ProgressiveBlurMasks(reverse, horizontal = true) }
-    val radiusPx = with(LocalDensity.current) { maxBlurRadius.toPx() }
-    Box(modifier.fillMaxHeight().width(bandWidth)) {
-        if (backdrop != null && !LocalReduceTransparency.current) {
-            ProgressiveBlurLevel(backdrop, masks.light, radiusPx * PROGRESSIVE_BLUR_LIGHT_RADIUS_RATIO)
-            ProgressiveBlurLevel(backdrop, masks.medium, radiusPx * PROGRESSIVE_BLUR_MEDIUM_RADIUS_RATIO)
-            ProgressiveBlurLevel(backdrop, masks.heavy, radiusPx * PROGRESSIVE_BLUR_HEAVY_RADIUS_RATIO)
-        }
-        // Keep sampled content visible beneath the rail; tint dissolves towards the clear page.
-        Box(Modifier.fillMaxSize().background(remember(tint, reverse) {
-            tintBrush(tint, reverse, horizontal = true)
-        }))
-    }
+    val direction = if (LocalLayoutDirection.current == LayoutDirection.Rtl)
+        ProgressiveBlurDirection.Right else ProgressiveBlurDirection.Left
+    ProgressiveSurface(backdrop, 1f, modifier.fillMaxHeight().width(bandWidth),
+        maxBlurRadius, tint, direction)
 }
 
+/** Shared Miuix full-resolution composite and blur-free, opaque-edge fallback. */
 @Composable
-private fun ProgressiveBlurLevel(
-    backdrop: Backdrop,
-    mask: Brush,
-    radiusPx: Float,
+internal fun ProgressiveSurface(
+    backdrop: Backdrop?,
+    strength: Float,
+    modifier: Modifier,
+    maxBlurRadius: Dp,
+    tint: Color?,
+    direction: ProgressiveBlurDirection,
+    solidFraction: Float = 0f,
+    exportedBackdrop: LayerBackdrop? = null,
+    blurStartFraction: Float = 0f,
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            // Own offscreen layer: the DstIn mask below must only punch through this level's blurred
-            // backdrop, never through the page content drawn underneath the band.
-            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-            .drawPlainBackdrop(
-                backdrop = backdrop,
-                shape = { RectangleShape },
-                effects = { blur(radiusPx) },
-                // Masking the already-blurred layer keeps the transition band at genuinely medium
-                // radii; masking the source before blurring would only cross-fade blur with sharp.
-                onDrawSurface = { drawRect(brush = mask, blendMode = BlendMode.DstIn) }
-            )
-    )
-}
-
-private class ProgressiveBlurMasks(fromBottom: Boolean, horizontal: Boolean = false) {
-    val light: Brush = maskBrush(PROGRESSIVE_BLUR_LEVEL_LIGHT, fromBottom, horizontal)
-    val medium: Brush = maskBrush(PROGRESSIVE_BLUR_LEVEL_MEDIUM, fromBottom, horizontal)
-    val heavy: Brush = maskBrush(PROGRESSIVE_BLUR_LEVEL_HEAVY, fromBottom, horizontal)
-}
-
-/** Distance from the strong edge: the top edge normally, the bottom edge for bottom bands. */
-private fun edgeFraction(index: Int, fromBottom: Boolean): Float {
-    val fraction = index.toFloat() / MASK_SAMPLE_COUNT
-    return if (fromBottom) 1f - fraction else fraction
-}
-
-private fun maskBrush(level: Int, fromBottom: Boolean, horizontal: Boolean = false): Brush {
-    val stops = Array(MASK_SAMPLE_COUNT + 1) { index ->
-        val fraction = index.toFloat() / MASK_SAMPLE_COUNT
-        fraction to Color.Black.copy(alpha = progressiveBlurLevelAlpha(level, edgeFraction(index, fromBottom)))
+    if (LocalEInkMode.current) return
+    val resolvedStrength = quantizeBlurStrength(strength)
+    if (resolvedStrength <= 0f) return
+    val radius = with(LocalDensity.current) { maxBlurRadius.toPx() } * resolvedStrength
+    val canBlur = backdrop != null && radius.isFinite() && radius > 0f &&
+        progressiveBlurEnabled(LocalLiquidGlassCapability.current.supported, false, LocalReduceTransparency.current) &&
+        LocalView.current.isHardwareAccelerated
+    // The API guard precedes construction, including RuntimeShader compilation.
+    val effect = remember(canBlur) {
+        if (canBlur && Build.VERSION.SDK_INT >= 33) runCatching { MiuixProgressiveBlurEffect() }.getOrNull()
+        else null
     }
-    return if (horizontal) Brush.horizontalGradient(*stops) else Brush.verticalGradient(*stops)
+    val fallbackTint = (tint ?: AppColors.WindowBg).copy(alpha = 1f)
+    // PageBg is intentionally transparent for artwork themes; making it opaque would be black.
+    val pageBackground = AppColors.WindowBg.copy(alpha = 1f)
+    val artworkBackdrop = LocalProgressiveBlurBackgroundBackdrop.current ?: LocalLumiBackgroundBackdrop.current
+    val activeBackdrop = if (artworkBackdrop != null && backdrop != null && artworkBackdrop !== backdrop)
+        rememberCombinedBackdrop(artworkBackdrop, backdrop) else backdrop
+    val fallbackBrush = remember(fallbackTint, direction, solidFraction) {
+        progressiveBrush(fallbackTint, direction, solidFraction, opaqueEdge = true)
+    }
+    val tintBrush = remember(tint, direction) {
+        tint?.let { progressiveBrush(it, direction, 0f, opaqueEdge = false) }
+    }
+    if (effect == null || backdrop == null) {
+        Box(modifier.graphicsLayer { alpha = resolvedStrength }
+            .then(if (exportedBackdrop != null) Modifier.layerBackdrop(exportedBackdrop) else Modifier)
+            .background(fallbackBrush))
+        return
+    }
+    // Miuix's native sharp end requires the ORIGINAL source pixels even when glass buttons use
+    // reduced-resolution buffers. Limit this override to the edge band, never the whole page.
+    CompositionLocalProvider(LocalBackdropSamplingScale provides 1f) {
+        Box(modifier.drawPlainBackdrop(
+            backdrop = activeBackdrop ?: backdrop,
+            shape = { RectangleShape },
+            effects = {
+                padding = MiuixProgressiveBlurEffect.padding(radius)
+                renderEffect = effect.effect(radius, size.width, size.height, padding, direction, blurStartFraction)
+            },
+            exportedBackdrop = exportedBackdrop,
+            // Captures may contain transparent text/card gaps; include their actual page color
+            // before blurring so alpha normalization cannot turn those gaps into dark halos.
+            onDrawBackdrop = { drawBackdrop ->
+                val pad = MiuixProgressiveBlurEffect.padding(radius)
+                drawRect(pageBackground, topLeft = Offset(-pad, -pad),
+                    size = Size(size.width + pad * 2f, size.height + pad * 2f))
+                drawBackdrop()
+            },
+            onDrawSurface = {
+                if (effect.failed) drawRect(fallbackBrush, alpha = resolvedStrength)
+                else tintBrush?.let { drawRect(it, alpha = resolvedStrength) }
+            }
+        ))
+    }
 }
 
-private fun tintBrush(tint: Color, fromBottom: Boolean, horizontal: Boolean = false): Brush {
-    val stops = Array(MASK_SAMPLE_COUNT + 1) { index ->
-        val fraction = index.toFloat() / MASK_SAMPLE_COUNT
-        fraction to tint.copy(alpha = tint.alpha * progressiveTintAlpha(edgeFraction(index, fromBottom)))
+private fun progressiveBrush(
+    tint: Color,
+    direction: ProgressiveBlurDirection,
+    solidFraction: Float,
+    opaqueEdge: Boolean,
+): Brush {
+    val reverse = direction == ProgressiveBlurDirection.Bottom || direction == ProgressiveBlurDirection.Right
+    val stops = Array(GRADIENT_SAMPLE_COUNT + 1) { index ->
+        val fraction = index.toFloat() / GRADIENT_SAMPLE_COUNT
+        val edge = progressiveEdgeFraction(fraction, reverse)
+        fraction to if (opaqueEdge) progressiveScrimColor(tint, edge, solidFraction)
+        else tint.copy(alpha = tint.alpha * progressiveTintAlpha(edge))
     }
-    return if (horizontal) Brush.horizontalGradient(*stops) else Brush.verticalGradient(*stops)
+    return if (direction == ProgressiveBlurDirection.Left || direction == ProgressiveBlurDirection.Right)
+        Brush.horizontalGradient(*stops) else Brush.verticalGradient(*stops)
 }

@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.reader
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import android.os.SystemClock
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -12,7 +14,6 @@ import androidx.compose.foundation.shape.CircleShape
 import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import com.huangder.lumibooks.ui.theme.AppType
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -83,7 +84,7 @@ internal fun ReaderReturnChip(
                     Text(pageLabel, color = ink, fontSize = AppType.Caption, modifier = Modifier.padding(start = 3.dp))
                 }
                 Box(Modifier.size(18.dp).background(ink, CircleShape), contentAlignment = Alignment.Center) {
-                    Icon(if (headphones) AppIcons.Headphones else AppIcons.ArrowLeft,
+                    ControlIcon(if (headphones) AppIcons.Headphones else AppIcons.ArrowLeft,
                         contentDescription = null, tint = paper,
                         modifier = Modifier.size(13.dp).graphicsLayer {
                             if (side == ReaderReturnSide.RIGHT) scaleX = -1f

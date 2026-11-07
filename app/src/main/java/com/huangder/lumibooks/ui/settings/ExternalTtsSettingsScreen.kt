@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.settings
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import com.huangder.lumibooks.ui.components.lumiGroupedSurface
 import com.huangder.lumibooks.ui.components.lumiCardSurface
 import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
@@ -409,7 +411,7 @@ fun ExternalTtsConfigurationDetail(
             visualTransformation = if (tokenVisible) VisualTransformation.None else PasswordVisualTransformation(),
             trailingIcon = {
                 IconButton(onClick = { tokenVisible = !tokenVisible }) {
-                    Icon(
+                    ControlIcon(
                         if (tokenVisible) AppIcons.EyeSlash else AppIcons.Eye,
                         contentDescription = stringResource(
                             if (tokenVisible) R.string.external_tts_hide_key else R.string.external_tts_show_key
@@ -864,7 +866,7 @@ private fun ExternalTtsSecondaryButton(
             .heightIn(min = 48.dp)
             .border(1.dp, AppColors.Divider, AppRoundedCornerShape(AppRadius.md))
     ) {
-        Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
+        ControlIcon(icon, null, tint = color, modifier = Modifier.size(18.dp))
         Spacer(Modifier.size(AppSpace.sm))
         Text(label, fontSize = AppType.BodySmall, color = color, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
     }

@@ -75,119 +75,37 @@ class ProgressiveTopBlurTest {
         }
     }
 
-    // ── 渐变遮罩几何 ────────────────────────────────────────────
-
     @Test
-    fun topEdgeIsFullyBlurredByTheHeavyLevel() {
-        assertEquals(1f, progressiveBlurLevelAlpha(PROGRESSIVE_BLUR_LEVEL_HEAVY, 0f), 0.0001f)
-        assertEquals(1f, progressiveBlurCoverage(0f), 0.0001f)
-    }
-
-    @Test
-    fun heavyLevelFadesOutAtItsStop() {
-        assertEquals(
-            0f,
-            progressiveBlurLevelAlpha(PROGRESSIVE_BLUR_LEVEL_HEAVY, PROGRESSIVE_BLUR_HEAVY_STOP),
-            0.0001f
-        )
-        assertEquals(
-            0f,
-            progressiveBlurLevelAlpha(PROGRESSIVE_BLUR_LEVEL_HEAVY, PROGRESSIVE_BLUR_HEAVY_STOP + 0.1f),
-            0.0001f
-        )
-    }
-
-    @Test
-    fun lighterLevelsTakeOverWhereTheHeavierLevelEnds() {
-        val heavyStop = PROGRESSIVE_BLUR_HEAVY_STOP
-        val mediumStop = PROGRESSIVE_BLUR_MEDIUM_STOP
-
-        assertEquals(1f, progressiveBlurLevelAlpha(PROGRESSIVE_BLUR_LEVEL_MEDIUM, heavyStop), 0.0001f)
-        assertEquals(0f, progressiveBlurLevelAlpha(PROGRESSIVE_BLUR_LEVEL_MEDIUM, mediumStop), 0.0001f)
-        assertEquals(1f, progressiveBlurLevelAlpha(PROGRESSIVE_BLUR_LEVEL_LIGHT, mediumStop), 0.0001f)
-        assertEquals(0f, progressiveBlurLevelAlpha(PROGRESSIVE_BLUR_LEVEL_LIGHT, PROGRESSIVE_BLUR_LIGHT_STOP), 0.0001f)
-    }
-
-    @Test
-    fun everyLevelStaysInsideTheUnitRange() {
-        for (step in 0..200) {
-            val fraction = step / 200f
-            for (level in PROGRESSIVE_BLUR_LEVEL_LIGHT..PROGRESSIVE_BLUR_LEVEL_HEAVY) {
-                val alpha = progressiveBlurLevelAlpha(level, fraction)
-                assertTrue("level $level alpha $alpha out of range", alpha in 0f..1f)
-            }
-            assertTrue(progressiveBlurCoverage(fraction) in 0f..1f)
-        }
-    }
-
-    @Test
-    fun transitionBandKeepsTheContentCoveredWithoutSharpGaps() {
-        // 过渡带内不允许出现“完全清晰”的缝：覆盖率始终接近 1（最差处约 0.9，位于重/中交叉点）。
-        for (step in 0..120) {
-            val fraction = step / 200f * PROGRESSIVE_BLUR_MEDIUM_STOP
-            assertTrue(
-                "coverage $fraction = ${progressiveBlurCoverage(fraction)}",
-                progressiveBlurCoverage(fraction) >= 0.88f
-            )
-        }
-    }
-
-    @Test
-    fun coverageDissolvesToClearAtTheBottomOfTheBand() {
-        val nearBottom = progressiveBlurCoverage(0.999f)
-        assertEquals(0f, progressiveBlurCoverage(1f), 0.0001f)
-        assertTrue(nearBottom < 0.05f)
-
-        var previous = progressiveBlurCoverage(PROGRESSIVE_BLUR_MEDIUM_STOP)
-        var fraction = PROGRESSIVE_BLUR_MEDIUM_STOP
-        while (fraction <= 1f) {
-            val coverage = progressiveBlurCoverage(fraction)
-            assertTrue("coverage increased at $fraction", coverage <= previous + 0.0001f)
-            previous = coverage
-            fraction += 0.005f
-        }
-    }
-
-    @Test
-    fun blurStrengthWalksFromHeavyToLightToClear() {
-        // 用「不透明度过半的最强层级」衡量每一行的实际模糊强度，必须单调递减。
-        var previous = strongestActiveLevel(0f)
-        assertEquals(PROGRESSIVE_BLUR_LEVEL_HEAVY, previous)
-        var fraction = 0f
-        while (fraction < 0.999f) {
-            fraction = (fraction + 0.002f).coerceAtMost(0.999f)
-            val current = strongestActiveLevel(fraction)
-            assertTrue("level rose from $previous to $current at $fraction", current <= previous)
-            previous = current
-        }
-        assertEquals(-1, strongestActiveLevel(1f))
-    }
-
-    @Test
-    fun nonFiniteMaskInputIsTreatedAsClear() {
-        for (level in PROGRESSIVE_BLUR_LEVEL_LIGHT..PROGRESSIVE_BLUR_LEVEL_HEAVY) {
-            assertEquals(0f, progressiveBlurLevelAlpha(level, Float.NaN), 0.0001f)
-        }
-        assertEquals(0f, progressiveBlurCoverage(Float.NaN), 0.0001f)
-    }
-
-    // ── 可读性 tint ─────────────────────────────────────────────
-
-    @Test
-    fun tintIsStrongestAtTheTopAndDissolvesBeforeTheContent() {
+    fun tintFallsSmoothlyFromOpaqueToTransparentWithoutEarlyCutoff() {
         assertEquals(1f, progressiveTintAlpha(0f), 0.0001f)
-        assertEquals(0f, progressiveTintAlpha(PROGRESSIVE_BLUR_MEDIUM_STOP), 0.0001f)
+        assertEquals(0.5f, progressiveTintAlpha(0.5f), 0.0001f)
         assertEquals(0f, progressiveTintAlpha(1f), 0.0001f)
         assertEquals(0f, progressiveTintAlpha(Float.NaN), 0.0001f)
-
-        var previous = progressiveTintAlpha(0f)
-        var fraction = 0f
-        while (fraction <= PROGRESSIVE_BLUR_MEDIUM_STOP) {
-            val alpha = progressiveTintAlpha(fraction)
-            assertTrue(alpha <= previous + 0.0001f)
+        var previous = 1f
+        for (step in 0..200) {
+            val alpha = progressiveTintAlpha(step / 200f)
+            assertTrue(alpha in 0f..1f && alpha <= previous)
             previous = alpha
-            fraction += 0.005f
         }
+    }
+
+    @Test
+    fun bottomAndRtlEdgesReverseOnlyTheGradient() {
+        for (step in 0..100) {
+            val fraction = step / 100f
+            assertEquals(fraction, progressiveEdgeFraction(fraction, false), 0.0001f)
+            assertEquals(1f - fraction, progressiveEdgeFraction(fraction, true), 0.0001f)
+        }
+    }
+
+    @Test
+    fun fallbackReachesActualOpaquePageColorEvenWhenCallerPassesATranslucentTint() {
+        val tint = androidx.compose.ui.graphics.Color(0xFF123456).copy(alpha = 0.08f)
+        assertEquals(tint.copy(alpha = 1f), progressiveScrimColor(tint, 0f))
+        assertEquals(tint.copy(alpha = 0f), progressiveScrimColor(tint, 1f))
+        assertEquals(0.5f, progressiveScrimColor(tint, 0.5f).alpha, 0.005f)
+        assertEquals(tint.copy(alpha = 1f), progressiveScrimColor(tint, 0.4f, 0.4f))
+        assertEquals(tint.copy(alpha = 0f), progressiveScrimColor(tint, 1f, 0.4f))
     }
 
     // ── 大标题 → 小标题过渡 ─────────────────────────────────────
@@ -245,31 +163,26 @@ class ProgressiveTopBlurTest {
         assertTrue(largeTitleAlpha(fraction) < 1f)
     }
 
-    // ── 能力门控 ───────────────────────────────────────────────
-
     @Test
-    fun blurRequiresRenderEffectSupportAndIsDisabledInEInk() {
-        assertTrue(progressiveBlurEnabled(supported = true, eInkMode = false))
-        assertFalse(progressiveBlurEnabled(supported = false, eInkMode = false))
-        assertFalse(progressiveBlurEnabled(supported = true, eInkMode = true))
-        assertFalse(progressiveBlurEnabled(supported = false, eInkMode = true))
+    fun progressiveBlurStartsAtApi33WhileOlderHardwareUsesTheGradient() {
+        for (sdk in listOf(26, 30, 31, 32, 33, 35, 37)) {
+            assertEquals(sdk >= 33, progressiveBlurEnabled(true, false, sdkInt = sdk))
+            assertEquals(sdk < 33, progressiveTopScrimEnabled(true, false, sdkInt = sdk))
+        }
     }
 
     @Test
-    fun scrimOnlyReplacesBlurWhenBlurIsUnavailableAndNotEInk() {
-        assertTrue(progressiveTopScrimEnabled(supported = false, eInkMode = false))
-        assertFalse(progressiveTopScrimEnabled(supported = true, eInkMode = false))
-        assertFalse(progressiveTopScrimEnabled(supported = false, eInkMode = true))
-        assertFalse(progressiveTopScrimEnabled(supported = true, eInkMode = true))
-    }
-
-    @Test
-    fun reducedTransparencyReplacesSupportedAndUnsupportedBlurWithAScrimExceptInEInk() {
-        for (supported in listOf(false, true)) {
-            assertFalse(progressiveBlurEnabled(supported, eInkMode = false, reduceTransparency = true))
-            assertTrue(progressiveTopScrimEnabled(supported, eInkMode = false, reduceTransparency = true))
-            assertFalse(progressiveBlurEnabled(supported, eInkMode = true, reduceTransparency = true))
-            assertFalse(progressiveTopScrimEnabled(supported, eInkMode = true, reduceTransparency = true))
+    fun capabilityAndTransparencyFailuresFallBackAndEInkKeepsPriority() {
+        for (sdk in listOf(26, 32, 33, 37)) {
+            for (supported in listOf(false, true)) {
+                for (reduced in listOf(false, true)) {
+                    assertFalse(progressiveBlurEnabled(supported, true, reduced, sdk))
+                    assertFalse(progressiveTopScrimEnabled(supported, true, reduced, sdk))
+                    val expected = supported && !reduced && sdk >= 33
+                    assertEquals(expected, progressiveBlurEnabled(supported, false, reduced, sdk))
+                    assertEquals(!expected, progressiveTopScrimEnabled(supported, false, reduced, sdk))
+                }
+            }
         }
     }
 
@@ -286,10 +199,4 @@ class ProgressiveTopBlurTest {
         return progressiveBlurStrength(fraction)
     }
 
-    private fun strongestActiveLevel(fraction: Float): Int {
-        for (level in PROGRESSIVE_BLUR_LEVEL_HEAVY downTo PROGRESSIVE_BLUR_LEVEL_LIGHT) {
-            if (progressiveBlurLevelAlpha(level, fraction) > 0.5f) return level
-        }
-        return -1
-    }
 }

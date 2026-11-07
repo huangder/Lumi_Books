@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.home
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -9,7 +11,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -180,7 +181,7 @@ private fun BookPickerSearchPill(
                     .padding(start = AppSpace.md, end = AppSpace.xs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
+                ControlIcon(
                     imageVector = AppIcons.MagnifyingGlass,
                     contentDescription = null,
                     tint = AppColors.TextSecondary,
@@ -232,7 +233,7 @@ private fun BookPickerSearchPill(
                             ) { onQueryChange("") },
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
+                        ControlIcon(
                             imageVector = AppIcons.X,
                             contentDescription = stringResource(R.string.import_search_clear),
                             tint = AppColors.TextSecondary,
@@ -246,7 +247,7 @@ private fun BookPickerSearchPill(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
+                ControlIcon(
                     imageVector = AppIcons.MagnifyingGlass,
                     contentDescription = stringResource(R.string.search),
                     tint = AppColors.TextPrimary,

@@ -1,5 +1,10 @@
 package com.huangder.lumibooks.ui.home.remote
 
+import com.huangder.lumibooks.ui.components.progressiveBlurEnabled
+import com.huangder.lumibooks.ui.theme.LocalEInkMode
+import com.huangder.lumibooks.ui.theme.LocalLiquidGlassCapability
+import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
+
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import com.huangder.lumibooks.ui.components.LocalCollapsingPageTopInset
@@ -86,6 +91,9 @@ internal fun RemoteBookDetailsScreen(
     var summaryExpanded by rememberSaveable { mutableStateOf(false) }
     // The bottom blur samples the scrolling content only. In liquid glass the page capture is
     // shared with the destination sheet, so both read the same layer.
+    val progressiveBlur = progressiveBlurEnabled(
+        LocalLiquidGlassCapability.current.supported, LocalEInkMode.current, LocalReduceTransparency.current
+    )
     val blurBackdrop = contentBackdrop ?: com.kyant.backdrop.backdrops.rememberLayerBackdrop()
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -98,7 +106,7 @@ internal fun RemoteBookDetailsScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .layerBackdrop(blurBackdrop)
+                    .then(if (contentBackdrop != null || progressiveBlur) Modifier.layerBackdrop(blurBackdrop) else Modifier)
                     .verticalScroll(rememberScrollState())
                     .padding(top = LocalCollapsingPageTopInset.current)
                     .padding(horizontal = AppSpace.lg),

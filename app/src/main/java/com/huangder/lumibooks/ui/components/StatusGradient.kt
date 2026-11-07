@@ -8,21 +8,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.effects.ProgressiveBlurDirection
 import com.kyant.backdrop.backdrops.LayerBackdrop
-import com.kyant.backdrop.drawPlainBackdrop
-import com.kyant.backdrop.effects.blur
 
 /**
- * Keeps the legacy color fade for regular themes and renders only sampled blur
+ * Keeps the legacy color fade for regular themes and renders Miuix progressive blur
  * for liquid glass. Reduced transparency uses a readable scrim and still exports
  * its completed backdrop for glass controls above it.
  */
@@ -47,34 +43,20 @@ fun StatusGradientOverlay(
         return
     }
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
-    val activeBackdrop = com.huangder.lumibooks.ui.theme.LocalLumiBackgroundBackdrop.current ?: backdrop
-    if (isLiquidGlass && activeBackdrop != null && LocalReduceTransparency.current) {
-        val bgColor = AppColors.WindowBg
-        val solidStop = solidFraction.coerceIn(0.55f, 0.82f)
-        Box(
-            Modifier.fillMaxWidth().height(height).drawPlainBackdrop(
-                backdrop = activeBackdrop,
-                shape = { RectangleShape },
-                effects = {},
-                exportedBackdrop = exportedBackdrop,
-                onDrawSurface = {
-                    drawRect(Brush.verticalGradient(
-                        0f to bgColor,
-                        solidStop to bgColor,
-                        1f to bgColor.copy(alpha = 0f)
-                    ))
-                }
-            )
-        )
-        return
-    }
-    if (isLiquidGlass && activeBackdrop != null && !LocalReduceTransparency.current) {
-        ProgressiveBlurOverlay(
+    // The shared surface composites artwork behind this scrolling content when needed.
+    val activeBackdrop = backdrop ?: com.huangder.lumibooks.ui.theme.LocalLumiBackgroundBackdrop.current
+    if (isLiquidGlass) {
+        val reduced = LocalReduceTransparency.current
+        ProgressiveSurface(
             backdrop = activeBackdrop,
+            strength = 1f,
+            modifier = Modifier.fillMaxWidth().height(height),
+            maxBlurRadius = blurRadius,
+            tint = null,
+            direction = ProgressiveBlurDirection.Top,
+            solidFraction = if (reduced) solidFraction.coerceIn(0.55f, 0.82f) else solidFraction.coerceIn(0f, 0.82f),
+            blurStartFraction = solidFraction.coerceIn(0f, 0.82f),
             exportedBackdrop = exportedBackdrop,
-            height = height,
-            blurRadius = blurRadius,
-            solidFraction = solidFraction
         )
         return
     }
@@ -92,53 +74,6 @@ fun StatusGradientOverlay(
                         1.0f to bgColor.copy(alpha = 0f)
                     )
                 )
-            )
-    )
-}
-
-@Composable
-private fun ProgressiveBlurOverlay(
-    backdrop: Backdrop,
-    exportedBackdrop: LayerBackdrop?,
-    height: Dp,
-    blurRadius: Dp,
-    solidFraction: Float
-) {
-    val solidStop = solidFraction.coerceIn(0f, 0.82f)
-    val middleStop = solidStop + (1f - solidStop) * 0.50f
-    val lateStop = solidStop + (1f - solidStop) * 0.78f
-    val samplingHeight = height + blurRadius
-    val visibleFraction = if (samplingHeight.value > 0f) {
-        (height.value / samplingHeight.value).coerceIn(0f, 1f)
-    } else {
-        1f
-    }
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(samplingHeight)
-            .drawPlainBackdrop(
-                backdrop = backdrop,
-                shape = { RectangleShape },
-                effects = { blur(blurRadius.toPx()) },
-                exportedBackdrop = exportedBackdrop,
-                onDrawBackdrop = { drawBackdrop ->
-                    drawBackdrop()
-                    drawRect(
-                        brush = Brush.verticalGradient(
-                            colorStops = arrayOf(
-                                0f to Color.Black,
-                                solidStop * visibleFraction to Color.Black,
-                                middleStop * visibleFraction to Color.Black.copy(alpha = 0.72f),
-                                lateStop * visibleFraction to Color.Black.copy(alpha = 0.18f),
-                                visibleFraction * 0.97f to Color.Black.copy(alpha = 0.04f),
-                                visibleFraction to Color.Transparent,
-                                1f to Color.Transparent
-                            )
-                        ),
-                        blendMode = BlendMode.DstIn
-                    )
-                }
             )
     )
 }

@@ -1,12 +1,13 @@
 package com.huangder.lumibooks.ui.components
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -62,7 +63,7 @@ private fun AnnotationTagChip(tag: String, onEdit: (() -> Unit)?) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp)
     ) {
-        Icon(AppIcons.Tag, null, tint = AppColors.Accent, modifier = Modifier.size(13.dp))
+        ControlIcon(AppIcons.Tag, null, tint = AppColors.Accent, modifier = Modifier.size(13.dp))
         Text(tag, color = AppColors.TextPrimary, fontSize = AppType.Caption,
             maxLines = 2, overflow = TextOverflow.Ellipsis)
     }

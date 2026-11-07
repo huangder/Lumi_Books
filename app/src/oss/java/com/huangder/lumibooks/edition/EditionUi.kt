@@ -38,3 +38,15 @@ internal fun EditionAnnotationFeedExportButton(
 ) = Unit
 
 internal fun canOpenBookNotesExport(hasAnnotations: Boolean): Boolean = hasAnnotations
+
+/** The OSS build keeps the original last welcome page (thanks and sponsorship). */
+@Composable
+internal fun EditionWelcomeFinalPage(
+    isDark: Boolean,
+    isLiquidGlass: Boolean,
+    onFinished: () -> Unit,
+    default: @Composable () -> Unit
+) = default()
+
+@Composable
+internal fun EditionLaunchNotice() = Unit

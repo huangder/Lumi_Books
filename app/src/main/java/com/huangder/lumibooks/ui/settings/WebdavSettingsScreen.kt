@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.settings
+
+import com.huangder.lumibooks.ui.icons.ControlIcon
 import com.huangder.lumibooks.ui.components.lumiGroupedSurface
 import androidx.compose.foundation.layout.heightIn
 import com.huangder.lumibooks.ui.icons.AppIcons
@@ -280,7 +282,7 @@ fun WebdavConfigurationDetail(
                 else PasswordVisualTransformation(),
             trailingIcon = {
                 IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                    Icon(
+                    ControlIcon(
                         imageVector = if (passwordVisible) AppIcons.EyeSlash
                             else AppIcons.Eye,
                         contentDescription = if (passwordVisible)
@@ -450,7 +452,7 @@ private fun WebdavSecondaryButton(
             .padding(horizontal = AppSpace.md, vertical = AppSpace.md + 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
+        ControlIcon(
             imageVector = icon,
             contentDescription = null,
             tint = if (destructive) MaterialTheme.colorScheme.error else AppColors.TextSecondary,

@@ -12,7 +12,11 @@ import androidx.compose.animation.core.VisibilityThreshold
 import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.Stable
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
@@ -26,12 +30,7 @@ import androidx.compose.ui.input.pointer.positionChange
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlin.math.abs
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.sin
 import kotlin.math.tanh
 
 @Stable
@@ -48,51 +47,86 @@ internal class LiquidGlassButtonInteractionState(
     private var pressJob: Job? = null
     private var positionJob: Job? = null
     private var startPosition = Offset.Zero
+    private var fingerPosition by mutableStateOf(Offset.Zero)
+    private var fingerOrigin = Offset.Zero
+    private var carriedOffset = Offset.Zero
+    private val velocityTracker = VelocityTracker()
+    private var pressed = false
+    private var pressVelocity = 0f
 
     val pressProgress: Float get() = pressProgressAnimation.value
-    val position: Offset get() = positionAnimation.value
+    val position: Offset get() = fingerPosition
     val offset: Offset get() = positionAnimation.value - startPosition
 
-    fun press(position: Offset) {
-        startPosition = position
+    fun press(position: Offset, timeMillis: Long = 0L) {
+        // Rebase the finger without snapping an interrupted return to its new origin.
+        carriedOffset = offset
+        startPosition = positionAnimation.value - carriedOffset
+        fingerOrigin = position
+        fingerPosition = position
+        pressed = true
+        velocityTracker.resetTracking()
+        velocityTracker.addPosition(timeMillis, position)
         pressJob?.cancel()
         positionJob?.cancel()
+        val initialVelocity = pressVelocity.coerceIn(-12f, 12f)
         pressJob = animationScope.launch {
-            pressProgressAnimation.animateTo(1f, buttonInteractionSpring())
-        }
-        positionJob = animationScope.launch {
-            positionAnimation.snapTo(position)
+            pressProgressAnimation.animateTo(1f, buttonInteractionSpring(), initialVelocity) {
+                pressVelocity = velocity
+            }
+            pressVelocity = 0f
         }
     }
 
-    fun dragTo(position: Offset) {
+    fun dragTo(position: Offset, timeMillis: Long = 0L) {
+        fingerPosition = position
+        velocityTracker.addPosition(timeMillis, position)
         positionJob?.cancel()
         positionJob = animationScope.launch {
-            positionAnimation.snapTo(position)
+            positionAnimation.snapTo(startPosition + carriedOffset + position - fingerOrigin)
         }
     }
 
-    fun release() {
+    fun release(cancelled: Boolean = false) {
+        if (!pressed) return
+        pressed = false
+        val tracked = velocityTracker.calculateVelocity()
+        val initialVelocity = if (cancelled) Offset.Zero else
+            boundedButtonVelocity(Offset(tracked.x, tracked.y))
         pressJob?.cancel()
         positionJob?.cancel()
+        val initialPressVelocity = pressVelocity.coerceIn(-12f, 12f)
         pressJob = animationScope.launch {
-            pressProgressAnimation.animateTo(0f, buttonInteractionSpring())
+            pressProgressAnimation.animateTo(0f, buttonInteractionSpring(), initialPressVelocity) {
+                pressVelocity = velocity
+            }
+            pressVelocity = 0f
         }
         positionJob = animationScope.launch {
-            positionAnimation.animateTo(startPosition, buttonPositionSpring())
+            positionAnimation.animateTo(startPosition, buttonPositionSpring(), initialVelocity)
         }
     }
+
+    fun reset() {
+        pressed = false
+        pressJob?.cancel()
+        positionJob?.cancel()
+        pressVelocity = 0f
+        pressJob = animationScope.launch { pressProgressAnimation.snapTo(0f) }
+        positionJob = animationScope.launch { positionAnimation.snapTo(startPosition) }
+    }
+
 }
 
 private fun buttonInteractionSpring() = spring(
-    dampingRatio = 0.5f,
-    stiffness = 300f,
+    dampingRatio = 0.66f,
+    stiffness = 520f,
     visibilityThreshold = 0.001f
 )
 
 private fun buttonPositionSpring() = spring(
-    dampingRatio = 0.5f,
-    stiffness = 300f,
+    dampingRatio = 0.66f,
+    stiffness = 520f,
     visibilityThreshold = Offset.VisibilityThreshold
 )
 
@@ -103,13 +137,13 @@ internal fun Modifier.liquidGlassButtonGesture(
     pointerInput(state) {
         try {
             inspectLiquidGlassButtonDrag(
-                onDragStart = { state.press(it.position) },
-                onDragEnd = { state.release() },
-                onDragCancel = { state.release() },
-                onDrag = { change -> state.dragTo(change.position) }
+                onDragStart = { state.press(it.position, it.uptimeMillis) },
+                onDragEnd = { state.dragTo(it.position, it.uptimeMillis); state.release() },
+                onDragCancel = { state.release(cancelled = true) },
+                onDrag = { change -> state.dragTo(change.position, change.uptimeMillis) }
             )
         } finally {
-            state.release()
+            state.reset()
         }
     }
 } else {
@@ -181,7 +215,6 @@ internal data class LiquidGlassButtonLayerTransform(
     val scaleY: Float
 )
 
-private const val ButtonDragLimitFraction = 0.75f
 internal const val LiquidGlassButtonContentFollow = 0.55f
 
 internal fun liquidGlassButtonLayerTransform(
@@ -190,35 +223,28 @@ internal fun liquidGlassButtonLayerTransform(
     pressProgress: Float,
     dragOffset: Offset,
     expansionPx: Float,
-    motionEnabled: Boolean
+    motionEnabled: Boolean,
+    maxTranslationPx: Float = expansionPx * 1.5f
 ): LiquidGlassButtonLayerTransform {
     if (!motionEnabled || width <= 0f || height <= 0f) {
         return LiquidGlassButtonLayerTransform(0f, 0f, 1f, 1f)
     }
 
-    val progress = pressProgress.coerceIn(0f, 1f)
-    val dragDistance = dragOffset.getDistance()
-    val maxDragDistance = min(width, height) * ButtonDragLimitFraction
-    val limitedDragOffset = if (dragDistance > maxDragDistance && dragDistance > 0f) {
-        dragOffset * (maxDragDistance / dragDistance)
-    } else {
-        dragOffset
-    }
-    val baseScale = 1f + expansionPx / height * progress
-    val maxOffset = min(width, height).coerceAtLeast(0.001f)
-    val maxDimension = max(width, height).coerceAtLeast(0.001f)
-    val offsetAngle = atan2(limitedDragOffset.y, limitedDragOffset.x)
-    val maxDragScale = expansionPx / height
-
+    val progress = pressProgress.coerceIn(0f, 1.12f)
+    val shortSide = min(width, height)
+    val distance = dragOffset.getDistance()
+    val direction = if (distance > 0f) dragOffset / distance else Offset.Zero
+    // A radial bound keeps diagonal drags within the same limit as axial drags.
+    val amount = tanh(distance / (shortSide * 0.55f))
+    val translation = min(shortSide * 0.10f, maxTranslationPx.coerceAtLeast(0f)) * amount
+    val xx = direction.x * direction.x
+    val yy = direction.y * direction.y
+    val baseScale = 1f + 0.10f * progress
     return LiquidGlassButtonLayerTransform(
-        translationX = dampedLiquidGlassButtonOffset(limitedDragOffset.x, maxOffset),
-        translationY = dampedLiquidGlassButtonOffset(limitedDragOffset.y, maxOffset),
-        scaleX = baseScale +
-            maxDragScale * abs(cos(offsetAngle) * limitedDragOffset.x / maxDimension) *
-            min(width / height, 1f),
-        scaleY = baseScale +
-            maxDragScale * abs(sin(offsetAngle) * limitedDragOffset.y / maxDimension) *
-            min(height / width, 1f)
+        translationX = direction.x * translation,
+        translationY = direction.y * translation,
+        scaleX = baseScale + amount * (0.06f * xx - 0.03f * yy),
+        scaleY = baseScale + amount * (0.06f * yy - 0.03f * xx)
     )
 }
 
@@ -231,7 +257,7 @@ internal fun liquidGlassButtonContentTransform(
     scaleY = 1f + (surfaceTransform.scaleY - 1f) * LiquidGlassButtonContentFollow
 )
 
-internal fun dampedLiquidGlassButtonOffset(offset: Float, maxOffset: Float): Float {
-    if (maxOffset <= 0f) return 0f
-    return maxOffset * tanh(0.05f * offset / maxOffset)
+internal fun boundedButtonVelocity(velocity: Offset, limit: Float = 2400f): Offset {
+    val speed = velocity.getDistance()
+    return if (!speed.isFinite()) Offset.Zero else if (speed > limit) velocity * (limit / speed) else velocity
 }

@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.components
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -162,7 +164,7 @@ internal fun SelectionActionBar(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)
                 ) {
-                    Icon(action.icon, null, tint = tint, modifier = Modifier.size(22.dp))
+                    ControlIcon(action.icon, null, tint = tint, modifier = Modifier.size(22.dp))
                     Text(action.label, color = tint, fontSize = AppType.Caption2, fontWeight = FontWeight.Medium,
                         maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
                 }

@@ -72,7 +72,7 @@ internal fun RecentBooksRow(
             Box(Modifier.matchParentSize()) {
                 ProgressiveStartBlur(
                     backdrop = backdrop.takeIf { blurEnabled },
-                    tint = AppColors.PageBg.copy(alpha = if (blurEnabled) 0.08f else 0.62f),
+                    tint = AppColors.WindowBg.copy(alpha = if (blurEnabled) 0.08f else 1f),
                     modifier = Modifier.align(Alignment.CenterStart),
                     bandWidth = startUnderlap + 40.dp
                 )

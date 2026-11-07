@@ -10,6 +10,8 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -31,6 +33,9 @@ class OverscrollBounceTest {
     private val bounce = OverscrollBounceState()
     private lateinit var list: LazyListState
     private var releasedOffset: Float? = null
+    private var maxCapturedPull = 0f
+    private var initialContentTop = 0f
+    private var contentTop = 0f
 
     private fun content() {
         compose.setContent {
@@ -125,6 +130,36 @@ class OverscrollBounceTest {
             assertTrue(releasedOffset!! > 20f)
             assertEquals(0f, bounce.offset, .01f)
             assertEquals(0, list.firstVisibleItemScrollOffset)
+        }
+    }
+
+    @Test
+    fun capturedVerticalPullCanTriggerWithoutTranslatingHorizontalContent() {
+        compose.setContent {
+            OverscrollBounce(
+                modifier = Modifier.size(300.dp, 400.dp).testTag("horizontal-shelf"),
+                state = bounce,
+                captureVerticalDrag = true,
+                translateContent = false,
+                onTopPullDrag = { offset, _ -> maxCapturedPull = maxOf(maxCapturedPull, offset) },
+                onTopPullRelease = { releasedOffset = it }
+            ) {
+                Box(Modifier.fillMaxWidth().height(400.dp).onGloballyPositioned {
+                    contentTop = it.positionInRoot().y
+                    if (initialContentTop == 0f) initialContentTop = contentTop
+                })
+            }
+        }
+        compose.onNodeWithTag("horizontal-shelf").performTouchInput {
+            down(Offset(width / 2f, height * .25f))
+            moveBy(Offset(0f, 320f), 160)
+            up()
+        }
+        compose.runOnIdle {
+            assertTrue(maxCapturedPull > 100f)
+            assertTrue((releasedOffset ?: 0f) > 100f)
+            assertEquals(initialContentTop, contentTop, .01f)
+            assertEquals(0f, bounce.offset, .01f)
         }
     }
 }

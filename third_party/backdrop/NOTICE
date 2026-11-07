@@ -5,3 +5,13 @@ https://github.com/Kyant0/AndroidLiquidGlass
 Local modifications by Lumi Books: configurable sampling resolution for backdrop
 effect buffers, with matching blur and lens coordinates. Source recording, foreground
 content, highlights and shadows retain their original coordinate space.
+
+Miuix progressive blur subset
+Copyright 2026, compose-miuix-ui contributors
+https://github.com/compose-miuix-ui/miuix
+Upstream revision: 4873fc7392871cd6cf3ea263020f5c7032b3de2a
+License: Apache License 2.0 (see LICENSE)
+Adapted files: ProgressiveBlur.kt, internal/BlurEffect.kt, internal/Shaders.kt,
+and internal/RenderEffectCompat.android.kt from miuix-blur.
+Lumi modifications: full-resolution Android composite with native sharp source,
+existing Backdrop capture integration, effect caching and gradient fallback.

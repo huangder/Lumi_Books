@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import com.kyant.shapes.RoundedRectangularShape
 import com.huangder.lumibooks.ui.theme.ContinuousCornerBasedShape
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -145,6 +146,7 @@ internal fun Modifier.liquidGlassBackdrop(
     scaleOnPress: Boolean = true,
     buttonInteractionState: LiquidGlassButtonInteractionState? = null,
     buttonInteraction: Boolean = false,
+    applyButtonTransform: Boolean = true,
     motionEnabled: Boolean = true,
     reduceTransparency: Boolean = false,
     /** Extra blur on top of the transparency-derived amount, for animated glass. */
@@ -201,7 +203,7 @@ internal fun Modifier.liquidGlassBackdrop(
             )
         },
         layerBlock = {
-            if (buttonInteraction) {
+            if (buttonInteraction && applyButtonTransform) {
                 val interactionProgress = buttonInteractionState?.pressProgress ?: pressProgress
                 val transform = liquidGlassButtonLayerTransform(
                     width = size.width,
@@ -511,7 +513,7 @@ fun LiquidGlassSurface(
     val clickInteractionSource = remember { MutableInteractionSource() }
     val pressed by clickInteractionSource.collectIsPressedAsState()
     val pressScale by animateFloatAsState(
-        targetValue = if (pressFeedbackEnabled && onClick != null && motionEnabled && pressed) 0.96f else 1f,
+        targetValue = if (!isLiquidGlass && enabled && pressFeedbackEnabled && onClick != null && motionEnabled && pressed) 0.96f else 1f,
         animationSpec = if (motionEnabled) tween(durationMillis = 90) else snap(),
         label = "liquidGlassSurfacePressScale"
     )
@@ -529,8 +531,11 @@ fun LiquidGlassSurface(
         null
     }
     val latestOnClick = rememberUpdatedState(onClick)
-    val handlesButtonGesture = isLiquidGlass && enabled && interactionState != null &&
-        supportsLiquidGlassLens(lensShape)
+    val handlesButtonGesture = isLiquidGlass && enabled && pressFeedbackEnabled &&
+        motionEnabled && interactionState != null
+    LaunchedEffect(handlesButtonGesture, interactionState) {
+        if (!handlesButtonGesture) interactionState?.reset()
+    }
     val clickModifier = if (onClick != null) {
         Modifier.clickable(
             interactionSource = clickInteractionSource,
@@ -565,6 +570,7 @@ fun LiquidGlassSurface(
             scaleOnPress = false,
             buttonInteractionState = interactionState,
             buttonInteraction = handlesButtonGesture,
+            applyButtonTransform = false,
             motionEnabled = motionEnabled,
             blurBoostPx = with(density) { blurBoost.toPx() },
             blurBoostPxProvider = blurBoostProvider?.let { provider ->
@@ -588,22 +594,6 @@ fun LiquidGlassSurface(
             fallbackColor.copy(alpha = 0.42f)
         }
         Modifier
-            .then(
-                if (controlEdge && handlesButtonGesture) Modifier.graphicsLayer {
-                    val transform = liquidGlassButtonLayerTransform(
-                        width = size.width,
-                        height = size.height,
-                        pressProgress = interactionState.pressProgress,
-                        dragOffset = interactionState.offset,
-                        expansionPx = 4.dp.toPx(),
-                        motionEnabled = motionEnabled
-                    )
-                    translationX = transform.translationX
-                    translationY = transform.translationY
-                    scaleX = transform.scaleX
-                    scaleY = transform.scaleY
-                } else Modifier
-            )
             .then(surfaceClip)
             .background(fallbackColor)
             .background(
@@ -625,26 +615,33 @@ fun LiquidGlassSurface(
             .background(fallbackColor)
     }
     val activeInteractionState = interactionState.takeIf { handlesButtonGesture }
+    val surfaceTransformModifier = if (activeInteractionState != null) {
+        Modifier.graphicsLayer {
+            val transform = liquidGlassButtonLayerTransform(
+                size.width, size.height, activeInteractionState.pressProgress,
+                activeInteractionState.offset, 4.dp.toPx(), motionEnabled,
+                maxTranslationPx = 6.dp.toPx()
+            )
+            translationX = transform.translationX
+            translationY = transform.translationY
+            scaleX = transform.scaleX
+            scaleY = transform.scaleY
+        }
+    } else Modifier
     val contentTransformModifier = if (activeInteractionState != null) {
         Modifier.graphicsLayer {
-            val surfaceTransform = liquidGlassButtonLayerTransform(
-                width = size.width,
-                height = size.height,
-                pressProgress = activeInteractionState.pressProgress,
-                dragOffset = activeInteractionState.offset,
-                expansionPx = 4.dp.toPx(),
-                motionEnabled = motionEnabled
-            )
-            val contentTransform = liquidGlassButtonContentTransform(surfaceTransform)
-            translationX = contentTransform.translationX
-            translationY = contentTransform.translationY
-            scaleX = contentTransform.scaleX
-            scaleY = contentTransform.scaleY
+            val transform = liquidGlassButtonContentTransform(liquidGlassButtonLayerTransform(
+                size.width, size.height, activeInteractionState.pressProgress,
+                activeInteractionState.offset, 4.dp.toPx(), motionEnabled,
+                maxTranslationPx = 6.dp.toPx()
+            ))
+            translationX = transform.translationX
+            translationY = transform.translationY
+            scaleX = transform.scaleX
+            scaleY = transform.scaleY
             clip = false
         }
-    } else {
-        Modifier
-    }
+    } else Modifier
 
     // Elevation assumes an opaque caster. Under transparent glass its displaced
     // shadow cutout shows through as a pale patch; the glass outline supplies depth.
@@ -664,6 +661,7 @@ fun LiquidGlassSurface(
                 .matchParentSize()
                 .padding(effectPadding)
                 .then(if (provideSurfaceBackdrop && isLiquidGlass) Modifier.layerBackdrop(surfaceBackdrop) else Modifier)
+                .then(surfaceTransformModifier)
                 .then(surfaceModifier)
                 .then(surfaceClip)
                 .drawWithContent {

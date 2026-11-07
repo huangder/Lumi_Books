@@ -7,8 +7,10 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.huangder.lumibooks.BuildConfig
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
+import org.junit.Assume.assumeFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -49,6 +51,8 @@ class WelcomeScreenInstrumentedTest {
 
     @Test
     fun updateWalkthroughGoesDirectlyToSupport() {
+        // The official build replaces this page with the Hilt-backed trial invitation.
+        assumeFalse(BuildConfig.PREMIUM_EDITION)
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         showWelcome(isNewInstallation = false, startOnIntroduction = true)
 
@@ -62,6 +66,8 @@ class WelcomeScreenInstrumentedTest {
 
     @Test
     fun supportPageContainsCopyAndActionsWithoutDecorativeEmoji() {
+        // The official build replaces this page with the Hilt-backed trial invitation.
+        assumeFalse(BuildConfig.PREMIUM_EDITION)
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         showWelcome(isNewInstallation = false, startOnSupport = true)
 

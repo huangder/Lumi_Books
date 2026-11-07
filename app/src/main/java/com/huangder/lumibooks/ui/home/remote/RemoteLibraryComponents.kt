@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.home.remote
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import android.text.format.Formatter
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
@@ -17,7 +19,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -206,7 +207,7 @@ private fun DestinationButton(choice: DestinationChoice) {
                 .padding(horizontal = AppSpace.xs, vertical = AppSpace.xs),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
+            ControlIcon(
                 imageVector = choice.icon,
                 contentDescription = null,
                 tint = contentColor,

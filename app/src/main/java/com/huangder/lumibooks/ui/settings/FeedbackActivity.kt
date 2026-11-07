@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.settings
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import com.huangder.lumibooks.ui.components.AppDialogAction
 import com.huangder.lumibooks.ui.components.AppDialogActionRole
 import com.huangder.lumibooks.ui.icons.AppIcons
@@ -533,7 +535,7 @@ private fun DiagnosticComposer(
             shape = AppRoundedCornerShape(AppRadius.capsule),
             modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
         ) {
-            Icon(AppIcons.ImageSquare, contentDescription = null)
+            ControlIcon(AppIcons.ImageSquare, contentDescription = null)
             Spacer(Modifier.width(AppSpace.xs))
             Text("${stringResource(R.string.diagnostic_add_screenshot)} ($screenshotCount/3)", maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
@@ -555,7 +557,7 @@ private fun DiagnosticComposer(
                     prominentShadow = true,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
                 ) {
-                    Icon(AppIcons.Play, contentDescription = null, tint = Color.White)
+                    ControlIcon(AppIcons.Play, contentDescription = null, tint = Color.White)
                     Spacer(Modifier.width(AppSpace.xs))
                     Text(stringResource(R.string.diagnostic_start), color = Color.White, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
@@ -569,7 +571,7 @@ private fun DiagnosticComposer(
                     prominentShadow = true,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
                 ) {
-                    Icon(AppIcons.Stop, contentDescription = null, tint = Color.White)
+                    ControlIcon(AppIcons.Stop, contentDescription = null, tint = Color.White)
                     Spacer(Modifier.width(AppSpace.xs))
                     Text(stringResource(R.string.diagnostic_stop), color = Color.White, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
@@ -608,7 +610,7 @@ private fun DiagnosticComposer(
                     contentColor = AppColors.TextPrimary,
                     shape = AppRoundedCornerShape(AppRadius.capsule)
                 ) {
-                    Icon(AppIcons.ShareNetwork, contentDescription = null)
+                    ControlIcon(AppIcons.ShareNetwork, contentDescription = null)
                     Spacer(Modifier.width(AppSpace.xs))
                     Text(stringResource(R.string.diagnostic_share), maxLines = 1)
                 }
@@ -619,7 +621,7 @@ private fun DiagnosticComposer(
                     contentColor = AppColors.TextPrimary,
                     shape = AppRoundedCornerShape(AppRadius.capsule)
                 ) {
-                    Icon(AppIcons.DownloadSimple, contentDescription = null)
+                    ControlIcon(AppIcons.DownloadSimple, contentDescription = null)
                     Spacer(Modifier.width(AppSpace.xs))
                     Text(stringResource(R.string.diagnostic_save), maxLines = 1)
                 }

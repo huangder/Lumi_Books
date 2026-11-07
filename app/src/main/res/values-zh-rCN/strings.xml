@@ -1586,7 +1586,7 @@
     <string name="menu_animation_style_label">展开菜单动画样式</string>
     <string name="menu_animation_style_normal">普通</string>
     <string name="menu_animation_style_liquid">液态</string>
-    <string name="menu_animation_style_hint">普通更轻快；液态在玻璃主题下呈现水滴形变与折射。</string>
+    <string name="menu_animation_style_hint">普通采用轻快缩放与淡入淡出；液态采用弹性形变。适用于所有主题，菜单材质随主题保持。</string>
     <string name="highlight_rule_copy_name">%1$s 副本</string>
     <string name="highlight_rule_imported_name">%1$s（导入）</string>
     <string name="highlight_rules_title">LUMI 高亮规则</string>

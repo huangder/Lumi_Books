@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.bookshelf
 
+import com.huangder.lumibooks.ui.icons.ControlIcon
+
 import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
 
 import androidx.compose.foundation.clickable
@@ -9,7 +11,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,6 +24,21 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import com.huangder.lumibooks.ui.animation.lumiPressable
+import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.animation.coverFlowEntranceItem
 import com.huangder.lumibooks.domain.model.Book
@@ -73,62 +89,73 @@ internal fun CoverFlowActionBar(
         onDispose { if (ownsMenu) menuHost?.dismiss() }
     }
     fun run(action: (Book) -> Unit) { onDismiss(); action(book) }
-    LiquidGlassSurface(
-        controlEdge = true,
-        shape = AppRoundedCornerShape(22.dp),
-        fallbackColor = AppColors.CardBg,
-        contentScrimColor = AppColors.CardBg.copy(alpha = 0.68f),
-        modifier = modifier.widthIn(max = 264.dp).fillMaxWidth(),
-        interactive = false
-    ) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-            horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-            CoverFlowAction(AppIcons.BookOpen, stringResource(R.string.coverflow_open), onOpen, Modifier.weight(1f))
-            CoverFlowAction(AppIcons.Info, stringResource(R.string.coverflow_info), { run(actions.details) }, Modifier.weight(1f))
-            CoverFlowAction(AppIcons.Heart.resolve(book.isFavorite), stringResource(R.string.favorite),
-                { run(actions.favorite) }, Modifier.weight(1f))
-            CoverFlowAction(AppIcons.DotsThreeVertical, stringResource(R.string.coverflow_more), {
-                ownsMenu = true
-                menuHost?.show(LiquidGlassMenuSpec(
-                    anchorBounds = moreBounds,
-                    width = 220.dp,
-                    onDismiss = { ownsMenu = false },
-                    items = buildList {
-                        add(LiquidGlassMenuItem(editLabel, AppIcons.PencilSimple) { run(actions.editInfo) })
-                        add(LiquidGlassMenuItem(coverLabel, AppIcons.Image) { run(actions.customCover) })
-                        if (FileUtils.isCustomCover(book.coverPath)) {
-                            add(LiquidGlassMenuItem(removeCoverLabel, AppIcons.ArrowCounterClockwise) { run(actions.removeCustomCover) })
-                        }
-                        add(LiquidGlassMenuItem(tagsLabel, AppIcons.Tag) { run(actions.tags) })
-                        add(LiquidGlassMenuItem(notesLabel, AppIcons.Bookmark.regular) { run(actions.notes) })
-                        add(LiquidGlassMenuItem(moveLabel, AppIcons.FolderSimple) { run(actions.move) })
-                        actions.archive?.let { archive ->
-                            add(LiquidGlassMenuItem(archiveLabel, AppIcons.Archive) { run(archive) })
-                        }
-                        actions.hide?.let { hide ->
-                            add(LiquidGlassMenuItem(hideLabel, AppIcons.EyeSlash) { run(hide) })
-                        }
-                        add(LiquidGlassMenuItem(deleteLabel, AppIcons.Trash, destructive = true) { run(actions.delete) })
-                    }
-                ))
-            }, Modifier.weight(1f).liquidGlassMenuAnchor(kind = LiquidGlassMenuAnchorKind.Embedded)
-                .onGloballyPositioned { moreBounds = it.boundsInRoot() })
+    // A primary "open" capsule plus quiet round glass buttons: small floating controls that
+    // sit under the title instead of a toolbar slab across the stage.
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically) {
+        val openInteraction = remember { MutableInteractionSource() }
+        Row(Modifier.height(40.dp).lumiPressable(openInteraction, pressedScale = 0.95f)
+            .clip(AppRoundedCornerShape(AppRadius.full)).background(AppColors.Accent)
+            .clickable(interactionSource = openInteraction, indication = null, onClick = onOpen)
+            .padding(start = 14.dp, end = 18.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            ControlIcon(AppIcons.BookOpen, contentDescription = null, tint = AppColors.OnAccent, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(stringResource(R.string.coverflow_open), color = AppColors.OnAccent, fontSize = AppType.Footnote,
+                fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
+        CoverFlowAction(AppIcons.Info, stringResource(R.string.coverflow_info), { run(actions.details) })
+        CoverFlowAction(AppIcons.Heart.resolve(book.isFavorite), stringResource(R.string.favorite),
+            { run(actions.favorite) }, tint = if (book.isFavorite) AppColors.Accent else AppColors.TextPrimary)
+        CoverFlowAction(AppIcons.DotsThreeVertical, stringResource(R.string.coverflow_more), {
+            ownsMenu = true
+            menuHost?.show(LiquidGlassMenuSpec(
+                anchorBounds = moreBounds,
+                width = 220.dp,
+                onDismiss = { ownsMenu = false },
+                items = buildList {
+                    add(LiquidGlassMenuItem(editLabel, AppIcons.PencilSimple) { run(actions.editInfo) })
+                    add(LiquidGlassMenuItem(coverLabel, AppIcons.Image) { run(actions.customCover) })
+                    if (FileUtils.isCustomCover(book.coverPath)) {
+                        add(LiquidGlassMenuItem(removeCoverLabel, AppIcons.ArrowCounterClockwise) { run(actions.removeCustomCover) })
+                    }
+                    add(LiquidGlassMenuItem(tagsLabel, AppIcons.Tag) { run(actions.tags) })
+                    add(LiquidGlassMenuItem(notesLabel, AppIcons.Bookmark.regular) { run(actions.notes) })
+                    add(LiquidGlassMenuItem(moveLabel, AppIcons.FolderSimple) { run(actions.move) })
+                    actions.archive?.let { archive ->
+                        add(LiquidGlassMenuItem(archiveLabel, AppIcons.Archive) { run(archive) })
+                    }
+                    actions.hide?.let { hide ->
+                        add(LiquidGlassMenuItem(hideLabel, AppIcons.EyeSlash) { run(hide) })
+                    }
+                    add(LiquidGlassMenuItem(deleteLabel, AppIcons.Trash, destructive = true) { run(actions.delete) })
+                }
+            ))
+        }, Modifier.liquidGlassMenuAnchor(kind = LiquidGlassMenuAnchorKind.Embedded)
+            .onGloballyPositioned { moreBounds = it.boundsInRoot() })
     }
 }
 
 @Composable
-private fun CoverFlowAction(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier) {
-    Column(
-        modifier.heightIn(min = 52.dp).clickable(
-            interactionSource = remember { MutableInteractionSource() }, indication = null,
-            onClick = onClick).padding(vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+private fun CoverFlowAction(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    tint: Color = AppColors.TextPrimary
+) {
+    LiquidGlassSurface(
+        shape = AppRoundedCornerShape(AppRadius.full),
+        fallbackColor = AppColors.CardBg,
+        contentScrimColor = AppColors.CardBg.copy(alpha = 0.5f),
+        controlEdge = true,
+        onClick = onClick,
+        modifier = modifier.size(40.dp).semantics(mergeDescendants = true) {
+            contentDescription = label
+            role = Role.Button
+        }
     ) {
-        Icon(icon, contentDescription = null, tint = AppColors.TextPrimary, modifier = Modifier.size(18.dp))
-        Text(label, color = AppColors.TextPrimary, fontSize = AppType.Caption2, maxLines = 1,
-            textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(), overflow = TextOverflow.Ellipsis)
+        ControlIcon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
     }
 }
 
@@ -154,47 +181,67 @@ internal fun CoverFlowFolderNavigation(
     val cover = stringResource(R.string.set_folder_cover)
     val removeCover = stringResource(R.string.remove_folder_cover)
     val move = stringResource(R.string.move_to_folder)
-    Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    // Quiet text tabs instead of glass capsules: the stage stays the visual focus. Overflow
+    // fades at both edges rather than being cut by the row bounds.
+    val fadeWidth = 20.dp
+    Row(Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        LazyRow(Modifier.weight(1f)
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                val fade = (fadeWidth.toPx() / size.width).coerceIn(0f, 0.5f)
+                drawRect(Brush.horizontalGradient(
+                    0f to Color.Transparent, fade to Color.Black, 1f - fade to Color.Black, 1f to Color.Transparent
+                ), blendMode = BlendMode.DstIn)
+            },
+            contentPadding = PaddingValues(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally)) {
             items(folders, key = { it.id }) { folder ->
                 var bounds by remember { mutableStateOf(Rect.Zero) }
-                LiquidGlassSurface(
-                    shape = AppRoundedCornerShape(16.dp), fallbackColor = AppColors.CardBg,
-                    interactive = true,
-                    controlEdge = true,
-                    enabled = enabled,
-                    contentScrimColor = AppColors.CardBg.copy(alpha = 0.24f),
-                    modifier = Modifier.coverFlowEntranceItem(3 + folders.indexOf(folder).coerceAtMost(3))
-                        .onGloballyPositioned { bounds = it.boundsInRoot() }
-                        .combinedClickable(enabled = enabled,
-                            interactionSource = remember { MutableInteractionSource() }, indication = null,
-                            onClick = { onOpen(folder) },
-                            onLongClick = {
-                                onHaptic()
-                                host?.show(LiquidGlassMenuSpec(bounds, 220.dp, buildList {
-                                    add(LiquidGlassMenuItem(rename, AppIcons.PencilSimple) { onRename(folder) })
-                                    add(LiquidGlassMenuItem(cover, AppIcons.Image) { onCover(folder) })
-                                    if (folder.coverPath != null) add(LiquidGlassMenuItem(removeCover, AppIcons.ArrowCounterClockwise) { onRemoveCover(folder) })
-                                    add(LiquidGlassMenuItem(move, AppIcons.FolderSimple) { onMove(folder) })
-                                    add(LiquidGlassMenuItem(delete, AppIcons.Trash, destructive = true) { onDelete(folder) })
-                                }))
-                            })
-                ) {
-                    Row(Modifier.heightIn(min = 44.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(AppIcons.Folder, null, tint = AppColors.Accent, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(folder.name, color = AppColors.TextPrimary, fontSize = AppType.Footnote,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 130.dp))
-                        Text("  ${counts[folder.id] ?: 0}", color = AppColors.TextSecondary, fontSize = AppType.Caption2)
-                        if (folder.storageMissing) Icon(AppIcons.Link, stringResource(R.string.book_file_unavailable),
-                            tint = AppColors.Destructive, modifier = Modifier.size(14.dp))
-                    }
+                val interaction = remember { MutableInteractionSource() }
+                Row(Modifier.coverFlowEntranceItem(3 + folders.indexOf(folder).coerceAtMost(3))
+                    .heightIn(min = 40.dp)
+                    .onGloballyPositioned { bounds = it.boundsInRoot() }
+                    .lumiPressable(interaction, pressedScale = 0.95f)
+                    .clip(AppRoundedCornerShape(AppRadius.full))
+                    .combinedClickable(enabled = enabled,
+                        interactionSource = interaction, indication = null,
+                        onClick = { onOpen(folder) },
+                        onLongClick = {
+                            onHaptic()
+                            host?.show(LiquidGlassMenuSpec(bounds, 220.dp, buildList {
+                                add(LiquidGlassMenuItem(rename, AppIcons.PencilSimple) { onRename(folder) })
+                                add(LiquidGlassMenuItem(cover, AppIcons.Image) { onCover(folder) })
+                                if (folder.coverPath != null) add(LiquidGlassMenuItem(removeCover, AppIcons.ArrowCounterClockwise) { onRemoveCover(folder) })
+                                add(LiquidGlassMenuItem(move, AppIcons.FolderSimple) { onMove(folder) })
+                                add(LiquidGlassMenuItem(delete, AppIcons.Trash, destructive = true) { onDelete(folder) })
+                            }))
+                        })
+                    .padding(horizontal = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    ControlIcon(AppIcons.Folder, null, tint = AppColors.TextSecondary, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text(folder.name, color = AppColors.TextPrimary, fontSize = AppType.Footnote,
+                        fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 130.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("${counts[folder.id] ?: 0}", color = AppColors.TextSecondary.copy(alpha = 0.7f),
+                        fontSize = AppType.Caption2)
+                    if (folder.storageMissing) ControlIcon(AppIcons.Link, stringResource(R.string.book_file_unavailable),
+                        tint = AppColors.Destructive, modifier = Modifier.padding(start = 4.dp).size(14.dp))
                 }
             }
         }
-        if (showAddBook) LiquidGlassIconButton(
-            imageVector = AppIcons.Plus, contentDescription = stringResource(R.string.import_books),
-            onClick = { if (enabled) onAddBook() }, size = 44.dp, iconSize = 20.dp
-        )
+        if (showAddBook) {
+            val addInteraction = remember { MutableInteractionSource() }
+            Box(Modifier.size(40.dp).lumiPressable(addInteraction, pressedScale = 0.92f)
+                .clickable(interactionSource = addInteraction, indication = null,
+                    onClickLabel = null, onClick = { if (enabled) onAddBook() })
+                .semantics { role = Role.Button },
+                contentAlignment = Alignment.Center) {
+                ControlIcon(AppIcons.Plus, stringResource(R.string.import_books),
+                    tint = AppColors.TextSecondary, modifier = Modifier.size(20.dp))
+            }
+        }
     }
 }

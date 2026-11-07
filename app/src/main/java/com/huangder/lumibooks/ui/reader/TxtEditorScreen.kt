@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.reader
+
+import com.huangder.lumibooks.ui.icons.ControlIcon
 import com.huangder.lumibooks.ui.icons.directionalIcon
 import com.huangder.lumibooks.ui.icons.AppIcons
 
@@ -52,7 +54,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
@@ -748,7 +749,7 @@ private fun TxtEditorActionCapsule(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
+            ControlIcon(
                 icon,
                 contentDescription = contentDescription,
                 tint = AppColors.TextPrimary,
@@ -845,7 +846,7 @@ private fun TxtEditorSearchSheet(
                     )
                     Spacer(Modifier.weight(1f))
                     IconButton(onClick = { isClosing = true }, modifier = Modifier.size(40.dp)) {
-                        Icon(
+                        ControlIcon(
                             AppIcons.X,
                             contentDescription = stringResource(R.string.reader_close),
                             tint = AppColors.TextPrimary
@@ -871,7 +872,7 @@ private fun TxtEditorSearchSheet(
                             onClick = searchOrNext,
                             enabled = uiState.searchQuery.isNotBlank() && !uiState.isSearching
                         ) {
-                            Icon(
+                            ControlIcon(
                                 AppIcons.MagnifyingGlass,
                                 contentDescription = stringResource(
                                     if (uiState.currentMatch != null) {
@@ -934,7 +935,7 @@ private fun TxtEditorSearchSheet(
                         shape = AppRoundedCornerShape(22.dp),
                         border = BorderStroke(1.dp, AppColors.Divider)
                     ) {
-                        Icon(
+                        ControlIcon(
                             AppIcons.CaretUp,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp)
@@ -949,7 +950,7 @@ private fun TxtEditorSearchSheet(
                         shape = AppRoundedCornerShape(22.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = AppColors.Accent)
                     ) {
-                        Icon(
+                        ControlIcon(
                             AppIcons.CaretDown,
                             contentDescription = null,
                             tint = Color.White,

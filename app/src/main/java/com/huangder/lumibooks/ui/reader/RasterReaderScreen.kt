@@ -1,4 +1,6 @@
 package com.huangder.lumibooks.ui.reader
+
+import com.huangder.lumibooks.ui.icons.ControlIcon
 import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.Manifest
@@ -2660,7 +2662,7 @@ private fun PdfTopBar(
                     onClick = onBack,
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(AppIcons.ArrowLeft, stringResource(R.string.pdf_back), tint = AppColors.TextPrimary, modifier = Modifier.size(18.dp))
+                    ControlIcon(AppIcons.ArrowLeft, stringResource(R.string.pdf_back), tint = AppColors.TextPrimary, modifier = Modifier.size(18.dp))
                 }
                 Spacer(Modifier.width(10.dp))
                 // 页码徽章：与返回键等高的胶囊，左侧控件保持同一视觉高度
@@ -2708,7 +2710,7 @@ private fun PdfTopBar(
                                 .padding(horizontal = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
+                            ControlIcon(
                                 imageVector = AppIcons.Image,
                                 contentDescription = stringResource(
                                     R.string.page_render_mode_desc,
@@ -2764,7 +2766,7 @@ private fun PdfTopBar(
                     contentAlignment = Alignment.Center
                 ) {
                     val nextPageMode = pageMode.next()
-                    Icon(
+                    ControlIcon(
                         when (pageMode) {
                             PdfPageMode.HORIZONTAL_PAGING -> AppIcons.Cards
                             PdfPageMode.VERTICAL_PAGING -> AppIcons.Rows
@@ -2794,7 +2796,7 @@ private fun PdfTopBar(
                     onClick = onZoomLockToggle,
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
+                    ControlIcon(
                         imageVector = if (isZoomLocked) AppIcons.Lock else AppIcons.LockOpen,
                         contentDescription = stringResource(
                             if (isZoomLocked) R.string.pdf_zoom_unlock else R.string.pdf_zoom_lock
@@ -2813,7 +2815,7 @@ private fun PdfTopBar(
                         onClick = onTtsToggle,
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
+                        ControlIcon(
                             AppIcons.Headphones,
                             contentDescription = stringResource(R.string.tts_listen),
                             tint = if (isTtsActive) AppColors.Accent else AppColors.TextPrimary,
@@ -2831,7 +2833,7 @@ private fun PdfTopBar(
                     onClick = onBookmarkToggle,
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
+                    ControlIcon(
                         AppIcons.Bookmark.resolve(isBookmarked),
                         contentDescription = stringResource(R.string.pdf_bookmark),
                         tint = if (isBookmarked) AppColors.Accent else AppColors.TextPrimary,
@@ -2973,7 +2975,7 @@ private fun PdfConversionCapsule(
                     strokeWidth = 2.dp
                 )
             } else {
-                Icon(
+                ControlIcon(
                     AppIcons.Books,
                     contentDescription = null,
                     tint = AppColors.TextPrimary,
@@ -3321,7 +3323,7 @@ private fun PdfConversionMethodButton(
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.Top
     ) {
-        Icon(
+        ControlIcon(
             imageVector = icon,
             contentDescription = null,
             tint = if (cloud) AppColors.Accent else AppColors.TextPrimary,
@@ -3634,7 +3636,7 @@ private fun PdfCatalogCapsule(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val foreground = if (isLiquidGlass || displayProgress <= 5f) AppColors.TextPrimary else Color.White
-                Icon(AppIcons.Bookmark.filled, null, tint = foreground, modifier = Modifier.size(18.dp))
+                ControlIcon(AppIcons.Bookmark.filled, null, tint = foreground, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.pdf_toc), fontSize = AppType.BodySmall, fontWeight = FontWeight.SemiBold, color = foreground)
                 Spacer(Modifier.weight(1f))
@@ -3840,7 +3842,7 @@ private fun PdfAnnotationToolButton(
             ),
         contentAlignment = Alignment.Center
     ) {
-        Icon(
+        ControlIcon(
             imageVector = icon,
             contentDescription = contentDescription,
             tint = if (selected) AppColors.Accent else AppColors.TextPrimary,

@@ -1678,7 +1678,7 @@
     <string name="menu_animation_style_label">Menu animation style</string>
     <string name="menu_animation_style_normal">Normal</string>
     <string name="menu_animation_style_liquid">Liquid</string>
-    <string name="menu_animation_style_hint">Normal is lighter; Liquid adds droplet motion and refraction in glass themes.</string>
+    <string name="menu_animation_style_hint">Normal uses a quick scale and fade; Liquid uses elastic morphing. Both work in every theme while keeping its menu material.</string>
     <string name="highlight_rule_copy_name">%1$s copy</string>
     <string name="highlight_rule_imported_name">%1$s (imported)</string>
     <string name="highlight_rules_title">LUMI Highlight Rules</string>

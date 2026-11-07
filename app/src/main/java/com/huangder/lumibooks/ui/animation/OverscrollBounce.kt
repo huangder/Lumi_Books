@@ -4,6 +4,9 @@ import androidx.compose.animation.core.animate
 import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalOverscrollConfiguration
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.rememberScrollableState
+import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.runtime.Composable
@@ -45,6 +48,9 @@ fun OverscrollBounce(
     state: OverscrollBounceState = remember { OverscrollBounceState() },
     onTopPullRelease: ((offsetPx: Float) -> Unit)? = null,
     onTopPullDrag: ((offsetPx: Float, deltaPx: Float) -> Unit)? = null,
+    // Horizontal scenes have no vertical list to dispatch a pull to the bounce connection.
+    captureVerticalDrag: Boolean = false,
+    translateContent: Boolean = true,
     content: @Composable BoxScope.() -> Unit
 ) {
     val releaseCallback = rememberUpdatedState(onTopPullRelease)
@@ -64,7 +70,12 @@ fun OverscrollBounce(
         Box(
             modifier = modifier
                 .nestedScroll(connection)
-                .graphicsLayer { translationY = state.offset },
+                .scrollable(
+                    state = rememberScrollableState { 0f },
+                    orientation = Orientation.Vertical,
+                    enabled = captureVerticalDrag
+                )
+                .graphicsLayer { translationY = if (translateContent) state.offset else 0f },
             content = content
         )
     }

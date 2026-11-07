@@ -9,7 +9,7 @@ import org.junit.Test
 
 class LiquidGlassButtonInteractionStateTest {
     @Test
-    fun pressExpansionUsesFixedVisualDistance() {
+    fun pressExpansionIsConsistentAcrossButtonSizes() {
         val transform = liquidGlassButtonLayerTransform(
             width = 160f,
             height = 48f,
@@ -19,14 +19,14 @@ class LiquidGlassButtonInteractionStateTest {
             motionEnabled = true
         )
 
-        assertEquals(1f + 4f / 48f, transform.scaleX, 0.0001f)
-        assertEquals(1f + 4f / 48f, transform.scaleY, 0.0001f)
+        assertEquals(1.10f, transform.scaleX, 0.0001f)
+        assertEquals(1.10f, transform.scaleY, 0.0001f)
         assertEquals(0f, transform.translationX, 0.0001f)
         assertEquals(0f, transform.translationY, 0.0001f)
     }
 
     @Test
-    fun horizontalDragStretchesOnlyHorizontalAxis() {
+    fun horizontalDragStretchesAndCompressesAcrossItsDirection() {
         val transform = liquidGlassButtonLayerTransform(
             width = 160f,
             height = 48f,
@@ -35,22 +35,41 @@ class LiquidGlassButtonInteractionStateTest {
             expansionPx = 4f,
             motionEnabled = true
         )
-        val baseScale = 1f + 4f / 48f
+        val baseScale = 1.10f
 
         assertTrue(transform.translationX > 0f)
         assertEquals(0f, transform.translationY, 0.0001f)
         assertTrue(transform.scaleX > baseScale)
-        assertEquals(baseScale, transform.scaleY, 0.0001f)
+        assertTrue(transform.scaleY < baseScale)
     }
 
     @Test
-    fun dampedTranslationIsSymmetricAndBounded() {
-        val positive = dampedLiquidGlassButtonOffset(10_000f, 48f)
-        val negative = dampedLiquidGlassButtonOffset(-10_000f, 48f)
+    fun diagonalTranslationIsSymmetricAndRadiallyBounded() {
+        fun transform(offset: Offset) = liquidGlassButtonLayerTransform(
+            48f, 48f, 1f, offset, 4f, true, maxTranslationPx = 6f)
+        val positive = transform(Offset(10_000f, 10_000f))
+        val negative = transform(Offset(-10_000f, -10_000f))
+        assertEquals(positive.translationX, -negative.translationX, 0.0001f)
+        assertEquals(positive.translationY, -negative.translationY, 0.0001f)
+        assertTrue(Offset(positive.translationX, positive.translationY).getDistance() <= 4.801f)
+        assertTrue(positive.scaleX <= 1.16f && positive.scaleY <= 1.16f)
+    }
 
-        assertEquals(positive, -negative, 0.0001f)
-        assertTrue(positive > 0f)
-        assertTrue(positive <= 48f)
+    @Test
+    fun pressScaleDoesNotDependOnDensityOrCapsuleAspectRatio() {
+        for ((width, height) in listOf(32f to 32f, 160f to 48f, 960f to 144f)) {
+            val transform = liquidGlassButtonLayerTransform(width, height, 1f, Offset.Zero, 4f, true)
+            assertEquals(1.1f, transform.scaleX, 0.0001f)
+            assertEquals(1.1f, transform.scaleY, 0.0001f)
+        }
+    }
+
+    @Test
+    fun velocityLimitPreservesDirection() {
+        val velocity = boundedButtonVelocity(Offset(30_000f, -40_000f))
+        assertEquals(2400f, velocity.getDistance(), .01f)
+        assertEquals(-.75f, velocity.x / velocity.y, .001f)
+        assertEquals(Offset(20f, 10f), boundedButtonVelocity(Offset(20f, 10f)))
     }
 
     @Test
@@ -71,12 +90,12 @@ class LiquidGlassButtonInteractionStateTest {
     }
 
     @Test
-    fun dragStretchStopsGrowingPastLimit() {
+    fun dragStretchSaturatesSmoothlyAtLongDistances() {
         val atLimit = liquidGlassButtonLayerTransform(
             width = 160f,
             height = 48f,
             pressProgress = 1f,
-            dragOffset = Offset(36f, 0f),
+            dragOffset = Offset(1_000f, 0f),
             expansionPx = 4f,
             motionEnabled = true
         )
@@ -84,7 +103,7 @@ class LiquidGlassButtonInteractionStateTest {
             width = 160f,
             height = 48f,
             pressProgress = 1f,
-            dragOffset = Offset(1_000f, 0f),
+            dragOffset = Offset(10_000f, 0f),
             expansionPx = 4f,
             motionEnabled = true
         )

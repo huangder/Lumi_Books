@@ -574,7 +574,7 @@ private fun FolderBooksSortButton(
             modifier = Modifier.liquidGlassMenuAnchor().onGloballyPositioned { sortAnchorBounds = it.boundsInRoot() }
         )
 
-        if (!isLiquidGlass || menuHost == null) {
+        if (menuHost == null) {
             AppDropdownMenu(
                 expanded = sortExpanded,
                 onDismissRequest = { sortExpanded = false },

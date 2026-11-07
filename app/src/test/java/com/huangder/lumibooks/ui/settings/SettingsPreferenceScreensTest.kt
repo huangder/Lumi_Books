@@ -86,6 +86,11 @@ class SettingsPreferenceScreensTest {
         compose.onNodeWithText(label(R.string.tts_start_setting)).performClick()
         compose.onNodeWithText(label(R.string.tts_start_ask_each_time)).performClick()
         compose.waitForIdle()
+        // DataStore resumes the save coroutine on the main dispatcher. Keep pumping
+        // Compose while waiting for disk persistence instead of blocking that dispatcher.
+        compose.waitUntil(timeoutMillis = 5_000) {
+            runBlocking { reloaded.ttsStartChoice.first() == null }
+        }
         assertNull(reloaded.ttsStartChoice.first())
     }
 
