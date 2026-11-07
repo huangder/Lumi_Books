@@ -46,6 +46,9 @@ class EpubPerformanceActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (intent.getBooleanExtra("landscape", false)) {
+            requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
         val engine = intent.getStringExtra("engine") ?: "epub"
         val transition = intent.getStringExtra("transition") ?: "slide"
         val theme = intent.getStringExtra("theme") ?: "day"
@@ -71,7 +74,7 @@ class EpubPerformanceActivity : ComponentActivity() {
         }
         setContent {
             var renderSession by remember { mutableStateOf<BookRenderSession?>(null) }
-            var chapter by remember { mutableIntStateOf(0) }
+            var chapter by remember { mutableIntStateOf(intent.getIntExtra("chapter", 0).coerceAtLeast(0)) }
             var page by remember { mutableIntStateOf(0) }
             var count by remember { mutableIntStateOf(1) }
             var ready by remember { mutableStateOf(false) }
@@ -169,6 +172,7 @@ class EpubPerformanceActivity : ComponentActivity() {
                     val startedAt = android.os.SystemClock.uptimeMillis()
                     Log.d("EpubPerfFixture", "intent=$index chapter=$chapter page=$page count=$count")
                     when (input) {
+                        "drag_probe" -> injectHeldDrag()
                         "swipe" -> injectSwipe(vertical = activeTransition == "scroll" || activeTransition == "continuous")
                         "tap" -> injectTap()
                         else -> turn?.invoke(1)
@@ -205,6 +209,7 @@ class EpubPerformanceActivity : ComponentActivity() {
                 ) -> Unit = { snapshotProvider, centerTap ->
                 EpubWebViewReader(
                     session = book, chapterIndex = chapter, nativeCssEnabled = bookNativeCss, fontSizeSp = 18f, fontType = "system",
+                    twoPageSpread = intent.getBooleanExtra("spread", false) && !continuous && bookFormat == "EPUB",
                     fontFilePath = null, textColorOverride = null, theme = activeTheme, coverBackgroundColor = null,
                     publisherPaintOnly = publisherPaint, restoreLocatorJson = null, restoreProgression = 0f,
                     pageTransition = if (continuous) "none" else activeTransition, pageTransitionDurationMs = activeDurationMs,
@@ -235,6 +240,29 @@ class EpubPerformanceActivity : ComponentActivity() {
     }
 
     /** A real touch stream through the decor view, so the host's swipe paths run as in reading. */
+    /** A debug-only held pointer lets device QA capture the frame before ACTION_UP. */
+    private suspend fun injectHeldDrag() {
+        val view = window.decorView
+        val down = android.os.SystemClock.uptimeMillis()
+        fun send(action: Int, fraction: Float) {
+            val event = android.view.MotionEvent.obtain(down, android.os.SystemClock.uptimeMillis(), action,
+                view.width * fraction, view.height * .55f, 0)
+            event.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+            view.dispatchTouchEvent(event)
+            event.recycle()
+        }
+        send(android.view.MotionEvent.ACTION_DOWN, .8f)
+        for (step in 1..12) {
+            delay(16)
+            send(android.view.MotionEvent.ACTION_MOVE, .8f - step * .025f)
+        }
+        Log.d("EpubPerfFixture", "DRAG_HELD transition=${intent.getStringExtra("transition")}")
+        delay(2200)
+        send(if (intent.getBooleanExtra("drag_cancel", false)) android.view.MotionEvent.ACTION_CANCEL
+            else android.view.MotionEvent.ACTION_UP, .5f)
+        Log.d("EpubPerfFixture", "DRAG_RELEASED")
+    }
+
     private suspend fun injectSwipe(vertical: Boolean = false) {
         val root = window.decorView
         // Next page: leftward swipe, or upward for vertical paging and scrolling.

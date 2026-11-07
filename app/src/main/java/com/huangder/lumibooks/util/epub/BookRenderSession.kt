@@ -43,6 +43,10 @@ interface BookRenderSession : AutoCloseable {
 
     fun renditionLayout(chapterIndex: Int): EpubRenditionLayout
 
+    /** Publisher hints; EPUB implementations may read and cache the original document. */
+    fun pagePresentation(chapterIndex: Int): EpubPagePresentation =
+        EpubPagePresentation(renditionLayout = renditionLayout(chapterIndex))
+
     /** True only when the chapter body contains one media element and no visible text. */
     fun isMediaOnlyPage(chapterIndex: Int): Boolean = false
 

@@ -15,6 +15,39 @@ enum class EpubPageProgressionDirection { LTR, RTL, DEFAULT }
 
 enum class EpubRenditionLayout { REFLOWABLE, PRE_PAGINATED }
 
+enum class EpubPageSide { LEFT, RIGHT, CENTER }
+
+/** Publisher permission for synthetic spreads, evaluated against the reader viewport. */
+enum class EpubRenditionSpread {
+    NONE, LANDSCAPE, PORTRAIT, BOTH, AUTO;
+
+    fun allowsSpread(isLandscape: Boolean): Boolean = when (this) {
+        NONE -> false
+        LANDSCAPE -> isLandscape
+        PORTRAIT -> !isLandscape
+        BOTH, AUTO -> true
+    }
+
+    companion object {
+        fun fromMetadata(value: String?): EpubRenditionSpread? = entries.firstOrNull {
+            it.name.equals(value?.trim(), ignoreCase = true)
+        }
+    }
+}
+
+/**
+ * Presentation hints for one logical chapter. Dimensions are the publisher's design
+ * viewport, never the current WebView size or an image's decoded dimensions.
+ */
+data class EpubPagePresentation(
+    val renditionLayout: EpubRenditionLayout = EpubRenditionLayout.REFLOWABLE,
+    val preferredSide: EpubPageSide? = null,
+    val renditionSpread: EpubRenditionSpread = EpubRenditionSpread.AUTO,
+    val isCover: Boolean = false,
+    val viewportWidth: Float? = null,
+    val viewportHeight: Float? = null
+)
+
 data class EpubManifestItem(
     val id: String,
     val href: String,
