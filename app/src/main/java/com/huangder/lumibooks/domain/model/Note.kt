@@ -21,7 +21,9 @@ data class Note(
     val sourceMatchKey: String? = null,
     val styleSnapshotJson: String? = null,
     val tags: List<String> = emptyList(),
-    val isStale: Boolean = false
+    val isStale: Boolean = false,
+    /** Book-wide position (0..1) captured when the note was made; null for older notes. */
+    val bookProgress: Float? = null
 ) {
     /** The annotation style (highlight/underline) is independent of note intent. */
     val isNoteEntry: Boolean get() = isNote || note.isNotBlank() || type == "note"

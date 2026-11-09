@@ -5,6 +5,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ListeningTextTest {
+    @Test fun subtitlesHaveClauseRowsAndWordProgressMovesFocusWithinOneUtterance() {
+        val chapter = TtsChapterSnapshot(0, 1, "第一小句，第二小句，句子结束。")
+        val page = TtsPageContent(TtsPageLocation(0, 0), chapter.text, null, null)
+        val utterance = TtsTextSegment(chapter.text, 0, chapter.text.length)
+        val text = listeningText(chapter, page, utterance)
+        assertEquals(listOf("第一小句，", "第二小句，", "句子结束。"), text.sentences.map { it.segment.text })
+        val progressed = text.withRangeProgress(TtsListeningFrame(chapter, page, utterance), TtsTextSegment("二", 6, 7))
+        assertEquals(1, progressed.focus)
+        assertSame(text.sentences, progressed.sentences)
+    }
+
     @Test fun wordProgressAdvancesWithoutChangingSentenceIdentityOrFocus() {
         val chapter = TtsChapterSnapshot(0, 1, "First sentence. A sentence across pages. Last sentence.")
         val page = TtsPageContent(TtsPageLocation(0, 0), chapter.text, null, null)

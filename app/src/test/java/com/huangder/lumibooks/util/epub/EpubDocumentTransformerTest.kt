@@ -9,6 +9,61 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EpubDocumentTransformerTest {
+    @Test fun publisherNoteArtworkKeepsBlockLayoutWhileSmallFootnoteIconsStayInline() {
+        val source = """<html><body><p>Text<a epub:type="noteref" href="#fn1">
+            <img id="icon" src="icon.png" width="100%"/></a></p>
+            <a class="duokan-footnote" epub:type="noteref" href="#footnote_1">
+            <img id="puzzle" src="puzzle.png" width="100%" class="duokan-image-static"/></a>
+            <aside id="footnote_1" epub:type="footnote">Answer</aside></body></html>"""
+        val document = Jsoup.parse(EpubDocumentTransformer.transform(
+            EpubResource("OPS/ch.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE).toString(Charsets.UTF_8), "", Parser.xmlParser())
+        val puzzle = document.getElementById("puzzle")!!
+        assertEquals("true", puzzle.attr("data-lumi-footnote-illustration"))
+        assertEquals("true", puzzle.parent()!!.attr("data-lumi-footnote-illustration-ref"))
+        assertEquals("true", puzzle.parent()!!.attr("data-lumi-media-wrapper"))
+        assertFalse(puzzle.hasAttr("data-lumi-inline-media"))
+        assertFalse(document.getElementById("icon")!!.hasAttr("data-lumi-footnote-illustration"))
+    }
+
+    @Test fun inlineAvatarsKeepPublisherSizeAndFloatsDoNotBecomeFullBleed() {
+        val source = """<html><head><style>.photo{height:3.5em;vertical-align:middle}
+            .DKimg-right{float:right;width:40%}</style></head><body>
+            <p><img id="avatar" class="photo" src="avatar.png"/>角色名</p>
+            <p>公式<img id="formula" style="display:inline;height:1em" src="formula.png"/></p>
+            <div class="DKimg-right"><img id="art" src="art.png" width="100%"/></div>
+            <p>正文<img id="note" class="duokan-footnote" alt="注释" src="note.png"/></p>
+            </body></html>"""
+        val resource = EpubResource("OPS/ch.xhtml", "application/xhtml+xml", source.toByteArray())
+        val output = EpubDocumentTransformer.transform(resource, EpubRenditionLayout.REFLOWABLE)
+        val document = Jsoup.parse(output.toString(Charsets.UTF_8), "", Parser.xmlParser())
+        assertEquals("true", document.getElementById("avatar")!!.attr("data-lumi-inline-media"))
+        assertEquals("true", document.getElementById("formula")!!.attr("data-lumi-inline-media"))
+        assertFalse(document.getElementById("note")!!.hasAttr("data-lumi-inline-media"))
+        assertFalse(document.getElementById("art")!!.hasAttr("data-lumi-inline-media"))
+        assertFalse(document.getElementById("art")!!.hasAttr("data-lumi-bleed"))
+        assertEquals("true", document.selectFirst(".DKimg-right")!!.attr("data-lumi-floated-media"))
+        assertEquals(EpubDocumentTransformer.extractSearchText(resource),
+            EpubDocumentTransformer.extractSearchText(resource.copy(bytes = output)))
+        assertEquals(EpubDocumentTransformer.imageTextOffsets(resource),
+            EpubDocumentTransformer.imageTextOffsets(resource.copy(bytes = output)))
+    }
+
+    @Test fun duokanFullWindowHintIsChapterScopedAndDoesNotOverrideFixedLayout() {
+        val resource = EpubResource("OPS/ch.xhtml", "application/xhtml+xml",
+            "<html><body><p>Flowing text</p></body></html>".toByteArray())
+        fun transform(layout: EpubRenditionLayout, hint: EpubDuokanPage?) = Jsoup.parse(
+            EpubDocumentTransformer.transform(resource, layout, false, EpubCssIndex.EMPTY, hint)
+                .toString(Charsets.UTF_8), "", Parser.xmlParser())
+        val special = transform(EpubRenditionLayout.REFLOWABLE, EpubDuokanPage.SPREAD_LEFT)
+        assertEquals("reflowable", special.body().attr("data-lumi-layout"))
+        assertEquals("duokan-page-fullscreen-spread-left", special.body().attr("data-lumi-duokan-page"))
+        assertEquals("true", special.body().attr("data-lumi-full-window"))
+        assertFalse(transform(EpubRenditionLayout.REFLOWABLE, null).body().hasAttr("data-lumi-full-window"))
+        assertFalse(transform(EpubRenditionLayout.PRE_PAGINATED, EpubDuokanPage.FULLSCREEN)
+            .body().hasAttr("data-lumi-full-window"))
+    }
+
     @Test fun imageOffsetsMatchSearchTextWithoutCountingScriptsOrImageAltText() {
         val resource = EpubResource("OPS/chapter.xhtml", "application/xhtml+xml",
             ("<html><body><img src='cover.png'/>前🌅<img src='inline.png' alt='not text'/>" +
@@ -394,7 +449,7 @@ class EpubDocumentTransformerTest {
         // 必须在分页、滚动和只改色时同步随视口大小的固定层。
         assertTrue(output.contains("function applyPublisherBackgroundLayer()"))
         assertEquals(
-            3,
+            4,
             Regex("applyPublisherBackgroundLayer\\(\\);").findAll(output).count()
         )
         // 分页完成后同步一次阅读器自己的背景层，保证滚动模式下几何与视口一致。
@@ -414,7 +469,7 @@ class EpubDocumentTransformerTest {
 
         assertEquals(1, Regex("function scrollMetrics\\(\\)").findAll(output).count())
         assertTrue(output.contains("var nonScrollable = maxScrollY <= tolerance"))
-        assertTrue(output.contains("var layoutHeight = Math.max(clientHeight, window.innerHeight || 0)"))
+        assertTrue(output.contains("var layoutHeight = Math.max(fullClientHeight, window.innerHeight || 0)"))
         assertTrue(output.contains("var maxScrollY = Math.max(0, scrollHeight - layoutHeight)"))
         assertTrue(output.contains("function applyScrollability(metrics)"))
         assertTrue(output.contains("html.lumi-scrolled {\n  height: auto !important;\n  min-height: 0 !important;"))
@@ -603,7 +658,7 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("config.textColor"))
         assertTrue(output.contains("config.textAlignment"))
         assertTrue(output.contains("config.letterSpacingDp"))
-        assertTrue(output.contains("font-weight:100 900"))
+        assertTrue(output.contains("config.fontWeightDescriptor"))
         assertTrue(output.contains("{text-align:' + textAlignment + ' !important;}"))
         assertTrue(output.contains("findText"))
         assertTrue(output.contains("version: 2"))

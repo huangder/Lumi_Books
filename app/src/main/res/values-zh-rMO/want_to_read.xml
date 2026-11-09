@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="book_want_to_read">加入待讀</string>
+    <string name="book_remove_want_to_read">移出待讀</string>
+    <string name="book_want_to_read_added">已加入待讀</string>
+    <string name="book_want_to_read_removed">已移出待讀</string>
+    <string name="section_to_read">待讀清單</string>
+</resources>

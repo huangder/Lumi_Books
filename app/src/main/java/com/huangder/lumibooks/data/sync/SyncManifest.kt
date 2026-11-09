@@ -42,7 +42,8 @@ data class SyncBookMetadata(
     val isPinned: Boolean = false,
     /** Null when the sender predates the hidden library; receivers then keep their own value. */
     val isHidden: Boolean? = null,
-    val isArchived: Boolean? = null
+    val isArchived: Boolean? = null,
+    val wantToReadAt: Long? = null
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("title", title)
@@ -54,6 +55,7 @@ data class SyncBookMetadata(
         put("isPinned", isPinned)
         isHidden?.let { put("isHidden", it) }
         isArchived?.let { put("isArchived", it) }
+        wantToReadAt?.let { put("wantToReadAt", it) }
     }
 
     companion object {
@@ -66,7 +68,8 @@ data class SyncBookMetadata(
             updatedAt = json.optLong("updatedAt", json.optLong("createdAt")),
             isPinned = json.optBoolean("isPinned", false),
             isHidden = if (json.has("isHidden")) json.optBoolean("isHidden") else null,
-            isArchived = if (json.has("isArchived")) json.optBoolean("isArchived") else null
+            isArchived = if (json.has("isArchived")) json.optBoolean("isArchived") else null,
+            wantToReadAt = if (json.has("wantToReadAt")) json.optLong("wantToReadAt") else null
         )
     }
 }

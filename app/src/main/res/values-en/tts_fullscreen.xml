@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="tts_page_settings_title">Listening page settings</string>
+    <string name="tts_page_default_style">Default display style</string>
+    <string name="tts_page_style_cover">Cover</string>
+    <string name="tts_page_style_subtitles">Subtitles</string>
+    <string name="tts_page_seek_gesture">Seek gesture</string>
+    <string name="tts_page_seek_double_tap">Double-tap subtitles</string>
+    <string name="tts_page_seek_single_tap">Tap subtitles</string>
     <string name="tts_full_cover">Cover mode</string>
     <string name="tts_full_subtitles">Subtitle mode</string>
     <string name="tts_full_previous_chapter">Previous chapter</string>

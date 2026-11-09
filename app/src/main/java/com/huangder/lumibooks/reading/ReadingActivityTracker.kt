@@ -4,6 +4,7 @@ import android.os.SystemClock
 import android.util.Log
 import com.huangder.lumibooks.domain.repository.ReadingRepository
 import com.huangder.lumibooks.edition.EditionActivityObserver
+import com.huangder.lumibooks.reading.journal.ReadingJournalRecorder
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
@@ -22,7 +23,11 @@ class ReadingActivityTracker internal constructor(
     private val timeline: ActivityTimeline,
     private val onPersisted: (ActivityIncrement) -> Unit = {}
 ) {
-    @Inject constructor(repository: ReadingRepository, observer: EditionActivityObserver) : this(
+    @Inject constructor(
+        repository: ReadingRepository,
+        observer: EditionActivityObserver,
+        journal: ReadingJournalRecorder
+    ) : this(
         { increment -> withContext(Dispatchers.IO) {
             observer.prepare()
             repository.appendActivityDuration(increment.bookId, increment.date,
@@ -30,7 +35,10 @@ class ReadingActivityTracker internal constructor(
         } },
         CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
         ActivityTimeline(SystemClock::elapsedRealtime, System::currentTimeMillis),
-        { observer.record(it.readingDuration, it.listeningDuration) }
+        {
+            observer.record(it.readingDuration, it.listeningDuration)
+            journal.recordActivity(it.bookId, it.readingDuration, it.listeningDuration, it.startTime, it.endTime)
+        }
     )
     private val pending = ArrayDeque<ActivityIncrement>()
     private var saving = false

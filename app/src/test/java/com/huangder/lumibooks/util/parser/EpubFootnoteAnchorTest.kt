@@ -157,6 +157,19 @@ class EpubFootnoteAnchorTest {
     }
 
     @Test
+    fun `full width duokan note artwork is not turned into an inline marker`() {
+        val html = """<a class="duokan-footnote" epub:type="noteref" href="#footnote_1">
+            <img src="puzzle.png" width="100%" class="duokan-image-static"/>
+            </a><p>Text<a epub:type="noteref" href="#fn2"><img src="icon.png" width="100%"/></a></p>"""
+        val (protectedHtml, markers) = EpubParser.protectInlineFootnoteImages(html)
+        assertEquals(1, markers.size)
+        assertTrue(markers.single().contains("icon.png"))
+        assertTrue(protectedHtml.contains("puzzle.png"))
+        val withBreaks = EpubParser.IMAGE_TAG_REGEX.replace(protectedHtml, "\n$0\n")
+        assertTrue(withBreaks.contains("\n<img src=\"puzzle.png\""))
+    }
+
+    @Test
     fun `footnote marker icons stay inline while illustration images keep block breaks`() {
         val html = """
             <p>正文<a epub:type="noteref" href="#fn1"><img src="note.png" class="epub-footnote"/></a>继续</p>

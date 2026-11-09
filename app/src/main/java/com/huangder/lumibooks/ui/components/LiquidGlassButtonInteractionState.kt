@@ -239,7 +239,7 @@ internal fun liquidGlassButtonLayerTransform(
     val translation = min(shortSide * 0.10f, maxTranslationPx.coerceAtLeast(0f)) * amount
     val xx = direction.x * direction.x
     val yy = direction.y * direction.y
-    val baseScale = 1f + 0.10f * progress
+    val baseScale = 1f + 0.16f * progress
     return LiquidGlassButtonLayerTransform(
         translationX = direction.x * translation,
         translationY = direction.y * translation,

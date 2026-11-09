@@ -32,8 +32,8 @@ class ReaderVolumeKeyActionsTest {
     fun fontSizeMovesByOneAndClampsToReaderRange() {
         assertEquals(13f, adjustReaderFontSize(12f, increase = true), 0.0001f)
         assertEquals(12f, adjustReaderFontSize(12f, increase = false), 0.0001f)
-        assertEquals(28f, adjustReaderFontSize(28f, increase = true), 0.0001f)
-        assertEquals(27f, adjustReaderFontSize(28f, increase = false), 0.0001f)
+        assertEquals(33f, adjustReaderFontSize(33f, increase = true), 0.0001f)
+        assertEquals(32f, adjustReaderFontSize(33f, increase = false), 0.0001f)
     }
 
     @Test

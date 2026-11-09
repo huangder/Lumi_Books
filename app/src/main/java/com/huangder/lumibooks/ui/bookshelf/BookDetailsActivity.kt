@@ -354,6 +354,9 @@ fun BookDetailsScreen(
                 }
             }
             item { com.huangder.lumibooks.ui.statistics.BookReadingArchive(book.id) }
+            if (com.huangder.lumibooks.edition.editionHasReadingJournal) {
+                item { com.huangder.lumibooks.edition.EditionBookJournalEntry(book.id) }
+            }
             item {
                 InfoCard(
                     book,

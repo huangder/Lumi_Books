@@ -52,6 +52,17 @@ class EpubScrollViewportTest {
             host.setScrollViewportInsets(70, 30)
             layout()
             assertViewport(70, 30)
+            // Publisher paper is inside the WebView, so foreground-only margins
+            // must leave every visible/prepared surface at the full host size.
+            host.setScrollViewportInsets(70, 30, contentOnly = true)
+            layout()
+            assertViewport(0, 0)
+            host.setScrollViewportInsets(30, 80, contentOnly = true)
+            layout()
+            assertViewport(0, 0)
+            host.setScrollViewportInsets(30, 80)
+            layout()
+            assertViewport(30, 80)
             host.setScrollViewportInsets(0, 0)
             layout()
             assertViewport(0, 0)

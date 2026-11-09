@@ -16,7 +16,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -85,6 +88,16 @@ class TtsController(
     // refine currentSentence to a word or phrase for reader highlighting.
     private val _currentUtterance = MutableStateFlow<TtsTextSegment?>(null)
     val currentUtterance: StateFlow<TtsTextSegment?> = _currentUtterance.asStateFlow()
+
+    // Display whole clauses while retaining the engine's precise range for resume/progress.
+    // Audio remains a complete sentence, so punctuation does not introduce extra synthesis gaps.
+    val currentClause: StateFlow<TtsTextSegment?> = combine(currentUtterance, currentSentence) { utterance, range ->
+        utterance?.let {
+            val displayClauses = textExtractor.splitIntoClauses(it)
+            val offset = range?.startCharacterOffset ?: it.startCharacterOffset
+            displayClauses.getOrNull(textExtractor.segmentIndexForOffset(displayClauses, offset))
+        }
+    }.stateIn(scope, SharingStarted.Eagerly, null)
 
     private val _pageTurnRequests = MutableSharedFlow<TtsPageTurnRequest>(replay = 1, extraBufferCapacity = 1)
     val pageTurnRequests: SharedFlow<TtsPageTurnRequest> = _pageTurnRequests.asSharedFlow()
@@ -598,6 +611,7 @@ class TtsController(
             commandMutex.withLock {
                 if (_activeBookId.value != bookId) return@withLock
                 readerAttached = attached
+                pageSource?.setReaderVisible(visualReaderAttached)
                 if (attached) {
                     followReaderPageTurns = true
                     return@withLock
@@ -623,6 +637,7 @@ class TtsController(
                 if (_fullscreenVisible.value == visible) return@withLock
                 _fullscreenVisible.value = visible
                 fullscreenSession = if (visible) sessionId else null
+                pageSource?.setReaderVisible(visualReaderAttached)
                 if (visible) {
                     fullscreenReaderLocation = _currentPage.value?.location
                     val resume = pendingPageTurn?.resumeWhenAcknowledged == true
@@ -743,6 +758,7 @@ class TtsController(
                     _playbackState.value == TtsPlaybackState.IDLE
                 ) return@withLock
                 readerAttached = true
+                pageSource?.setReaderVisible(visualReaderAttached)
                 followReaderPageTurns = true
                 val pending = pendingPageTurn
                 cancelPageTurnAckTimeout()
@@ -848,6 +864,11 @@ class TtsController(
                 if (pageSource == null) return@withLock
                 val target = locatePageWithFallback(chapterIndex, characterOffset)
                     ?: return@withLock
+                val targetClauses = textExtractor.splitIntoSegments(target.text, target.startCharacterOffset)
+                    .flatMap { textExtractor.splitIntoClauses(it) }
+                val clauseStart = targetClauses.getOrNull(
+                    textExtractor.segmentIndexForOffset(targetClauses, characterOffset)
+                )?.startCharacterOffset
                 if (!_fullscreenVisible.value) followReaderPageTurns = true
                 if (state == TtsPlaybackState.PAUSED && resumeIfPaused) {
                     _playbackState.value = TtsPlaybackState.PLAYING
@@ -862,6 +883,7 @@ class TtsController(
                         location = target.location,
                         startAtEnd = false,
                         publishLocation = false,
+                        startCharacterOffset = clauseStart,
                         seekCharacterOffset = characterOffset
                     )
                 ) {
@@ -1473,7 +1495,9 @@ class TtsController(
             val endedAtSentenceBoundary = mergedText.trimEnd().lastOrNull()?.let { last ->
                 last in TtsTextExtractor.TERMINATORS || last in TtsTextExtractor.CLOSING_PUNCTUATION
             } == true
-            if (endedAtSentenceBoundary) break
+            // A paragraph boundary can stop consumption before the page ends. Never look
+            // past its unread remainder: without a complete sentence the merge is discarded.
+            if (endedAtSentenceBoundary || mergeResult.consumedSourceChars < nextPage.text.length) break
         }
 
         val endedAtSentenceBoundary = mergedText.trimEnd().lastOrNull()?.let { last ->
@@ -1627,18 +1651,21 @@ class TtsController(
             try {
                 var page = current
                 var segment = nextSegment
+                var isLastSegment = sentenceIndex + 1 == segments.lastIndex
                 var location = landing?.landingLocation ?: current.next
                 var offset = landing?.landingStartCharacterOffset
                 var attempts = 0
                 while (segment == null && location != null && attempts++ < 50) {
                     page = source.getPage(location.chapterIndex, location.pageIndex) ?: return@launch
-                    segment = textExtractor.splitIntoSegments(page.text, page.startCharacterOffset, offset)
-                        .firstOrNull { textExtractor.hasSpeakableContent(it.text) }
+                    val pageSegments = textExtractor.splitIntoSegments(page.text, page.startCharacterOffset, offset)
+                        .filter { textExtractor.hasSpeakableContent(it.text) }
+                    segment = pageSegments.firstOrNull()
+                    isLastSegment = pageSegments.size == 1
                     location = page.next
                     offset = null
                 }
                 val candidate = segment ?: return@launch
-                val prepared = if (candidate.canContinueAcrossPage && textExtractor.isTrailing(candidate.text)) {
+                val prepared = if (isLastSegment && candidate.canContinueAcrossPage && textExtractor.isTrailing(candidate.text)) {
                     mergeAcrossPages(candidate.text, candidate.startCharacterOffset,
                         candidate.endCharacterOffset, generation, page, recordLanding = false) ?: candidate
                 } else candidate

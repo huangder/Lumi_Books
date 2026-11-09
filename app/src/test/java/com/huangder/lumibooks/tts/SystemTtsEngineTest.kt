@@ -278,6 +278,61 @@ class SystemTtsEngineTest {
         engine.selectEngine("org.nobody.multitts")
     }
 
+    @Test fun missingEngineRangesUseRenderedClausesAndLatePreciseRangesTakeOver() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        ShadowTextToSpeech.addLanguageAvailability(Locale.CHINESE)
+        val track = Track()
+        val player = SystemTtsAudioPlayer(backgroundScope) { track }
+        val engine = TtsEngine(ApplicationProvider.getApplicationContext(), player)
+        val ranges = mutableListOf<Pair<Int, Int>>()
+        engine.setListener(object : TtsPlaybackListener {
+            override fun onStart(utteranceId: String) = Unit
+            override fun onDone(utteranceId: String) = Unit
+            override fun onError(utteranceId: String, throwable: Throwable) { throw AssertionError(throwable) }
+            override fun onPlaybackInterrupted() = Unit
+            override fun onRangeStart(utteranceId: String, start: Int, end: Int) { ranges += start to end }
+        })
+        try {
+            initializeEngine(engine)
+            val shadow = shadowOf(ShadowTextToSpeech.getLastTextToSpeechInstance()) as RecordingTts
+            engine.speak("第一小句，第二小句，句子结束。", "first")
+            val id = shadow.requests.single().id
+            val callbacks = shadow.utteranceProgressListener
+            callbacks.onBeginSynthesis(id, 24_000, AudioFormat.ENCODING_PCM_16BIT, 1)
+            callbacks.onAudioAvailable(id, ByteArray(20))
+            shadowOf(Looper.getMainLooper()).idle()
+            runCurrent()
+            callbacks.onAudioAvailable(id, ByteArray(40)) // Count bytes streamed after playback began.
+            callbacks.onDone(id)
+            shadowOf(Looper.getMainLooper()).idle()
+            runCurrent()
+            assertTrue(ranges.isEmpty())
+            track.playbackHeadPosition = 1
+            advanceTimeBy(10); runCurrent()
+            assertEquals(listOf(0 to 5), ranges)
+            engine.pause()
+            advanceTimeBy(100); runCurrent()
+            assertEquals(listOf(0 to 5), ranges)
+            engine.resume()
+            track.playbackHeadPosition = 11
+            advanceTimeBy(10); runCurrent()
+            assertEquals(5 to 10, ranges.last())
+            callbacks.onRangeStart(id, 10, 11, 15)
+            shadowOf(Looper.getMainLooper()).idle()
+            track.playbackHeadPosition = 15
+            advanceTimeBy(10); runCurrent()
+            assertEquals(10 to 11, ranges.last())
+            val count = ranges.size
+            track.playbackHeadPosition = 21
+            advanceTimeBy(10); runCurrent()
+            assertEquals(count, ranges.size) // No estimate can override the precise range.
+            engine.stop()
+            track.playbackHeadPosition = 29
+            advanceTimeBy(10); runCurrent()
+            assertEquals(count, ranges.size)
+        } finally { engine.shutdown(); player.release(); Dispatchers.resetMain() }
+    }
+
     private class Track : SystemTtsAudioPlayer.PcmTrack {
         override val bufferSizeInFrames = 4
         override var playbackHeadPosition = 0L

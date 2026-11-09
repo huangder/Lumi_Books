@@ -5,6 +5,29 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.huangder.lumibooks.domain.model.AnnotationTags
 
 object DatabaseMigrations {
+    /** Reading journal: to-read marks, book-wide highlight positions and journal events. */
+    val MIGRATION_27_28 = object : Migration(27, 28) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE books ADD COLUMN wantToReadAt INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE notes ADD COLUMN bookProgress REAL")
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS reading_journal_events (" +
+                    "id TEXT NOT NULL PRIMARY KEY, type TEXT NOT NULL, bookId TEXT NOT NULL, " +
+                    "startedAt INTEGER NOT NULL, endedAt INTEGER NOT NULL, durationMs INTEGER NOT NULL, " +
+                    "listening INTEGER NOT NULL DEFAULT 0, sourceDeviceId TEXT NOT NULL DEFAULT '', " +
+                    "updatedAt INTEGER NOT NULL)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_reading_journal_events_startedAt " +
+                    "ON reading_journal_events (startedAt)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_reading_journal_events_bookId " +
+                    "ON reading_journal_events (bookId)"
+            )
+        }
+    }
+
     val MIGRATION_26_27 = object : Migration(26, 27) {
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL("ALTER TABLE books ADD COLUMN isArchived INTEGER NOT NULL DEFAULT 0")

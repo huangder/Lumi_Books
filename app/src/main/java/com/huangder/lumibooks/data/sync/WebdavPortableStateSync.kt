@@ -27,12 +27,18 @@ class WebdavPortableStateSync @Inject constructor(
     private val client: WebdavClient,
     private val snapshotManager: PortableSnapshotManager
 ) {
-    suspend fun sync(config: WebdavConfig, password: String): PortableStateSyncResult {
+    suspend fun sync(
+        config: WebdavConfig, password: String, wireBookIds: Map<String, String> = emptyMap()
+    ): PortableStateSyncResult {
         val serverUrl = config.serverUrl
         val root = "${config.syncPath}/state-v1"
         client.ensureDirectory(serverUrl, config.username, password, root)
         client.ensureDirectory(serverUrl, config.username, password, "$root/assets")
-        val localBundle = snapshotManager.capture(includeBookFiles = false).forWebdav(config)
+        val captured = snapshotManager.capture(includeBookFiles = false).forWebdav(config)
+        val localBundle = captured.copy(snapshot = captured.snapshot.remapWebdavBookIds(wireBookIds))
+        val currentIds = captured.snapshot.books.mapTo(mutableSetOf()) { it.id }
+        val localBookIds = wireBookIds.filterKeys { it in currentIds }
+            .entries.associate { (local, wire) -> wire to local }
         var uploadedAssets = 0
         var downloadedAssets = 0
 
@@ -114,7 +120,7 @@ class WebdavPortableStateSync @Inject constructor(
                 }
                 if (stateFingerprint(localPayload) != stateFingerprint(localBundle.snapshot)) {
                     snapshotManager.apply(
-                        localPayload,
+                        localPayload.remapWebdavBookIds(localBookIds),
                         files,
                         // State snapshots intentionally omit book bodies. Apply them as a
                         // merge so a cloud book discovered from manifest.json cannot disappear
@@ -124,6 +130,9 @@ class WebdavPortableStateSync @Inject constructor(
                     )
                 }
                 cleanupUnreferencedAssets(serverUrl, root, config.username, password, remotePayload)
+                if (config.syncReadingData) {
+                    com.huangder.lumibooks.reading.journal.ReadingJournalSettings.recordBackup(context)
+                }
                 return PortableStateSyncResult(uploadedAssets, downloadedAssets)
             } finally {
                 workDir.deleteRecursively()
@@ -181,6 +190,7 @@ class WebdavPortableStateSync @Inject constructor(
             readingRecords = if (config.syncReadingData) merged.readingRecords else remote.readingRecords,
             bookmarks = if (config.syncReadingData) merged.bookmarks else remote.bookmarks,
             notes = if (config.syncReadingData) merged.notes else remote.notes,
+            journalEvents = if (config.syncReadingData) merged.journalEvents else remote.journalEvents,
             tombstones = merged.tombstones.filter { tombstone ->
                 when (tombstone.namespace) {
                     in readingNamespaces -> config.syncReadingData
@@ -216,6 +226,7 @@ class WebdavPortableStateSync @Inject constructor(
         readingRecords = if (config.syncReadingData) remotePayload.readingRecords else local.readingRecords,
         bookmarks = if (config.syncReadingData) remotePayload.bookmarks else local.bookmarks,
         notes = if (config.syncReadingData) remotePayload.notes else local.notes,
+        journalEvents = if (config.syncReadingData) remotePayload.journalEvents else local.journalEvents,
         tombstones = (local.tombstones + remotePayload.tombstones).associateBy {
             "${it.namespace}:${it.itemId}"
         }.values.toList(),
@@ -298,6 +309,7 @@ class WebdavPortableStateSync @Inject constructor(
             readingRecords = snapshot.readingRecords.sortedBy { "${it.bookId}:${it.date}:${it.sourceDeviceId}" },
             bookmarks = snapshot.bookmarks.sortedBy { it.syncId },
             notes = snapshot.notes.sortedBy { it.syncId },
+            journalEvents = snapshot.journalEvents.sortedBy { it.id },
             highlightRules = snapshot.highlightRules.sortedBy { it.id },
             bookHighlightRuleStates = snapshot.bookHighlightRuleStates.sortedBy { "${it.bookId}:${it.ruleId}" },
             bookHighlightSettings = snapshot.bookHighlightSettings.sortedBy { it.bookId },
@@ -357,7 +369,8 @@ internal fun chooseWebdavBooksForDevice(
         base?.copy(
             lastReadTime = progress?.lastReadTime ?: base.lastReadTime,
             readingProgress = progress?.readingProgress ?: base.readingProgress,
-            locatorJson = progress?.locatorJson ?: base.locatorJson,
+            locatorJson = if (progress != null) progress.locatorJson else base.locatorJson,
+            isManuallyMarkedRead = progress?.isManuallyMarkedRead ?: base.isManuallyMarkedRead,
             isCloudOnly = fallback[id]?.isCloudOnly ?: base.isCloudOnly
         )
     }

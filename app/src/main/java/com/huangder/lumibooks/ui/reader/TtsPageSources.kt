@@ -155,6 +155,7 @@ internal class OriginalLayoutEpubTtsPageSource(
     private val lastServedEnd = mutableMapOf<Int, Int>()
     private var prefetchJob: Job? = null
     private var closed = false
+    private var readerVisible = true
 
     override suspend fun getPage(chapterIndex: Int, pageIndex: Int): TtsPageContent? {
         if (closed || chapterIndex !in 0 until chapterCount || pageIndex < 0) return null
@@ -217,6 +218,7 @@ internal class OriginalLayoutEpubTtsPageSource(
     }
 
     private suspend fun requestWebPage(chapterIndex: Int, pageIndex: Int): EpubPageText? {
+        if (!readerVisible) return null
         val provider = webPageProvider ?: return null
         return try {
             withTimeoutOrNull(webPageTimeoutMs) { provider(chapterIndex, pageIndex) }
@@ -284,7 +286,7 @@ internal class OriginalLayoutEpubTtsPageSource(
     }
 
     private fun prefetch(location: TtsPageLocation?) {
-        if (closed || location == null || pageCache.containsKey(location)) return
+        if (closed || !readerVisible || location == null || pageCache.containsKey(location)) return
         prefetchJob?.cancel()
         prefetchJob = scope.launch {
             val page = requestWebPage(location.chapterIndex, location.pageIndex) ?: return@launch
@@ -292,7 +294,13 @@ internal class OriginalLayoutEpubTtsPageSource(
         }
     }
 
+    override fun setReaderVisible(visible: Boolean) {
+        readerVisible = visible
+        if (!visible) prefetchJob?.cancel()
+    }
+
     override fun detachReader() {
+        readerVisible = false
         prefetchJob?.cancel()
         webPageProvider = null
     }

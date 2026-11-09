@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="book_want_to_read">읽고 싶은 책에 추가</string>
+    <string name="book_remove_want_to_read">읽고 싶은 책에서 제거</string>
+    <string name="book_want_to_read_added">읽고 싶은 책에 추가했습니다</string>
+    <string name="book_want_to_read_removed">읽고 싶은 책에서 제거했습니다</string>
+    <string name="section_to_read">읽을 책</string>
+</resources>

@@ -77,6 +77,8 @@ class EpubPerformanceActivity : ComponentActivity() {
             var chapter by remember { mutableIntStateOf(intent.getIntExtra("chapter", 0).coerceAtLeast(0)) }
             var page by remember { mutableIntStateOf(0) }
             var count by remember { mutableIntStateOf(1) }
+            var navigation by remember { mutableStateOf<EpubNavigationRequest?>(null) }
+            var navigationId by remember { mutableLongStateOf(0L) }
             var ready by remember { mutableStateOf(false) }
             var turn by remember { mutableStateOf<((Int) -> Boolean)?>(null) }
             var activeTheme by remember { mutableStateOf(theme) }
@@ -220,7 +222,24 @@ class EpubPerformanceActivity : ComponentActivity() {
                     onReleaseHandlerReady = { releaseReader = it }, onPageChanged = { c, p, n, _ -> position(c, p, n) },
                     onGlassSnapshotProviderReady = snapshotProvider,
                     onCenterTap = centerTap, onImagePreviewOpen = {},
-                    onChapterTurn = { chapter = (chapter + it).coerceIn(0, book.chapterCount - 1) },
+                    navigationRequest = navigation,
+                    onNavigationResult = { result ->
+                        if (result.operationId == navigation?.operationId) {
+                            Log.d("EpubPerfFixture", "navigation=$result")
+                            navigation = null
+                        }
+                    },
+                    onChapterTurn = { direction ->
+                        val target = chapter + direction
+                        val destination = EpubNavigationDestination.Page(if (direction < 0) Int.MAX_VALUE else 0)
+                        if (target in 0 until book.chapterCount && navigation?.coalescesPageTurn(
+                                EpubNavigationOrigin.PAGE_TURN, chapter, target, destination
+                            ) != true
+                        ) {
+                            navigation = EpubNavigationRequest(++navigationId, EpubNavigationOrigin.PAGE_TURN,
+                                chapter, page, target, destination, false)
+                        }
+                    },
                     onInternalLink = { c, _ -> chapter = c }, onExternalLink = {}, onSelection = {},
                     onSelectionCleared = {}, onSearchResolved = { _, _ -> },
                     onRenderUnavailable = { Log.e("EpubPerfFixture", "render failure: $it") }

@@ -23,6 +23,9 @@ import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.MotionPreference
+import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalLiquidGlassCapability
+import com.huangder.lumibooks.ui.theme.LiquidGlassCapability
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -111,15 +114,24 @@ class CollapsingPageScaffoldTest {
     @Test fun toolbarActionsHaveSeparateTouchTargetsWithVisibleSpace() {
         compose.setContent {
             EBookReaderTheme(appTheme = "lumi", motionPreference = MotionPreference.REDUCED) {
-                CollapsingPageScaffold("Notes", {}, actions = {
-                    Box(Modifier.size(48.dp).testTag("search"))
-                    Box(Modifier.size(48.dp).testTag("manage"))
-                }) { Text("Content") }
+                CompositionLocalProvider(
+                    LocalAppTheme provides "liquid_glass",
+                    LocalLiquidGlassCapability provides LiquidGlassCapability(true, false)
+                ) {
+                    CollapsingPageScaffold("Notes", {}, actions = {
+                        Box(Modifier.size(48.dp).testTag("search"))
+                        Box(Modifier.size(48.dp).testTag("manage"))
+                    }) { Text("Content") }
+                }
             }
         }
         val search = compose.onNodeWithTag("search").getUnclippedBoundsInRoot()
         val manage = compose.onNodeWithTag("manage").getUnclippedBoundsInRoot()
         assertTrue("Toolbar controls need an 8dp gap", manage.left - search.right >= 8.dp)
+        val root = compose.onRoot().getUnclippedBoundsInRoot()
+        val back = compose.onNodeWithContentDescription("Back").getUnclippedBoundsInRoot()
+        assertEquals("Outer buttons need equal screen margins", (back.left - root.left).value,
+            (root.right - manage.right).value, .1f)
     }
 
     @Test fun lightTitleTransitionsKeepFixedControlsClear() { verifyTheme("light") }

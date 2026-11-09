@@ -20,6 +20,9 @@ import com.huangder.lumibooks.data.local.dataStore
 import com.huangder.lumibooks.domain.model.LiquidGlassStyle
 import com.huangder.lumibooks.tts.TtsReaderResumeChoice
 import com.huangder.lumibooks.tts.TtsStartChoice
+import com.huangder.lumibooks.tts.ListeningDisplayStyle
+import com.huangder.lumibooks.tts.ListeningPageSettings
+import com.huangder.lumibooks.tts.SubtitleSeekGesture
 import com.huangder.lumibooks.ui.theme.*
 import java.io.File
 import kotlinx.coroutines.flow.first
@@ -40,6 +43,30 @@ class SettingsPreferenceScreensTest {
     @get:Rule val compose = createComposeRule()
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
     private fun label(id: Int) = context.getString(id)
+
+    @Test fun listeningPageDropdownsSelectDisplayAndGestureIndependently() {
+        var settings by mutableStateOf(ListeningPageSettings())
+        lateinit var view: View
+        compose.setContent {
+            view = LocalView.current
+            EBookReaderTheme(appTheme = "lumi", motionPreference = MotionPreference.REDUCED) {
+                ListeningPageSettingsScreen(settings,
+                    onStyle = { settings = settings.copy(defaultDisplayStyle = it) },
+                    onGesture = { settings = settings.copy(seekGesture = it) }, onBack = {})
+            }
+        }
+        compose.onNodeWithText(label(R.string.tts_page_style_cover)).performClick()
+        compose.onNodeWithText(label(R.string.tts_page_style_subtitles)).performClick()
+        compose.onNodeWithText(label(R.string.tts_page_seek_double_tap)).performClick()
+        compose.onNodeWithText(label(R.string.tts_page_seek_single_tap)).performClick()
+        compose.runOnIdle {
+            assertEquals(ListeningDisplayStyle.SUBTITLES, settings.defaultDisplayStyle)
+            assertEquals(SubtitleSeekGesture.SINGLE_TAP, settings.seekGesture)
+        }
+        compose.onNodeWithText(label(R.string.tts_page_style_subtitles)).assertIsDisplayed()
+        compose.onNodeWithText(label(R.string.tts_page_seek_single_tap)).assertIsDisplayed()
+        capture(view, "listening-page-settings")
+    }
 
     @Test fun listeningChoicesPersistWhenThePageReopensAndCanBeResetToAsk() = runBlocking {
         context.dataStore.edit { it.clear() }

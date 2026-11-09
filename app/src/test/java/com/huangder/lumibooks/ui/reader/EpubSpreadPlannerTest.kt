@@ -27,6 +27,22 @@ class EpubSpreadPlannerTest {
         viewportHeight = 900f
     )
 
+    @Test fun duokanFullWindowPageDoesNotConsumeItsReflowableNeighbours() {
+        val planner = EpubSpreadPlanner(3, { chapter -> EpubPagePresentation(
+            duokanPage = if (chapter == 1) com.huangder.lumibooks.util.epub.EpubDuokanPage.SPREAD_LEFT else null
+        ) })
+        (0..2).forEach { planner.updatePageCount(it, if (it == 2) 2 else 1) }
+        val before = ready(planner.planAt(page(0)))
+        assertEquals(listOf(page(0)), before.pages)
+        val special = ready(planner.planNext(before))
+        assertTrue(special.fullWidth)
+        assertEquals(listOf(page(1)), special.pages)
+        val after = ready(planner.planNext(special))
+        assertEquals(listOf(page(2), page(2, 1)), after.pages)
+        assertEquals(special, ready(planner.planPrevious(after)))
+        assertEquals(before, ready(planner.planPrevious(special)))
+    }
+
     @Test fun textPairsAcrossChaptersWithoutLoadingTheWholeBook() {
         val planner = EpubSpreadPlanner(100, { EpubPagePresentation() })
         planner.updatePageCount(42, 3)

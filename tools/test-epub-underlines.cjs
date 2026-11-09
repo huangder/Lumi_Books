@@ -7,7 +7,7 @@ const { pathToFileURL } = require('node:url');
 const { spawnSync } = require('node:child_process');
 const source = readFileSync(join(__dirname, '../app/src/main/java/com/huangder/lumibooks/util/epub/EpubDocumentTransformer.kt'), 'utf8');
 const css = source.match(/private const val READER_CSS = """([\s\S]*?)"""/)[1];
-const script = [...source.matchAll(/private const val READER_SCRIPT_PART_(?:1B|[123]) = """([\s\S]*?)"""/g)].map(m => m[1]).join('');
+const script = [...source.matchAll(/private const val READER_SCRIPT_PART_\w+ = """([\s\S]*?)"""/g)].map(m => m[1]).join('');
 
 async function verify(flow, vertical) {
   const check = (condition, message) => { if (!condition) throw Error(message); };
@@ -34,8 +34,8 @@ async function verify(flow, vertical) {
         const paths = lines.map(svg => svg.querySelector('path').getBoundingClientRect());
         for (const rect of rects) {
           const matching = paths.some(path => vertical
-            ? path.left >= rect.left - 1 && path.right <= rect.right + 1 && path.top <= rect.top + 1 && path.bottom >= rect.bottom - 1
-            : path.top >= rect.top - 1 && path.bottom <= rect.bottom + 1 && path.left <= rect.left + 1 && path.right >= rect.right - 1);
+            ? path.right <= rect.left - 2 && path.left >= rect.left - 6 && path.top <= rect.top + 1 && path.bottom >= rect.bottom - 1
+            : path.top >= rect.bottom + 2 && path.bottom <= rect.bottom + 6 && path.left <= rect.left + 1 && path.right >= rect.right - 1);
           check(matching, `Uncovered rect mode ${mode} fallback ${fallback}: ${JSON.stringify(rect.toJSON())}; paths ${JSON.stringify(paths.map(p => p.toJSON()))}`);
         }
         lines.forEach(svg => {

@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.reader
 
 import android.os.Build
+import android.content.Intent
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
@@ -66,7 +67,8 @@ internal data class ListeningScreenState(
     val androidEngine: Boolean = true, val timer: Long? = null,
     val provider: TtsProviderSelection = TtsProviderSelection.SystemDefault,
     val engines: List<InstalledTtsEngine> = emptyList(), val aiAvailable: Boolean = false,
-    val chapterBusy: Boolean = false, val engineBusy: Boolean = false
+    val chapterBusy: Boolean = false, val engineBusy: Boolean = false,
+    val seekGesture: SubtitleSeekGesture = SubtitleSeekGesture.DOUBLE_TAP
 )
 
 internal data class ListeningActions(
@@ -75,7 +77,7 @@ internal data class ListeningActions(
     val progress: (Float) -> Unit = {}, val rate: (Float) -> Unit = {}, val pitch: (Float) -> Unit = {},
     val rateMode: (TtsProsodyMode) -> Unit = {}, val pitchMode: (TtsProsodyMode) -> Unit = {},
     val timer: (Int) -> Unit = {}, val cancelTimer: () -> Unit = {},
-    val engine: (TtsProviderSelection) -> Unit = {}
+    val engine: (TtsProviderSelection) -> Unit = {}, val openSettings: () -> Unit = {}
 )
 
 @Composable
@@ -95,15 +97,18 @@ internal fun FullScreenTtsRoute(model: FullScreenTtsViewModel, onExit: () -> Uni
     val external by model.settings.externalTtsSettings.collectAsState(ExternalTtsSettings())
     val chapterBusy by model.chapterBusy.collectAsState()
     val engineBusy by model.engineBusy.collectAsState()
+    val pageSettings by model.settings.listeningPageSettings.collectAsState(ListeningPageSettings())
+    val context = LocalContext.current
     FullScreenTtsScreen(
         ListeningScreenState(book?.title.orEmpty(), book?.author.orEmpty(), book?.coverPath,
             book?.format == BookFormat.PDF, playback, text, subtitles, rate, pitch, rateMode, pitchMode,
             androidEngine, timer, provider, model.engines,
             external.enabled && external.hasRequiredFields && external.consentVersion >= ExternalTtsConfig.CONSENT_VERSION,
-            chapterBusy, engineBusy),
+            chapterBusy, engineBusy, pageSettings.seekGesture),
         ListeningActions(model::toggleMode, model::togglePlayback, model::chapter, model::seek,
             model::seekProgress, model::rate, model::pitch, model::rateMode, model::pitchMode,
-            model.controller::setSleepTimer, model.controller::cancelSleepTimer, model::engine),
+            model.controller::setSleepTimer, model.controller::cancelSleepTimer, model::engine,
+            openSettings = { context.startActivity(Intent(context, com.huangder.lumibooks.ui.settings.ListeningPageSettingsActivity::class.java)) }),
         entered = model.entered, onEntered = { model.entered = true },
         sessionEnded = activeBook != model.bookId || playback == TtsPlaybackState.IDLE || !model.isCurrentSession(),
         onExit = onExit
@@ -316,6 +321,7 @@ internal fun FullScreenTtsScreen(
                     .listeningFadingEdges(focusInset, 96.dp, subtitleEnd - subtitleTop, !eInk)) {
                     if (mode > .01f || subtitleReveal > .01f) ListeningSubtitles(state.text, animated, reduce, foreground,
                         enabled = state.subtitles && !closing, focusInset = focusInset,
+                        seekGesture = state.seekGesture,
                         onScrolling = { scrollingSubtitles = it }, onTouch = touch, onSeek = actions.seek)
                 }
                 val controlsEnabled = controlsVisible && !closing && effective < .1f
@@ -359,12 +365,19 @@ internal fun FullScreenTtsScreen(
                     ListeningPressControl(stringResource(R.string.tts_full_close), !closing, animated, foreground,
                         onClick = ::close) { Box(Modifier.size(35.dp, 5.dp).clip(RoundedCornerShape(3.dp)).background(foreground.copy(.5f))) }
                 }
-                Box(Modifier.offset(xInset + w * .83f, h * .02f).then(layer(0))) {
+                Row(Modifier.align(Alignment.TopEnd).offset(x = -xInset - w * .03f, y = h * .02f).then(layer(0))) {
                     ListeningPressControl(stringResource(if (state.subtitles) R.string.tts_full_cover else R.string.tts_full_subtitles),
                         !closing, animated, foreground, onClick = { touch(); actions.toggleMode() }) {
                         Box(Modifier.size(32.dp).clip(RoundedCornerShape(50)).background(foreground.copy(.2f)),
                             contentAlignment = Alignment.Center) {
                             Icon(painterResource(R.drawable.ic_listening_lyrics), null, Modifier.size(21.dp), tint = foreground)
+                        }
+                    }
+                    ListeningPressControl(stringResource(R.string.tts_page_settings_title),
+                        !closing, animated, foreground, onClick = { touch(); actions.openSettings() }) {
+                        Box(Modifier.size(32.dp).clip(RoundedCornerShape(50)).background(foreground.copy(.2f)),
+                            contentAlignment = Alignment.Center) {
+                            Icon(AppIcons.Gear, null, Modifier.size(21.dp), tint = foreground)
                         }
                     }
                 }
@@ -533,7 +546,7 @@ private fun Modifier.listeningFadingEdges(top: Dp, bottom: Dp, end: Dp, enabled:
 private fun ListeningSubtitles(
     text: ListeningText, animated: Boolean, reduce: Boolean, foreground: Color,
     enabled: Boolean, focusInset: Dp, onScrolling: (Boolean) -> Unit,
-    onTouch: () -> Unit, onSeek: (ListeningSentence) -> Unit
+    seekGesture: SubtitleSeekGesture, onTouch: () -> Unit, onSeek: (ListeningSentence) -> Unit
 ) {
     AnimatedContent(text, contentKey = { it.chapter }, modifier = Modifier.fillMaxSize(),
         transitionSpec = {
@@ -545,7 +558,7 @@ private fun ListeningSubtitles(
                 .using(SizeTransform(clip = false))
         }, label = "subtitle chapter") { chapter ->
         ListeningSubtitleChapter(chapter, animated, reduce, foreground, enabled && chapter.chapter == text.chapter,
-            focusInset, onScrolling, onTouch, onSeek)
+            focusInset, onScrolling, seekGesture, onTouch, onSeek)
     }
 }
 
@@ -554,7 +567,7 @@ private fun ListeningSubtitles(
 private fun ListeningSubtitleChapter(
     text: ListeningText, animated: Boolean, reduce: Boolean, foreground: Color,
     enabled: Boolean, focusInset: Dp, onScrolling: (Boolean) -> Unit,
-    onTouch: () -> Unit, onSeek: (ListeningSentence) -> Unit
+    seekGesture: SubtitleSeekGesture, onTouch: () -> Unit, onSeek: (ListeningSentence) -> Unit
 ) {
     val list = rememberLazyListState(initialFirstVisibleItemIndex = text.focus)
     var browsing by remember { mutableStateOf(false) }
@@ -618,7 +631,10 @@ private fun ListeningSubtitleChapter(
                     }.testTag("sentence-${sentence.id}")
                         .combinedClickable(enabled = enabled, indication = null,
                             interactionSource = remember { MutableInteractionSource() },
-                            onDoubleClick = { onTouch(); onSeek(sentence) }, onClick = onTouch))
+                            onDoubleClick = if (seekGesture == SubtitleSeekGesture.DOUBLE_TAP) {
+                                { onTouch(); onSeek(sentence) }
+                            } else null,
+                            onClick = { onTouch(); if (seekGesture == SubtitleSeekGesture.SINGLE_TAP) onSeek(sentence) }))
             }
         }
     }

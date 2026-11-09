@@ -84,7 +84,8 @@ object AppModule {
             DatabaseMigrations.MIGRATION_23_24,
             DatabaseMigrations.MIGRATION_24_25,
             DatabaseMigrations.MIGRATION_25_26,
-            DatabaseMigrations.MIGRATION_26_27
+            DatabaseMigrations.MIGRATION_26_27,
+            DatabaseMigrations.MIGRATION_27_28
         )
             .build()
     }
@@ -116,6 +117,11 @@ object AppModule {
     @Provides
     @Singleton
     fun provideHighlightRuleDao(database: AppDatabase): HighlightRuleDao = database.highlightRuleDao()
+
+    @Provides
+    @Singleton
+    fun provideReadingJournalDao(database: AppDatabase): com.huangder.lumibooks.data.local.dao.ReadingJournalDao =
+        database.readingJournalDao()
 
     @Provides
     @Singleton

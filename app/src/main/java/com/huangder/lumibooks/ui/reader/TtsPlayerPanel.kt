@@ -47,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -237,6 +238,8 @@ internal fun TtsPlayerPanel(
     val returnLabel = stringResource(R.string.tts_return_to_progress)
     val fromPageLabel = stringResource(R.string.tts_from_this_page)
     val followPageLabel = stringResource(R.string.tts_follow_page_turns)
+    val currentFollowUserPageTurns by rememberUpdatedState(followUserPageTurns)
+    val currentOnFollowUserPageTurnsChange by rememberUpdatedState(onFollowUserPageTurnsChange)
     val timerLabel = stringResource(R.string.tts_timer_label)
     val rateLabel = stringResource(R.string.tts_speech_rate)
     val pitchLabel = stringResource(R.string.tts_pitch_label)
@@ -252,8 +255,8 @@ internal fun TtsPlayerPanel(
             items = listOf(
                 LiquidGlassMenuItem(returnLabel, enabled = canReturnToProgress, onClick = onReturnToProgress),
                 LiquidGlassMenuItem(fromPageLabel, onClick = onStartFromCurrentPage),
-                LiquidGlassMenuItem(followPageLabel, selected = followUserPageTurns,
-                    onClick = { onFollowUserPageTurnsChange(!followUserPageTurns) }),
+                LiquidGlassMenuItem(followPageLabel, selectedState = { currentFollowUserPageTurns },
+                    onClick = { currentOnFollowUserPageTurnsChange(!currentFollowUserPageTurns) }),
                 LiquidGlassMenuItem(timerLabel, dividerBefore = true,
                     subtitle = sleepTimerRemainingMs?.let(::formatSleepTimer), submenuItems = choices(TtsMenuKind.Timer)),
                 LiquidGlassMenuItem(rateLabel, subtitle = if (usesAndroidTts && speechRateMode == TtsProsodyMode.FOLLOW_ENGINE)

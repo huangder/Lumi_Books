@@ -18,7 +18,9 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.ActivityDuration
+import com.huangder.lumibooks.edition.EditionReadingJournalCard
 import com.huangder.lumibooks.edition.EditionReadingReviewEntry
+import com.huangder.lumibooks.edition.editionHasReadingJournal
 import com.huangder.lumibooks.ui.animation.OverscrollBounce
 import com.huangder.lumibooks.ui.animation.PageEntranceItem
 import com.huangder.lumibooks.ui.animation.VisualMotion
@@ -149,6 +151,7 @@ internal fun StatisticsScreen(
                             }
                         }
                         item("metrics") { InsightsAppear(1, dim) { InsightsMetrics(data, scope == StatisticsScope.ALL) } }
+                        if (editionHasReadingJournal) item("journal") { InsightsAppear(2, dim) { EditionReadingJournalCard() } }
                         if (scope == StatisticsScope.MONTH || scope == StatisticsScope.YEAR) item("calendar") {
                             InsightsAppear(2, dim) {
                                 InsightsCard(stringResource(R.string.insights_distribution), icon = AppIcons.ChartBar, tint = InsightsHue.Green) {

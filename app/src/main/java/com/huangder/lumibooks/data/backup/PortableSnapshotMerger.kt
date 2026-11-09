@@ -139,7 +139,10 @@ object PortableSnapshotMerger {
             bookHighlightSettings = (local.bookHighlightSettings + remote.bookHighlightSettings)
                 .groupBy { it.bookId }.map { (_, values) -> values.maxBy { it.revision } },
             highlightRuleExclusions = (local.highlightRuleExclusions + remote.highlightRuleExclusions)
-                .distinctBy { "${it.bookId}:${it.ruleId}:${it.matchKey}" }
+                .distinctBy { "${it.bookId}:${it.ruleId}:${it.matchKey}" },
+            journalEvents = mergeLatest(
+                local.journalEvents, remote.journalEvents, { it.id }, { it.updatedAt }, { it.toString() }
+            ).filter { it.bookId in validBookIds }
         )
     }
 
@@ -161,14 +164,23 @@ object PortableSnapshotMerger {
                         compareBy<PortableBook> { it.metadataUpdatedAt }.thenBy { it.toString() }
                     )
                     val progressWinner = listOf(localBook, remoteBook).maxWith(
-                        compareBy<PortableBook> { it.lastReadTime }.thenBy { it.toString() }
+                        compareBy<PortableBook> {
+                            com.huangder.lumibooks.data.sync.readingPositionTimestamp(
+                                it.lastReadTime, it.createdAt, it.readingProgress, it.locatorJson, it.isManuallyMarkedRead
+                            )
+                        }.thenBy { it.toString() }
                     )
                     metadataWinner.copy(
-                        lastReadTime = progressWinner.lastReadTime,
+                        lastReadTime = if (metadataWinner.createdAt == progressWinner.createdAt) progressWinner.lastReadTime
+                        else com.huangder.lumibooks.data.sync.readingPositionTimestamp(
+                            progressWinner.lastReadTime, progressWinner.createdAt, progressWinner.readingProgress,
+                            progressWinner.locatorJson, progressWinner.isManuallyMarkedRead
+                        ),
                         readingProgress = progressWinner.readingProgress,
                         isManuallyMarkedRead = progressWinner.isManuallyMarkedRead,
                         isHidden = metadataWinner.isHidden,
                         isArchived = metadataWinner.isArchived ?: localBook.isArchived ?: remoteBook.isArchived,
+                        wantToReadAt = metadataWinner.wantToReadAt ?: localBook.wantToReadAt ?: remoteBook.wantToReadAt,
                         locatorJson = progressWinner.locatorJson,
                         bodyAssetId = localBook.bodyAssetId ?: remoteBook.bodyAssetId,
                         isCloudOnly = localBook.bodyAssetId == null && remoteBook.bodyAssetId == null,

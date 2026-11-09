@@ -168,10 +168,16 @@ class ReadingRepositoryImpl @Inject constructor(
         val now = System.currentTimeMillis()
         database.withTransaction {
             rememberAnnotationTags(note.tags, now)
+            // Manual marks are made on the page being read, so the saved position places them in the book.
+            val bookProgress = note.bookProgress ?: if (note.origin == Note.ORIGIN_MANUAL) {
+                database.bookDao().getBookById(note.bookId)?.readingProgress
+                    ?.takeIf { it.isFinite() }?.coerceIn(0f, 1f)
+            } else null
             noteDao.insertNote(
                 note.copy(
                     syncId = note.syncId.ifBlank { UUID.randomUUID().toString() },
-                    updatedAt = maxOf(note.updatedAt, now)
+                    updatedAt = maxOf(note.updatedAt, now),
+                    bookProgress = bookProgress
                 ).toEntity()
             )
         }
@@ -417,7 +423,8 @@ class ReadingRepositoryImpl @Inject constructor(
             sourceMatchKey = sourceMatchKey,
             styleSnapshotJson = styleSnapshotJson,
             tags = AnnotationTags.decode(tagsJson),
-            isStale = isStale
+            isStale = isStale,
+            bookProgress = bookProgress
         )
     }
 
@@ -443,7 +450,8 @@ class ReadingRepositoryImpl @Inject constructor(
             sourceMatchKey = sourceMatchKey,
             styleSnapshotJson = styleSnapshotJson,
             tagsJson = AnnotationTags.encode(tags),
-            isStale = isStale
+            isStale = isStale,
+            bookProgress = bookProgress
         )
     }
 }

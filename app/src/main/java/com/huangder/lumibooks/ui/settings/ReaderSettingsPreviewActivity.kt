@@ -1378,7 +1378,7 @@ internal fun TextPanel(
         SettingSlider(
             stringResource(R.string.label_font_size),
             settings.fontSize,
-            12f..28f,
+            ReaderThemeSettings.FONT_SIZE_RANGE,
             15,
             "sp",
             onPreview = { onPreviewUpdate(settings.copy(fontSize = it)) },

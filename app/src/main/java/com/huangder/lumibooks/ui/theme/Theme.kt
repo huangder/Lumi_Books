@@ -215,9 +215,11 @@ fun EBookReaderTheme(
                 ActivityInfo.COLOR_MODE_DEFAULT
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-                // Request only a small HDR envelope for the pressed highlight. Large values
-                // make several OEMs tone-map the entire window and visibly dim SDR content.
-                window.desiredHdrHeadroom = if (hdrHighlightActive) 1.15f else 0f
+                // Light glass needs a specular peak above SDR icons; keep the existing
+                // restrained headroom in dark mode.
+                window.desiredHdrHeadroom = if (hdrHighlightActive) {
+                    if (effectiveDarkTheme) 1.15f else 1.2f
+                } else 0f
             }
         }
     }

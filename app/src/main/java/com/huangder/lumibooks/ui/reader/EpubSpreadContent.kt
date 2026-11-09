@@ -131,11 +131,7 @@ internal fun EpubSpreadContent(
         appearance.fontPath?.let { java.io.File(it).let { file -> file.length() to file.lastModified() } }
     ).joinToString("|")
     val latestSignature = rememberUpdatedState(signature)
-    val ruleFonts = remember(session, appearance.customFonts) {
-        appearance.customFonts.mapNotNull { font ->
-            session.readerFontUrl(font.path)?.let { font.fontTypeKey to it }
-        }.toMap()
-    }
+    val ruleFonts = rememberEpubRuleFontUrls(session, notes, appearance.customFonts)
     val latestRuleFonts = rememberUpdatedState(ruleFonts)
     val initial = remember(session) {
         EpubNavigationRequest(Long.MIN_VALUE, EpubNavigationOrigin.RETURN_TO_SOURCE,
@@ -307,7 +303,7 @@ internal fun EpubSpreadContent(
     LaunchedEffect(signature) {
         if (viewport.first > 0 && viewport.second > 0) latest.value.signature(signature)
     }
-    LaunchedEffect(notes, ttsCurrentSentence, ttsHighlightColor, ttsFollowEnabled, appearance.images, host) {
+    LaunchedEffect(notes, ruleFonts, ttsCurrentSentence, ttsHighlightColor, ttsFollowEnabled, appearance.images, host) {
         host?.allWebViews()?.forEach { view ->
             session.chapterIndexForUrl(view.url.orEmpty())?.let { decorate(view, it) }
         }

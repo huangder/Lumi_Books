@@ -33,8 +33,8 @@ internal class ListeningReaderSession {
         backgrounded = false
         val sameSession = sessionId != null && sessionId == backgroundSessionId
         backgroundSessionId = null
+        checked = true
         if (!sameSession) return null
-        checked = false
         return true
     }
 

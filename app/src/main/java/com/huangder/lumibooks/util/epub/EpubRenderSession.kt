@@ -32,6 +32,16 @@ class EpubRenderSession private constructor(
         get() = logicalChapters.size
     private val entriesByLowercase: Map<String, ZipEntry> =
         zipFile.entries().asSequence().associateBy { it.name.lowercase() }
+    // Some legacy books request logo.png while declaring/providing only logo.jpg.
+    // Only a unique, declared raster image in the same directory may repair that typo.
+    private val imagePathsByStem by lazy {
+        epubPackage.manifest.values.filter { item ->
+            item.mediaType.startsWith("image/", ignoreCase = true) &&
+                item.fullPath.substringAfterLast('.').lowercase() in RASTER_IMAGE_EXTENSIONS &&
+                entriesByLowercase[item.fullPath.lowercase()]?.isDirectory == false
+        }.map { it.fullPath }.distinctBy { it.lowercase() }
+            .groupBy { it.substringBeforeLast('.').lowercase() }
+    }
     private val spineByPath = epubPackage.spine.mapIndexed { index, item ->
         item.manifestItem.fullPath.lowercase() to index
     }.toMap()
@@ -204,7 +214,8 @@ class EpubRenderSession private constructor(
             renditionSpread = spread,
             isCover = isDeclaredCover(chapterIndex, chapter, source, document),
             viewportWidth = viewport?.first,
-            viewportHeight = viewport?.second
+            viewportHeight = viewport?.second,
+            duokanPage = EpubDuokanPage.fromProperties(properties)
         ).also { presentationByChapter[chapterIndex] = it }
     }
 
@@ -408,14 +419,20 @@ class EpubRenderSession private constructor(
     @Synchronized
     private fun readPhysical(normalized: String): EpubResource? {
         if (closed) return null
-        val entry = zipFile.getEntry(normalized) ?: entriesByLowercase[normalized.lowercase()] ?: return null
+        val exact = zipFile.getEntry(normalized) ?: entriesByLowercase[normalized.lowercase()]
+        val repairedPath = if (exact == null &&
+            normalized.substringAfterLast('.').lowercase() in RASTER_IMAGE_EXTENSIONS) {
+            imagePathsByStem[normalized.substringBeforeLast('.').lowercase()]?.singleOrNull()
+        } else null
+        val entry = exact ?: repairedPath?.let { entriesByLowercase[it.lowercase()] } ?: return null
         if (entry.isDirectory) return null
         val bytes = runCatching {
             zipFile.getInputStream(entry).use { input -> input.readBytes(MAX_RESOURCE_BYTES) }
         }.getOrNull() ?: return null
-        val item = epubPackage.manifestByPath[normalized]
-        val mediaType = item?.mediaType?.ifBlank { null } ?: EpubMimeTypes.fromPath(normalized)
-        val resource = EpubResource(normalized, mediaType, bytes)
+        val resourcePath = repairedPath ?: normalized
+        val item = epubPackage.manifestByPath[resourcePath]
+        val mediaType = item?.mediaType?.ifBlank { null } ?: EpubMimeTypes.fromPath(resourcePath)
+        val resource = EpubResource(resourcePath, mediaType, bytes)
         val spineItem = epubPackage.spine.firstOrNull {
             it.manifestItem.fullPath.equals(normalized, ignoreCase = true)
         }
@@ -425,7 +442,8 @@ class EpubRenderSession private constructor(
                     resource = resource,
                     layout = spineItem.renditionLayout,
                     isCoverCandidate = spineByPath[normalized.lowercase()] == 0,
-                    cssIndex = cssIndexFor(normalized, bytes)
+                    cssIndex = cssIndexFor(normalized, bytes),
+                    duokanPage = EpubDuokanPage.fromProperties(spineItem.properties + spineItem.manifestItem.properties)
                 )
             )
         } else resource
@@ -502,7 +520,10 @@ class EpubRenderSession private constructor(
             }
         }
         NativeEpubSource(chapterHref(chapterIndex), resource, sheets,
-            epubPackage.spine[chapter.spineIndex].renditionLayout, failure)
+            epubPackage.spine[chapter.spineIndex].renditionLayout, failure,
+            EpubDuokanPage.fromProperties(epubPackage.spine[chapter.spineIndex].let {
+                it.properties + it.manifestItem.properties
+            }))
     }
 
     internal fun nativeResource(path: String): EpubResource? = readRawChapter(path)
@@ -538,7 +559,8 @@ class EpubRenderSession private constructor(
             resource = source,
             layout = spineItem.renditionLayout,
             isCoverCandidate = chapterIndex == 0,
-            cssIndex = cssIndex
+            cssIndex = cssIndex,
+            duokanPage = EpubDuokanPage.fromProperties(spineItem.properties + spineItem.manifestItem.properties)
         )
         val baseUrl = physicalChapterUrl(chapter.path)
         val document = source.copy(bytes = transformed.withBaseHref(baseUrl))
@@ -656,6 +678,7 @@ class EpubRenderSession private constructor(
     }
 
     companion object {
+        private val RASTER_IMAGE_EXTENSIONS = setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "avif")
         const val ASSET_DOMAIN = BookRenderSession.ASSET_DOMAIN
         private const val TAG = "EpubRenderSession"
         private const val MAX_MISSING_RESOURCE_LOGS = 20

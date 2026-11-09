@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="book_want_to_read">Want to read</string>
+    <string name="book_remove_want_to_read">Remove from to-read</string>
+    <string name="book_want_to_read_added">Added to your to-read list</string>
+    <string name="book_want_to_read_removed">Removed from your to-read list</string>
+    <string name="section_to_read">To read</string>
+</resources>

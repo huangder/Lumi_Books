@@ -5,6 +5,7 @@ import androidx.room.withTransaction
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.data.local.database.AppDatabase
 import com.huangder.lumibooks.data.local.entity.BookEntity
+import com.huangder.lumibooks.data.local.entity.ReadingJournalEventEntity
 import com.huangder.lumibooks.data.local.entity.AnnotationTagEntity
 import com.huangder.lumibooks.domain.model.AnnotationTags
 import com.huangder.lumibooks.data.sync.SyncIdentityStore
@@ -155,7 +156,8 @@ class PortableSnapshotManager internal constructor(
                 highlightRules = database.highlightRuleDao().getRules(),
                 bookHighlightRuleStates = database.highlightRuleDao().getAllBookStates(),
                 bookHighlightSettings = database.highlightRuleDao().getAllSettings(),
-                highlightRuleExclusions = database.highlightRuleDao().getAllExclusions()
+                highlightRuleExclusions = database.highlightRuleDao().getAllExclusions(),
+                journalEvents = database.readingJournalDao().getAll()
             ),
             assetSources = sources
         )
@@ -218,9 +220,10 @@ class PortableSnapshotManager internal constructor(
                         // 快照用推导结果把已下载书籍翻回仅云端。
                         existingIsCloudOnly = existing?.isCloudOnly
                             ?.takeIf { !replaceAssetDirectories && book.bodyAssetId == null },
-                        existingIsArchived = existing?.isArchived ?: false
+                        existingIsArchived = existing?.isArchived ?: false,
+                        existingWantToReadAt = existing?.wantToReadAt ?: 0L
                     ).let { restored ->
-                        if (book.format == "MARKDOWN" && !replaceAssetDirectories && existing != null) {
+                        if (!replaceAssetDirectories && book.bodyAssetId == null && existing != null) {
                             restored.copy(sourceUri = existing.sourceUri, sourceDocumentKey = existing.sourceDocumentKey,
                                 sourceParentUri = existing.sourceParentUri, sourceSha256 = existing.sourceSha256,
                                 sourceDisplayName = existing.sourceDisplayName, sourceLastModified = existing.sourceLastModified,
@@ -244,6 +247,7 @@ class PortableSnapshotManager internal constructor(
                     database.highlightRuleDao().clearSettings()
                     database.highlightRuleDao().clearAllExclusions()
                     database.highlightRuleDao().clearRules()
+                    database.readingJournalDao().deleteAll()
                 }
                 if (restoredBooks.isNotEmpty()) bookDao.upsertBooks(restoredBooks)
                 val knownFolderIds = if (replace) emptySet() else existingFolders.mapTo(mutableSetOf()) { it.id }
@@ -317,6 +321,7 @@ class PortableSnapshotManager internal constructor(
                 if (snapshot.highlightRuleExclusions.isNotEmpty()) {
                     database.highlightRuleDao().upsertExclusions(snapshot.highlightRuleExclusions)
                 }
+                applyJournalEvents(snapshot.journalEvents, replace)
                 applyTombstones(snapshot)
             }
             preparedAssets.finish()
@@ -588,10 +593,25 @@ class PortableSnapshotManager internal constructor(
         }
     }
 
+    /** Keeps the newer copy of each entry and drops entries the local retention period already cleared. */
+    private suspend fun applyJournalEvents(events: List<ReadingJournalEventEntity>, replace: Boolean) {
+        if (events.isEmpty()) return
+        val dao = database.readingJournalDao()
+        val cutoff = com.huangder.lumibooks.reading.journal.ReadingJournalSettings
+            .retentionCutoff(context, System.currentTimeMillis())
+        val existing = if (replace) emptyMap() else dao.getAll().associateBy { it.id }
+        val accepted = events.filter { event ->
+            (cutoff == null || event.endedAt >= cutoff) &&
+                (existing[event.id]?.updatedAt ?: Long.MIN_VALUE) <= event.updatedAt
+        }
+        if (accepted.isNotEmpty()) dao.upsertAll(accepted)
+    }
+
     private fun BookEntity.toPortable(bodyAssetId: String?, coverAssetId: String?) = PortableBook(
         id, title, author, format, lastReadTime, readingProgress, locatorJson, createdAt, isFavorite,
         isCloudOnly, metadataUpdatedAt, bodyAssetId, coverAssetId, remoteLibraryKey, remoteFileName,
-        remoteFileSize, remoteFileSha256, isPinned, isManuallyMarkedRead, isHidden, isArchived
+        remoteFileSize, remoteFileSha256, isPinned, isManuallyMarkedRead, isHidden, isArchived,
+        wantToReadAt
     )
 
 }
@@ -600,7 +620,8 @@ internal fun PortableBook.toEntity(
     filePath: String,
     coverPath: String?,
     existingIsCloudOnly: Boolean? = null,
-    existingIsArchived: Boolean = false
+    existingIsArchived: Boolean = false,
+    existingWantToReadAt: Long = 0L
 ) = BookEntity(
     id = id, title = title, author = author, filePath = filePath, coverPath = coverPath,
     format = format, lastReadTime = lastReadTime, readingProgress = readingProgress,
@@ -611,7 +632,8 @@ internal fun PortableBook.toEntity(
     remoteFileSize = remoteFileSize, remoteFileSha256 = remoteFileSha256,
     metadataUpdatedAt = metadataUpdatedAt, isPinned = isPinned,
     isManuallyMarkedRead = isManuallyMarkedRead, isHidden = isHidden,
-    isArchived = isArchived ?: existingIsArchived
+    isArchived = isArchived ?: existingIsArchived,
+    wantToReadAt = wantToReadAt ?: existingWantToReadAt
 )
 
 private fun stableSuffix(value: String): String = MessageDigest.getInstance("SHA-256")

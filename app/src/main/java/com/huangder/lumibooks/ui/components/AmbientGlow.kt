@@ -83,6 +83,7 @@ internal fun rememberCoverColors(coverPath: String?): List<Color> {
  * in the draw phase only: slow drift, colour crossfade when the source changes, and it fades and
  * lifts as [scrollOffset] grows. Skipped for e-ink, reduce transparency and the artwork theme.
  * Place it in the page *background* — never inside a glass control's own source layer.
+ * Disable [driftEnabled] for a stable background without continuous blur-source invalidation.
  */
 @Composable
 internal fun AmbientGlow(
@@ -90,11 +91,12 @@ internal fun AmbientGlow(
     modifier: Modifier = Modifier,
     height: Dp = 460.dp,
     intensity: Float = 1f,
+    driftEnabled: Boolean = true,
     scrollOffset: () -> Float = { 0f }
 ) {
     if (LocalEInkMode.current || LocalReduceTransparency.current || LocalLumiBackgroundPresent.current) return
     val dark = LocalIsDarkTheme.current
-    val motion = LocalMotionEnabled.current
+    val motion = LocalMotionEnabled.current && driftEnabled
     val c0 by animateColorAsState(colors.getOrElse(0) { AppColors.Accent }, tween(700), label = "glow0")
     val c1 by animateColorAsState(colors.getOrElse(1) { c0 }, tween(700), label = "glow1")
     val c2 by animateColorAsState(colors.getOrElse(2) { c1 }, tween(700), label = "glow2")

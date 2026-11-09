@@ -6,6 +6,22 @@ import org.junit.Test
 
 class ReaderThemeSuiteCodecTest {
     @Test
+    fun largerFontSizesSurviveThemePersistenceAndPortableExport() {
+        val settings = ReaderThemeSettings(fontSize = 33f)
+        val suite = ReaderThemeSuite(id = "large-font", customName = "Large font", settings = settings,
+            lightSettings = settings.copy(fontSize = 32.3f), darkSettings = settings)
+        assertEquals(suite, ReaderThemeSuiteCodec.decode(ReaderThemeSuiteCodec.encodeExact(listOf(suite))).single())
+        assertEquals(suite, LumiThemeBundleCodec.decode(LumiThemeBundleCodec.encode(listOf(suite))).single())
+        val clamped = ReaderThemeSuites.normalized(ReaderThemeSuites.defaults() +
+            suite.copy(settings = settings.copy(fontSize = 40f)))
+            .first { it.id == suite.id }
+        assertEquals(33f, clamped.settings.fontSize)
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            LumiThemeBundleCodec.decode("""[{"id":"bad-font","settings":{"background":"day","fontSize":33.1}}]""")
+        }
+    }
+
+    @Test
     fun cornerMarginsSurvivePersistenceAndPortableExportInEveryMode() {
         val settings = ReaderThemeSettings(cornerMargins = ReaderCornerMargins(0f, null, 35f, 45f))
         val suite = ReaderThemeSuite(

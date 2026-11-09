@@ -5,6 +5,7 @@ import com.huangder.lumibooks.data.local.entity.BookTagCrossRefEntity
 import com.huangder.lumibooks.data.local.entity.BookmarkEntity
 import com.huangder.lumibooks.data.local.entity.FolderEntity
 import com.huangder.lumibooks.data.local.entity.NoteEntity
+import com.huangder.lumibooks.data.local.entity.ReadingJournalEventEntity
 import com.huangder.lumibooks.data.local.entity.ReadingRecordEntity
 import com.huangder.lumibooks.data.local.entity.SyncTombstoneEntity
 import com.huangder.lumibooks.data.local.entity.TagEntity
@@ -50,7 +51,9 @@ data class PortableBook(
     val isManuallyMarkedRead: Boolean = false,
     val isHidden: Boolean = false,
     /** Null distinguishes an older sender from an explicit restore. */
-    val isArchived: Boolean? = null
+    val isArchived: Boolean? = null,
+    /** Null for older senders; 0 means explicitly not on the to-read list. */
+    val wantToReadAt: Long? = null
 )
 
 data class PortableSnapshot(
@@ -76,7 +79,8 @@ data class PortableSnapshot(
     val tagGroups: List<TagGroupEntity> = emptyList(),
     val hasTagGroups: Boolean = true,
     val bookTagsWithoutGroupId: Set<String> = emptySet(),
-    val annotationTagsWithoutGroupId: Set<String> = emptySet()
+    val annotationTagsWithoutGroupId: Set<String> = emptySet(),
+    val journalEvents: List<ReadingJournalEventEntity> = emptyList()
 ) {
     fun toJson(): String = JSONObject().apply {
         put("schemaVersion", schemaVersion)
@@ -108,6 +112,7 @@ data class PortableSnapshot(
         put("bookHighlightRuleStates", bookHighlightRuleStates.toJsonArray(::bookHighlightRuleStateToJson))
         put("bookHighlightSettings", bookHighlightSettings.toJsonArray(::bookHighlightSettingsToJson))
         put("highlightRuleExclusions", highlightRuleExclusions.toJsonArray(::highlightRuleExclusionToJson))
+        if (journalEvents.isNotEmpty()) put("journalEvents", journalEvents.toJsonArray(::journalEventToJson))
     }.toString()
 
     companion object {
@@ -147,7 +152,8 @@ data class PortableSnapshot(
                 highlightRules = root.array("highlightRules").mapObjects(::highlightRuleFromJson),
                 bookHighlightRuleStates = root.array("bookHighlightRuleStates").mapObjects(::bookHighlightRuleStateFromJson),
                 bookHighlightSettings = root.array("bookHighlightSettings").mapObjects(::bookHighlightSettingsFromJson),
-                highlightRuleExclusions = root.array("highlightRuleExclusions").mapObjects(::highlightRuleExclusionFromJson)
+                highlightRuleExclusions = root.array("highlightRuleExclusions").mapObjects(::highlightRuleExclusionFromJson),
+                journalEvents = root.array("journalEvents").mapObjects(::journalEventFromJson)
             ).flattenLegacyTagHierarchy()
         }
     }
@@ -175,6 +181,7 @@ private fun bookToJson(book: PortableBook) = JSONObject().apply {
     put("isManuallyMarkedRead", book.isManuallyMarkedRead)
     put("isHidden", book.isHidden)
     book.isArchived?.let { put("isArchived", it) }
+    book.wantToReadAt?.let { put("wantToReadAt", it) }
 }
 
 private fun bookFromJson(json: JSONObject) = PortableBook(
@@ -198,7 +205,8 @@ private fun bookFromJson(json: JSONObject) = PortableBook(
     isPinned = json.optBoolean("isPinned", false),
     isManuallyMarkedRead = json.optBoolean("isManuallyMarkedRead", json.optDouble("readingProgress") >= 1.0),
     isHidden = json.optBoolean("isHidden", false),
-    isArchived = if (json.has("isArchived")) json.optBoolean("isArchived") else null
+    isArchived = if (json.has("isArchived")) json.optBoolean("isArchived") else null,
+    wantToReadAt = if (json.has("wantToReadAt")) json.optLong("wantToReadAt") else null
 )
 
 private fun folderToJson(item: FolderEntity) = JSONObject().apply {
@@ -291,6 +299,7 @@ private fun noteToJson(item: NoteEntity) = JSONObject().apply {
     putNullable("styleSnapshotJson", item.styleSnapshotJson)
     put("tagsJson", item.tagsJson)
     put("isStale", item.isStale)
+    item.bookProgress?.let { put("bookProgress", it.toDouble()) }
 }
 
 private fun noteFromJson(json: JSONObject) = NoteEntity(
@@ -307,7 +316,10 @@ private fun noteFromJson(json: JSONObject) = NoteEntity(
     sourceMatchKey = json.nullableString("sourceMatchKey"),
     styleSnapshotJson = json.nullableString("styleSnapshotJson"),
     tagsJson = json.optString("tagsJson", "[]"),
-    isStale = json.optBoolean("isStale", false)
+    isStale = json.optBoolean("isStale", false),
+    bookProgress = if (json.has("bookProgress") && !json.isNull("bookProgress")) {
+        json.optDouble("bookProgress").toFloat().takeIf { it.isFinite() }
+    } else null
 )
 
 private fun highlightRuleToJson(item: HighlightRuleEntity) = JSONObject().apply {
@@ -355,6 +367,20 @@ private fun highlightRuleExclusionToJson(item: HighlightRuleExclusionEntity) = J
 
 private fun highlightRuleExclusionFromJson(json: JSONObject) = HighlightRuleExclusionEntity(
     json.getString("bookId"), json.getString("ruleId"), json.getString("matchKey"), json.optLong("createdAt")
+)
+
+private fun journalEventToJson(item: ReadingJournalEventEntity) = JSONObject().apply {
+    put("id", item.id); put("type", item.type); put("bookId", item.bookId)
+    put("startedAt", item.startedAt); put("endedAt", item.endedAt); put("durationMs", item.durationMs)
+    put("listening", item.listening); put("sourceDeviceId", item.sourceDeviceId); put("updatedAt", item.updatedAt)
+}
+
+private fun journalEventFromJson(json: JSONObject) = ReadingJournalEventEntity(
+    id = json.getString("id"), type = json.optString("type", ReadingJournalEventEntity.TYPE_SESSION),
+    bookId = json.getString("bookId"), startedAt = json.optLong("startedAt"),
+    endedAt = json.optLong("endedAt", json.optLong("startedAt")), durationMs = json.optLong("durationMs"),
+    listening = json.optBoolean("listening"), sourceDeviceId = json.optString("sourceDeviceId"),
+    updatedAt = json.optLong("updatedAt", json.optLong("endedAt"))
 )
 
 private fun tombstoneToJson(item: SyncTombstoneEntity) = JSONObject().apply {

@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "skills": {
+    "kubai-shockwave-glow": {
+      "name": "kubai-shockwave-glow",
+      "version": "1.0.0",
+      "source": "redskill",
+      "install_dir": "C:\\Users\\Huangder\\.codex\\worktrees\\cloudflare-license\\android_books\\skills\\kubai-shockwave-glow",
+      "installed_at": "1794147701814",
+      "sha256": "1166e77ccb998d1a5b8fa7c68474cf7ef5d5973e68a5fb1bcb4e943c97e23fde"
+    }
+  }
+}

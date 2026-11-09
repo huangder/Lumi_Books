@@ -3,11 +3,36 @@ package com.huangder.lumibooks.ui.reader
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
 class OriginalLayoutEpubTtsPageSourceTest {
+    @Test fun hiddenReaderSkipsSleepingWebViewAndCanUseItAgainOnReturn() = runTest {
+        var visible = false
+        var webRequests = 0
+        val source = OriginalLayoutEpubTtsPageSource(2, { chapter, page ->
+            webRequests++
+            if (!visible) awaitCancellation()
+            EpubPageText(chapter, page, 1, "Rendered.", "Rendered.", 0, 9)
+        }, { "Background chapter." }, webPageTimeoutMs = 60_000L,
+            prefetchDispatcher = Dispatchers.Unconfined)
+        try {
+            source.setReaderVisible(false)
+            assertEquals("Background chapter.", source.getPage(0, 0)?.text)
+            assertEquals("Background chapter.", source.getChapter(0)?.text)
+            assertEquals(0, webRequests)
+            assertEquals(0L, testScheduler.currentTime)
+            visible = true
+            source.setReaderVisible(true)
+            assertEquals("Rendered.", source.getPage(1, 0)?.text)
+            assertTrue(webRequests > 0)
+        } finally { source.close() }
+    }
+
     @Test fun offsetSeekUsesRendererCoordinatesAndCanSeekAfterReaderDetach() = runBlocking {
         val rendered = "First. Second. Third."
         val starts = listOf(0, 7, 15, rendered.length)

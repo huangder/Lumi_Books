@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
+import com.huangder.lumibooks.util.LaunchThemeController
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.MotionPreference
@@ -20,6 +21,10 @@ import dagger.hilt.android.AndroidEntryPoint
 /** Debug-only walkthrough: theme and completion never write to the user's settings. */
 @AndroidEntryPoint
 class WelcomePreviewActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(com.huangder.lumibooks.util.LocaleHelper.applyLanguage(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -41,18 +46,23 @@ class WelcomePreviewActivity : ComponentActivity() {
                         MotionPreference.REDUCED else MotionPreference.STANDARD
                 ) {
                     WelcomeScreen(
-                        isNewInstallation = intent.getBooleanExtra("fresh", false),
+                        isNewInstallation = intent.getBooleanExtra("fresh", true),
                         shouldShowLanguageSetup = false,
                         initialLanguage = "zh-CN",
                         initialEInkMode = ink,
                         isEInkMode = ink,
                         isDark = dark,
                         isLiquidGlass = LocalAppTheme.current == "liquid_glass",
-                        onFinished = { finish() },
+                        onFinished = {
+                            startActivity(LaunchThemeController.mainIntent(this@WelcomePreviewActivity, false))
+                            finish()
+                        },
                         onOpenSponsor = {},
                         onLanguageSetupComplete = { _, _ -> },
                         onEnableLiquidGlass = { theme = "liquid_glass" },
-                        startOnIntroduction = true
+                        startOnSupport = intent.getBooleanExtra("preview_welcome_benefits", false),
+                        startOnLiquidGlassPreview = !intent.getBooleanExtra("preview_welcome_benefits", false),
+                        allowLiquidGlassReplay = true
                     )
                 }
             }

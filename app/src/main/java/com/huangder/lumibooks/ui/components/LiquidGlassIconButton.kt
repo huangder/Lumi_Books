@@ -2,7 +2,6 @@ package com.huangder.lumibooks.ui.components
 
 import com.huangder.lumibooks.ui.icons.ControlIcon
 
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.IconButton
@@ -30,6 +29,7 @@ fun LiquidGlassIconButton(
     normalContainerColor: Color = Color.Transparent,
     liquidContainerColor: Color = AppColors.CardBg,
     liquidScrimColor: Color? = null,
+    /** Retained for source compatibility; toolbar parents own the button's position. */
     settingsBackButton: Boolean = false,
     /** Disable the liquid-glass press stretch/highlight while keeping the click action. */
     pressFeedbackEnabled: Boolean = true,
@@ -59,10 +59,7 @@ fun LiquidGlassIconButton(
         return
     }
 
-    val useWhiteSettingsSurface = settingsBackButton && !isDark
-    val resolvedScrim = if (useWhiteSettingsSurface) {
-        Color.White.copy(alpha = 0.96f)
-    } else liquidScrimColor?.let { color ->
+    val resolvedScrim = liquidScrimColor?.let { color ->
         if (isDark) {
             lerp(color, Color.White, 0.14f).copy(
                 alpha = (color.alpha * 0.84f).coerceIn(0.52f, 0.72f)
@@ -71,24 +68,19 @@ fun LiquidGlassIconButton(
             color
         }
     }
-    val resolvedModifier = if (settingsBackButton) {
-        modifier.offset(x = 8.dp)
-    } else {
-        modifier
-    }
     LiquidGlassSurface(
         controlEdge = true,
         shape = CircleShape,
-        fallbackColor = if (useWhiteSettingsSurface) Color.White else liquidContainerColor,
+        fallbackColor = liquidContainerColor,
         // Keep the sampled backdrop visible, but always place the button's own
         // surface color over it so icon buttons do not become raw background cut-outs.
         contentScrimColor = resolvedScrim ?: liquidContainerColor.copy(
-            alpha = if (isDark) 0.60f else 0.72f
+            alpha = 0.24f
         ),
         interactive = pressFeedbackEnabled,
         enabled = enabled,
         onClick = onClick,
-        modifier = resolvedModifier.size(size),
+        modifier = modifier.size(size),
         decorationModifier = Modifier
     ) {
         ControlIcon(

@@ -83,6 +83,9 @@ interface BookDao {
     @Query("UPDATE books SET isHidden = :hidden, metadataUpdatedAt = :updatedAt WHERE id IN (:bookIds)")
     suspend fun setBooksHidden(bookIds: List<String>, hidden: Boolean, updatedAt: Long)
 
+    @Query("UPDATE books SET wantToReadAt = :wantToReadAt, metadataUpdatedAt = :updatedAt WHERE id = :bookId")
+    suspend fun setWantToRead(bookId: String, wantToReadAt: Long, updatedAt: Long)
+
     @Query("UPDATE books SET isArchived = :archived, metadataUpdatedAt = :updatedAt WHERE id IN (:bookIds)")
     suspend fun setBooksArchived(bookIds: List<String>, archived: Boolean, updatedAt: Long)
 

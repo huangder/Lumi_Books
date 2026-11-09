@@ -1751,7 +1751,12 @@ private fun ReaderScreenContent(
         Int,
         EpubNavigationDestination,
         Boolean
-    ) -> Unit = { origin, targetChapter, destination, showLoadingPage ->
+    ) -> Unit = submit@{ origin, targetChapter, destination, showLoadingPage ->
+        // Repeated edge input must not stop/restart the same offscreen chapter load.
+        if (epubNavigationRequest?.coalescesPageTurn(
+                origin, uiState.currentChapterIndex, targetChapter, destination
+            ) == true
+        ) return@submit
         epubNavigationOperationId += 1L
         if (origin != EpubNavigationOrigin.SEARCH) {
             epubSearchRequest = null
@@ -4739,7 +4744,8 @@ private fun ReaderScreenContent(
                 footerTopInWindow = ttsFooterTop,
                 catalogBoundsInWindow = ttsCatalogBounds,
                 revealKey = ttsRevealKey,
-                horizontalInset = sideRailItemWidth?.plus(32.dp) ?: 24.dp
+                horizontalInset = sideRailItemWidth?.plus(32.dp) ?: 24.dp,
+                menuEnterMillis = READER_MENU_CAPSULE_ENTER_MILLIS
             ) { placement ->
                 TtsPlayerPanel(
                     placement = placement,
@@ -5289,7 +5295,7 @@ private fun ReaderScreenContent(
                 backgroundColor = composeBgColor,
                 contentColor = Color(readerTextColorInt),
                 onCancel = { clearCancelledEpubNavigation(epubNavigationRequest) },
-                compact = isBookLayoutContinuousScroll,
+                compact = isBookLayoutContinuousScroll || request.origin == EpubNavigationOrigin.PAGE_TURN,
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }

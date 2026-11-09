@@ -1,5 +1,12 @@
 package com.huangder.lumibooks.ui.reader
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.VectorConverter
@@ -7,6 +14,7 @@ import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateOffsetAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
@@ -23,6 +31,7 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -30,6 +39,9 @@ import com.huangder.lumibooks.tts.ReaderTtsDock
 import com.huangder.lumibooks.tts.ReaderTtsPosition
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
+import com.huangder.lumibooks.ui.animation.AppEasing
+import com.huangder.lumibooks.ui.animation.LumiMotion
+import com.huangder.lumibooks.ui.animation.VisualMotion
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -125,6 +137,8 @@ internal fun ReaderTtsFloatingHost(
     catalogBoundsInWindow: Rect? = null,
     revealKey: Int = 0,
     horizontalInset: Dp = 24.dp,
+    menuEnterMillis: Int = LumiMotion.MenuEnterMillis,
+    menuExitMillis: Int = LumiMotion.MenuExitMillis,
     modifier: Modifier = Modifier,
     content: @Composable (ReaderTtsPlacement) -> Unit
 ) {
@@ -165,11 +179,19 @@ internal fun ReaderTtsFloatingHost(
         val storedPoint = area.constrain(area.point(localPosition))
         val savedPoint = dragPoint?.let(area::constrain) ?: if (localPosition.dock == ReaderTtsDock.NONE && area.inset > 24f * area.scale)
             area.clearRails(storedPoint) else storedPoint
-        val point = if (readerMenuVisible) {
-            catalogBoundsInWindow?.let { area.aboveCatalogIfNeeded(savedPoint, it, windowOrigin) }
-                ?: area.copy(compact = false).constrain(savedPoint)
-        } else savedPoint
-        val dock = if (readerMenuVisible) ReaderTtsDock.NONE else localPosition.dock
+        val menuPoint = catalogBoundsInWindow?.let {
+            area.aboveCatalogIfNeeded(savedPoint, it, windowOrigin)
+        } ?: area.copy(compact = false).constrain(savedPoint)
+        val needsMenuCopy = menuPoint != savedPoint || localPosition.dock != ReaderTtsDock.NONE
+        val menuTransition = updateTransition(
+            visible && readerMenuVisible && needsMenuCopy,
+            label = "readerTtsMenuCopy"
+        )
+        // Keep the saved capsule hidden until the menu copy has finished exiting.
+        // A quick reopen reverses this transition without briefly restoring it.
+        val handingOff = menuTransition.currentState || menuTransition.targetState
+        val point = savedPoint
+        val dock = localPosition.dock
         val progress by animateFloatAsState(
             if (dock == ReaderTtsDock.NONE) 0f else 1f,
             tween(if (eInk) 0 else if (motion) 240 else 100), label = "readerTtsDock")
@@ -180,8 +202,8 @@ internal fun ReaderTtsFloatingHost(
             durationMillis = if (eInk || dragPoint != null) 0 else if (motion) 240 else 100,
             easing = if (motion && !eInk && dragPoint == null) LinearEasing else LinearOutSlowInEasing
         )
-        // Animate the complete position as one vector. This keeps menu handoff and
-        // handle restoration on one straight path instead of composing separate moves.
+        // Only saved-position changes and handle restoration move this capsule.
+        // The menu gets its own anchored copy, so no capsule flies across the page.
         val animatedPosition by animateOffsetAsState(
             targetValue = point,
             animationSpec = positionSpec,
@@ -281,15 +303,63 @@ internal fun ReaderTtsFloatingHost(
                 collapseKey++
             }
         )
-        Layout(content = {
-            TtsPlayerOverlay(visible) { content(placement) }
-        }, modifier = Modifier.fillMaxSize()) { measurables, constraints ->
-            val child = measurables.singleOrNull()?.measure(Constraints(
-                maxWidth = constraints.maxWidth,
-                maxHeight = (area.bottom - area.top).roundToInt().coerceAtLeast(48)))
-            layout(constraints.maxWidth, constraints.maxHeight) {
-                // Expanding adds height above the capsule, keeping the play button stationary.
-                child?.place(0, (animatedY + 48f * density.density - child.height).roundToInt())
+        @Composable
+        fun PositionedCapsule(y: Float, capsule: @Composable () -> Unit) {
+            Layout(content = capsule, modifier = Modifier.fillMaxSize()) { measurables, constraints ->
+                val child = measurables.singleOrNull()?.measure(Constraints(
+                    maxWidth = constraints.maxWidth,
+                    maxHeight = (area.bottom - area.top).roundToInt().coerceAtLeast(48)))
+                layout(constraints.maxWidth, constraints.maxHeight) {
+                    // Expanding adds height above the capsule, keeping the play button stationary.
+                    child?.place(0, (y + 48f * density.density - child.height).roundToInt())
+                }
+            }
+        }
+        PositionedCapsule(animatedY) {
+            AnimatedVisibility(
+                visible = visible && !handingOff,
+                enter = when {
+                    eInk -> EnterTransition.None
+                    !motion -> fadeIn(VisualMotion.tween(120))
+                    else -> fadeIn(VisualMotion.tween(220, easing = AppEasing.Smooth)) +
+                        slideInVertically(VisualMotion.tween(220, easing = AppEasing.Smooth)) {
+                            with(density) { -12.dp.roundToPx() }
+                        }
+                },
+                exit = if (eInk) ExitTransition.None else fadeOut(VisualMotion.tween(100)),
+                modifier = Modifier.testTag("reader-tts-original-overlay")
+            ) { content(placement) }
+        }
+        PositionedCapsule(menuPoint.y) {
+            menuTransition.AnimatedVisibility(
+                visible = { it },
+                enter = when {
+                    eInk -> EnterTransition.None
+                    !motion -> fadeIn(VisualMotion.tween(120))
+                    else -> fadeIn(VisualMotion.tween(menuEnterMillis)) + slideInVertically(
+                        VisualMotion.tween(menuEnterMillis, easing = AppEasing.Smooth)
+                    ) { 60 }
+                },
+                exit = when {
+                    eInk -> ExitTransition.None
+                    !motion -> fadeOut(VisualMotion.tween(100))
+                    else -> fadeOut(VisualMotion.tween(menuExitMillis)) + slideOutVertically(
+                        VisualMotion.tween(menuExitMillis, easing = AppEasing.Accelerate)
+                    ) { 60 }
+                },
+                modifier = Modifier.testTag("reader-tts-menu-overlay")
+            ) {
+                content(placement.copy(
+                    capsuleX = with(density) { menuPoint.x.toDp() },
+                    capsuleWidth = 128.dp,
+                    expandLeft = menuPoint.x > area.copy(compact = false).maxX / 2f,
+                    dock = ReaderTtsDock.NONE,
+                    dockProgress = 0f,
+                    dragging = false,
+                    dragModifier = Modifier,
+                    onAnchorChanged = {},
+                    onRestore = {}
+                ))
             }
         }
     }

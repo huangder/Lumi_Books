@@ -77,6 +77,9 @@ import com.huangder.lumibooks.tts.ExternalTtsProtocol
 import com.huangder.lumibooks.tts.ExternalTtsResumePosition
 import com.huangder.lumibooks.tts.TtsListeningPosition
 import com.huangder.lumibooks.tts.TtsStartChoice
+import com.huangder.lumibooks.tts.ListeningDisplayStyle
+import com.huangder.lumibooks.tts.ListeningPageSettings
+import com.huangder.lumibooks.tts.SubtitleSeekGesture
 import com.huangder.lumibooks.tts.TtsReaderResumeChoice
 import com.huangder.lumibooks.tts.ExternalTtsSettings
 import com.huangder.lumibooks.tts.ExternalTtsConfig
@@ -396,6 +399,8 @@ class DataStoreManager @Inject constructor(
         private val PREFERRED_TTS_ENGINE = stringPreferencesKey("preferred_tts_engine")
         private val TTS_PROVIDER_SELECTION = stringPreferencesKey("tts_provider_selection")
         private val TTS_START_CHOICE = stringPreferencesKey("tts_start_choice")
+        private val TTS_PAGE_DEFAULT_STYLE = stringPreferencesKey("tts_page_default_style")
+        private val TTS_SUBTITLE_SEEK_GESTURE = stringPreferencesKey("tts_subtitle_seek_gesture")
         private val TTS_CONTINUE_ON_READER_EXIT = booleanPreferencesKey("tts_continue_on_reader_exit")
         private val TTS_READER_RESUME_CHOICE = stringPreferencesKey("tts_reader_resume_choice")
         private val TTS_READER_RESUME_HINT_MIGRATED = booleanPreferencesKey("tts_reader_resume_hint_migrated_v1")
@@ -1335,6 +1340,21 @@ class DataStoreManager @Inject constructor(
 
     override val ttsStartChoice: Flow<TtsStartChoice?> = context.dataStore.data.map {
         TtsStartChoice.fromStoredValue(it[TTS_START_CHOICE])
+    }
+
+    val listeningPageSettings: Flow<ListeningPageSettings> = context.dataStore.data.map {
+        ListeningPageSettings(
+            ListeningDisplayStyle.fromStoredValue(it[TTS_PAGE_DEFAULT_STYLE]),
+            SubtitleSeekGesture.fromStoredValue(it[TTS_SUBTITLE_SEEK_GESTURE])
+        )
+    }.distinctUntilChanged()
+
+    suspend fun saveListeningDisplayStyle(style: ListeningDisplayStyle) {
+        context.dataStore.edit { it[TTS_PAGE_DEFAULT_STYLE] = style.storedValue }
+    }
+
+    suspend fun saveSubtitleSeekGesture(gesture: SubtitleSeekGesture) {
+        context.dataStore.edit { it[TTS_SUBTITLE_SEEK_GESTURE] = gesture.storedValue }
     }
 
     val ttsContinueOnReaderExit: Flow<Boolean?> = context.dataStore.data.map { it[TTS_CONTINUE_ON_READER_EXIT] }
@@ -3442,6 +3462,7 @@ class DataStoreManager @Inject constructor(
         if (key == PORTABLE_PREFERENCE_METADATA.name) return false
         if (key == TTS_READER_RESUME_HINT_MIGRATED.name) return false
         if (key.startsWith("webdav_")) return false
+        if (key.startsWith(com.huangder.lumibooks.reading.journal.ReadingJournalSettings.LOCAL_KEY_PREFIX)) return false
         if (key == "authorized_book_directories") return false
         if (key in nonPortablePreferenceKeys) return false
         return true

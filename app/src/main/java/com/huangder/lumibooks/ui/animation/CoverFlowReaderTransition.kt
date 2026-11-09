@@ -7,8 +7,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -34,6 +35,19 @@ internal object CoverFlowReaderMotion {
     /** Zoom-only opening: the shelf grows towards the reader and is gone before the text settles. */
     fun libraryZoomScale(progress: Float): Float = 1f + 0.12f * smooth(progress)
     fun libraryZoomFade(progress: Float): Float = smooth(progress / 0.55f)
+
+    fun windowBounds(source: androidx.compose.ui.geometry.Rect, target: androidx.compose.ui.geometry.Rect, progress: Float): androidx.compose.ui.geometry.Rect {
+        val fraction = smooth(progress)
+        return androidx.compose.ui.geometry.Rect(
+            left = source.left + (target.left - source.left) * fraction,
+            top = source.top + (target.top - source.top) * fraction,
+            right = source.right + (target.right - source.right) * fraction,
+            bottom = source.bottom + (target.bottom - source.bottom) * fraction
+        )
+    }
+
+    fun windowCornerRadius(sourceRadiusDp: Float, progress: Float): Float =
+        sourceRadiusDp * (1f - smooth(progress))
 }
 
 @Composable
@@ -42,39 +56,27 @@ internal fun CoverFlowReaderOverlay(transition: BookReaderTransitionState, modif
     val source = transition.sourceBounds ?: return
     val book = transition.coverBook ?: return
     val density = LocalDensity.current
-    val bg = AppColors.WindowBg
     val zoom = transition.zoomOnly
-    // A zoom grows the reader's own loading page (its paper colour) with the text still hidden.
-    val page = if (zoom) transition.readerPaperColorArgb?.let { Color(readerTransitionPaperColor(it)) } ?: AppColors.PageBg
-        else bg
-    Box(modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().graphicsLayer {
-            val p = transition.coverFlowProgressSnapshot.value
-            alpha = CoverFlowReaderMotion.readerAlpha(p, zoom) *
-                (1f - transition.readerRevealSnapshot.value.coerceIn(0f, 1f))
-            if (zoom) {
-                scaleX = CoverFlowReaderMotion.readerScale(p, zoom = true)
-                scaleY = scaleX
-            }
-        }.background(page))
-        // A light veil blends the blurred library into the reading surface. It also keeps slow
-        // imports coherent after Navigation has disposed the outgoing library destination.
-        Box(Modifier.fillMaxSize().graphicsLayer {
-            val p = transition.coverFlowProgressSnapshot.value
-            // A zoom carries the shelf itself out of view; the veil would hide that motion.
-            alpha = if (transition.zoomOnly) 0f
-                else CoverFlowReaderMotion.sideExit(p) * (1f - CoverFlowReaderMotion.readerAlpha(p)) * 0.65f
-        }.background(bg))
+    val page = transition.readerPaperColorArgb?.let { Color(readerTransitionPaperColor(it)) }
+        ?: AppColors.PageBg
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val target = androidx.compose.ui.geometry.Rect(0f, 0f, constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat())
+        val p = transition.coverFlowProgressSnapshot.value
+        val window = CoverFlowReaderMotion.windowBounds(source, target, p)
+        val windowShape = RoundedCornerShape(
+            CoverFlowReaderMotion.windowCornerRadius(transition.sourceCornerRadiusDp, p).dp
+        )
+        Box(
+            Modifier.offset { IntOffset(window.left.roundToInt(), window.top.roundToInt()) }
+                .size(with(density) { window.width.toDp() }, with(density) { window.height.toDp() })
+                .clip(windowShape)
+                .background(page)
+        )
         if (!transition.zoomOnly) CoverFlowCover(book,
-            Modifier.offset { IntOffset(source.left.roundToInt(), source.top.roundToInt()) }
-                .size(with(density) { source.width.toDp() }, with(density) { source.height.toDp() })
-                .graphicsLayer {
-                    val p = transition.coverFlowProgressSnapshot.value
-                    transformOrigin = TransformOrigin.Center
-                    scaleX = CoverFlowReaderMotion.coverScale(p)
-                    scaleY = scaleX
-                    alpha = CoverFlowReaderMotion.coverAlpha(p)
-                })
+            Modifier.offset { IntOffset(window.left.roundToInt(), window.top.roundToInt()) }
+                .size(with(density) { window.width.toDp() }, with(density) { window.height.toDp() })
+                .clip(windowShape)
+                .graphicsLayer { alpha = CoverFlowReaderMotion.coverAlpha(p) })
         if (zoom || rememberBookLoadingIndicatorVisible(transition)) {
             CircularProgressIndicator(
                 Modifier.align(Alignment.Center).size(20.dp).graphicsLayer {

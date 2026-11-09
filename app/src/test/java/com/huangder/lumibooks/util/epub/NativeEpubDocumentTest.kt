@@ -9,6 +9,12 @@ class NativeEpubDocumentTest {
             "<html><head></head><body>$body</body></html>".toByteArray()), listOf("OPS/book.css" to css),
             if (fixed) EpubRenditionLayout.PRE_PAGINATED else EpubRenditionLayout.REFLOWABLE))
 
+    @Test fun duokanImageNotesKeepWebViewInteractionEvenWithoutPublisherCss() {
+        assertEquals(ChapterRenderEngine.WEBVIEW,
+            compile("<p>Text<img class='duokan-footnote' alt='Note' src='note.png'/></p>").decision.engine)
+        assertEquals(ChapterRenderEngine.WEBVIEW,
+            compile("<p><a class='duokan-footnote' href='#n'>[1]</a></p><p id='n'>Note</p>").decision.engine)
+    }
     @Test fun specificityImportantInlineAndRelativeInheritance() {
         val doc = compile("<p id='a' class='x' style='color:green'>A<span>B<b>C</b></span></p>",
             "#a{color:red;font-size:2em}.x{color:blue}p{color:black}span{font-size:50%}b{color:white!important}").document!!

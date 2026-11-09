@@ -120,6 +120,7 @@ fun BookNotesScreen(
     val scope = rememberCoroutineScope()
     val glassBackdrop = rememberLayerBackdrop()
     val segmentedControlBackdrop = rememberLayerBackdrop()
+    val pageState = com.huangder.lumibooks.ui.components.rememberCollapsingPageState()
     var selectedTab by rememberSaveable(initialTab) {
         mutableIntStateOf(initialTab.coerceIn(0, 3))
     }
@@ -217,6 +218,7 @@ fun BookNotesScreen(
         CollapsingPageScaffold(
             title = stringResource(R.string.notes_title),
             drawContentBehindHeader = true,
+            state = pageState,
             onBack = onNavigateBack,
             modifier = Modifier.fillMaxSize()
                 .then(if (isLiquidGlass) Modifier.layerBackdrop(glassBackdrop) else Modifier),
@@ -265,6 +267,7 @@ fun BookNotesScreen(
                     onShare = shareNote,
                     notes = uiState.highlights.filter(filter::matches),
                     targetNoteId = targetNoteId,
+                    onTargetShown = pageState::collapse,
                     onEditTags = { editingNoteTags = it },
                     onDelete = { viewModel.deleteNote(it) }
                 )
@@ -272,6 +275,7 @@ fun BookNotesScreen(
                     onShare = shareNote,
                     notes = uiState.underlines.filter(filter::matches),
                     targetNoteId = targetNoteId,
+                    onTargetShown = pageState::collapse,
                     onEditTags = { editingNoteTags = it },
                     onDelete = { viewModel.deleteNote(it) }
                 )
@@ -279,6 +283,7 @@ fun BookNotesScreen(
                     onShare = shareNote,
                     notes = uiState.noteItems.filter(filter::matches),
                     targetNoteId = targetNoteId,
+                    onTargetShown = pageState::collapse,
                     onEditTags = { editingNoteTags = it },
                     onDelete = { viewModel.deleteNote(it) }
                 )
@@ -438,6 +443,7 @@ private fun NoteList(
     notes: List<Note>,
     onShare: (Note) -> Unit,
     targetNoteId: Long? = null,
+    onTargetShown: () -> Unit = {},
     onEditTags: (Note) -> Unit,
     onDelete: (Note) -> Unit
 ) {
@@ -460,6 +466,8 @@ private fun NoteList(
                 val targetIndex = notes.indexOfFirst { it.id == targetNoteId }
                 if (targetIndex >= 0) {
                     listState.scrollToItem(targetIndex)
+                    // Match a manual scroll: the header collapses and its progressive blur covers the list.
+                    if (targetIndex > 0) onTargetShown()
                     targetHandled = true
                 }
             }

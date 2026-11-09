@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="book_want_to_read">読みたいに追加</string>
+    <string name="book_remove_want_to_read">読みたいから外す</string>
+    <string name="book_want_to_read_added">読みたいリストに追加しました</string>
+    <string name="book_want_to_read_removed">読みたいリストから外しました</string>
+    <string name="section_to_read">読みたい本</string>
+</resources>

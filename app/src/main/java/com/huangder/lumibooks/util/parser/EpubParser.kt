@@ -336,7 +336,10 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 val openTag = anchor.substring(0, openTagEnd + 1)
                 val innerHtml = anchor.substring(openTagEnd + 1, closeTagStart)
                 if (!isFootnoteAnchorTag(openTag, innerHtml)) return@replace anchor
-                val rewrittenInner = IMAGE_TAG_REGEX.replace(innerHtml) { image ->
+                val rewrittenInner = IMAGE_TAG_REGEX.replace(innerHtml) imageLoop@ { image ->
+                    val element = org.jsoup.Jsoup.parseBodyFragment(image.value).selectFirst("img")
+                    if (element != null && com.huangder.lumibooks.util.epub.EpubFootnoteImagePolicy
+                            .isPublisherIllustration(element)) return@imageLoop image.value
                     images += image.value
                     inlineImagePlaceholder(images.size - 1)
                 }

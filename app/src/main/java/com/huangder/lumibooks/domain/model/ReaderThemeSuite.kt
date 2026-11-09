@@ -25,6 +25,7 @@ data class ReaderThemeSettings(
     val cornerMargins: ReaderCornerMargins = ReaderCornerMargins()
 ) {
     companion object {
+        val FONT_SIZE_RANGE = 12f..33f
         val LINE_HEIGHT_RANGE = 0.5f..2.5f
         val LETTER_SPACING_RANGE = -5f..10f
 
@@ -235,7 +236,7 @@ object ReaderThemeSuites {
         backgroundImageOpacity = backgroundImageOpacity.coerceIn(0f, 1f),
         backgroundImageBlurDp = backgroundImageBlurDp.coerceIn(0f, 40f),
         // Same limits as the theme sheet's sliders.
-        fontSize = (fontSize * 10f).roundToInt().coerceIn(120, 280) / 10f,
+        fontSize = ((fontSize * 10f).roundToInt() / 10f).coerceIn(ReaderThemeSettings.FONT_SIZE_RANGE),
         fontType = fontType.takeIf(String::isNotBlank) ?: "system",
         bodyFontWeight = (bodyFontWeight * 10f).roundToInt().coerceIn(1000, 9000) / 10f,
         lineHeight = lineHeight.coerceIn(ReaderThemeSettings.LINE_HEIGHT_RANGE),
@@ -435,7 +436,8 @@ object LumiThemeBundleCodec {
         validateNumber(settings, "backgroundImageOpacity", 0.0, 1.0, label)
         validateNumber(settings, "backgroundImageBlurDp", 0.0, 40.0, label)
         validateColor(settings, label)
-        validateNumber(settings, "fontSize", 12.0, 28.0, label)
+        validateNumber(settings, "fontSize", ReaderThemeSettings.FONT_SIZE_RANGE.start.toDouble(),
+            ReaderThemeSettings.FONT_SIZE_RANGE.endInclusive.toDouble(), label)
         if (settings.has("fontType")) validateOptionalString(settings, "fontType", label)
         validateNumber(settings, "bodyFontWeight", 100.0, 900.0, label)
         validateNumber(settings, "lineHeight", ReaderThemeSettings.LINE_HEIGHT_RANGE.start.toDouble(),

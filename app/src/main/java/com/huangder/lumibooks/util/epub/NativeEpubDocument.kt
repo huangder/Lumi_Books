@@ -10,7 +10,8 @@ internal enum class ChapterRenderEngine { NATIVE, WEBVIEW }
 internal data class ChapterRenderDecision(val engine: ChapterRenderEngine, val reason: String? = null)
 internal data class NativeEpubSource(val href: String, val resource: EpubResource,
     val stylesheets: List<Pair<String, String>>, val layout: EpubRenditionLayout,
-    val unavailableReason: String? = null)
+    val unavailableReason: String? = null,
+    val duokanPage: EpubDuokanPage? = null)
 internal data class NativeEpubFontFace(
     val family: String,
     val resource: EpubResource,
@@ -99,7 +100,11 @@ internal object NativeEpubCompiler {
     fun compile(source: NativeEpubSource, readResource: (String) -> EpubResource? = { null }): NativeEpubCompilation = try {
         if (source.layout != EpubRenditionLayout.REFLOWABLE) throw Unsupported("fixed layout")
         source.unavailableReason?.let { throw Unsupported(it) }
+        if (source.duokanPage != null) throw Unsupported("Duokan page presentation")
         val dom = Jsoup.parse(source.resource.bytes.toString(Charsets.UTF_8))
+        if (dom.selectFirst("img.duokan-footnote, a.duokan-footnote") != null) {
+            throw Unsupported("Duokan footnote interaction")
+        }
         val sheets = source.stylesheets
         // Keep unconditional screen wrappers and EPUB metadata declarations.
         sheets.forEach { (_, css) ->

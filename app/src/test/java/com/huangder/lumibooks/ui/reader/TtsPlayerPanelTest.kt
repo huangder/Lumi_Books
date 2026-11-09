@@ -49,6 +49,8 @@ class TtsPlayerPanelTest {
     @get:Rule val compose = createComposeRule()
     private val readerMenu = mutableStateOf(false)
     private val playback = mutableStateOf(TtsPlaybackState.PAUSED)
+    private val followPageTurns = mutableStateOf(false)
+    private val chapterTitle = mutableStateOf("Chapter one")
     private lateinit var view: View
     private var plays = 0
     private var previous = 0
@@ -89,11 +91,13 @@ class TtsPlayerPanelTest {
                         val panel: @Composable (ReaderTtsPlacement?) -> Unit = { placement ->
                             TtsPlayerPanel(
                                 placement = placement,
-                                chapterTitle = "Chapter one",
+                                chapterTitle = chapterTitle.value,
                                 playbackState = playback.value,
                                 speechRate = 1f, speechRateMode = TtsProsodyMode.OVERRIDE,
                                 pitch = 1f, pitchMode = TtsProsodyMode.OVERRIDE, usesAndroidTts = androidTts,
                                 sleepTimerRemainingMs = null,
+                                followUserPageTurns = followPageTurns.value,
+                                onFollowUserPageTurnsChange = { followPageTurns.value = it },
                                 onPlayPause = { plays++ }, onStop = { stops++ },
                                 onOpenFullscreen = { fullscreens++ },
                                 onSkipForward = { next++ }, onSkipBackward = { previous++ },
@@ -117,6 +121,22 @@ class TtsPlayerPanelTest {
                 }
             }
         }
+    }
+
+    @Test fun pageFollowCheckUsesLiveStateAndSurvivesReaderPageChanges() {
+        show()
+        more(R.string.tts_expand_controls)
+        control(R.string.tts_follow_page_turns).assertIsNotSelected()
+        // The host retains the menu spec while reader/controller state changes.
+        compose.runOnIdle { followPageTurns.value = true }
+        control(R.string.tts_follow_page_turns).assertIsSelected()
+        compose.runOnIdle { menus.dismiss() }
+        compose.runOnIdle { chapterTitle.value = "Chapter two" }
+        more(R.string.tts_expand_controls)
+        control(R.string.tts_follow_page_turns).assertIsSelected().performClick()
+        compose.runOnIdle { assertFalse(followPageTurns.value) }
+        more(R.string.tts_expand_controls)
+        control(R.string.tts_follow_page_turns).assertIsNotSelected()
     }
 
     @Test fun compactControlsExpandOnDemandAndKeepPlaybackActions() {
@@ -312,6 +332,58 @@ class TtsPlayerPanelTest {
             compose.runOnIdle { readerMenu.value = false }
             assertEquals(before, compose.onNodeWithTag("reader-tts-capsule").fetchSemanticsNode().boundsInRoot)
         }
+    }
+
+    @Test fun menuCopyFadesAtItsOwnAnchorAndOriginalReturnsOnlyAfterMenuExit() {
+        position.value = ReaderTtsPosition(.85f, 1f, saved = true)
+        show(motion = true)
+        val original = compose.onNodeWithTag("reader-tts-capsule").fetchSemanticsNode().boundsInRoot
+        val saved = position.value
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { readerMenu.value = true }
+        advance(64)
+        val capsules = compose.onAllNodesWithTag("reader-tts-capsule").fetchSemanticsNodes()
+        assertEquals("Opening crossfades two separate capsules", 2, capsules.size)
+        assertTrue("The original must fade in place", capsules.any { it.boundsInRoot == original })
+        val copy = capsules.single { it.boundsInRoot != original }.boundsInRoot
+        assertEquals("The copy must start at the catalog's x, without flying diagonally",
+            catalogBounds.value.left, copy.left, .01f)
+        advance(500)
+        compose.onNodeWithTag("reader-tts-original-overlay").assertDoesNotExist()
+        compose.onNodeWithTag("reader-tts-menu-overlay").assertIsDisplayed()
+        compose.runOnIdle { readerMenu.value = false }
+        advance(64)
+        compose.onNodeWithTag("reader-tts-original-overlay").assertDoesNotExist()
+        val exiting = compose.onNodeWithTag("reader-tts-capsule").fetchSemanticsNode().boundsInRoot
+        assertEquals(catalogBounds.value.left, exiting.left, .01f)
+        advance(128)
+        compose.onNodeWithTag("reader-tts-menu-overlay").assertDoesNotExist()
+        val returning = compose.onNodeWithTag("reader-tts-capsule").fetchSemanticsNode().boundsInRoot
+        assertEquals(original.left, returning.left, .01f)
+        assertTrue("The original should fade in while moving down from slightly above",
+            returning.top < original.top && returning.top >= original.top - 12f)
+        capture("original-return-downward")
+        advance(500)
+        compose.onNodeWithTag("reader-tts-menu-overlay").assertDoesNotExist()
+        assertEquals(original, compose.onNodeWithTag("reader-tts-capsule").fetchSemanticsNode().boundsInRoot)
+        assertEquals(saved, position.value)
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test fun reopeningDuringMenuExitDoesNotFlashOriginalCapsule() {
+        show(motion = true)
+        compose.runOnIdle { readerMenu.value = true }
+        compose.waitForIdle()
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { readerMenu.value = false }
+        advance(64)
+        compose.runOnIdle { readerMenu.value = true }
+        advance(64)
+        compose.onNodeWithTag("reader-tts-original-overlay").assertDoesNotExist()
+        advance(500)
+        compose.onNodeWithTag("reader-tts-menu-overlay").assertIsDisplayed()
+        compose.onAllNodesWithTag("reader-tts-capsule").assertCountEquals(1)
+        compose.mainClock.autoAdvance = true
     }
 
     @Test fun animatedMenuHandoffAndRapidToggleFinishInTheRequestedState() {

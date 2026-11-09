@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="tts_page_settings_title">听书页设置</string>
+    <string name="tts_page_default_style">默认展示样式</string>
+    <string name="tts_page_style_cover">封面</string>
+    <string name="tts_page_style_subtitles">字幕</string>
+    <string name="tts_page_seek_gesture">跳转手势</string>
+    <string name="tts_page_seek_double_tap">双击字幕</string>
+    <string name="tts_page_seek_single_tap">单击字幕</string>
     <string name="tts_full_cover">封面模式</string>
     <string name="tts_full_subtitles">字幕模式</string>
     <string name="tts_full_previous_chapter">上一章</string>

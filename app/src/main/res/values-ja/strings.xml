@@ -987,7 +987,7 @@
     <string name="txt_toc_help_notes_title">巻と章が両方ある場合</string>
     <string name="txt_toc_help_notes_body">巻の正規表現を入力すると、章より先に巻を判定します。例：^第\\s*[0-9０-９]+巻.*$。巻がない TXT は章の正規表現だけで構いません。保存して適用すると目次と読書位置が更新されます。</string>
     <string name="txt_toc_help_compat_title">互換ルールとは？</string>
-    <string name="txt_toc_help_compat_body">互換ルールは他社リーダーアプリの目次ルールファイルから取り込みます。Lumi はその中の正規表現だけを使い、ファイル全体に一致させる方式で実行します。各行は前後の行と一緒に照合されるため、先読み・後読みの記法は使えますが、後方参照には対応しません。ルール内のスクリプトは保存も実行もされません。Lumi は書籍コンテンツもオンライン書源も提供・取り込みしません。互換ルールは、あなたが閲覧権限を持つローカル TXT ファイルの解析だけに使われます。</string>
+    <string name="txt_toc_help_compat_body">互換ルールは他社リーダーアプリの目次ルールファイルから取り込みます。Lumi はその中の正規表現だけを使い、ファイル全体に一致させる方式で実行します。各行は前後の行と一緒に照合されるため、先読み・後読みの記法は使えますが、後方参照には対応しません。ルール内のスクリプトは保存も実行もされません。Lumi は書籍コンテンツやオンラインの書籍取得サービスを提供しません。互換ルールは、あなたが閲覧権限を持つローカル TXT ファイルの解析だけに使われます。</string>
     <string name="txt_toc_library_summary">カスタムルール %1$d 件、互換ルール %2$d 件</string>
     <string name="txt_toc_compat_section_title">互換ルール（他社リーダーアプリ形式）</string>
     <string name="txt_toc_compat_description">ファイル全体の一致方式で、ルール内の正規表現だけを使用します。スクリプトによる置換は実行しません。</string>
@@ -998,13 +998,13 @@
     <string name="txt_toc_compat_clear">互換ルールを消去</string>
     <string name="txt_toc_compat_cleared">互換ルールを消去しました</string>
     <string name="txt_toc_compat_notice_title">他社ルールの利用前にご確認ください</string>
-    <string name="txt_toc_compat_notice_body">Lumi は書籍コンテンツもオンライン書源も提供・取り込みしません。互換ルールは、あなたが閲覧権限を持つローカル TXT ファイルの解析のみに使用され、ルール内のスクリプトは実行されません。</string>
+    <string name="txt_toc_compat_notice_body">Lumi は書籍コンテンツやオンラインの書籍取得サービスを提供しません。互換ルールは、あなたが閲覧権限を持つローカル TXT ファイルの解析のみに使用され、ルール内のスクリプトは実行されません。</string>
     <string name="txt_toc_compat_notice_confirm">了解しました</string>
     <string name="txt_toc_rule_compat_prefix">互換：%1$s</string>
     <string name="txt_toc_import_empty">ルールファイルが空です</string>
     <string name="txt_toc_import_not_json">判別できないルールファイル形式です</string>
     <string name="txt_toc_import_unknown_format">判別できないルールファイル形式です。TXT 目次ルールのみ対応します</string>
-    <string name="txt_toc_import_book_source_unsupported">本アプリは書源形式に対応していません。TXT 目次ルールのみ対応します</string>
+    <string name="txt_toc_import_book_source_unsupported">本アプリはオンラインコンテンツ設定形式に対応していません。TXT 目次ルールのみ対応します</string>
     <string name="txt_toc_import_builtin_reserved">取り込んだルールで内蔵ルールを上書きできません</string>
     <string name="txt_toc_import_result">Lumi ルール %1$d 件、互換ルール %2$d 件を読み込み、%3$d 件をスキップしました（うち %4$d 件は未実行のスクリプトを含みます）</string>
 

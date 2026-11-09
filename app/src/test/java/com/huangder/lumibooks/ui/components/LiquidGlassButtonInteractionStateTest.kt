@@ -19,8 +19,8 @@ class LiquidGlassButtonInteractionStateTest {
             motionEnabled = true
         )
 
-        assertEquals(1.10f, transform.scaleX, 0.0001f)
-        assertEquals(1.10f, transform.scaleY, 0.0001f)
+        assertEquals(1.16f, transform.scaleX, 0.0001f)
+        assertEquals(1.16f, transform.scaleY, 0.0001f)
         assertEquals(0f, transform.translationX, 0.0001f)
         assertEquals(0f, transform.translationY, 0.0001f)
     }
@@ -35,7 +35,7 @@ class LiquidGlassButtonInteractionStateTest {
             expansionPx = 4f,
             motionEnabled = true
         )
-        val baseScale = 1.10f
+        val baseScale = 1.16f
 
         assertTrue(transform.translationX > 0f)
         assertEquals(0f, transform.translationY, 0.0001f)
@@ -52,15 +52,15 @@ class LiquidGlassButtonInteractionStateTest {
         assertEquals(positive.translationX, -negative.translationX, 0.0001f)
         assertEquals(positive.translationY, -negative.translationY, 0.0001f)
         assertTrue(Offset(positive.translationX, positive.translationY).getDistance() <= 4.801f)
-        assertTrue(positive.scaleX <= 1.16f && positive.scaleY <= 1.16f)
+        assertTrue(positive.scaleX <= 1.22f && positive.scaleY <= 1.22f)
     }
 
     @Test
     fun pressScaleDoesNotDependOnDensityOrCapsuleAspectRatio() {
         for ((width, height) in listOf(32f to 32f, 160f to 48f, 960f to 144f)) {
             val transform = liquidGlassButtonLayerTransform(width, height, 1f, Offset.Zero, 4f, true)
-            assertEquals(1.1f, transform.scaleX, 0.0001f)
-            assertEquals(1.1f, transform.scaleY, 0.0001f)
+            assertEquals(1.16f, transform.scaleX, 0.0001f)
+            assertEquals(1.16f, transform.scaleY, 0.0001f)
         }
     }
 

@@ -410,14 +410,13 @@ fun ThemeSettingsSheet(
             var previewWeight by remember(currentFontType, currentCustomFontPath,
                 currentBodyFontWeight) { mutableFloatStateOf(currentBodyFontWeight) }
 
-            Row(
+            Column(
                 Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.Top
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Column(Modifier.weight(1f)) {
+                Column(Modifier.fillMaxWidth()) {
                     Row(
-                        Modifier.fillMaxWidth().height(28.dp),
+                        Modifier.fillMaxWidth().height(24.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(stringResource(R.string.label_font_size), Modifier.weight(1f),
@@ -433,18 +432,18 @@ fun ThemeSettingsSheet(
                                 fontWeight = FontWeight.SemiBold, maxLines = 1)
                         }
                     }
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(2.dp))
                     com.huangder.lumibooks.ui.components.PillSlider(
                         value = currentFontSize,
                         onValueChange = { onFontSizeChange((it * 10f).roundToInt() / 10f) },
-                        valueRange = 12f..28f,
+                        valueRange = ReaderThemeSettings.FONT_SIZE_RANGE,
                         step = 0.1f,
                         onDragValueChange = { value ->
                             val precise = (value * 10f).roundToInt() / 10f
                             fontSliderPreview = fontSliderPreview?.takeIf { it.key == "font-size" }
                                 ?.copy(value = precise)
                                 ?: fontSizeSliderBounds?.let {
-                                    ReaderSliderPreview("font-size", it, precise, 12f..28f, 0.1f)
+                                    ReaderSliderPreview("font-size", it, precise, ReaderThemeSettings.FONT_SIZE_RANGE, 0.1f)
                                 }
                             onFontSizePreview(precise)
                         },
@@ -458,7 +457,7 @@ fun ThemeSettingsSheet(
                         SliderValueInputDialog(
                             label = stringResource(R.string.label_font_size),
                             value = currentFontSize,
-                            range = 12f..28f,
+                            range = ReaderThemeSettings.FONT_SIZE_RANGE,
                             step = 0.1f,
                             format = { String.format(Locale.getDefault(), "%.1f sp", it) },
                             onConfirm = { onFontSizeChange((it * 10f).roundToInt() / 10f) },
@@ -466,9 +465,9 @@ fun ThemeSettingsSheet(
                         )
                     }
                 }
-                Column(Modifier.weight(1f)) {
+                Column(Modifier.fillMaxWidth()) {
                     Row(
-                        Modifier.fillMaxWidth().height(28.dp),
+                        Modifier.fillMaxWidth().height(24.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(stringResource(R.string.body_font_weight), Modifier.weight(1f),
@@ -487,7 +486,7 @@ fun ThemeSettingsSheet(
                                 fontSize = AppType.BodySmall, color = LightTextSecondary, maxLines = 1)
                         }
                     }
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(2.dp))
                     com.huangder.lumibooks.ui.components.PillSlider(
                         value = currentBodyFontWeight.coerceIn(weightRange),
                         onValueChange = {
@@ -528,18 +527,9 @@ fun ThemeSettingsSheet(
                         )
                     }
                 }
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.Top
-            ) {
-                Column(Modifier.weight(1f)) {
+                Column(Modifier.fillMaxWidth()) {
                     Row(
-                        Modifier.fillMaxWidth().height(28.dp),
+                        Modifier.fillMaxWidth().height(24.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(stringResource(R.string.brightness), Modifier.weight(1f),
@@ -548,7 +538,7 @@ fun ThemeSettingsSheet(
                             else "${(currentBrightness * 100).toInt()}%",
                             fontSize = AppType.BodySmall, color = LightTextSecondary, maxLines = 1)
                     }
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(2.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         com.huangder.lumibooks.ui.components.PillSlider(
                             value = brightnessPercent,
@@ -599,9 +589,9 @@ fun ThemeSettingsSheet(
                         }
                     }
                 }
-                Column(Modifier.weight(1f)) {
+                Column(Modifier.fillMaxWidth()) {
                     Row(
-                        Modifier.fillMaxWidth().height(28.dp),
+                        Modifier.fillMaxWidth().height(24.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(stringResource(R.string.reader_dark_mask), Modifier.weight(1f),
@@ -609,14 +599,14 @@ fun ThemeSettingsSheet(
                         Text("${(currentDarkMaskOpacity * 100f).roundToInt()}%",
                             fontSize = AppType.BodySmall, color = LightTextSecondary, maxLines = 1)
                     }
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(2.dp))
                     com.huangder.lumibooks.ui.components.PillSlider(
                         value = (currentDarkMaskOpacity * 100f).coerceIn(0f, 80f),
                         onValueChange = { onDarkMaskOpacityChange(it / 100f) },
                         valueRange = 0f..80f,
                         step = 1f,
                         onDragValueChange = { onDarkMaskOpacityPreview(it / 100f) },
-                        modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }

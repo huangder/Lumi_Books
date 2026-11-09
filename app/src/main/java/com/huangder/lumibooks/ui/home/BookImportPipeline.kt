@@ -98,7 +98,11 @@ class BookImportPipeline @Inject constructor(
                 sha256 = incomingHash,
                 books = knownBooks
             )
-            if (duplicate != null) {
+            val cloudBook = if (duplicate == null || duplicate.isCloudOnly) {
+                findCloudBookForImport(incomingHash, extension.toBookFormat(), knownBooks)
+                    ?.takeIf { duplicate == null || it.id == duplicate.id }
+            } else null
+            if (duplicate != null && cloudBook == null) {
                 outcomes += Outcome(document, Status.DUPLICATE, duplicate.id)
                 return@forEach
             }
@@ -106,7 +110,7 @@ class BookImportPipeline @Inject constructor(
             var extractedCoverPath: String? = null
             var insertedBook: Book? = null
             runCatching {
-                val bookId = FileUtils.generateBookId()
+                val bookId = cloudBook?.id ?: FileUtils.generateBookId()
                 val format = extension.toBookFormat()
                 if (format == BookFormat.MARKDOWN && document.localFile == null) {
                     runCatching { context.contentResolver.takePersistableUriPermission(document.uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
@@ -134,7 +138,7 @@ class BookImportPipeline @Inject constructor(
                 extractedCoverPath = coverPath
                 val now = System.currentTimeMillis()
                 val markdownMetadata = if (format == BookFormat.MARKDOWN) com.huangder.lumibooks.util.markdown.MarkdownSnapshotStore.manifest(File(location)) else null
-                val book = Book(
+                val importedBook = Book(
                         id = bookId,
                         title = markdownMetadata?.optString("title")?.takeIf { it.isNotBlank() }
                             ?: document.titleOverride?.takeIf { it.isNotBlank() }
@@ -156,9 +160,12 @@ class BookImportPipeline @Inject constructor(
                         sourceLastModified = document.sourceLastModified,
                         isMissing = false
                     )
-                bookRepository.insertBook(book)
+                val book = cloudBook?.let { attachImportedCloudBook(it, importedBook) } ?: importedBook
+                if (cloudBook != null) bookRepository.updateBook(book) else bookRepository.insertBook(book)
                 insertedBook = book
-                val destinationFolderId = if (groupByAuthorizedSource) {
+                val destinationFolderId = if (cloudBook != null) {
+                    null // Keep existing cloud organization when attaching its local body.
+                } else if (groupByAuthorizedSource) {
                     document.sourceDirectoryName
                         ?.let(FolderNameValidator::clean)
                         ?.take(FolderNameValidator.MAX_LENGTH)
@@ -178,10 +185,12 @@ class BookImportPipeline @Inject constructor(
                 }
             }.onSuccess {
                 outcomes += Outcome(document, Status.IMPORTED, insertedBook?.id)
-                insertedBook?.let { knownBooks = knownBooks + it }
+                insertedBook?.let { updated -> knownBooks = knownBooks.filterNot { it.id == updated.id } + updated }
             }.onFailure {
                 outcomes += Outcome(document, Status.FAILED)
-                insertedBook?.let { book -> runCatching { bookRepository.deleteBook(book) } }
+                insertedBook?.let { book -> runCatching {
+                    if (cloudBook != null) bookRepository.updateBook(cloudBook) else bookRepository.deleteBook(book)
+                } }
                 if (copyIntoApp || extension in setOf("md", "markdown")) {
                     importedLocation?.let { FileUtils.deleteAppManagedBookFile(context, it) }
                 }

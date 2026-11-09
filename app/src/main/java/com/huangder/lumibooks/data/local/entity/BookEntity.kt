@@ -34,7 +34,10 @@ data class BookEntity(
     val isHidden: Boolean = false,
     val isManuallyMarkedRead: Boolean = false,
     @androidx.room.ColumnInfo(defaultValue = "0")
-    val isArchived: Boolean = false
+    val isArchived: Boolean = false,
+    /** When the book joined the to-read list; 0 when it is not on the list. */
+    @androidx.room.ColumnInfo(defaultValue = "0")
+    val wantToReadAt: Long = 0
 )
 
 enum class BookFormat {

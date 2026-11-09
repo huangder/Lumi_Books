@@ -136,7 +136,8 @@ class BookRepositoryImpl @Inject constructor(
             isMissing = isMissing,
             isHidden = isHidden,
             isManuallyMarkedRead = isManuallyMarkedRead,
-            isArchived = isArchived
+            isArchived = isArchived,
+            wantToReadAt = wantToReadAt
         )
     }
 
@@ -169,7 +170,8 @@ class BookRepositoryImpl @Inject constructor(
             isMissing = isMissing,
             isHidden = isHidden,
             isManuallyMarkedRead = isManuallyMarkedRead,
-            isArchived = isArchived
+            isArchived = isArchived,
+            wantToReadAt = wantToReadAt
         )
     }
 }

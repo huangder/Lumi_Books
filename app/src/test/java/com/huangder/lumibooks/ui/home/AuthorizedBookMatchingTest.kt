@@ -9,6 +9,32 @@ import org.junit.Test
 
 class AuthorizedBookMatchingTest {
     @Test
+    fun cloudBodyMatchRequiresUniqueExactHashAndCompatibleFormat() {
+        val cloud = book("remote", isCloudOnly = true).copy(remoteFileSha256 = "abc")
+        assertEquals(cloud, findCloudBookForImport("ABC", BookFormat.EPUB, listOf(cloud)))
+        assertNull(findCloudBookForImport("different", BookFormat.EPUB, listOf(cloud)))
+        assertNull(findCloudBookForImport(null, BookFormat.EPUB, listOf(cloud)))
+        assertNull(findCloudBookForImport("abc", BookFormat.PDF, listOf(cloud)))
+        assertNull(findCloudBookForImport("abc", BookFormat.EPUB, listOf(cloud, cloud.copy(id = "other"))))
+        assertNull(findCloudBookForImport("abc", BookFormat.EPUB, listOf(cloud.copy(isCloudOnly = false))))
+        assertNull(findCloudBookForImport("abc", BookFormat.MARKDOWN, listOf(cloud.copy(format = BookFormat.MARKDOWN))))
+    }
+
+    @Test
+    fun attachingCloudBodyPreservesIdentityProgressAndRemoteAssociation() {
+        val cloud = book("remote", filePath = "", isCloudOnly = true).copy(
+            readingProgress = .65f, lastReadTime = 1234L, isFavorite = true,
+            remoteFileName = "remote.epub", remoteFileSha256 = "abc", remoteLibraryKey = "library"
+        )
+        val imported = book("new-local", sourceUri = "content://incoming", sourceSha256 = "abc")
+        val attached = attachImportedCloudBook(cloud, imported)
+        assertEquals(cloud.copy(
+            filePath = imported.filePath, isCloudOnly = false,
+            sourceUri = imported.sourceUri, sourceSha256 = imported.sourceSha256
+        ), attached)
+    }
+
+    @Test
     fun stableDocumentKeyDeduplicatesDifferentTreeUris() {
         val first = authorizedDocumentIdentity(
             "com.android.externalstorage.documents:primary:lumi/book.epub",

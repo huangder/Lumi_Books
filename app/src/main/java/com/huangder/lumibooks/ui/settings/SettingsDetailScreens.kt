@@ -487,7 +487,7 @@ private fun ReadingSettingsBasicDetail(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsState()
 
     DetailCard {
-        SettingsSliderItem(label = stringResource(R.string.label_font_size), value = uiState.fontSize, range = 12f..28f, valueText = "${uiState.fontSize.toInt()} sp", step = 1f) { viewModel.saveFontSize(it) }
+        SettingsSliderItem(label = stringResource(R.string.label_font_size), value = uiState.fontSize, range = ReaderThemeSettings.FONT_SIZE_RANGE, valueText = "${uiState.fontSize.toInt()} sp", step = 1f) { viewModel.saveFontSize(it) }
         SettingsDivider()
         SettingsSliderItem(label = stringResource(R.string.label_line_height), value = uiState.lineHeight, range = ReaderThemeSettings.LINE_HEIGHT_RANGE, valueText = String.format("%.1fx", uiState.lineHeight)) { viewModel.saveLineHeight(it) }
         SettingsDivider()

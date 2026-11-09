@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
@@ -22,6 +23,54 @@ import java.io.IOException
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TtsControllerTest {
+    @Test fun backgroundAndFullscreenFollowingSuspendViewBackedSourceUntilReaderReturns() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val controller = controller(FakePlaybackEngine())
+        val source = FakePageSource(page(0, "First sentence. Another sentence."))
+        try {
+            controller.start("book", source, 0, 0)
+            runCurrent()
+            controller.setReaderAttached("book", false)
+            runCurrent()
+            assertFalse(source.viewProviderVisible)
+            controller.setReaderAttached("book", true)
+            runCurrent()
+            assertTrue(source.viewProviderVisible)
+            controller.setFullscreenVisible(controller.currentSessionId, true)
+            runCurrent()
+            assertFalse(source.viewProviderVisible)
+            controller.setFullscreenVisible(controller.currentSessionId, false)
+            runCurrent()
+            assertTrue(source.viewProviderVisible)
+        } finally { controller.shutdown(); runCurrent(); Dispatchers.resetMain() }
+    }
+
+    @Test fun subtitleClausesFollowWordRangesAndSeekWithoutFragmentingNormalSpeech() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val engine = FakePlaybackEngine()
+        val controller = controller(engine)
+        try {
+            controller.start("book", FakePageSource(page(0, "第一小句，第二小句，句子结束。")), 0, 0)
+            runCurrent()
+            assertEquals("第一小句，", controller.currentClause.value?.text)
+            val utteranceId = engine.lastUtteranceId
+            engine.range(utteranceId, 6, 7)
+            runCurrent()
+            assertEquals("二", controller.currentSentence.value?.text)
+            assertEquals(TtsTextSegment("第二小句，", 5, 10, false), controller.currentClause.value)
+            assertEquals(listOf("第一小句，第二小句，句子结束。"), engine.spokenTexts)
+            controller.seekTo(0, 5)
+            runCurrent()
+            assertEquals("第二小句，句子结束。", engine.spokenTexts.last())
+            engine.range(utteranceId, 10, 11) // Stale callback after seeking.
+            runCurrent()
+            assertEquals("第二小句，", controller.currentClause.value?.text)
+            controller.stop()
+            runCurrent()
+            assertEquals(null, controller.currentClause.value)
+        } finally { controller.shutdown(); runCurrent(); Dispatchers.resetMain() }
+    }
+
     @Test fun nativeQueuePublishesSubtitlesOnlyAfterAndroidReportsAudibleStart() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val engine = FakePlaybackEngine(supportsQueuedPlayback = true, autoStart = false)
@@ -1915,6 +1964,126 @@ class TtsControllerTest {
     }
 
     @Test
+    fun crossPageParagraphBoundaryKeepsEveryUnreadParagraph() = runTest {
+        for (paragraphBreak in listOf("\n\n", "\r\n\r\n")) {
+            assertContinuousPlayback(
+                listOf("Alpha", "Beta${paragraphBreak}Hidden paragraph.${paragraphBreak}Another paragraph.", "Gamma."),
+                if (paragraphBreak == "\n\n") {
+                    listOf("Alpha", "Beta", "Hidden paragraph.", "Another paragraph.", "Gamma.")
+                } else {
+                    listOf("Alpha", "Beta\n\nHidden paragraph.", "Another paragraph.", "Gamma.")
+                }
+            )
+        }
+    }
+
+    @Test
+    fun crossPageParagraphBoundaryAfterSeveralPagesKeepsTheRemainder() = runTest {
+        assertContinuousPlayback(
+            listOf("Alpha", "Beta", "Gamma\n\nHidden paragraph.", "Delta."),
+            listOf("Alpha", "Beta", "Gamma", "Hidden paragraph.", "Delta.")
+        )
+    }
+
+    @Test
+    fun crossPageParagraphBoundaryAtChapterEndKeepsTheRemainder() = runTest {
+        assertContinuousPlayback(
+            listOf("Alpha", "Beta\n\nHidden paragraph.\n\nLast paragraph."),
+            listOf("Alpha", "Beta", "Hidden paragraph.", "Last paragraph.")
+        )
+    }
+
+    @Test
+    fun crossPageLeadingParagraphBreakDoesNotConsumeTheFollowingParagraph() = runTest {
+        assertContinuousPlayback(
+            listOf("Alpha", "\n\nHidden paragraph.", "Gamma."),
+            listOf("Alpha", "Hidden paragraph.", "Gamma.")
+        )
+    }
+
+    @Test
+    fun crossPageLengthLimitKeepsUnconsumedText() = runTest {
+        val first = "A".repeat(TtsTextExtractor.MAX_SENTENCE_LENGTH - 5)
+        val continuation = "B".repeat(10) + "."
+        assertContinuousPlayback(
+            listOf(first, "$continuation\n\nKept paragraph.", "Final sentence."),
+            listOf(first, continuation, "Kept paragraph.", "Final sentence.")
+        )
+    }
+
+    @Test
+    fun crossPageCompleteSentenceStillMergesAndReadsTheLandingRemainderOnce() = runTest {
+        assertContinuousPlayback(
+            listOf("Alpha", "Beta", "Gamma. Tail sentence."),
+            listOf("AlphaBetaGamma.", "Tail sentence.")
+        )
+    }
+
+    @Test
+    fun prefetchDoesNotMergeANonFinalParagraphWithTheNextPage() = runTest {
+        assertContinuousPlayback(
+            listOf("Intro. Inner fragment\n\nLater paragraph.", "Ending."),
+            listOf("Intro.", "Inner fragment", "Later paragraph.", "Ending.")
+        )
+    }
+
+    private suspend fun TestScope.assertContinuousPlayback(
+        pageTexts: List<String>,
+        expectedUtterances: List<String>
+    ) {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            for (mode in listOf("system", "ai", "queued")) {
+                val engine = FakePlaybackEngine(
+                    isExternal = mode == "ai",
+                    supportsQueuedPlayback = mode == "queued"
+                )
+                val controller = controller(
+                    systemEngine = if (engine.isExternal) FakePlaybackEngine() else engine,
+                    externalEngine = if (engine.isExternal) engine else FakePlaybackEngine(isExternal = true),
+                    settingsStore = FakeSettingsStore(
+                        if (engine.isExternal) TtsProviderSelection.AiModel else TtsProviderSelection.SystemDefault
+                    )
+                )
+                var offset = 0
+                val pages = pageTexts.mapIndexed { index, text ->
+                    page(
+                        index, text,
+                        previous = (index - 1).takeIf { it >= 0 }?.let { TtsPageLocation(0, it) },
+                        next = (index + 1).takeIf { it < pageTexts.size }?.let { TtsPageLocation(0, it) },
+                        startCharacterOffset = offset
+                    ).also { offset += text.length }
+                }
+                try {
+                    assertTrue(controller.start("book", FakePageSource(*pages.toTypedArray()), 0, 0).isSuccess)
+                    controller.setReaderAttached("book", false)
+                    runCurrent()
+                    expectedUtterances.forEachIndexed { index, text ->
+                        assertEquals("$mode playback at $index", text, engine.spokenTexts.last())
+                        expectedUtterances.getOrNull(index + 1)?.let { next ->
+                            val prepared = if (engine.supportsQueuedPlayback) engine.queuedRequests.last().first
+                                else engine.prefetchedTexts.last()
+                            assertEquals("$mode prefetch at $index", next, prepared)
+                        }
+                        engine.complete(engine.lastUtteranceId)
+                        runCurrent()
+                    }
+                    assertEquals("$mode full playback", expectedUtterances, engine.spokenTexts)
+                    assertEquals("$mode finished", TtsPlaybackState.IDLE, controller.playbackState.value)
+                    if (engine.supportsQueuedPlayback) {
+                        assertEquals("queued audio submitted exactly once", expectedUtterances, engine.submittedTexts)
+                    }
+                } finally {
+                    controller.shutdown()
+                    runCurrent()
+                }
+            }
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun rawAudioIOExceptionRetriesAndNewSentenceGetsItsOwnRetryBudget() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val engine = FakePlaybackEngine()
@@ -2084,6 +2253,7 @@ class TtsControllerTest {
             controller.onPageVisible("book", 0, 1, TtsPageChangeOrigin.USER)
             runCurrent()
             assertEquals(listOf("One.", "Two."), engine.spokenTexts)
+            assertTrue(controller.followUserPageTurns.value)
             engine.complete(oldUtterance)
             runCurrent()
             assertEquals("Two.", controller.currentSentence.value?.text)
@@ -2092,10 +2262,12 @@ class TtsControllerTest {
             runCurrent()
             assertEquals(TtsPageLocation(1, 0), controller.currentPage.value?.location)
             assertEquals("Next chapter.", engine.spokenTexts.last())
+            assertTrue(controller.followUserPageTurns.value)
             controller.onReaderNavigationStarted("book")
             controller.onPageVisible("book", 0, 0, TtsPageChangeOrigin.USER)
             runCurrent()
             assertEquals("One.", engine.spokenTexts.last())
+            assertTrue(controller.followUserPageTurns.value)
         } finally { controller.shutdown(); runCurrent(); Dispatchers.resetMain() }
     }
 
@@ -2240,6 +2412,9 @@ class TtsControllerTest {
         val requests = mutableListOf<TtsPageLocation>()
         var closed = false
         var detached = false
+        var viewProviderVisible = true
+
+        override fun setReaderVisible(visible: Boolean) { viewProviderVisible = visible }
 
         override fun detachReader() { detached = true }
 

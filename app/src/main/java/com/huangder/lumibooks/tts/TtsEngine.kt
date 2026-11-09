@@ -96,6 +96,9 @@ class TtsEngine internal constructor(
         var playbackStarted = false
         var playbackDone = false
         var bufferedBytes = 0
+        var pcmBytes = 0L
+        var hasEngineRanges = false
+        var estimatedRangesScheduled = false
         var lastProgressMs = SystemClock.elapsedRealtime()
         val requestedAtMs = lastProgressMs
         var playbackRequestedAtMs = lastProgressMs
@@ -636,6 +639,7 @@ class TtsEngine internal constructor(
                 val ownedAudio = audio.copyOf()
                 postSynthesisCallback(utteranceId) { task ->
                     if (task.finished || ownedAudio.isEmpty()) return@postSynthesisCallback
+                    task.pcmBytes += ownedAudio.size
                     if (task === activeSynthesis && task.playbackStarted) {
                         localAudioPlayer.append(ownedAudio)
                     } else {
@@ -653,6 +657,7 @@ class TtsEngine internal constructor(
             override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
                 postNativeCallback(utteranceId) { id -> playbackListener?.onRangeStart(id, start, end) }
                 postSynthesisCallback(utteranceId) { task ->
+                    task.hasEngineRanges = true
                     if (task === activeSynthesis && task.playbackStarted) {
                         scheduleRange(task, start, end, frame)
                     } else task.ranges += Triple(start, end, frame)
@@ -838,7 +843,28 @@ class TtsEngine internal constructor(
             prepareBufferedAudio(task)
             beginLocalPlayback(task)
         }
+        scheduleEstimatedClauseRanges(task)
         localAudioPlayer.finish()
+    }
+
+    /** File-synthesis engines often omit range callbacks. Estimate clauses from rendered PCM;
+     * real engine timestamps always take precedence, including callbacks arriving later. */
+    private fun scheduleEstimatedClauseRanges(task: Synthesis) {
+        if (task.hasEngineRanges || task.estimatedRangesScheduled) return
+        val frameBytes = SystemTtsAudioPlayer.PcmFormat(task.sampleRate, task.encoding, task.channels).frameBytes
+        if (frameBytes <= 0 || task.pcmBytes <= 0 || task.text.isEmpty()) return
+        task.estimatedRangesScheduled = true
+        val frames = task.pcmBytes / frameBytes
+        TtsTextExtractor().splitIntoClauses(TtsTextSegment(task.text, 0, task.text.length)).forEach { clause ->
+            val frame = frames * clause.startCharacterOffset / task.text.length
+            localAudioPlayer.scheduleRange(frame) {
+                if (task === activeSynthesis && !task.playbackDone && !task.hasEngineRanges) {
+                    task.playbackId?.let {
+                        playbackListener?.onRangeStart(it, clause.startCharacterOffset, clause.endCharacterOffset)
+                    }
+                }
+            }
+        }
     }
 
     private fun prepareBufferedAudio(task: Synthesis) {
@@ -852,6 +878,7 @@ class TtsEngine internal constructor(
         task.chunks.clear()
         task.chunks += decoded.pcm
         task.bufferedBytes = decoded.pcm.size
+        task.pcmBytes = decoded.pcm.size.toLong()
     }
 
     private fun failLocalSynthesis(task: Synthesis, error: Throwable) {

@@ -2192,6 +2192,25 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    /** Adds the book to the to-read list, or takes it off when it is already there. */
+    fun toggleWantToRead(book: Book) {
+        val adding = !book.isWantToRead
+        viewModelScope.launch {
+            try {
+                val now = System.currentTimeMillis()
+                database.bookDao().setWantToRead(book.id, if (adding) now else 0L, now)
+                _uiState.value = _uiState.value.copy(
+                    importMessage = application.getString(
+                        if (adding) R.string.book_want_to_read_added else R.string.book_want_to_read_removed
+                    )
+                )
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
+            } catch (error: Exception) {
+                _uiState.value = _uiState.value.copy(error = error.message)
+            }
+        }
+    }
+
     suspend fun latestBook(bookId: String): Book? = bookRepository.getBookById(bookId)
 
     /** Looks a book up across shelf, hidden and archived libraries. */

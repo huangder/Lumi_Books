@@ -75,6 +75,7 @@ sealed class ContextMenuAction {
     data object EditInfo : ContextMenuAction()
     data object ToggleHidden : ContextMenuAction()
     data object Archive : ContextMenuAction()
+    data object ToggleWantToRead : ContextMenuAction()
 }
 
 /**
@@ -103,6 +104,8 @@ fun BookContextMenuOverlay(
     /** Shows「隐藏」, or「取消隐藏」in the hidden library; null leaves the item out. */
     onToggleHidden: ((Book) -> Unit)? = null,
     onArchive: ((Book) -> Unit)? = null,
+    /** Adds to or removes from the to-read list; null leaves the item out. */
+    onToggleWantToRead: ((Book) -> Unit)? = null,
     /** The hidden library drops shelf-organising actions (favourite, pin, tags, folders). */
     hiddenLibrary: Boolean = false
 ) {
@@ -168,11 +171,13 @@ fun BookContextMenuOverlay(
                         is ContextMenuAction.EditInfo -> onEditInfo(book)
                         is ContextMenuAction.ToggleHidden -> onToggleHidden?.invoke(book)
                         is ContextMenuAction.Archive -> onArchive?.invoke(book)
+                        is ContextMenuAction.ToggleWantToRead -> onToggleWantToRead?.invoke(book)
                     }
                 },
                 hiddenLibrary = hiddenLibrary,
                 canToggleHidden = onToggleHidden != null,
                 canArchive = onArchive != null && !hiddenLibrary,
+                canToggleWantToRead = onToggleWantToRead != null && !hiddenLibrary,
                 onEditInfo = {
                     state.dismiss()
                     onEditInfo(book)
@@ -266,6 +271,7 @@ private fun ContextMenuLayout(
     hiddenLibrary: Boolean,
     canToggleHidden: Boolean,
     canArchive: Boolean,
+    canToggleWantToRead: Boolean,
     onEditInfo: () -> Unit
 ) {
     val density = LocalDensity.current
@@ -344,6 +350,8 @@ private fun ContextMenuLayout(
             hiddenLibrary = hiddenLibrary,
             canToggleHidden = canToggleHidden,
             canArchive = canArchive,
+            canToggleWantToRead = canToggleWantToRead,
+            isWantToRead = book.isWantToRead,
             onAction = onAction
         )
         }
@@ -449,6 +457,8 @@ private fun MenuActionsPanel(
     hiddenLibrary: Boolean = false,
     canToggleHidden: Boolean = false,
     canArchive: Boolean = false,
+    canToggleWantToRead: Boolean = false,
+    isWantToRead: Boolean = false,
     onAction: (ContextMenuAction) -> Unit
 ) {
     val shape = AppRoundedCornerShape(
@@ -463,6 +473,15 @@ private fun MenuActionsPanel(
     val menuItems = buildList {
         add(MenuItem(stringResource(R.string.book_details), AppIcons.Info, ContextMenuAction.BookDetails))
         add(MenuItem(readStatusLabel, AppIcons.BookOpen, ContextMenuAction.ToggleReadStatus))
+        if (canToggleWantToRead) {
+            add(
+                MenuItem(
+                    stringResource(if (isWantToRead) R.string.book_remove_want_to_read else R.string.book_want_to_read),
+                    AppIcons.Timer,
+                    ContextMenuAction.ToggleWantToRead
+                )
+            )
+        }
         if (!hiddenLibrary) {
             add(MenuItem(favoriteLabel, favoriteIcon, ContextMenuAction.Favorite))
             add(MenuItem(pinLabel, AppIcons.PushPin, ContextMenuAction.Pin))

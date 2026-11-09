@@ -7,7 +7,7 @@
     <string name="remote_library_empty">还没有添加书库</string>
     <string name="remote_library_empty_detail_webdav">连接 NAS、坚果云、Nextcloud 等 WebDAV 网盘，浏览文件夹里的书并下载导入。</string>
     <string name="remote_library_empty_detail_opds">连接 Calibre、Kavita、Komga 等提供 OPDS 书目的自建书库，浏览、搜索并下载导入。</string>
-    <string name="remote_library_legal_notice">仅添加你有权访问的书库。Lumi 不提供、不推荐任何书源。</string>
+    <string name="remote_library_legal_notice">仅添加你有权访问的书库。Lumi 不提供、不推荐任何书库或书籍内容。</string>
     <string name="remote_library_add">添加书库</string>
     <string name="remote_library_edit">编辑书库</string>
     <string name="remote_library_delete">删除书库</string>

@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.reader
 
+import com.huangder.lumibooks.domain.model.ReaderThemeSettings
 import com.huangder.lumibooks.domain.model.ReaderVolumeKeyAction
 
 internal fun resolveReaderVolumeKeyAction(
@@ -22,4 +23,4 @@ internal fun adjustReaderBrightness(current: Float, increase: Boolean): Float {
 }
 
 internal fun adjustReaderFontSize(current: Float, increase: Boolean): Float =
-    (current + if (increase) 1f else -1f).coerceIn(12f, 28f)
+    (current + if (increase) 1f else -1f).coerceIn(ReaderThemeSettings.FONT_SIZE_RANGE)

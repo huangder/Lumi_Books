@@ -514,6 +514,7 @@ fun BookshelfScreen(
                 PendingBookMenuActionType.MoveToFolder -> moveTargetBook = currentBook
                 PendingBookMenuActionType.Hide -> requestHideBooks(setOf(currentBook.id))
                 PendingBookMenuActionType.Archive -> viewModel.archiveBook(currentBook.id)
+                PendingBookMenuActionType.WantToRead -> viewModel.toggleWantToRead(currentBook)
             }
         }
         pendingContextMenuAction = null
@@ -1333,6 +1334,9 @@ fun BookshelfScreen(
             },
             onArchive = { book ->
                 pendingContextMenuAction = PendingBookMenuAction(PendingBookMenuActionType.Archive, book)
+            },
+            onToggleWantToRead = { book ->
+                pendingContextMenuAction = PendingBookMenuAction(PendingBookMenuActionType.WantToRead, book)
             },
             onToggleHidden = { book ->
                 pendingContextMenuAction = PendingBookMenuAction(PendingBookMenuActionType.Hide, book)
@@ -2661,7 +2665,8 @@ private enum class PendingBookMenuActionType {
     ToggleReadStatus,
     MoveToFolder,
     Hide,
-    Archive
+    Archive,
+    WantToRead
 }
 
 private data class PendingBookMenuAction(

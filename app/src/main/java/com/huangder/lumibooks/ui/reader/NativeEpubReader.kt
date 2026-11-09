@@ -38,6 +38,11 @@ internal data class NativeEpubCallbacks(
     val bookmarkFinish: (Boolean) -> Unit,
     val image: (EpubImagePreviewRequest) -> Unit
 )
+// The native CSS engine currently paints plain annotation rectangles only.
+// Keep styled annotations on the WebView path, which applies their font metrics and paint.
+internal fun nativeEpubDecorationsSupported(notes: List<Note>, chapterIndex: Int): Boolean =
+    notes.none { !it.isStale && it.chapterIndex == chapterIndex && it.styleSnapshotJson != null }
+
 internal data class NativeEpubReaderStyle(val fontSizeSp: Float, val fontType: String, val fontPath: String?,
     val weight: Float, val color: Int?, val paper: Int, val publisherColors: Boolean,
     val top: Float, val right: Float, val bottom: Float, val left: Float,

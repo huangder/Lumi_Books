@@ -17,6 +17,21 @@ enum class EpubRenditionLayout { REFLOWABLE, PRE_PAGINATED }
 
 enum class EpubPageSide { LEFT, RIGHT, CENTER }
 
+/** Chapter-scoped Duokan extension; it does not turn a reflowable book into FXL. */
+enum class EpubDuokanPage(val property: String, val usesFullWindow: Boolean = true) {
+    FULLSCREEN("duokan-page-fullscreen"),
+    FIT_WINDOW("duokan-page-fitwindow"),
+    INTERACTIVE("duokan-page-fullscreen-interactive"),
+    SPREAD_LEFT("duokan-page-fullscreen-spread-left"),
+    SPREAD_RIGHT("duokan-page-fullscreen-spread-right"),
+    VERTICAL_FLOW("duokan-page-fullscreen-vertflow", false);
+
+    companion object {
+        fun fromProperties(properties: Set<String>): EpubDuokanPage? =
+            entries.firstOrNull { it.property in properties }
+    }
+}
+
 /** Publisher permission for synthetic spreads, evaluated against the reader viewport. */
 enum class EpubRenditionSpread {
     NONE, LANDSCAPE, PORTRAIT, BOTH, AUTO;
@@ -45,7 +60,8 @@ data class EpubPagePresentation(
     val renditionSpread: EpubRenditionSpread = EpubRenditionSpread.AUTO,
     val isCover: Boolean = false,
     val viewportWidth: Float? = null,
-    val viewportHeight: Float? = null
+    val viewportHeight: Float? = null,
+    val duokanPage: EpubDuokanPage? = null
 )
 
 data class EpubManifestItem(

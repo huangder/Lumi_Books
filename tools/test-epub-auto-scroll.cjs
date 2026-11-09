@@ -17,6 +17,7 @@ function productionFunction(name, nextName) {
 function reader({ height = 600, scrollHeight = 2000, innerHeight = height, y = 0 } = {}) {
   const root = { clientHeight: height, scrollHeight, scrollTop: y };
   const state = { flow: 'scrolled', fixed: false, ready: true, paginating: false,
+    scrollViewportInsets: {top: 0, bottom: 0},
     viewportHeight: height, autoScrollSpeed: 0, autoScrollFrame: 0, autoScrollLastTime: 0 };
   const messages = [];
   const frames = new Map();
@@ -29,13 +30,15 @@ function reader({ height = 600, scrollHeight = 2000, innerHeight = height, y = 0
       window.scrollY = root.scrollTop;
     }
   };
-  const context = { state, window, document: { scrollingElement: root,
+  const context = { state, window, autoReadingTouchDown:false, autoReadingResumeAfter:0, autoReadingObservedY:y,
+    document: { scrollingElement: root, getElementById:()=>null,
     documentElement: root, body: { scrollHeight } },
     requestAnimationFrame(callback) { frames.set(++frameId, callback); return frameId; },
     cancelAnimationFrame(id) { frames.delete(id); },
     post(type, payload) { messages.push({ type, payload }); }
   };
-  runInNewContext(productionFunction('scrollMetrics', 'applyScrollability') +
+  runInNewContext(productionFunction('scrollContentInsets', 'syncScrollViewportMasks') +
+    productionFunction('scrollMetrics', 'applyScrollability') +
     productionFunction('setAutoScrollSpeed', 'pageFromLocator'), context);
   return { state, root, window, messages, setSpeed: context.setAutoScrollSpeed,
     frame() {

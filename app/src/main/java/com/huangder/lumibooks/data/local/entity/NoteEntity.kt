@@ -37,5 +37,7 @@ data class NoteEntity(
     @androidx.room.ColumnInfo(defaultValue = "'[]'")
     val tagsJson: String = "[]",
     @androidx.room.ColumnInfo(defaultValue = "0")
-    val isStale: Boolean = false
+    val isStale: Boolean = false,
+    /** Position within the whole book (0..1) captured at creation; null for older notes. */
+    val bookProgress: Float? = null
 )

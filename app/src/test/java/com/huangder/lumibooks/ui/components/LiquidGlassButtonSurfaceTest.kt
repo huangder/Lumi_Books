@@ -57,7 +57,7 @@ class LiquidGlassButtonSurfaceTest {
         compose.onNodeWithTag("button").performTouchInput { down(center) }
         compose.mainClock.advanceTimeBy(400)
         compose.waitForIdle()
-        assertEquals(initial * 1.055f, width(), initial * .01f)
+        assertEquals(initial * 1.088f, width(), initial * .01f)
         compose.onNodeWithTag("button").performTouchInput { up() }
         compose.mainClock.advanceTimeBy(1000)
         compose.waitForIdle()

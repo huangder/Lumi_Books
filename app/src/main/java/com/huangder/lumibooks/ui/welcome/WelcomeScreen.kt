@@ -114,6 +114,11 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
+import com.huangder.lumibooks.ui.theme.LocalMotionPreference
+import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
+import com.huangder.lumibooks.ui.theme.LocalEInkMode
+import com.huangder.lumibooks.ui.theme.LocalLiquidGlassSamplingQuality
+import com.huangder.lumibooks.ui.theme.MotionPreference
 import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.domain.model.blendAppAccentArgb
@@ -209,7 +214,9 @@ fun WelcomeScreen(
     onLanguageSetupComplete: (language: String, eInkEnabled: Boolean) -> Unit,
     onEnableLiquidGlass: () -> Unit,
     startOnIntroduction: Boolean = false,
-    startOnSupport: Boolean = false
+    startOnSupport: Boolean = false,
+    startOnLiquidGlassPreview: Boolean = false,
+    allowLiquidGlassReplay: Boolean = false
 ) {
     val motionEnabled = LocalMotionEnabled.current
     val pages = remember(shouldShowLanguageSetup, isNewInstallation, isEInkMode) {
@@ -219,6 +226,7 @@ fun WelcomeScreen(
         mutableStateOf(
             when {
                 startOnSupport && WelcomePage.SUPPORT in pages -> WelcomePage.SUPPORT
+                startOnLiquidGlassPreview && WelcomePage.LIQUID_GLASS_PREVIEW in pages -> WelcomePage.LIQUID_GLASS_PREVIEW
                 startOnIntroduction && WelcomePage.INTRODUCTION in pages -> WelcomePage.INTRODUCTION
                 else -> pages.first()
             }
@@ -236,6 +244,7 @@ fun WelcomeScreen(
         currentPage = pages[(pageIndex - 1).coerceAtLeast(0)]
     }
 
+    val backVisualProgress = if (predictiveBackProgress >= 1f) 0f else predictiveBackProgress
     AnimatedContent(
         targetState = currentPage,
         modifier = Modifier
@@ -243,8 +252,8 @@ fun WelcomeScreen(
             .background(AppColors.WindowBg)
             .graphicsLayer {
                 if (!isEInkMode && motionEnabled) {
-                    translationX = predictiveBackProgress * size.width * 0.12f
-                    alpha = 1f - predictiveBackProgress * 0.1f
+                    translationX = backVisualProgress * size.width * 0.12f
+                    alpha = 1f - backVisualProgress * 0.1f
                 }
             },
         transitionSpec = {
@@ -292,6 +301,7 @@ fun WelcomeScreen(
                 preview = UpdatePreview.LIQUID_GLASS,
                 isEInkMode = isEInkMode,
                 isLiquidGlass = isLiquidGlass,
+                allowLiquidGlassReplay = allowLiquidGlassReplay,
                 onBack = { currentPage = pages[(pages.indexOf(page) - 1).coerceAtLeast(0)] },
                 onNext = { currentPage = pages[(pages.indexOf(page) + 1).coerceAtMost(pages.lastIndex)] },
                 onEnableLiquidGlass = onEnableLiquidGlass
@@ -320,6 +330,7 @@ private fun UpdatePreviewPage(
     preview: UpdatePreview,
     isEInkMode: Boolean,
     isLiquidGlass: Boolean,
+    allowLiquidGlassReplay: Boolean,
     onBack: () -> Unit,
     onNext: () -> Unit,
     onEnableLiquidGlass: () -> Unit
@@ -372,17 +383,20 @@ private fun UpdatePreviewPage(
         label = "previewButtonsProgress"
     )
     val useLiquidGlassButtons = (isLiquidGlass || liquidGlassSelected) && !isEInkMode
-    val contentBlurRadius by animateDpAsState(
-        targetValue = when (themeSwitchStage) {
-            1, 2, 3, 4 -> 14.dp
-            else -> 0.dp
-        },
-        animationSpec = tween(
-            durationMillis = if (themeSwitchStage == 5) 900 else 260,
-            easing = if (themeSwitchStage == 5) AppEasing.Accelerate else FastOutSlowInEasing
-        ),
-        label = "themeSwitchContentBlur"
-    )
+    val shockwaveTier = remember { welcomeShockwaveTier(android.os.Build.MODEL.orEmpty()) }
+    val shockwaveBandHeightPx = with(LocalDensity.current) { 110.dp.toPx() }
+    val shockwaveProgress = remember { androidx.compose.animation.core.Animatable(0f) }
+    var shockwaveRun by remember { mutableIntStateOf(0) }
+    val shockwaveDuration = if (LocalMotionPreference.current == MotionPreference.REDUCED) 600 else 1_000
+    LaunchedEffect(shockwaveRun) {
+        if (shockwaveRun > 0) {
+            shockwaveProgress.snapTo(0f)
+            shockwaveProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = shockwaveDuration, easing = ShockwaveEaseIn)
+            )
+        }
+    }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -399,7 +413,14 @@ private fun UpdatePreviewPage(
                 .fillMaxWidth()
                 .fillMaxHeight()
                 .align(Alignment.TopCenter)
-                .blur(if (LocalReduceTransparency.current) 0.dp else contentBlurRadius),
+                    .welcomeShockwavePageEffect(
+                        progress = shockwaveProgress.value,
+                        bandHeightPx = shockwaveBandHeightPx,
+                        isDark = LocalIsDarkTheme.current,
+                        tier = shockwaveTier,
+                        reducedMotion = LocalMotionPreference.current == MotionPreference.REDUCED || LocalEInkMode.current,
+                        samplingQuality = LocalLiquidGlassSamplingQuality.current
+                    ),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Column(
@@ -461,19 +482,14 @@ private fun UpdatePreviewPage(
                 WelcomeActionButton(
                     text = if (liquidGlassSelected) stringResource(R.string.welcome_liquid_glass_enabled) else stringResource(R.string.welcome_enable_liquid_glass),
                     onClick = {
-                        if (!liquidGlassSelected && themeSwitchStage == 0) {
-                            if (animateEntrance) {
-                                themeSwitchStage = 1
-                            } else {
-                                liquidGlassSelected = true
-                                onEnableLiquidGlass()
-                            }
+                        if ((!liquidGlassSelected || allowLiquidGlassReplay) && themeSwitchStage == 0) {
+                            themeSwitchStage = 1
                         }
                     },
                     primary = true,
                     forceLiquidGlass = useLiquidGlassButtons,
                     textPrimary = textPrimary,
-                    enabled = !liquidGlassSelected && themeSwitchStage == 0,
+                    enabled = (!liquidGlassSelected || allowLiquidGlassReplay) && themeSwitchStage == 0,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 32.dp)
@@ -527,9 +543,19 @@ private fun UpdatePreviewPage(
         if (themeSwitchStage != 0) {
             ThemeSwitchOverlay(
                 stage = themeSwitchStage,
+                isDark = LocalIsDarkTheme.current,
+                isEInkMode = isEInkMode,
+                progress = shockwaveProgress.value,
+                tier = shockwaveTier,
+                samplingQuality = LocalLiquidGlassSamplingQuality.current,
+                reducedMotion = LocalMotionPreference.current == MotionPreference.REDUCED,
                 onApplyTheme = {
                     liquidGlassSelected = true
                     onEnableLiquidGlass()
+                },
+                onWaveStart = {
+                    themeSwitchStage = 2
+                    shockwaveRun++
                 },
                 onStageChange = { themeSwitchStage = it },
                 onFinished = { themeSwitchStage = 0 }
@@ -684,45 +710,26 @@ private fun LiquidGlassPreviewTile(
 @Composable
 private fun ThemeSwitchOverlay(
     stage: Int,
+    isDark: Boolean,
+    isEInkMode: Boolean,
+    progress: Float,
+    tier: WelcomeShockwaveTier,
+    samplingQuality: com.huangder.lumibooks.domain.model.LiquidGlassSamplingQuality,
+    reducedMotion: Boolean,
     onApplyTheme: () -> Unit,
+    onWaveStart: () -> Unit,
     onStageChange: (Int) -> Unit,
     onFinished: () -> Unit
 ) {
     LaunchedEffect(Unit) {
-        delay(delayMillis(260L))
-        onStageChange(2)
-        delay(delayMillis(120L))
+        delay(delayMillis(40L))
+        onWaveStart()
         onApplyTheme()
+        delay(delayMillis(if (reducedMotion) 600L else 1_000L))
         onStageChange(3)
-        delay(delayMillis(1_000L))
-        onStageChange(4)
-        delay(delayMillis(240L))
-        onStageChange(5)
-        delay(delayMillis(900L))
+        delay(delayMillis(180L))
         onFinished()
     }
-
-    val solidCapsuleAlpha by animateFloatAsState(
-        targetValue = if (stage == 2) 1f else 0f,
-        animationSpec = tween(if (stage == 3) 1_000 else 180),
-        label = "themeSwitchSolidCapsule"
-    )
-    val glassCapsuleAlpha by animateFloatAsState(
-        targetValue = if (stage == 3) 1f else 0f,
-        animationSpec = tween(if (stage == 3) 1_000 else 180),
-        label = "themeSwitchGlassCapsule"
-    )
-    val capsuleAlpha by animateFloatAsState(
-        targetValue = if (stage == 2 || stage == 3) 1f else 0f,
-        animationSpec = tween(240),
-        label = "themeSwitchCapsuleExit"
-    )
-    val capsuleScale by animateFloatAsState(
-        targetValue = if (stage == 2 || stage == 3) 1f else 0.86f,
-        animationSpec = spring(dampingRatio = 0.78f, stiffness = 420f),
-        label = "themeSwitchCapsuleScale"
-    )
-
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -730,48 +737,21 @@ private fun ThemeSwitchOverlay(
                 detectTapGestures { }
             }
     ) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .width(196.dp)
-                .height(56.dp)
-                .graphicsLayer {
-                    alpha = capsuleAlpha
-                    scaleX = capsuleScale
-                    scaleY = capsuleScale
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = solidCapsuleAlpha }
-                    .clip(AppRoundedCornerShape(28.dp))
-                    .background(Color.White)
-            )
-            CompositionLocalProvider(
-                LocalAppTheme provides "liquid_glass",
-                LocalLiquidGlassTransparency provides 0.65f
-            ) {
-                LiquidGlassSurface(
-                    controlEdge = true,
-                    shape = AppRoundedCornerShape(28.dp),
-                    fallbackColor = Color.White,
-                    contentScrimColor = Color.White.copy(alpha = 0.38f),
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { alpha = glassCapsuleAlpha }
-                ) {}
-            }
-            Text(
-                text = stringResource(R.string.welcome_switching_theme),
-                color = Color(0xFF2C2C2E),
-                fontSize = AppType.Body,
-                fontWeight = FontWeight.SemiBold
+        val shaderHandlesShockwave = android.os.Build.VERSION.SDK_INT >= 33 &&
+            !reducedMotion && tier != WelcomeShockwaveTier.HALO_ONLY
+        if (!isEInkMode && !shaderHandlesShockwave) {
+            WelcomeShockwave(
+                progress = progress,
+                isDark = isDark,
+                tier = tier,
+                samplingQuality = samplingQuality,
+                reducedMotion = reducedMotion
             )
         }
     }
 }
+
+private val ShockwaveEaseIn = androidx.compose.animation.core.Easing { fraction -> fraction * fraction }
 
 @Composable
 private fun WelcomeActionButton(
@@ -791,44 +771,23 @@ private fun WelcomeActionButton(
         CompositionLocalProvider(
             LocalAppTheme provides "liquid_glass"
         ) {
-            if (enabled) {
-                LiquidGlassButton(
-                    onClick = onClick,
-                    modifier = modifier,
-                    shape = shape,
-                    tintedColor = if (primary) AccentColor else null,
-                    prominentShadow = primary,
-                    contentColor = contentColor
-                ) {
-                    Text(
-                        text = text,
-                        color = contentColor,
-                        fontSize = AppType.Body,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                    )
-                }
-            } else {
-                LiquidGlassSurface(
-                    controlEdge = true,
-                    shape = shape,
-                    fallbackColor = if (primary) AccentColor else AppColors.CardBg,
-                    contentScrimColor = if (primary) {
-                        AccentColor.copy(alpha = 0.72f)
-                    } else {
-                        AppColors.CardBg.copy(alpha = 0.24f)
-                    },
-                    modifier = modifier
-                ) {
-                    Text(
-                        text = text,
-                        color = contentColor,
-                        fontSize = AppType.Body,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+            LiquidGlassButton(
+                onClick = onClick,
+                modifier = modifier,
+                enabled = enabled,
+                shape = shape,
+                tintedColor = null,
+                contentColor = if (primary) AccentColor else textPrimary
+            ) {
+                Text(
+                    text = text,
+                    color = if (primary) AccentColor else textPrimary,
+                    fontSize = AppType.Body,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
             }
         }
     } else {

@@ -55,6 +55,9 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
     lateinit var hiddenLibrarySession: com.huangder.lumibooks.privacy.HiddenLibrarySession
 
     @Inject
+    lateinit var readingJournalRecorder: dagger.Lazy<com.huangder.lumibooks.reading.journal.ReadingJournalRecorder>
+
+    @Inject
     lateinit var editionAccess: dagger.Lazy<com.huangder.lumibooks.edition.PremiumAccess>
 
     override val workManagerConfiguration: Configuration
@@ -143,6 +146,7 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
                     PDFBoxResourceLoader.init(this@EBookReaderApp)
                     widgetRefreshCoordinator.start()
                     editionAccess.get().start()
+                    readingJournalRecorder.get().start()
                 }
             }
         }

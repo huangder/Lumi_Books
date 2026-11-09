@@ -68,6 +68,7 @@ class BackupArchiveManager @Inject constructor(
             }.toString().toByteArray(Charsets.UTF_8)
             zip.writeBytes(MANIFEST_PATH, manifest)
         }
+        com.huangder.lumibooks.reading.journal.ReadingJournalSettings.recordBackup(context)
         BackupArchiveResult(counting.count, entries.size)
     }
 

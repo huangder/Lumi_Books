@@ -13,6 +13,9 @@ interface TtsPageSource {
      */
     suspend fun locatePage(chapterIndex: Int, characterOffset: Int): TtsPageContent? = null
 
+    /** Temporarily avoid view-backed text providers while visual following is unavailable. */
+    fun setReaderVisible(visible: Boolean) {}
+
     /** Release reader-only providers before its views are destroyed. */
     fun detachReader() {}
 

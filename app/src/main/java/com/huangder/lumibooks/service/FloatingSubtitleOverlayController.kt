@@ -117,7 +117,7 @@ class FloatingSubtitleOverlayController @Inject constructor(
             combine(
                 dataStoreManager.floatingSubtitleSettings,
                 ttsController.playbackState,
-                ttsController.currentUtterance,
+                ttsController.currentClause,
                 dataStoreManager.motionPreference
             ) { settings, state, utterance, motionPreference ->
                 OverlaySnapshot(

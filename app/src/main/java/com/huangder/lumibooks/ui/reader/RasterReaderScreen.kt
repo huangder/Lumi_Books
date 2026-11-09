@@ -1962,7 +1962,9 @@ fun RasterReaderScreen(
             position = readerTtsPosition,
             onPositionChange = viewModel::saveReaderTtsPosition,
             catalogBoundsInWindow = ttsCatalogBounds,
-            revealKey = ttsRevealKey
+            revealKey = ttsRevealKey,
+            menuEnterMillis = 280,
+            menuExitMillis = 220
         ) { placement ->
             TtsPlayerPanel(
                 placement = placement,

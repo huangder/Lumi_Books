@@ -166,7 +166,11 @@ internal class SystemTtsAudioPlayer(
 
     fun scheduleRange(frame: Long, callback: () -> Unit) {
         if (frame < 0L) return
-        synchronized(rangeLock) { ranges.addLast(frame to callback) }
+        synchronized(rangeLock) {
+            // A late precise range can precede an already scheduled estimated clause.
+            val index = ranges.indexOfFirst { it.first > frame }
+            if (index < 0) ranges.addLast(frame to callback) else ranges.add(index, frame to callback)
+        }
     }
 
     private suspend fun dispatchRenderedRanges(active: PcmTrack, token: Long) {

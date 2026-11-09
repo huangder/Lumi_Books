@@ -7,7 +7,7 @@
     <string name="remote_library_empty">ライブラリがまだ追加されていません</string>
     <string name="remote_library_empty_detail_webdav">NAS、Jianguoyun、Nextcloud などの WebDAV ストレージに接続し、フォルダ内の書籍を閲覧してダウンロードできます。</string>
     <string name="remote_library_empty_detail_opds">Calibre、Kavita、Komga など OPDS カタログを提供する自前のライブラリに接続し、閲覧・検索・ダウンロードできます。</string>
-    <string name="remote_library_legal_notice">アクセス権限のあるライブラリのみ追加してください。Lumi は書源を提供・推奨しません。</string>
+    <string name="remote_library_legal_notice">アクセス権限のあるライブラリのみ追加してください。Lumi は書籍コンテンツやライブラリを提供・推奨しません。</string>
     <string name="remote_library_add">ライブラリを追加</string>
     <string name="remote_library_edit">ライブラリを編集</string>
     <string name="remote_library_delete">ライブラリを削除</string>

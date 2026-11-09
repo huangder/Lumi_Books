@@ -674,6 +674,7 @@ internal fun EpubWebViewReader(
         value = withContext(Dispatchers.IO) { session.isMediaOnlyPage(chapterIndex) }
     }
     val nativeSettingsSupported = nativeCssEnabled && nativeSession != null && bookFormat == "EPUB" &&
+        nativeEpubDecorationsSupported(notes, chapterIndex) &&
         mediaOnlyPage == false &&
         !continuousScroll && pageTransition in setOf("slide", "curl", "wave", "none") &&
         readerBackgroundImagePath == null && !bionicReadingEnabled && chineseMode == "original" &&
@@ -684,6 +685,7 @@ internal fun EpubWebViewReader(
         if (!nativeSettingsSupported) {
             val reasons = buildList {
                 if (!nativeCssEnabled) add("experiment disabled")
+                if (!nativeEpubDecorationsSupported(notes, chapterIndex)) add("annotation styles")
                 if (nativeSession == null || bookFormat != "EPUB") add("format $bookFormat")
                 if (continuousScroll) add("continuous scroll")
                 if (pageTransition !in setOf("slide", "curl", "wave", "none")) add("transition $pageTransition")
@@ -793,11 +795,7 @@ internal fun EpubWebViewReader(
     val latestTextSpacing = rememberUpdatedState(textSpacing)
     val latestFontType = rememberUpdatedState(fontType)
     val latestFontFilePath = rememberUpdatedState(fontFilePath)
-    val ruleFontUrls = remember(session, customFonts) {
-        customFonts.mapNotNull { preset ->
-            session.readerFontUrl(preset.path)?.let { preset.fontTypeKey to it }
-        }.toMap()
-    }
+    val ruleFontUrls = rememberEpubRuleFontUrls(session, notes, customFonts)
     val latestRuleFontUrls = rememberUpdatedState(ruleFontUrls)
     val latestBodyFontWeight = rememberUpdatedState(bodyFontWeight)
     val latestTextColorOverride = rememberUpdatedState(textColorOverride)
@@ -3214,6 +3212,9 @@ internal fun EpubWebViewReader(
                 pageTurnHost.onSlideLookaheadRequested = { slot, target ->
                     updatePreload(slot, target)
                 }
+                pageTurnHost.onUnpreparedChapterTurn = { direction ->
+                    latestChapterTurn.value(direction)
+                }
                 pageTurnHost.onSlideVisualPageAdvanced = { target, pageCount ->
                     updateAdjacentPreloads(target.chapterIndex, target.pageIndex, pageCount)
                 }
@@ -3245,7 +3246,8 @@ internal fun EpubWebViewReader(
             val density = pageTurnHost.resources.displayMetrics.density
             pageTurnHost.setScrollViewportInsets(
                 topPx = if (continuousScroll) (marginTopDp.coerceAtLeast(0f) * density).roundToInt() else 0,
-                bottomPx = if (continuousScroll) (marginBottomDp.coerceAtLeast(0f) * density).roundToInt() else 0
+                bottomPx = if (continuousScroll) (marginBottomDp.coerceAtLeast(0f) * density).roundToInt() else 0,
+                contentOnly = continuousScroll
             )
             if (pageTurnHost.paddingLeft != 0 || pageTurnHost.paddingTop != 0 ||
                 pageTurnHost.paddingRight != 0 || pageTurnHost.paddingBottom != 0
@@ -3870,6 +3872,7 @@ internal fun configureReader(
         .put("chineseTarget", chineseMapping?.second.orEmpty())
         .putOpt("fontFamily", fontFamily)
         .putOpt("fontUrl", readerFontUrl)
+        .put("fontWeightDescriptor", epubReaderFontWeightDescriptor(fontFilePath))
         .put("fontSystemSerifFallback", fontType == "serif")
         .putOpt("fontItalicUrl", if (fontType == "serif" && fontFilePath != null)
             session.readerFontUrl(java.io.File(java.io.File(fontFilePath).parentFile,
@@ -3906,6 +3909,12 @@ internal fun configureReader(
         .put("longPressSelectionRange", longPressSelectionRange.storageKey)
         .put("canTurnPrevious", chapterIndex > 0)
         .put("canTurnNext", chapterIndex + 1 < session.chapterCount)
+        .put("scrollViewportInsets", JSONObject()
+            .put("top", if (continuousScroll) marginTopDp.coerceAtLeast(0f) else 0f)
+            .put("bottom", if (continuousScroll) marginBottomDp.coerceAtLeast(0f) else 0f))
+        .put("scrollViewportBackgroundColor", "#" +
+            (((view.parent as? EpubPageTurnHost)?.viewportBackgroundColor ?: android.graphics.Color.WHITE)
+                and 0x00ffffff).toString(16).padStart(6, '0'))
         .put(
             "insets",
             JSONObject()
@@ -4119,7 +4128,7 @@ internal fun highlightsJson(
                 put("fontWeight", style.fontWeight)
                 put("italic", style.italic)
                 val fontFamily = when {
-                    style.fontType == "serif" -> "serif"
+                    style.fontType == "serif" -> if (ruleFontUrls[style.fontType] != null) "LumiRuleSerif" else "serif"
                     style.fontType == "sans_serif" -> "sans-serif"
                     style.fontType == "monospace" -> "monospace"
                     style.fontType == "fangsong" -> "LumiRuleFangSong"

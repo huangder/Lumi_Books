@@ -7,7 +7,7 @@
     <string name="remote_library_empty">還沒有新增書庫</string>
     <string name="remote_library_empty_detail_webdav">連接 NAS、堅果雲、Nextcloud 等 WebDAV 網盤，瀏覽資料夾中的書並下載匯入。</string>
     <string name="remote_library_empty_detail_opds">連接 Calibre、Kavita、Komga 等提供 OPDS 書目的自建書庫，瀏覽、搜尋並下載匯入。</string>
-    <string name="remote_library_legal_notice">僅新增你有權存取的書庫。Lumi 不提供、不推薦任何書源。</string>
+    <string name="remote_library_legal_notice">僅新增你有權存取的書庫。Lumi 不提供、不推薦任何書庫或書籍內容。</string>
     <string name="remote_library_add">新增書庫</string>
     <string name="remote_library_edit">編輯書庫</string>
     <string name="remote_library_delete">刪除書庫</string>

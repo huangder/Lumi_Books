@@ -28,7 +28,8 @@ internal fun listeningText(chapter: TtsChapterSnapshot?, page: TtsPageContent?, 
     val extractor = TtsTextExtractor()
     val segments = if (snapshot != null) extractor.splitIntoSegments(snapshot.text)
         else extractor.splitIntoSegments(page.text, page.startCharacterOffset)
-    val rows = segments.filter { extractor.hasSpeakableContent(it.text) }.map { ListeningSentence(index, it) }
+    val rows = segments.flatMap { extractor.splitIntoClauses(it) }
+        .filter { extractor.hasSpeakableContent(it.text) }.map { ListeningSentence(index, it) }
     val offset = utterance?.startCharacterOffset ?: page.startCharacterOffset
     val focus = rows.indexOfLast { it.segment.startCharacterOffset <= offset }.coerceAtLeast(0)
     val length = snapshot?.text?.length ?: page.endCharacterOffset
@@ -43,7 +44,8 @@ internal fun ListeningText.withRangeProgress(frame: TtsListeningFrame, range: Tt
     } ?: return this
     val length = frame.chapter?.takeIf { it.index == chapter }?.text?.length
         ?: frame.page?.endCharacterOffset ?: return this
-    return if (length > 0) copy(progress = (offset.toFloat() / length).coerceIn(0f, 1f)) else this
+    val focus = sentences.indexOfLast { it.segment.startCharacterOffset <= offset }.coerceAtLeast(0)
+    return copy(focus = focus, progress = if (length > 0) (offset.toFloat() / length).coerceIn(0f, 1f) else progress)
 }
 
 @HiltViewModel
@@ -57,7 +59,8 @@ class FullScreenTtsViewModel @Inject constructor(
     val bookId: String = savedState[FullScreenTtsActivity.BOOK_ID] ?: ""
     val sessionId: Long = savedState[FullScreenTtsActivity.SESSION_ID] ?: -1L
     val book = MutableStateFlow<Book?>(null)
-    val subtitleMode = savedState.getStateFlow("subtitles", false)
+    private val displayMode = ListeningDisplayMode(savedState)
+    val subtitleMode = displayMode.subtitles
     var entered: Boolean
         get() = savedState["entered"] ?: false
         set(value) { savedState["entered"] = value }
@@ -65,7 +68,7 @@ class FullScreenTtsViewModel @Inject constructor(
     val engineBusy = MutableStateFlow(false)
     val engineError = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val engines = engine.getInstalledEngines()
-    // Word callbacks update only progress; split the chapter only when the sentence frame changes.
+    // Range callbacks move clause focus/progress without re-splitting the chapter.
     val text = controller.listeningFrame.map { frame ->
         frame to listeningText(frame.chapter, frame.page, frame.utterance)
     }.combine(controller.currentSentence) { (frame, text), range -> text.withRangeProgress(frame, range) }
@@ -75,9 +78,14 @@ class FullScreenTtsViewModel @Inject constructor(
         if (isCurrentSession()) controller.setFullscreenVisible(sessionId, true)
         viewModelScope.launch { book.value = repository.getBookById(bookId) }
         viewModelScope.launch { controller.engineSwitchFailures.collect { engineError.emit(Unit) } }
+        viewModelScope.launch {
+            settings.listeningPageSettings.map { it.defaultDisplayStyle }.distinctUntilChanged().collect { style ->
+                displayMode.applyDefault(style)
+            }
+        }
     }
     fun isCurrentSession() = controller.activeBookId.value == bookId && controller.currentSessionId == sessionId
-    fun toggleMode() { savedState["subtitles"] = !subtitleMode.value }
+    fun toggleMode() = displayMode.toggle()
     fun togglePlayback() {
         if (controller.playbackState.value == TtsPlaybackState.PLAYING) controller.pause() else controller.resume()
     }

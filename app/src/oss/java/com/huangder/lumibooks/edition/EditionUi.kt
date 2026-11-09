@@ -16,6 +16,19 @@ internal fun EditionTagManagementSettingsEntry() = Unit
 @Composable
 internal fun EditionReadingReviewEntry(period: ReadingReportPeriod, compact: Boolean = false) = Unit
 
+/** The base edition records nothing and shows no reading journal. */
+internal const val editionHasReadingJournal: Boolean = false
+
+@Composable
+internal fun EditionReadingJournalCard() = Unit
+
+@Composable
+internal fun EditionBookJournalEntry(bookId: String) = Unit
+
+/** Opens the to-read list from the home header; the base edition has no such page. */
+@Composable
+internal fun rememberToReadHomeAction(): (() -> Unit)? = null
+
 @Composable
 internal fun EditionTagManagementButton(type: String, modifier: Modifier = Modifier, toolbar: Boolean = false) = Unit
 

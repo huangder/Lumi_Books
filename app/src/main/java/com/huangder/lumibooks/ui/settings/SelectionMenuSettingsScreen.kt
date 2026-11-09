@@ -154,7 +154,7 @@ fun SelectionMenuSettingsScreen(
                     .fillMaxWidth()
                     .statusBarsPadding()
                     .height(56.dp)
-                    .padding(horizontal = AppSpace.sm),
+                    .padding(horizontal = AppSpace.md),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 LiquidGlassIconButton(

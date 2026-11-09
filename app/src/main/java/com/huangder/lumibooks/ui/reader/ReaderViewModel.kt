@@ -734,13 +734,7 @@ class ReaderViewModel @Inject constructor(
         val book = state.book ?: return
         val liveSession = liveListeningSessionId()
         when (listeningReaderSession.returnFromBackground(liveSession)) {
-            true -> {
-                val live = liveSession?.let { ttsController.liveListeningPosition(bookId, it) }
-                if (live != null) {
-                    listeningReaderSession.requestJump(live, liveSession)
-                    return
-                }
-            }
+            true -> return
             false -> return
             null -> Unit
         }
@@ -931,6 +925,9 @@ class ReaderViewModel @Inject constructor(
 
     /** Foreground reader activity is accounted together with background audio. */
     fun onAppBackgrounded() {
+        // Detach even when a reader variant does not compose ObserveListeningResume.
+        // Background speech must never wait for an off-screen page animation.
+        suspendListeningReader()
         flushNativePageIndex()
         activityTracker.setReaderVisible(this, bookId, false)
         if (!isPaused) {
@@ -1121,7 +1118,7 @@ class ReaderViewModel @Inject constructor(
         }
         viewModelScope.launch {
             // 收集 TTS 当前朗读句子的字符偏移，用于 UI 淡高亮
-            combine(ttsController.currentSentence, ttsController.listeningFrame, ttsController.fullscreenVisible) {
+            combine(ttsController.currentClause, ttsController.listeningFrame, ttsController.fullscreenVisible) {
                 segment, frame, fullscreen -> Triple(segment, frame.page, fullscreen)
             }.collectLatest { (segment, page, fullscreen) ->
                 if (segment != null && page != null && !fullscreen) {
@@ -1731,7 +1728,7 @@ class ReaderViewModel @Inject constructor(
 
     fun adjustFontSizeBy(delta: Int) {
         if (delta == 0) return
-        saveFontSize((_uiState.value.fontSize + delta).coerceIn(12f, 28f))
+        saveFontSize((_uiState.value.fontSize + delta).coerceIn(ReaderThemeSettings.FONT_SIZE_RANGE))
     }
 
     fun previewFontSize(size: Float) {

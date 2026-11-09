@@ -148,6 +148,8 @@ internal class EpubSpreadPlanner(
 
     private fun fullWidth(target: EpubPageTarget, info: EpubPagePresentation): Boolean {
         if (info.isCover && target.pageIndex == 0) return true
+        // These are full-window chapter hints, not EPUB left/right page placement.
+        if (!fixed(info) && info.duokanPage?.usesFullWindow == true) return true
         if (!fixed(info)) return false
         if (!info.renditionSpread.allowsSpread(isLandscape) || info.preferredSide == EpubPageSide.CENTER) {
             return true

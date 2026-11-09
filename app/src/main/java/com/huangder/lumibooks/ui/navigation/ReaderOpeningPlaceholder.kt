@@ -22,8 +22,7 @@ import com.huangder.lumibooks.ui.reader.ReaderDocumentState
 import kotlinx.coroutines.delay
 
 /**
- * The reader now loads while the hero window moves, so an early error or an empty result must
- * also wait for the window: mounting any reader surface mid-motion would drop frames.
+ * Keep a solid paper surface visible while the reader document loads behind the route fade.
  */
 internal fun shouldMountReaderContent(
     state: ReaderDocumentState,
@@ -34,7 +33,7 @@ internal fun shouldMountReaderContent(
         (!state.isLoading && state.book == null)
     )
 
-/** Becomes true two frames after the window lands, once the full-size shell is on screen. */
+/** Delays mounting reader content until the route transition has settled. */
 @Composable
 internal fun rememberReaderMountReady(bookId: String, windowReady: Boolean): Boolean {
     var ready by remember(bookId) { mutableStateOf(windowReady) }

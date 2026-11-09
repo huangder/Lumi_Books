@@ -16,6 +16,27 @@ import org.robolectric.annotation.Config
 class EpubPagePresentationTest {
     @get:Rule val temporaryFolder = TemporaryFolder()
 
+    @Test fun duokanHintsSurvivePackageParsingWithoutInventingFixedPagesOrPageSides() {
+        openFixture(pages = listOf(
+            Page("special", properties = "duokan-page-fullscreen-spread-left"),
+            Page("fit", properties = "duokan-page-fitwindow"),
+            Page("normal"),
+            Page("standard", properties = "duokan-page-fullscreen page-spread-right rendition:layout-pre-paginated")
+        )).use { session ->
+            assertEquals(EpubDuokanPage.SPREAD_LEFT, session.pagePresentation(0).duokanPage)
+            assertEquals(EpubRenditionLayout.REFLOWABLE, session.pagePresentation(0).renditionLayout)
+            assertNull(session.pagePresentation(0).preferredSide)
+            assertEquals(EpubDuokanPage.FIT_WINDOW, session.pagePresentation(1).duokanPage)
+            assertNull(session.pagePresentation(2).duokanPage)
+            assertEquals(EpubPageSide.RIGHT, session.pagePresentation(3).preferredSide)
+            assertEquals(EpubRenditionLayout.PRE_PAGINATED, session.pagePresentation(3).renditionLayout)
+            val native = session.nativeChapterSource(0)!!
+            assertEquals(EpubDuokanPage.SPREAD_LEFT, native.duokanPage)
+            assertEquals(ChapterRenderEngine.WEBVIEW, NativeEpubCompiler.compile(native).decision.engine)
+        }
+        assertNull(EpubDuokanPage.fromProperties(setOf("duokan-page-fullscreen-future")))
+    }
+
     @Test fun itemPropertiesOverridePackageSpreadAndKeepDeclaredSides() {
         openFixture(
             pages = listOf(

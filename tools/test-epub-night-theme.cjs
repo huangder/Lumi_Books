@@ -10,8 +10,8 @@ const { spawnSync } = require('node:child_process');
 
 const source = readFileSync(join(__dirname,
   '../app/src/main/java/com/huangder/lumibooks/util/epub/EpubDocumentTransformer.kt'), 'utf8');
-const scriptParts = [...source.matchAll(/private const val READER_SCRIPT_PART_(?:1B|[123]) = """([\s\S]*?)"""/g)];
-assert.equal(scriptParts.length, 4, 'All production reader script parts must be exercised');
+const scriptParts = [...source.matchAll(/private const val READER_SCRIPT_PART_\w+ = """([\s\S]*?)"""/g)];
+assert.equal(scriptParts.length, 5, 'All production reader script parts must be exercised');
 const readerScript = scriptParts.map(match => match[1]).join('');
 const readerCss = source.match(/private const val READER_CSS = """([\s\S]*?)"""/)[1];
 
@@ -181,7 +181,7 @@ async function verifyThemes() {
       assert(getComputedStyle(shade).pointerEvents === 'none', flow + ' shade permits interaction');
       assert(shade.parentElement === document.documentElement, flow + ' shade stays outside page clones');
       assert(getComputedStyle(document.documentElement).filter === 'none', flow + ' shade does not transform fixed backgrounds');
-      assert(getComputedStyle(document.getElementById('copy')).color === 'rgb(0, 0, 0)', flow + ' shade preserves text colors');
+      assert(getComputedStyle(document.getElementById('copy')).color === 'rgb(232, 232, 234)', flow + ' original night uses readable neutral text');
       assert(getComputedStyle(document.getElementById('paper')).backgroundImage.includes('gradient'), flow + ' shade preserves paper');
       assert(reader.currentPosition().layoutRevision === original.layoutRevision, flow + ' shade does not repaginate');
       assert(reader.currentPosition().pageIndex === original.pageIndex, flow + ' shade keeps page');
@@ -219,7 +219,8 @@ async function verifyBackgrounds() {
         assert(visibleLayer || document.body.dataset.lumiLayout === 'pre_paginated', theme + ' / ' + flow + ' publisher layer visible');
         assert(getComputedStyle(paper).backgroundImage.includes('gradient'), theme + ' / ' + flow + ' background retained');
         assert(getComputedStyle(paper).backgroundImage.includes('data:image/svg+xml'), theme + ' / ' + flow + ' background image retained');
-        assert(getComputedStyle(document.getElementById('copy')).color === 'rgb(0, 0, 0)', theme + ' original contrast retained');
+        assert(getComputedStyle(document.getElementById('copy')).color === (theme === 'publisher_night'
+          ? 'rgb(232, 232, 234)' : 'rgb(0, 0, 0)'), theme + ' original contrast retained');
         reader.configure({theme, flow, preservePublisherBackground:false});
         await wait(); await wait();
         assert(!layer || getComputedStyle(layer).display === 'none', theme + ' switch hides book background');

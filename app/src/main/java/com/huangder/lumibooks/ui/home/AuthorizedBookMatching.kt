@@ -74,6 +74,28 @@ internal fun shouldRefreshAuthorizedHash(book: Book, documentLastModified: Long)
         documentLastModified <= 0L ||
         book.sourceLastModified != documentLastModified
 
+/** Remote Markdown hashes describe an mdpack archive, not the imported Markdown source. */
+internal fun findCloudBookForImport(sha256: String?, format: com.huangder.lumibooks.domain.model.BookFormat, books: List<Book>): Book? {
+    if (sha256.isNullOrBlank() || format == com.huangder.lumibooks.domain.model.BookFormat.MARKDOWN) return null
+    return books.filter {
+        it.isCloudOnly && it.format == format && it.remoteFileSha256?.equals(sha256, ignoreCase = true) == true
+    }.singleOrNull()
+}
+
+/** Attach a verified local body without replacing the cloud book's identity or reading state. */
+internal fun attachImportedCloudBook(cloud: Book, imported: Book): Book = cloud.copy(
+    filePath = imported.filePath,
+    coverPath = cloud.coverPath ?: imported.coverPath,
+    isCloudOnly = false,
+    sourceUri = imported.sourceUri,
+    sourceDocumentKey = imported.sourceDocumentKey,
+    sourceParentUri = imported.sourceParentUri,
+    sourceSha256 = imported.sourceSha256,
+    sourceDisplayName = imported.sourceDisplayName,
+    sourceLastModified = imported.sourceLastModified,
+    isMissing = false
+)
+
 /** One-time lazy repair for books created before local source hashes were introduced. */
 internal suspend fun backfillMissingSourceHashes(
     books: List<Book>,

@@ -28,6 +28,8 @@ import com.huangder.lumibooks.data.local.entity.BookHighlightRuleStateEntity
 import com.huangder.lumibooks.data.local.entity.BookHighlightSettingsEntity
 import com.huangder.lumibooks.data.local.entity.HighlightRuleExclusionEntity
 import com.huangder.lumibooks.data.local.dao.HighlightRuleDao
+import com.huangder.lumibooks.data.local.dao.ReadingJournalDao
+import com.huangder.lumibooks.data.local.entity.ReadingJournalEventEntity
 
 @Database(
     entities = [
@@ -46,9 +48,10 @@ import com.huangder.lumibooks.data.local.dao.HighlightRuleDao
         HighlightRuleEntity::class,
         BookHighlightRuleStateEntity::class,
         BookHighlightSettingsEntity::class,
-        HighlightRuleExclusionEntity::class
+        HighlightRuleExclusionEntity::class,
+        ReadingJournalEventEntity::class
     ],
-    version = 27,
+    version = 28,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -62,4 +65,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun folderDao(): FolderDao
     abstract fun syncStateDao(): SyncStateDao
     abstract fun highlightRuleDao(): HighlightRuleDao
+    abstract fun readingJournalDao(): ReadingJournalDao
 }

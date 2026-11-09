@@ -66,6 +66,12 @@
             android:windowSoftInputMode="adjustNothing" />
 
         <activity
+            android:name=".ui.settings.ListeningPageSettingsActivity"
+            android:exported="false"
+            android:enableOnBackInvokedCallback="true"
+            android:theme="@style/Theme.EBookReader" />
+
+        <activity
             android:name=".ui.welcome.WelcomeActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
