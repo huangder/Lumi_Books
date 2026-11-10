@@ -129,14 +129,23 @@ class WebdavSyncManager @Inject constructor(
             val dataEntries = remoteManifest.data.toMutableMap()
             val deletedBooks = remoteManifest.deletedBooks.toMutableMap()
             val initialLocalBooks = bookRepository.getAllBooks().first()
-            val wireBookIds = resolveBookIdentities(initialLocalBooks, confirmedBooks, libraryKey)
+            val rememberedIds = bookIdentityStore.read(libraryKey)
+            val contentResolution = resolveContentIdentities(initialLocalBooks, remoteManifest, libraryKey)
+            val wireBookIds = contentResolution.wireIds
             val initialLocalIds = initialLocalBooks.mapTo(mutableSetOf()) { it.id }
             val localBookIds = wireBookIds.filterKeys { it in initialLocalIds }
                 .entries.associate { (local, wire) -> wire to local }
             for ((localId, wireId) in wireBookIds) {
                 val book = bookRepository.getBookById(localId) ?: continue
-                val entry = confirmedBooks[wireId] ?: continue
-                bookRepository.updateBook(book.withWebdavAssociation(entry, libraryKey))
+                val prepared = if (normalized.syncReadingRecords) {
+                    book.prepareFirstContentLink(rememberedIds[localId] == wireId ||
+                        (localId == wireId && localId in remoteManifest.data))
+                } else book
+                val entry = confirmedBooks[wireId]
+                val linked = if (entry != null) {
+                    prepared.withWebdavAssociation(entry, libraryKey, normalizeUnread = false)
+                } else prepared
+                if (linked != book) bookRepository.updateBook(linked)
             }
 
             for ((bookId, deleted) in deletedBooks) {
@@ -163,6 +172,7 @@ class WebdavSyncManager @Inject constructor(
                     if (bookId in deletedBooks) continue
                     val localId = localBookIds[bookId] ?: bookId
                     val existing = bookRepository.getBookById(localId)
+                    if (existing != null && wireBookIds[existing.id]?.let { it != bookId } == true) continue
                     val remoteCoverPath = if (remoteEntry.cover != null &&
                         (existing?.coverPath.isNullOrBlank() ||
                             (remoteEntry.metadata?.updatedAt ?: 0L) >= (existing?.metadataUpdatedAt ?: 0L))
@@ -228,7 +238,7 @@ class WebdavSyncManager @Inject constructor(
                             continue
                         }
                         try {
-                            confirmedEntry = uploadBookFile(book, serverUrl, username, password, syncPath)
+                            confirmedEntry = uploadBookFile(book, serverUrl, username, password, syncPath, wireId)
                             if (confirmedEntry != null) {
                                 booksUploaded++
                             } else {
@@ -349,7 +359,8 @@ class WebdavSyncManager @Inject constructor(
                 manifest = SyncManifest(
                     books = confirmedBooks,
                     data = dataEntries,
-                    deletedBooks = deletedBooks
+                    deletedBooks = deletedBooks,
+                    bookIdentities = contentResolution.identities.filterKeys { it !in deletedBooks }
                 ),
                 serverUrl = serverUrl,
                 username = username,
@@ -459,19 +470,27 @@ class WebdavSyncManager @Inject constructor(
             if (!syncMutex.tryLock()) return@launch
             val n = config.normalized()
             try {
-                val remoteManifest = downloadManifestOrNull(n.serverUrl, n.username, password, n.syncPath)
-                val wireBookIds = resolveBookIdentities(
-                    bookRepository.getAllBooks().first(), remoteManifest?.books.orEmpty(), remoteLibraryKey(n),
-                    establishNew = false
+                webdavClient.ensureDirectory(n.serverUrl, n.username, password, n.syncPath)
+                webdavClient.ensureDirectory(n.serverUrl, n.username, password, "${n.syncPath}/data")
+                val remoteManifest = downloadManifestOrNull(n.serverUrl, n.username, password, n.syncPath) ?: SyncManifest()
+                val libraryKey = remoteLibraryKey(n)
+                val remembered = bookIdentityStore.read(libraryKey)
+                val currentBook = bookRepository.getBookById(bookId) ?: return@launch
+                val resolution = resolveContentIdentities(
+                    bookRepository.getAllBooks().first(), remoteManifest, libraryKey, verifyOnlyBookId = bookId
                 )
-                val wireId = wireBookIds[bookId] ?: bookId
+                val wireId = resolution.wireIds[bookId] ?: bookId
+                if (wireId in remoteManifest.deletedBooks) return@launch
+                val prepared = currentBook.prepareFirstContentLink(remembered[bookId] == wireId ||
+                    (bookId == wireId && bookId in remoteManifest.data))
+                if (prepared != currentBook) bookRepository.updateBook(prepared)
                 uploadBookData(bookId, n.serverUrl, n.username, password, n.syncPath, n, wireId)
                 // Update only the reading-data entry in the remote manifest.
-                // Stored associations resolve IDs without rehashing book bodies in background sync.
                 val book = bookRepository.getBookById(bookId)
-                if (book != null && remoteManifest != null) {
+                if (book != null) {
                     val newManifest = remoteManifest.copy(
-                        data = remoteManifest.data + (wireId to buildBookDataManifestEntry(book).copy(fileName = "$wireId.json"))
+                        data = remoteManifest.data + (wireId to buildBookDataManifestEntry(book).copy(fileName = "$wireId.json")),
+                        bookIdentities = resolution.identities
                     )
                     commitManifest(
                         manifest = newManifest,
@@ -482,7 +501,7 @@ class WebdavSyncManager @Inject constructor(
                         atomic = false
                     )
                 }
-                portableStateSync.sync(n, password, wireBookIds)
+                portableStateSync.sync(n, password, resolution.wireIds)
             } catch (_: Exception) {
                 // Silent fail for background sync
             } finally {
@@ -715,7 +734,8 @@ class WebdavSyncManager @Inject constructor(
                 version = SyncManifest.CURRENT_VERSION,
                 books = books,
                 data = data,
-                deletedBooks = deleted
+                deletedBooks = deleted,
+                bookIdentities = manifest.bookIdentities.filterKeys { it !in deleted }
             )
             commitManifest(
                 manifest = updatedManifest,
@@ -1244,6 +1264,37 @@ class WebdavSyncManager @Inject constructor(
         return CloudBookDownloadResult(null, message, false)
     }
 
+    private suspend fun resolveContentIdentities(
+        books: List<Book>, manifest: SyncManifest, libraryKey: String, verifyOnlyBookId: String? = null
+    ): WebdavContentIdentityResolution {
+        val verified = mutableMapOf<String, SyncBookIdentity>()
+        for (book in books) {
+            if (book.isCloudOnly || (verifyOnlyBookId != null && book.id != verifyOnlyBookId)) continue
+            try {
+                verified[book.id] = BookFileAccess.openInputStream(context, book.filePath).use { input ->
+                    val digest = MessageDigest.getInstance("SHA-256")
+                    val buffer = ByteArray(64 * 1024)
+                    var size = 0L
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        digest.update(buffer, 0, count)
+                        size += count
+                    }
+                    SyncBookIdentity(digest.digest().joinToString("") { "%02x".format(it) }, book.format.name, size)
+                }
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                Log.w(TAG, "Cannot verify book identity: ${book.id}")
+            }
+        }
+        val resolution = resolveWebdavContentIdentities(
+            books, manifest, verified, bookIdentityStore.read(libraryKey), libraryKey
+        )
+        bookIdentityStore.save(libraryKey, resolution.wireIds)
+        return resolution
+    }
+
     private suspend fun resolveBookIdentities(
         books: List<Book>, remote: Map<String, SyncFileEntry>, libraryKey: String,
         establishNew: Boolean = true
@@ -1380,13 +1431,14 @@ class WebdavSyncManager @Inject constructor(
         serverUrl: String,
         username: String,
         password: String,
-        syncPath: String
+        syncPath: String,
+        remoteBookId: String = book.id
     ): SyncFileEntry? {
         val fileName: String
         val expectedSize: Long
         val lastModified: Long
 
-        fileName = remoteBookFileName(book)
+        fileName = "$remoteBookId.${bookFileExtension(book)}"
         if (book.format == BookFormat.MARKDOWN) {
             val document = File(book.filePath)
             val pack = com.huangder.lumibooks.util.markdown.MarkdownSnapshotStore.packageFile(document)

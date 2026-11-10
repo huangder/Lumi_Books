@@ -101,14 +101,33 @@ data class DeletedBookEntry(
  * Manifest stored at `{syncPath}/manifest.json` on the WebDAV server.
  * Used for fast diff — only transfer changed files.
  */
+data class SyncBookIdentity(val sha256: String, val format: String, val sizeBytes: Long) {
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("sha256", sha256)
+        put("format", format)
+        put("sizeBytes", sizeBytes)
+    }
+
+    companion object {
+        fun fromJson(json: JSONObject): SyncBookIdentity = SyncBookIdentity(
+            json.getString("sha256"), json.getString("format"), json.optLong("sizeBytes")
+        )
+    }
+}
+
 data class SyncManifest(
     val version: Int = CURRENT_VERSION,
     val books: Map<String, SyncFileEntry> = emptyMap(),   // bookId → book file entry
     val data: Map<String, SyncFileEntry> = emptyMap(),    // bookId → reading data entry
-    val deletedBooks: Map<String, DeletedBookEntry> = emptyMap()
+    val deletedBooks: Map<String, DeletedBookEntry> = emptyMap(),
+    // Content identities exist even when no book body has ever been uploaded.
+    val bookIdentities: Map<String, SyncBookIdentity> = emptyMap()
 ) {
     fun toJson(): String = JSONObject().apply {
         put("version", version)
+        put("bookIdentities", JSONObject().apply {
+            for ((k, v) in bookIdentities) put(k, v.toJson())
+        })
         put("books", JSONObject().apply {
             for ((k, v) in books) put(k, v.toJson())
         })
@@ -146,7 +165,12 @@ data class SyncManifest(
                 version = root.optInt("version", 1),
                 books = readMap("books"),
                 data = readMap("data"),
-                deletedBooks = readDeletedBooks()
+                deletedBooks = readDeletedBooks(),
+                bookIdentities = root.optJSONObject("bookIdentities")?.let { identities ->
+                    identities.keys().asSequence().associateWith {
+                        SyncBookIdentity.fromJson(identities.getJSONObject(it))
+                    }
+                }.orEmpty()
             )
         }
     }

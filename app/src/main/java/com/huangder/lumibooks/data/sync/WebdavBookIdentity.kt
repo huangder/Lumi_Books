@@ -37,10 +37,12 @@ internal fun associatedWebdavBookId(book: Book, remote: Map<String, SyncFileEntr
         remote.filterValues { it.fileName == book.remoteFileName }.keys.singleOrNull()
     } else null
 
-internal fun Book.withWebdavAssociation(entry: SyncFileEntry, libraryKey: String): Book {
+internal fun Book.withWebdavAssociation(
+    entry: SyncFileEntry, libraryKey: String, normalizeUnread: Boolean = true
+): Book {
     // Opening an independently imported copy at its default position before the first sync
     // must not turn its newer open/import time into a request to reset the cloud position.
-    val firstUnreadLink = remoteLibraryKey == null && readingProgress == 0f && !isManuallyMarkedRead
+    val firstUnreadLink = normalizeUnread && remoteLibraryKey == null && readingProgress == 0f && !isManuallyMarkedRead
     return copy(
         lastReadTime = if (firstUnreadLink) 0L else lastReadTime,
         locatorJson = if (firstUnreadLink) null else locatorJson,
@@ -89,5 +91,35 @@ internal fun PortableSnapshot.remapWebdavBookIds(ids: Map<String, String>): Port
         assets = assets.map { asset ->
             if (asset.kind in setOf("book", "book_cover")) asset.copy(ownerId = bookId(asset.ownerId)) else asset
         }
+    )
+}
+
+/** Old cloud rows must not overwrite a local row now mapped to a different content ID. */
+internal fun PortableSnapshot.withoutWebdavBookIds(excluded: Set<String>): PortableSnapshot {
+    if (excluded.isEmpty()) return this
+    return copy(
+        books = books.filter { it.id !in excluded },
+        preferences = preferences.filter { preference -> excluded.none { preference.key.endsWith("_$it") } },
+        folders = folders.map { folder -> folder.copy(previewBookIds = folder.previewBookIds?.let { raw ->
+            runCatching {
+                val array = JSONArray(raw)
+                JSONArray((0 until array.length()).map { array.getString(it) }.filter { it !in excluded }).toString()
+            }.getOrDefault(raw)
+        }) },
+        bookFolderLinks = bookFolderLinks.filter { it.bookId !in excluded },
+        bookTagLinks = bookTagLinks.filter { it.bookId !in excluded },
+        readingRecords = readingRecords.filter { it.bookId !in excluded },
+        bookmarks = bookmarks.filter { it.bookId !in excluded },
+        notes = notes.filter { it.bookId !in excluded },
+        journalEvents = journalEvents.filter { it.bookId !in excluded },
+        bookHighlightRuleStates = bookHighlightRuleStates.filter { it.bookId !in excluded },
+        bookHighlightSettings = bookHighlightSettings.filter { it.bookId !in excluded },
+        highlightRuleExclusions = highlightRuleExclusions.filter { it.bookId !in excluded },
+        tombstones = tombstones.filter { tombstone -> when (tombstone.namespace) {
+            "book", "book_folder" -> tombstone.itemId !in excluded
+            "book_tag" -> excluded.none { tombstone.itemId.startsWith("$it:") }
+            else -> true
+        } },
+        assets = assets.filter { it.kind !in setOf("book", "book_cover") || it.ownerId !in excluded }
     )
 }

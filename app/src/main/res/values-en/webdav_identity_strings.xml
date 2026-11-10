@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="webdav_progress_only_title">Reading progress only</string>
+    <string name="webdav_progress_only_description">Sync only progress and position within reading data, excluding reading time, bookmarks, and notes. Book files are controlled separately above.</string>
+    <string name="webdav_identity_upgrade_title">WebDAV sync has been updated</string>
+    <string name="webdav_identity_upgrade_message">Sync progress for the same book across devices without uploading book files.\n\nFirst update and manually sync the device with your latest progress, then update and sync your other devices. Use identical book files on each device; existing books do not need to be imported again.\n\nOpen WebDAV and tap Sync now. Your current sync choices will be kept.</string>
+    <string name="webdav_identity_upgrade_open">Open sync</string>
+    <string name="webdav_identity_upgrade_later">Later</string>
+</resources>

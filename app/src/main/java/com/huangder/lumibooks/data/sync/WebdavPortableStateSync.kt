@@ -35,7 +35,14 @@ class WebdavPortableStateSync @Inject constructor(
         client.ensureDirectory(serverUrl, config.username, password, root)
         client.ensureDirectory(serverUrl, config.username, password, "$root/assets")
         val captured = snapshotManager.capture(includeBookFiles = false).forWebdav(config)
-        val localBundle = captured.copy(snapshot = captured.snapshot.remapWebdavBookIds(wireBookIds))
+        // A legacy placeholder and a newly imported body may represent the same verified wire ID.
+        // Keep every reference for merging, but use the physical book's descriptor only once.
+        val placeholderIds = captured.snapshot.books.filter { book -> book.isCloudOnly &&
+            wireBookIds.any { (local, wire) -> local != book.id && wire == book.id }
+        }.mapTo(mutableSetOf()) { it.id }
+        val localBundle = captured.copy(snapshot = captured.snapshot.copy(
+            books = captured.snapshot.books.filter { it.id !in placeholderIds }
+        ).remapWebdavBookIds(wireBookIds))
         val currentIds = captured.snapshot.books.mapTo(mutableSetOf()) { it.id }
         val localBookIds = wireBookIds.filterKeys { it in currentIds }
             .entries.associate { (local, wire) -> wire to local }
@@ -49,7 +56,14 @@ class WebdavPortableStateSync @Inject constructor(
             } ?: emptySnapshot(localBundle.snapshot.sourceDeviceId)
             val merged = PortableSnapshotMerger.merge(localBundle.snapshot, remote)
             val remotePayload = selectForRemote(localBundle.snapshot, remote, merged, config)
+            val shadowedIds = currentIds.filterTo(mutableSetOf()) { wireBookIds[it]?.let { wire -> wire != it } == true }
+            // A progress record is not a downloadable book. Wait for the user's local import.
+            if (config.syncReadingProgressOnly && !config.syncBookFiles) {
+                shadowedIds += remotePayload.books.map { it.id }.toSet() -
+                    localBundle.snapshot.books.map { it.id }.toSet()
+            }
             val localPayload = selectForLocal(localBundle.snapshot, remotePayload, config)
+                .withoutWebdavBookIds(shadowedIds)
             val workDir = File(context.cacheDir, "webdav_state_${UUID.randomUUID()}").apply { mkdirs() }
             try {
                 val files = mutableMapOf<String, File>()
@@ -130,7 +144,7 @@ class WebdavPortableStateSync @Inject constructor(
                     )
                 }
                 cleanupUnreferencedAssets(serverUrl, root, config.username, password, remotePayload)
-                if (config.syncReadingData) {
+                if (config.syncReadingDetails) {
                     com.huangder.lumibooks.reading.journal.ReadingJournalSettings.recordBackup(context)
                 }
                 return PortableStateSyncResult(uploadedAssets, downloadedAssets)
@@ -182,23 +196,24 @@ class WebdavPortableStateSync @Inject constructor(
             folders = if (config.syncLibraryOrganization) merged.folders else remote.folders,
             bookFolderLinks = if (config.syncLibraryOrganization) merged.bookFolderLinks else remote.bookFolderLinks,
             tags = if (config.syncLibraryOrganization) merged.tags else remote.tags,
-            annotationTags = if (config.syncReadingData) merged.annotationTags else remote.annotationTags,
-            tagGroups = chooseWebdavTagGroups(merged, remote, config.syncLibraryOrganization, config.syncReadingData),
+            annotationTags = if (config.syncReadingDetails) merged.annotationTags else remote.annotationTags,
+            tagGroups = chooseWebdavTagGroups(merged, remote, config.syncLibraryOrganization, config.syncReadingDetails),
             bookTagsWithoutGroupId = if (config.syncLibraryOrganization) merged.bookTagsWithoutGroupId else remote.unknownBookGroupIds(),
-            annotationTagsWithoutGroupId = if (config.syncReadingData) merged.annotationTagsWithoutGroupId else remote.unknownAnnotationGroupNames(),
+            annotationTagsWithoutGroupId = if (config.syncReadingDetails) merged.annotationTagsWithoutGroupId else remote.unknownAnnotationGroupNames(),
             bookTagLinks = if (config.syncLibraryOrganization) merged.bookTagLinks else remote.bookTagLinks,
-            readingRecords = if (config.syncReadingData) merged.readingRecords else remote.readingRecords,
-            bookmarks = if (config.syncReadingData) merged.bookmarks else remote.bookmarks,
-            notes = if (config.syncReadingData) merged.notes else remote.notes,
-            journalEvents = if (config.syncReadingData) merged.journalEvents else remote.journalEvents,
+            readingRecords = if (config.syncReadingDetails) merged.readingRecords else remote.readingRecords,
+            bookmarks = if (config.syncReadingDetails) merged.bookmarks else remote.bookmarks,
+            notes = if (config.syncReadingDetails) merged.notes else remote.notes,
+            journalEvents = if (config.syncReadingDetails) merged.journalEvents else remote.journalEvents,
+            highlightRuleExclusions = if (config.syncReadingDetails) merged.highlightRuleExclusions else remote.highlightRuleExclusions,
             tombstones = merged.tombstones.filter { tombstone ->
                 when (tombstone.namespace) {
-                    in readingNamespaces -> config.syncReadingData
+                    in readingNamespaces -> config.syncReadingDetails
                     in libraryNamespaces -> config.syncLibraryOrganization
                     else -> true
                 }
             } + remote.tombstones.filter { tombstone ->
-                (tombstone.namespace in readingNamespaces && !config.syncReadingData) ||
+                (tombstone.namespace in readingNamespaces && !config.syncReadingDetails) ||
                     (tombstone.namespace in libraryNamespaces && !config.syncLibraryOrganization)
             },
             assets = (remote.assets + local.assets).associateBy { it.id }.values.toList()
@@ -218,15 +233,16 @@ class WebdavPortableStateSync @Inject constructor(
         folders = if (config.syncLibraryOrganization) remotePayload.folders else local.folders,
         bookFolderLinks = if (config.syncLibraryOrganization) remotePayload.bookFolderLinks else local.bookFolderLinks,
         tags = if (config.syncLibraryOrganization) remotePayload.tags else local.tags,
-        annotationTags = if (config.syncReadingData) remotePayload.annotationTags else local.annotationTags,
-        tagGroups = chooseWebdavTagGroups(remotePayload, local, config.syncLibraryOrganization, config.syncReadingData),
+        annotationTags = if (config.syncReadingDetails) remotePayload.annotationTags else local.annotationTags,
+        tagGroups = chooseWebdavTagGroups(remotePayload, local, config.syncLibraryOrganization, config.syncReadingDetails),
         bookTagsWithoutGroupId = if (config.syncLibraryOrganization) remotePayload.unknownBookGroupIds() else local.unknownBookGroupIds(),
-        annotationTagsWithoutGroupId = if (config.syncReadingData) remotePayload.unknownAnnotationGroupNames() else local.unknownAnnotationGroupNames(),
+        annotationTagsWithoutGroupId = if (config.syncReadingDetails) remotePayload.unknownAnnotationGroupNames() else local.unknownAnnotationGroupNames(),
         bookTagLinks = if (config.syncLibraryOrganization) remotePayload.bookTagLinks else local.bookTagLinks,
-        readingRecords = if (config.syncReadingData) remotePayload.readingRecords else local.readingRecords,
-        bookmarks = if (config.syncReadingData) remotePayload.bookmarks else local.bookmarks,
-        notes = if (config.syncReadingData) remotePayload.notes else local.notes,
-        journalEvents = if (config.syncReadingData) remotePayload.journalEvents else local.journalEvents,
+        readingRecords = if (config.syncReadingDetails) remotePayload.readingRecords else local.readingRecords,
+        bookmarks = if (config.syncReadingDetails) remotePayload.bookmarks else local.bookmarks,
+        notes = if (config.syncReadingDetails) remotePayload.notes else local.notes,
+        journalEvents = if (config.syncReadingDetails) remotePayload.journalEvents else local.journalEvents,
+        highlightRuleExclusions = if (config.syncReadingDetails) remotePayload.highlightRuleExclusions else local.highlightRuleExclusions,
         tombstones = (local.tombstones + remotePayload.tombstones).associateBy {
             "${it.namespace}:${it.itemId}"
         }.values.toList(),
@@ -364,7 +380,8 @@ internal fun chooseWebdavBooksForDevice(
     val mergedMap = mergedBooks.associateBy { it.id }
     val fallback = if (forLocal) localMap else remoteMap
     return (fallback.keys + mergedMap.keys).mapNotNull { id ->
-        val base = if (syncLibraryOrganization) mergedMap[id] else fallback[id]
+        val base = if (syncLibraryOrganization) mergedMap[id] else
+            fallback[id] ?: localMap[id].takeIf { !forLocal && syncReadingData }
         val progress = if (syncReadingData) mergedMap[id] else fallback[id]
         base?.copy(
             lastReadTime = progress?.lastReadTime ?: base.lastReadTime,

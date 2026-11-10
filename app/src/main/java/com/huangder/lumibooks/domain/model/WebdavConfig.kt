@@ -15,14 +15,16 @@ data class WebdavConfig(
     val syncBookFiles: Boolean = true,
     val syncProfileAndSettings: Boolean = true,
     val syncLibraryOrganization: Boolean = true,
-    val syncReadingData: Boolean = true
+    val syncReadingData: Boolean = true,
+    val syncReadingProgressOnly: Boolean = false
 ) {
     val syncsBookData: Boolean
         get() = syncReadingData
 
     val syncReadingRecords: Boolean get() = syncReadingData
-    val syncBookmarks: Boolean get() = syncReadingData
-    val syncNotes: Boolean get() = syncReadingData
+    val syncReadingDetails: Boolean get() = syncReadingData && !syncReadingProgressOnly
+    val syncBookmarks: Boolean get() = syncReadingDetails
+    val syncNotes: Boolean get() = syncReadingDetails
 
     val hasSelectedContent: Boolean
         get() = syncBookFiles || syncProfileAndSettings || syncLibraryOrganization || syncsBookData
@@ -39,5 +41,6 @@ enum class WebdavSyncContent {
     BOOK_FILES,
     PROFILE_AND_SETTINGS,
     LIBRARY_ORGANIZATION,
-    READING_DATA
+    READING_DATA,
+    READING_PROGRESS_ONLY
 }

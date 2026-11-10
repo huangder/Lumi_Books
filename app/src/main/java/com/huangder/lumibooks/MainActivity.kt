@@ -43,6 +43,7 @@ import androidx.navigation.compose.rememberNavController
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.data.sync.LocalNetworkAccessManager
 import com.huangder.lumibooks.data.sync.WebdavAutoSyncScheduler
+import com.huangder.lumibooks.data.sync.WebdavSyncUpgradeStore
 import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
 import com.huangder.lumibooks.domain.model.AppUiIconStyle
 import com.huangder.lumibooks.domain.model.Book
@@ -64,6 +65,8 @@ import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
 import com.huangder.lumibooks.ui.components.rememberLocalNetworkPermissionGate
 import com.huangder.lumibooks.ui.components.PolicyUpdateDialog
 import com.huangder.lumibooks.ui.components.RemoteNoticeDialog
+import com.huangder.lumibooks.ui.components.WebdavSyncUpgradeDialog
+import com.huangder.lumibooks.ui.settings.DetailActivity
 import com.huangder.lumibooks.ui.welcome.WelcomeActivity
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.MotionPreference
@@ -247,6 +250,9 @@ class MainActivity : ComponentActivity() {
 
     /** Pending terms/privacy policy update dialog; non-null means show it after startup. */
     private var pendingPolicyUpdate by mutableStateOf<PendingPolicyUpdate?>(null)
+
+    @Inject lateinit var webdavSyncUpgradeStore: WebdavSyncUpgradeStore
+    private var pendingWebdavSyncUpgrade by mutableStateOf(false)
 
     /** Externally opened files waiting for a copy/move decision. */
     private var pendingExternalImportUris by mutableStateOf<List<Uri>>(emptyList())
@@ -836,7 +842,8 @@ class MainActivity : ComponentActivity() {
                 )
                 LaunchedEffect(Unit) {
                     val config = dataStoreManager.webdavConfig.first()
-                    if (config.enabled && config.serverUrl.isNotBlank()) {
+                    pendingWebdavSyncUpgrade = webdavSyncUpgradeStore.shouldPrompt(config)
+                    if (config.enabled && config.serverUrl.isNotBlank() && !pendingWebdavSyncUpgrade) {
                         requestLocalNetworkPermission(
                             config.serverUrl,
                             {},
@@ -875,6 +882,7 @@ class MainActivity : ComponentActivity() {
                             pendingAppUpdate != null ||
                                 pendingRemoteNotice != null ||
                                 policyDialog != null ||
+                                pendingWebdavSyncUpgrade ||
                                 // 外部导入询问弹窗也是玻璃容器，同样需要在它显示期间捕获主内容，
                                 // 否则玻璃表面拿到的是一份没有内容的 backdrop，只剩半透明底色。
                                 pendingExternalImportUris.isNotEmpty())
@@ -938,7 +946,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                    // Remote startup dialog priority: app update > notice > policy.
+                    // Startup dialog priority: app update > notice > policy > sync upgrade.
                     // 阅读页不渲染启动弹窗，避免 layerBackdrop 切换导致内容闪烁。
                     val appUpdate = pendingAppUpdate
                     val remoteNotice = pendingRemoteNotice
@@ -1007,6 +1015,20 @@ class MainActivity : ComponentActivity() {
                                     }
                                 )
                             }
+                        }
+                        !onReaderRoute && !showSplash && pendingWebdavSyncUpgrade &&
+                            pendingExternalImportUris.isEmpty() -> {
+                            WebdavSyncUpgradeDialog(
+                                onOpenSync = {
+                                    lifecycleScope.launch { webdavSyncUpgradeStore.acknowledge() }
+                                    pendingWebdavSyncUpgrade = false
+                                    startActivity(DetailActivity.createIntent(this@MainActivity, "webdav"))
+                                },
+                                onDismiss = {
+                                    lifecycleScope.launch { webdavSyncUpgradeStore.acknowledge() }
+                                    pendingWebdavSyncUpgrade = false
+                                }
+                            )
                         }
                     }
 

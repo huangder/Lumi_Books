@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="webdav_progress_only_title">僅同步閱讀進度</string>
+    <string name="webdav_progress_only_description">閱讀資料中只同步進度與位置，不同步時長、書籤和筆記。書籍原始檔由上方選項單獨控制。</string>
+    <string name="webdav_identity_upgrade_title">WebDAV 同步已升級</string>
+    <string name="webdav_identity_upgrade_message">現在無需上傳書籍原始檔，也能跨裝置同步同一本書的閱讀進度。\n\n請先在進度最新的裝置更新並手動同步一次，再在其他裝置更新並同步。各裝置使用內容完全相同的書籍檔案即可，無需重新匯入已有書籍。\n\n前往 WebDAV 點選「立即同步」即可，現有同步選項會保留。</string>
+    <string name="webdav_identity_upgrade_open">前往同步</string>
+    <string name="webdav_identity_upgrade_later">稍後</string>
+</resources>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="webdav_progress_only_title">독서 진행 상황만</string>
+    <string name="webdav_progress_only_description">독서 데이터 중 진행 상황과 위치만 동기화합니다. 독서 시간, 책갈피, 메모는 제외합니다. 도서 파일은 위 항목에서 별도로 설정합니다.</string>
+    <string name="webdav_identity_upgrade_title">WebDAV 동기화가 개선되었습니다</string>
+    <string name="webdav_identity_upgrade_message">도서 파일을 업로드하지 않고도 같은 책의 독서 진행 상황을 기기 간에 동기화할 수 있습니다.\n\n먼저 진행 상황이 가장 최신인 기기를 업데이트하고 수동으로 동기화한 다음 다른 기기도 업데이트하고 동기화하세요. 각 기기에서 내용이 완전히 같은 도서 파일을 사용하면 됩니다. 기존 도서를 다시 가져올 필요는 없습니다.\n\nWebDAV에서 지금 동기화를 누르세요. 기존 동기화 설정은 유지됩니다.</string>
+    <string name="webdav_identity_upgrade_open">동기화 설정 열기</string>
+    <string name="webdav_identity_upgrade_later">나중에</string>
+</resources>

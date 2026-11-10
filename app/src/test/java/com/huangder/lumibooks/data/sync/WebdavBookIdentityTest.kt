@@ -112,6 +112,18 @@ class WebdavBookIdentityTest {
         assertEquals("chapter-8", restoredA.books.single().locatorJson)
     }
 
+    @Test fun changedContentDoesNotLetLegacyRemoteUuidOverwriteNewContentOnReverseMapping() {
+        val local = snapshot(portable("local").copy(readingProgress = .2f, lastReadTime = 300))
+            .remapWebdavBookIds(mapOf("local" to "new-content"))
+        val staleRemote = snapshot(portable("local").copy(readingProgress = .9f, lastReadTime = 500))
+        val merged = PortableSnapshotMerger.merge(local, staleRemote)
+        val payload = merged.withoutWebdavBookIds(setOf("local"))
+            .remapWebdavBookIds(mapOf("new-content" to "local"))
+        assertEquals("local", payload.books.single().id)
+        assertEquals(.2f, payload.books.single().readingProgress, 0f)
+        assertEquals(.9f, staleRemote.books.single().readingProgress, 0f)
+    }
+
     private fun book(id: String) = Book(id, "Title", "Author", "/$id.epub", null, BookFormat.EPUB, 1, 0f, createdAt = 1)
     private fun portable(id: String) = PortableBook(id, "Title", "Author", "EPUB", 1, 0f, null, 1, false, false, 1,
         null, null, null, null, 0, null)

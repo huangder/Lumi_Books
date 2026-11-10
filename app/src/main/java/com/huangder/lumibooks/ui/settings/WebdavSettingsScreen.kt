@@ -213,7 +213,8 @@ fun WebdavConfigurationDetail(
             syncBookFiles = currentConfig.syncBookFiles,
             syncProfileAndSettings = currentConfig.syncProfileAndSettings,
             syncLibraryOrganization = currentConfig.syncLibraryOrganization,
-            syncReadingData = currentConfig.syncReadingData
+            syncReadingData = currentConfig.syncReadingData,
+            syncReadingProgressOnly = currentConfig.syncReadingProgressOnly
         )
         viewModel.enableWebdav(config, password)
         onSaved()
@@ -574,6 +575,14 @@ private fun WebdavSyncContentSelector(
             checked = config.syncReadingData,
             onCheckedChange = { onContentChange(WebdavSyncContent.READING_DATA, it) }
         )
+        if (config.syncReadingData) {
+            WebdavSyncContentRow(
+                title = stringResource(R.string.webdav_progress_only_title),
+                description = stringResource(R.string.webdav_progress_only_description),
+                checked = config.syncReadingProgressOnly,
+                onCheckedChange = { onContentChange(WebdavSyncContent.READING_PROGRESS_ONLY, it) }
+            )
+        }
     }
 }
 

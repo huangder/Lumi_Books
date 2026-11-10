@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="webdav_progress_only_title">読書の進捗のみ</string>
+    <string name="webdav_progress_only_description">読書データのうち進捗と位置のみを同期します。読書時間、ブックマーク、メモは含みません。書籍ファイルは上の項目で個別に設定します。</string>
+    <string name="webdav_identity_upgrade_title">WebDAV 同期が更新されました</string>
+    <string name="webdav_identity_upgrade_message">書籍ファイルをアップロードせずに、同じ本の読書の進捗を端末間で同期できます。\n\nまず進捗が最新の端末を更新して手動で同期し、その後ほかの端末を更新して同期してください。各端末で内容が完全に同じ書籍ファイルを使用してください。既存の本を再インポートする必要はありません。\n\nWebDAV を開き「今すぐ同期」をタップしてください。現在の同期設定は保持されます。</string>
+    <string name="webdav_identity_upgrade_open">同期設定を開く</string>
+    <string name="webdav_identity_upgrade_later">後で</string>
+</resources>
