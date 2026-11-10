@@ -85,6 +85,8 @@ import com.huangder.lumibooks.tts.ExternalTtsSettings
 import com.huangder.lumibooks.tts.ExternalTtsConfig
 import com.huangder.lumibooks.tts.FloatingSubtitleSettings
 import com.huangder.lumibooks.tts.TtsSettingsStore
+import com.huangder.lumibooks.domain.model.BookPositionUse
+import com.huangder.lumibooks.domain.model.BookPositionSource
 import com.huangder.lumibooks.tts.TtsProviderSelection
 import com.huangder.lumibooks.tts.TtsProsodyMode
 import com.huangder.lumibooks.tts.TtsProsodySettings
@@ -258,6 +260,19 @@ class DataStoreManager @Inject constructor(
     fun bookReviewRating(bookId: String): Flow<Float> = context.dataStore.data.map { preferences ->
         (preferences[floatPreferencesKey("book_review_rating_$bookId")] ?: 0f).coerceIn(0f, 5f)
     }.distinctUntilChanged()
+
+    /** True once the finish-page fireworks have played for this book (synced with other preferences). */
+    fun bookFinishCelebrated(bookId: String): Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[booleanPreferencesKey("book_finish_celebrated_$bookId")] == true
+    }.distinctUntilChanged()
+
+    suspend fun setBookFinishCelebrated(bookId: String) {
+        context.dataStore.edit { it[booleanPreferencesKey("book_finish_celebrated_$bookId")] = true }
+    }
+
+    suspend fun saveBookReviewRating(bookId: String, rating: Float) {
+        context.dataStore.edit { it[floatPreferencesKey("book_review_rating_$bookId")] = rating.coerceIn(0f, 5f) }
+    }
 
     suspend fun saveBookReview(bookId: String, review: String, rating: Float) {
         val reviewKey = stringPreferencesKey("book_review_$bookId")
@@ -516,6 +531,7 @@ class DataStoreManager @Inject constructor(
         private val WEBDAV_SYNC_PROFILE_SETTINGS = booleanPreferencesKey("webdav_sync_profile_settings")
         private val WEBDAV_SYNC_LIBRARY_ORGANIZATION = booleanPreferencesKey("webdav_sync_library_organization")
         private val WEBDAV_SYNC_READING_DATA = booleanPreferencesKey("webdav_sync_reading_data")
+        private val WEBDAV_SYNC_READING_PROGRESS_ONLY = booleanPreferencesKey("webdav_sync_reading_progress_only")
         // 应用语言
         private val APP_LANGUAGE = stringPreferencesKey("app_language")
 
@@ -1317,7 +1333,8 @@ class DataStoreManager @Inject constructor(
             syncReadingData = preferences[WEBDAV_SYNC_READING_DATA]
                 ?: ((preferences[WEBDAV_SYNC_READING_RECORDS] ?: true) ||
                     (preferences[WEBDAV_SYNC_BOOKMARKS] ?: true) ||
-                    (preferences[WEBDAV_SYNC_NOTES] ?: true))
+                    (preferences[WEBDAV_SYNC_NOTES] ?: true)),
+            syncReadingProgressOnly = preferences[WEBDAV_SYNC_READING_PROGRESS_ONLY] ?: false
         )
     }
 
@@ -1402,6 +1419,19 @@ class DataStoreManager @Inject constructor(
 
     private fun ttsListeningPositionKey(bookId: String) =
         stringPreferencesKey("tts_listening_position_$bookId")
+
+    fun bookPositionSource(bookId: String): Flow<BookPositionSource?> = context.dataStore.data.map {
+        BookPositionUse.decode(it[bookPositionUseKey(bookId)])?.source
+    }
+
+    override suspend fun saveBookPositionUse(bookId: String, use: BookPositionUse) {
+        context.dataStore.edit { preferences ->
+            val key = bookPositionUseKey(bookId)
+            if (use.canReplace(BookPositionUse.decode(preferences[key]))) preferences[key] = use.encode()
+        }
+    }
+
+    private fun bookPositionUseKey(bookId: String) = stringPreferencesKey("local_book_position_use_$bookId")
 
     // 应用语言
     val appLanguage: Flow<String> = context.dataStore.data.map { preferences ->
@@ -2827,6 +2857,24 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    /**
+     * New installs start on Liquid Glass. Only fills in a theme that has never been written, so
+     * calling it again (or after the user picked a theme) changes nothing. Callers must only use
+     * it for a confirmed first install: upgraded users without a stored theme keep "lumi".
+     * Returns true when the default was applied.
+     */
+    suspend fun applyFreshInstallDefaults(): Boolean {
+        var applied = false
+        context.dataStore.edit { preferences ->
+            if (preferences[APP_THEME] == null) {
+                preferences[APP_THEME] = "liquid_glass"
+                if (preferences[LIQUID_GLASS_TRANSPARENCY] == null) preferences[LIQUID_GLASS_TRANSPARENCY] = 0.65f
+                applied = true
+            }
+        }
+        return applied
+    }
+
     suspend fun saveReduceTransparencyEnabled(enabled: Boolean) {
         val saved = context.dataStore.edit { preferences ->
             preferences[REDUCE_TRANSPARENCY_ENABLED] = enabled
@@ -3053,6 +3101,7 @@ class DataStoreManager @Inject constructor(
             preferences[WEBDAV_SYNC_PROFILE_SETTINGS] = normalized.syncProfileAndSettings
             preferences[WEBDAV_SYNC_LIBRARY_ORGANIZATION] = normalized.syncLibraryOrganization
             preferences[WEBDAV_SYNC_READING_DATA] = normalized.syncReadingData
+            preferences[WEBDAV_SYNC_READING_PROGRESS_ONLY] = normalized.syncReadingProgressOnly
         }
     }
 
@@ -3063,6 +3112,7 @@ class DataStoreManager @Inject constructor(
                 WebdavSyncContent.PROFILE_AND_SETTINGS -> WEBDAV_SYNC_PROFILE_SETTINGS
                 WebdavSyncContent.LIBRARY_ORGANIZATION -> WEBDAV_SYNC_LIBRARY_ORGANIZATION
                 WebdavSyncContent.READING_DATA -> WEBDAV_SYNC_READING_DATA
+                WebdavSyncContent.READING_PROGRESS_ONLY -> WEBDAV_SYNC_READING_PROGRESS_ONLY
             }
             preferences[key] = enabled
         }
@@ -3459,6 +3509,8 @@ class DataStoreManager @Inject constructor(
     }
 
     private fun isPortablePreferenceKey(key: String): Boolean {
+        // Action ordering belongs to this installation, not to another device's progress.
+        if (key.startsWith("local_book_position_use_")) return false
         if (key == PORTABLE_PREFERENCE_METADATA.name) return false
         if (key == TTS_READER_RESUME_HINT_MIGRATED.name) return false
         if (key.startsWith("webdav_")) return false

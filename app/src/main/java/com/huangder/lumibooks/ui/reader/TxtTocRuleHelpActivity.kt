@@ -34,6 +34,7 @@ import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.util.LaunchThemeController
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import com.huangder.lumibooks.ui.animation.finishWithPush
 
 @AndroidEntryPoint
 class TxtTocRuleHelpActivity : ComponentActivity() {
@@ -93,12 +94,12 @@ class TxtTocRuleHelpActivity : ComponentActivity() {
             ) {
                 ConfigurableActivityBack(
                     predictiveBackEnabled = dataStoreManager.predictiveBackEnabled.collectAsState(initial = launchTheme.predictiveBackEnabled).value,
-                    onBack = { finish() }
+                    onBack = { finishWithPush() }
                 )
                 Surface(color = AppColors.PageBg) {
                     DetailPage(
                         title = stringResource(R.string.txt_toc_rule_help),
-                        onBack = { finish() }
+                        onBack = { finishWithPush() }
                     ) {
                         TxtTocRuleHelpContent()
                     }

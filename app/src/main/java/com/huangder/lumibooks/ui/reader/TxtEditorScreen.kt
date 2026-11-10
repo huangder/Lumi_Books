@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.reader
 
+import com.huangder.lumibooks.ui.animation.pagePushToolbarItem
 import com.huangder.lumibooks.ui.icons.ControlIcon
 import com.huangder.lumibooks.ui.icons.directionalIcon
 import com.huangder.lumibooks.ui.icons.AppIcons
@@ -450,6 +451,7 @@ fun TxtEditorScreen(
                 imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
                 contentDescription = stringResource(R.string.reader_back),
                 onClick = handleBack,
+                modifier = Modifier.pagePushToolbarItem(),
                 size = 40.dp,
                 iconSize = 22.dp
             )
@@ -465,6 +467,7 @@ fun TxtEditorScreen(
                 modifier = Modifier.weight(1f).padding(horizontal = AppSpace.sm)
             )
             LiquidGlassIconButton(
+                modifier = Modifier.pagePushToolbarItem(),
                 imageVector = AppIcons.Check,
                 contentDescription = stringResource(R.string.confirm),
                 onClick = {

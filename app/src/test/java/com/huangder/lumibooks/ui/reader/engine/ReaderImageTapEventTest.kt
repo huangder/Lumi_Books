@@ -39,6 +39,7 @@ class ReaderImageTapEventTest {
     private var longPresses = 0
     private var pageChanges = 0
     private var selectionDismisses = 0
+    private var readingInputs = 0
 
     @Before fun setUp() {
         val screen = activity.setup().get()
@@ -46,6 +47,7 @@ class ReaderImageTapEventTest {
         screen.setContentView(reader)
         reader.setBookmarkPullEnabled(false)
         reader.setCallbacks(object : ReadViewCallbacks {
+            override fun onReadingTouchStarted() { readingInputs++ }
             override fun onMenuToggle() { menus++ }
             override fun onLoadingChanged(isLoading: Boolean) = Unit
             override fun onPageChanged(globalPage: Int, chapterIndex: Int, pageInChapter: Int,
@@ -100,6 +102,18 @@ class ReaderImageTapEventTest {
             assertFalse(reader.animationController.isDragging)
         }
         assertEquals(0, pageChanges)
+    }
+
+    @Test fun readingIntentIsReportedBeforeDeferredTapAndOnlyOncePerTouch() {
+        reader.setTtsSentenceJumpEnabled(true)
+        val down = SystemClock.uptimeMillis()
+        event(MotionEvent.ACTION_DOWN, down, 0)
+        assertEquals(1, readingInputs)
+        assertEquals(0, menus)
+        event(MotionEvent.ACTION_UP, down, 60)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
+        assertEquals(1, menus)
+        assertEquals(1, readingInputs)
     }
 
     @Test fun edgeTapHasOneOwnerAndDoesNotToggleMenu() {

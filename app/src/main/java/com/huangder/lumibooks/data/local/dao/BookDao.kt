@@ -89,6 +89,10 @@ interface BookDao {
     @Query("UPDATE books SET isArchived = :archived, metadataUpdatedAt = :updatedAt WHERE id IN (:bookIds)")
     suspend fun setBooksArchived(bookIds: List<String>, archived: Boolean, updatedAt: Long)
 
+    /** The read flag travels with reading progress, so lastReadTime is its sync timestamp. */
+    @Query("UPDATE books SET isManuallyMarkedRead = :read, lastReadTime = :timestamp WHERE id = :bookId")
+    suspend fun setManuallyMarkedRead(bookId: String, read: Boolean, timestamp: Long)
+
     @Query("UPDATE books SET filePath = '', isCloudOnly = 1 WHERE id = :bookId")
     suspend fun markBookCloudOnly(bookId: String)
 

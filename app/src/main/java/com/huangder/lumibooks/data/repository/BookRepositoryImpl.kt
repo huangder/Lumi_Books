@@ -69,6 +69,10 @@ class BookRepositoryImpl @Inject constructor(
         bookDao.setBooksArchived(bookIds.distinct(), archived, System.currentTimeMillis())
     }
 
+    override suspend fun setManuallyMarkedRead(bookId: String, read: Boolean) {
+        bookDao.setManuallyMarkedRead(bookId, read, System.currentTimeMillis())
+    }
+
     override suspend fun deleteBook(book: Book) {
         syncStateDao.upsertTombstones(
             listOf(

@@ -7,6 +7,88 @@ import org.junit.Test
 class ListeningReaderSessionTest {
     private val target = TtsListeningPosition("book", 2, 3, 450, 123L)
 
+    @Test fun explicitPageFollowResumesAfterRepeatedFullscreenLifecycleCallbacks() {
+        val session = ListeningReaderSession()
+        session.follow()
+        repeat(3) {
+            repeat(4) { session.suspendForBackground(42) }
+            assertFalse(session.followEnabled.value)
+            assertEquals(true, session.returnFromBackground(42, followUserPageTurns = true))
+            assertTrue(session.followEnabled.value)
+            assertNull(session.beginCheck())
+            assertNull(session.prompt.value)
+            assertNull(session.returnFromBackground(42, followUserPageTurns = true))
+        }
+    }
+
+    @Test fun explicitPageFollowDoesNotBypassOpeningChoiceOrResumeADifferentSession() {
+        for (nextSession in listOf(42L, 43L, null)) {
+            val opening = ListeningReaderSession()
+            opening.suspendForBackground(42)
+            assertNull(opening.returnFromBackground(nextSession, followUserPageTurns = true))
+            assertFalse(opening.followEnabled.value)
+            assertNotNull(opening.beginCheck())
+        }
+        val session = ListeningReaderSession()
+        session.follow()
+        session.suspendForBackground(42)
+        assertNull(session.returnFromBackground(43, followUserPageTurns = true))
+        assertFalse(session.followEnabled.value)
+    }
+
+    @Test fun openingBeforeResumeStillAppliesTheSavedPositionPolicy() {
+        for (audioSession in listOf(null, 42L)) {
+            val session = ListeningReaderSession()
+            repeat(3) { session.suspendForBackground(audioSession) }
+            assertNull(session.returnFromBackground(audioSession))
+            val stamp = session.beginCheck()!!
+            assertTrue(session.isCurrent(stamp))
+            session.requestJump(target)
+            assertTrue(session.completeJump(target))
+        }
+    }
+
+    @Test fun backgroundDuringPositionLoadRetriesInsteadOfLosingTheOpeningChoice() {
+        val session = ListeningReaderSession()
+        val first = session.beginCheck()!!
+        session.suspendForBackground(42)
+        assertFalse(session.isCurrent(first))
+        assertNull(session.returnFromBackground(42))
+        val retry = session.beginCheck()!!
+        // The cancelled old coroutine must not release the newer check.
+        session.cancelCheck(first)
+        assertNull(session.beginCheck())
+        session.requestJump(target)
+        assertTrue(session.completeJump(target))
+        assertTrue(session.isCurrent(retry).not())
+    }
+
+    @Test fun cancelledViewportCheckCanRetryWithoutAnotherBackgroundTransition() {
+        val session = ListeningReaderSession()
+        val stamp = session.beginCheck()!!
+        assertNull(session.beginCheck())
+        session.cancelCheck(stamp)
+        assertNotNull(session.beginCheck())
+        session.keepReading()
+        assertNull(session.beginCheck())
+    }
+
+    @Test fun backgroundBeforeRendererAcceptsJumpRetriesTheOpeningPolicy() {
+        val session = ListeningReaderSession()
+        session.beginCheck()
+        session.requestJump(target)
+        assertNull(session.beginCheck())
+        session.suspendForBackground(42)
+        assertFalse(session.completeJump(target))
+        assertNull(session.returnFromBackground(42))
+        assertNotNull(session.beginCheck())
+        session.requestJump(target)
+        assertTrue(session.completeJump(target))
+        session.suspendForBackground(42)
+        assertEquals(true, session.returnFromBackground(42))
+        assertNull(session.beginCheck())
+    }
+
     @Test fun backgroundReturnDoesNotStartAnotherListeningResumeCheck() {
         val session = ListeningReaderSession()
         session.follow()

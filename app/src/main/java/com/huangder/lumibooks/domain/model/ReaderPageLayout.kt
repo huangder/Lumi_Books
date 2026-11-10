@@ -84,7 +84,7 @@ enum class ReaderEdgeTapMode(
     }
 }
 
-enum class ReaderCornerContent(val key: String) {
+enum class ReaderCornerContent(val key: String, val isCombination: Boolean = false) {
     NONE("none"),
     CHAPTER_INFO("chapter_info"),
     BOOK_PROGRESS("book_progress"),
@@ -92,7 +92,12 @@ enum class ReaderCornerContent(val key: String) {
     PAGE_NUMBER("page_number"),
     GLOBAL_PAGE_NUMBER("global_page_number"),
     BATTERY("battery"),
-    TIME("time");
+    TIME("time"),
+    TIME_BATTERY("time_battery", true),
+    PAGE_NUMBER_BOOK_PROGRESS("page_number_book_progress", true),
+    GLOBAL_PAGE_NUMBER_BOOK_PROGRESS("global_page_number_book_progress", true),
+    CHAPTER_INFO_PAGE_NUMBER("chapter_info_page_number", true),
+    CHAPTER_INFO_BOOK_PROGRESS("chapter_info_book_progress", true);
 
     companion object {
         fun fromKey(key: String?): ReaderCornerContent =

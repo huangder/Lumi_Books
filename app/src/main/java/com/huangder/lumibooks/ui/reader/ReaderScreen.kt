@@ -264,6 +264,12 @@ import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
 import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
 import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
+import com.huangder.lumibooks.ui.reader.finish.BookFinishActions
+import com.huangder.lumibooks.ui.reader.finish.BookFinishColors
+import com.huangder.lumibooks.ui.reader.finish.BookFinishEntrance
+import com.huangder.lumibooks.ui.reader.finish.BookFinishInlinePage
+import com.huangder.lumibooks.ui.reader.finish.BookFinishOverlay
+import com.huangder.lumibooks.ui.reader.finish.BookFinishPullState
 import com.huangder.lumibooks.ui.components.LiquidGlassDialog
 import com.huangder.lumibooks.ui.components.EditInputDialog
 import com.huangder.lumibooks.ui.excerpt.ExcerptRequest
@@ -1490,6 +1496,23 @@ private fun ReaderScreenContent(
     val isContinuousScrollMode = isMarkdownNative ||
         (!isBookLayout && uiState.useNewEngine &&
             uiState.readerWritingMode.usesContinuousScroll(basePageTransition, eInkMode))
+    // ── 读完页：翻过最后一页后出现；连续滚动模式则作为列表最后一项 ──
+    var finishPageVisible by remember(bookId) { mutableStateOf(false) }
+    var finishPageCovering by remember(bookId) { mutableStateOf(false) }
+    var finishPageDismissRequest by remember(bookId) { mutableIntStateOf(0) }
+    val openFinishPage: () -> Unit = {
+        if (!finishPageVisible && !uiState.isLoading && uiState.chapterCount > 0) {
+            viewModel.hideMenu()
+            finishPageVisible = true
+        }
+    }
+    val latestOpenFinishPage = rememberUpdatedState(openFinishPage)
+    val finishPull = remember(bookId) { BookFinishPullState() }
+    val onFinishPull: (Float) -> Unit = { distance ->
+        finishPull.update(distance)
+        if (!finishPageVisible) latestOpenFinishPage.value()
+    }
+    val onFinishPullEnd: (Boolean) -> Unit = { cancelled -> finishPull.release(cancelled) }
     var rendererBookPages by remember(bookId, isMarkdownNative, isBookLayout, uiState.chapterCount) {
         mutableStateOf(ReaderBookPages(chapterCounts = List(if (isMarkdownNative) 1 else uiState.chapterCount) { null }))
     }
@@ -2410,16 +2433,14 @@ private fun ReaderScreenContent(
     }
     var exitRequested by remember(bookId) { mutableStateOf(false) }
     var showTtsExitDialog by remember(bookId) { mutableStateOf(false) }
-    var epubReleaseHandler by remember(bookId) { mutableStateOf<((() -> Unit) -> Unit)?>(null) }
     val completeReaderExit: (Boolean) -> Unit = { keepListening ->
         if (!exitRequested) {
             showTtsExitDialog = false
             exitRequested = true
             viewModel.keepReadingPosition()
-            val finishExit = {
-                val release = epubReleaseHandler.takeIf { isBookLayout }
-                if (release != null) release(onNavigateBack) else onNavigateBack()
-            }
+            // Retain the rendered page throughout the closing transition. The renderer's
+            // AndroidView/onDispose cleanup releases it after the route leaves composition.
+            val finishExit = onNavigateBack
             if (keepListening) viewModel.continueTtsOutsideReader(finishExit) else {
                 viewModel.stopTts()
                 finishExit()
@@ -2429,6 +2450,34 @@ private fun ReaderScreenContent(
     val exitReader: () -> Unit = {
         viewModel.requestTtsReaderExit(onAsk = { showTtsExitDialog = true }, onExit = completeReaderExit)
     }
+    val restartBookFromBeginning: () -> Unit = {
+        finishPageVisible = false
+        finishPageCovering = false
+        beginManualReaderNavigation()
+        if (isBookLayout || isMarkdownNative) {
+            epubSearchRequest = null
+            epubLocatorRequest = null
+            epubPageRequest = null
+            navigateEpub(
+                EpubNavigationOrigin.TOC,
+                0,
+                EpubNavigationDestination.ChapterStart,
+                isBookLayout && !isMarkdownNative
+            )
+        } else if (isContinuousScrollMode) {
+            jumpToContinuousChapter(0)
+        } else {
+            readViewRef.value?.jumpToChapter(0) ?: viewModel.setChapter(0)
+        }
+    }
+    val finishPageActions = BookFinishActions(
+        onBackToLastPage = {
+            finishPageVisible = false
+            finishPageCovering = false
+        },
+        onRestart = restartBookFromBeginning,
+        onExitReader = exitReader
+    )
     ConfigurableBackHandler(
         enabled = epubNavigationRequest != null,
         onBack = { clearCancelledEpubNavigation(epubNavigationRequest) }
@@ -2484,7 +2533,10 @@ private fun ReaderScreenContent(
                         ReaderVolumeKeyAction.NEXT_PAGE -> {
                             beginManualReaderBrowsing()
                             val next = action == ReaderVolumeKeyAction.NEXT_PAGE
-                            if (isBookLayout) {
+                            if (finishPageVisible) {
+                                // The finish page is the last leaf: "previous" returns to the book.
+                                if (!next) finishPageDismissRequest++
+                            } else if (isBookLayout) {
                                 epubPageTurnHandler?.invoke(if (next) 1 else -1)
                             } else if (next) {
                                 readViewRef.value?.turnToNextPage()
@@ -3059,7 +3111,11 @@ private fun ReaderScreenContent(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer { translationY = bookmarkContentOffsetPx }
+                .graphicsLayer {
+                    translationY = bookmarkContentOffsetPx
+                    // Once the finish page fully covers the book, skip drawing the reader below it.
+                    alpha = if (finishPageCovering) 0f else 1f
+                }
                 .then(
                     if (modeTransitionActive) {
                         Modifier.graphicsLayer {
@@ -3164,7 +3220,6 @@ private fun ReaderScreenContent(
                             page.pageCount, page.locatorJson)
                     },
                     layoutPreviewActive = epubLayoutPreviewActive,
-                    onReleaseHandlerReady = { epubReleaseHandler = it },
                     onGlassSnapshotProviderReady = { nativeGlassProvider = it },
                     imageAdjustments = uiState.imageAdjustments.forDisplay(eInkMode),
                     chapterIndex = uiState.currentChapterIndex,
@@ -3313,6 +3368,9 @@ private fun ReaderScreenContent(
                         dismissSelectionMenu()
                     },
                     onImagePreviewOpen = viewModel::hideMenu,
+                    onBookEnd = openFinishPage,
+                    onBookEndPull = onFinishPull,
+                    onBookEndPullEnd = onFinishPullEnd,
                     onChapterTurn = { direction ->
                         if (selectionState != null || isSelectionDragging || epubDictionarySelection != null) {
                             dismissSelectionMenu()
@@ -3324,6 +3382,7 @@ private fun ReaderScreenContent(
                         epubPageRequest = null
                         run {
                             val targetChapter = uiState.currentChapterIndex + direction
+                            if (direction > 0 && targetChapter >= uiState.chapterCount) openFinishPage()
                             if (targetChapter !in 0 until uiState.chapterCount) return@EpubWebViewReader
                             navigateEpub(
                                 EpubNavigationOrigin.PAGE_TURN,
@@ -3510,6 +3569,16 @@ private fun ReaderScreenContent(
                     autoScrollRunning = autoReadingActive && !autoReadingPaused && !uiState.isMenuVisible && !isAnySheetOpen && selectionState == null && !isBookLayout,
                     autoScrollSpeed = uiState.autoReadingSpeed,
                     onAutoScrollEnd = ::onAutoReadingEnd,
+                    finishPage = { visible ->
+                        BookFinishInlinePage(
+                            bookId = bookId,
+                            colors = BookFinishColors(Color(readerBackgroundColorInt), Color(readerTextColorInt)),
+                            actions = finishPageActions,
+                            dialogBackdrop = activeReaderGlassBackdrop,
+                            visible = visible,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    },
                     contentRevision = uiState.contentRevision,
                     loadChapterText = viewModel::getFrameworkDrawnChapterText,
                     loadChapterPreviewText = viewModel::getFrameworkDrawnChapterPreview,
@@ -3623,7 +3692,9 @@ private fun ReaderScreenContent(
                                 .coerceIn(0, pageCount - 1)
                         } else 0
                         if (origin == TtsPageChangeOrigin.USER) {
-                            beginManualReaderBrowsing()
+                            // The gesture already recorded its source. A late scroll callback
+                            // must not supersede a newer listening command.
+                            viewModel.onListeningReaderPageTurn(recordUse = false)
                             rememberTtsReturnLocation(chapterIndex, visiblePage, chapterFraction = chapterFraction)
                         } else {
                             lastVisibleReaderLocation = captureReaderLocation(chapterIndex, visiblePage,
@@ -3662,6 +3733,8 @@ private fun ReaderScreenContent(
                     ReadView(ctx, viewModel.pageLayoutEngine).apply {
                         slotManager.backgroundPreparationEnabled = backgroundPreparationEnabled
                         setCallbacks(object : ReadViewCallbacks {
+                            override fun onReadingTouchStarted() = viewModel.onReadingInteraction()
+
                             override fun onPageChanged(
                                 globalPage: Int,
                                 chapterIndex: Int,
@@ -3670,7 +3743,7 @@ private fun ReaderScreenContent(
                                 origin: TtsPageChangeOrigin
                             ) {
                                 if (origin == TtsPageChangeOrigin.USER) {
-                                    beginManualReaderBrowsing()
+                                    viewModel.onListeningReaderPageTurn(recordUse = false)
                                     rememberTtsReturnLocation(chapterIndex, pageInChapter)
                                 } else {
                                     lastVisibleReaderLocation = captureReaderLocation(chapterIndex, pageInChapter)
@@ -3709,6 +3782,14 @@ private fun ReaderScreenContent(
                             override fun onSelectionMenuDismiss() {
                                 dismissSelectionMenu()
                             }
+
+                            override fun onForwardPastBookEnd() {
+                                latestOpenFinishPage.value()
+                            }
+
+                            override fun onBookEndPull(distancePx: Float) = onFinishPull(distancePx)
+
+                            override fun onBookEndPullEnd(cancelled: Boolean) = onFinishPullEnd(cancelled)
 
                             override fun onTtsSentenceDoubleTap(
                                 chapterIndex: Int,
@@ -4207,23 +4288,8 @@ private fun ReaderScreenContent(
                 selectionState == null && !isSelectionDragging
             val targetBookPage = if (returnChapter != null && returnPage != null)
                 displayedBookPages.pageNumber(returnChapter, returnPage) else null
-            val targetCharacterFraction by produceState<Float?>(null, returnChapter, returnCharacter,
-                isContinuousScrollMode, isBookLayoutContinuousScroll, uiState.contentRevision, epubSession) {
-                value = null
-                val chapter = returnChapter ?: return@produceState
-                val character = returnCharacter ?: return@produceState
-                if (!isContinuousScrollMode && !isBookLayoutContinuousScroll) return@produceState
-                val length = withContext(Dispatchers.IO) {
-                    if (isBookLayout) epubSession?.searchText(chapter)?.length
-                        ?: viewModel.getChapterTextLength(chapter)
-                    else viewModel.getChapterTextLength(chapter)
-                }
-                value = if (length > 0) character.toFloat() / length else null
-            }
-            val targetPageLabel = if (isContinuousScrollMode || isBookLayoutContinuousScroll) {
-                val fraction = linkReturnLocation?.chapterFraction ?: targetCharacterFraction
-                if (returnChapter != null && fraction != null) readerScrollPageLabel(returnChapter, fraction) else null
-            } else targetBookPage?.toString()
+            // Both scroll and paged reading use the same confirmed pagination index.
+            val targetPageLabel = targetBookPage?.toString()
             ListeningResumeHintExpiry(listeningResumePrompt,
                 cornerButtonVisible && listeningTarget != null, viewModel::keepReadingPosition)
             ListeningResumeHintExpiry(linkReturnLocation?.let { it to linkReturnToken },
@@ -5832,6 +5898,28 @@ private fun ReaderScreenContent(
             )
         }
     }
+
+    if (finishPageVisible && !isContinuousScrollMode) {
+        val lastChapter = (uiState.chapterCount - 1).coerceAtLeast(0)
+        val entrance = when {
+            isBookLayoutContinuousScroll || effectivePageTransition == "scroll" -> BookFinishEntrance.FROM_BOTTOM
+            eInkMode || effectivePageTransition == "fade" || effectivePageTransition == "none" -> BookFinishEntrance.FADE
+            isVerticalWriting -> BookFinishEntrance.FROM_LEFT
+            isBookLayout && epubSession?.pageProgressionDirection(lastChapter) ==
+                com.huangder.lumibooks.util.epub.EpubPageProgressionDirection.RTL -> BookFinishEntrance.FROM_LEFT
+            else -> BookFinishEntrance.FROM_RIGHT
+        }
+        BookFinishOverlay(
+            bookId = bookId,
+            entrance = entrance,
+            colors = BookFinishColors(Color(readerBackgroundColorInt), Color(readerTextColorInt)),
+            actions = finishPageActions,
+            dialogBackdrop = activeReaderGlassBackdrop,
+            pull = finishPull,
+            dismissRequest = finishPageDismissRequest,
+            onCoveringChanged = { finishPageCovering = it }
+        )
+    }
 }
 }
 }
@@ -6089,7 +6177,7 @@ private fun ReaderCornerStatusRow(
 }
 
 @Composable
-private fun ReaderCornerContentValue(
+internal fun ReaderCornerContentValue(
     content: ReaderCornerContent,
     chapterTitle: String,
     bookProgressPercent: Float,
@@ -6103,23 +6191,57 @@ private fun ReaderCornerContentValue(
     contentColor: Color,
     alignEnd: Boolean
 ) {
+    val pageLabel = if (chapterPageCount <= 0) "… / …" else formatReaderPageLabel(
+        currentPage, rightPageIndex, chapterPageCount, rightChapterIndex, currentChapterIndex
+    )
     when (content) {
         ReaderCornerContent.NONE -> Unit
         ReaderCornerContent.BATTERY -> ReaderBatteryStatus(contentColor)
         ReaderCornerContent.TIME -> ReaderTimeStatus(contentColor)
+        ReaderCornerContent.TIME_BATTERY -> Row(
+            modifier = Modifier.fillMaxWidth().clipToBounds(),
+            horizontalArrangement = if (alignEnd) Arrangement.End else Arrangement.Start,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ReaderTimeStatus(contentColor, Modifier.weight(1f, fill = false))
+            ReaderCornerSeparator(contentColor)
+            ReaderBatteryStatus(contentColor)
+        }
+        ReaderCornerContent.CHAPTER_INFO_PAGE_NUMBER,
+        ReaderCornerContent.CHAPTER_INFO_BOOK_PROGRESS -> Row(
+            modifier = Modifier.fillMaxWidth().clipToBounds(),
+            horizontalArrangement = if (alignEnd) Arrangement.End else Arrangement.Start,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = chapterTitle,
+                color = contentColor,
+                fontSize = AppType.Caption,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            ReaderCornerSeparator(contentColor)
+            Text(
+                text = if (content == ReaderCornerContent.CHAPTER_INFO_PAGE_NUMBER) pageLabel
+                    else formatReadingProgressPercent(bookProgressPercent),
+                color = contentColor,
+                fontSize = AppType.Caption,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
         else -> Text(
             text = when (content) {
                 ReaderCornerContent.CHAPTER_INFO -> chapterTitle
                 ReaderCornerContent.BOOK_PROGRESS -> formatReadingProgressPercent(bookProgressPercent)
                 ReaderCornerContent.CHAPTER_PROGRESS -> scrollPageLabel.orEmpty()
                 ReaderCornerContent.GLOBAL_PAGE_NUMBER -> globalPageLabel
-                ReaderCornerContent.PAGE_NUMBER -> if (chapterPageCount <= 0) "… / …" else formatReaderPageLabel(
-                    currentPage,
-                    rightPageIndex,
-                    chapterPageCount,
-                    rightChapterIndex,
-                    currentChapterIndex
-                )
+                ReaderCornerContent.PAGE_NUMBER -> pageLabel
+                ReaderCornerContent.PAGE_NUMBER_BOOK_PROGRESS ->
+                    "$pageLabel · ${formatReadingProgressPercent(bookProgressPercent)}"
+                ReaderCornerContent.GLOBAL_PAGE_NUMBER_BOOK_PROGRESS ->
+                    "$globalPageLabel · ${formatReadingProgressPercent(bookProgressPercent)}"
                 else -> ""
             },
             color = contentColor,
@@ -6131,6 +6253,11 @@ private fun ReaderCornerContentValue(
             modifier = Modifier.fillMaxWidth()
         )
     }
+}
+
+@Composable
+private fun ReaderCornerSeparator(contentColor: Color) {
+    Text(text = " · ", color = contentColor, fontSize = AppType.Caption, maxLines = 1)
 }
 
 @Composable
@@ -6150,11 +6277,12 @@ private fun ReaderTimeStatus(contentColor: Color, modifier: Modifier = Modifier)
         fontSize = AppType.Caption,
         lineHeight = AppType.Caption,
         maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
         modifier = modifier
     )
 }
 
-private fun formatReaderClock(context: Context, timestampMillis: Long): String {
+internal fun formatReaderClock(context: Context, timestampMillis: Long): String {
     val pattern = if (android.text.format.DateFormat.is24HourFormat(context)) "HH:mm" else "hh:mm a"
     return java.text.SimpleDateFormat(pattern, java.util.Locale.getDefault())
         .format(java.util.Date(timestampMillis))
@@ -7892,6 +8020,8 @@ internal fun ContinuousScrollReader(
     autoScrollRunning: Boolean = false,
     autoScrollSpeed: Float = 1f,
     onAutoScrollEnd: () -> Unit = {},
+    /** Optional last list item shown after the final chapter; receives whether it is mostly visible. */
+    finishPage: (@Composable (visible: Boolean) -> Unit)? = null,
     ttsFollowEnabled: Boolean = true,
     ttsFollowUserPageTurns: Boolean = false,
     onManualScrollStarted: () -> Unit = {},
@@ -7949,7 +8079,7 @@ internal fun ContinuousScrollReader(
                     }
                 }
                 if (!listState.canScrollForward &&
-                    listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index == chapterCount - 1
+                    (listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1) >= chapterCount - 1
                 ) {
                     latestAutoScrollEnd()
                     return@LaunchedEffect
@@ -8314,7 +8444,7 @@ internal fun ContinuousScrollReader(
     /** 首个跨过视口顶边的章节条目（index, offset, size）。 */
     fun firstVisibleItem(): Triple<Int, Int, Int>? =
         listState.layoutInfo.visibleItemsInfo
-            .firstOrNull { item -> item.offset + item.size > 0 }
+            .firstOrNull { item -> item.index < chapterCount && item.offset + item.size > 0 }
             ?.let { item -> Triple(item.index, item.offset, item.size) }
 
     LaunchedEffect(pendingFullChapterUpgrades.keys.toList(), listState.isScrollInProgress,
@@ -9086,6 +9216,26 @@ internal fun ContinuousScrollReader(
                         chapterTextViews[chapterIndex]?.get()?.updateReaderDrawingViewport()
                     }
                 )
+                }
+            }
+        }
+        if (finishPage != null && chapterCount > 0) {
+            item(key = "lumi_book_finish_page") {
+                // "Visible" means most of the viewport shows the finish page, not a sliver of it.
+                val visible by remember(listState, chapterCount) {
+                    derivedStateOf {
+                        val layout = listState.layoutInfo
+                        val info = layout.visibleItemsInfo.firstOrNull { it.index == chapterCount }
+                        val viewport = layout.viewportEndOffset - layout.viewportStartOffset
+                        if (info == null || viewport <= 0) false else {
+                            val shown = minOf(info.offset + info.size, layout.viewportEndOffset) -
+                                maxOf(info.offset, layout.viewportStartOffset)
+                            shown >= viewport * 0.6f
+                        }
+                    }
+                }
+                Box(Modifier.fillParentMaxWidth().fillParentMaxHeight()) {
+                    finishPage(visible)
                 }
             }
         }

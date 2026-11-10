@@ -34,10 +34,11 @@ class ReaderPaperColorTest {
         assertEquals(0xFFF5E6D3.toInt(), snapshot.copy(readerDisplayMode = "day").resolveOpeningPaperColor(book, true))
     }
 
-    @Test fun `white opening paper is softened while dark paper stays unchanged`() {
-        assertEquals(0xFFF0F0F0.toInt(), readerTransitionPaperColor(0xFFFFFFFF.toInt()))
-        assertEquals(0xFFF0F0F0.toInt(), readerTransitionPaperColor(0xFFFBFBFC.toInt()))
+    @Test fun `opening paper matches the live page and stays opaque`() {
+        assertEquals(0xFFFFFFFF.toInt(), readerTransitionPaperColor(0xFFFFFFFF.toInt()))
+        assertEquals(0xFFFBFBFC.toInt(), readerTransitionPaperColor(0xFFFBFBFC.toInt()))
         assertEquals(0xFF111111.toInt(), readerTransitionPaperColor(0xFF111111.toInt()))
+        assertEquals(0xFFC5D6E7.toInt(), readerTransitionPaperColor(0x55C5D6E7))
     }
 
     @Test fun `preset paper is available before document and renderer load`() {

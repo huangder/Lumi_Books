@@ -10,9 +10,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
@@ -36,10 +36,13 @@ class ReaderThemeSettingsRenderTest {
 
     private fun render(theme: String, dark: Boolean = false) {
         val fontSize = mutableStateOf(20f)
+        val weight = mutableStateOf(400f)
+        val brightness = mutableStateOf(-1f)
+        val mask = mutableStateOf(0f)
         compose.setContent {
             view = LocalView.current
             EBookReaderTheme(appTheme = theme, darkTheme = dark) {
-                Box(Modifier.fillMaxSize()) {
+                Box(Modifier.fillMaxSize().testTag("reader-preview-root")) {
                     Column(Modifier.fillMaxSize()
                         .background(if (dark) Color(0xFF17191D) else Color(0xFFF7F4ED))
                         .padding(horizontal = 32.dp, vertical = 56.dp)) {
@@ -50,10 +53,14 @@ class ReaderThemeSettingsRenderTest {
                             fontSize = fontSize.value.sp, lineHeight = (fontSize.value * 1.6f).sp)
                     }
                     ThemeSettingsSheet(visible = true, currentFontSize = fontSize.value,
-                        currentFontType = "kaiti", currentBodyFontWeight = 400f,
+                        currentFontType = "kaiti", currentBodyFontWeight = weight.value,
+                        currentBrightness = brightness.value, currentDarkMaskOpacity = mask.value,
                         currentTheme = if (dark) "night" else "day", isAppDark = dark,
-                        eInkModeEnabled = true,
-                        onFontSizeChange = { fontSize.value = it },
+                        eInkModeEnabled = false,
+                        onFontSizeChange = { fontSize.value = it }, onFontSizePreview = { fontSize.value = it },
+                        onBodyFontWeightChange = { weight.value = it }, onBodyFontWeightPreview = { weight.value = it },
+                        onBrightnessChange = { brightness.value = it },
+                        onDarkMaskOpacityChange = { mask.value = it }, onDarkMaskOpacityPreview = { mask.value = it },
                         onThemeChange = {}, onOpenAdvanced = {}, onDismiss = {})
                 }
             }
@@ -61,7 +68,29 @@ class ReaderThemeSettingsRenderTest {
         compose.waitForIdle()
         compose.mainClock.advanceTimeBy(1000)
         compose.waitForIdle()
-        save("$theme-${if (dark) "dark" else "light"}")
+        val prefix = "$theme-${if (dark) "dark" else "light"}"
+        save(prefix)
+        compose.mainClock.autoAdvance = false
+        val root = compose.onNodeWithTag("reader-preview-root")
+        var frame = 0
+        listOf("font-size", "font-weight", "brightness", "mask").forEach { control ->
+            val slider = compose.onNodeWithTag("reader-$control-slider")
+            val bounds = slider.fetchSemanticsNode().boundsInRoot
+            root.performTouchInput { down(bounds.center); moveTo(bounds.center + Offset(90f, 0f), delayMillis = 80) }
+            repeat(14) {
+                compose.mainClock.advanceTimeByFrame()
+                if (!dark && (control == "font-size" || control == "font-weight"))
+                    save("frames/%03d".format(frame++))
+            }
+            save("$prefix-$control-expanded")
+            root.performTouchInput { up() }
+            repeat(14) {
+                compose.mainClock.advanceTimeByFrame()
+                if (!dark && (control == "font-size" || control == "font-weight"))
+                    save("frames/%03d".format(frame++))
+            }
+        }
+        compose.mainClock.autoAdvance = true
     }
 
     private fun save(name: String) {
@@ -77,7 +106,9 @@ class ReaderThemeSettingsRenderTest {
         val bitmap = Bitmap.createBitmap(dimensions.first, dimensions.second, Bitmap.Config.ARGB_8888)
         compose.runOnIdle { view.draw(android.graphics.Canvas(bitmap)) }
         val output = File("build/reports/reader-theme-settings").apply { mkdirs() }
-        File(output, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val file = File(output, "$name.png")
+        file.parentFile.mkdirs()
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         bitmap.recycle()
     }
 

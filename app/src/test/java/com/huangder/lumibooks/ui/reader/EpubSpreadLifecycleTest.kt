@@ -291,6 +291,26 @@ class EpubSpreadLifecycleTest {
         assertEquals(spread(4), (get(host, "state") as EpubSpreadState).target)
     }
 
+    @Test fun footnoteOwnsSpreadStrokesUntilReleaseAndThenRestoresBookmarkPull() {
+        gestureFixture()
+        set(host, "bookmarkPullEnabled", true)
+        var bookmarks = 0
+        host.onBookmarkPullStart = { bookmarks++ }
+        host.visibleWebViews().last().footnotePopoverVisible = true
+        fun intercept(action: Int, x: Float, y: Float): Boolean {
+            val event = MotionEvent.obtain(0, 100, action, x, y, 0)
+            return try { host.onInterceptTouchEvent(event) } finally { event.recycle() }
+        }
+        assertFalse(intercept(MotionEvent.ACTION_DOWN, 750f, 300f))
+        host.visibleWebViews().last().footnotePopoverVisible = false
+        assertFalse(intercept(MotionEvent.ACTION_MOVE, 750f, 500f))
+        assertFalse(intercept(MotionEvent.ACTION_UP, 750f, 500f))
+        assertEquals(0, bookmarks)
+        assertFalse(intercept(MotionEvent.ACTION_DOWN, 750f, 300f))
+        assertTrue(intercept(MotionEvent.ACTION_MOVE, 750f, 500f))
+        assertEquals(1, bookmarks)
+    }
+
     private fun gestureFixture(transition: String = "slide"): EpubSpreadTarget {
         prepare(slot("next"), spread(4))
         commit(slot("next"), 0)

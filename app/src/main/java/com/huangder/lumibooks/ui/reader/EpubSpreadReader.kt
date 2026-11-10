@@ -82,6 +82,11 @@ internal class EpubSpreadTurnHost(
     var onViewportChanged: (Int, Int) -> Unit = { _, _ -> }
     var onCenterTap: () -> Unit = {}
     var onManualTurnStarted: () -> Unit = {}
+    /** A forward turn was requested while the final spread is already visible. */
+    var onBookEnd: () -> Unit = {}
+    var onBookEndPull: (Float) -> Unit = {}
+    var onBookEndPullEnd: (cancelled: Boolean) -> Unit = {}
+    private var bookEndPulling = false
     var selectionMenuVisible = false
     var bookmarkPullEnabled = false
     var onBookmarkPullStart: (() -> Unit)? = null
@@ -186,6 +191,7 @@ internal class EpubSpreadTurnHost(
     private var leafCapture: Bitmap? = null
     private val bookmarkPull = BookmarkPullGestureTracker()
     private var pullingBookmark = false
+    private var footnoteTouchStream = false
     private var touchX = 0f
     private var touchY = 0f
     private var lastTouchX = 0f
@@ -310,7 +316,10 @@ internal class EpubSpreadTurnHost(
         val sign = if (direction > 0) 1 else -1
         val last = spread.second ?: spread.first
         if (sign < 0 && spread.first.target == EpubPageTarget(0, 0) ||
-            sign > 0 && last.target.chapterIndex == (session?.chapterCount ?: 0) - 1 && last.target.pageIndex + 1 >= last.pageCount) return false
+            sign > 0 && last.target.chapterIndex == (session?.chapterCount ?: 0) - 1 && last.target.pageIndex + 1 >= last.pageCount) {
+            if (sign > 0 && animationCommit == null) onBookEnd()
+            return false
+        }
         if (animationCommit != null) { pendingTurn = sign; return true }
         val slot = if (sign > 0) next else previous
         if (slot.isReady()) {
@@ -645,6 +654,10 @@ internal class EpubSpreadTurnHost(
     }
 
     private fun handleMessage(leaf: Leaf, chapter: Int, type: String, payload: JSONObject) {
+        if (type == "footnotePopover") {
+            leaf.view.footnotePopoverVisible = payload.optBoolean("visible")
+            return
+        }
         if (type == "ready" && !leaf.configured) {
             leaf.documentReady = true
             configure(leaf)
@@ -967,6 +980,10 @@ internal class EpubSpreadTurnHost(
     }
 
     override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            footnoteTouchStream = visibleWebViews().any { it.footnotePopoverVisible }
+        }
+        if (footnoteTouchStream) return false
         if (released || selectionMenuVisible || state == null) return false
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
@@ -1029,6 +1046,7 @@ internal class EpubSpreadTurnHost(
             return true
         }
         if (gestureClaimed) {
+            if (trackBookEndPull(event)) return true
             when (event.actionMasked) {
                 MotionEvent.ACTION_MOVE -> followGesture(event)
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -1055,6 +1073,38 @@ internal class EpubSpreadTurnHost(
                         drainPreloads()
                     }
                 }
+            }
+        }
+        return true
+    }
+
+    private fun isShowingFinalSpread(): Boolean {
+        val spread = state ?: return false
+        val last = spread.second ?: spread.first
+        return last.target.chapterIndex == (session?.chapterCount ?: 0) - 1 &&
+            last.target.pageIndex + 1 >= last.pageCount
+    }
+
+    /** Forward drag on the final spread drives the finish page instead of a page turn. */
+    private fun trackBookEndPull(event: MotionEvent): Boolean {
+        if (!bookEndPulling) {
+            if (event.actionMasked != MotionEvent.ACTION_MOVE || controller != null ||
+                animationCommit != null || gestureDirection(event) <= 0 || !isShowingFinalSpread()
+            ) return false
+            bookEndPulling = true
+            clearWaitingGesture()
+            cancelPreparation(replaced = false)
+        }
+        val forward = if (transition == "scroll") touchY - event.y else {
+            val dx = event.x - touchX
+            if (reverseAxis) dx else -dx
+        }
+        when (event.actionMasked) {
+            MotionEvent.ACTION_MOVE -> onBookEndPull(forward.coerceAtLeast(0f))
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                bookEndPulling = false
+                gestureClaimed = false
+                onBookEndPullEnd(event.actionMasked == MotionEvent.ACTION_CANCEL)
             }
         }
         return true

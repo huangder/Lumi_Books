@@ -32,12 +32,8 @@ internal fun ReaderPreferencesSnapshot.resolveOpeningPaperColor(book: Book, appI
 internal fun publisherFallbackPaperColor(nightDisplay: Boolean): Int =
     if (nightDisplay) 0xFF111111.toInt() else 0xFFFBFBFC.toInt()
 
-internal fun readerTransitionPaperColor(color: Int): Int {
-    val red = color shr 16 and 0xFF
-    val green = color shr 8 and 0xFF
-    val blue = color and 0xFF
-    return if (red >= 0xF2 && green >= 0xF2 && blue >= 0xF2) 0xFFF0F0F0.toInt() else color
-}
+/** The shell must match the live page; darkening it creates a flash at the handoff. */
+internal fun readerTransitionPaperColor(color: Int): Int = color or 0xFF000000.toInt()
 
 /** Resolve the paper without constructing a renderer or waiting for document content. */
 internal fun ReaderUiState.resolveReaderPaperColor(appIsDark: Boolean): Int {

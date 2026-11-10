@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.reader
 
+import com.huangder.lumibooks.ui.animation.finishWithPush
+
 import android.app.Activity
 import android.content.res.Configuration
 import android.os.Bundle
@@ -125,7 +127,7 @@ class TxtEditorActivity : ComponentActivity() {
                                 backdrop = activeEditorBackdrop,
                                 onNavigateBack = { saved ->
                                     if (saved) setResult(Activity.RESULT_OK)
-                                    finish()
+                                    finishWithPush()
                                 }
                             )
                         }

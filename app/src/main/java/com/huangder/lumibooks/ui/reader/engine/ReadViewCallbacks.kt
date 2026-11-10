@@ -6,6 +6,9 @@ import com.huangder.lumibooks.tts.TtsPageChangeOrigin
  * ReadView 向外（Compose/ViewModel）的回调接口。
  */
 interface ReadViewCallbacks {
+    /** Records actual input before deferred tap handling or page animations finish. */
+    fun onReadingTouchStarted() {}
+
     /**
      * 页面切换时回调。
      */
@@ -30,6 +33,15 @@ interface ReadViewCallbacks {
 
     /** 点击中间区域，切换菜单 */
     fun onMenuToggle()
+
+    /** The user asked for the next page while the final page of the book is visible. */
+    fun onForwardPastBookEnd() {}
+
+    /** A forward drag on the final page; [distancePx] is how far the finger moved forward. */
+    fun onBookEndPull(distancePx: Float) {}
+
+    /** The forward drag on the final page ended. */
+    fun onBookEndPullEnd(cancelled: Boolean) {}
 
     /** 左右边缘短按发生在选区菜单打开期间时，关闭选区菜单而不翻页。 */
     fun onSelectionMenuDismiss() {}

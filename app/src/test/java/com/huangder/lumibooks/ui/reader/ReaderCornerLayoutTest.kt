@@ -7,6 +7,17 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ReaderCornerLayoutTest {
+    @Test fun combinationsStayOnOneLineAndChapterCombinationsCanUseAnEmptyRow() {
+        ReaderCornerContent.entries.filter { it.isCombination }.forEach {
+            assertEquals(1, readerCornerContentMaxLines(it))
+        }
+        listOf(ReaderCornerContent.CHAPTER_INFO_PAGE_NUMBER,
+            ReaderCornerContent.CHAPTER_INFO_BOOK_PROGRESS).forEach {
+            assertEquals(true, readerLeftCornerUsesFullRow(it, ReaderCornerContent.NONE))
+            assertEquals(false, readerLeftCornerUsesFullRow(it, ReaderCornerContent.BATTERY))
+        }
+    }
+
     /** 章节信息只占一行，过长由 Compose 的 Ellipsis 截断。 */
     @Test
     fun chapterInfoStaysOnASingleLine() {

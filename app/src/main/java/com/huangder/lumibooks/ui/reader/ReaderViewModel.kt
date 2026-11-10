@@ -116,6 +116,8 @@ import com.huangder.lumibooks.tts.TtsController
 import com.huangder.lumibooks.tts.TtsListeningPosition
 import com.huangder.lumibooks.tts.TtsStartChoice
 import com.huangder.lumibooks.tts.TtsReaderResumeChoice
+import com.huangder.lumibooks.domain.model.BookPositionSource
+import com.huangder.lumibooks.domain.model.BookPositionUse
 import com.huangder.lumibooks.tts.TtsStartRequest
 import com.huangder.lumibooks.tts.TtsPageSource
 import com.huangder.lumibooks.tts.TtsPageContent
@@ -733,46 +735,56 @@ class ReaderViewModel @Inject constructor(
         val state = _uiState.value
         val book = state.book ?: return
         val liveSession = liveListeningSessionId()
-        when (listeningReaderSession.returnFromBackground(liveSession)) {
-            true -> return
+        when (listeningReaderSession.returnFromBackground(liveSession, ttsController.followUserPageTurns.value)) {
+            true -> {
+                if (listeningReaderSession.followEnabled.value) ttsController.setReaderAttached(bookId, true)
+                return
+            }
             false -> return
             null -> Unit
         }
         val generation = listeningReaderSession.beginCheck() ?: return
-        val position = dataStoreManager.ttsListeningPosition(bookId).first()
-        if (!listeningReaderSession.isCurrent(generation)) return
-        val page = if (book.format.isRasterPageFormat ||
-            state.renderMode == EpubRenderMode.BOOK_LAYOUT ||
-            state.readerWritingMode.usesContinuousScroll(state.pageTransition, state.eInkModeEnabled)
-        ) null else pageLayoutEngine.getPageLayout(readingChapter, readingPage)
-        val visible = if (visibleCharacters.isNotEmpty() || page == null) visibleCharacters else buildList {
-            add(ReaderVisibleCharacters(readingChapter, page.startCharOffset, page.endCharOffset))
-            state.rightPageIndex?.let { right ->
-                val chapter = state.rightChapterIndex ?: readingChapter
-                pageLayoutEngine.getPageLayout(chapter, right)?.let {
-                    add(ReaderVisibleCharacters(chapter, it.startCharOffset, it.endCharOffset))
+        try {
+            val position = dataStoreManager.ttsListeningPosition(bookId).first()
+            if (!listeningReaderSession.isCurrent(generation)) return
+            val page = if (book.format.isRasterPageFormat ||
+                state.renderMode == EpubRenderMode.BOOK_LAYOUT ||
+                state.readerWritingMode.usesContinuousScroll(state.pageTransition, state.eInkModeEnabled)
+            ) null else pageLayoutEngine.getPageLayout(readingChapter, readingPage)
+            val visible = if (visibleCharacters.isNotEmpty() || page == null) visibleCharacters else buildList {
+                add(ReaderVisibleCharacters(readingChapter, page.startCharOffset, page.endCharOffset))
+                state.rightPageIndex?.let { right ->
+                    val chapter = state.rightChapterIndex ?: readingChapter
+                    pageLayoutEngine.getPageLayout(chapter, right)?.let {
+                        add(ReaderVisibleCharacters(chapter, it.startCharOffset, it.endCharOffset))
+                    }
                 }
             }
-        }
-        if (shouldOfferListeningResume(position, bookId, state.chapterCount, readingChapter,
-                readingPage, visibleStart ?: page?.startCharOffset,
-                visibleEnd ?: page?.endCharOffset, allowPageFallback, visible, visibleChapters)) {
-            val choice = dataStoreManager.ttsReaderResumeChoice.first()
-            if (!listeningReaderSession.isCurrent(generation)) return
-            val readingCharacter = visibleStart
-                ?: visible.firstOrNull { it.chapter == readingChapter }?.start
-                ?: readerLocatorCharacter(state.epubLocatorJson)
-                ?: page?.startCharOffset
-            if (choice == null) {
-                listeningReaderSession.offer(position!!)
-            } else if (choice.shouldUseListeningPosition(position!!, readingChapter,
-                    readingPage.takeIf { allowPageFallback }, readingCharacter)) {
-                listeningReaderSession.requestJump(position)
+            if (shouldOfferListeningResume(position, bookId, state.chapterCount, readingChapter,
+                    readingPage, visibleStart ?: page?.startCharOffset,
+                    visibleEnd ?: page?.endCharOffset, allowPageFallback, visible, visibleChapters)) {
+                val choice = dataStoreManager.ttsReaderResumeChoice.first()
+                val lastUsedSource = if (choice == TtsReaderResumeChoice.LAST_USED_POSITION) {
+                    dataStoreManager.bookPositionSource(bookId).first()
+                } else null
+                if (!listeningReaderSession.isCurrent(generation)) return
+                val readingCharacter = visibleStart
+                    ?: visible.firstOrNull { it.chapter == readingChapter }?.start
+                    ?: readerLocatorCharacter(state.epubLocatorJson)
+                    ?: page?.startCharOffset
+                if (choice == null) {
+                    listeningReaderSession.offer(position!!)
+                } else if (choice.shouldUseListeningPosition(position!!, readingChapter,
+                        readingPage.takeIf { allowPageFallback }, readingCharacter, lastUsedSource)) {
+                    listeningReaderSession.requestJump(position)
+                } else {
+                    keepReadingPosition()
+                }
             } else {
-                keepReadingPosition()
+                enableListeningReaderFollow()
             }
-        } else {
-            enableListeningReaderFollow()
+        } finally {
+            listeningReaderSession.cancelCheck(generation)
         }
     }
 
@@ -809,7 +821,8 @@ class ReaderViewModel @Inject constructor(
     }
 
     /** Browsing keeps the audio attached when the capsule's page-follow option is enabled. */
-    fun onListeningReaderPageTurn() {
+    fun onListeningReaderPageTurn(recordUse: Boolean = true) {
+        if (recordUse) onReadingInteraction()
         if (followManualReaderNavigation()) return
         listeningReaderSession.pageTurn()
         ttsController.setReaderAttached(bookId, false)
@@ -817,9 +830,15 @@ class ReaderViewModel @Inject constructor(
 
     /** A deliberate jump ends the opening hint and applies the capsule's page-follow policy. */
     fun onListeningReaderManualNavigation() {
+        onReadingInteraction()
         if (followManualReaderNavigation()) return
         listeningReaderSession.navigate()
         ttsController.setReaderAttached(bookId, false)
+    }
+
+    fun onReadingInteraction() {
+        val use = BookPositionUse.create(BookPositionSource.READING)
+        viewModelScope.launch { dataStoreManager.saveBookPositionUse(bookId, use) }
     }
 
     fun enableListeningReaderFollow() {

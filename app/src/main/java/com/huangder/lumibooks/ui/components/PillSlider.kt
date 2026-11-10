@@ -34,6 +34,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.scale
@@ -46,6 +48,7 @@ import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
@@ -94,7 +97,11 @@ fun PillSlider(
     opaqueLiquidThumb: Boolean = false,
     forceNonGlass: Boolean = false,
     onDragValueChange: ((Float) -> Unit)? = null,
-    onInteractionChange: ((Boolean) -> Unit)? = null
+    onInteractionChange: ((Boolean) -> Unit)? = null,
+    adaptiveWidthDuringDrag: Boolean = false,
+    // Return false on drag start when another control owns the gesture.
+    onDragStateChange: ((Boolean) -> Boolean)? = null,
+    enabled: Boolean = true
 ) {
     val rangeLength = valueRange.endInclusive - valueRange.start
     val trackShape = AppRoundedCornerShape(50)
@@ -111,6 +118,9 @@ fun PillSlider(
     val latestOnValueChange by rememberUpdatedState(onValueChange)
     val latestOnDragValueChange by rememberUpdatedState(onDragValueChange)
     val latestOnInteractionChange by rememberUpdatedState(onInteractionChange)
+    val latestOnDragStateChange by rememberUpdatedState(onDragStateChange)
+    val latestEnabled by rememberUpdatedState(enabled)
+    var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var pendingCommittedValue by remember { mutableStateOf<Float?>(null) }
     val motionState = remember(
         animationScope,
@@ -152,12 +162,14 @@ fun PillSlider(
     }
 
     val semanticsModifier = Modifier.semantics {
+        if (!enabled) disabled()
         progressBarRangeInfo = ProgressBarRangeInfo(
             current = value.coerceIn(valueRange),
             range = valueRange,
             steps = sliderSemanticsSteps(valueRange, step)
         )
         setProgress { requestedValue ->
+            if (!enabled) return@setProgress false
             val target = snapSliderValue(requestedValue, valueRange, step)
             pendingCommittedValue = target
             motionState.animateToValue(target)
@@ -171,22 +183,27 @@ fun PillSlider(
             .fillMaxWidth()
             .height(if (isLiquidGlass) LiquidSliderThumbHeight + LiquidSliderVerticalPadding * 2 else trackHeight)
             .then(semanticsModifier)
-            .pointerInput(valueRange.start, valueRange.endInclusive, step, isLtr, motionState) {
+            .onGloballyPositioned { coordinates = it }
+            .pointerInput(valueRange.start, valueRange.endInclusive, step, isLtr, motionState, adaptiveWidthDuringDrag) {
                 awaitEachGesture {
                     val down = awaitFirstDown(
                         requireUnconsumed = false,
                         pass = PointerEventPass.Initial
                     )
                     val widthPx = size.width.toFloat()
-                    if (widthPx <= 0f || rangeLength <= 0f) return@awaitEachGesture
+                    if (!latestEnabled || widthPx <= 0f || rangeLength <= 0f) return@awaitEachGesture
 
                     motionState.beginInteraction()
                     latestOnInteractionChange?.invoke(true)
+                    var dragged = false
                     try {
                         val startValue = motionState.value
                         val startX = down.position.x
                         val startY = down.position.y
-                        var dragged = false
+                        val startScreen = coordinates?.takeIf { it.isAttached }?.localToScreen(down.position)
+                            ?: down.position
+                        var previousScreenX = startScreen.x
+                        var dragValue = startValue
                         var released = false
                         var cancelledByScroll = false
                         var lastDragCallbackAtMillis = 0L
@@ -200,10 +217,14 @@ fun PillSlider(
                             }
                             if (!change.pressed) break
 
-                            val positionDx = change.position.x - startX
-                            val positionDy = change.position.y - startY
+                            val screen = coordinates?.takeIf { it.isAttached }?.localToScreen(change.position)
+                                ?: change.position
+                            val positionDx = if (adaptiveWidthDuringDrag) screen.x - startScreen.x
+                                else change.position.x - startX
+                            val positionDy = if (adaptiveWidthDuringDrag) screen.y - startScreen.y
+                                else change.position.y - startY
                             if (!dragged) {
-                                if (change.isConsumed) {
+                                if (change.isConsumed || !latestEnabled) {
                                     cancelledByScroll = true
                                     break
                                 }
@@ -214,12 +235,25 @@ fun PillSlider(
                                 if (abs(positionDx) < viewConfiguration.touchSlop || abs(positionDx) < abs(positionDy)) {
                                     continue
                                 }
+                                if (latestOnDragStateChange?.invoke(true) == false) {
+                                    cancelledByScroll = true
+                                    break
+                                }
                                 dragged = true
                             }
 
                             val direction = if (isLtr) 1f else -1f
-                            val directValue = (startValue + direction * positionDx / widthPx * rangeLength)
-                                .coerceIn(valueRange)
+                            // A resizing row can translate this slider beneath a stationary finger.
+                            // Integrate only screen movement using the current width; neither a new
+                            // origin nor a new denominator may reinterpret previous movement.
+                            val directValue = if (adaptiveWidthDuringDrag) {
+                                (dragValue + direction * (screen.x - previousScreenX) /
+                                    size.width.toFloat().coerceAtLeast(1f) * rangeLength).coerceIn(valueRange)
+                            } else {
+                                (startValue + direction * positionDx / widthPx * rangeLength).coerceIn(valueRange)
+                            }
+                            dragValue = directValue
+                            previousScreenX = screen.x
                             motionState.dragTo(directValue)
                             val now = SystemClock.uptimeMillis()
                             if (now - lastDragCallbackAtMillis >= SliderDragCallbackIntervalMillis) {
@@ -236,7 +270,7 @@ fun PillSlider(
                                 motionState.settleTo(target)
                                 latestOnValueChange(target)
                             }
-                            cancelledByScroll || !released -> {
+                            cancelledByScroll || !released || !latestEnabled -> {
                                 motionState.cancelInteraction(latestValue.coerceIn(valueRange))
                             }
                             else -> {
@@ -252,6 +286,7 @@ fun PillSlider(
                             }
                         }
                     } finally {
+                        if (dragged) latestOnDragStateChange?.invoke(false)
                         latestOnInteractionChange?.invoke(false)
                     }
                 }

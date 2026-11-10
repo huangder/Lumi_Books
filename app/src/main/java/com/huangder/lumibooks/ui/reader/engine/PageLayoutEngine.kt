@@ -4,7 +4,9 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.text.Layout
 import android.text.StaticLayout
+import android.text.Spanned
 import android.text.TextPaint
+import android.text.style.MetricAffectingSpan
 import com.huangder.lumibooks.domain.model.ReaderTextAlignment
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.ui.reader.readerBreakStrategy
@@ -368,12 +370,18 @@ class PageLayoutEngine {
                 }
             }
 
-            // HQ hyphenation optimizes a whole paragraph. A page-local TextView
-            // can choose different breaks at its new paragraph boundary, so
-            // verify the exact slice before committing the page's source range.
-            if (usesReaderEnglishHyphenation(text)) {
+            // A page-local TextView lays out the slice again. Headings and font
+            // spans can change its line metrics, just as English hyphenation can
+            // change its breaks. Check the rendered slice before saving its range;
+            // overflow must move to the next page rather than cover the footer.
+            val candidateStart = sl.getLineStart(pageStartLine)
+            val candidateEnd = if (pageEndLine < sl.lineCount) sl.getLineStart(pageEndLine) else text.length
+            val hasStyledMetrics = text is Spanned &&
+                text.getSpans(candidateStart, candidateEnd, MetricAffectingSpan::class.java)
+                    .any { it !is ReaderPunctuationCompressionSpan }
+            if (usesReaderEnglishHyphenation(text) || hasStyledMetrics) {
                 while (pageEndLine > pageStartLine + 1) {
-                    val candidateStart = sl.getLineStart(pageStartLine)
+                    coroutineContext.ensureActive()
                     val candidateEnd = if (pageEndLine < sl.lineCount) sl.getLineStart(pageEndLine) else text.length
                     val slice = text.subSequence(candidateStart, candidateEnd)
                     val local = StaticLayout.Builder.obtain(slice, 0, slice.length, input.textPaint, input.visibleWidth)
@@ -385,7 +393,9 @@ class PageLayoutEngine {
                         .setJustificationMode(input.textAlignment.readerJustificationForText(slice))
                         .build()
                     var last = local.lineCount - 1
-                    if (last > 0 && local.getLineStart(last) == slice.length) last--
+                    // Spacer rows are swallowed at the page boundary and have
+                    // no ink. Judge the final visible line, including its descent.
+                    while (last > 0 && slice.subSequence(local.getLineStart(last), local.getLineEnd(last)).isBlank()) last--
                     if (local.getLineBaseline(last) + local.getLineDescent(last) <= effectiveVh) break
                     pageEndLine--
                 }

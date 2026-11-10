@@ -18,6 +18,8 @@ interface BookRepository {
     suspend fun setBooksHidden(bookIds: Collection<String>, hidden: Boolean)
     /** Archives without changing reading history or shelf organisation. */
     suspend fun setBooksArchived(bookIds: Collection<String>, archived: Boolean)
+    /** Changes only the manual read flag; progress and locator stay untouched. */
+    suspend fun setManuallyMarkedRead(bookId: String, read: Boolean)
     suspend fun deleteBook(book: Book)
     suspend fun markBookCloudOnly(bookId: String)
     suspend fun markBookDownloaded(bookId: String, filePath: String)

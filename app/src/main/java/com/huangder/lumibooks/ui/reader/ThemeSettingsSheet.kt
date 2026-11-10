@@ -308,11 +308,9 @@ fun ThemeSettingsSheet(
 
     var isClosing by remember { mutableStateOf(false) }
     var showExportConfirm by remember { mutableStateOf(false) }
-    var fontSliderPreview by remember { mutableStateOf<ReaderSliderPreview?>(null) }
-    var fontSizeSliderBounds by remember { mutableStateOf<Rect?>(null) }
-    var weightSliderBounds by remember { mutableStateOf<Rect?>(null) }
-    val fontSliderSheetAlpha = if (fontSliderPreview == null) 1f else 0f
-    SideEffect { onLayoutPreviewActiveChange(fontSliderPreview != null) }
+    var activeSlider by remember { mutableStateOf<String?>(null) }
+    val typographyDragActive = activeSlider == "font-size" || activeSlider == "font-weight"
+    SideEffect { onLayoutPreviewActiveChange(typographyDragActive) }
     DisposableEffect(Unit) { onDispose { onLayoutPreviewActiveChange(false) } }
     val predictiveBackProgress = ConfigurableBottomSheetBackHandler { isClosing = true }
 
@@ -344,7 +342,7 @@ fun ThemeSettingsSheet(
             Modifier.fillMaxSize()
                 .background(
                     AppColors.Scrim.copy(
-                        alpha = sheetScrimAlpha * fontSliderSheetAlpha *
+                        alpha = sheetScrimAlpha *
                             (1f - sheetOffset.value.coerceIn(0f, 1f))
                     )
                 )
@@ -355,7 +353,6 @@ fun ThemeSettingsSheet(
         Box(
             adaptiveSheetFrame(heightFraction = if (isLiquidGlass) 0.64f else 0.60f)
                 .materialBottomSheetMotion(sheetOffset.value, predictiveBackProgress)
-                .graphicsLayer { alpha = fontSliderSheetAlpha }
         ) {
             Box(
                 modifier = Modifier
@@ -410,48 +407,51 @@ fun ThemeSettingsSheet(
             var previewWeight by remember(currentFontType, currentCustomFontPath,
                 currentBodyFontWeight) { mutableFloatStateOf(currentBodyFontWeight) }
 
-            Column(
-                Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Column(Modifier.fillMaxWidth()) {
+            ReaderExpandingSliderRow(
+                activeSide = when (activeSlider) { "font-size" -> 0; "font-weight" -> 1; else -> null },
+                animate = !eInkModeEnabled,
+                modifier = Modifier.padding(horizontal = 24.dp),
+                first = { compressed ->
                     Row(
                         Modifier.fillMaxWidth().height(24.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(stringResource(R.string.label_font_size), Modifier.weight(1f),
-                            fontSize = AppType.BodySmall, color = LightTextSecondary, maxLines = 1)
-                        Box(
-                            modifier = Modifier.clip(AppRoundedCornerShape(8.dp)).clickable(
-                                indication = null,
-                                interactionSource = remember { MutableInteractionSource() }
-                            ) { showFontSizeDialog = true }.padding(start = 6.dp, top = 4.dp, bottom = 4.dp)
-                        ) {
-                            Text(String.format(Locale.getDefault(), "%.1f sp", currentFontSize),
-                                fontSize = AppType.BodySmall, color = LightTextSecondary,
-                                fontWeight = FontWeight.SemiBold, maxLines = 1)
+                            fontSize = AppType.BodySmall, color = LightTextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (!compressed) {
+                            Box(
+                                modifier = Modifier.clip(AppRoundedCornerShape(8.dp)).clickable(
+                                    indication = null,
+                                    interactionSource = remember { MutableInteractionSource() }
+                                ) { showFontSizeDialog = true }.padding(start = 6.dp, top = 4.dp, bottom = 4.dp)
+                            ) {
+                                Text(String.format(Locale.getDefault(), "%.1f sp", currentFontSize),
+                                    fontSize = AppType.BodySmall, color = LightTextSecondary,
+                                    fontWeight = FontWeight.SemiBold, maxLines = 1)
+                            }
                         }
                     }
                     Spacer(Modifier.height(2.dp))
                     com.huangder.lumibooks.ui.components.PillSlider(
+                        adaptiveWidthDuringDrag = true,
+                        enabled = activeSlider == null || activeSlider == "font-size",
+                        onDragStateChange = { dragging ->
+                            if (dragging) {
+                                if (activeSlider == null) { activeSlider = "font-size"; true } else false
+                            } else {
+                                if (activeSlider == "font-size") activeSlider = null
+                                true
+                            }
+                        },
                         value = currentFontSize,
                         onValueChange = { onFontSizeChange((it * 10f).roundToInt() / 10f) },
                         valueRange = ReaderThemeSettings.FONT_SIZE_RANGE,
                         step = 0.1f,
                         onDragValueChange = { value ->
                             val precise = (value * 10f).roundToInt() / 10f
-                            fontSliderPreview = fontSliderPreview?.takeIf { it.key == "font-size" }
-                                ?.copy(value = precise)
-                                ?: fontSizeSliderBounds?.let {
-                                    ReaderSliderPreview("font-size", it, precise, ReaderThemeSettings.FONT_SIZE_RANGE, 0.1f)
-                                }
                             onFontSizePreview(precise)
                         },
-                        onInteractionChange = { active ->
-                            if (!active && fontSliderPreview?.key == "font-size") fontSliderPreview = null
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                            .onGloballyPositioned { fontSizeSliderBounds = it.boundsInRoot() }
+                        modifier = Modifier.fillMaxWidth().testTag("reader-font-size-slider")
                     )
                     if (showFontSizeDialog) {
                         SliderValueInputDialog(
@@ -464,30 +464,42 @@ fun ThemeSettingsSheet(
                             onDismiss = { showFontSizeDialog = false }
                         )
                     }
-                }
-                Column(Modifier.fillMaxWidth()) {
+                },
+                second = { compressed ->
                     Row(
                         Modifier.fillMaxWidth().height(24.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(stringResource(R.string.body_font_weight), Modifier.weight(1f),
-                            fontSize = AppType.BodySmall, color = LightTextSecondary, maxLines = 1)
-                        Box(
-                            modifier = Modifier
-                                .clip(AppRoundedCornerShape(8.dp))
-                                .clickable(
-                                    indication = null,
-                                    interactionSource = remember { MutableInteractionSource() }
-                                ) { showBodyFontWeightDialog = true }
-                                .padding(start = 6.dp, top = 4.dp, bottom = 4.dp)
-                                .testTag("reader-body-font-weight-value")
-                        ) {
-                            Text(String.format(Locale.getDefault(), "%.1f", previewWeight.coerceIn(weightRange)),
-                                fontSize = AppType.BodySmall, color = LightTextSecondary, maxLines = 1)
+                            fontSize = AppType.BodySmall, color = LightTextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (!compressed) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(AppRoundedCornerShape(8.dp))
+                                    .clickable(
+                                        indication = null,
+                                        interactionSource = remember { MutableInteractionSource() }
+                                    ) { showBodyFontWeightDialog = true }
+                                    .padding(start = 6.dp, top = 4.dp, bottom = 4.dp)
+                                    .testTag("reader-body-font-weight-value")
+                            ) {
+                                Text(String.format(Locale.getDefault(), "%.1f", previewWeight.coerceIn(weightRange)),
+                                    fontSize = AppType.BodySmall, color = LightTextSecondary, maxLines = 1)
+                            }
                         }
                     }
                     Spacer(Modifier.height(2.dp))
                     com.huangder.lumibooks.ui.components.PillSlider(
+                        adaptiveWidthDuringDrag = true,
+                        enabled = activeSlider == null || activeSlider == "font-weight",
+                        onDragStateChange = { dragging ->
+                            if (dragging) {
+                                if (activeSlider == null) { activeSlider = "font-weight"; true } else false
+                            } else {
+                                if (activeSlider == "font-weight") activeSlider = null
+                                true
+                            }
+                        },
                         value = currentBodyFontWeight.coerceIn(weightRange),
                         onValueChange = {
                             previewWeight = (it * 10f).roundToInt() / 10f
@@ -497,19 +509,10 @@ fun ThemeSettingsSheet(
                             previewWeight = com.huangder.lumibooks.ui.components
                                 .snapSliderValue(it, weightRange, weightStep)
                             onBodyFontWeightPreview(previewWeight)
-                            fontSliderPreview = fontSliderPreview?.takeIf { preview -> preview.key == "font-weight" }
-                                ?.copy(value = previewWeight)
-                                ?: weightSliderBounds?.let { bounds ->
-                                    ReaderSliderPreview("font-weight", bounds, previewWeight, weightRange, weightStep)
-                                }
-                        },
-                        onInteractionChange = { active ->
-                            if (!active && fontSliderPreview?.key == "font-weight") fontSliderPreview = null
                         },
                         valueRange = weightRange,
                         step = weightStep,
-                        modifier = Modifier.fillMaxWidth()
-                            .onGloballyPositioned { weightSliderBounds = it.boundsInRoot() }
+                        modifier = Modifier.fillMaxWidth().testTag("reader-font-weight-slider")
                     )
                     if (showBodyFontWeightDialog) {
                         SliderValueInputDialog(
@@ -527,25 +530,44 @@ fun ThemeSettingsSheet(
                         )
                     }
                 }
-                Column(Modifier.fillMaxWidth()) {
+            )
+
+            Spacer(Modifier.height(10.dp))
+
+            ReaderExpandingSliderRow(
+                activeSide = when (activeSlider) { "brightness" -> 0; "mask" -> 1; else -> null },
+                animate = !eInkModeEnabled,
+                modifier = Modifier.padding(horizontal = 24.dp),
+                first = { compressed ->
                     Row(
                         Modifier.fillMaxWidth().height(24.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(stringResource(R.string.brightness), Modifier.weight(1f),
-                            fontSize = AppType.BodySmall, color = LightTextSecondary, maxLines = 1)
-                        Text(if (currentBrightness < 0f) stringResource(R.string.brightness_auto)
+                            fontSize = AppType.BodySmall, color = LightTextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (!compressed) Text(if (currentBrightness < 0f) stringResource(R.string.brightness_auto)
                             else "${(currentBrightness * 100).toInt()}%",
                             fontSize = AppType.BodySmall, color = LightTextSecondary, maxLines = 1)
                     }
                     Spacer(Modifier.height(2.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         com.huangder.lumibooks.ui.components.PillSlider(
+                            adaptiveWidthDuringDrag = true,
+                            enabled = activeSlider == null || activeSlider == "brightness",
+                            onDragStateChange = { dragging ->
+                                if (dragging) {
+                                    if (activeSlider == null) { activeSlider = "brightness"; true } else false
+                                } else {
+                                    if (activeSlider == "brightness") activeSlider = null
+                                    true
+                                }
+                            },
                             value = brightnessPercent,
                             onValueChange = { pct -> onBrightnessChange(pct / 100f) },
                             valueRange = 0f..100f,
                             step = 1f,
-                            modifier = Modifier.weight(1f)
+                            onDragValueChange = { onBrightnessChange(it / 100f) },
+                            modifier = Modifier.weight(1f).testTag("reader-brightness-slider")
                         )
                         Spacer(Modifier.width(8.dp))
                         val isAutoBrightness = currentBrightness < 0f
@@ -588,28 +610,38 @@ fun ThemeSettingsSheet(
                             }
                         }
                     }
-                }
-                Column(Modifier.fillMaxWidth()) {
+                },
+                second = { compressed ->
                     Row(
                         Modifier.fillMaxWidth().height(24.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(stringResource(R.string.reader_dark_mask), Modifier.weight(1f),
-                            fontSize = AppType.BodySmall, color = LightTextSecondary, maxLines = 1)
-                        Text("${(currentDarkMaskOpacity * 100f).roundToInt()}%",
+                            fontSize = AppType.BodySmall, color = LightTextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (!compressed) Text("${(currentDarkMaskOpacity * 100f).roundToInt()}%",
                             fontSize = AppType.BodySmall, color = LightTextSecondary, maxLines = 1)
                     }
                     Spacer(Modifier.height(2.dp))
                     com.huangder.lumibooks.ui.components.PillSlider(
+                        adaptiveWidthDuringDrag = true,
+                        enabled = activeSlider == null || activeSlider == "mask",
+                        onDragStateChange = { dragging ->
+                            if (dragging) {
+                                if (activeSlider == null) { activeSlider = "mask"; true } else false
+                            } else {
+                                if (activeSlider == "mask") activeSlider = null
+                                true
+                            }
+                        },
                         value = (currentDarkMaskOpacity * 100f).coerceIn(0f, 80f),
                         onValueChange = { onDarkMaskOpacityChange(it / 100f) },
                         valueRange = 0f..80f,
                         step = 1f,
                         onDragValueChange = { onDarkMaskOpacityPreview(it / 100f) },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth().testTag("reader-mask-slider")
                     )
                 }
-            }
+            )
 
             Spacer(Modifier.height(16.dp))
 
@@ -1002,22 +1034,7 @@ fun ThemeSettingsSheet(
         }
     }
     }
-        fontSliderPreview?.let { preview ->
-            val density = LocalDensity.current
-            com.huangder.lumibooks.ui.components.PillSlider(
-                value = preview.value,
-                onValueChange = {},
-                valueRange = preview.range,
-                step = preview.step,
-                modifier = Modifier
-                    .width(with(density) { preview.bounds.width.toDp() })
-                    .offset {
-                        androidx.compose.ui.unit.IntOffset(
-                            preview.bounds.left.toInt(), preview.bounds.top.toInt()
-                        )
-                    }
-            )
-        }
+
     }
     if (showExportConfirm) {
         val suite = readerThemeSuites.firstOrNull { it.id == activeReaderThemeSuiteId }
@@ -3607,7 +3624,7 @@ private fun ReaderCornerSelectionRow(
                             liquidMenuHost.toggle(
                                 LiquidGlassMenuSpec(
                                     anchorBounds = menuAnchorBounds,
-                                    width = 158.dp,
+                                    width = 248.dp,
                                     anchorCornerRadius = 14.dp,
                                     forceSolid = forceSolidMenu,
                                     surfaceColor = menuSurfaceColor,
@@ -3633,7 +3650,8 @@ private fun ReaderCornerSelectionRow(
                     color = AppColors.TextPrimary,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
-                    modifier = Modifier.fillMaxWidth()
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth().padding(end = 16.dp)
                 )
                 ControlIcon(
                     imageVector = AppIcons.CaretDown,
@@ -4185,6 +4203,11 @@ private fun readerCornerContentLabel(content: ReaderCornerContent): String = str
         ReaderCornerContent.GLOBAL_PAGE_NUMBER -> R.string.reader_corner_content_global_page_number
         ReaderCornerContent.BATTERY -> R.string.reader_corner_content_battery
         ReaderCornerContent.TIME -> R.string.reader_corner_content_time
+        ReaderCornerContent.TIME_BATTERY -> R.string.reader_corner_content_time_battery
+        ReaderCornerContent.PAGE_NUMBER_BOOK_PROGRESS -> R.string.reader_corner_content_page_number_book_progress
+        ReaderCornerContent.GLOBAL_PAGE_NUMBER_BOOK_PROGRESS -> R.string.reader_corner_content_global_page_number_book_progress
+        ReaderCornerContent.CHAPTER_INFO_PAGE_NUMBER -> R.string.reader_corner_content_chapter_page_number
+        ReaderCornerContent.CHAPTER_INFO_BOOK_PROGRESS -> R.string.reader_corner_content_chapter_book_progress
     }
 )
 

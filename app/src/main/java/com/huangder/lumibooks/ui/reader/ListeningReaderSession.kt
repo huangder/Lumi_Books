@@ -13,6 +13,7 @@ internal class ListeningReaderSession {
     private val _followEnabled = MutableStateFlow(false)
     val followEnabled = _followEnabled.asStateFlow()
     private var checked = false
+    private var checkingGeneration: Long? = null
     private var generation = 0L
     private var backgrounded = false
     private var backgroundSessionId: Long? = null
@@ -23,18 +24,20 @@ internal class ListeningReaderSession {
         if (backgrounded) return
         backgrounded = true
         backgroundSessionId = sessionId
-        checked = false
         detach(preservePrompt = false)
     }
 
     /** null means a fresh open/session and keeps the existing saved-position policy. */
-    fun returnFromBackground(sessionId: Long?): Boolean? {
+    fun returnFromBackground(sessionId: Long?, followUserPageTurns: Boolean = false): Boolean? {
         if (!backgrounded) return null
         backgrounded = false
         val sameSession = sessionId != null && sessionId == backgroundSessionId
         backgroundSessionId = null
-        checked = true
-        if (!sameSession) return null
+        // STARTED during the opening transition is not a completed opening check.
+        // Interrupted loads/jumps must still apply the saved policy on first RESUME.
+        if (!checked || !sameSession) return null
+        // The capsule's explicit follow policy survives fullscreen and background playback.
+        if (followUserPageTurns) follow()
         return true
     }
 
@@ -42,16 +45,27 @@ internal class ListeningReaderSession {
         jumpSessionId == null || jumpSessionId == sessionId
 
     fun beginCheck(): Long? {
-        if (checked) return null
-        checked = true
+        if (checked || checkingGeneration != null || _jumpRequest.value != null) return null
+        checkingGeneration = generation
         return generation
     }
 
     fun isCurrent(stamp: Long): Boolean = stamp == generation
 
-    fun offer(position: TtsListeningPosition) { _prompt.value = position }
+    fun cancelCheck(stamp: Long) {
+        if (checkingGeneration == stamp) checkingGeneration = null
+    }
 
-    fun keepReading() = detach(preservePrompt = false)
+    fun offer(position: TtsListeningPosition) {
+        checked = true
+        checkingGeneration = null
+        _prompt.value = position
+    }
+
+    fun keepReading() {
+        checked = true
+        detach(preservePrompt = false)
+    }
 
     fun pageTurn() {
         checked = true
@@ -66,11 +80,14 @@ internal class ListeningReaderSession {
     fun hide() {
         backgrounded = false
         backgroundSessionId = null
-        checked = false
         keepReading()
+        checked = false
     }
 
     fun requestJump(position: TtsListeningPosition, sessionId: Long? = null) {
+        // Queuing navigation does not mean the renderer has accepted it yet.
+        checked = false
+        checkingGeneration = null
         jumpSessionId = sessionId
         _prompt.value = null
         _jumpRequest.value = position
@@ -83,6 +100,7 @@ internal class ListeningReaderSession {
     }
 
     fun follow() {
+        checkingGeneration = null
         jumpSessionId = null
         generation++
         checked = true
@@ -92,6 +110,7 @@ internal class ListeningReaderSession {
     }
 
     private fun detach(preservePrompt: Boolean) {
+        checkingGeneration = null
         jumpSessionId = null
         generation++
         if (!preservePrompt) _prompt.value = null

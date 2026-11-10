@@ -78,7 +78,10 @@ internal data class EpubSpreadCallbacks(
     val image: () -> Unit,
     val bookmarkStart: () -> Unit,
     val bookmarkProgress: (Float, Boolean) -> Unit,
-    val bookmarkFinish: (Boolean) -> Unit
+    val bookmarkFinish: (Boolean) -> Unit,
+    val bookEnd: () -> Unit = {},
+    val bookEndPull: (Float) -> Unit = {},
+    val bookEndPullEnd: (Boolean) -> Unit = {}
 )
 
 @Composable
@@ -232,6 +235,9 @@ internal fun EpubSpreadContent(
                 onNavigationStage = { request, stage -> latest.value.navigationStage(request.operationId, stage) }
                 onFailure = { latest.value.failure(it) }
                 onManualTurnStarted = { latest.value.manual() }
+                onBookEnd = { latest.value.bookEnd() }
+                onBookEndPull = { latest.value.bookEndPull(it) }
+                onBookEndPullEnd = { latest.value.bookEndPullEnd(it) }
                 onBookmarkPullStart = { latest.value.bookmarkStart() }
                 onBookmarkPullProgress = { distance, armed -> latest.value.bookmarkProgress(distance, armed) }
                 onBookmarkPullFinished = { latest.value.bookmarkFinish(it) }

@@ -457,6 +457,7 @@ internal class EpubPageTurnHost(
     private var nativePagingEnabled = true
     private var nativeTouchPagingEnabled = true
     private var bookmarkPullEnabled = false
+    private var footnoteTouchStream = false
     private val bookmarkPullTracker = BookmarkPullGestureTracker()
     private var reverseAxis = false
     // Both animation surfaces use the same axis until the turn has settled.
@@ -588,6 +589,12 @@ internal class EpubPageTurnHost(
     var onHasPotentialTurn: ((direction: Int, current: EpubPageTarget, pageCount: Int) -> Boolean)? = null
     var onSlideLookaheadRequested: ((PreloadSlot, EpubPageTarget) -> Unit)? = null
     var onUnpreparedChapterTurn: ((Int) -> Unit)? = null
+    /** A forward tap or swipe arrived while the last page of the book is visible. */
+    var onBookEnd: (() -> Unit)? = null
+    /** Forward drag on the last page: distance in px along the reading direction. */
+    var onBookEndPull: ((Float) -> Unit)? = null
+    var onBookEndPullEnd: ((cancelled: Boolean) -> Unit)? = null
+    private var bookEndPulling = false
     var onSlideVisualPageAdvanced: ((EpubPageTarget, Int) -> Unit)? = null
     var onInvalidatePreloads: (() -> Unit)? = null
 
@@ -1264,6 +1271,12 @@ internal class EpubPageTurnHost(
             PageAnimationController.Direction.PREV
         }
         val requestedTarget = targetFor(controllerDirection)
+        if (direction > 0 && !overlayActive && waitingForTarget == null && isAtBookEnd()) {
+            // Consume the tap: the JS fallback would otherwise try a chapter turn past the end.
+            EpubTurnTrace.log("tap_book_end", "from" to currentTarget.traceLabel())
+            onBookEnd?.invoke()
+            return true
+        }
         EpubTurnTrace.log("tap", "dir" to direction, "state" to traceState(),
             "ready" to if (canFlip(controllerDirection)) 1 else 0, "from" to currentTarget.traceLabel(),
             "to" to requestedTarget.traceLabel())
@@ -1361,6 +1374,7 @@ internal class EpubPageTurnHost(
         if (EpubTurnTrace.enabled) traceGestureBefore(event)
         val handled = dispatchPageTouchEvent(event)
         if (EpubTurnTrace.enabled) traceGestureAfter(event)
+        trackBookEndPull(event)
         if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
             endTouchStream(event)
         }
@@ -1388,6 +1402,12 @@ internal class EpubPageTurnHost(
 
     private fun dispatchPageTouchEvent(event: MotionEvent): Boolean {
         if (released) return true
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            footnoteTouchStream = activeWebView.footnotePopoverVisible
+        }
+        // Keep even an outside-dismiss stroke in WebView until UP/CANCEL. The
+        // closing animation/bridge callback may finish before the finger lifts.
+        if (footnoteTouchStream) return super.dispatchTouchEvent(event)
         // Owned selection handles take priority over page turns and bookmark pulls.
         if (activeWebView.handleReaderSelectionTouch(event)) return true
         if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
@@ -2056,6 +2076,45 @@ internal class EpubPageTurnHost(
         PageAnimationController.Direction.NEXT -> nextTarget != null
         PageAnimationController.Direction.PREV -> previousTarget != null
         PageAnimationController.Direction.NONE -> false
+    }
+
+    /** Final page of the final chapter, with a measured page count. */
+    private fun isAtBookEnd(): Boolean =
+        onBookEnd != null && onHasPotentialTurn != null && currentPageCount > 0 &&
+            !hasPotentialTurn(PageAnimationController.Direction.NEXT)
+
+    /** Finger travel along the forward reading direction since touch-down. */
+    private fun forwardDistance(event: MotionEvent): Float = if (transition == "scroll") {
+        touchStreamDownY - event.y
+    } else {
+        val dx = event.x - touchStreamDownX
+        if (reverseAxis) dx else -dx
+    }
+
+    /**
+     * The host captures a forward swipe on the last page but has no page to turn to.
+     * Report it so the finish page can follow the finger like a normal page.
+     */
+    private fun trackBookEndPull(event: MotionEvent) {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_MOVE -> {
+                val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+                val distance = forwardDistance(event)
+                if (!bookEndPulling) {
+                    if (!capturedSlideTouchStream || pagingGesture || !isAtBookEnd()) return
+                    val dx = abs(event.x - touchStreamDownX)
+                    val dy = abs(event.y - touchStreamDownY)
+                    val alongAxis = if (transition == "scroll") dy > dx else dx > dy
+                    if (distance < slop || !alongAxis) return
+                    bookEndPulling = true
+                }
+                onBookEndPull?.invoke((distance - slop).coerceAtLeast(0f))
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (bookEndPulling) {
+                bookEndPulling = false
+                onBookEndPullEnd?.invoke(event.actionMasked == MotionEvent.ACTION_CANCEL)
+            }
+        }
     }
 
     private fun hasPotentialTurn(direction: PageAnimationController.Direction): Boolean {

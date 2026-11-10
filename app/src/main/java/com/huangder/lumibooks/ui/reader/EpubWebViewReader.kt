@@ -91,6 +91,7 @@ internal class EpubContentWebView(context: android.content.Context) : WebView(co
         handleReaderSelectionTouch(event) || super.onTouchEvent(event)
 
     var pageIndexSignature: String = ""
+    var footnotePopoverVisible = false
     // Debug-only EpubTurnTrace identity and load clock.
     val traceId = nextTraceId.incrementAndGet()
     var traceLoadStartedAt = 0L
@@ -114,6 +115,7 @@ internal class EpubContentWebView(context: android.content.Context) : WebView(co
         if (released) return
         dismissSelectionUi()
         released = true
+        footnotePopoverVisible = false
         configurationUpdates.reset()
         documentLifecycle.beginDocument()
         cancelRecoverableLoad()
@@ -191,6 +193,7 @@ internal class EpubContentWebView(context: android.content.Context) : WebView(co
             traceSubresourceNanos = 0L
         }
         readerSelectionHandles.clear()
+        footnotePopoverVisible = false
         configurationUpdates.reset()
         // Invalidate queued compositor callbacks immediately, before onPageStarted.
         documentLifecycle.beginDocument()
@@ -605,6 +608,9 @@ internal fun EpubWebViewReader(
     onSelectionMenuDismiss: () -> Unit = {},
     onImagePreviewOpen: () -> Unit,
     onChapterTurn: (direction: Int) -> Unit,
+    onBookEnd: () -> Unit = {},
+    onBookEndPull: (Float) -> Unit = {},
+    onBookEndPullEnd: (cancelled: Boolean) -> Unit = {},
     onInternalLink: (chapterIndex: Int, fragment: String?) -> Unit,
     onExternalLink: (href: String) -> Unit,
     onSelection: (EpubSelectionInfo) -> Unit,
@@ -657,7 +663,8 @@ internal fun EpubWebViewReader(
                 onPageCountConfirmed, onNavigationStage, onNavigationResult, onRenderUnavailable,
                 onCenterTap, onManualScrollStarted, onSelection, onSelectionCleared,
                 onSelectionMenuDismiss, onInternalLink, onExternalLink, onSearchResolved,
-                onImagePreviewOpen, onBookmarkPullStart, onBookmarkPullProgress, onBookmarkPullFinished
+                onImagePreviewOpen, onBookmarkPullStart, onBookmarkPullProgress, onBookmarkPullFinished,
+                onBookEnd, onBookEndPull, onBookEndPullEnd
             ),
             onPageTextProviderReady = onPageTextProviderReady,
             onPageTurnHandlerReady = onPageTurnHandlerReady,
@@ -776,6 +783,9 @@ internal fun EpubWebViewReader(
     val latestSelectionMenuDismiss = rememberUpdatedState(onSelectionMenuDismiss)
     val latestImagePreviewOpen = rememberUpdatedState(onImagePreviewOpen)
     val latestChapterTurn = rememberUpdatedState(onChapterTurn)
+    val latestBookEnd = rememberUpdatedState(onBookEnd)
+    val latestBookEndPull = rememberUpdatedState(onBookEndPull)
+    val latestBookEndPullEnd = rememberUpdatedState(onBookEndPullEnd)
     val latestReleaseHandlerReady = rememberUpdatedState(onReleaseHandlerReady)
     val latestGlassSnapshotProviderReady = rememberUpdatedState(onGlassSnapshotProviderReady)
     val latestInternalLink = rememberUpdatedState(onInternalLink)
@@ -2308,6 +2318,7 @@ internal fun EpubWebViewReader(
                         )
                     ) return
                     when (type) {
+                        "footnotePopover" -> view.footnotePopoverVisible = payload.optBoolean("visible")
                         "manualScroll" -> latestManualScrollStarted.value()
                         "autoScrollEnd" -> latestAutoScrollEnd.value()
                         "layoutStable", "page" -> {
@@ -2476,6 +2487,9 @@ internal fun EpubWebViewReader(
                                 latestCenterTap.value()
                             }
                         }
+                        "bookEnd" -> {
+                            if (messageChapterIndex == session.chapterCount - 1) latestBookEnd.value()
+                        }
                         "chapterTurn" -> {
                             val direction = payload.optInt("direction", 0)
                             if (direction == 0) return
@@ -2485,6 +2499,7 @@ internal fun EpubWebViewReader(
                                     "window.LumiReader&&window.LumiReader.cancelChapterTurn();",
                                     null
                                 )
+                                if (direction > 0 && targetChapter >= session.chapterCount) latestBookEnd.value()
                                 return
                             }
                             if (!pageTurnHost.requestTurn(direction)) {
@@ -3212,6 +3227,9 @@ internal fun EpubWebViewReader(
                 pageTurnHost.onSlideLookaheadRequested = { slot, target ->
                     updatePreload(slot, target)
                 }
+                pageTurnHost.onBookEnd = { latestBookEnd.value() }
+                pageTurnHost.onBookEndPull = { latestBookEndPull.value(it) }
+                pageTurnHost.onBookEndPullEnd = { latestBookEndPullEnd.value(it) }
                 pageTurnHost.onUnpreparedChapterTurn = { direction ->
                     latestChapterTurn.value(direction)
                 }

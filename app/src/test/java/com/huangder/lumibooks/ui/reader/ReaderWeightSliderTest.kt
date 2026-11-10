@@ -161,7 +161,7 @@ class ReaderWeightSliderTest {
         compose.onNode(hasSetTextAction()).assertDoesNotExist()
     }
 
-    @Test fun typographyBrightnessAndMaskControlsUseCompactFullWidthRowsAndKeepTenths() {
+    @Test fun typographyBrightnessAndMaskControlsUseTwoRowsAndKeepTenths() {
         val fontSize = mutableStateOf(18f)
         val weight = mutableStateOf(400f)
         val brightness = mutableStateOf(-1f)
@@ -202,15 +202,11 @@ class ReaderWeightSliderTest {
         val brightnessBounds = compose.onNode(brightnessSlider).fetchSemanticsNode().boundsInRoot
         val maskBounds = compose.onNode(maskSlider).fetchSemanticsNode().boundsInRoot
         compose.runOnIdle {
-            val rows = listOf(fontBounds, weightBounds, brightnessBounds, maskBounds)
-            rows.zipWithNext().forEach { (previous, next) ->
-                assertTrue("Controls must occupy separate rows", next.top >= previous.bottom)
-                assertTrue("Rows should stay compact", next.top - previous.top <= 70f * 3f)
-                assertEquals(previous.left, next.left, 1f)
-            }
-            assertTrue("Font slider should use the available width", fontBounds.width >= 300f * 3f)
+            assertEquals(fontBounds.top, weightBounds.top, 1f)
             assertEquals(fontBounds.width, weightBounds.width, 1f)
-            assertEquals(fontBounds.width, maskBounds.width, 1f)
+            assertEquals(brightnessBounds.left, fontBounds.left, 1f)
+            assertEquals(maskBounds.left, weightBounds.left, 1f)
+            assertTrue(brightnessBounds.top > fontBounds.bottom)
         }
 
         compose.onNode(fontSlider).performSemanticsAction(SemanticsActions.SetProgress) { it(32.3f) }

@@ -678,6 +678,8 @@ a[href*="#ref-footnotebookmark-end-"] img {
   width: 20px !important;
   height: 20px !important;
 }
+/* The root's paging touch-action also constrains nested scroll containers. */
+html.lumi-footnote-open { touch-action: pan-y; }
 #lumi-footnote-popover {
   position: fixed;
   left: 12px;
@@ -946,6 +948,7 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
   var scrollChapterDragOffset = 0;
   var scrollChapterStartedAtTop = false;
   var scrollChapterStartedAtBottom = false;
+  var scrollBookEndPosted = false;
   var scrollChapterTurnPending = false;
   var scrollChapterAnimationTimer = 0;
   var imageLongPressTimer = 0;
@@ -4665,6 +4668,8 @@ private const val READER_SCRIPT_PART_3 = """
     if (!existing) return;
     if (immediate) {
       existing.remove();
+      document.documentElement.classList.remove('lumi-footnote-open');
+      post('footnotePopover', { visible: false });
       return;
     }
     if (existing.getAttribute('data-state') === 'closing') return;
@@ -4674,7 +4679,11 @@ private const val READER_SCRIPT_PART_3 = """
       if (event && event.target !== existing) return;
       if (removed) return;
       removed = true;
-      if (existing.isConnected) existing.remove();
+      if (existing.isConnected) {
+        existing.remove();
+        document.documentElement.classList.remove('lumi-footnote-open');
+        post('footnotePopover', { visible: false });
+      }
     };
     existing.addEventListener('animationend', removePopover);
     window.setTimeout(removePopover, visualMillis(220));
@@ -4689,6 +4698,8 @@ private const val READER_SCRIPT_PART_3 = """
     popover.setAttribute('aria-label', String(anchor.getAttribute('title') || 'Note'));
     popover.innerHTML = '<div id="lumi-footnote-content"><span id="lumi-footnote-loading" aria-hidden="true"></span></div>';
     document.documentElement.appendChild(popover);
+    document.documentElement.classList.add('lumi-footnote-open');
+    post('footnotePopover', { visible: true });
     positionFootnotePopover(popover, anchor.getBoundingClientRect());
     window.requestAnimationFrame(function () {
       if (popover.isConnected && popover.getAttribute('data-state') !== 'closing') {
@@ -4837,7 +4848,7 @@ private const val READER_SCRIPT_PART_3B = """
     imageLongPressTriggered = false;
     touchPaging = false;
     pageStageDurationOverride = 0;
-    if (event.target && event.target.closest && event.target.closest('#lumi-footnote-popover')) return;
+    if (document.getElementById('lumi-footnote-popover')) return;
     touchVelocityX = 0;
     if (event.touches.length !== 1) return;
     var touch = event.touches[0];
@@ -4852,6 +4863,7 @@ private const val READER_SCRIPT_PART_3B = """
       scrollChapterStartedAtTop = boundary.atTop;
       scrollChapterStartedAtBottom = boundary.atBottom;
       scrollChapterDragStartY = touchStartY;
+      scrollBookEndPosted = false;
     }
     var initialAnchor = event.target && event.target.closest ?
       event.target.closest('a[href],area[href]') : null;
@@ -4868,7 +4880,7 @@ private const val READER_SCRIPT_PART_3B = """
   }, { passive: true, capture: true });
 
   document.addEventListener('touchmove', function (event) {
-    if (event.target && event.target.closest && event.target.closest('#lumi-footnote-popover')) return;
+    if (document.getElementById('lumi-footnote-popover')) return;
     if (event.touches.length !== 1) { cancelImageLongPress(); return; }
     var touch = event.touches[0];
     var dx = touch.clientX - touchStartX;
@@ -4891,6 +4903,14 @@ private const val READER_SCRIPT_PART_3B = """
       var boundary = scrollBoundaryState();
       var canTurn = direction < 0 ? state.canTurnNext : state.canTurnPrevious;
       var atBoundary = direction < 0 ? boundary.atBottom : boundary.atTop;
+      // Last chapter: an upward pull that started at the very bottom opens the
+      // native "book finished" page instead of a chapter turn.
+      if (direction < 0 && !state.canTurnNext && !scrollBookEndPosted &&
+          scrollChapterStartedAtBottom && boundary.atBottom &&
+          -dy >= 72 && Math.abs(dy) > Math.abs(dx) * 1.5) {
+        scrollBookEndPosted = true;
+        post('bookEnd', {});
+      }
       if (!scrollChapterDragDirection && canTurn && atBoundary &&
           Math.abs(dy) >= 6 && Math.abs(dy) > Math.abs(dx)) {
         scrollChapterDragDirection = direction;

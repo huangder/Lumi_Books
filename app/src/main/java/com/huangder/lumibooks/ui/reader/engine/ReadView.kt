@@ -378,6 +378,10 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     // terminal event. Gesture ownership alone can otherwise outlive the pointer.
     private var rvPointerStreamActive = false
     private var rvBoundaryGestureSuppressed = false
+    // Forward drag past the last page, reported so the finish page can follow the finger.
+    private var rvBookEndPulling = false
+    private var rvBookEndPullSign = 0f
+    private var rvBookEndPullVertical = false
     private val bookmarkPullTracker = BookmarkPullGestureTracker()
     private var rvPendingImageLongPress: ReaderImageHit? = null
     private var rvPendingImageView: PageContentView? = null
@@ -1628,7 +1632,10 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     fun turnToNextPage(
         origin: TtsPageChangeOrigin = TtsPageChangeOrigin.USER
     ): Boolean {
-        if (isPageTurnBlockedAtBoundary(PageAnimationController.Direction.NEXT)) return false
+        if (isPageTurnBlockedAtBoundary(PageAnimationController.Direction.NEXT)) {
+            if (origin == TtsPageChangeOrigin.USER) notifyForwardPastBookEnd()
+            return false
+        }
         if (animationController is CurlPageAnim) {
             return requestCurlTurn(PageAnimationController.Direction.NEXT).also { accepted ->
                 if (accepted) pendingPageChangeOrigin = origin
@@ -1674,6 +1681,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
      * - 长按（非卷曲模式 >500ms 或无明显移动）→ 不拦截，TextView 原生触发选词
      */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) callbacks?.onReadingTouchStarted()
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> rvPointerStreamActive = true
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> rvPointerStreamActive = false
@@ -1730,6 +1738,15 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             return dispatchTouchToChildren(ev)
         }
         if (rvBoundaryGestureSuppressed && ev.actionMasked != MotionEvent.ACTION_DOWN) {
+            if (rvBookEndPulling) {
+                when (ev.actionMasked) {
+                    MotionEvent.ACTION_MOVE -> callbacks?.onBookEndPull(bookEndPullDistance(ev))
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        rvBookEndPulling = false
+                        callbacks?.onBookEndPullEnd(ev.actionMasked == MotionEvent.ACTION_CANCEL)
+                    }
+                }
+            }
             if (ev.actionMasked == MotionEvent.ACTION_UP ||
                 ev.actionMasked == MotionEvent.ACTION_CANCEL
             ) {
@@ -1778,6 +1795,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 rvDeferredCurlGesture = false
                 rvDeferredCurlDirection = PageAnimationController.Direction.NONE
                 rvBoundaryGestureSuppressed = false
+                cancelBookEndPull()
                 bookmarkPullTracker.start(
                     x = ev.rawX,
                     y = ev.rawY,
@@ -1909,6 +1927,13 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                         finishRunningPageTurnForNewInput()
                     }
                     if (isPageTurnBlockedAtBoundary(pageDirection)) {
+                        if (pageDirection == PageAnimationController.Direction.NEXT && canOpenFinishPage()) {
+                            rvBookEndPullVertical = animationController is ScrollPageAnim
+                            val delta = if (rvBookEndPullVertical) ev.y - rvTouchStartY else ev.x - rvTouchStartX
+                            rvBookEndPullSign = if (delta < 0f) -1f else 1f
+                            rvBookEndPulling = true
+                            callbacks?.onBookEndPull(bookEndPullDistance(ev))
+                        }
                         rvBoundaryGestureSuppressed = true
                         rvHasMoved = true
                         val cancelEvent = MotionEvent.obtain(ev).apply {
@@ -2015,6 +2040,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                     rvDeferredCurlDirection = PageAnimationController.Direction.NONE
                     rvIsHandlingPageGesture = false
                     rvBoundaryGestureSuppressed = false
+                    cancelBookEndPull()
                 }
                 if (ev.actionMasked == MotionEvent.ACTION_UP &&
                     !rvHasMoved &&
@@ -2410,6 +2436,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         bookmarkPullTracker.reset()
         rvPointerStreamActive = false
         rvBoundaryGestureSuppressed = false
+        cancelBookEndPull()
         rvSystemBackGestureCandidate = false
         rvSystemBackGestureSuppressed = false
         ReaderPageTurnPerformance.cancel()
@@ -2816,6 +2843,29 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         return directionForCurlSwipe(deltaX)
     }
 
+    /** Only a settled final page opens the finish page; a running turn is still moving there. */
+    private fun canOpenFinishPage(): Boolean {
+        if (isJumpSettling) return false
+        // Curl keeps its controller alive between turns; other animations must have settled.
+        if (animationController !is CurlPageAnim && animationController.isRunning) return false
+        return slotManager.isAtBookEnd()
+    }
+
+    private fun notifyForwardPastBookEnd() {
+        if (canOpenFinishPage()) callbacks?.onForwardPastBookEnd()
+    }
+
+    private fun cancelBookEndPull() {
+        if (!rvBookEndPulling) return
+        rvBookEndPulling = false
+        callbacks?.onBookEndPullEnd(true)
+    }
+
+    private fun bookEndPullDistance(ev: MotionEvent): Float {
+        val delta = if (rvBookEndPullVertical) ev.y - rvTouchStartY else ev.x - rvTouchStartX
+        return (delta * rvBookEndPullSign).coerceAtLeast(0f)
+    }
+
     private fun isPageTurnBlockedAtBoundary(
         direction: PageAnimationController.Direction
     ): Boolean {
@@ -2841,6 +2891,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         rvDeferredCurlGesture = false
         rvIsHandlingPageGesture = false
         rvBoundaryGestureSuppressed = false
+        cancelBookEndPull()
     }
 
     private fun beginJumpSettling(): Long {
