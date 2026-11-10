@@ -126,6 +126,7 @@ data class HomeUiState(
     val isLoading: Boolean = true,
     val bookshelfLayoutMode: Int = 2,
     val bookshelfLayoutModeLoaded: Boolean = false,
+    val spineSharpCovers: Boolean = false,
     val importBooksLayoutMode: Int = 2,
     val importMessage: String? = null,
     val authorizedBookDirectories: List<String> = emptyList(),
@@ -208,6 +209,8 @@ class HomeViewModel @Inject constructor(
     private val coverRepairAttempted = mutableSetOf<String>()
     private val pendingCoverRepairs = ArrayDeque<Book>()
     private var coverRepairJob: Job? = null
+    /** The one collector feeding [HomeUiState.books]: the full library or the current search. */
+    private var booksJob: Job? = null
     val downloadedBooks: SharedFlow<Book> = _downloadedBooks.asSharedFlow()
 
     // Importing several documents writes books and folder links one at a time. Defer preview
@@ -245,7 +248,10 @@ class HomeViewModel @Inject constructor(
     }
 
     fun loadBooks() {
-        viewModelScope.launch {
+        // Each call used to add a collector without stopping the previous one, so every closed
+        // search left another full-library pass running on each database change.
+        booksJob?.cancel()
+        booksJob = viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
                 bookRepository.getAllBooks().collectLatest { books ->
@@ -276,15 +282,25 @@ class HomeViewModel @Inject constructor(
                             }
                         }
                     }
-                    val (hiddenBooks, visibleBooks) = sortBooks(books, _uiState.value.sortBy).partition { it.isHidden }
-                    val sortedBooks = visibleBooks.filterNot { it.isArchived }
+                    val sortBy = _uiState.value.sortBy
+                    val library = withContext(Dispatchers.Default) {
+                        val (hiddenBooks, visibleBooks) = sortBooks(books, sortBy).partition { it.isHidden }
+                        val (archivedBooks, sortedBooks) = visibleBooks.partition { it.isArchived }
+                        LibrarySplit(
+                            books = sortedBooks,
+                            hiddenBooks = hiddenBooks,
+                            archivedBooks = archivedBooks,
+                            syncedBookIds = books.asSequence()
+                                .filter { it.remoteFileName != null }
+                                .mapTo(mutableSetOf()) { it.id }
+                        )
+                    }
+                    val sortedBooks = library.books
                     _uiState.value = _uiState.value.copy(
                         books = sortedBooks,
-                        hiddenBooks = hiddenBooks,
-                        archivedBooks = visibleBooks.filter { it.isArchived },
-                        syncedBookIds = books.asSequence()
-                            .filter { it.remoteFileName != null }
-                            .mapTo(mutableSetOf()) { it.id },
+                        hiddenBooks = library.hiddenBooks,
+                        archivedBooks = library.archivedBooks,
+                        syncedBookIds = library.syncedBookIds,
                         isLoading = false,
                         error = null
                     )
@@ -428,6 +444,11 @@ class HomeViewModel @Inject constructor(
 
     private fun loadBookshelfLayoutMode() {
         viewModelScope.launch {
+            dataStoreManager.spineSharpCovers.collectLatest { sharp ->
+                _uiState.value = _uiState.value.copy(spineSharpCovers = sharp)
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.bookshelfLayoutMode.collectLatest { mode ->
                 _uiState.value = _uiState.value.copy(
                     bookshelfLayoutMode = mode,
@@ -435,6 +456,11 @@ class HomeViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    fun setSpineSharpCovers(sharp: Boolean) {
+        _uiState.value = _uiState.value.copy(spineSharpCovers = sharp)
+        viewModelScope.launch { dataStoreManager.saveSpineSharpCovers(sharp) }
     }
 
     fun setBookshelfLayoutMode(mode: Int) {
@@ -569,9 +595,14 @@ class HomeViewModel @Inject constructor(
         if (query.isBlank()) {
             loadBooks()
         } else {
-            viewModelScope.launch {
+            // Typing replaces the previous query's collector instead of stacking another one.
+            booksJob?.cancel()
+            booksJob = viewModelScope.launch {
                 bookRepository.searchBooks(query).collectLatest { books ->
-                    val sortedBooks = sortBooks(books.filterNot { it.isHidden || it.isArchived }, _uiState.value.sortBy)
+                    val sortBy = _uiState.value.sortBy
+                    val sortedBooks = withContext(Dispatchers.Default) {
+                        sortBooks(books.filterNot { it.isHidden || it.isArchived }, sortBy)
+                    }
                     _uiState.value = _uiState.value.copy(
                         books = sortedBooks,
                         isSearchActive = true
@@ -606,6 +637,13 @@ class HomeViewModel @Inject constructor(
 
     private fun sortBooks(books: List<Book>, sortBy: SortBy): List<Book> =
         sortBooksForLibrary(books, sortBy)
+
+    private class LibrarySplit(
+        val books: List<Book>,
+        val hiddenBooks: List<Book>,
+        val archivedBooks: List<Book>,
+        val syncedBookIds: Set<String>
+    )
 
     fun insertBook(book: Book) {
         viewModelScope.launch {

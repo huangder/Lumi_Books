@@ -2,6 +2,7 @@ package com.huangder.lumibooks.ui.reader.engine
 
 import android.graphics.Canvas
 import android.graphics.LinearGradient
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.Shader
@@ -27,6 +28,8 @@ class SlidePageAnim(
 
     companion object {
         private const val SHADOW_WIDTH_PX = 250
+        private val SHADOW_STOPS = floatArrayOf(0.0f, 0.2f, 0.5f, 0.75f, 1.0f)
+        private val FADE_SHADOW_STOPS = floatArrayOf(0.0f, 0.2f, 0.5f, 1.0f)
     }
 
     private val density: Float get() = readView.resources.displayMetrics.density
@@ -34,6 +37,13 @@ class SlidePageAnim(
 
     // 🔥 复用 Paint 对象，避免每帧在 drawShadow 里 new Paint() + new LinearGradient()
     private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val fadeShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val shadowMatrix = Matrix()
+    // Unit-wide gradients, one per distinct (integer) color set, positioned per frame with a local
+    // matrix. A turn reuses the few dozen strengths it passes through instead of allocating a
+    // gradient and its arrays on every frame, and the pixels stay exactly what they were.
+    private val shadowShaders = HashMap<Int, LinearGradient>()
+    private val fadeShadowShaders = HashMap<Int, LinearGradient>()
     private val pagePaint = Paint(Paint.DITHER_FLAG).apply {
         isAntiAlias = false
         isFilterBitmap = false
@@ -168,17 +178,20 @@ class SlidePageAnim(
         canvas.save()
         canvas.clipRect(shStart, 0f, shEnd, vh)
         val a = shadowAlpha.coerceIn(0f, 1f)
-        val baseColors = intArrayOf(
-            ((0x26 * a).toInt() shl 24),
-            ((0x18 * a).toInt() shl 24),
-            ((0x08 * a).toInt() shl 24),
-            ((0x02 * a).toInt() shl 24),
-            0x00000000
-        )
-        val colors = if (extendsRight) baseColors else baseColors.reversedArray()
-        val stops = floatArrayOf(0.0f, 0.2f, 0.5f, 0.75f, 1.0f)
-        // 🔥 复用成员 shadowPaint，仅更新 shader，避免每帧 new Paint() + new LinearGradient()
-        shadowPaint.shader = LinearGradient(shStart, 0f, shEnd, 0f, colors, stops, Shader.TileMode.CLAMP)
+        val a0 = (0x26 * a).toInt()
+        val a1 = (0x18 * a).toInt()
+        val a2 = (0x08 * a).toInt()
+        val a3 = (0x02 * a).toInt()
+        val key = (a0 shl 24) or (a1 shl 16) or (a2 shl 8) or (a3 shl 1) or (if (extendsRight) 1 else 0)
+        val shader = shadowShaders.getOrPut(key) {
+            val baseColors = intArrayOf(a0 shl 24, a1 shl 24, a2 shl 24, a3 shl 24, 0x00000000)
+            val colors = if (extendsRight) baseColors else baseColors.reversedArray()
+            LinearGradient(0f, 0f, 1f, 0f, colors, SHADOW_STOPS, Shader.TileMode.CLAMP)
+        }
+        shadowMatrix.setScale(shEnd - shStart, 1f)
+        shadowMatrix.postTranslate(shStart, 0f)
+        shader.setLocalMatrix(shadowMatrix)
+        shadowPaint.shader = shader
         canvas.drawRect(shStart, 0f, shEnd, vh, shadowPaint)
         canvas.restore()
     }
@@ -189,17 +202,19 @@ class SlidePageAnim(
         if (shEnd < 2f) return
 
         val baseAlpha = (shadowFadeAlpha * 0x26).toInt().coerceIn(0, 0x26)
-        val colors = intArrayOf(
-            (baseAlpha shl 24),
-            ((baseAlpha * 0.6).toInt() shl 24),
-            ((baseAlpha * 0.2).toInt() shl 24),
-            0
-        )
-        val stops = floatArrayOf(0.0f, 0.2f, 0.5f, 1.0f)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = LinearGradient(0f, 0f, shEnd, 0f, colors, stops, Shader.TileMode.CLAMP)
+        val shader = fadeShadowShaders.getOrPut(baseAlpha) {
+            val colors = intArrayOf(
+                (baseAlpha shl 24),
+                ((baseAlpha * 0.6).toInt() shl 24),
+                ((baseAlpha * 0.2).toInt() shl 24),
+                0
+            )
+            LinearGradient(0f, 0f, 1f, 0f, colors, FADE_SHADOW_STOPS, Shader.TileMode.CLAMP)
         }
-        canvas.drawRect(0f, 0f, shEnd, vh, paint)
+        shadowMatrix.setScale(shEnd, 1f)
+        shader.setLocalMatrix(shadowMatrix)
+        fadeShadowPaint.shader = shader
+        canvas.drawRect(0f, 0f, shEnd, vh, fadeShadowPaint)
     }
 
     // ── Scroller ──

@@ -36,7 +36,7 @@ async function verify(flow) {
       window.LumiReader.goToFragment('#' + anchor.id);
       await wait(80);
       window.messages.length = 0;
-      const artwork = anchor.querySelector('img.duokan-image-static[width="100%"]');
+      const artwork = anchor.querySelector('img[data-lumi-footnote-illustration="true"][width="100%"]');
       if (artwork) {
         check(artwork.getAttribute('data-lumi-footnote-illustration') === 'true', 'note artwork not classified');
         check(!artwork.hasAttribute('data-lumi-footnote-marker'), 'note artwork misclassified as tiny marker');

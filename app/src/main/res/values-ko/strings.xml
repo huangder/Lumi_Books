@@ -1479,6 +1479,7 @@
     <string name="pdf_annotation_eraser">지우개</string>
     <string name="bookshelf_cover_flow">Cover Flow</string>
     <string name="bookshelf_spine_shelf">책등</string>
+    <string name="bookshelf_spine_sharp_covers">표지 흐리게 하지 않기</string>
     <string name="spine_shelf_folder_count">%1$d권</string>
     <string name="spine_menu_tags">태그</string>
     <string name="spine_menu_notes">메모</string>

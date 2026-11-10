@@ -663,10 +663,22 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         setWillNotDraw(false)
     }
 
-    /** 构建某章的高亮列表（savedNotes → Triple(start, end, color)） */
-    private fun buildHighlights(chapterIndex: Int): List<Triple<Int, Int, Int>> {
-        val savedHighlights = savedNotes
-            .filter { it.chapterIndex == chapterIndex && !it.isGeneratedByHighlightRule }
+    // Every slot load (three per page turn) rebuilds a chapter's highlights; parsing each note's
+    // color and style JSON again each time is wasted while the notes list is unchanged.
+    private var savedHighlightSource: List<Note>? = null
+    private val savedHighlightsByChapter = HashMap<Int, List<Triple<Int, Int, Int>>>()
+
+    private fun savedHighlightsFor(chapterIndex: Int): List<Triple<Int, Int, Int>> {
+        val notes = savedNotes
+        if (savedHighlightSource !== notes) {
+            savedHighlightsByChapter.clear()
+            savedHighlightSource = notes
+        }
+        return savedHighlightsByChapter.getOrPut(chapterIndex) { parseSavedHighlights(notes, chapterIndex) }
+    }
+
+    private fun parseSavedHighlights(notes: List<Note>, chapterIndex: Int): List<Triple<Int, Int, Int>> =
+        notes.filter { it.chapterIndex == chapterIndex && !it.isGeneratedByHighlightRule }
             .map { note ->
                 if (note.type == "underline") {
                     val color = try {
@@ -693,6 +705,10 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                     Triple(note.startPosition, note.endPosition, color)
                 }
             }
+
+    /** 构建某章的高亮列表（savedNotes → Triple(start, end, color)） */
+    private fun buildHighlights(chapterIndex: Int): List<Triple<Int, Int, Int>> {
+        val savedHighlights = savedHighlightsFor(chapterIndex)
         val transientHighlight = searchHighlight
             ?.takeIf { it.chapterIndex == chapterIndex }
             ?.let { Triple(it.start, it.end, 0x00FFE082) }

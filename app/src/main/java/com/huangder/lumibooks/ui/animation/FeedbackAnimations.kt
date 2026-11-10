@@ -26,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -34,6 +35,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
+import com.huangder.lumibooks.ui.theme.LocalPageVisible
 import kotlinx.coroutines.flow.collectLatest
 
 /**
@@ -126,15 +128,22 @@ fun Modifier.cardPressEffect(): Modifier = composed {
         }
 }
 
-/**
- * 骨架屏微光扫过效果
- */
+private val ShimmerColors = listOf(Color(0xFFE0E0E0), Color(0xFFF5F5F5), Color(0xFFE0E0E0))
+private const val SHIMMER_START_X = -300f
+private const val SHIMMER_END_X = 1000f
+private const val SHIMMER_BAND = 300f
+
+private fun shimmerGradient(translateX: Float): Brush = Brush.linearGradient(
+    colors = ShimmerColors,
+    start = Offset(translateX, 0f),
+    end = Offset(translateX + SHIMMER_BAND, 0f)
+)
+
 @Composable
-fun shimmerBrush(): Brush {
-    val transition = rememberInfiniteTransition(label = "shimmer")
-    val translateX by transition.animateFloat(
-        initialValue = -300f,
-        targetValue = 1000f,
+private fun shimmerPosition(): androidx.compose.runtime.State<Float> =
+    rememberInfiniteTransition(label = "shimmer").animateFloat(
+        initialValue = SHIMMER_START_X,
+        targetValue = SHIMMER_END_X,
         animationSpec = infiniteRepeatable(
             animation = tween(1200, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Restart
@@ -142,27 +151,30 @@ fun shimmerBrush(): Brush {
         label = "shimmerX"
     )
 
-    return Brush.linearGradient(
-        colors = listOf(
-            Color(0xFFE0E0E0),
-            Color(0xFFF5F5F5),
-            Color(0xFFE0E0E0)
-        ),
-        start = Offset(translateX, 0f),
-        end = Offset(translateX + 300f, 0f)
-    )
+/**
+ * 骨架屏微光扫过效果
+ */
+@Composable
+fun shimmerBrush(): Brush {
+    val translateX by shimmerPosition()
+    return shimmerGradient(translateX)
 }
 
 /**
  * 骨架屏占位块
+ *
+ * The sweep is read while drawing, so it repaints the block instead of recomposing it on every
+ * frame. Main tabs stay composed while hidden; a skeleton left on a hidden tab (Statistics
+ * before it first loads) holds still instead of driving a frame on every vsync indefinitely.
  */
 @Composable
 fun ShimmerBox(
     modifier: Modifier = Modifier
 ) {
+    val position = if (LocalPageVisible.current) shimmerPosition() else null
     Box(
         modifier = modifier
             .clip(AppRoundedCornerShape(8.dp))
-            .background(shimmerBrush())
+            .drawBehind { drawRect(shimmerGradient(position?.value ?: SHIMMER_START_X)) }
     )
 }

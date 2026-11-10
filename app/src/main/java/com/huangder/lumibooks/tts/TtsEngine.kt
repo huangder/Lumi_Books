@@ -66,7 +66,7 @@ enum class TtsProsodySetting { RATE, PITCH }
 class TtsEngine internal constructor(
     context: Context,
     private val localAudioPlayer: SystemTtsAudioPlayer,
-    private val nativeMediaRouting: NativeTtsMediaRouting = NativeTtsMediaRouting()
+    private val nativeMediaRouting: NativeTtsMediaRouting = NativeTtsMediaRouting(context)
 ) : AndroidTtsPlaybackEngine {
     constructor(@ApplicationContext context: Context) : this(context, SystemTtsAudioPlayer())
     override val isExternal: Boolean = false
@@ -599,8 +599,8 @@ class TtsEngine internal constructor(
                     nativeUtteranceId = null
                     nativeCurrent = null
                     lastNativeDoneMs = doneAt
-                    // A queued successor may already be audible; retain routing until it ends.
-                    if (nativeNext == null) nativeMediaRouting.stop()
+                    // Natural sentence completion must not rearm the one-shot routing clip.
+                    // The clip releases itself; explicit pause/stop/engine changes reset it.
                     logNativePlayback("native_playback_done", id, extra = mapOf("doneAtMs" to doneAt))
                     playbackListener?.onPlaybackActivity(id, false)
                     playbackListener?.onDone(id)

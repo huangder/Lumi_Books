@@ -82,7 +82,7 @@ class EpubDuokanLocalCorpusTest {
                             assertTrue(document.select(".DKimg-right[data-lumi-floated-media=true]").isNotEmpty())
                             assertTrue(document.select(".DKimg-right img[data-lumi-bleed]").isEmpty())
                         }
-                        document.select("a.duokan-footnote img.duokan-image-static[width=100%]").forEach { image ->
+                        document.select("a.duokan-footnote[epub:type=noteref] img[width=100%]:not(.duokan-footnote)").forEach { image ->
                             assertEquals("true", image.attr("data-lumi-footnote-illustration"))
                             assertFalse(image.hasAttr("data-lumi-footnote-marker"))
                             assertFalse(image.hasAttr("data-lumi-inline-media"))

@@ -1,10 +1,11 @@
 package com.huangder.lumibooks.tts
 
+import android.content.Context
 import android.media.AudioAttributes
-import android.media.AudioFormat
 import android.media.AudioManager
-import android.media.AudioTrack
+import android.media.MediaPlayer
 import android.util.Log
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.util.diagnostics.DiagnosticLoggerRegistry
 
 /**
@@ -12,32 +13,50 @@ import com.huangder.lumibooks.util.diagnostics.DiagnosticLoggerRegistry
  * session. Android selects the media-button session from UIDs that actually played audio;
  * audio focus and MediaSession.isActive alone do not put Lumi in that list.
  *
- * Keep a small, looping PCM-silence track under Lumi's UID only during native speech. Do
- * not mute its volume: muted players can be excluded from Android's playback monitoring.
- * This preserves MultiTTS's native queue/background music without duplicating its speech.
- * Call on the engine's main thread, and release on pause, completion, stop or shutdown.
+ * Play one 250 ms silence clip under Lumi's UID when native speech starts or resumes.
+ * Completion releases the player without rearming it, so sentence/page callbacks never
+ * keep an extra audio output alive or repeatedly play silence. Explicit stop/pause rearms
+ * the next attempt. Do not mute the volume: muted players may be excluded from monitoring.
+ * All calls and MediaPlayer callbacks run on the engine's main thread.
  */
 internal class NativeTtsMediaRouting(
-    private val createTrack: () -> AudioTrack = ::createRoutingTrack
+    private val createPlayer: () -> MediaPlayer?
 ) {
-    private var track: AudioTrack? = null
+    constructor(context: Context) : this({
+        MediaPlayer.create(
+            context.applicationContext,
+            R.raw.tts_media_button_pulse,
+            AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build(),
+            AudioManager.AUDIO_SESSION_ID_GENERATE
+        )
+    })
+
+    private var player: MediaPlayer? = null
+    private var attempted = false
 
     fun start() {
-        if (track != null) return
-        var created: AudioTrack? = null
+        if (attempted) return
+        // Failure also consumes this attempt; do not retry on each subsequent sentence.
+        attempted = true
+        var created: MediaPlayer? = null
         try {
-            val output = createTrack().also { created = it }
-            // MODE_STATIC becomes STATE_INITIALIZED only after its first successful write.
-            check(output.state != AudioTrack.STATE_UNINITIALIZED)
-            val silence = ByteArray(FRAMES * 2)
-            check(output.write(silence, 0, silence.size) == silence.size)
-            check(output.state == AudioTrack.STATE_INITIALIZED)
-            check(output.setLoopPoints(0, FRAMES, -1) == AudioTrack.SUCCESS)
-            output.play()
-            track = output
+            val output = checkNotNull(createPlayer()) { "Unable to prepare TTS media routing clip" }
+                .also { created = it }
+            output.isLooping = false
+            output.setOnCompletionListener { finish(it, "native_media_routing_completed") }
+            output.setOnErrorListener { failed, what, extra ->
+                finish(failed, "native_media_routing_failed", mapOf("what" to what, "extra" to extra))
+                true
+            }
+            player = output
+            output.start()
             DiagnosticLoggerRegistry.logger?.log("tts", "native_media_routing_started")
         } catch (error: Exception) {
-            created?.let { runCatching { it.release() } }
+            if (player === created) player = null
+            created?.let(::release)
             // A routing failure must not stop otherwise working native speech.
             Log.w("NativeTtsMediaRouting", "Unable to register native TTS audio playback", error)
             DiagnosticLoggerRegistry.logger?.log("tts", "native_media_routing_failed", throwable = error)
@@ -45,30 +64,21 @@ internal class NativeTtsMediaRouting(
     }
 
     fun stop() {
-        val output = track ?: return
-        track = null
-        runCatching { output.stop() }
-        runCatching { output.release() }
-        DiagnosticLoggerRegistry.logger?.log("tts", "native_media_routing_stopped")
+        attempted = false
+        player?.let { finish(it, "native_media_routing_stopped") }
     }
 
-    companion object {
-        private const val SAMPLE_RATE = 8_000
-        private const val FRAMES = SAMPLE_RATE // One second of mono PCM16, looped by AudioTrack.
+    private fun finish(output: MediaPlayer, event: String, attributes: Map<String, Any?> = emptyMap()) {
+        // A late completion/error from a cancelled player must not release the current pulse.
+        if (player !== output) return
+        player = null
+        release(output)
+        DiagnosticLoggerRegistry.logger?.log("tts", event, attributes = attributes)
+    }
 
-        internal fun createRoutingTrack() = AudioTrack(
-            AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                .build(),
-            AudioFormat.Builder()
-                .setSampleRate(SAMPLE_RATE)
-                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                .build(),
-            FRAMES * 2,
-            AudioTrack.MODE_STATIC,
-            AudioManager.AUDIO_SESSION_ID_GENERATE
-        )
+    private fun release(output: MediaPlayer) {
+        runCatching { output.setOnCompletionListener(null) }
+        runCatching { output.setOnErrorListener(null) }
+        runCatching { output.release() }
     }
 }

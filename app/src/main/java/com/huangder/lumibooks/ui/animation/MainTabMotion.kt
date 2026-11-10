@@ -12,7 +12,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.findRootCoordinates
+import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInRoot
 import kotlin.math.abs
 import kotlin.math.cos
@@ -182,19 +184,27 @@ internal val LocalMainTabItemMotion = staticCompositionLocalOf<MainTabItemMotion
 @Composable
 internal fun Modifier.mainTabEntrance(): Modifier {
     val item = LocalMainTabItemMotion.current ?: return this
-    val topFraction = remember { mutableFloatStateOf(0f) }
-    val viewportWidth = remember { mutableFloatStateOf(0f) }
+    // The item's place is looked up while drawing, and only during a tab switch. Tracking it with
+    // a position callback wrote two states for every visible item on every scroll frame, though
+    // the offset is zero whenever no switch is running.
+    val placed = remember { PlacedCoordinates() }
     return this
-        .onGloballyPositioned { coordinates ->
-            var root = coordinates
-            while (root.parentLayoutCoordinates != null) root = root.parentLayoutCoordinates!!
-            topFraction.floatValue = coordinates.positionInRoot().y / root.size.height.coerceAtLeast(1)
-            viewportWidth.floatValue = root.size.width.toFloat()
-        }
+        .onPlaced { placed.coordinates = it }
         .drawWithContent {
-            val offset = item.motion.itemOffset(item.page, topFraction.floatValue) *
-                viewportWidth.floatValue * item.direction
-            translate(left = offset) { this@drawWithContent.drawContent() }
+            val motion = item.motion
+            val coordinates = placed.coordinates
+            val offset = if (motion.running && coordinates != null && coordinates.isAttached) {
+                val root = coordinates.findRootCoordinates()
+                val topFraction = coordinates.positionInRoot().y / root.size.height.coerceAtLeast(1)
+                motion.itemOffset(item.page, topFraction) * root.size.width * item.direction
+            } else {
+                0f
+            }
+            if (offset == 0f) drawContent() else translate(left = offset) { this@drawWithContent.drawContent() }
         }
         .graphicsLayer()
+}
+
+private class PlacedCoordinates {
+    var coordinates: LayoutCoordinates? = null
 }

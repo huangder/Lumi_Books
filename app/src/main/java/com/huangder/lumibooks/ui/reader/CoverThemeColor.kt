@@ -40,8 +40,53 @@ internal fun extractCoverEdgeColor(path: String?): Int? {
     }
 }
 
-/** Extracts the same edge color from an already decoded cover drawable. */
+/**
+ * Edge colors per cover drawable. The three page slots load the same cover page again and again
+ * (opening, turning back, re-rendering), and each time this rasterised the cover and scanned its
+ * pixels on the main thread. An entry is reused only while the reader background (the fallback)
+ * and the pixels behind the drawable are unchanged: the same bitmap, generation and alpha flag.
+ * Weak keys and a weak bitmap reference keep the cache from pinning covers in memory.
+ */
+private class CoverEdgeColor(
+    val fallback: Int,
+    val pixels: java.lang.ref.WeakReference<Bitmap>?,
+    val generation: Int,
+    val hasAlpha: Boolean,
+    val color: Int
+) {
+    fun matches(fallback: Int, bitmap: Bitmap?): Boolean = this.fallback == fallback && if (bitmap == null) {
+        pixels == null
+    } else {
+        pixels?.get() === bitmap && generation == bitmap.generationId && hasAlpha == bitmap.hasAlpha()
+    }
+}
+private val coverEdgeColors = java.util.WeakHashMap<Drawable, CoverEdgeColor>()
+
+/** The pixels a cover drawable shows, or null when it is not bitmap-backed. */
+private fun coverPixels(original: Drawable): Bitmap? = when (original) {
+    is BitmapDrawable -> original.bitmap
+    is com.huangder.lumibooks.util.parser.ReaderImagePixelSource -> original.acquireReaderBitmap()
+    else -> null
+}?.takeUnless(Bitmap::isRecycled)
+
 internal fun readerCoverEdgeColor(drawable: Drawable, fallback: Int): Int {
+    val original = generateSequence(drawable) { (it as? AdjustedReaderDrawable)?.source }.last()
+    val pixels = coverPixels(original)
+    synchronized(coverEdgeColors) { coverEdgeColors[drawable] }
+        ?.takeIf { it.matches(fallback, pixels) }
+        ?.let { return it.color }
+    val color = computeReaderCoverEdgeColor(drawable, fallback)
+    // A lazy image without pixels yet was measured from its failure placeholder; ask again later.
+    if (original !is com.huangder.lumibooks.util.parser.ReaderImagePixelSource || pixels != null) {
+        val entry = CoverEdgeColor(fallback, pixels?.let { java.lang.ref.WeakReference(it) },
+            pixels?.generationId ?: 0, pixels?.hasAlpha() ?: false, color)
+        synchronized(coverEdgeColors) { coverEdgeColors[drawable] = entry }
+    }
+    return color
+}
+
+/** Extracts the same edge color from an already decoded cover drawable. */
+private fun computeReaderCoverEdgeColor(drawable: Drawable, fallback: Int): Int {
     // Use original pixels/metadata; adjustment wrappers and raster targets are
     // always ARGB, even for opaque JPEGs, so their format alone says nothing.
     val original = generateSequence(drawable) { (it as? AdjustedReaderDrawable)?.source }.last()

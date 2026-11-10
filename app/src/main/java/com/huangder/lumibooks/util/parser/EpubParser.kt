@@ -336,8 +336,9 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 val openTag = anchor.substring(0, openTagEnd + 1)
                 val innerHtml = anchor.substring(openTagEnd + 1, closeTagStart)
                 if (!isFootnoteAnchorTag(openTag, innerHtml)) return@replace anchor
+                val anchorImages = org.jsoup.Jsoup.parseBodyFragment(anchor).select("a img").iterator()
                 val rewrittenInner = IMAGE_TAG_REGEX.replace(innerHtml) imageLoop@ { image ->
-                    val element = org.jsoup.Jsoup.parseBodyFragment(image.value).selectFirst("img")
+                    val element = if (anchorImages.hasNext()) anchorImages.next() else null
                     if (element != null && com.huangder.lumibooks.util.epub.EpubFootnoteImagePolicy
                             .isPublisherIllustration(element)) return@imageLoop image.value
                     images += image.value
@@ -3091,7 +3092,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
         // Parser spans live in the chapter cache. Only a displayed image wrapper should
         // pin pixels; otherwise every previously visited illustration stays resident.
-        private var bitmap: java.lang.ref.WeakReference<Bitmap>? = null
+        @Volatile private var bitmap: java.lang.ref.WeakReference<Bitmap>? = null
         private var lastDecodeFailureNanos = 0L
 
         override fun draw(canvas: android.graphics.Canvas) {
@@ -3099,6 +3100,13 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             if (pixels != null) canvas.drawBitmap(pixels, null, bounds, paint)
             else drawFailurePlaceholder(canvas)
         }
+
+        // Both caches are safe to read without zipLock, which a background chapter parse may hold.
+        override fun peekReaderBitmap(): Bitmap? =
+            bitmap?.get()?.takeUnless { it.isRecycled }
+                ?: imageBitmapCache[cacheKey]?.takeUnless { it.isRecycled }?.also {
+                    bitmap = java.lang.ref.WeakReference(it)
+                }
 
         override fun acquireReaderBitmap(): Bitmap? = synchronized(zipLock) {
             bitmap?.get()?.takeUnless { it.isRecycled }

@@ -421,10 +421,6 @@ class PageContentView(context: Context) : FrameLayout(context) {
             return
         }
 
-        // 追踪 LeadingMarginSpan：检查 fullText 中是否包含 span
-        val fullLms = if (fullText is Spannable) fullText.getSpans(0, fullText.length, android.text.style.LeadingMarginSpan::class.java) else emptyArray()
-        Log.d("PageSlotManager", "setPageContent: fullText type=${fullText.javaClass.simpleName} LeadingMarginSpans=${fullLms.size} start=$startChar end=$endChar")
-
         // 🔥 跳过页面开头的空行（段间距的空白行落在页面顶部时不需要显示）
         var actualStart = startChar
         while (actualStart < endChar && fullText[actualStart] == '\n') {
@@ -451,7 +447,6 @@ class PageContentView(context: Context) : FrameLayout(context) {
         justifiedView.justifyLastLine = justifyLastLine
 
         val subText = fullText.subSequence(actualStart, endChar)
-        Log.d(TAG, "setPageContent: subText type=${subText.javaClass.simpleName} isSpanned=${subText is android.text.Spanned}")
 
         // 简繁转换（在切片后、应用高亮前）
         // 🔥 使用 convertPreservingSpans 保留所有 span（ImageSpan/LeadingMarginSpan 等）
@@ -460,7 +455,6 @@ class PageContentView(context: Context) : FrameLayout(context) {
         } else {
             subText
         }
-        Log.d(TAG, "setPageContent: pageText type=${pageText.javaClass.simpleName} isSpanned=${pageText is android.text.Spanned}")
 
         // 🔥 保留 span：直接用 SpannableStringBuilder(Spanned) 保留所有 span（含 ImageSpan）
         // toString() 会把 ImageSpan 变成 U+FFFC "obj" 字符，图片丢失
@@ -513,7 +507,6 @@ class PageContentView(context: Context) : FrameLayout(context) {
                     spannable.setSpan(lh, start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
             }
-            Log.d(TAG, "setPageContent: restored ${lms.size} LeadingMarginSpans, ${lhs.size} ParagraphLineHeightSpans")
         }
 
         // 应用高亮（将全局偏移转换为页内偏移，基于 actualStart 而非 startChar）
@@ -565,11 +558,6 @@ class PageContentView(context: Context) : FrameLayout(context) {
             }
         }
 
-        // 验证 span 存活（调试用）
-        val lms = spannable.getSpans(0, spannable.length, android.text.style.LeadingMarginSpan::class.java)
-        val imgSpans = spannable.getSpans(0, spannable.length, android.text.style.ImageSpan::class.java)
-        Log.d(TAG, "setPageContent: start=$actualStart end=$endChar len=${spannable.length} LMS=${lms.size} ImageSpan=${imgSpans.size}")
-
         // 🔥 诊断：检测 U+FFFC 但没有 ImageSpan 的字符位置（图片加载失败）
         var orphanFFFC = 0
         for (i in 0 until spannable.length) {
@@ -598,20 +586,11 @@ class PageContentView(context: Context) : FrameLayout(context) {
         // setTextIsSelectable(true) 时 Android 内部通过 Editable.Factory.newEditable() 创建副本
         // 必须从 textView.text 取实际存储的 Spannable，否则 SpanWatcher 注册在死对象上
         val actualSpannable = textView.text as? Spannable ?: spannable
-        val requiresCustomTextDrawing =
-            actualSpannable.getSpans(0, actualSpannable.length, ReaderHighlightSpan::class.java).isNotEmpty() ||
-                actualSpannable.getSpans(0, actualSpannable.length, ReaderSearchHighlightSpan::class.java).isNotEmpty() ||
-                actualSpannable.getSpans(0, actualSpannable.length, ReaderSelectionHighlightSpan::class.java).isNotEmpty() ||
-                actualSpannable.getSpans(0, actualSpannable.length, TtsSentenceHighlightSpan::class.java).isNotEmpty() ||
-                actualSpannable.getSpans(0, actualSpannable.length, WaveUnderlineSpan::class.java).isNotEmpty()
-        val requiredLayerType = if (requiresCustomTextDrawing) {
-            View.LAYER_TYPE_SOFTWARE
-        } else {
-            View.LAYER_TYPE_NONE
-        }
-        if (textView.layerType != requiredLayerType) {
-            textView.setLayerType(requiredLayerType, null)
-        }
+        // The selectable layer used to paint highlights itself and needed a software layer for
+        // them. It is selection-only now (readerSelectionOnly): highlights, TTS and underlines are
+        // drawn by the visible renderers, and the selection uses the same hardware-safe painter.
+        // A software layer only cost a full-page CPU bitmap per slot and a re-upload per change.
+        ensureHardwareSelectionLayer()
         val tts = ttsHighlightInfo
         if (tts != null) {
             justifiedView.setTtsHighlight(tts.first, tts.second, tts.third)
@@ -652,9 +631,6 @@ class PageContentView(context: Context) : FrameLayout(context) {
             }
             justifiedView.setTtsHighlight(localStart, localEnd, color)
             verticalTextView.setTtsHighlight(localStart, localEnd, color)
-            if (textView.layerType != View.LAYER_TYPE_SOFTWARE) {
-                textView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
-            }
         } else {
             justifiedView.clearTtsHighlight()
             verticalTextView.clearTtsHighlight()
@@ -702,9 +678,6 @@ class PageContentView(context: Context) : FrameLayout(context) {
                     localEnd.coerceAtMost(text.length),
                     Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                 )
-            }
-            if (textView.layerType != View.LAYER_TYPE_SOFTWARE) {
-                textView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
             }
         }
         textView.invalidate()
@@ -793,6 +766,10 @@ class PageContentView(context: Context) : FrameLayout(context) {
         coverImageView.setImageDrawable(null)
         coverImageView.visibility = View.GONE
         updateContentRendererVisibility()
+    }
+
+    private fun ensureHardwareSelectionLayer() {
+        if (textView.layerType == View.LAYER_TYPE_SOFTWARE) textView.setLayerType(View.LAYER_TYPE_NONE, null)
     }
 
     private fun updateContentRendererVisibility() {

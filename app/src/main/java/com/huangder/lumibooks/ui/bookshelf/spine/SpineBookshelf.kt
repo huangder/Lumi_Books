@@ -121,6 +121,13 @@ internal data class SpineShelfParams(
     val enabled: Boolean,
     /** The folder on show; each folder drops its books the first time it opens in a process. */
     val sceneKey: String,
+    /** Show each spine's cover strip as is instead of blurred. */
+    val sharpCovers: Boolean = false,
+    val onFolderRename: (LibraryFolder) -> Unit = {},
+    val onFolderSetCover: (LibraryFolder) -> Unit = {},
+    val onFolderRemoveCover: (LibraryFolder) -> Unit = {},
+    val onFolderMove: (LibraryFolder) -> Unit = {},
+    val onFolderDelete: (LibraryFolder) -> Unit = {},
     /** The shelf's own book menu ends in the same operations as Cover Flow's. */
     val actions: CoverFlowBookActions,
     val onFolderClick: (LibraryFolder) -> Unit,
@@ -151,10 +158,11 @@ internal fun SpineBookshelf(params: SpineShelfParams, modifier: Modifier = Modif
     key(params.sceneKey) { SpineScene(params, modifier) }
 }
 
-/** The book whose menu is up: pulled out of the shelf, turned to its cover and parked. */
+/** The book or folder whose menu is up: pulled out of the shelf, turned to its front and parked. */
 @Stable
 private class SpineMenu {
     var book by mutableStateOf<Book?>(null)
+    var folder by mutableStateOf<LibraryFolder?>(null)
     var spine = Rect.Zero
     var spineAngle = 0f
     var flat = false
@@ -162,7 +170,15 @@ private class SpineMenu {
     val progress = Animatable(0f)
     var closing by mutableStateOf(false)
 
-    val busy: Boolean get() = book != null
+    val busy: Boolean get() = book != null || folder != null
+
+    /** Shelf id of the lifted item, so its place on the shelf stays empty meanwhile. */
+    val liftedId: String? get() = book?.id ?: folder?.let { FOLDER_PREFIX + it.id }
+
+    fun clear() {
+        book = null
+        folder = null
+    }
 }
 
 private class MenuStages(val stand: Float, val pull: Float, val grow: Float, val panel: Float, val scrim: Float)
@@ -210,7 +226,7 @@ private fun SpineScene(params: SpineShelfParams, modifier: Modifier) {
                 then?.invoke()
                 if (motion) menu.progress.animateTo(0f, tween(MENU_CLOSE_MS, easing = LinearEasing))
             } finally {
-                menu.book = null
+                menu.clear()
                 menu.closing = false
                 params.onMenuVisibleChange(false)
             }
@@ -332,12 +348,12 @@ private fun SpineScene(params: SpineShelfParams, modifier: Modifier) {
             if (menu.busy && !menu.closing) menu.card = cardRect()
         }
 
-        val onLongPress: (Book) -> Unit = longPress@{ book ->
-            if (params.isEditing || !params.enabled || menu.busy) return@longPress
-            val spine = spineRect(book.id) ?: return@longPress
-            val placed = placedById[book.id]
+        fun beginLift(id: String, assign: () -> Unit): Boolean {
+            if (params.isEditing || !params.enabled || menu.busy) return false
+            val spine = spineRect(id) ?: return false
+            val placed = placedById[id]
             params.onHaptic()
-            menu.book = book
+            assign()
             menu.spine = spine
             menu.spineAngle = placed?.angle ?: 0f
             menu.flat = placed?.pose == SpinePose.Flat
@@ -348,6 +364,13 @@ private fun SpineScene(params: SpineShelfParams, modifier: Modifier) {
                 menu.progress.snapTo(if (motion) 0f else 1f)
                 if (motion) menu.progress.animateTo(1f, tween(MENU_OPEN_MS, easing = LinearEasing))
             }
+            return true
+        }
+
+        val onLongPress: (Book) -> Unit = { book -> beginLift(book.id) { menu.book = book } }
+
+        val onFolderLongPress: (LibraryFolder) -> Unit = { folder ->
+            beginLift(FOLDER_PREFIX + folder.id) { menu.folder = folder }
         }
 
         val onClick: (Book) -> Unit = click@{ book ->
@@ -407,9 +430,10 @@ private fun SpineScene(params: SpineShelfParams, modifier: Modifier) {
                                     params = params,
                                     accent = accent,
                                     dropClock = dropClock,
-                                    hidden = { menu.book?.id == item.id },
+                                    hidden = { menu.liftedId == item.id },
                                     onClick = onClick,
-                                    onLongPress = onLongPress
+                                    onLongPress = onLongPress,
+                                    onFolderLongPress = onFolderLongPress
                                 )
                             }
                         }
@@ -419,8 +443,8 @@ private fun SpineScene(params: SpineShelfParams, modifier: Modifier) {
         }
         }
 
-        menu.book?.let { book ->
-            // Scrim over the shelf; a tap anywhere outside the book and its menu puts it back.
+        if (menu.busy) {
+            // Scrim over the shelf; a tap anywhere outside the item and its menu puts it back.
             Box(
                 Modifier
                     .fillMaxSize()
@@ -430,7 +454,53 @@ private fun SpineScene(params: SpineShelfParams, modifier: Modifier) {
                         closeMenu()
                     }
             )
-            LiftedBook(book = book, menu = menu, bounds = bounds)
+        }
+        val menuModifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(bottom = with(density) { bottomSafePx().toDp() })
+            .onSizeChanged { panelHeight.intValue = it.height }
+
+        menu.folder?.let { folder ->
+            val live = params.folders.firstOrNull { it.id == folder.id } ?: folder
+            val count = stringResource(R.string.spine_shelf_folder_count, params.folderBookCounts[folder.id] ?: 0)
+            LiftedItem(
+                menu = menu,
+                bounds = bounds,
+                spineFace = { w, h, _, m -> FolderSpineFace(live, count, w, h, m, sharp = params.sharpCovers) },
+                coverFace = { m -> FolderCoverFace(live, count, m) },
+                // A file box turns the other way round to its front (spine still on the left).
+                reverseTurn = true
+            )
+            SpineFolderMenu(
+                folder = live,
+                countLabel = count,
+                stage = { menuStages(menu.progress.value).panel },
+                maxWidth = maxWidth,
+                backdrop = menuBackdrop.takeIf { glass },
+                modifier = menuModifier,
+                onOpen = {
+                    menu.clear()
+                    params.onMenuVisibleChange(false)
+                    params.onFolderClick(live)
+                },
+                onAction = { action ->
+                    menu.clear()
+                    params.onMenuVisibleChange(false)
+                    action.run()
+                },
+                params = params
+            )
+        }
+
+        menu.book?.let { book ->
+            LiftedItem(
+                menu = menu,
+                bounds = bounds,
+                spineFace = { w, h, horizontal, m ->
+                    BookSpineFace(book, horizontal = horizontal, width = w, height = h, modifier = m, sharp = params.sharpCovers)
+                },
+                coverFace = { m -> BookCoverFace(book, modifier = m) }
+            )
             SpineBookMenu(
                 // The live copy, so a favourite toggled here shows at once.
                 book = bookById[book.id] ?: book,
@@ -438,13 +508,10 @@ private fun SpineScene(params: SpineShelfParams, modifier: Modifier) {
                 stage = { menuStages(menu.progress.value).panel },
                 maxWidth = maxWidth,
                 backdrop = menuBackdrop.takeIf { glass },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = with(density) { bottomSafePx().toDp() })
-                    .onSizeChanged { panelHeight.intValue = it.height },
+                modifier = menuModifier,
                 onOpen = {
                     val cover = menu.card.translate(origin[0])
-                    menu.book = null
+                    menu.clear()
                     params.onMenuVisibleChange(false)
                     params.actions.open(book, cover)
                 },
@@ -452,10 +519,10 @@ private fun SpineScene(params: SpineShelfParams, modifier: Modifier) {
                 // page and sheet actions dismiss the menu before they run.
                 onAction = { action ->
                     if (!action.keepMenuOpen) {
-                        menu.book = null
+                        menu.clear()
                         params.onMenuVisibleChange(false)
                     }
-                    action.run(book)
+                    action.run()
                 }
             )
         }
@@ -479,7 +546,8 @@ private fun ShelfItem(
     dropClock: Animatable<Float, *>,
     hidden: () -> Boolean,
     onClick: (Book) -> Unit,
-    onLongPress: (Book) -> Unit
+    onLongPress: (Book) -> Unit,
+    onFolderLongPress: (LibraryFolder) -> Unit
 ) {
     if (book == null && folder == null) return
     val deleting = book != null && book.id in params.deletingBookIds
@@ -508,18 +576,24 @@ private fun ShelfItem(
                         folder != null && !params.isEditing && params.enabled -> params.onFolderClick(folder)
                     }
                 },
-                onLongClick = { if (book != null) onLongPress(book) }
+                onLongClick = {
+                    when {
+                        book != null -> onLongPress(book)
+                        folder != null -> onFolderLongPress(folder)
+                    }
+                }
             )
             .then(if (selected) Modifier.border(2.dp, accent, RoundedCornerShape(3.dp)) else Modifier)
     ) {
         when {
             book != null -> BookSpineFace(book, horizontal = item.pose == SpinePose.Flat, width = width,
-                height = height, modifier = Modifier.fillMaxSize())
+                height = height, sharp = params.sharpCovers, modifier = Modifier.fillMaxSize())
             folder != null -> FolderSpineFace(
                 folder = folder,
                 countLabel = stringResource(R.string.spine_shelf_folder_count, params.folderBookCounts[folder.id] ?: 0),
                 width = width,
                 height = height,
+                sharp = params.sharpCovers,
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -532,7 +606,14 @@ private fun ShelfItem(
  * taking the book off the shelf and turning it over in the hand.
  */
 @Composable
-private fun LiftedBook(book: Book, menu: SpineMenu, bounds: Size) {
+private fun LiftedItem(
+    menu: SpineMenu,
+    bounds: Size,
+    spineFace: @Composable (width: Dp, height: Dp, horizontal: Boolean, modifier: Modifier) -> Unit,
+    coverFace: @Composable (modifier: Modifier) -> Unit,
+    /** Same box and hinge, turned the opposite way round its vertical axis. */
+    reverseTurn: Boolean = false
+) {
     val density = LocalDensity.current
     val spine = menu.spine
     val card = menu.card
@@ -579,13 +660,13 @@ private fun LiftedBook(book: Book, menu: SpineMenu, bounds: Size) {
                     hinged(base.height, p.height, pivotRight = true)
                     translationX = p.hinge - base.width
                     translationY = p.top + p.height / 2f - base.height / 2f
-                    rotationY = p.theta + 90f
+                    rotationY = if (reverseTurn) -(p.theta + 90f) else p.theta + 90f
                     cameraDistance = camera * this.density
-                    alpha = if (rotationY < 89.5f) 1f else 0f
+                    alpha = if (kotlin.math.abs(rotationY) < 89.5f) 1f else 0f
                 }
         ) {
-            BookSpineFace(book, horizontal = false, width = baseSize.width, height = baseSize.height,
-                modifier = Modifier.fillMaxSize().graphicsLayer {
+            spineFace(baseSize.width, baseSize.height, false,
+                Modifier.fillMaxSize().graphicsLayer {
                     alpha = if (flat) menuStages(menu.progress.value).stand else 1f
                 })
             if (flat) {
@@ -597,8 +678,7 @@ private fun LiftedBook(book: Book, menu: SpineMenu, bounds: Size) {
                         .rotate(90f)
                         .graphicsLayer { alpha = 1f - menuStages(menu.progress.value).stand }
                 ) {
-                    BookSpineFace(book, horizontal = true, width = baseSize.height, height = baseSize.width,
-                        modifier = Modifier.fillMaxSize())
+                    spineFace(baseSize.height, baseSize.width, true, Modifier.fillMaxSize())
                 }
             }
         }
@@ -612,21 +692,21 @@ private fun LiftedBook(book: Book, menu: SpineMenu, bounds: Size) {
                     hinged(card.height, p.height, pivotRight = false)
                     translationX = p.hinge
                     translationY = p.top + p.height / 2f - card.height / 2f
-                    rotationY = p.theta
+                    rotationY = if (reverseTurn) -p.theta else p.theta
                     cameraDistance = camera * this.density
-                    alpha = if (rotationY > -89.5f) 1f else 0f
+                    alpha = if (kotlin.math.abs(rotationY) < 89.5f) 1f else 0f
                     shadowElevation = 14.dp.toPx() * ((p.theta + 90f) / 90f)
                     shape = RoundedCornerShape(3.dp)
                 }
         ) {
-            BookCoverFace(book, modifier = Modifier.fillMaxSize())
+            coverFace(Modifier.fillMaxSize())
         }
     }
 }
 
 private class MenuAction(val icon: ImageVector, val label: String, val destructive: Boolean = false,
     val keepMenuOpen: Boolean = false,
-    val run: (Book) -> Unit)
+    val run: () -> Unit)
 
 /**
  * Under the parked cover: title, author, a primary read button with the progress in it, and a
@@ -646,25 +726,25 @@ private fun SpineBookMenu(
     val density = LocalDensity.current
     val items = buildList {
         add(MenuAction(AppIcons.Info, stringResource(R.string.coverflow_info), keepMenuOpen = true,
-            run = actions.details))
+            run = { actions.details(book) }))
         add(MenuAction(AppIcons.Heart.resolve(book.isFavorite), stringResource(R.string.favorite),
-            keepMenuOpen = true, run = actions.favorite))
-        add(MenuAction(AppIcons.Bookmark.regular, stringResource(R.string.spine_menu_notes), run = actions.notes))
-        add(MenuAction(AppIcons.Tag, stringResource(R.string.spine_menu_tags), run = actions.tags))
-        add(MenuAction(AppIcons.PencilSimple, stringResource(R.string.spine_menu_edit), run = actions.editInfo))
-        add(MenuAction(AppIcons.Image, stringResource(R.string.spine_menu_cover), run = actions.customCover))
+            keepMenuOpen = true, run = { actions.favorite(book) }))
+        add(MenuAction(AppIcons.Bookmark.regular, stringResource(R.string.spine_menu_notes), run = { actions.notes(book) }))
+        add(MenuAction(AppIcons.Tag, stringResource(R.string.spine_menu_tags), run = { actions.tags(book) }))
+        add(MenuAction(AppIcons.PencilSimple, stringResource(R.string.spine_menu_edit), run = { actions.editInfo(book) }))
+        add(MenuAction(AppIcons.Image, stringResource(R.string.spine_menu_cover), run = { actions.customCover(book) }))
         if (FileUtils.isCustomCover(book.coverPath)) {
             add(MenuAction(AppIcons.ArrowCounterClockwise, stringResource(R.string.spine_menu_restore_cover),
-                run = actions.removeCustomCover))
+                run = { actions.removeCustomCover(book) }))
         }
-        add(MenuAction(AppIcons.FolderSimple, stringResource(R.string.spine_menu_move), run = actions.move))
+        add(MenuAction(AppIcons.FolderSimple, stringResource(R.string.spine_menu_move), run = { actions.move(book) }))
         actions.hide?.let { hide ->
-            add(MenuAction(AppIcons.EyeSlash, stringResource(R.string.spine_menu_hide), run = hide))
+            add(MenuAction(AppIcons.EyeSlash, stringResource(R.string.spine_menu_hide), run = { hide(book) }))
         }
         actions.archive?.let { archive ->
-            add(MenuAction(AppIcons.Archive, stringResource(R.string.spine_menu_archive), run = archive))
+            add(MenuAction(AppIcons.Archive, stringResource(R.string.spine_menu_archive), run = { archive(book) }))
         }
-        add(MenuAction(AppIcons.Trash, stringResource(R.string.delete), destructive = true, run = actions.delete))
+        add(MenuAction(AppIcons.Trash, stringResource(R.string.delete), destructive = true, run = { actions.delete(book) }))
     }
     val progress = book.readingProgress.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 0f
     val percent = (progress * 100).roundToInt()
@@ -735,6 +815,13 @@ private fun SpineBookMenu(
                     modifier = Modifier.padding(start = 8.dp))
             }
         }
+        MenuGrid(items, backdrop, panelWidth, onAction)
+    }
+}
+
+/** Round actions on a glass panel, four to a row. */
+@Composable
+private fun MenuGrid(items: List<MenuAction>, backdrop: Backdrop?, panelWidth: Dp, onAction: (MenuAction) -> Unit) {
         LiquidGlassSurface(
             shape = AppRoundedCornerShape(28.dp),
             fallbackColor = AppColors.CardBg,
@@ -789,6 +876,80 @@ private fun SpineBookMenu(
             }
         }
         }
+}
+
+/** The folder's menu: name, size, an open button and its own actions on the same glass grid. */
+@Composable
+private fun SpineFolderMenu(
+    folder: LibraryFolder,
+    countLabel: String,
+    stage: () -> Float,
+    maxWidth: Dp,
+    backdrop: Backdrop?,
+    modifier: Modifier,
+    onOpen: () -> Unit,
+    onAction: (MenuAction) -> Unit,
+    params: SpineShelfParams
+) {
+    val items = buildList {
+        add(MenuAction(AppIcons.PencilSimple, stringResource(R.string.rename), run = { params.onFolderRename(folder) }))
+        add(MenuAction(AppIcons.Image, stringResource(R.string.spine_menu_cover), run = { params.onFolderSetCover(folder) }))
+        if (!folder.coverPath.isNullOrBlank()) {
+            add(MenuAction(AppIcons.ArrowCounterClockwise, stringResource(R.string.spine_menu_restore_cover),
+                run = { params.onFolderRemoveCover(folder) }))
+        }
+        add(MenuAction(AppIcons.FolderSimple, stringResource(R.string.spine_menu_move), run = { params.onFolderMove(folder) }))
+        add(MenuAction(AppIcons.Trash, stringResource(R.string.delete), destructive = true,
+            run = { params.onFolderDelete(folder) }))
+    }
+    val panelWidth = minOf(maxWidth - 40.dp, 380.dp)
+    val accent = AppColors.Accent
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                val p = stage()
+                alpha = p
+                translationY = (1f - p) * 20.dp.toPx()
+            }
+    ) {
+        Text(
+            text = folder.name,
+            color = AppColors.TextPrimary,
+            fontFamily = spineFontFor(folder.name),
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 19.sp,
+            lineHeight = 25.sp,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.width(panelWidth)
+        )
+        Text(
+            text = countLabel,
+            color = AppColors.TextSecondary,
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 4.dp).width(panelWidth)
+        )
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .padding(top = 18.dp)
+                .width(panelWidth.coerceAtMost(260.dp))
+                .height(46.dp)
+                .clip(RoundedCornerShape(23.dp))
+                .background(accent)
+                .clickable(onClick = onOpen)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(AppIcons.FolderSimple, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Text(stringResource(R.string.coverflow_open), color = Color.White, fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 8.dp))
+            }
+        }
+        MenuGrid(items, backdrop, panelWidth, onAction)
     }
 }
 

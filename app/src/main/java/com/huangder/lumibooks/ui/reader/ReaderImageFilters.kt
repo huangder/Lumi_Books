@@ -121,6 +121,9 @@ internal class AdjustedReaderDrawable(val source: Drawable) : Drawable(), Inline
     private var imageScope: CoroutineScope? = null
     private var retryJob: Job? = null
     private var retryCount = 0
+    private var decodeJob: Job? = null
+    /** The background decode found no pixels; drawing falls back to the source's own path. */
+    private var decodeFailed = false
     init { bounds = Rect(source.bounds) }
 
     fun update(value: ReaderImageAdjustments, scope: CoroutineScope, onChanged: () -> Unit) {
@@ -183,17 +186,42 @@ internal class AdjustedReaderDrawable(val source: Drawable) : Drawable(), Inline
             invalidateSelf()
             onChanged()
         }
+        // Slots are filled before they are shown (the neighbours of the visible page too), so
+        // decoding here usually finishes before the page is on screen.
+        prefetchPixels(scope)
+    }
+
+    /**
+     * Decodes a lazy source off the main thread. Drawing used to decode on first draw, on the main
+     * thread and behind the parser's zip lock, which a background chapter parse may be holding.
+     */
+    private fun prefetchPixels(scope: CoroutineScope) {
+        val pixelSource = source as? ReaderImagePixelSource ?: return
+        if (originalPixels?.isRecycled == false || decodeJob?.isActive == true || decodeFailed) return
+        pixelSource.peekReaderBitmap()?.let { originalPixels = it; return }
+        decodeJob = scope.launch {
+            val pixels = withContext(Dispatchers.IO) { pixelSource.acquireReaderBitmap() }
+            if (pixels != null) originalPixels = pixels else decodeFailed = true
+            invalidateSelf()
+            onPixelsChanged()
+        }
     }
 
     override fun draw(canvas: Canvas) {
+        val pixelSource = source as? ReaderImagePixelSource
+        val scope = imageScope
         val original = originalPixels?.takeUnless { it.isRecycled }
             ?: (source as? BitmapDrawable)?.bitmap?.takeUnless { it.isRecycled }
-            ?: (source as? ReaderImagePixelSource)?.acquireReaderBitmap()
+            ?: pixelSource?.let { if (scope != null) it.peekReaderBitmap() else it.acquireReaderBitmap() }
         if (original != null) originalPixels = original
         val bitmap = rendered?.takeUnless { it.isRecycled } ?: original
         if (bitmap != null) {
             retryCount = 0
             canvas.drawBitmap(bitmap, null, bounds, paint)
+        } else if (pixelSource != null && scope != null && !decodeFailed) {
+            // Still decoding in the background: leave the space empty (not the failure box) and
+            // redraw once the pixels arrive.
+            prefetchPixels(scope)
         } else {
             val save = if (paint.colorFilter == null && paint.alpha == 255) canvas.save()
                 else canvas.saveLayer(android.graphics.RectF(canvas.clipBounds), paint)

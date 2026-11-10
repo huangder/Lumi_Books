@@ -1647,6 +1647,7 @@
     <string name="tts_prosody_rejected_error">The selected speech rate or pitch is not supported by this TTS engine. The previous setting was kept.</string>
     <string name="bookshelf_cover_flow">Cover Flow</string>
     <string name="bookshelf_spine_shelf">Spines</string>
+    <string name="bookshelf_spine_sharp_covers">Sharp covers</string>
     <string name="spine_shelf_folder_count">%1$d books</string>
     <string name="spine_menu_tags">Tags</string>
     <string name="spine_menu_notes">Notes</string>

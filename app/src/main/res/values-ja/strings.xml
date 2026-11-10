@@ -1479,6 +1479,7 @@
     <string name="pdf_annotation_eraser">消しゴム</string>
     <string name="bookshelf_cover_flow">Cover Flow</string>
     <string name="bookshelf_spine_shelf">背表紙</string>
+    <string name="bookshelf_spine_sharp_covers">表紙をぼかさない</string>
     <string name="spine_shelf_folder_count">%1$d 冊</string>
     <string name="spine_menu_tags">タグ</string>
     <string name="spine_menu_notes">メモ</string>

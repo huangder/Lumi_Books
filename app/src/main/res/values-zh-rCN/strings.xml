@@ -1555,6 +1555,7 @@
     <string name="pdf_annotation_eraser">橡皮擦</string>
     <string name="bookshelf_cover_flow">Cover Flow</string>
     <string name="bookshelf_spine_shelf">书脊</string>
+    <string name="bookshelf_spine_sharp_covers">封面不模糊</string>
     <string name="spine_shelf_folder_count">%1$d 本</string>
     <string name="spine_menu_tags">标签</string>
     <string name="spine_menu_notes">笔记</string>

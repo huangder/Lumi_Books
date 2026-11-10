@@ -9,6 +9,26 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EpubDocumentTransformerTest {
+    @Test fun unclassedDuokanAnswerImagesKeepTheirAuthoredWidth() {
+        val source = """<html><body><p>Text</p>
+            <a class="duokan-footnote" epub:type="noteref" href="#footnote_1">
+            <img id="puzzle" src="006.png" width="100%"/></a>
+            <a class="duokan-footnote" epub:type="noteref" href="#footnote_2">
+            <img id="photo" src="016.png" width="100%" style="duokan-bleed:leftright;"/></a>
+            <p>Text<a class="duokan-footnote" epub:type="noteref" href="#footnote_3">
+            <img id="icon" src="icon.png" style="width:1em"/></a></p></body></html>"""
+        val document = Jsoup.parse(EpubDocumentTransformer.transform(
+            EpubResource("OPS/ch.xhtml", "application/xhtml+xml", source.toByteArray()),
+            EpubRenditionLayout.REFLOWABLE).toString(Charsets.UTF_8), "", Parser.xmlParser())
+        for (id in listOf("puzzle", "photo")) {
+            val image = document.getElementById(id)!!
+            assertEquals("true", image.attr("data-lumi-footnote-illustration"))
+            assertEquals("true", image.parent()!!.attr("data-lumi-footnote-illustration-ref"))
+            assertFalse(image.hasAttr("data-lumi-inline-media"))
+        }
+        assertFalse(document.getElementById("icon")!!.hasAttr("data-lumi-footnote-illustration"))
+    }
+
     @Test fun publisherNoteArtworkKeepsBlockLayoutWhileSmallFootnoteIconsStayInline() {
         val source = """<html><body><p>Text<a epub:type="noteref" href="#fn1">
             <img id="icon" src="icon.png" width="100%"/></a></p>

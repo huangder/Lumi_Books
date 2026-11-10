@@ -17,8 +17,16 @@ internal object EpubFootnoteImagePolicy {
             ?.takeIf { width.trim().endsWith('%') }
         val blockArtwork = image.classNames().any { it in illustrationClasses } ||
             declaration("display").equals("block", ignoreCase = true)
+        // Some Duokan books put the illustration directly inside the answer link,
+        // without an image class. Require an image-only Duokan noteref as well as
+        // the authored relative width; ordinary noterefs and sized icons stay inline.
+        val anchor = image.closest("a")
+        val illustratedAnswer = anchor != null && anchor.hasClass("duokan-footnote") &&
+            anchor.attr("epub:type").split(Regex("\\s+")).contains("noteref") &&
+            anchor.text().isBlank() && anchor.select("img").size == 1 &&
+            !image.hasClass("duokan-footnote") && image.closest("sup, sub") == null
         // Require an authored illustration hint and substantial relative width.
         // A large source bitmap or an ordinary note's width=100% alone is insufficient.
-        return blockArtwork && percent != null && percent >= 25f
+        return (blockArtwork || illustratedAnswer) && percent != null && percent >= 25f
     }
 }

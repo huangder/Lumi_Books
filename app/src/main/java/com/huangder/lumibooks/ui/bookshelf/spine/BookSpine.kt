@@ -6,6 +6,8 @@ import android.graphics.drawable.Drawable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -45,6 +47,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.huangder.lumibooks.R
@@ -76,8 +79,10 @@ private val TightLines = LineHeightStyle(LineHeightStyle.Alignment.Center, LineH
  * passed in, so a shelf of spines needs no extra layout pass while it scrolls.
  */
 @Composable
-internal fun BookSpineFace(book: Book, horizontal: Boolean, width: Dp, height: Dp, modifier: Modifier = Modifier) {
+internal fun BookSpineFace(book: Book, horizontal: Boolean, width: Dp, height: Dp, modifier: Modifier = Modifier,
+    sharp: Boolean = false) {
     val context = LocalContext.current
+    val density = LocalDensity.current
     val fallback = remember(book.title) { spineFallbackColor(book.title) }
     var luminance by remember(book.id, book.coverPath) { mutableFloatStateOf(-1f) }
     val coverPath = book.coverPath
@@ -89,19 +94,15 @@ internal fun BookSpineFace(book: Book, horizontal: Boolean, width: Dp, height: D
             .drawBehind { drawRect(shade) }
     ) {
         if (!coverPath.isNullOrBlank()) {
-            val request = remember(book.id, coverPath) {
-                ImageRequest.Builder(context)
-                    .data(coverPath)
-                    .size(12, 36)
-                    .allowHardware(false)
-                    .memoryCacheKey("spine_${bookCoverMemoryCacheKey(book.id, coverPath)}")
-                    .build()
+            val request = remember(book.id, coverPath, sharp, width, height) {
+                spineCoverRequest(context, "${book.id}_$coverPath", coverPath, sharp,
+                    with(density) { width.roundToPx() }, with(density) { height.roundToPx() })
             }
             AsyncImage(
                 model = request,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                filterQuality = FilterQuality.Low,
+                filterQuality = if (sharp) FilterQuality.Medium else FilterQuality.Low,
                 onSuccess = { state -> luminance = averageLuminance(state.result.drawable) },
                 modifier = Modifier.fillMaxSize().drawWithContent {
                     drawContent()
@@ -293,11 +294,83 @@ internal fun BookCoverFace(book: Book, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * The front of a lifted folder box: its own cover when it has one, otherwise the cardboard front
+ * with a large paper label carrying the name and size.
+ */
+@Composable
+internal fun FolderCoverFace(folder: LibraryFolder, countLabel: String, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val board = Color(0xFFC9A777)
+    val coverPath = folder.coverPath?.takeIf { it.isNotBlank() }
+    Box(modifier.clip(RoundedCornerShape(3.dp)).background(board)) {
+        if (coverPath != null) {
+            AsyncImage(
+                model = remember(folder.id, coverPath) {
+                    ImageRequest.Builder(context).data(coverPath).memoryCacheKey("folder_cover_${folder.id}_$coverPath").build()
+                },
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 14.dp)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color(0xFFF4EBDD))
+                    .padding(vertical = 18.dp, horizontal = 10.dp)
+            ) {
+                Text(
+                    text = folder.name,
+                    color = DarkInk,
+                    fontFamily = spineFontFor(folder.name),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 18.sp,
+                    textAlign = TextAlign.Center,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = countLabel,
+                    color = DarkInk.copy(alpha = 0.65f),
+                    fontFamily = SpineSerif,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 14.dp)
+                    .size(42.dp, 8.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.35f))
+            )
+        }
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.horizontalGradient(
+                    0f to Color.Black.copy(alpha = 0.22f),
+                    0.06f to Color.White.copy(alpha = 0.10f),
+                    0.12f to Color.Transparent,
+                    1f to Color.Transparent
+                )
+            )
+        )
+    }
+}
+
 /** A cardboard magazine box standing among the books. */
 @Composable
 internal fun FolderSpineFace(folder: LibraryFolder, countLabel: String, width: Dp, height: Dp,
-    modifier: Modifier = Modifier) {
+    modifier: Modifier = Modifier, sharp: Boolean = false) {
     val density = LocalDensity.current
+    val context = LocalContext.current
     val board = Color(0xFFC9A777)
     val shade = remember { spineShade(false) }
     val labelHeight = height * 0.62f
@@ -308,6 +381,22 @@ internal fun FolderSpineFace(folder: LibraryFolder, countLabel: String, width: D
             .background(board)
             .drawBehind { drawRect(shade) }
     ) {
+        // A folder cover is printed on the box like a book's, under the paper label.
+        folder.coverPath?.takeIf { it.isNotBlank() }?.let { path ->
+            AsyncImage(
+                model = remember(folder.id, path, sharp, width, height) {
+                    spineCoverRequest(context, "folder_${folder.id}_$path", path, sharp,
+                        with(density) { width.roundToPx() }, with(density) { height.roundToPx() })
+                },
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                filterQuality = if (sharp) FilterQuality.Medium else FilterQuality.Low,
+                modifier = Modifier.fillMaxSize().drawWithContent {
+                    drawContent()
+                    drawRect(shade)
+                }
+            )
+        }
         Box(
             Modifier
                 .align(Alignment.TopCenter)
@@ -367,6 +456,21 @@ private fun spineShade(horizontal: Boolean): Brush {
     )
     return if (horizontal) Brush.verticalGradient(*stops) else Brush.horizontalGradient(*stops)
 }
+
+/**
+ * Blurred: the cover decoded at a few pixels and stretched, which blurs it heavily for the cost
+ * of one tiny bitmap. Sharp: decoded at the spine's own size, so the centre strip stays crisp.
+ */
+private fun spineCoverRequest(context: android.content.Context, key: String, path: String, sharp: Boolean,
+    widthPx: Int, heightPx: Int): ImageRequest = ImageRequest.Builder(context)
+    .data(path)
+    .apply {
+        if (sharp) size((heightPx * 0.7f).toInt().coerceAtLeast(widthPx).coerceAtLeast(1), heightPx.coerceAtLeast(1))
+        else size(12, 36)
+    }
+    .allowHardware(false)
+    .memoryCacheKey(if (sharp) "spine_sharp_${heightPx}_$key" else "spine_$key")
+    .build()
 
 internal fun spineFallbackColor(title: String): Color {
     val hue = (abs(title.hashCode()) % 360).toFloat()

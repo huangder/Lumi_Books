@@ -5306,24 +5306,48 @@ class ReaderViewModel @Inject constructor(
     )
 
     /** Keep only page counts and character boundaries; background work never fills the layout LRU. */
+    /**
+     * The reader screen asks for this on every recomposition (each page turn changes the state).
+     * The rule and note part decodes every note's style JSON, so it is kept until one of the
+     * immutable lists it was built from is replaced.
+     */
+    private class PaginationStyleIdentity(
+        val rules: List<HighlightRule>,
+        val notes: List<Note>,
+        val fonts: Any?,
+        val value: String
+    )
+    private var paginationStyleIdentity: PaginationStyleIdentity? = null
+
     internal fun paginationContentIdentity(): String {
-        fun metricStyle(style: RuleStyle): String? = if (style.fontWeight >= 600 || style.italic || style.fontType.isNotBlank())
-            listOf(style.fontWeight, style.italic, style.fontType,
-                readerPaginationFontKey(context, style.fontType,
-                    _uiState.value.customFonts.firstOrNull { it.fontTypeKey == style.fontType }?.path,
-                    style.fontWeight)).joinToString("|") else null
-        val rules = highlightRules.value.filter { it.enabled }.mapNotNull { rule ->
-            metricStyle(RuleStyle(rule.textColor, rule.underlineMode, rule.underlineOffset,
-                rule.underlineWidth, rule.fontWeight, rule.isItalic, rule.fontType))?.let {
-                listOf(rule.pattern, rule.targetScope, rule.position, it).joinToString("|")
+        val state = _uiState.value
+        val ruleList = highlightRules.value
+        val noteList = _readerNotes.value
+        val fonts = state.customFonts
+        val styles = paginationStyleIdentity?.takeIf {
+            it.rules === ruleList && it.notes === noteList && it.fonts === fonts
+        }?.value ?: run {
+            fun metricStyle(style: RuleStyle): String? = if (style.fontWeight >= 600 || style.italic || style.fontType.isNotBlank())
+                listOf(style.fontWeight, style.italic, style.fontType,
+                    readerPaginationFontKey(context, style.fontType,
+                        fonts.firstOrNull { it.fontTypeKey == style.fontType }?.path,
+                        style.fontWeight)).joinToString("|") else null
+            val rules = ruleList.filter { it.enabled }.mapNotNull { rule ->
+                metricStyle(RuleStyle(rule.textColor, rule.underlineMode, rule.underlineOffset,
+                    rule.underlineWidth, rule.fontWeight, rule.isItalic, rule.fontType))?.let {
+                    listOf(rule.pattern, rule.targetScope, rule.position, it).joinToString("|")
+                }
+            }
+            val notes = noteList.mapNotNull { note ->
+                note.styleSnapshotJson?.let(RuleStyleJson::decode)?.let { style -> metricStyle(style)?.let {
+                    listOf(note.chapterIndex, note.startPosition, note.endPosition, it).joinToString("|")
+                } }
+            }
+            ("$rules|$notes").also {
+                paginationStyleIdentity = PaginationStyleIdentity(ruleList, noteList, fonts, it)
             }
         }
-        val notes = _readerNotes.value.mapNotNull { note ->
-            note.styleSnapshotJson?.let(RuleStyleJson::decode)?.let { style -> metricStyle(style)?.let {
-                listOf(note.chapterIndex, note.startPosition, note.endPosition, it).joinToString("|")
-            } }
-        }
-        return paginationHash(_uiState.value.paginationContentKey() + "|" + rules + "|" + notes)
+        return paginationHash(state.paginationContentKey() + "|" + styles)
     }
 
     internal suspend fun indexBookPages(generation: Long, countMissing: Boolean = true) = kotlinx.coroutines.coroutineScope {

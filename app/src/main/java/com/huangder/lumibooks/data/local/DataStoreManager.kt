@@ -482,6 +482,7 @@ class DataStoreManager @Inject constructor(
         private val SPLASH_ENABLED = booleanPreferencesKey("splash_enabled")
         private val LAST_READ_BOOK = stringPreferencesKey("last_read_book")
         private val BOOKSHELF_LAYOUT_MODE = intPreferencesKey("bookshelf_layout_mode")
+        private val SPINE_SHARP_COVERS = booleanPreferencesKey("spine_sharp_covers")
         private val BOOKSHELF_SORT_MODE = stringPreferencesKey("bookshelf_sort_mode")
         private val IMPORT_BOOKS_LAYOUT_MODE = intPreferencesKey("import_books_layout_mode")
         private val FOLDER_BOOKS_LAYOUT_MODE = intPreferencesKey("folder_books_layout_mode")
@@ -1175,6 +1176,13 @@ class DataStoreManager @Inject constructor(
 
     val bookshelfLayoutMode: Flow<Int> = context.dataStore.data.map { preferences ->
         com.huangder.lumibooks.domain.model.BookshelfLayout.normalize(preferences[BOOKSHELF_LAYOUT_MODE] ?: 2)
+    }
+
+    /** Spine shelf: show the cover strip as is instead of blurred. */
+    val spineSharpCovers: Flow<Boolean> = context.dataStore.data.map { it[SPINE_SHARP_COVERS] ?: false }
+
+    suspend fun saveSpineSharpCovers(sharp: Boolean) {
+        context.dataStore.edit { it[SPINE_SHARP_COVERS] = sharp }
     }
 
     /**

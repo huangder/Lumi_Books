@@ -170,6 +170,21 @@ class EpubFootnoteAnchorTest {
     }
 
     @Test
+    fun `unclassed full width duokan answer images keep illustration breaks`() {
+        val html = """<a class="duokan-footnote" epub:type="noteref" href="#footnote_1">
+            <img src="006.png" width="100%"/></a>
+            <a class="duokan-footnote" epub:type="noteref" href="#footnote_2">
+            <img src="016.png" width="100%" style="duokan-bleed:leftright;"/></a>
+            <p>Text<a class="duokan-footnote" epub:type="noteref" href="#footnote_3">
+            <img src="icon.png" style="width:1em"/></a></p>"""
+        val (protectedHtml, markers) = EpubParser.protectInlineFootnoteImages(html)
+        assertEquals(1, markers.size)
+        assertTrue(markers.single().contains("icon.png"))
+        assertTrue(protectedHtml.contains("006.png"))
+        assertTrue(protectedHtml.contains("016.png"))
+    }
+
+    @Test
     fun `footnote marker icons stay inline while illustration images keep block breaks`() {
         val html = """
             <p>正文<a epub:type="noteref" href="#fn1"><img src="note.png" class="epub-footnote"/></a>继续</p>

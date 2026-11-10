@@ -88,6 +88,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
@@ -823,26 +824,41 @@ fun BookshelfScreen(
         animationSpec = if (eInkMode) snap() else tween(if (isSearchActive) 210 else 230),
         label = "bookshelfSearchBlur"
     )
-    val overlayProgress = if (eInkMode) {
-        0f
-    } else {
-        maxOf(
-            contextMenuState.scrimAlpha.value,
-            folderContextMenuState.scrimAlpha.value,
-            searchBlurProgress,
-            gateMotion.presence
-        )
+    // Both follow running animations. They are read only where they are drawn (and forwarded to
+    // the navigation host from a snapshot flow), so a menu or search animation no longer
+    // recomposes this whole screen on every frame.
+    val overlayProgress: () -> Float = {
+        if (eInkMode) {
+            0f
+        } else {
+            maxOf(
+                contextMenuState.scrimAlpha.value,
+                folderContextMenuState.scrimAlpha.value,
+                searchBlurProgress,
+                gateMotion.presence
+            )
+        }
     }
     val reduceTransparency = LocalReduceTransparency.current
-    val contentBlurRadius = if (eInkMode) {
-        0f
-    } else {
-        maxOf(
-            if (reduceTransparency) 0f else 20f * contextMenuState.scrimAlpha.value,
-            if (reduceTransparency) 0f else 20f * folderContextMenuState.scrimAlpha.value,
-            with(density) { 34.dp.toPx() } * searchBlurProgress,
-            if (reduceTransparency) 0f else with(density) { 28.dp.toPx() } * gateMotion.presence
-        )
+    val contentBlurRadius: () -> Float = {
+        if (eInkMode) {
+            0f
+        } else {
+            maxOf(
+                if (reduceTransparency) 0f else 20f * contextMenuState.scrimAlpha.value,
+                if (reduceTransparency) 0f else 20f * folderContextMenuState.scrimAlpha.value,
+                with(density) { 34.dp.toPx() } * searchBlurProgress,
+                if (reduceTransparency) 0f else with(density) { 28.dp.toPx() } * gateMotion.presence
+            )
+        }
+    }
+    val contentBlur = remember { com.huangder.lumibooks.ui.animation.QuantizedBlur() }
+    val headerBlur = remember { com.huangder.lumibooks.ui.animation.QuantizedBlur() }
+    val latestOverlayProgress = rememberUpdatedState(overlayProgress)
+    val latestOverlayProgressChange = rememberUpdatedState(onOverlayProgressChange)
+    LaunchedEffect(Unit) {
+        snapshotFlow { latestOverlayProgress.value() }
+            .collect { latestOverlayProgressChange.value(it) }
     }
     val hiddenPullEnabled = !isEditing && !isSearchActive && !gateVisible && !coverFlowMenuVisible &&
         contextMenuState.phase == ContextMenuPhase.Idle &&
@@ -862,7 +878,6 @@ fun BookshelfScreen(
         coverFlowMenuVisible || contextMenuState.phase != ContextMenuPhase.Idle ||
             folderContextMenuState.phase != ContextMenuPhase.Idle
     SideEffect {
-        onOverlayProgressChange(overlayProgress)
         onSearchActiveChange(isSearchActive && !eInkMode)
         onContextMenuVisibleChange(contextMenuVisible)
     }
@@ -889,19 +904,7 @@ fun BookshelfScreen(
                 .then(
                     if (isLiquidGlass) Modifier.layerBackdrop(bookshelfBackdrop) else Modifier
                 )
-                .graphicsLayer {
-                    renderEffect = if (
-                        contentBlurRadius > 0.01f && android.os.Build.VERSION.SDK_INT >= 31
-                    ) {
-                        android.graphics.RenderEffect.createBlurEffect(
-                            contentBlurRadius,
-                            contentBlurRadius,
-                            android.graphics.Shader.TileMode.CLAMP
-                        ).asComposeRenderEffect()
-                    } else {
-                        null
-                    }
-                }
+                .graphicsLayer { renderEffect = contentBlur.at(contentBlurRadius()) }
                 .background(AppColors.PageBg)
         ) {
             val glowAccent = AppColors.Accent
@@ -959,6 +962,7 @@ fun BookshelfScreen(
                             }
                         },
                         spineSceneKey = renderedFolderId.orEmpty(),
+                        spineSharpCovers = uiState.spineSharpCovers,
                         onFolderClick = openFolder,
                         onFolderRename = renameFolderFromList,
                         onFolderDelete = deleteFolderFromList,
@@ -1045,6 +1049,8 @@ fun BookshelfScreen(
                         isWebdavSyncing = uiState.isWebdavSyncing,
                         onSelectAll = toggleSelectAll,
                         onLayoutModeChange = changeLayout,
+                        spineSharpCovers = uiState.spineSharpCovers,
+                        onSpineSharpCoversChange = viewModel::setSpineSharpCovers,
                         sortBy = uiState.sortBy,
                         onSortByChange = viewModel::setSortBy,
                         onAddBook = { onAddBook(renderedFolderId) },
@@ -1095,6 +1101,7 @@ fun BookshelfScreen(
                             }
                         },
                         spineSceneKey = renderedFolderId.orEmpty(),
+                        spineSharpCovers = uiState.spineSharpCovers,
                         onFolderClick = openFolder,
                         onFolderRename = renameFolderFromList,
                         onFolderDelete = deleteFolderFromList,
@@ -1195,6 +1202,8 @@ fun BookshelfScreen(
                     isWebdavSyncing = uiState.isWebdavSyncing,
                     onSelectAll = toggleSelectAll,
                     onLayoutModeChange = changeLayout,
+                    spineSharpCovers = uiState.spineSharpCovers,
+                    onSpineSharpCoversChange = viewModel::setSpineSharpCovers,
                     sortBy = uiState.sortBy,
                     onSortByChange = viewModel::setSortBy,
                     onAddBook = { onAddBook(renderedFolderId) },
@@ -1207,19 +1216,7 @@ fun BookshelfScreen(
                             bookshelfHeaderHeightPx = coordinates.size.height
                             onHeaderBottomChange(coordinates.boundsInRoot().bottom)
                         }
-                        .graphicsLayer {
-                            renderEffect = if (
-                                contentBlurRadius > 0.01f && android.os.Build.VERSION.SDK_INT >= 31
-                            ) {
-                                android.graphics.RenderEffect.createBlurEffect(
-                                    contentBlurRadius,
-                                    contentBlurRadius,
-                                    android.graphics.Shader.TileMode.CLAMP
-                                ).asComposeRenderEffect()
-                            } else {
-                                null
-                            }
-                        }
+                        .graphicsLayer { renderEffect = headerBlur.at(contentBlurRadius()) }
                         .align(Alignment.TopCenter)
                         .widthIn(max = 1000.dp)
                 )
@@ -1718,6 +1715,7 @@ internal fun BookshelfCollection(
     onToggleReadStatus: (Book) -> Unit = {},
     /** Folder shown by the spine shelf; each one drops its books once per process. */
     spineSceneKey: String = "",
+    spineSharpCovers: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val targetMode = BookshelfLayout.normalize(layoutMode)
@@ -1862,6 +1860,10 @@ internal fun BookshelfCollection(
                         topPadding = topPadding, bottomPadding = bottomPadding,
                         enabled = coverFlowEnabled && !transitionInProgress,
                         sceneKey = spineSceneKey,
+                        sharpCovers = spineSharpCovers,
+                        onFolderRename = onFolderRename, onFolderSetCover = onFolderSetCover,
+                        onFolderRemoveCover = onFolderRemoveCover, onFolderMove = onFolderMove,
+                        onFolderDelete = onFolderDelete,
                         actions = CoverFlowBookActions(
                             open = onBookClick, details = onBookDetails, favorite = onFavorite,
                             editInfo = onEditInfo, customCover = onCustomCover, removeCustomCover = onRemoveCustomCover,
@@ -2099,6 +2101,8 @@ private fun BookshelfHeaderActions(
     onEdit: (() -> Unit)? = null,
     sortBy: SortBy = SortBy.DATE_ADDED,
     onSortByChange: (SortBy) -> Unit = {},
+    spineSharpCovers: Boolean = false,
+    onSpineSharpCoversChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
@@ -2112,6 +2116,7 @@ private fun BookshelfHeaderActions(
     val listLayoutLabel = stringResource(R.string.bookshelf_list_layout)
     val coverFlowLabel = stringResource(R.string.bookshelf_cover_flow)
     val spineShelfLabel = stringResource(R.string.bookshelf_spine_shelf)
+    val spineSharpLabel = stringResource(R.string.bookshelf_spine_sharp_covers)
     val createFolderLabel = stringResource(R.string.new_category_folder)
     val refreshLabel = stringResource(R.string.refresh_authorized_folders)
     val importLabel = stringResource(R.string.bookshelf_import_book)
@@ -2233,6 +2238,15 @@ private fun BookshelfHeaderActions(
                                         onClick = { onLayoutModeChange(BookshelfLayout.Spine) }
                                     )
                                 )
+                                if (layoutMode == BookshelfLayout.Spine) add(
+                                    LiquidGlassMenuItem(
+                                        label = spineSharpLabel,
+                                        icon = AppIcons.Image,
+                                        selected = spineSharpCovers,
+                                        dividerBefore = true,
+                                        onClick = { onSpineSharpCoversChange(!spineSharpCovers) }
+                                    )
+                                )
                             }
                         )
                     )
@@ -2290,6 +2304,8 @@ private fun BookshelfCapsuleHeader(
     onSortByChange: (SortBy) -> Unit = {},
     onAddBook: (() -> Unit)? = null,
     onCoverFlowAddBook: () -> Unit = {},
+    spineSharpCovers: Boolean = false,
+    onSpineSharpCoversChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
@@ -2388,7 +2404,9 @@ private fun BookshelfCapsuleHeader(
                     onCreateFolder = onCreateFolder,
                     onAddBook = onAddBook,
                     sortBy = sortBy,
-                    onSortByChange = onSortByChange
+                    onSortByChange = onSortByChange,
+                    spineSharpCovers = spineSharpCovers,
+                    onSpineSharpCoversChange = onSpineSharpCoversChange
                 )
             }
         ) {

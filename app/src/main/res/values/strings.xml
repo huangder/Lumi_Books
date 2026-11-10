@@ -1667,6 +1667,7 @@
     <string name="tts_prosody_rejected_error">当前语音引擎不支持所选语速或声调，已保留上一个设置</string>
     <string name="bookshelf_cover_flow">Cover Flow</string>
     <string name="bookshelf_spine_shelf">书脊</string>
+    <string name="bookshelf_spine_sharp_covers">封面不模糊</string>
     <string name="spine_shelf_folder_count">%1$d 本</string>
     <string name="spine_menu_tags">标签</string>
     <string name="spine_menu_notes">笔记</string>
