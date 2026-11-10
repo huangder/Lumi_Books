@@ -35,15 +35,19 @@ object HighlightRuleMatcher {
         if (text.isEmpty()) return emptyList()
         return buildList {
             rules.asSequence().filter(HighlightRule::enabled).sortedBy(HighlightRule::position).forEach { rule ->
-                val matcher = runCatching {
+                val pattern = runCatching {
                     if (validationError(rule) != null) return@forEach
-                    Pattern.compile(rule.pattern).matcher(text)
+                    Pattern.compile(rule.pattern)
                 }.getOrNull() ?: return@forEach
-                var count = 0
-                while (count < MAX_MATCHES_PER_RULE_AND_CHAPTER && matcher.find()) {
-                    val start = matcher.start()
-                    val end = matcher.end()
-                    if (end <= start) continue
+                val ranges = DialogueQuoteMatcher.ranges(text, rule.pattern) ?: sequence {
+                    val matcher = pattern.matcher(text)
+                    while (matcher.find()) {
+                        if (matcher.end() > matcher.start()) yield(matcher.start() until matcher.end())
+                    }
+                }
+                for (range in ranges.take(MAX_MATCHES_PER_RULE_AND_CHAPTER)) {
+                    val start = range.first
+                    val end = range.last + 1
                     val selected = text.subSequence(start, end).toString()
                     add(
                         RuleMatch(
@@ -68,7 +72,6 @@ object HighlightRuleMatcher {
                             position = rule.position
                         )
                     )
-                    count++
                 }
             }
         }
