@@ -10,6 +10,8 @@ import androidx.test.core.app.ApplicationProvider
 import com.huangder.lumibooks.tts.TtsListeningPosition
 import com.huangder.lumibooks.tts.TtsStartChoice
 import com.huangder.lumibooks.tts.TtsReaderResumeChoice
+import com.huangder.lumibooks.domain.model.BookPositionSource
+import com.huangder.lumibooks.domain.model.BookPositionUse
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -77,12 +79,35 @@ class TtsListeningPositionPersistenceTest {
             assertEquals(TtsStartChoice.CURRENT_PAGE, reopened.ttsStartChoice.first())
         }
         manager.saveTtsStartChoice(TtsStartChoice.SAVED_POSITION)
-        assertEquals(TtsReaderResumeChoice.FURTHEST_PROGRESS, manager.ttsReaderResumeChoice.first())
+        assertEquals(TtsReaderResumeChoice.LAST_USED_POSITION, manager.ttsReaderResumeChoice.first())
         manager.saveTtsReaderResumeChoice(null)
         assertNull(DataStoreManager(context).ttsReaderResumeChoice.first())
         assertEquals(TtsStartChoice.SAVED_POSITION, manager.ttsStartChoice.first())
         context.dataStore.edit { it[stringPreferencesKey("tts_reader_resume_choice")] = "unknown" }
         assertNull(manager.ttsReaderResumeChoice.first())
+    }
+
+    @Test
+    fun lastUsedSourceSurvivesReopeningAndRejectsDelayedWritesWithoutFollowingAudioAutosaves() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.dataStore.edit { it.clear() }
+        val manager = DataStoreManager(context)
+        assertNull(manager.bookPositionSource("book").first())
+        val reading = BookPositionUse.create(BookPositionSource.READING)
+        val listening = BookPositionUse.create(BookPositionSource.LISTENING)
+        manager.saveBookPositionUse("book", listening)
+        DataStoreManager(context).saveBookPositionUse("book", reading)
+        assertEquals(BookPositionSource.LISTENING, manager.bookPositionSource("book").first())
+        manager.saveBookPositionUse("book", BookPositionUse.create(BookPositionSource.READING))
+        manager.saveTtsListeningPosition(TtsListeningPosition("book", 2, 0, 20, 123L))
+        assertEquals(BookPositionSource.READING, DataStoreManager(context).bookPositionSource("book").first())
+        assertNull(manager.bookPositionSource("another-book").first())
+        // Another process can start again at sequence one, even after a device clock change.
+        manager.saveBookPositionUse("book", BookPositionUse(BookPositionSource.LISTENING, "next-process", 1))
+        assertEquals(BookPositionSource.LISTENING, manager.bookPositionSource("book").first())
+        assertEquals(false, manager.exportPortablePreferences("device").any {
+            it.key.startsWith("local_book_position_use_")
+        })
     }
 
     @Test

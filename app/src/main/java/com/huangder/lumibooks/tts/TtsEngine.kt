@@ -65,7 +65,8 @@ enum class TtsProsodySetting { RATE, PITCH }
 
 class TtsEngine internal constructor(
     context: Context,
-    private val localAudioPlayer: SystemTtsAudioPlayer
+    private val localAudioPlayer: SystemTtsAudioPlayer,
+    private val nativeMediaRouting: NativeTtsMediaRouting = NativeTtsMediaRouting()
 ) : AndroidTtsPlaybackEngine {
     constructor(@ApplicationContext context: Context) : this(context, SystemTtsAudioPlayer())
     override val isExternal: Boolean = false
@@ -583,6 +584,7 @@ class TtsEngine internal constructor(
             override fun onStart(utteranceId: String?) {
                 val startedAt = SystemClock.elapsedRealtime()
                 postNativeCallback(utteranceId, starting = true) { id ->
+                    nativeMediaRouting.start()
                     logNativePlayback("native_playback_started", id, extra = mapOf(
                         "startedAtMs" to startedAt,
                         "gapMs" to lastNativeDoneMs?.let { (startedAt - it).coerceAtLeast(0L) }))
@@ -597,6 +599,8 @@ class TtsEngine internal constructor(
                     nativeUtteranceId = null
                     nativeCurrent = null
                     lastNativeDoneMs = doneAt
+                    // A queued successor may already be audible; retain routing until it ends.
+                    if (nativeNext == null) nativeMediaRouting.stop()
                     logNativePlayback("native_playback_done", id, extra = mapOf("doneAtMs" to doneAt))
                     playbackListener?.onPlaybackActivity(id, false)
                     playbackListener?.onDone(id)
@@ -795,6 +799,7 @@ class TtsEngine internal constructor(
     }
 
     private fun stopNativePlayback() {
+        nativeMediaRouting.stop()
         val id = nativeUtteranceId
         nativeUtteranceId = null // Invalidate callbacks before stop can deliver onStop/onDone.
         nativeCurrent = null
@@ -898,6 +903,7 @@ class TtsEngine internal constructor(
     }
 
     private fun stopLocalSynthesis(stopEngine: Boolean = true) {
+        nativeMediaRouting.stop()
         synthesisWatchdog?.let(mainHandler::removeCallbacks)
         synthesisWatchdog = null
         synthesisTasks.values.toList().forEach(::discardSynthesis)

@@ -1,6 +1,8 @@
 ﻿package com.huangder.lumibooks.tts
 
 import com.huangder.lumibooks.BuildConfig
+import com.huangder.lumibooks.domain.model.BookPositionSource
+import com.huangder.lumibooks.domain.model.BookPositionUse
 import java.io.IOException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
@@ -331,6 +333,7 @@ class TtsController(
         startCharacterOffset: Int? = null,
         restoreSavedPosition: Boolean = true
     ): Result<Unit> = withContext(Dispatchers.Main.immediate) {
+        val positionUse = BookPositionUse.create(BookPositionSource.LISTENING)
         commandMutex.withLock {
         // Replacing a live session must not publish IDLE: the foreground service treats IDLE as
         // final and may destroy itself before this new session reaches INITIALIZING.
@@ -452,6 +455,7 @@ class TtsController(
             stopInternal()
             return@withContext Result.failure(error)
         }
+        recordListeningUse(positionUse)
         Result.success(Unit)
         }
     }
@@ -494,7 +498,8 @@ class TtsController(
         }
     }
 
-    fun resume() {
+    fun resume(recordUse: Boolean = true) {
+        val positionUse = if (recordUse) BookPositionUse.create(BookPositionSource.LISTENING) else null
         scope.launch {
             commandMutex.withLock {
             if (_playbackState.value != TtsPlaybackState.PAUSED) {
@@ -523,6 +528,7 @@ class TtsController(
                     )
                 }
             }
+            if (_playbackState.value == TtsPlaybackState.PLAYING && positionUse != null) recordListeningUse(positionUse)
             }
         }
     }
@@ -558,6 +564,7 @@ class TtsController(
     }
 
     fun skip(forward: Boolean = true) {
+        val positionUse = BookPositionUse.create(BookPositionSource.LISTENING)
         scope.launch {
             commandMutex.withLock {
             val state = _playbackState.value
@@ -601,6 +608,7 @@ class TtsController(
                     moveToAdjacentPage(forward = false)
                 }
             }
+            recordListeningUse(positionUse, persistTarget = true)
             }
         }
     }
@@ -610,10 +618,16 @@ class TtsController(
         scope.launch {
             commandMutex.withLock {
                 if (_activeBookId.value != bookId) return@withLock
+                val wasAttached = readerAttached
                 readerAttached = attached
                 pageSource?.setReaderVisible(visualReaderAttached)
                 if (attached) {
                     followReaderPageTurns = true
+                    // Fullscreen may have closed before the reader's RESUME callback.
+                    // Publish the audio page after both sides of the handoff are ready.
+                    if (!wasAttached && visualReaderAttached && _followUserPageTurns.value) {
+                        requestCurrentReaderPage(fullscreenReaderLocation)
+                    }
                     return@withLock
                 }
                 val pending = pendingPageTurn
@@ -649,27 +663,33 @@ class TtsController(
                         speakCurrentSegment()
                     }
                 } else if (readerAttached && followReaderPageTurns) {
-                    _currentPage.value?.let { page ->
-                        val request = TtsPageTurnRequest(
-                            bookId = _activeBookId.value ?: return@withLock,
-                            sessionId = sessionGeneration, requestId = ++pageTurnSequence,
-                            location = page.location
-                        )
-                        pendingPageTurn = PendingPageTurn(request, fullscreenReaderLocation, resumeWhenAcknowledged = false)
-                        _pageTurnRequests.emit(request)
-                    }
+                    requestCurrentReaderPage(fullscreenReaderLocation)
                 }
             }
         }
     }
 
+    private suspend fun requestCurrentReaderPage(sourceLocation: TtsPageLocation?) {
+        val page = _currentPage.value ?: return
+        val request = TtsPageTurnRequest(
+            bookId = _activeBookId.value ?: return,
+            sessionId = sessionGeneration, requestId = ++pageTurnSequence,
+            location = page.location
+        )
+        pendingPageTurn = PendingPageTurn(request, sourceLocation, resumeWhenAcknowledged = false)
+        _pageTurnRequests.emit(request)
+    }
+
     suspend fun skipChapter(forward: Boolean): Boolean = withContext(Dispatchers.Main.immediate) {
+        val positionUse = BookPositionUse.create(BookPositionSource.LISTENING)
         commandMutex.withLock {
             if (_playbackState.value !in listOf(TtsPlaybackState.PLAYING, TtsPlaybackState.PAUSED)) return@withLock false
             val chapter = _currentPage.value?.location?.chapterIndex ?: return@withLock false
             val target = chapter + if (forward) 1 else -1
             if (target < 0 || (_chapterSnapshot.value?.count?.let { target >= it } == true)) return@withLock false
-            moveToPage(TtsPageLocation(target, 0), startAtEnd = false, publishLocation = true)
+            val moved = moveToPage(TtsPageLocation(target, 0), startAtEnd = false, publishLocation = true)
+            if (moved) recordListeningUse(positionUse, persistTarget = true)
+            moved
         }
     }
 
@@ -855,6 +875,7 @@ class TtsController(
      * Used by the double-tap gesture on a sentence.
      */
     fun seekTo(chapterIndex: Int, characterOffset: Int, resumeIfPaused: Boolean = true) {
+        val positionUse = BookPositionUse.create(BookPositionSource.LISTENING)
         scope.launch {
             commandMutex.withLock {
                 val state = _playbackState.value
@@ -889,6 +910,8 @@ class TtsController(
                 ) {
                     pageContentError?.let(_errors::tryEmit)
                     stopInternal()
+                } else {
+                    recordListeningUse(positionUse, persistTarget = true, characterOffset = clauseStart)
                 }
             }
         }
@@ -1762,6 +1785,30 @@ class TtsController(
                 pcmFrameOffset = activeEngine.currentPcmFrameOffset().coerceAtLeast(0L)
             )
         )
+    }
+
+    private suspend fun recordListeningUse(
+        use: BookPositionUse,
+        persistTarget: Boolean = false,
+        characterOffset: Int? = null
+    ) {
+        val bookId = _activeBookId.value ?: return
+        try {
+            // Paused seeks/skips do not emit onStart. Persist the selected target immediately,
+            // rather than letting the previous audible sentence become the next resume point.
+            if (persistTarget) {
+                val page = _currentPage.value ?: return
+                val sentence = segments.getOrNull(sentenceIndex) ?: return
+                dataStoreManager.saveTtsListeningPosition(TtsListeningPosition(
+                    bookId, page.location.chapterIndex, page.location.pageIndex,
+                    characterOffset ?: sentence.startCharacterOffset, System.currentTimeMillis()))
+            }
+            dataStoreManager.saveBookPositionUse(bookId, use)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            DiagnosticLoggerRegistry.logger?.log("tts", "position_use_save_failed", throwable = error)
+        }
     }
 
     private suspend fun persistListeningPosition(force: Boolean = false, completed: Boolean = false) {

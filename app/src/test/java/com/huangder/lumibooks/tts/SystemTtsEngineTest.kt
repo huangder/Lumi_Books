@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.tts
 
 import android.media.AudioFormat
+import android.media.AudioTrack
 import android.content.Intent
 import android.content.pm.ResolveInfo
 import android.content.pm.ServiceInfo
@@ -36,6 +37,55 @@ import org.robolectric.shadows.ShadowTextToSpeech
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], shadows = [SystemTtsEngineTest.RecordingTts::class])
 class SystemTtsEngineTest {
+    @Test
+    fun nativeMediaRoutingSurvivesQueuedHandoffAndStopsOnPauseErrorCompletionAndShutdown() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val tracks = mutableListOf<AudioTrack>()
+        val routing = NativeTtsMediaRouting { NativeTtsMediaRouting.createRoutingTrack().also(tracks::add) }
+        val player = SystemTtsAudioPlayer(backgroundScope) { throw AssertionError("Unexpected local speech") }
+        val engine = TtsEngine(ApplicationProvider.getApplicationContext(), player, routing)
+        engine.setListener(listener(mutableListOf(), mutableListOf(), mutableListOf()))
+        try {
+            selectMultiTts(engine)
+            initializeEngine(engine)
+            val callbacks = (shadowOf(ShadowTextToSpeech.getLastTextToSpeechInstance()) as RecordingTts)
+                .utteranceProgressListener
+            engine.speak("First.", "first")
+            assertTrue(tracks.isEmpty()) // Do not start routing merely for synthesis/initialization.
+            callbacks.onStart("first")
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(AudioTrack.PLAYSTATE_PLAYING, tracks.single().playState)
+            engine.queueNext("Next.", "next")
+            callbacks.onStart("next")
+            callbacks.onDone("first")
+            shadowOf(Looper.getMainLooper()).idle()
+            engine.stopForPageTurn()
+            engine.speak("Next.", "next")
+            assertEquals(1, tracks.size)
+            assertEquals(AudioTrack.PLAYSTATE_PLAYING, tracks.single().playState)
+            engine.pause()
+            assertEquals(AudioTrack.STATE_UNINITIALIZED, tracks.single().state)
+            callbacks.onStart("next") // An obsolete callback must not restart the routing track.
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(1, tracks.size)
+
+            for (ending in listOf("done", "error", "stop", "shutdown")) {
+                engine.speak("Restart.", ending)
+                callbacks.onStart(ending)
+                shadowOf(Looper.getMainLooper()).idle()
+                assertEquals(AudioTrack.PLAYSTATE_PLAYING, tracks.last().playState)
+                when (ending) {
+                    "done" -> callbacks.onDone(ending)
+                    "error" -> callbacks.onError(ending, TextToSpeech.ERROR_SYNTHESIS)
+                    "stop" -> engine.stop()
+                    else -> engine.shutdown()
+                }
+                shadowOf(Looper.getMainLooper()).idle()
+                assertEquals(AudioTrack.STATE_UNINITIALIZED, tracks.last().state)
+            }
+        } finally { engine.shutdown(); player.release(); Dispatchers.resetMain() }
+    }
+
     @Implements(TextToSpeech::class)
     class RecordingTts : ShadowTextToSpeech() {
         data class Request(val text: String, val id: String, val file: File)

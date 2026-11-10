@@ -20,9 +20,68 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
+import com.huangder.lumibooks.domain.model.BookPositionSource
+import com.huangder.lumibooks.domain.model.BookPositionUse
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TtsControllerTest {
+    @Test fun fullscreenReturnRestoresPageFollowRegardlessOfReaderResumeOrder() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            for (readerResumesFirst in listOf(false, true)) {
+                for (paused in listOf(false, true)) {
+                    val engine = FakePlaybackEngine()
+                    val controller = controller(engine)
+                    val source = FakePageSource(page(0, "First.", next = TtsPageLocation(0, 1)),
+                        page(1, "Second."), page(2, "Manual destination."))
+                    try {
+                        controller.start("book", source, 0, 0)
+                        controller.setFollowUserPageTurns(true)
+                        val session = controller.currentSessionId
+                        controller.setReaderAttached("book", false)
+                        controller.setFullscreenVisible(session, true)
+                        runCurrent()
+                        engine.complete(engine.lastUtteranceId)
+                        runCurrent()
+                        assertEquals(TtsPageLocation(0, 1), controller.currentPage.value?.location)
+                        if (paused) { controller.pause(); runCurrent() }
+                        val spokenBeforeReturn = engine.spokenTexts.toList()
+                        if (readerResumesFirst) {
+                            controller.setReaderAttached("book", true)
+                            runCurrent()
+                            assertTrue(controller.pageTurnRequests.replayCache.isEmpty())
+                            controller.setFullscreenVisible(session, false)
+                        } else {
+                            controller.setFullscreenVisible(session, false)
+                            runCurrent()
+                            assertTrue(controller.pageTurnRequests.replayCache.isEmpty())
+                            controller.setReaderAttached("book", true)
+                        }
+                        runCurrent()
+                        val request = controller.pageTurnRequests.replayCache.single()
+                        assertTrue(source.viewProviderVisible)
+                        assertTrue(controller.isPageTurnRequestActive(request))
+                        assertEquals(TtsPageLocation(0, 1), request.location)
+                        controller.acknowledgePageTurnRequest(request)
+                        runCurrent()
+                        assertEquals(spokenBeforeReturn, engine.spokenTexts)
+                        assertTrue(controller.followUserPageTurns.value)
+                        controller.onReaderNavigationStarted("book")
+                        controller.onPageVisible("book", 0, 2, TtsPageChangeOrigin.USER)
+                        runCurrent()
+                        assertEquals(TtsPageLocation(0, 2), controller.currentPage.value?.location)
+                        if (paused) {
+                            assertEquals(TtsPlaybackState.PAUSED, controller.playbackState.value)
+                            assertEquals(spokenBeforeReturn, engine.spokenTexts)
+                            controller.resume(); runCurrent()
+                        }
+                        assertEquals("Manual destination.", engine.spokenTexts.last())
+                    } finally { controller.shutdown(); runCurrent() }
+                }
+            }
+        } finally { Dispatchers.resetMain() }
+    }
+
     @Test fun backgroundAndFullscreenFollowingSuspendViewBackedSourceUntilReaderReturns() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val controller = controller(FakePlaybackEngine())
@@ -1797,6 +1856,87 @@ class TtsControllerTest {
     }
 
     @Test
+    fun audioAutosavesKeepTheReadingChoiceAndAPausedRewindRecordsItsNewTarget() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val store = FakeSettingsStore()
+        val engine = FakePlaybackEngine()
+        val controller = controller(engine, settingsStore = store)
+        try {
+            controller.start("book", FakePageSource(page(0, "第一句。第二句。第三句。")), 0, 0)
+            runCurrent()
+            store.saveBookPositionUse("book", BookPositionUse.create(BookPositionSource.READING))
+            engine.complete(engine.lastUtteranceId)
+            runCurrent()
+            assertEquals("第二句。", engine.spokenTexts.last())
+            assertEquals(BookPositionSource.READING, store.positionUses["book"]?.source)
+            controller.pause()
+            runCurrent()
+            assertEquals(BookPositionSource.READING, store.positionUses["book"]?.source)
+            controller.resume(recordUse = false)
+            runCurrent()
+            assertEquals(BookPositionSource.READING, store.positionUses["book"]?.source)
+            controller.pause()
+            runCurrent()
+            controller.resume()
+            runCurrent()
+            assertEquals(BookPositionSource.LISTENING, store.positionUses["book"]?.source)
+            controller.pause()
+            runCurrent()
+            controller.seekTo(0, 0, resumeIfPaused = false)
+            runCurrent()
+            assertEquals(TtsPlaybackState.PAUSED, controller.playbackState.value)
+            assertEquals(0, store.ttsListeningPosition("book").first()?.characterOffset)
+            controller.stop()
+            runCurrent()
+            assertEquals(0, store.ttsListeningPosition("book").first()?.characterOffset)
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun rewindingAndListeningPersistsTheEarlierAnchorAcrossReopeningForBothEngines() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            for (external in listOf(false, true)) {
+                val store = FakeSettingsStore(if (external) TtsProviderSelection.AiModel else TtsProviderSelection.SystemDefault)
+                val engine = FakePlaybackEngine(isExternal = external)
+                val controller = if (external) controller(FakePlaybackEngine(), engine, store)
+                    else controller(engine, settingsStore = store)
+                fun source() = FakePageSource(
+                    page(0, "第一句。第二句。第三句。"),
+                    page(0, "后面的章节。", chapterIndex = 1))
+                try {
+                    controller.start("book", source(), 1, 0, restoreSavedPosition = false)
+                    runCurrent()
+                    assertEquals(1, store.ttsListeningPosition("book").first()?.chapterIndex)
+
+                    controller.seekTo(0, 8)
+                    runCurrent()
+                    controller.seekTo(0, 4)
+                    runCurrent()
+                    controller.stop()
+                    runCurrent()
+                    val saved = requireNotNull(store.ttsListeningPosition("book").first())
+                    assertEquals(0, saved.chapterIndex)
+                    assertEquals(4, saved.characterOffset)
+                    assertEquals(BookPositionSource.LISTENING, store.positionUses["book"]?.source)
+
+                    controller.start("book", source(), 1, 0, restoreSavedPosition = true)
+                    runCurrent()
+                    assertEquals(TtsPageLocation(0, 0), controller.currentPage.value?.location)
+                    assertEquals("第二句。", engine.spokenTexts.last())
+                } finally {
+                    controller.shutdown()
+                    runCurrent()
+                }
+            }
+        } finally { Dispatchers.resetMain() }
+    }
+
+    @Test
     fun seekToResumesFromTheTappedSentence() = runTest {
         val main = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(main)
@@ -2547,6 +2687,11 @@ class TtsControllerTest {
         override val ttsProviderSelection = MutableStateFlow(providerSelection)
         override val externalTtsSettings = MutableStateFlow(ExternalTtsSettings())
         override val ttsStartChoice = MutableStateFlow<TtsStartChoice?>(null)
+        val positionUses = mutableMapOf<String, BookPositionUse>()
+
+        override suspend fun saveBookPositionUse(bookId: String, use: BookPositionUse) {
+            if (use.canReplace(positionUses[bookId])) positionUses[bookId] = use
+        }
 
         override suspend fun saveTtsStartChoice(choice: TtsStartChoice?) {
             ttsStartChoice.value = choice

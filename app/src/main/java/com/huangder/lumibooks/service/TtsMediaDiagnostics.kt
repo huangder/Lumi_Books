@@ -12,7 +12,8 @@ internal fun logMediaButtonDelivery(
     result: TtsMediaButtons.Result,
     controller: TtsController
 ) {
-    if (!BuildConfig.DIAGNOSTIC_BUILD) return
+    // Infrequent and content-free: retain these in normal diagnostic exports too, so
+    // headset failures on another user's device can be distinguished from routing failures.
     DiagnosticLoggerRegistry.logger?.log(
         category = "tts",
         event = "media_button_received",
@@ -40,7 +41,7 @@ internal fun logTtsServiceEvent(
     level: DiagnosticLevel = DiagnosticLevel.INFO,
     result: String? = null
 ) {
-    if (!BuildConfig.DIAGNOSTIC_BUILD) return
+    if (!BuildConfig.DIAGNOSTIC_BUILD && event != "transport_command_received") return
     DiagnosticLoggerRegistry.logger?.log(
         category = "tts",
         event = event,

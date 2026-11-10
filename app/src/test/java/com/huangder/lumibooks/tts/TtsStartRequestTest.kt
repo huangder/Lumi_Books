@@ -98,6 +98,7 @@ class TtsStartRequestTest {
     }
 
     private class Settings(position: TtsListeningPosition?) : TtsSettingsStore {
+        override suspend fun saveBookPositionUse(bookId: String, use: com.huangder.lumibooks.domain.model.BookPositionUse) = Unit
         override val ttsProsodySettings = flowOf(TtsProsodySettings())
         override val ttsProviderSelection = flowOf(TtsProviderSelection.SystemDefault)
         override val externalTtsSettings = flowOf(ExternalTtsSettings())

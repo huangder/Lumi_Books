@@ -3,10 +3,20 @@ package com.huangder.lumibooks.tts
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.huangder.lumibooks.domain.model.BookPositionSource
 
 class TtsReaderResumeChoiceTest {
     private val listening = TtsListeningPosition("book", 5, 2, 450, 123L)
     private val furthest = TtsReaderResumeChoice.FURTHEST_PROGRESS
+
+    @Test fun lastUsedPositionRestoresRewoundListeningRatherThanTheFurthestChapter() {
+        assertTrue(TtsReaderResumeChoice.LAST_USED_POSITION.shouldUseListeningPosition(
+            listening, 10, 0, 0, BookPositionSource.LISTENING))
+        assertFalse(TtsReaderResumeChoice.LAST_USED_POSITION.shouldUseListeningPosition(
+            listening, 2, 0, 0, BookPositionSource.READING))
+        assertFalse(TtsReaderResumeChoice.LAST_USED_POSITION.shouldUseListeningPosition(
+            listening, 2, 0, 0))
+    }
 
     @Test fun laterChapterWinsRegardlessOfPageAndCharacterNumbers() {
         assertTrue(furthest.shouldUseListeningPosition(listening, 4, 99, 9_999))

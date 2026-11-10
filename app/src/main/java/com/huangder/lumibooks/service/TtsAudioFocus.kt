@@ -89,7 +89,7 @@ internal class TtsAudioFocusController(
             }
             TtsAudioFocusAction.RESUME_AFTER_LOSS -> {
                 if (pausedForLoss) {
-                    ttsController.resume()
+                    ttsController.resume(recordUse = false)
                 }
             }
             TtsAudioFocusAction.IGNORE -> Unit
