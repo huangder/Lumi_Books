@@ -46,6 +46,12 @@ Build outputs are separate: `app/build/official` and `app/build/oss`. This keeps
 KSP/Hilt generated declarations from leaking across edition switches. APK files
 are under the selected directory's `outputs/apk/debug/` folder.
 
+Concurrent validation from one checkout can use `'-Plumi.buildTag=reader-fix'`
+to place outputs under `app/build/<edition>/reader-fix`. Give each concurrent
+build its own `--project-cache-dir` as well, so Gradle's previous-output cleanup
+cannot remove another build's generated files. The tag accepts letters, digits,
+underscores and hyphens; ordinary builds keep the paths above.
+
 To validate the public edition while the private checkout is present:
 
 ```powershell

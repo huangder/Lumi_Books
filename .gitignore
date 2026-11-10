@@ -79,3 +79,9 @@ lumi-window.xml
 .DS_Store
 update_config.json
 test1.jpg
+
+# Local Gradle validation caches and diagnostic logs
+/.gradle-*/
+/app/hs_err_pid*.log
+/app/replay_pid*.log
+/reading-insights*-tests.log

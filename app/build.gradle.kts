@@ -18,7 +18,12 @@ val releaseStartupTrace = providers.gradleProperty("lumiStartupTrace")
 val forceOss = providers.gradleProperty("lumi.oss").map { it.toBooleanStrict() }.orElse(false)
 val premiumEdition = !forceOss.get() && file("src/premium/java").isDirectory
 // KSP/Hilt outputs must not survive a switch to a source set with fewer declarations.
-layout.buildDirectory.set(layout.projectDirectory.dir("build/${if (premiumEdition) "official" else "oss"}"))
+// Concurrent verification in this checkout needs separate generated resources and classes.
+val buildTag = providers.gradleProperty("lumi.buildTag").orNull
+require(buildTag == null || buildTag.matches(Regex("[A-Za-z0-9_-]+"))) { "Invalid lumi.buildTag" }
+layout.buildDirectory.set(layout.projectDirectory.dir(
+    "build/${if (premiumEdition) "official" else "oss"}${buildTag?.let { "/$it" }.orEmpty()}"
+))
 
 android {
     namespace = "com.huangder.lumibooks"
