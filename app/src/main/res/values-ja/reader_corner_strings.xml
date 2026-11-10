@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_corner_content_time_battery">時刻＋バッテリー</string>
+    <string name="reader_corner_content_page_number_book_progress">章内ページ＋全体の進捗</string>
+    <string name="reader_corner_content_global_page_number_book_progress">全体ページ＋全体の進捗</string>
+    <string name="reader_corner_content_chapter_page_number">章タイトル＋章内ページ</string>
+    <string name="reader_corner_content_chapter_book_progress">章タイトル＋全体の進捗</string>
+</resources>

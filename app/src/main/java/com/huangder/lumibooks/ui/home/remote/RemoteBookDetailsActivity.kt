@@ -33,6 +33,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import com.huangder.lumibooks.ui.animation.finishWithPush
 
 /** Details of one remote book with its download action. Uses the OEM Activity transition. */
 @AndroidEntryPoint
@@ -80,7 +81,7 @@ class RemoteBookDetailsActivity : ComponentActivity() {
                         }
                     }
                 }
-                ConfigurableActivityBack(predictiveBackEnabled = predictiveBackEnabled, onBack = { finish() })
+                ConfigurableActivityBack(predictiveBackEnabled = predictiveBackEnabled, onBack = { finishWithPush() })
                 val imageLoader = remember(source.id) {
                     RemoteImageLoaders.create(this@RemoteBookDetailsActivity, source, viewModel.password(source.id))
                 }
@@ -88,7 +89,7 @@ class RemoteBookDetailsActivity : ComponentActivity() {
                 RemoteBookDetailsScreen(
                         state = state,
                         contentBackdrop = contentBackdrop,
-                        onBack = { finish() },
+                        onBack = { finishWithPush() },
                         onSelectFormat = viewModel::selectFormat,
                         onReadMetadata = viewModel::readMetadata,
                         onDownload = { choosingDestination = true },

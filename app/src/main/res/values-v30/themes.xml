@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Keep navigation windows translucent: changing opacity at runtime starts another
+         system window transition on recent Android versions. The Compose page itself
+         is opaque; its host owns motion, clipping and the stationary toolbar plane. -->
+    <style name="Theme.EBookReader.Page" parent="Theme.EBookReader">
+        <item name="lumiPagePush">true</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:colorBackgroundCacheHint">@null</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowAnimationStyle">@style/Animation.Lumi.Push.None</item>
+    </style>
+</resources>

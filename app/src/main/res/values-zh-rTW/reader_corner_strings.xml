@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_corner_content_time_battery">時間＋電量</string>
+    <string name="reader_corner_content_page_number_book_progress">本章頁碼＋全書進度</string>
+    <string name="reader_corner_content_global_page_number_book_progress">全域頁碼＋全書進度</string>
+    <string name="reader_corner_content_chapter_page_number">章節資訊＋本章頁碼</string>
+    <string name="reader_corner_content_chapter_book_progress">章節資訊＋全書進度</string>
+</resources>

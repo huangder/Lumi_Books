@@ -22,6 +22,7 @@ import com.huangder.lumibooks.util.LocaleHelper
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.launch
+import com.huangder.lumibooks.ui.animation.finishWithPush
 
 @AndroidEntryPoint
 class ListeningPageSettingsActivity : ComponentActivity() {
@@ -39,12 +40,12 @@ class ListeningPageSettingsActivity : ComponentActivity() {
             val pageSettings by settings.listeningPageSettings.collectAsState(ListeningPageSettings())
             val predictiveBack by settings.predictiveBackEnabled.collectAsState(initial.predictiveBackEnabled)
             ReadingFeatureTheme(settings) {
-                ConfigurableActivityBack(predictiveBackEnabled = predictiveBack, onBack = ::finish)
+                ConfigurableActivityBack(predictiveBackEnabled = predictiveBack, onBack = { finishWithPush() })
                 ListeningPageSettingsScreen(
                     settings = pageSettings,
                     onStyle = { lifecycleScope.launch { settings.saveListeningDisplayStyle(it) } },
                     onGesture = { lifecycleScope.launch { settings.saveSubtitleSeekGesture(it) } },
-                    onBack = ::finish
+                    onBack = { finishWithPush() }
                 )
             }
         }

@@ -30,6 +30,7 @@ import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import com.huangder.lumibooks.util.LaunchThemeController
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import com.huangder.lumibooks.ui.animation.finishWithPush
 
 /**
  * 设置二级页面 — 统一 Activity
@@ -124,10 +125,10 @@ class DetailActivity : ComponentActivity() {
                 )
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,
-                    onBack = { finish() }
+                    onBack = { finishWithPush() }
                 )
                 Surface(modifier = Modifier.fillMaxSize(), color = com.huangder.lumibooks.ui.theme.AppColors.PageBg) {
-                    val onBack = { finish() }
+                    val onBack = { finishWithPush() }
 
                     when (category) {
                         "reading" -> DetailPage(

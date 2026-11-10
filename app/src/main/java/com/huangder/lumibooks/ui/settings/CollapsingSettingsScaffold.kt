@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.settings
 
+import com.huangder.lumibooks.ui.animation.pagePushToolbarItem
 import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
 import com.huangder.lumibooks.ui.icons.directionalIcon
 import com.huangder.lumibooks.ui.icons.AppIcons
@@ -12,6 +13,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -107,6 +112,7 @@ internal fun CollapsingSettingsScaffold(
     lazyContent: (LazyListScope.() -> Unit)? = null,
     alignToolbarToContent: Boolean = false,
     showBackButton: Boolean = true,
+    contentMaxWidth: Dp = 840.dp,
     content: @Composable () -> Unit = {}
 ) {
     val capability = LocalLiquidGlassCapability.current
@@ -156,14 +162,15 @@ internal fun CollapsingSettingsScaffold(
         }
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(modifier = modifier.fillMaxSize()
+        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .then(if (blurEnabled || glassBackdropEnabled) Modifier.layerBackdrop(topBlurBackdrop) else Modifier)
                 .background(AppColors.PageBg)
         ) {
-            val contentModifier = Modifier.align(Alignment.TopCenter).widthIn(max = 840.dp)
+            val contentModifier = Modifier.align(Alignment.TopCenter).widthIn(max = contentMaxWidth)
                 .fillMaxWidth().fillMaxHeight().imePadding()
             val heading: @Composable () -> Unit = {
                 Spacer(Modifier.height(toolbarTotalHeight))
@@ -218,7 +225,7 @@ internal fun CollapsingSettingsScaffold(
             Row(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .then(if (alignToolbarToContent) Modifier.widthIn(max = 840.dp) else Modifier)
+                    .then(if (alignToolbarToContent) Modifier.widthIn(max = contentMaxWidth) else Modifier)
                     .fillMaxWidth()
                     .statusBarsPadding()
                     .height(SettingsToolbarHeight)
@@ -230,6 +237,7 @@ internal fun CollapsingSettingsScaffold(
                     imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
                     contentDescription = stringResource(R.string.back),
                     onClick = onBack,
+                    modifier = Modifier.pagePushToolbarItem(),
                     settingsBackButton = !alignToolbarToContent
                 ) else Spacer(Modifier.size(48.dp))
                 Box(
@@ -242,6 +250,7 @@ internal fun CollapsingSettingsScaffold(
                 }
                 if (actions != null) {
                     Row(
+                        modifier = Modifier.pagePushToolbarItem(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(AppSpace.sm, Alignment.End),
                         content = actions

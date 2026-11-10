@@ -73,6 +73,7 @@ import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import com.huangder.lumibooks.ui.components.DisclosureChevron
+import com.huangder.lumibooks.ui.animation.finishWithPush
 
 @AndroidEntryPoint
 class SponsorActivity : ComponentActivity() {
@@ -137,11 +138,11 @@ class SponsorActivity : ComponentActivity() {
             ) {
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,
-                    onBack = { finish() }
+                    onBack = { finishWithPush() }
                 )
                 SponsorPage(
                     githubContributorsClient = githubContributorsClient,
-                    onBack = { finish() }
+                    onBack = { finishWithPush() }
                 )
             }
         }

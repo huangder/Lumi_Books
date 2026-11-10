@@ -4,47 +4,63 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.AppIconStyle
+import com.huangder.lumibooks.ui.brand.LumiWordmark
+import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 
-// 开屏图为竖图（853x1844）：横屏时按原比例居中显示，
+// 经典图标的开屏图为竖图（853x1844）：横屏时按原比例居中显示，
 // 两侧空白用图片边缘主题色填充（浅色/暗色各自取图边缘均值）。
 private val LightSplashBackground = Color(0xFFFCE3E2)
 private val DarkSplashBackground = Color(0xFF5B5252)
-private val Lumi2LightSplashBackground = Color(0xFFFFF5F5)
-private val Lumi2DarkSplashBackground = Color(0xFF130F10)
+
+// Same as @color/launch_background, the neutral cold-start window colour.
+private val NeutralLight = Color(0xFFF6F7FA)
+private val NeutralDark = Color(0xFF0E1014)
 
 @Composable
 fun SplashScreen(isDark: Boolean, iconStyle: String) {
     val style = AppIconStyle.fromStoredValue(iconStyle)
-    val background = when (style) {
-        AppIconStyle.LUMI_CHAN, AppIconStyle.LUMI_2 -> if (isDark) Lumi2DarkSplashBackground else Lumi2LightSplashBackground
-        AppIconStyle.CLASSIC -> if (isDark) DarkSplashBackground else LightSplashBackground
-    }
-    val imageResource = when (style) {
-        AppIconStyle.LUMI_CHAN -> R.drawable.splash_lumi2
-        AppIconStyle.LUMI_2 -> R.drawable.splash_lumi2
-        AppIconStyle.CLASSIC -> if (isDark) R.drawable.splash_dark else R.drawable.splash_light
+    val trace = com.huangder.lumibooks.util.diagnostics.startupTraceModifier("app_splash")
+    if (style == AppIconStyle.CLASSIC) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(trace)
+                .background(if (isDark) DarkSplashBackground else LightSplashBackground),
+            contentAlignment = Alignment.Center
+        ) {
+            Image(
+                painter = painterResource(if (isDark) R.drawable.splash_dark else R.drawable.splash_light),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit
+            )
+        }
+        return
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .then(com.huangder.lumibooks.util.diagnostics.startupTraceModifier("app_splash"))
-            .background(background),
-        contentAlignment = Alignment.Center
-    ) {
-        Image(
-            painter = painterResource(imageResource),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Fit
-        )
+    // Lumi 2 / Lumi-chan: just the wordmark on a plain base, identical to the cold-start window
+    // (splash_background_dawn), so there is no jump and nothing to animate while the home screen
+    // is composed underneath.
+    CompositionLocalProvider(LocalIsDarkTheme provides isDark) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(trace)
+                .background(if (isDark) NeutralDark else NeutralLight),
+            contentAlignment = Alignment.Center
+        ) {
+            LumiWordmark(modifier = Modifier.padding(bottom = 24.dp), animate = false)
+        }
     }
 }

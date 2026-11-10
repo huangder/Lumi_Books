@@ -90,6 +90,7 @@ import com.huangder.lumibooks.util.diagnostics.DiagnosticSessionManager
 import kotlinx.coroutines.launch
 import java.io.File
 import com.huangder.lumibooks.ui.components.DisclosureChevron
+import com.huangder.lumibooks.ui.animation.finishWithPush
 
 @AndroidEntryPoint
 class FeedbackActivity : ComponentActivity() {
@@ -151,9 +152,9 @@ class FeedbackActivity : ComponentActivity() {
             ) {
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,
-                    onBack = { finish() }
+                    onBack = { finishWithPush() }
                 )
-                FeedbackOverviewPage(onBack = { finish() })
+                FeedbackOverviewPage(onBack = { finishWithPush() })
             }
         }
     }

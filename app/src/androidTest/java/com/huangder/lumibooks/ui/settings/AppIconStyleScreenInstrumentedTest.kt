@@ -47,4 +47,26 @@ class AppIconStyleScreenInstrumentedTest {
         composeRule.onNodeWithText(lumi2Label).assertIsNotSelected()
         composeRule.onNodeWithText(classicLabel).assertIsSelected()
     }
+
+    @Test
+    fun lumi2AppearanceSegmentsSwitchVariant() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val darkLabel = context.getString(R.string.dark_mode_dark)
+        val autoLabel = context.getString(R.string.icon_style_appearance_auto)
+        var selectedStyle by mutableStateOf(AppIconStyle.LUMI_2.storedValue)
+
+        composeRule.setContent {
+            EBookReaderTheme(darkTheme = false) {
+                AppIconStyleOptions(
+                    selectedStyle = selectedStyle,
+                    onSelect = { selectedStyle = it }
+                )
+            }
+        }
+
+        composeRule.onNodeWithText(darkLabel).performClick()
+        composeRule.runOnIdle { assert(selectedStyle == AppIconStyle.LUMI_2_DARK.storedValue) }
+        composeRule.onNodeWithText(autoLabel).performClick()
+        composeRule.runOnIdle { assert(selectedStyle == AppIconStyle.LUMI_2_AUTO.storedValue) }
+    }
 }

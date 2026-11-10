@@ -17,6 +17,7 @@ import com.huangder.lumibooks.util.diagnostics.DiagnosticLogger
 import com.huangder.lumibooks.util.diagnostics.DiagnosticSessionManager
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import com.huangder.lumibooks.ui.animation.finishWithPush
 
 @AndroidEntryPoint
 class DiagnosticActivity : ComponentActivity() {
@@ -65,8 +66,8 @@ class DiagnosticActivity : ComponentActivity() {
                 motionPreference = com.huangder.lumibooks.ui.theme.MotionPreference.fromStoredValue(motion),
                 lumiBackgroundScene = com.huangder.lumibooks.ui.theme.LumiBackgroundScene.SECONDARY
             ) {
-                com.huangder.lumibooks.ui.components.ConfigurableActivityBack(predictiveBackEnabled = predictiveBack, onBack = ::finish)
-                DiagnosticPage(onBack = ::finish, diagnosticSessionManager = diagnosticSessionManager, diagnosticLogger = diagnosticLogger)
+                com.huangder.lumibooks.ui.components.ConfigurableActivityBack(predictiveBackEnabled = predictiveBack, onBack = { finishWithPush() })
+                DiagnosticPage(onBack = { finishWithPush() }, diagnosticSessionManager = diagnosticSessionManager, diagnosticLogger = diagnosticLogger)
             }
         }
     }

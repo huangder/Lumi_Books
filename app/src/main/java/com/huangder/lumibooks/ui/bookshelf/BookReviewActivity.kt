@@ -120,6 +120,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.ceil
 import kotlin.math.roundToInt
 import javax.inject.Inject
+import com.huangder.lumibooks.ui.animation.finishWithPush
 
 @AndroidEntryPoint
 class BookReviewActivity : ComponentActivity() {
@@ -196,7 +197,7 @@ class BookReviewActivity : ComponentActivity() {
                 appFontSize = appFontSize,
                 globalFontMode = font
             ) {
-                ConfigurableActivityBack(predictiveBackEnabled = predictiveBack, onBack = { finish() })
+                ConfigurableActivityBack(predictiveBackEnabled = predictiveBack, onBack = { finishWithPush() })
                 // The theme already hosts the Lumi artwork, so this page only adds its own surface.
                 Surface(modifier = Modifier.fillMaxSize(), color = AppColors.PageBg) {
                     LiquidGlassDialogHost(modifier = Modifier.fillMaxSize()) {
@@ -206,7 +207,7 @@ class BookReviewActivity : ComponentActivity() {
                             bookAuthor = author,
                             coverPath = coverPath,
                             dataStoreManager = dataStoreManager,
-                            onBack = { finish() }
+                            onBack = { finishWithPush() }
                         )
                     }
                 }
@@ -459,7 +460,7 @@ private fun ReviewScoreLine(rating: Float, headingColor: Color, subtleColor: Col
 
 /** A tap picks a whole star, a drag keeps tenths, and TalkBack adjusts in half stars. */
 @Composable
-private fun ReviewRatingBar(rating: Float, onRatingChange: (Float) -> Unit) {
+internal fun ReviewRatingBar(rating: Float, onRatingChange: (Float) -> Unit) {
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val haptic = LocalHapticFeedback.current
     val motionEnabled = LocalMotionEnabled.current

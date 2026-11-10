@@ -23,4 +23,15 @@ class AppIconStyleTest {
         assertEquals(AppIconStyle.LUMI_2, AppIconStyle.fromStoredValue("lumi_chan", false))
         assertEquals(AppIconStyle.LUMI_CHAN, AppIconStyle.fromStoredValue("lumi_chan", true))
     }
+
+    @Test
+    fun `lumi 2 appearance variants round trip and form one family`() {
+        assertEquals(AppIconStyle.LUMI_2_DARK, AppIconStyle.fromStoredValue("lumi2_dark"))
+        assertEquals(AppIconStyle.LUMI_2_AUTO, AppIconStyle.fromStoredValue("lumi2_auto"))
+        assertEquals("lumi2_auto", AppIconStyle.normalize("lumi2_auto", easterEggUnlocked = false))
+        assertEquals(
+            setOf(AppIconStyle.LUMI_2, AppIconStyle.LUMI_2_DARK, AppIconStyle.LUMI_2_AUTO),
+            AppIconStyle.entries.filter { it.isLumi2Family }.toSet()
+        )
+    }
 }

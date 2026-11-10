@@ -128,16 +128,9 @@ fun SettingsScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(AppColors.PageBg)
-    ) {
-        CollapsingSettingsScaffold(
-            title = stringResource(R.string.settings_title),
-            onBack = onNavigateBack,
-            modifier = Modifier.fillMaxSize()
-        ) {
+    AdaptiveSettingsOverview(
+        onBack = onNavigateBack,
+        overview = {
             Spacer(Modifier.height(AppSpace.sm))
 
                 // 头像快捷入口
@@ -214,6 +207,8 @@ fun SettingsScreen(
 
                 com.huangder.lumibooks.edition.EditionTagManagementSettingsEntry()
 
+        },
+        preferences = {
                 // 分类列表：按设置域分组，组内使用细分隔线保持扫描节奏。
                 SettingsCategoryGroup {
                     CategoryItem(AppIcons.Tile.Reading, stringResource(R.string.title_reading_settings), grouped = true, tileColor = SettingsTileColors.Orange) {
@@ -261,7 +256,7 @@ fun SettingsScreen(
                     }
                 }
         }
-    }
+    )
 
 
     // ── 昵称编辑对话框（卡片风格） ──

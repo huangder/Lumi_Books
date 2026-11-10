@@ -242,7 +242,7 @@ object LaunchThemeController {
         return setLauncherComponents(context, iconStyleSnapshot(context), enabled)
     }
 
-    /** Apply the selected icon/splash pair without restarting the running application. */
+    /** Apply an explicit icon selection using Android's DONT_KILL_APP flag. */
     fun applyIconStyle(context: Context, style: String): Boolean =
         setLauncherComponents(context, style, splashEnabledSnapshot(context))
 
@@ -267,14 +267,7 @@ object LaunchThemeController {
         val unlocked = context.getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
             .getBoolean(EASTER_EGG_UNLOCKED, false)
         val desired = launcherComponentStates(style, splashEnabled, unlocked)
-        val manifestDefaults = mapOf(
-            LauncherComponentNames.LUMI_CHAN_SPLASH to false,
-            LauncherComponentNames.LUMI_CHAN_DIRECT to false,
-            LauncherComponentNames.LUMI_2_SPLASH to true,
-            LauncherComponentNames.LUMI_2_DIRECT to false,
-            LauncherComponentNames.CLASSIC_SPLASH to false,
-            LauncherComponentNames.CLASSIC_DIRECT to false
-        )
+        val manifestDefaults = LauncherComponentNames.manifestDefaults
 
         val alreadySynchronized = desired.all { (name, shouldBeEnabled) ->
             val current = isComponentEnabled(

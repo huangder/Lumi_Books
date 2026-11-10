@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Covered page drifts toward the leading edge, without dimming or scaling. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="380"
+    android:interpolator="@interpolator/lumi_push"
+    android:shareInterpolator="true">
+    <translate
+        android:fromXDelta="0"
+        android:toXDelta="-25%" />
+</set>

@@ -18,6 +18,7 @@ import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import com.huangder.lumibooks.ui.animation.finishWithPush
 
 /**
  * 书签、高亮与笔记 — 独立 Activity
@@ -100,14 +101,14 @@ class BookNotesActivity : ComponentActivity() {
             ) {
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,
-                    onBack = { finish() }
+                    onBack = { finishWithPush() }
                 )
                 Surface(modifier = Modifier.fillMaxSize(), color = com.huangder.lumibooks.ui.theme.AppColors.PageBg) {
                     com.huangder.lumibooks.ui.components.LiquidGlassDialogHost(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         BookNotesScreen(
-                            onNavigateBack = { finish() },
+                            onNavigateBack = { finishWithPush() },
                             initialTab = initialTab,
                             targetNoteId = targetNoteId
                         )

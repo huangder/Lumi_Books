@@ -127,6 +127,12 @@ import java.util.Locale
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.delay
 import com.huangder.lumibooks.ui.theme.AppPresentation
+import com.huangder.lumibooks.ui.brand.LumiDawnBackground
+import com.huangder.lumibooks.ui.brand.LumiDawnButton
+import com.huangder.lumibooks.ui.brand.LumiWordmark
+import com.huangder.lumibooks.ui.brand.lumiDawnColors
+import com.huangder.lumibooks.ui.brand.lumiReveal
+import com.huangder.lumibooks.ui.brand.rememberLumiReveal
 
 // 设计规范颜色 - 浅色模式
 private val AccentColor: Color @Composable get() = AppColors.Accent
@@ -145,17 +151,8 @@ private val WelcomeContentMaxWidth = 560.dp
 internal enum class WelcomePage {
     LANGUAGE_SETUP,
     INTRODUCTION,
-    LIQUID_GLASS_PREVIEW,
+    FEATURES,
     SUPPORT
-}
-
-private enum class UpdatePreview {
-    MINERU,
-    LIQUID_GLASS,
-    BOOKSHELF,
-    EXCERPT,
-    G2,
-    DICTIONARY
 }
 
 internal fun welcomePages(
@@ -165,7 +162,9 @@ internal fun welcomePages(
 ): List<WelcomePage> = buildList {
     if (shouldShowLanguageSetup) add(WelcomePage.LANGUAGE_SETUP)
     add(WelcomePage.INTRODUCTION)
-    if (isNewInstallation && !isEInkMode) add(WelcomePage.LIQUID_GLASS_PREVIEW)
+    // The release's three headline updates, for everyone. New installs already start on Liquid
+    // Glass, so there is no theme step any more.
+    add(WelcomePage.FEATURES)
     add(WelcomePage.SUPPORT)
 }
 
@@ -212,11 +211,9 @@ fun WelcomeScreen(
     onFinished: () -> Unit,
     onOpenSponsor: () -> Unit,
     onLanguageSetupComplete: (language: String, eInkEnabled: Boolean) -> Unit,
-    onEnableLiquidGlass: () -> Unit,
     startOnIntroduction: Boolean = false,
-    startOnSupport: Boolean = false,
-    startOnLiquidGlassPreview: Boolean = false,
-    allowLiquidGlassReplay: Boolean = false
+    startOnFeatures: Boolean = false,
+    startOnSupport: Boolean = false
 ) {
     val motionEnabled = LocalMotionEnabled.current
     val pages = remember(shouldShowLanguageSetup, isNewInstallation, isEInkMode) {
@@ -226,7 +223,7 @@ fun WelcomeScreen(
         mutableStateOf(
             when {
                 startOnSupport && WelcomePage.SUPPORT in pages -> WelcomePage.SUPPORT
-                startOnLiquidGlassPreview && WelcomePage.LIQUID_GLASS_PREVIEW in pages -> WelcomePage.LIQUID_GLASS_PREVIEW
+                startOnFeatures && WelcomePage.FEATURES in pages -> WelcomePage.FEATURES
                 startOnIntroduction && WelcomePage.INTRODUCTION in pages -> WelcomePage.INTRODUCTION
                 else -> pages.first()
             }
@@ -245,11 +242,18 @@ fun WelcomeScreen(
     }
 
     val backVisualProgress = if (predictiveBackProgress >= 1f) 0f else predictiveBackProgress
+    // The intro plays its wordmark entrance once; returning from the stories lands it in place.
+    var introWordmarkPlayed by rememberSaveable { mutableStateOf(false) }
+    val sharedMotion = motionEnabled && !isEInkMode
+    // One stage for the whole flow: the glow drifts on uninterrupted while pages change, and under
+    // Liquid Glass it is also the backdrop every glass control refracts.
+    com.huangder.lumibooks.ui.brand.LumiDawnStage(Modifier.background(AppColors.WindowBg)) {
+    androidx.compose.animation.SharedTransitionLayout {
+    CompositionLocalProvider(LocalWelcomeSharedScope provides if (sharedMotion) this else null) {
     AnimatedContent(
         targetState = currentPage,
         modifier = Modifier
             .fillMaxSize()
-            .background(AppColors.WindowBg)
             .graphicsLayer {
                 if (!isEInkMode && motionEnabled) {
                     translationX = backVisualProgress * size.width * 0.12f
@@ -261,6 +265,10 @@ fun WelcomeScreen(
                 EnterTransition.None togetherWith ExitTransition.None
             } else if (!motionEnabled) {
                 fadeIn(tween(140)) togetherWith fadeOut(tween(120))
+            } else if (setOf(initialState, targetState) == setOf(WelcomePage.INTRODUCTION, WelcomePage.FEATURES)) {
+                // Same backdrop on both sides: crossfade while "Filmy" flies between them.
+                fadeIn(tween(460, delayMillis = 140, easing = AppEasing.Decelerate)) togetherWith
+                    fadeOut(tween(260, easing = AppEasing.Accelerate))
             } else if (targetState.ordinal > initialState.ordinal) {
                 (slideInHorizontally(
                     animationSpec = tween(520, easing = AppEasing.Smooth),
@@ -283,6 +291,7 @@ fun WelcomeScreen(
         },
         label = "welcomePage"
     ) { page ->
+        CompositionLocalProvider(LocalWelcomeAnimatedScope provides if (sharedMotion) this else null) {
         when (page) {
             WelcomePage.LANGUAGE_SETUP -> LanguageAndEInkPage(
                 initialLanguage = initialLanguage,
@@ -294,17 +303,15 @@ fun WelcomeScreen(
             WelcomePage.INTRODUCTION -> WelcomeIntroductionPage(
                 isDark = isDark,
                 isEInkMode = isEInkMode,
+                isNewInstallation = isNewInstallation,
+                animateWordmark = !introWordmarkPlayed,
+                onWordmarkPlayed = { introWordmarkPlayed = true },
                 onContinue = { currentPage = pages[(pages.indexOf(WelcomePage.INTRODUCTION) + 1).coerceAtMost(pages.lastIndex)] }
             )
 
-            WelcomePage.LIQUID_GLASS_PREVIEW -> UpdatePreviewPage(
-                preview = UpdatePreview.LIQUID_GLASS,
-                isEInkMode = isEInkMode,
-                isLiquidGlass = isLiquidGlass,
-                allowLiquidGlassReplay = allowLiquidGlassReplay,
-                onBack = { currentPage = pages[(pages.indexOf(page) - 1).coerceAtLeast(0)] },
-                onNext = { currentPage = pages[(pages.indexOf(page) + 1).coerceAtMost(pages.lastIndex)] },
-                onEnableLiquidGlass = onEnableLiquidGlass
+            WelcomePage.FEATURES -> WelcomeFeatureStoriesPage(
+                hasReadingJournal = com.huangder.lumibooks.edition.editionHasReadingJournal,
+                onContinue = { currentPage = pages[(pages.indexOf(page) + 1).coerceAtMost(pages.lastIndex)] }
             )
 
             // 官方版替换为会员试用引导；OSS 保留原赞助页。
@@ -322,436 +329,12 @@ fun WelcomeScreen(
                 }
             )
         }
-    }
-}
-
-@Composable
-private fun UpdatePreviewPage(
-    preview: UpdatePreview,
-    isEInkMode: Boolean,
-    isLiquidGlass: Boolean,
-    allowLiquidGlassReplay: Boolean,
-    onBack: () -> Unit,
-    onNext: () -> Unit,
-    onEnableLiquidGlass: () -> Unit
-) {
-    val animateEntrance = LocalMotionEnabled.current && !isEInkMode
-    var hasEntered by remember(preview) { mutableStateOf(!animateEntrance) }
-    var liquidGlassSelected by rememberSaveable { mutableStateOf(isLiquidGlass) }
-    var themeSwitchStage by rememberSaveable { mutableIntStateOf(0) }
-
-    LaunchedEffect(preview, isEInkMode) {
-        if (animateEntrance) delay(delayMillis(40L))
-        hasEntered = true
-    }
-    LaunchedEffect(isLiquidGlass) {
-        if (isLiquidGlass) liquidGlassSelected = true
-    }
-
-    val title = when (preview) {
-        UpdatePreview.MINERU -> stringResource(R.string.welcome_mineru_preview_title)
-        UpdatePreview.LIQUID_GLASS -> stringResource(R.string.welcome_liquid_glass_title)
-        UpdatePreview.BOOKSHELF -> stringResource(R.string.welcome_bookshelf_preview_title)
-        UpdatePreview.EXCERPT -> stringResource(R.string.welcome_excerpt_title)
-        UpdatePreview.G2 -> stringResource(R.string.welcome_g2_title)
-        UpdatePreview.DICTIONARY -> stringResource(R.string.welcome_dictionary_title)
-    }
-    val subtitle = when (preview) {
-        UpdatePreview.MINERU -> stringResource(R.string.welcome_mineru_preview_subtitle)
-        UpdatePreview.LIQUID_GLASS -> stringResource(R.string.welcome_liquid_glass_subtitle)
-        UpdatePreview.BOOKSHELF -> stringResource(R.string.welcome_bookshelf_preview_subtitle)
-        UpdatePreview.EXCERPT -> stringResource(R.string.welcome_excerpt_subtitle)
-        UpdatePreview.G2 -> stringResource(R.string.welcome_g2_subtitle)
-        UpdatePreview.DICTIONARY -> stringResource(R.string.welcome_dictionary_subtitle)
-    }
-    val textPrimary = AppColors.TextPrimary
-    val textSecondary = AppColors.TextSecondary
-    val frameColor = AppColors.BgGray
-    val titleProgress by animateFloatAsState(
-        targetValue = if (hasEntered) 1f else 0f,
-        animationSpec = if (!animateEntrance) snap() else tween(360, easing = AppEasing.Decelerate),
-        label = "previewTitleProgress"
-    )
-    val artworkProgress by animateFloatAsState(
-        targetValue = if (hasEntered) 1f else 0f,
-        animationSpec = if (!animateEntrance) snap() else spring(dampingRatio = 0.72f, stiffness = 330f),
-        label = "previewArtworkProgress"
-    )
-    val buttonsProgress by animateFloatAsState(
-        targetValue = if (hasEntered) 1f else 0f,
-        animationSpec = if (!animateEntrance) snap() else tween(360, delayMillis = 110, easing = AppEasing.Decelerate),
-        label = "previewButtonsProgress"
-    )
-    val useLiquidGlassButtons = (isLiquidGlass || liquidGlassSelected) && !isEInkMode
-    val shockwaveTier = remember { welcomeShockwaveTier(android.os.Build.MODEL.orEmpty()) }
-    val shockwaveBandHeightPx = with(LocalDensity.current) { 110.dp.toPx() }
-    val shockwaveProgress = remember { androidx.compose.animation.core.Animatable(0f) }
-    var shockwaveRun by remember { mutableIntStateOf(0) }
-    val shockwaveDuration = if (LocalMotionPreference.current == MotionPreference.REDUCED) 600 else 1_000
-    LaunchedEffect(shockwaveRun) {
-        if (shockwaveRun > 0) {
-            shockwaveProgress.snapTo(0f)
-            shockwaveProgress.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = shockwaveDuration, easing = ShockwaveEaseIn)
-            )
         }
     }
-
-    BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(AppColors.WindowBg)
-            .safeDrawingPadding()
-    ) {
-        val compact = maxHeight < 600.dp
-        val artworkHeight = (maxHeight - if (preview == UpdatePreview.LIQUID_GLASS) 340.dp else 274.dp)
-            .coerceIn(200.dp, 720.dp)
-        Column(
-            modifier = Modifier
-                .widthIn(max = WelcomeContentMaxWidth)
-                .fillMaxWidth()
-                .fillMaxHeight()
-                .align(Alignment.TopCenter)
-                    .welcomeShockwavePageEffect(
-                        progress = shockwaveProgress.value,
-                        bandHeightPx = shockwaveBandHeightPx,
-                        isDark = LocalIsDarkTheme.current,
-                        tier = shockwaveTier,
-                        reducedMotion = LocalMotionPreference.current == MotionPreference.REDUCED || LocalEInkMode.current,
-                        samplingQuality = LocalLiquidGlassSamplingQuality.current
-                    ),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Column(
-                modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Spacer(modifier = Modifier.height(if (compact) 16.dp else 36.dp))
-
-                Column(
-                    modifier = Modifier.graphicsLayer {
-                        alpha = titleProgress
-                        translationX = (1f - titleProgress) * 28.dp.toPx()
-                    },
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = title,
-                        modifier = Modifier.padding(horizontal = 24.dp),
-                        fontSize = 29.sp,
-                        lineHeight = 36.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                        color = AccentColor
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = subtitle,
-                        modifier = Modifier.padding(horizontal = 28.dp),
-                        fontSize = AppType.Body,
-                        lineHeight = 23.sp,
-                        fontWeight = FontWeight.Medium,
-                        textAlign = TextAlign.Center,
-                        color = textSecondary
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(28.dp))
-
-                UpdatePreviewArtwork(
-                    preview = preview,
-                    frameColor = frameColor,
-                    textSecondary = textSecondary,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(artworkHeight)
-                        .padding(horizontal = 32.dp)
-                        .graphicsLayer {
-                            alpha = artworkProgress
-                            scaleX = 0.90f + artworkProgress * 0.10f
-                            scaleY = 0.90f + artworkProgress * 0.10f
-                            translationX = (1f - artworkProgress) * 36.dp.toPx()
-                        }
-                )
-
-                Spacer(modifier = Modifier.height(20.dp))
-            }
-
-            if (preview == UpdatePreview.LIQUID_GLASS) {
-                WelcomeActionButton(
-                    text = if (liquidGlassSelected) stringResource(R.string.welcome_liquid_glass_enabled) else stringResource(R.string.welcome_enable_liquid_glass),
-                    onClick = {
-                        if ((!liquidGlassSelected || allowLiquidGlassReplay) && themeSwitchStage == 0) {
-                            themeSwitchStage = 1
-                        }
-                    },
-                    primary = true,
-                    forceLiquidGlass = useLiquidGlassButtons,
-                    textPrimary = textPrimary,
-                    enabled = (!liquidGlassSelected || allowLiquidGlassReplay) && themeSwitchStage == 0,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 32.dp)
-                        .heightIn(min = 52.dp)
-                        .graphicsLayer {
-                            alpha = buttonsProgress
-                            translationX = (1f - buttonsProgress) * 24.dp.toPx()
-                        }
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 32.dp)
-                    .graphicsLayer {
-                        alpha = buttonsProgress
-                        translationX = (1f - buttonsProgress) * 24.dp.toPx()
-                    },
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                WelcomeActionButton(
-                    text = stringResource(R.string.welcome_previous),
-                    onClick = onBack,
-                    primary = false,
-                    forceLiquidGlass = useLiquidGlassButtons,
-                    textPrimary = textPrimary,
-                    secondaryContainerColor = AppColors.BgGray,
-                    enabled = themeSwitchStage == 0,
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 52.dp)
-                )
-                WelcomeActionButton(
-                    text = stringResource(R.string.welcome_next),
-                    onClick = onNext,
-                    primary = true,
-                    forceLiquidGlass = useLiquidGlassButtons,
-                    textPrimary = textPrimary,
-                    enabled = themeSwitchStage == 0,
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 52.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(if (compact) 12.dp else 24.dp))
-        }
-
-        if (themeSwitchStage != 0) {
-            ThemeSwitchOverlay(
-                stage = themeSwitchStage,
-                isDark = LocalIsDarkTheme.current,
-                isEInkMode = isEInkMode,
-                progress = shockwaveProgress.value,
-                tier = shockwaveTier,
-                samplingQuality = LocalLiquidGlassSamplingQuality.current,
-                reducedMotion = LocalMotionPreference.current == MotionPreference.REDUCED,
-                onApplyTheme = {
-                    liquidGlassSelected = true
-                    onEnableLiquidGlass()
-                },
-                onWaveStart = {
-                    themeSwitchStage = 2
-                    shockwaveRun++
-                },
-                onStageChange = { themeSwitchStage = it },
-                onFinished = { themeSwitchStage = 0 }
-            )
-        }
+    }
+    }
     }
 }
-
-@Composable
-private fun UpdatePreviewArtwork(
-    preview: UpdatePreview,
-    frameColor: Color,
-    textSecondary: Color,
-    modifier: Modifier = Modifier
-) {
-    when (preview) {
-        UpdatePreview.MINERU -> PhonePreviewFrame(
-            imageRes = R.drawable.welcome_mineru_preview,
-            description = stringResource(R.string.welcome_mineru_preview_description),
-            frameColor = frameColor,
-            modifier = modifier
-        )
-
-        UpdatePreview.BOOKSHELF -> PhonePreviewFrame(
-            imageRes = R.drawable.welcome_bookshelf_preview,
-            description = stringResource(R.string.welcome_bookshelf_preview_description),
-            frameColor = frameColor,
-            modifier = modifier
-        )
-
-        UpdatePreview.EXCERPT -> PhonePreviewFrame(
-            imageRes = R.drawable.welcome_excerpt_preview,
-            description = stringResource(R.string.welcome_excerpt_description),
-            frameColor = frameColor,
-            modifier = modifier
-        )
-
-        UpdatePreview.G2 -> PhonePreviewFrame(
-            imageRes = R.drawable.welcome_g2_preview,
-            description = stringResource(R.string.welcome_g2_description),
-            frameColor = frameColor,
-            modifier = modifier
-        )
-
-        UpdatePreview.DICTIONARY -> PhonePreviewFrame(
-            imageRes = R.drawable.welcome_dictionary_preview,
-            description = stringResource(R.string.welcome_dictionary_description),
-            frameColor = frameColor,
-            modifier = modifier
-        )
-
-        UpdatePreview.LIQUID_GLASS -> LiquidGlassPreviewFrame(
-            frameColor = frameColor,
-            textSecondary = textSecondary,
-            modifier = modifier
-        )
-    }
-}
-
-@Composable
-private fun PhonePreviewFrame(
-    imageRes: Int,
-    description: String,
-    frameColor: Color,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .clip(AppRoundedCornerShape(36.dp))
-            .background(frameColor),
-        contentAlignment = Alignment.Center
-    ) {
-        Image(
-            painter = painterResource(imageRes),
-            contentDescription = description,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 22.dp, vertical = 18.dp),
-            contentScale = ContentScale.Fit
-        )
-    }
-}
-
-@Composable
-private fun LiquidGlassPreviewFrame(
-    frameColor: Color,
-    textSecondary: Color,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier
-            .clip(AppRoundedCornerShape(36.dp))
-            .background(frameColor)
-            .padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        LiquidGlassPreviewTile(
-            imageRes = R.drawable.welcome_glass_home_preview,
-            description = stringResource(R.string.welcome_liquid_glass_home_description),
-            alignment = Alignment.BottomCenter,
-            modifier = Modifier.weight(1f)
-        )
-        LiquidGlassPreviewTile(
-            imageRes = R.drawable.welcome_glass_dialog_preview,
-            description = stringResource(R.string.welcome_liquid_glass_dialog_description),
-            alignment = Alignment.Center,
-            modifier = Modifier.weight(1f)
-        )
-        LiquidGlassPreviewTile(
-            imageRes = R.drawable.welcome_glass_reader_preview,
-            description = stringResource(R.string.welcome_liquid_glass_reader_description),
-            alignment = Alignment.BottomCenter,
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            text = stringResource(R.string.welcome_liquid_glass_preview_caption),
-            fontSize = AppType.Footnote,
-            lineHeight = 19.sp,
-            textAlign = TextAlign.Center,
-            color = textSecondary,
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
-}
-
-@Composable
-private fun LiquidGlassPreviewTile(
-    imageRes: Int,
-    description: String,
-    alignment: Alignment,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(AppRoundedCornerShape(24.dp))
-            .background(Color.White),
-        contentAlignment = Alignment.Center
-    ) {
-        Image(
-            painter = painterResource(imageRes),
-            contentDescription = description,
-            modifier = Modifier
-                .fillMaxWidth(0.64f)
-                .fillMaxHeight(),
-            contentScale = ContentScale.Crop,
-            alignment = alignment
-        )
-    }
-}
-
-@Composable
-private fun ThemeSwitchOverlay(
-    stage: Int,
-    isDark: Boolean,
-    isEInkMode: Boolean,
-    progress: Float,
-    tier: WelcomeShockwaveTier,
-    samplingQuality: com.huangder.lumibooks.domain.model.LiquidGlassSamplingQuality,
-    reducedMotion: Boolean,
-    onApplyTheme: () -> Unit,
-    onWaveStart: () -> Unit,
-    onStageChange: (Int) -> Unit,
-    onFinished: () -> Unit
-) {
-    LaunchedEffect(Unit) {
-        delay(delayMillis(40L))
-        onWaveStart()
-        onApplyTheme()
-        delay(delayMillis(if (reducedMotion) 600L else 1_000L))
-        onStageChange(3)
-        delay(delayMillis(180L))
-        onFinished()
-    }
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                detectTapGestures { }
-            }
-    ) {
-        val shaderHandlesShockwave = android.os.Build.VERSION.SDK_INT >= 33 &&
-            !reducedMotion && tier != WelcomeShockwaveTier.HALO_ONLY
-        if (!isEInkMode && !shaderHandlesShockwave) {
-            WelcomeShockwave(
-                progress = progress,
-                isDark = isDark,
-                tier = tier,
-                samplingQuality = samplingQuality,
-                reducedMotion = reducedMotion
-            )
-        }
-    }
-}
-
-private val ShockwaveEaseIn = androidx.compose.animation.core.Easing { fraction -> fraction * fraction }
 
 @Composable
 private fun WelcomeActionButton(
@@ -956,74 +539,62 @@ private fun LanguageAndEInkPage(
     }
 }
 
+/**
+ * The first welcome page, in the "Lumi Dawn" language: the same wordmark the splash shows,
+ * now joined by a greeting (or an update notice) and the policy line above one ink button.
+ */
 @Composable
 private fun WelcomeIntroductionPage(
     isDark: Boolean,
     isEInkMode: Boolean,
+    isNewInstallation: Boolean,
+    animateWordmark: Boolean,
+    onWordmarkPlayed: () -> Unit,
     onContinue: () -> Unit
 ) {
+    LaunchedEffect(Unit) { onWordmarkPlayed() }
     var showPrivacyPolicy by remember { mutableStateOf(false) }
     var showTermsOfService by remember { mutableStateOf(false) }
-    val privacyColor = when {
-        isEInkMode -> Color.Black
-        isDark -> AccentColor.copy(alpha = 0.62f)
-        else -> AccentColor.copy(alpha = 0.58f)
-    }
-    val linkColor = when {
-        isEInkMode -> Color.Black
-        else -> AccentColor
-    }
+    val dawn = lumiDawnColors()
+    val linkColor = if (isEInkMode) Color.Black else dawn.ink
+    val greetingIn = rememberLumiReveal(index = 0, baseDelayMillis = 120L)
+    val footerIn = rememberLumiReveal(index = 8, baseDelayMillis = 120L)
 
     Box(modifier = Modifier.fillMaxSize()) {
-        WelcomeGradientBackground(
-            isDark = isDark,
-            isEInkMode = isEInkMode
-        )
+        LumiDawnBackground()
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .navigationBarsPadding()
-                .padding(bottom = 24.dp),
+                .safeDrawingPadding()
+                .padding(top = 24.dp, bottom = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.weight(1f))
 
+            Text(
+                text = stringResource(if (isNewInstallation) R.string.welcome_title else R.string.welcome_update_title),
+                fontSize = 15.sp,
+                lineHeight = 21.sp,
+                letterSpacing = 0.04.sp,
+                color = dawn.inkSecondary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .padding(horizontal = 32.dp)
+                    .lumiReveal(greetingIn, 8.dp)
+            )
+            Spacer(modifier = Modifier.height(26.dp))
+            LumiWordmark(animate = animateWordmark, codenameModifier = Modifier.welcomeCodename())
+
+            Spacer(modifier = Modifier.weight(1.25f))
+
             Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-                modifier = Modifier.padding(horizontal = 24.dp)
+                modifier = Modifier
+                    .widthIn(max = WelcomeContentMaxWidth)
+                    .fillMaxWidth()
+                    .padding(horizontal = 32.dp)
+                    .lumiReveal(footerIn, 12.dp)
             ) {
-                WelcomeHeroText(
-                    text = stringResource(R.string.welcome_title),
-                    fontSize = 21.sp,
-                    lineHeight = 28.sp,
-                    fontWeight = FontWeight.Medium,
-                    isEInkMode = isEInkMode
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                WelcomeHeroText(
-                    text = stringResource(R.string.welcome_brand_name),
-                    fontSize = 37.sp,
-                    lineHeight = 44.sp,
-                    fontWeight = FontWeight.Medium,
-                    isEInkMode = isEInkMode
-                )
-                Spacer(modifier = Modifier.height(18.dp))
-                WelcomeHeroText(
-                    text = stringResource(R.string.welcome_major_version),
-                    fontSize = 167.sp,
-                    lineHeight = 176.sp,
-                    fontWeight = FontWeight.Medium,
-                    outlineWidth = 1.33.dp,
-                    useOpacityGradient = true,
-                    isEInkMode = isEInkMode
-                )
-            }
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            Column(modifier = Modifier.padding(horizontal = 32.dp)) {
                 val privacyText = stringResource(R.string.welcome_privacy)
                 val andText = stringResource(R.string.welcome_and)
                 val termsText = stringResource(R.string.welcome_terms)
@@ -1048,11 +619,11 @@ private fun WelcomeIntroductionPage(
 
                 BasicText(
                     text = annotatedText,
-                    style = androidx.compose.ui.text.TextStyle(
-                        color = privacyColor,
+                    style = TextStyle(
+                        color = dawn.inkSecondary,
                         fontFamily = FontFamily.SansSerif,
                         fontSize = AppType.Caption2,
-                        lineHeight = 16.sp,
+                        lineHeight = 17.sp,
                         fontWeight = FontWeight.Normal,
                         letterSpacing = 0.sp,
                         textAlign = TextAlign.Start
@@ -1061,40 +632,27 @@ private fun WelcomeIntroductionPage(
                     modifier = Modifier
                         .fillMaxWidth()
                         .pointerInput(annotatedText) {
-                        detectTapGestures { offset ->
-                            textLayoutResult?.let { layoutResult ->
-                                val position = layoutResult.getOffsetForPosition(offset)
-                                val privacyAnnotations = annotatedText.getStringAnnotations(
-                                    tag = "PRIVACY",
-                                    start = position,
-                                    end = position
-                                )
-                                val termsAnnotations = annotatedText.getStringAnnotations(
-                                    tag = "TERMS",
-                                    start = position,
-                                    end = position
-                                )
-                                when {
-                                    privacyAnnotations.isNotEmpty() -> showPrivacyPolicy = true
-                                    termsAnnotations.isNotEmpty() -> showTermsOfService = true
+                            detectTapGestures { offset ->
+                                textLayoutResult?.let { layoutResult ->
+                                    val position = layoutResult.getOffsetForPosition(offset)
+                                    when {
+                                        annotatedText.getStringAnnotations("PRIVACY", position, position).isNotEmpty() ->
+                                            showPrivacyPolicy = true
+                                        annotatedText.getStringAnnotations("TERMS", position, position).isNotEmpty() ->
+                                            showTermsOfService = true
+                                    }
                                 }
                             }
                         }
-                    }
+                )
+                Spacer(modifier = Modifier.height(18.dp))
+                LumiDawnButton(
+                    text = stringResource(R.string.welcome_start_using),
+                    onClick = onContinue,
+                    style = com.huangder.lumibooks.ui.brand.LumiDawnButtonStyle.Frosted,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
-
-            Spacer(modifier = Modifier.height(20.dp))
-            WelcomeStartButton(
-                text = stringResource(R.string.welcome_start_using),
-                isDark = isDark,
-                isEInkMode = isEInkMode,
-                onClick = onContinue,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 32.dp)
-                    .height(52.dp)
-            )
         }
 
         AnimatedVisibility(
@@ -1314,253 +872,6 @@ internal fun SupportWelcomeButton(
                 fontWeight = FontWeight.SemiBold
             )
         }
-    }
-}
-
-@Composable
-private fun WelcomeHeroText(
-    text: String,
-    fontSize: TextUnit,
-    lineHeight: TextUnit,
-    fontWeight: FontWeight,
-    isEInkMode: Boolean,
-    outlineWidth: Dp = 0.dp,
-    useOpacityGradient: Boolean = false
-) {
-    val outlineWidthPx = with(LocalDensity.current) { outlineWidth.toPx() }
-    val fillBrush = when {
-        isEInkMode -> Brush.verticalGradient(listOf(Color.Black, Color.Black))
-        useOpacityGradient -> Brush.verticalGradient(
-            listOf(Color.White.copy(alpha = 0.82f), Color.White.copy(alpha = 0.06f))
-        )
-        else -> Brush.verticalGradient(
-            listOf(Color.White.copy(alpha = 0.70f), Color.White.copy(alpha = 0.70f))
-        )
-    }
-    val outlineBrush = when {
-        isEInkMode -> Brush.verticalGradient(listOf(Color.Black, Color.Black))
-        useOpacityGradient -> Brush.verticalGradient(
-            listOf(Color.White, Color.White.copy(alpha = 0.08f))
-        )
-        else -> Brush.verticalGradient(
-            listOf(Color.White.copy(alpha = 0.90f), Color.White.copy(alpha = 0.90f))
-        )
-    }
-    val baseStyle = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontSize = fontSize,
-        lineHeight = lineHeight,
-        fontWeight = fontWeight,
-        letterSpacing = 0.sp,
-        textAlign = TextAlign.Center
-    )
-
-    Box(contentAlignment = Alignment.Center) {
-        if (outlineWidth > 0.dp) {
-            Text(
-                text = text,
-                modifier = Modifier.clearAndSetSemantics {},
-                maxLines = 1,
-                style = baseStyle.copy(
-                    brush = outlineBrush,
-                    drawStyle = Stroke(width = outlineWidthPx)
-                )
-            )
-        }
-        Text(
-            text = text,
-            maxLines = 1,
-            style = baseStyle.copy(
-                brush = fillBrush,
-                drawStyle = Fill
-            )
-        )
-    }
-}
-
-@Composable
-private fun WelcomeGradientBackground(
-    isDark: Boolean,
-    isEInkMode: Boolean
-) {
-    val motionEnabled = LocalMotionEnabled.current && !isEInkMode
-    val accentColor = AccentColor
-    val accentArgb = accentColor.toArgb()
-    val backgroundColor = if (isDark) {
-        Color(blendAppAccentArgb(0xFF000000.toInt(), accentArgb, 0.10f))
-    } else {
-        Color(blendAppAccentArgb(0xFFFFFFFF.toInt(), accentArgb, 0.04f))
-    }
-    val darkTopColor = Color(blendAppAccentArgb(0xFF000000.toInt(), accentArgb, 0.48f))
-    val darkMiddleColor = Color(blendAppAccentArgb(0xFF000000.toInt(), accentArgb, 0.26f))
-    val progress = if (motionEnabled) {
-        val transition = rememberInfiniteTransition(label = "welcomeGradientFlow")
-        val first by transition.animateFloat(
-            initialValue = 0f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(18_000, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "welcomeGradientFirst"
-        )
-        val second by transition.animateFloat(
-            initialValue = 0f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(23_000, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "welcomeGradientSecond"
-        )
-        val third by transition.animateFloat(
-            initialValue = 0f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(29_000, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "welcomeGradientThird"
-        )
-        Triple(first, second, third)
-    } else {
-        Triple(0.5f, 0.5f, 0.5f)
-    }
-
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        if (isEInkMode) {
-            drawRect(Color.White)
-            return@Canvas
-        }
-
-        drawRect(backgroundColor)
-        drawRect(
-            brush = Brush.verticalGradient(
-                0f to if (isDark) darkTopColor else accentColor,
-                0.52f to if (isDark) darkMiddleColor else accentColor.copy(alpha = 0.62f),
-                1f to Color.Transparent,
-                startY = 0f,
-                endY = size.height
-            )
-        )
-
-        val longestSide = maxOf(size.width, size.height)
-        fun center(
-            startX: Float,
-            startY: Float,
-            endX: Float,
-            endY: Float,
-            value: Float
-        ) = Offset(
-            x = size.width * (startX + (endX - startX) * value),
-            y = size.height * (startY + (endY - startY) * value)
-        )
-
-        fun drawAccentField(center: Offset, radius: Float, alpha: Float) {
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        accentColor.copy(alpha = alpha),
-                        accentColor.copy(alpha = alpha * 0.42f),
-                        Color.Transparent
-                    ),
-                    center = center,
-                    radius = radius
-                ),
-                radius = radius,
-                center = center
-            )
-        }
-
-        val darkAlphaScale = if (isDark) 0.42f else 1f
-        val firstCenter = center(-0.08f, 0.20f, 0.05f, 0.28f, progress.first)
-        val secondCenter = center(0.88f, 0.35f, 0.74f, 0.47f, progress.second)
-        val thirdCenter = center(0.18f, 0.70f, 0.34f, 0.63f, progress.third)
-        drawAccentField(firstCenter, longestSide * 0.68f, 0.58f * darkAlphaScale)
-        drawAccentField(secondCenter, longestSide * 0.62f, 0.54f * darkAlphaScale)
-        drawAccentField(thirdCenter, longestSide * 0.74f, 0.38f * darkAlphaScale)
-
-        val highlightCenter = center(0.82f, 0.48f, 0.68f, 0.57f, progress.second)
-        val highlightRadius = longestSide * 0.52f
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    Color.White.copy(alpha = if (isDark) 0.08f else 0.72f),
-                    Color.Transparent
-                ),
-                center = highlightCenter,
-                radius = highlightRadius
-            ),
-            radius = highlightRadius,
-            center = highlightCenter
-        )
-    }
-}
-
-@Composable
-private fun WelcomeStartButton(
-    text: String,
-    isDark: Boolean,
-    isEInkMode: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val motionEnabled = LocalMotionEnabled.current
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (motionEnabled && pressed) 0.97f else 1f,
-        animationSpec = if (!motionEnabled) {
-            snap()
-        } else {
-            tween(
-                durationMillis = if (pressed) 90 else 160,
-                easing = FastOutSlowInEasing
-            )
-        },
-        label = "welcomeStartButtonScale"
-    )
-    val shape = AppRoundedCornerShape(26.dp)
-    val containerColor = when {
-        isEInkMode -> Color.White
-        isDark -> Color(
-            blendAppAccentArgb(0xFF000000.toInt(), AccentColor.toArgb(), 0.14f)
-        ).copy(alpha = 0.55f)
-        else -> Color.White.copy(alpha = 0.48f)
-    }
-    val contentColor = when {
-        isEInkMode -> Color.Black
-        else -> AccentColor
-    }
-    val borderColor = if (isEInkMode) Color.Black else Color.White.copy(alpha = 0.90f)
-
-    Box(
-        modifier = modifier
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .clip(shape)
-            .background(containerColor)
-            .border(1.dp, borderColor, shape)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                role = Role.Button,
-                onClick = onClick
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = text,
-            color = contentColor,
-            fontFamily = FontFamily.SansSerif,
-            fontSize = 18.sp,
-            lineHeight = 24.sp,
-            fontWeight = FontWeight.Medium,
-            letterSpacing = 0.sp,
-            maxLines = 1
-        )
     }
 }
 

@@ -3,6 +3,8 @@
     <style name="Theme.EBookReader" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarDividerColor">@android:color/transparent</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowBackground">@color/app_window_background</item>
         <!-- 🔥 覆盖原生绿色，使用蓝色系（全局默认） -->
@@ -10,8 +12,40 @@
         <item name="android:colorControlActivated">@color/primary</item>
     </style>
 
+    <attr name="lumiPagePush" format="boolean" />
+
+    <!-- Explicit marker keeps page transitions away from launcher and overlay activities. -->
+    <style name="Animation.Lumi.Push" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/lumi_push_open_enter</item>
+        <item name="android:activityOpenExitAnimation">@anim/lumi_push_open_exit</item>
+        <item name="android:activityCloseEnterAnimation">@anim/lumi_push_close_enter</item>
+        <item name="android:activityCloseExitAnimation">@anim/lumi_push_close_exit</item>
+    </style>
+
+    <style name="Animation.Lumi.Push.Fast" parent="Animation.Lumi.Push">
+        <item name="android:activityOpenEnterAnimation">@anim/lumi_push_open_enter_fast</item>
+        <item name="android:activityOpenExitAnimation">@anim/lumi_push_open_exit_fast</item>
+        <item name="android:activityCloseEnterAnimation">@anim/lumi_push_close_enter_fast</item>
+        <item name="android:activityCloseExitAnimation">@anim/lumi_push_close_exit_fast</item>
+    </style>
+
+    <style name="Animation.Lumi.Push.None" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@null</item>
+        <item name="android:activityOpenExitAnimation">@null</item>
+        <item name="android:activityCloseEnterAnimation">@null</item>
+        <item name="android:activityCloseExitAnimation">@null</item>
+    </style>
+
+    <style name="Theme.EBookReader.Page" parent="Theme.EBookReader">
+        <item name="lumiPagePush">true</item>
+    </style>
+
+    <style name="Theme.EBookReader.Page.NoPreview" parent="Theme.EBookReader.Page">
+        <item name="android:windowDisablePreview">true</item>
+    </style>
+
     <style name="Theme.EBookReader.Launch" parent="Theme.EBookReader">
-        <item name="android:windowBackground">@drawable/splash_background_lumi2</item>
+        <item name="android:windowBackground">@drawable/splash_background_dawn</item>
         <item name="android:forceDarkAllowed">false</item>
     </style>
 

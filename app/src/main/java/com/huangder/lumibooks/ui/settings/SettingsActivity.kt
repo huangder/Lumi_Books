@@ -27,13 +27,12 @@ import javax.inject.Inject
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import androidx.compose.foundation.layout.Box
+import com.huangder.lumibooks.ui.animation.finishWithPush
 
 /**
  * 设置页 — 独立 Activity
  *
- * 过渡动画：不调用 overrideActivityTransition / overridePendingTransition，
- * 由系统使用 OEM 默认动画（小米 HyperOS、OPPO ColorOS、vivo OriginOS、
- * 荣耀 MagicOS 各自的原生过渡），Pixel 走 Android 原生 CrossActivityAnim。
+ * 过渡动画由 PagePushTransitions 统一配置为不透明窗口的横向推入/返回。
  */
 @AndroidEntryPoint
 class SettingsActivity : ComponentActivity() {
@@ -104,7 +103,7 @@ class SettingsActivity : ComponentActivity() {
                 val settingsControlsBackdrop = rememberLayerBackdrop()
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,
-                    onBack = { finish() }
+                    onBack = { finishWithPush() }
                 )
                 Surface(modifier = Modifier.fillMaxSize(), color = com.huangder.lumibooks.ui.theme.AppColors.PageBg) {
                     com.huangder.lumibooks.ui.components.LiquidGlassDialogHost(
@@ -138,7 +137,7 @@ class SettingsActivity : ComponentActivity() {
                                 settingsControlsBackdrop.takeIf { effectiveAppTheme == "liquid_glass" }
                             ) {
                                 SettingsScreen(
-                                    onNavigateBack = { finish() }
+                                    onNavigateBack = { finishWithPush() }
                                 )
                             }
                         }
@@ -157,5 +156,5 @@ class SettingsActivity : ComponentActivity() {
         return (uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
     }
 
-    // finish() 不再覆写 — 系统默认返回动画由 OEM 自行控制
+    // finish() 不覆写；窗口返回动画由 PagePushTransitions 统一配置。
 }

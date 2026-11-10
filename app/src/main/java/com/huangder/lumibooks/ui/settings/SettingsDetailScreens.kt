@@ -1114,6 +1114,10 @@ fun DisplayDetail(viewModel: SettingsViewModel) {
             supportingText = when (uiState.appIconStyle) {
                 AppIconStyle.LUMI_CHAN.storedValue -> stringResource(R.string.icon_style_lumi_chan)
                 AppIconStyle.CLASSIC.storedValue -> stringResource(R.string.icon_style_classic)
+                AppIconStyle.LUMI_2_DARK.storedValue ->
+                    stringResource(R.string.icon_style_lumi2) + " · " + stringResource(R.string.dark_mode_dark)
+                AppIconStyle.LUMI_2_AUTO.storedValue ->
+                    stringResource(R.string.icon_style_lumi2) + " · " + stringResource(R.string.icon_style_appearance_auto)
                 else -> stringResource(R.string.icon_style_lumi2)
             }
         ) {

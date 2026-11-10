@@ -19,6 +19,7 @@ import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import com.huangder.lumibooks.ui.animation.finishWithPush
 
 /** 全部书籍的书签、高亮与笔记，按时间从新到旧，不分书。 */
 @AndroidEntryPoint
@@ -86,13 +87,13 @@ class AnnotationFeedActivity : ComponentActivity() {
             ) {
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,
-                    onBack = { finish() }
+                    onBack = { finishWithPush() }
                 )
                 Surface(modifier = Modifier.fillMaxSize(), color = com.huangder.lumibooks.ui.theme.AppColors.PageBg) {
                     com.huangder.lumibooks.ui.components.LiquidGlassDialogHost(
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        AnnotationFeedScreen(onNavigateBack = { finish() })
+                        AnnotationFeedScreen(onNavigateBack = { finishWithPush() })
                     }
                 }
             }

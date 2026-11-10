@@ -4,7 +4,17 @@ package com.huangder.lumibooks.domain.model
 enum class AppIconStyle(val storedValue: String) {
     LUMI_CHAN("lumi_chan"),
     LUMI_2("lumi2"),
+
+    /** Lumi 2 artwork on a dark background, regardless of the system theme. */
+    LUMI_2_DARK("lumi2_dark"),
+
+    /** Lumi 2 artwork that follows the system theme through Android's `-night` resources. */
+    LUMI_2_AUTO("lumi2_auto"),
     CLASSIC("classic");
+
+    /** Whether this style is one of the Lumi 2 appearance variants (light / dark / auto). */
+    val isLumi2Family: Boolean
+        get() = this == LUMI_2 || this == LUMI_2_DARK || this == LUMI_2_AUTO
 
     companion object {
         fun fromStoredValue(value: String?): AppIconStyle =

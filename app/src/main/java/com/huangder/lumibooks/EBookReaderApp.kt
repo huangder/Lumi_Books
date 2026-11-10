@@ -89,6 +89,7 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
         ))
         LaunchThemeController.synchronizeLauncherComponents(this)
         registerActivityLifecycleCallbacks(this)
+        registerActivityLifecycleCallbacks(com.huangder.lumibooks.ui.animation.PagePushTransitions)
         floatingSubtitleOverlayController.start()
         webdavAutoSyncScheduler.start()
         applicationScope.launch(Dispatchers.IO) {

@@ -11,6 +11,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -22,7 +23,7 @@ import com.huangder.lumibooks.ui.reader.ReaderDocumentState
 import kotlinx.coroutines.delay
 
 /**
- * Keep a solid paper surface visible while the reader document loads behind the route fade.
+ * Keep a solid paper surface visible while the reader document loads behind the window.
  */
 internal fun shouldMountReaderContent(
     state: ReaderDocumentState,
@@ -45,6 +46,16 @@ internal fun rememberReaderMountReady(bookId: String, windowReady: Boolean): Boo
         }
     }
     return ready
+}
+
+/** A new reader loads Room itself; only later requests need to replace its existing session. */
+@Composable
+internal fun ObserveReaderPositionReload(readerIdentity: Any, requestToken: Long, onReload: (Long) -> Unit) {
+    val initialToken = remember(readerIdentity) { requestToken }
+    val latestReload by rememberUpdatedState(onReload)
+    LaunchedEffect(readerIdentity, requestToken) {
+        if (requestToken != 0L && requestToken != initialToken) latestReload(requestToken)
+    }
 }
 
 @Composable

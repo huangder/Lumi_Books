@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="welcome_story_journal_eyebrow">読書ジャーナル</string>
+    <string name="welcome_story_journal_title">本を開くたびに、ちゃんと残る</string>
+    <string name="welcome_story_journal_subtitle">読み始め、ハイライト、章の読了——ジャーナルがその瞬間を記録し、インサイトがあなたのリズムを映します。</string>
+    <string name="welcome_story_insights_eyebrow">読書インサイト</string>
+    <string name="welcome_story_insights_title">自分の読書リズムが見える</string>
+    <string name="welcome_story_insights_subtitle">時間・ハイライト・進捗を日ごとにまとめ、最近の読書がひと目でわかります。</string>
+    <string name="welcome_story_listening_eyebrow">全画面リスニング</string>
+    <string name="welcome_story_listening_title">目を閉じても、一文も逃さない</string>
+    <string name="welcome_story_listening_subtitle">新しい全画面リスニングと、一文ずつ追うフローティング字幕。イヤホンのボタンで一時停止や切り替えも。</string>
+    <string name="welcome_story_stats_eyebrow">統計をリニューアル</string>
+    <string name="welcome_story_stats_title">あなたの読書が、ひと目で</string>
+    <string name="welcome_story_stats_subtitle">時間・推移・ヒートマップで、毎週と毎年を語る新しい統計ページ。</string>
+    <string name="welcome_story_art_today">今日</string>
+    <string name="welcome_story_art_journal_started">『海辺の灯台』を読み始めた</string>
+    <string name="welcome_story_art_journal_highlight">ハイライト 3 件 · メモ 1 件</string>
+    <string name="welcome_story_art_journal_chapter">第 4 章を読了</string>
+    <string name="welcome_story_art_insight_goal">今日の目標</string>
+    <string name="welcome_story_art_insight_today">今日 42 分読書</string>
+    <string name="welcome_story_art_insight_streak">6 日連続で読書中</string>
+    <string name="welcome_story_art_insight_peak">よく読むのは夜 10 時</string>
+    <string name="welcome_story_art_stats_week">今週の読書</string>
+    <string name="welcome_story_art_stats_duration">%1$d 時間 %2$d 分</string>
+    <string name="welcome_story_art_stats_heatmap">過去 3 か月</string>
+    <string name="welcome_story_art_stats_compare" formatted="false">先週より 18% 増</string>
+</resources>

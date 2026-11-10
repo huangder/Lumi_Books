@@ -3,6 +3,7 @@ package com.huangder.lumibooks.ui.welcome
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -22,15 +23,14 @@ class WelcomeScreenInstrumentedTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun introductionUsesUnifiedVersionTwoDesign() {
+    fun introductionShowsCodenameWordmarkAndUpdateNotice() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         showWelcome(isNewInstallation = false, startOnIntroduction = true)
 
-        composeRule.onNodeWithText(context.getString(R.string.welcome_title)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_brand_name)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_major_version)).assertIsDisplayed()
+        composeRule.onNodeWithText(context.getString(R.string.welcome_update_title)).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Lumi ${com.huangder.lumibooks.ui.brand.LumiCodename.CURRENT}").assertIsDisplayed()
         composeRule.onNodeWithText(context.getString(R.string.welcome_start_using)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_update_title)).assertDoesNotExist()
+        composeRule.onNodeWithText(context.getString(R.string.welcome_title)).assertDoesNotExist()
         composeRule.onNodeWithText(context.getString(R.string.welcome_exit)).assertDoesNotExist()
         composeRule
             .onNodeWithContentDescription(context.getString(R.string.welcome_app_icon_description))
@@ -38,14 +38,14 @@ class WelcomeScreenInstrumentedTest {
     }
 
     @Test
-    fun startButtonKeepsExistingInstallSpecificNextStep() {
+    fun newInstallGoesThroughUpdatesWithoutThemeStep() {
+        // The official build replaces the last page with the Hilt-backed trial invitation.
+        assumeFalse(BuildConfig.PREMIUM_EDITION)
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         showWelcome(isNewInstallation = true, startOnIntroduction = true)
 
         composeRule.onNodeWithText(context.getString(R.string.welcome_start_using)).performClick()
-
-        composeRule.onNodeWithText(context.getString(R.string.welcome_liquid_glass_title)).assertIsDisplayed()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_next)).performClick()
+        walkThroughStories(context)
         composeRule.onNodeWithText(context.getString(R.string.welcome_support_title)).assertIsDisplayed()
     }
 
@@ -57,10 +57,7 @@ class WelcomeScreenInstrumentedTest {
         showWelcome(isNewInstallation = false, startOnIntroduction = true)
 
         composeRule.onNodeWithText(context.getString(R.string.welcome_start_using)).performClick()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_enable_liquid_glass)).assertDoesNotExist()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_excerpt_title)).assertDoesNotExist()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_g2_title)).assertDoesNotExist()
-        composeRule.onNodeWithText(context.getString(R.string.welcome_dictionary_title)).assertDoesNotExist()
+        walkThroughStories(context)
         composeRule.onNodeWithText(context.getString(R.string.welcome_support_title)).assertIsDisplayed()
     }
 
@@ -77,6 +74,15 @@ class WelcomeScreenInstrumentedTest {
         composeRule.onNodeWithText("☕").assertDoesNotExist()
         composeRule.onNodeWithText("✨").assertDoesNotExist()
         composeRule.onNodeWithText("💗").assertDoesNotExist()
+    }
+
+    private fun walkThroughStories(context: android.content.Context) {
+        composeRule.onNodeWithText(context.getString(R.string.welcome_story_journal_title)).assertIsDisplayed()
+        composeRule.onNodeWithTag("welcome-story-next").performClick()
+        composeRule.onNodeWithText(context.getString(R.string.welcome_story_listening_title)).assertIsDisplayed()
+        composeRule.onNodeWithTag("welcome-story-next").performClick()
+        composeRule.onNodeWithText(context.getString(R.string.welcome_story_stats_title)).assertIsDisplayed()
+        composeRule.onNodeWithTag("welcome-story-next").performClick()
     }
 
     private fun showWelcome(
@@ -100,7 +106,6 @@ class WelcomeScreenInstrumentedTest {
                     onFinished = {},
                     onOpenSponsor = {},
                     onLanguageSetupComplete = { _, _ -> },
-                    onEnableLiquidGlass = {},
                     startOnIntroduction = startOnIntroduction,
                     startOnSupport = startOnSupport
                 )

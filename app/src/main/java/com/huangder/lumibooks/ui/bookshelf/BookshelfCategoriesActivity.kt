@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.bookshelf
 
+import com.huangder.lumibooks.ui.animation.pagePushToolbarItem
 import com.huangder.lumibooks.ui.icons.ControlIcon
 
 import com.huangder.lumibooks.ui.theme.cardOutline
@@ -111,6 +112,7 @@ import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
+import com.huangder.lumibooks.ui.animation.finishWithPush
 
 @AndroidEntryPoint
 class BookshelfCategoriesActivity : ComponentActivity() {
@@ -173,7 +175,7 @@ class BookshelfCategoriesActivity : ComponentActivity() {
             ) {
                 ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,
-                    onBack = { finish() }
+                    onBack = { finishWithPush() }
                 )
                 Surface(modifier = Modifier.fillMaxSize(), color = AppColors.PageBg) {
                     LiquidGlassDialogHost(modifier = Modifier.fillMaxSize()) {
@@ -210,7 +212,7 @@ class BookshelfCategoriesActivity : ComponentActivity() {
                                 )
                                 finish()
                             },
-                            onBack = { finish() }
+                            onBack = { finishWithPush() }
                         )
                     }
                 }
@@ -701,6 +703,7 @@ private fun CategoriesPageHeader(
             imageVector = if (closeButton) AppIcons.X else directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
             contentDescription = stringResource(if (closeButton) R.string.close else R.string.back),
             onClick = onBack,
+            modifier = Modifier.pagePushToolbarItem(),
             settingsBackButton = !compactPanel
         )
         Spacer(Modifier.width(20.dp))
@@ -714,7 +717,7 @@ private fun CategoriesPageHeader(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
-        com.huangder.lumibooks.edition.EditionTagManagementButton(com.huangder.lumibooks.domain.model.TagTypes.BOOK)
+        com.huangder.lumibooks.edition.EditionTagManagementButton(com.huangder.lumibooks.domain.model.TagTypes.BOOK, modifier = Modifier.pagePushToolbarItem())
     }
 }
 

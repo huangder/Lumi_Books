@@ -69,12 +69,9 @@ class BookReaderLayerTest {
             val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
             view.draw(Canvas(bitmap))
             val paper = bitmap.getPixel(view.width / 4, view.height / 4)
-            // During the short paper/cover overlap the shell is intentionally
-            // translucent, so the neutral paper is blended with the shelf.
-            assertTrue(android.graphics.Color.red(paper) >= 240)
-            assertTrue(android.graphics.Color.green(paper) >= 160)
-            assertTrue(android.graphics.Color.blue(paper) >= 150)
-            assertTrue(state.readerLayerAlpha in 0f..1f)
+            // Opaque live paper under the shell must never reveal the red shelf.
+            assertEquals(android.graphics.Color.WHITE, paper)
+            assertEquals(1f, state.readerLayerAlpha, 0f)
             assertTrue(state.overlayAlpha in 0.01f..0.99f)
             val expectedAlpha = if (state.phase == BookReaderTransitionPhase.Closing)
                 1f - state.readerExitAlphaSnapshot.value else 1f - state.readerRevealSnapshot.value
@@ -120,7 +117,7 @@ class BookReaderLayerTest {
         compose.mainClock.advanceTimeBy(500)
     }
 
-    @Test fun `moving tab occlusion matches the scaled cover outline in every theme`() {
+    @Test fun `moving tab occlusion matches the actual window outline in every theme`() {
         lateinit var view: View
         var density = 1f
         val theme = mutableStateOf("lumi")
@@ -160,20 +157,19 @@ class BookReaderLayerTest {
                     assertEquals(BookReaderTransitionPhase.Closing, state.phase)
                     val source = state.sourceBounds!!
                     val target = Rect(0f, 0f, view.width.toFloat(), view.height.toFloat())
-                    val bounds = BookReaderMotion.windowBounds(source, target,
+                    val bounds = readerWindowPixelBounds(BookReaderMotion.windowBounds(source, target,
                         state.positionSnapshot.value, state.sizeSnapshot.value,
-                        BookReaderMotion.CONTROL_POINT_OFFSET_DP * density)
+                        BookReaderMotion.CONTROL_POINT_OFFSET_DP * density))
                     val actual = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
                     view.draw(Canvas(actual))
                     val expected = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
                     val canvas = Canvas(expected)
                     canvas.drawColor(android.graphics.Color.RED)
-                    // The cover shell clips at its original size, then its layer scales.
+                    // The shell measures at the actual window size without stretching its corners.
                     canvas.translate(bounds.left, bounds.top)
-                    canvas.scale(bounds.width / source.width, bounds.height / source.height)
                     val path = AppShapes.rounded(state.cornerRadiusSnapshot.value.dp,
                         AppShapes.usesContinuousCorners(name))
-                        .createOutline(source.size, LayoutDirection.Ltr, Density(density)).toAppPath()
+                        .createOutline(bounds.size, LayoutDirection.Ltr, Density(density)).toAppPath()
                     canvas.drawPath(path.asAndroidPath(), Paint(Paint.ANTI_ALIAS_FLAG).apply {
                         color = android.graphics.Color.WHITE
                     })
@@ -261,6 +257,41 @@ class BookReaderLayerTest {
             val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
             view.draw(Canvas(bitmap))
             assertEquals(android.graphics.Color.WHITE, bitmap.getPixel(view.width / 2, view.height / 2))
+            bitmap.recycle()
+        }
+    }
+
+    @Test fun `interrupted window leaves retained outgoing reader invisible`() {
+        lateinit var view: View
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            state = rememberBookReaderTransitionState()
+            scope = rememberCoroutineScope()
+            view = LocalView.current
+            Box(Modifier.fillMaxSize().background(Color.Blue)) {
+                // Navigation can retain this entry after the short reverse motion ends.
+                Box(Modifier.fillMaxSize().bookReaderWindowClip(state)
+                    .graphicsLayer { alpha = state.readerLayerAlpha }.background(Color.Red))
+                BookHeroWindowOverlay(state)
+            }
+        }
+        compose.runOnIdle {
+            state.registerCoverAnchor("cover", book.id, Rect(20f, 30f, 120f, 180f), 8f, null)
+            scope.launch { state.startOpen(book, null, null, 8f) }
+        }
+        compose.mainClock.advanceTimeBy(96)
+        compose.runOnIdle { assertTrue(state.startClose()) }
+        compose.mainClock.advanceTimeBy(32)
+        compose.runOnIdle {
+            assertTrue(state.consumeCloseNavigation())
+            state.completeCloseAfterNavigation()
+        }
+        compose.mainClock.advanceTimeBy(400)
+        compose.runOnIdle {
+            assertEquals(BookReaderTransitionPhase.Library, state.phase)
+            val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap))
+            assertEquals(android.graphics.Color.BLUE, bitmap.getPixel(view.width / 2, view.height / 2))
             bitmap.recycle()
         }
     }

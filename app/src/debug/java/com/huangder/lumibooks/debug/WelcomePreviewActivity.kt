@@ -59,10 +59,9 @@ class WelcomePreviewActivity : ComponentActivity() {
                         },
                         onOpenSponsor = {},
                         onLanguageSetupComplete = { _, _ -> },
-                        onEnableLiquidGlass = { theme = "liquid_glass" },
-                        startOnSupport = intent.getBooleanExtra("preview_welcome_benefits", false),
-                        startOnLiquidGlassPreview = !intent.getBooleanExtra("preview_welcome_benefits", false),
-                        allowLiquidGlassReplay = true
+                        startOnIntroduction = intent.getBooleanExtra("preview_welcome_intro", false),
+                        startOnFeatures = intent.getBooleanExtra("preview_welcome_features", false),
+                        startOnSupport = intent.getBooleanExtra("preview_welcome_benefits", false)
                     )
                 }
             }

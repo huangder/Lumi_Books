@@ -1,6 +1,8 @@
 package com.huangder.lumibooks.ui.components
 
 import android.app.Activity
+import android.os.Build
+import android.view.Window
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
@@ -11,6 +13,18 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
+
+/** Keep three-button navigation transparent as well as gesture navigation. */
+internal fun Window.applyTransparentNavigationBar() {
+    navigationBarColor = android.graphics.Color.TRANSPARENT
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        navigationBarDividerColor = android.graphics.Color.TRANSPARENT
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        // enableEdgeToEdge() enables this scrim by default, even with a transparent color.
+        isNavigationBarContrastEnforced = false
+    }
+}
 
 /**
  * 阅读页沉浸模式（隐藏状态栏 + 导航栏）
@@ -24,6 +38,7 @@ fun ImmersiveMode() {
 
     DisposableEffect(Unit) {
         val window = (view.context as? Activity)?.window ?: return@DisposableEffect onDispose {}
+        window.applyTransparentNavigationBar()
         val controller = WindowCompat.getInsetsController(window, view)
 
         // 隐藏系统栏，使用滑动临时显示的方式
@@ -34,7 +49,7 @@ fun ImmersiveMode() {
         onDispose {
             // 恢复系统栏
             window.statusBarColor = Color.Transparent.toArgb()
-            window.navigationBarColor = Color.Transparent.toArgb()
+            window.applyTransparentNavigationBar()
             controller.isAppearanceLightStatusBars = !isDarkTheme
             controller.isAppearanceLightNavigationBars = !isDarkTheme
             controller.show(WindowInsetsCompat.Type.systemBars())
@@ -53,7 +68,7 @@ fun MainSystemBarStyle() {
     SideEffect {
         val window = (view.context as? Activity)?.window ?: return@SideEffect
         window.statusBarColor = Color.Transparent.toArgb()
-        window.navigationBarColor = Color.Transparent.toArgb()
+        window.applyTransparentNavigationBar()
         WindowCompat.getInsetsController(window, view).apply {
             isAppearanceLightStatusBars = !isDarkTheme
             isAppearanceLightNavigationBars = !isDarkTheme
@@ -73,7 +88,7 @@ fun ReaderSystemBarStyle(
     SideEffect {
         val window = (view.context as? Activity)?.window ?: return@SideEffect
         window.statusBarColor = backgroundColor.toArgb()
-        window.navigationBarColor = backgroundColor.toArgb()
+        window.applyTransparentNavigationBar()
         WindowCompat.getInsetsController(window, view).apply {
             isAppearanceLightStatusBars = useDarkIcons
             isAppearanceLightNavigationBars = useDarkIcons

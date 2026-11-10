@@ -30,12 +30,13 @@ import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
 import com.huangder.lumibooks.util.LocaleHelper
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import com.huangder.lumibooks.ui.animation.finishWithPush
 
 /**
  * 授权文件夹书籍页 —— 独立 Activity。
  *
  * 过渡动画：与设置页一致，不调用 overrideActivityTransition / overridePendingTransition，
- * 交给 OEM 的系统转场（HyperOS、ColorOS、OriginOS、MagicOS 各自原生动画）。
+ * 使用主题里统一的 iOS 式推入动画（Animation.Lumi.Push）。
  *
  * 玻璃折射：这里刻意不提供窗口级 Backdrop（LiquidGlassDialogHost 不传 backdrop），
  * 页面顶部的返回/刷新等玻璃控件只使用可读的材质回退，不会折射本页自身内容；
@@ -138,7 +139,7 @@ class AuthorizedFolderBooksActivity : ComponentActivity() {
                                 AuthorizedFolderBooksRoute(
                                     predictiveBackEnabled = predictiveBackEnabled && !eInkMode,
                                     contentBackdrop = glassBackdrop,
-                                    onExit = { finish() },
+                                    onExit = { finishWithPush() },
                                     onConfirmSelection = { uris ->
                                         setResult(
                                             RESULT_OK,

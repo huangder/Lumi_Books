@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_corner_content_time_battery">Time + battery</string>
+    <string name="reader_corner_content_page_number_book_progress">Chapter pages + book progress</string>
+    <string name="reader_corner_content_global_page_number_book_progress">Global pages + book progress</string>
+    <string name="reader_corner_content_chapter_page_number">Chapter title + chapter pages</string>
+    <string name="reader_corner_content_chapter_book_progress">Chapter title + book progress</string>
+</resources>

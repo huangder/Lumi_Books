@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_corner_content_time_battery">시간＋배터리</string>
+    <string name="reader_corner_content_page_number_book_progress">장 페이지＋전체 진행률</string>
+    <string name="reader_corner_content_global_page_number_book_progress">전체 페이지＋전체 진행률</string>
+    <string name="reader_corner_content_chapter_page_number">장 제목＋장 페이지</string>
+    <string name="reader_corner_content_chapter_book_progress">장 제목＋전체 진행률</string>
+</resources>

@@ -17,6 +17,7 @@ import com.huangder.lumibooks.ui.components.rememberLocalNetworkPermissionGate
 import com.huangder.lumibooks.util.LocaleHelper
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import com.huangder.lumibooks.ui.animation.finishWithPush
 
 /**
  * Remote library (WebDAV / OPDS) — source list, source editor and catalog browser in one
@@ -54,7 +55,7 @@ class RemoteLibraryActivity : ComponentActivity() {
                     predictiveBackEnabled = predictiveBackEnabled,
                     contentBackdrop = contentBackdrop,
                     requestLocalNetworkPermission = requestLocalNetworkPermission,
-                    onExit = { finish() },
+                    onExit = { finishWithPush() },
                     onOpenBookDetails = { source, item ->
                         startActivity(RemoteBookDetailsActivity.createIntent(this, source, item, targetFolderId))
                     }

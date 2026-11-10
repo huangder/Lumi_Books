@@ -575,22 +575,8 @@
     <string name="welcome_previous">上一步</string>
     <string name="welcome_open_sponsor">前往捐贈頁</string>
     <string name="welcome_next">下一步</string>
-    <string name="welcome_liquid_glass_title">液態玻璃主題 · 全面煥新</string>
-    <string name="welcome_liquid_glass_subtitle">精心設計並適配嘅液態玻璃主題，令 Lumi 每個場景都有出色嘅互動體驗。</string>
-    <string name="welcome_mineru_preview_title">內建 MinerU 解析介面</string>
-    <string name="welcome_mineru_preview_subtitle">MinerU 令 PDF OCR 解析更加準確。</string>
-    <string name="welcome_bookshelf_preview_title">書庫功能升級</string>
-    <string name="welcome_bookshelf_preview_subtitle">多選書籍同搜尋功能得到增強，書籍再多都唔怕。</string>
-    <string name="welcome_enable_liquid_glass">將主題設定為液態玻璃</string>
-    <string name="welcome_liquid_glass_enabled">已設定為液態玻璃</string>
     <string name="welcome_switching_theme">正在切換</string>
-    <string name="welcome_liquid_glass_preview_caption">唔再係簡單嘅純色同模糊，而係具有玻璃形態嘅折射效果。</string>
-    <string name="welcome_liquid_glass_home_description">液態玻璃主題 · 全面煥新</string>
-    <string name="welcome_liquid_glass_dialog_description">液態玻璃主題 · 全面煥新</string>
-    <string name="welcome_liquid_glass_reader_description">液態玻璃主題 · 全面煥新</string>
-    <string name="welcome_mineru_preview_description">內建 MinerU 解析介面</string>
-    <string name="welcome_bookshelf_preview_description">書庫功能升級</string>
-    <string name="welcome_privacy_summary">Lumi 是一款本地優先的圖書閱讀器。閱讀資料預設保存在您的裝置中；更新檢查、貢獻者頁、網路封面搜尋、遠端字型、WebDAV、MinerU、第三方 TTS、AI 翻譯等功能僅在使用時連接相應服務。連接 NAS 或局域網 WebDAV 時，本地網絡權限只用於存取你設定的伺服器，公網 WebDAV 不需要此權限。Lumi 不使用分析或廣告追蹤。點擊「繼續」，即表示您已閱讀並同意</string>
+    <string name="welcome_privacy_summary">閱讀資料預設只保存在你的裝置上，Lumi 不做分析或廣告追蹤。點擊「開始使用」，即表示你已閱讀並同意</string>
     <string name="welcome_policy_punctuation">。</string>
     <string name="welcome_app_icon_description">Lumi 應用程式圖示</string>
     <string name="welcome_privacy_content">Lumi 隱私政策\n政策版本：4\n生效日期：2026年6月29日\n最近更新：2026年11月3日\n應用程式名稱：Lumi\n套件名稱：com.huangder.lumibooks\n開發者：huangder\n聯絡電郵：huangder0104@126.com\n一、核心原則\nLumi 是開源、本地優先的電子書閱讀器。閱讀、書架、進度、書籤、筆記和大部分設定預設保存在本機。網路封面搜尋、貢獻者/頭像展示、遠端字型下載、更新檢查，以及您主動設定或啟用的 WebDAV 同步、MinerU 云端解析、第三方 TTS 或外部連結会产生相应網路請求。\n二、權限用途\n• READ_EXTERNAL_STORAGE（Android 12 及以下）：讀取您選擇的 EPUB、TXT、PDF 等電子書檔案。\n• READ_MEDIA_IMAGES（Android 13 及以上）：讀取電子書封面、匯出圖片或您選擇的圖片资源。\n• INTERNET / ACCESS_NETWORK_STATE：用于更新和政策版本檢查、遠端字型下載、WebDAV、MinerU、第三方 TTS、網路封面搜尋和外部页面存取。\n• WRITE_SETTINGS：僅在您啟用自定义亮屏时间时修改系統屏幕关闭时间。\n• 前景服務和通知權限：用于 TTS 背景播放、PDF/MinerU 解析或 WebDAV 同步進度通知。\n• WAKE_LOCK：在 TTS 背景播放期间保持裝置喚醒，避免播放意外中断。\n• SYSTEM_ALERT_WINDOW：僅在您啟用悬浮窗字幕时顯示跨應用程式懸浮字幕窗口。\n本應用程式目前最低支援 Android 11，不會在受支援裝置上請求 Android 9 及以下的舊式寫入儲存權限；不申请位置、相机/麦克风、通讯录、电话状态、短信、日历等與閱讀无关的敏感權限。\n三、本機保存的資料\n電子書檔案、閱讀進度、書籤、筆記及選取文字、閱讀時間、閱讀偏好、檔案/檔案夾授權 URI、TXT 編輯內容、MinerU 設定、WebDAV 設定、第三方 TTS 設定和本地 TTS 音訊快取可能保存在本地。MinerU Token、WebDAV 密码、第三方 TTS API Key 使用 Android Keystore 加密保存，並排除系統备份/裝置迁移。\n四、會傳輸資料的場景\n• 更新、公告和條款/政策版本檢查：应用可能存取專案發佈頁或檔案地址。\n• 遠端字型：当您選擇或恢复仿宋字型时，应用会从 GitHub Raw 或 jsDelivr 按需下載字型檔案，不上傳書籍內容。\n• WebDAV 同步：向您設定的伺服器上傳/下載書籍檔案、書籍清單、閱讀進度、書籤、筆記和選取文字。\n• MinerU 云端解析：向 OpenDataLab/MinerU 傳送您選定的 PDF、解析参数、工作識別碼；精準解析还会使用您的個人 Token。\n• 第三方 TTS：向您選擇的服务傳送目前朗读文字段、模型/音色、風格提示和必要認證資訊。若开启 HTTP 连接，API Key 和朗读文字可能未經加密傳輸並被竊聽。\n• 網路封面搜尋：向您選擇的 Bing、百度或 Google 等搜尋服務傳送书名和搜尋關鍵字；這些服務可能記錄 IP、請求時間和瀏覽器網路資訊。\n• 贊助頁貢獻者：開啟貢獻者页面时，应用會請求 GitHub contributors API 並載入 GitHub 頭像，GitHub 及其 CDN 会接收網路請求中繼資料。\n• 外部連結：僅在您主動點擊 GitHub、反馈、下載或第三方协议链接时存取對應網站。\n五、我們不會做什麼\n本應用程式不收集姓名、手機號碼、通讯录、精确位置或裝置識別碼用于追蹤；不整合分析、广告、使用者畫像、第三方推送或崩潰回報 SDK；不提供 Lumi 帳號系統或開發者營運的雲端書庫。除上述由您主動設定、啟用、进入或点击的網路功能外，不主動上傳您的書籍和閱讀內容。\n六、第三方服务\nOpenDataLab/MinerU、WebDAV 服務商、第三方 TTS、GitHub 及其 CDN、Bing、百度和 Google 等服务均獨立於 Lumi 營運。其網路日誌、可用性、計費、資料保存、刪除和合規要求由对应服务條款和隱私政策决定。\n七、資料管理\n您可以在應用程式內清除閱讀历史、快取和相關設定，或随时解除安裝应用。解除安裝会刪除应用私有資料，但不會自动刪除您自行管理的原始電子書檔案、WebDAV 伺服器副本或第三方服务已處理的資料。\n八、未成年人及兒童私隱\n在中國大陸，未成年人指未滿 18 周歲的人；不滿 14 周歲未成年人的個人資料屬於敏感個人資料。Lumi 不專門面向兒童，也不為年齡核驗收集生日或身分證件。處理不滿 14 周歲未成年人的個人資料，應依法取得監護人同意，並遵守兒童個人資料保護要求。\n未成年人使用 WebDAV、雲端解析、第三方 TTS、AI 翻譯等可選連網服務時，應在監護人指導下了解資料傳輸和費用，遵守相應服務的年齡要求。不要傳送兒童身分、聯絡方式等非必要個人資料；涉及兒童個人資料處理時，應依法取得監護人同意。\n未成年人及監護人可透過 huangder0104@126.com 提交權益申訴，以及個人資料查閱、複製、更正、刪除等請求。我們會在依法應處理的範圍內受理和處理；本機資料可透過應用程式內現有功能管理，第三方持有的資料還需聯絡相應服務方。請勿在公開 GitHub Issues 上傳兒童個人資料。\n九、政策變更、联系我们與适用范围\n我們可能因功能、法律法規或第三方服务变化更新本政策。重大變更会透過應用程式內版本提示要求您重新閱讀並確認。若您对本政策或資料处理有疑问，请联系開發者 huangder（huangder0104@126.com）。本政策僅適用於 Lumi 应用（com.huangder.lumibooks）在 Android 平台的功能，不適用於第三方服务自身的資料处理活动。\n本隱私政策最後更新于 2026年11月3日。\n十、本次更新補充說明\n• Android 17 及以上只會在連接您設定的 NAS 或局域網 WebDAV 時按需申請本地網絡權限，公網 WebDAV 不需要此權限。\n• 啟用或手動觸發 AI 翻譯時，所選文字、目標語言、模型參數和認證資料會傳送至您選擇的 Xiaomi MiMo、DeepSeek、OpenAI 或自訂相容服務；API Key 透過 Android Keystore 加密保存在本機。允許 HTTP 時可能以明文傳輸。\n• 本地詞典只在確認後下載並離線查詢。摘錄卡片在本機產生，只有主動分享時才會交給您選擇的接收應用程式。</string>
@@ -665,6 +651,8 @@
     <string name="icon_style_title">圖示風格</string>
     <string name="icon_style_lumi2">Lumi 2</string>
     <string name="icon_style_classic">經典</string>
+    <string name="icon_style_appearance_auto">自動</string>
+    <string name="icon_style_appearance_auto_hint">自動模式使用 Android 系統深淺色資源。桌面圖示能否自動更新取決於系統和桌面的支援。</string>
     <string name="icon_style_change_failed">無法切換桌面圖示，請稍後再試</string>
     <!-- MinerU 第三方雲端解析 -->
     <string name="category_third_party_services">服務</string>
@@ -1537,4 +1525,22 @@
     <string name="excerpt_style_cover">書封</string>
     <string name="excerpt_long_image">內容較長，已產生長圖</string>
     <string name="excerpt_scroll_hint">可上下滑動查看完整卡片</string>
+    <string name="book_finish_title">讀完了</string>
+    <string name="book_finish_subtitle">恭喜你讀完了《%1$s》</string>
+    <string name="book_finish_span">閱讀跨度</string>
+    <string name="book_finish_span_value">%1$s – %2$s</string>
+    <string name="book_finish_rate">給這本書打個分</string>
+    <string name="book_finish_marked">已標記為讀完</string>
+    <string name="book_finish_undo">復原</string>
+    <string name="book_finish_write_review">寫書評</string>
+    <string name="book_finish_edit_review">編輯書評</string>
+    <string name="book_finish_share">分享讀書卡</string>
+    <string name="book_finish_notes">回顧筆記</string>
+    <string name="book_finish_archive">封存</string>
+    <string name="book_finish_archive_title">封存這本書？</string>
+    <string name="book_finish_archive_body">封存後會返回書架，之後可以在「已封存」中找回。</string>
+    <string name="book_finish_restart">從頭再讀</string>
+    <string name="book_finish_back_last">回到最後一頁</string>
+    <string name="book_finish_back_shelf">返回書架</string>
+    <string name="book_finish_replay">再放一次煙火</string>
 </resources>

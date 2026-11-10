@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.components
 
+import com.huangder.lumibooks.ui.animation.pagePushToolbarItem
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -239,11 +240,11 @@ internal fun CollapsingPageScaffold(
             Row(Modifier.fillMaxWidth().statusBarsPadding().height(56.dp).padding(horizontal = AppSpace.md).then(headerDragModifier),
                 verticalAlignment = Alignment.CenterVertically) {
                 LiquidGlassIconButton(directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
-                    stringResource(R.string.back), onBack, settingsBackButton = true)
+                    stringResource(R.string.back), onBack, modifier = Modifier.pagePushToolbarItem(), settingsBackButton = true)
                 Box(Modifier.weight(1f).padding(horizontal = AppSpace.sm), contentAlignment = Alignment.Center) {
                     CollapsingPageSmallTitle(title, { state.progress })
                 }
-                if (actions != null) Row(verticalAlignment = Alignment.CenterVertically,
+                if (actions != null) Row(Modifier.pagePushToolbarItem(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(AppSpace.sm), content = actions)
                 else Spacer(Modifier.size(48.dp))
             }

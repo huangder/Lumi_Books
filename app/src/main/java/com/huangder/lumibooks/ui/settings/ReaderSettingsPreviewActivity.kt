@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.settings
 
+import com.huangder.lumibooks.ui.animation.pagePushToolbarItem
 import com.huangder.lumibooks.ui.icons.ControlIcon
 
 import com.huangder.lumibooks.ui.components.AppDialogAction
@@ -171,6 +172,7 @@ import javax.inject.Inject
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
+import com.huangder.lumibooks.ui.animation.finishWithPush
 
 @AndroidEntryPoint
 class ReaderSettingsPreviewActivity : ComponentActivity() {
@@ -239,7 +241,7 @@ class ReaderSettingsPreviewActivity : ComponentActivity() {
                 ) {
                     ConfigurableActivityBack(
                         predictiveBackEnabled = predictiveBackEnabled,
-                        onBack = ::finish
+                        onBack = { finishWithPush() }
                     )
                     ConfigurableBackHandler(
                         enabled = initialMode == MODE_THEMES && state.editingSuite != null,
@@ -304,7 +306,7 @@ class ReaderSettingsPreviewActivity : ComponentActivity() {
                     ReaderSettingsPreviewContent(
                         initialMode = initialMode,
                         state = state,
-                        onClose = ::finish,
+                        onClose = { finishWithPush() },
                         onEdit = viewModel::beginEditing,
                         onExitEditor = viewModel::closeEditor,
                         onCreate = viewModel::createTheme,
@@ -1164,18 +1166,18 @@ internal fun ThemeEditorTopBar(
             imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
             contentDescription = stringResource(R.string.reader_back),
             onClick = onExit,
-            modifier = Modifier.testTag("theme_editor_back")
+            modifier = Modifier.pagePushToolbarItem().testTag("theme_editor_back")
         )
         OptionCapsule(
             label = stringResource(R.string.reader_layout_editor_reader),
             selected = layout == ReaderLayoutTarget.READER_LAYOUT,
-            modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("theme_editor_reader_layout"),
+            modifier = Modifier.weight(1f).heightIn(min = 48.dp).pagePushToolbarItem().testTag("theme_editor_reader_layout"),
             onClick = { onLayoutChange(ReaderLayoutTarget.READER_LAYOUT) }
         )
         OptionCapsule(
             label = stringResource(R.string.reader_layout_editor_book),
             selected = layout == ReaderLayoutTarget.BOOK_LAYOUT,
-            modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("theme_editor_book_layout"),
+            modifier = Modifier.weight(1f).heightIn(min = 48.dp).pagePushToolbarItem().testTag("theme_editor_book_layout"),
             onClick = { onLayoutChange(ReaderLayoutTarget.BOOK_LAYOUT) }
         )
     }

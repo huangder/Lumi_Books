@@ -575,22 +575,8 @@
     <string name="welcome_previous">이전</string>
     <string name="welcome_open_sponsor">후원 페이지 열기</string>
     <string name="welcome_next">다음</string>
-    <string name="welcome_liquid_glass_title">리퀴드 글래스 · 새로워진 경험</string>
-    <string name="welcome_liquid_glass_subtitle">세심하게 설계된 리퀴드 글래스 테마가 Lumi의 모든 화면에 더 정교한 상호작용을 제공합니다.</string>
-    <string name="welcome_mineru_preview_title">내장 MinerU 분석</string>
-    <string name="welcome_mineru_preview_subtitle">MinerU로 PDF OCR 분석이 더 정확해집니다.</string>
-    <string name="welcome_bookshelf_preview_title">서재 기능 개선</string>
-    <string name="welcome_bookshelf_preview_subtitle">다중 선택과 검색 기능을 강화해 큰 서재도 쉽게 관리할 수 있습니다.</string>
-    <string name="welcome_enable_liquid_glass">리퀴드 글래스 사용</string>
-    <string name="welcome_liquid_glass_enabled">리퀴드 글래스 적용됨</string>
     <string name="welcome_switching_theme">전환 중</string>
-    <string name="welcome_liquid_glass_preview_caption">단순한 반투명 흐림 효과가 아닌, 유리 형태의 굴절로 깊이를 더합니다.</string>
-    <string name="welcome_liquid_glass_home_description">리퀴드 글래스 · 새로워진 경험</string>
-    <string name="welcome_liquid_glass_dialog_description">리퀴드 글래스 · 새로워진 경험</string>
-    <string name="welcome_liquid_glass_reader_description">리퀴드 글래스 · 새로워진 경험</string>
-    <string name="welcome_mineru_preview_description">내장 MinerU 분석</string>
-    <string name="welcome_bookshelf_preview_description">서재 기능 개선</string>
-    <string name="welcome_privacy_summary">Lumi는 로컬 우선 도서 리더입니다. 읽기 데이터는 기본적으로 기기에 저장되며 업데이트 확인, 기여자 페이지, 표지 검색, 원격 글꼴, WebDAV, MinerU, 외부 TTS 및 AI 번역은 사용할 때만 관련 서비스에 연결됩니다. NAS 또는 LAN WebDAV에서는 로컬 네트워크 권한을 설정한 서버에만 사용하며 공개 WebDAV에는 필요하지 않습니다. Lumi는 분석 또는 광고 추적을 사용하지 않습니다. 계속을 누르면 다음에 동의한 것으로 간주됩니다:</string>
+    <string name="welcome_privacy_summary">읽기 데이터는 기본적으로 기기에만 저장되며, Lumi는 분석이나 광고 추적을 하지 않습니다. 계속하면 다음에 동의한 것으로 간주됩니다: </string>
     <string name="welcome_policy_punctuation"></string>
     <string name="welcome_app_icon_description">Lumi 앱 아이콘</string>
     <string name="welcome_privacy_content">Lumi 개인정보 처리방침\n정책 버전: 4\n시행일: 2026년 6월 29일\n최종 업데이트: 2026년 11월 3일\n앱 이름: Lumi\n패키지명: com.huangder.lumibooks\n개발자: huangder\n연락처: huangder0104@126.com\n1. 기본 원칙\nLumi는 오픈 소스 로컬 우선 전자책 리더입니다. 서재, 읽기 진행률, 책갈피, 메모와 대부분의 설정은 기본적으로 기기에 저장됩니다. 표지 검색, 기여자와 아바타 표시, 원격 글꼴 다운로드, 업데이트 확인, 또는 사용자가 설정하거나 사용하는 WebDAV, MinerU, 외부 TTS, 외부 링크 기능에서는 네트워크 통신이 발생합니다.\n2. 권한\n- READ_EXTERNAL_STORAGE(Android 12 이하): 선택한 EPUB, TXT, PDF 등의 파일을 읽습니다.\n- READ_MEDIA_IMAGES(Android 13 이상): 표지, 내보낸 이미지 또는 선택한 이미지를 읽습니다.\n- INTERNET / ACCESS_NETWORK_STATE: 업데이트 및 정책 확인, 원격 글꼴, WebDAV, MinerU, 외부 TTS, 표지 검색과 외부 페이지에 사용합니다.\n- WRITE_SETTINGS: 사용자 지정 화면 꺼짐 시간을 켠 경우에만 변경합니다.\n- 포그라운드 서비스 및 알림 권한: TTS 재생과 분석·동기화 진행 알림에 사용합니다.\n- WAKE_LOCK: 백그라운드 TTS 재생 중 기기가 절전 모드로 전환되지 않도록 합니다.\n- SYSTEM_ALERT_WINDOW: 플로팅 자막을 켠 경우에만 다른 앱 위에 자막을 표시합니다.\n현재 최소 지원 Android는 11이며 지원 기기에서는 Android 9 이하의 이전 쓰기 저장소 권한을 사용하지 않습니다. 위치, 카메라/마이크, 연락처, 전화 상태, SMS, 캘린더 권한은 요청하지 않습니다.\n3. 기기에 저장되는 데이터\n도서 파일, 읽기 진행률, 책갈피, 메모와 선택 텍스트, 읽기 시간, 설정, 파일·폴더 URI, 편집한 TXT, MinerU·WebDAV·외부 TTS 설정과 TTS 오디오 캐시가 기기에 저장될 수 있습니다. MinerU Token, WebDAV 비밀번호, 외부 TTS API Key는 Android Keystore로 암호화하고 시스템 백업 및 기기 이전에서 제외합니다.\n4. 데이터가 전송되는 경우\n- 업데이트·공지·약관 및 정책 확인을 위해 프로젝트 릴리스 또는 문서 URL에 접속할 수 있습니다.\n- 仿宋 글꼴을 선택하거나 복원하면 GitHub Raw 또는 jsDelivr에서 글꼴을 다운로드하며 책 내용은 전송하지 않습니다.\n- WebDAV 동기화는 도서, 매니페스트, 진행률, 책갈피, 메모 및 선택 텍스트를 설정한 서버와 주고받습니다.\n- MinerU 클라우드 분석은 선택한 PDF, 분석 매개변수, 작업 식별자와 필요한 개인 Token을 OpenDataLab/MinerU로 전송합니다.\n- 외부 TTS는 현재 텍스트, 모델/음성, 스타일 지시와 인증 정보를 선택한 서비스로 전송합니다. HTTP를 켜면 API Key와 낭독 텍스트가 암호화되지 않아 도청될 수 있습니다.\n- 표지 검색은 앱 내 WebView를 통해 책 제목과 검색어를 Bing, 바이두, Google 등에 전송합니다. 해당 서비스는 IP, 요청 시간, 브라우저 및 네트워크 정보를 기록할 수 있습니다.\n- 기여자 페이지를 열면 GitHub contributors API에 접속하고 GitHub 아바타를 불러옵니다.\n- 외부 링크는 사용자가 탭한 경우에만 엽니다.\n5. Lumi가 하지 않는 일\n이름, 전화번호, 연락처, 정확한 위치 또는 기기 식별자를 추적 목적으로 수집하지 않습니다. 분석, 광고, 프로파일링, 타사 푸시, 충돌 보고 SDK, Lumi 계정 또는 개발자 운영 클라우드 서재를 제공하지 않습니다. 위에 설명한 네트워크 기능 외에는 책이나 읽기 내용을 능동적으로 업로드하지 않습니다.\n6. 제3자 서비스\nOpenDataLab/MinerU, WebDAV 서비스, 외부 TTS, GitHub와 CDN, Bing, 바이두, Google은 Lumi와 독립적으로 운영됩니다. 로그, 이용 가능성, 요금, 보관, 삭제 및 준수 규칙은 각 서비스의 약관과 개인정보 처리방침을 따릅니다.\n7. 데이터 관리 및 아동 개인정보\n기록, 캐시와 설정을 삭제하거나 언제든지 앱을 제거할 수 있습니다. 제거하면 앱 전용 데이터는 삭제되지만 원본 파일, WebDAV 사본 또는 제3자가 이미 처리한 데이터는 삭제되지 않습니다.\n중국 본토에서 미성년자는 만 18세 미만을 뜻하며 만 14세 미만 아동의 개인정보는 민감한 개인정보에 해당합니다. Lumi는 아동을 전문 대상으로 하지 않으며 연령 확인을 위해 생년월일이나 신분증을 수집하지 않습니다. 만 14세 미만 아동의 개인정보를 처리할 때는 법에 따라 보호자의 동의를 얻고 아동 개인정보 보호 요건을 준수해야 합니다.\n미성년자는 선택적 WebDAV, 클라우드 분석, 외부 TTS 또는 AI 번역을 사용하기 전에 보호자와 데이터 전송 및 요금을 확인하고 서비스 제공자의 연령 요건을 준수해야 합니다. 불필요한 아동 신원 정보나 연락처를 보내지 마세요. 아동 개인정보 처리 시 법에 따라 보호자의 동의를 얻어야 합니다.\n미성년자와 보호자는 권익 침해 신고와 개인정보 열람, 복사, 정정, 삭제 등의 요청을 huangder0104@126.com으로 보낼 수 있습니다. 개발자는 법적 책임 범위에서 접수하고 처리합니다. 로컬 데이터는 기존 앱 기능으로 관리할 수 있으며 제3자가 보유한 데이터는 해당 서비스에도 문의해야 합니다. 공개 GitHub Issues에 아동 개인정보를 게시하지 마세요.\n8. 변경 및 연락처\n기능, 법률 또는 제3자 서비스 변경에 따라 이 방침을 업데이트할 수 있습니다. 중요한 변경은 앱 내 버전 알림으로 다시 읽고 확인하도록 요청합니다. 문의는 huangder(huangder0104@126.com)에게 보내 주세요.\n9. 적용 범위\n이 방침은 Android용 Lumi(com.huangder.lumibooks)에 적용되며 제3자 서비스 자체의 데이터 처리에는 적용되지 않습니다.\n이 개인정보 처리방침은 2026년 11월 3일에 최종 업데이트되었습니다.\n10. 이번 업데이트 추가 안내\n- Android 17 이상에서는 설정한 NAS 또는 LAN WebDAV에 연결할 때만 로컬 네트워크 권한을 요청하며 공개 WebDAV에는 필요하지 않습니다.\n- AI 번역을 활성화하거나 수동 실행하면 선택한 텍스트, 대상 언어, 모델 설정과 인증 정보가 Xiaomi MiMo, DeepSeek, OpenAI 또는 사용자가 설정한 호환 서비스로 전송됩니다. API 키는 Android Keystore로 기기에 암호화 저장됩니다. HTTP를 허용하면 키와 텍스트가 암호화되지 않고 전송될 수 있습니다.\n- 로컬 사전은 확인 후에만 다운로드되고 오프라인으로 조회합니다. 발췌 카드는 기기에서 생성되며 사용자가 공유할 때만 선택한 앱으로 전달됩니다.</string>
@@ -665,6 +651,8 @@
     <string name="icon_style_title">아이콘 스타일</string>
     <string name="icon_style_lumi2">Lumi 2</string>
     <string name="icon_style_classic">클래식</string>
+    <string name="icon_style_appearance_auto">자동</string>
+    <string name="icon_style_appearance_auto_hint">자동은 Android의 라이트/다크 리소스를 사용합니다. 홈 화면 아이콘의 자동 업데이트는 시스템과 런처의 지원 여부에 따라 달라집니다.</string>
     <string name="icon_style_change_failed">홈 화면 아이콘을 변경할 수 없습니다. 잠시 후 다시 시도해 주세요.</string>
     <!-- MinerU third-party cloud parsing -->
     <string name="category_third_party_services">서비스</string>
@@ -1538,4 +1526,22 @@
     <string name="excerpt_style_cover">책 표지</string>
     <string name="excerpt_long_image">내용이 길어 세로로 긴 이미지를 생성했습니다</string>
     <string name="excerpt_scroll_hint">위아래로 스와이프하여 카드 전체 보기</string>
+    <string name="book_finish_title">완독</string>
+    <string name="book_finish_subtitle">《%1$s》을(를) 다 읽었어요</string>
+    <string name="book_finish_span">독서 기간</string>
+    <string name="book_finish_span_value">%1$s – %2$s</string>
+    <string name="book_finish_rate">이 책 평가하기</string>
+    <string name="book_finish_marked">완독으로 표시됨</string>
+    <string name="book_finish_undo">실행 취소</string>
+    <string name="book_finish_write_review">리뷰 쓰기</string>
+    <string name="book_finish_edit_review">리뷰 편집</string>
+    <string name="book_finish_share">독서 카드 공유</string>
+    <string name="book_finish_notes">노트 돌아보기</string>
+    <string name="book_finish_archive">보관</string>
+    <string name="book_finish_archive_title">이 책을 보관할까요?</string>
+    <string name="book_finish_archive_body">서재로 돌아갑니다. 나중에 \'보관됨\'에서 복원할 수 있어요.</string>
+    <string name="book_finish_restart">처음부터 다시 읽기</string>
+    <string name="book_finish_back_last">마지막 페이지로</string>
+    <string name="book_finish_back_shelf">서재로 돌아가기</string>
+    <string name="book_finish_replay">불꽃놀이 다시 보기</string>
 </resources>

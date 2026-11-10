@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep a concrete resource so PackageManager retains the auto icon ID instead of
+     resolving a values alias to the currently selected fixed artwork while parsing. -->
+<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
+    android:src="@mipmap/ic_launcher_lumi2" />

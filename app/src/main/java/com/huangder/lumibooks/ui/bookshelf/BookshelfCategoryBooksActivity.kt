@@ -26,6 +26,7 @@ import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import com.huangder.lumibooks.ui.animation.finishWithPush
 
 @AndroidEntryPoint
 class BookshelfCategoryBooksActivity : ComponentActivity() {
@@ -95,13 +96,13 @@ class BookshelfCategoryBooksActivity : ComponentActivity() {
             ) {
                 ConfigurableActivityBack(
                     predictiveBackEnabled = predictiveBackEnabled,
-                    onBack = { finish() }
+                    onBack = { finishWithPush() }
                 )
                 Surface(modifier = Modifier.fillMaxSize(), color = AppColors.PageBg) {
                     LiquidGlassDialogHost(modifier = Modifier.fillMaxSize()) {
                         BookshelfCategoryBooksRoute(
                             selectedTarget = target,
-                            onBack = { finish() },
+                            onBack = { finishWithPush() },
                             onOpenBook = { book ->
                                 startActivity(
                                     Intent(this@BookshelfCategoryBooksActivity, MainActivity::class.java)

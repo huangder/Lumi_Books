@@ -203,6 +203,25 @@ class BookReaderHandoffTest {
         assertEquals(BookReaderTransitionPhase.Library, state.phase)
     }
 
+    @Test fun `repeated back during return does not restart the reverse motion`() = runTest {
+        val state = transition()
+        state.startOpen(book, null, source, 8f)
+        state.markReaderReady()
+        advanceUntilIdle()
+        assertTrue(state.startClose())
+        advanceTimeBy(220)
+        assertTrue(state.consumeCloseNavigation())
+        state.completeCloseAfterNavigation()
+        advanceTimeBy(220)
+        val progress = state.windowProgressSnapshot.value
+        assertTrue(state.startClose())
+        advanceTimeBy(80)
+        assertTrue(state.windowProgressSnapshot.value < progress)
+        assertFalse(state.consumeCloseNavigation())
+        advanceUntilIdle()
+        assertEquals(BookReaderTransitionPhase.Library, state.phase)
+    }
+
     @Test fun `reader clip follows the cover window endpoints`() {
         val target = Rect(0f, 0f, 1080f, 2400f)
         assertEquals(source, BookReaderMotion.windowBounds(source, target, 0f, 0f, 28f))

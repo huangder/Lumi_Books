@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -42,6 +43,7 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
+import com.huangder.lumibooks.ui.components.LumiSegmentedControl
 
 @Composable
 fun AppIconStyleDetail(viewModel: SettingsViewModel) {
@@ -60,40 +62,95 @@ internal fun AppIconStyleOptions(
     easterEggUnlocked: Boolean = false,
     onSelect: (String) -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = AppSpace.md, vertical = AppSpace.md)
-            .selectableGroup(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.Top
-    ) {
-        AppIconStyleOption(
-            style = AppIconStyle.LUMI_2,
-            label = stringResource(R.string.icon_style_lumi2),
-            imageRes = R.mipmap.ic_launcher_lumi2,
-            selected = selectedStyle == AppIconStyle.LUMI_2.storedValue,
-            onSelect = onSelect,
-            modifier = Modifier.weight(1f)
-        )
-        if (easterEggUnlocked) {
+    val selected = AppIconStyle.fromStoredValue(selectedStyle)
+    val lumi2Selected = selected.isLumi2Family
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = AppSpace.md, vertical = AppSpace.md)
+                .selectableGroup(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
             AppIconStyleOption(
-                style = AppIconStyle.LUMI_CHAN,
-                label = stringResource(R.string.icon_style_lumi_chan),
-                imageRes = R.mipmap.ic_launcher_lumi_chan,
-                selected = selectedStyle == AppIconStyle.LUMI_CHAN.storedValue,
+                // Tapping the card keeps the current Lumi 2 appearance; from another style it
+                // starts with the light artwork.
+                style = if (lumi2Selected) selected else AppIconStyle.LUMI_2,
+                label = stringResource(R.string.icon_style_lumi2),
+                imageRes = lumi2PreviewRes(if (lumi2Selected) selected else AppIconStyle.LUMI_2),
+                selected = lumi2Selected,
+                onSelect = onSelect,
+                modifier = Modifier.weight(1f)
+            )
+            if (easterEggUnlocked) {
+                AppIconStyleOption(
+                    style = AppIconStyle.LUMI_CHAN,
+                    label = stringResource(R.string.icon_style_lumi_chan),
+                    imageRes = R.mipmap.ic_launcher_lumi_chan,
+                    selected = selected == AppIconStyle.LUMI_CHAN,
+                    onSelect = onSelect,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            AppIconStyleOption(
+                style = AppIconStyle.CLASSIC,
+                label = stringResource(R.string.icon_style_classic),
+                imageRes = R.mipmap.ic_launcher,
+                selected = selected == AppIconStyle.CLASSIC,
                 onSelect = onSelect,
                 modifier = Modifier.weight(1f)
             )
         }
-        AppIconStyleOption(
-            style = AppIconStyle.CLASSIC,
-            label = stringResource(R.string.icon_style_classic),
-            imageRes = R.mipmap.ic_launcher,
-            selected = selectedStyle == AppIconStyle.CLASSIC.storedValue,
-            onSelect = onSelect,
-            modifier = Modifier.weight(1f)
+        if (lumi2Selected) {
+            Lumi2AppearanceSelector(selected = selected, onSelect = onSelect)
+        }
+    }
+}
+
+internal val Lumi2AppearanceStyles = listOf(
+    AppIconStyle.LUMI_2,
+    AppIconStyle.LUMI_2_DARK,
+    AppIconStyle.LUMI_2_AUTO
+)
+
+@DrawableRes
+@Composable
+private fun lumi2PreviewRes(style: AppIconStyle): Int = when (style) {
+    AppIconStyle.LUMI_2_DARK -> R.mipmap.ic_launcher_lumi2_dark
+    // The launcher uses bitmap XML to retain a stable resource ID. Compose's painterResource
+    // accepts raster/vector assets, so select the corresponding raster for this preview.
+    AppIconStyle.LUMI_2_AUTO -> if (isSystemInDarkTheme()) {
+        R.mipmap.ic_launcher_lumi2_dark
+    } else R.mipmap.ic_launcher_lumi2
+    else -> R.mipmap.ic_launcher_lumi2
+}
+
+@Composable
+private fun Lumi2AppearanceSelector(selected: AppIconStyle, onSelect: (String) -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = AppSpace.md, end = AppSpace.md, bottom = AppSpace.md)
+    ) {
+        LumiSegmentedControl(
+            labels = listOf(
+                stringResource(R.string.dark_mode_light),
+                stringResource(R.string.dark_mode_dark),
+                stringResource(R.string.icon_style_appearance_auto)
+            ),
+            selectedIndex = Lumi2AppearanceStyles.indexOf(selected).coerceAtLeast(0),
+            onSelect = { index -> onSelect(Lumi2AppearanceStyles[index].storedValue) }
         )
+        if (selected == AppIconStyle.LUMI_2_AUTO) {
+            Spacer(Modifier.height(AppSpace.sm))
+            Text(
+                text = stringResource(R.string.icon_style_appearance_auto_hint),
+                color = AppColors.TextSecondary,
+                fontSize = AppType.Caption,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
     }
 }
 

@@ -57,6 +57,11 @@ fun ConfigurableActivityBack(
     predictiveBackEnabled: Boolean,
     onBack: () -> Unit
 ) {
+    val scene = com.huangder.lumibooks.ui.animation.LocalPageScene.current
+    if (android.os.Build.VERSION.SDK_INT >= 30 && scene?.page == true) {
+        androidx.compose.runtime.SideEffect { scene.predictiveEnabled = predictiveBackEnabled }
+        return
+    }
     if (!predictiveBackEnabled) {
         BackHandler(onBack = onBack)
     }

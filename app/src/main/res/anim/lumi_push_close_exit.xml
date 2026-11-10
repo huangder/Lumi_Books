@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Closing page slides back out to the trailing edge, staying above the revealed page. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="560"
+    android:interpolator="@interpolator/lumi_push"
+    android:shareInterpolator="true"
+    android:zAdjustment="top">
+    <translate
+        android:fromXDelta="0"
+        android:toXDelta="100%" />
+</set>

@@ -67,6 +67,7 @@ import java.time.LocalDate
 import javax.inject.Inject
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import com.huangder.lumibooks.ui.animation.finishWithPush
 
 @AndroidEntryPoint
 class BookShareActivity : ComponentActivity() {
@@ -75,7 +76,7 @@ class BookShareActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); enableEdgeToEdge()
         setContent { ReadingFeatureTheme(manager) {
-            BookSharePage(intent.getStringExtra("date"), onBack = ::finish)
+            BookSharePage(intent.getStringExtra("date"), onBack = { finishWithPush() })
         } }
     }
     companion object {

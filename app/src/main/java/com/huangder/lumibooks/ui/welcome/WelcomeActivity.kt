@@ -84,6 +84,11 @@ class WelcomeActivity : ComponentActivity() {
             startMainActivity(splashEnabled)
             return
         }
+        if (!isDebugWelcomePreview && !installState.isUpdate) {
+            // A first install starts on Liquid Glass; the theme flow below picks it up live, so the
+            // welcome pages already render in glass. Upgrades keep whatever the user had.
+            lifecycleScope.launch { dataStoreManager.applyFreshInstallDefaults() }
+        }
 
         setContent {
             val appTheme by dataStoreManager.appTheme.collectAsState(initial = launchTheme.appTheme)
@@ -183,12 +188,7 @@ class WelcomeActivity : ComponentActivity() {
                                     }
                                 },
                                 startOnIntroduction = isDebugPolicyPreview,
-                                startOnSupport = isDebugSupportPreview,
-                                onEnableLiquidGlass = {
-                                    lifecycleScope.launch {
-                                        dataStoreManager.enableLiquidGlassTheme()
-                                    }
-                                }
+                                startOnSupport = isDebugSupportPreview
                             )
                         }
                     }

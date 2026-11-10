@@ -513,9 +513,11 @@ fun LiquidGlassSurface(
     }
     val clickInteractionSource = remember { MutableInteractionSource() }
     val pressed by clickInteractionSource.collectIsPressedAsState()
+    val pageScene = com.huangder.lumibooks.ui.animation.LocalPageScene.current
+    val pageInMotion = pageScene?.let { it.moving || it.coveredBy?.moving == true } == true
     val pressScale by animateFloatAsState(
-        targetValue = if (!isLiquidGlass && enabled && pressFeedbackEnabled && onClick != null && motionEnabled && pressed) 0.96f else 1f,
-        animationSpec = if (motionEnabled) tween(durationMillis = 90) else snap(),
+        targetValue = if (!pageInMotion && !isLiquidGlass && enabled && pressFeedbackEnabled && onClick != null && motionEnabled && pressed) 0.96f else 1f,
+        animationSpec = if (motionEnabled && !pageInMotion) tween(durationMillis = 90) else snap(),
         label = "liquidGlassSurfacePressScale"
     )
     val lensShape = remember(shape, density) {
@@ -533,7 +535,7 @@ fun LiquidGlassSurface(
     }
     val latestOnClick = rememberUpdatedState(onClick)
     val handlesButtonGesture = isLiquidGlass && enabled && pressFeedbackEnabled &&
-        motionEnabled && interactionState != null
+        motionEnabled && interactionState != null && !pageInMotion
     LaunchedEffect(handlesButtonGesture, interactionState) {
         if (!handlesButtonGesture) interactionState?.reset()
     }

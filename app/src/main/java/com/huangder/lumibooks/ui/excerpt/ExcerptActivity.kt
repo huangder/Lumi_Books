@@ -45,6 +45,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 import java.util.UUID
+import com.huangder.lumibooks.ui.animation.finishWithPush
 
 data class ExcerptRequest(
     val bookTitle: String,
@@ -149,7 +150,7 @@ class ExcerptActivity : ComponentActivity() {
                             .then(if (activeBackdrop != null) Modifier.layerBackdrop(backdrop) else Modifier)
                             .background(AppColors.WindowBg))
                         com.huangder.lumibooks.ui.components.ProvideLiquidGlassBackdrop(activeBackdrop) {
-                            request?.let { ExcerptPreview(it, onClose = { finish() }, modifier = Modifier.fillMaxSize(), presentation = ExcerptPresentation.FULLSCREEN) }
+                            request?.let { ExcerptPreview(it, onClose = { finishWithPush() }, modifier = Modifier.fillMaxSize(), presentation = ExcerptPresentation.FULLSCREEN) }
                         }
                     }
                 }

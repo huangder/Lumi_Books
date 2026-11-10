@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="welcome_story_journal_eyebrow">Reading Journal</string>
+    <string name="welcome_story_journal_title">Every time you open a book, it\'s remembered</string>
+    <string name="welcome_story_journal_subtitle">Starting, highlighting, finishing a chapter — the journal keeps those moments, and insights show you your rhythm.</string>
+    <string name="welcome_story_insights_eyebrow">Reading Insights</string>
+    <string name="welcome_story_insights_title">See your reading rhythm</string>
+    <string name="welcome_story_insights_subtitle">Time, highlights and progress gathered day by day, so recent reading makes sense at a glance.</string>
+    <string name="welcome_story_listening_eyebrow">Full-screen Listening</string>
+    <string name="welcome_story_listening_title">Close your eyes and miss nothing</string>
+    <string name="welcome_story_listening_subtitle">A new full-screen listening view with floating subtitles that follow each sentence. Pause or skip from your headphones.</string>
+    <string name="welcome_story_stats_eyebrow">Statistics, Renewed</string>
+    <string name="welcome_story_stats_title">Your reading, at a glance</string>
+    <string name="welcome_story_stats_subtitle">A redesigned statistics page that tells each week and year through time, trends and a heatmap.</string>
+    <string name="welcome_story_art_today">Today</string>
+    <string name="welcome_story_art_journal_started">Started “The Lighthouse by the Sea”</string>
+    <string name="welcome_story_art_journal_highlight">3 highlights · 1 note</string>
+    <string name="welcome_story_art_journal_chapter">Finished chapter 4</string>
+    <string name="welcome_story_art_insight_goal">Daily goal</string>
+    <string name="welcome_story_art_insight_today">42 min read today</string>
+    <string name="welcome_story_art_insight_streak">6-day reading streak</string>
+    <string name="welcome_story_art_insight_peak">Most often at 10 PM</string>
+    <string name="welcome_story_art_stats_week">This week</string>
+    <string name="welcome_story_art_stats_duration">%1$d h %2$d min</string>
+    <string name="welcome_story_art_stats_heatmap">Last 3 months</string>
+    <string name="welcome_story_art_stats_compare" formatted="false">18% more than last week</string>
+</resources>

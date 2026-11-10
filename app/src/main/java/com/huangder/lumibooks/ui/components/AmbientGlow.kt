@@ -3,16 +3,7 @@ package com.huangder.lumibooks.ui.components
 import android.graphics.BitmapFactory
 import android.util.LruCache
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.repeatOnLifecycle
-import kotlinx.coroutines.isActive
-import kotlin.math.abs
-import kotlin.math.roundToInt
-import com.huangder.lumibooks.ui.theme.LocalPageVisible
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -80,10 +71,11 @@ internal fun rememberCoverColors(coverPath: String?): List<Color> {
 
 /**
  * Soft atmospheric glow behind a page's top (like Apple Music / Books). Purely decorative and drawn
- * in the draw phase only: slow drift, colour crossfade when the source changes, and it fades and
+ * in the draw phase only: colour crossfade when the source changes, and it fades and
  * lifts as [scrollOffset] grows. Skipped for e-ink, reduce transparency and the artwork theme.
  * Place it in the page *background* — never inside a glass control's own source layer.
- * Disable [driftEnabled] for a stable background without continuous blur-source invalidation.
+ * Keep the blobs stationary on every page: continuous drift invalidates blur captures even while
+ * idle and can make the background flicker. Colour and scroll changes still update the glow.
  */
 @Composable
 internal fun AmbientGlow(
@@ -91,46 +83,25 @@ internal fun AmbientGlow(
     modifier: Modifier = Modifier,
     height: Dp = 460.dp,
     intensity: Float = 1f,
-    driftEnabled: Boolean = true,
     scrollOffset: () -> Float = { 0f }
 ) {
     if (LocalEInkMode.current || LocalReduceTransparency.current || LocalLumiBackgroundPresent.current) return
     val dark = LocalIsDarkTheme.current
-    val motion = LocalMotionEnabled.current && driftEnabled
     val c0 by animateColorAsState(colors.getOrElse(0) { AppColors.Accent }, tween(700), label = "glow0")
     val c1 by animateColorAsState(colors.getOrElse(1) { c0 }, tween(700), label = "glow1")
     val c2 by animateColorAsState(colors.getOrElse(2) { c1 }, tween(700), label = "glow2")
-    val visible = LocalPageVisible.current
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val driftState = remember { Animatable(if (motion) 0f else .5f) }
-    val towardEnd = remember { booleanArrayOf(true) }
-    LaunchedEffect(motion, visible, lifecycle) {
-        if (!motion) {
-            driftState.snapTo(.5f)
-        } else if (visible) {
-            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                while (isActive) {
-                    val target = if (towardEnd[0]) 1f else 0f
-                    val duration = (abs(target - driftState.value) * 14_000).roundToInt().coerceAtLeast(1)
-                    driftState.animateTo(target, tween(duration, easing = LinearEasing))
-                    towardEnd[0] = !towardEnd[0]
-                }
-            }
-        }
-    }
     val baseAlpha = (if (dark) .26f else .34f) * intensity
     Canvas(modifier.fillMaxWidth().height(height)) {
         val scroll = scrollOffset().coerceAtLeast(0f)
         val fade = (1f - scroll / 300.dp.toPx()).coerceIn(0f, 1f)
         if (fade <= 0f) return@Canvas
-        val t = driftState.value
         val w = size.width
         val h = size.height
         val a = baseAlpha * fade
         translate(top = -scroll * .35f) {
-            glowBlob(c0, Offset(w * (.12f + .14f * t), h * (.16f + .05f * t)), w * .78f, a)
-            glowBlob(c1, Offset(w * (.9f - .12f * t), h * (.1f + .1f * t)), w * .68f, a * .9f)
-            glowBlob(c2, Offset(w * (.5f + .08f * (t - .5f)), h * (.44f - .08f * t)), w * .74f, a * .55f)
+            glowBlob(c0, Offset(w * .19f, h * .185f), w * .78f, a)
+            glowBlob(c1, Offset(w * .84f, h * .15f), w * .68f, a * .9f)
+            glowBlob(c2, Offset(w * .5f, h * .4f), w * .74f, a * .55f)
         }
     }
 }

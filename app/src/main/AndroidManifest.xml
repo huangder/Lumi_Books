@@ -49,7 +49,7 @@
         android:networkSecurityConfig="@xml/network_security_config"
         tools:targetApi="34">
 
-        <activity android:name=".ui.bookshare.BookShareActivity" android:exported="false" android:theme="@style/Theme.EBookReader" />
+        <activity android:name=".ui.bookshare.BookShareActivity" android:exported="false" android:theme="@style/Theme.EBookReader.Page" />
 
         <receiver android:name=".dictionary.DictionaryDownloadReceiver" android:exported="false">
             <intent-filter>
@@ -69,7 +69,7 @@
             android:name=".ui.settings.ListeningPageSettingsActivity"
             android:exported="false"
             android:enableOnBackInvokedCallback="true"
-            android:theme="@style/Theme.EBookReader" />
+            android:theme="@style/Theme.EBookReader.Page" />
 
         <activity
             android:name=".ui.welcome.WelcomeActivity"
@@ -146,8 +146,66 @@
             </intent-filter>
         </activity-alias>
 
+        <!-- Auto appearance keeps a stable launcher component and lets Android select
+             the icon resource for the system's day/night configuration. -->
+        <activity-alias
+            android:name=".ui.splash.Lumi2DarkSplashLauncherActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_lumi2_dark"
+            android:label="@string/app_name"
+            android:targetActivity=".ui.splash.SplashLaunchActivity"
+            android:theme="@style/Theme.EBookReader.Launch">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".ui.splash.Lumi2DarkDirectLauncherActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_lumi2_dark"
+            android:label="@string/app_name"
+            android:targetActivity=".ui.splash.DirectLaunchActivity"
+            android:theme="@style/Theme.EBookReader">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".ui.splash.Lumi2AutoSplashLauncherActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_lumi2_auto"
+            android:label="@string/app_name"
+            android:targetActivity=".ui.splash.SplashLaunchActivity"
+            android:theme="@style/Theme.EBookReader.Launch">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".ui.splash.Lumi2AutoDirectLauncherActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_lumi2_auto"
+            android:label="@string/app_name"
+            android:targetActivity=".ui.splash.DirectLaunchActivity"
+            android:theme="@style/Theme.EBookReader">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
         <!-- Classic launcher entries keep the legacy icon and launch artwork available as a
-             user-selectable pair. Only one of the six launcher components is enabled at a time. -->
+             user-selectable pair. Only one of the ten launcher components is enabled at a time. -->
         <activity-alias
             android:name=".ui.splash.ClassicSplashLauncherActivity"
             android:enabled="false"
@@ -272,45 +330,45 @@
         <activity
             android:name=".ui.settings.SettingsActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-            android:theme="@style/Theme.EBookReader"
+            android:theme="@style/Theme.EBookReader.Page"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.settings.AuthorizedFoldersActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-            android:theme="@style/Theme.EBookReader"
+            android:theme="@style/Theme.EBookReader.Page"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.settings.DetailActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-            android:theme="@style/Theme.EBookReader"
+            android:theme="@style/Theme.EBookReader.Page"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.settings.ReaderSettingsPreviewActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-            android:theme="@style/Theme.EBookReader.NoPreview"
+            android:theme="@style/Theme.EBookReader.Page.NoPreview"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.settings.WebViewActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-            android:theme="@style/Theme.EBookReader"
+            android:theme="@style/Theme.EBookReader.Page"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.bookshelf.CoverSearchActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-            android:theme="@style/Theme.EBookReader"
+            android:theme="@style/Theme.EBookReader.Page"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.settings.SponsorActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-            android:theme="@style/Theme.EBookReader"
+            android:theme="@style/Theme.EBookReader.Page"
             android:windowSoftInputMode="adjustResize" />
 
 
@@ -320,100 +378,100 @@
         <activity
             android:name=".ui.settings.FeedbackActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-            android:theme="@style/Theme.EBookReader"
+            android:theme="@style/Theme.EBookReader.Page"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.settings.DiagnosticActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-            android:theme="@style/Theme.EBookReader"
+            android:theme="@style/Theme.EBookReader.Page"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.reader.TxtEditorActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-            android:theme="@style/Theme.EBookReader"
+            android:theme="@style/Theme.EBookReader.Page"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.reader.TxtTocRuleHelpActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-            android:theme="@style/Theme.EBookReader"
+            android:theme="@style/Theme.EBookReader.Page"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.excerpt.ExcerptActivity"
             android:exported="false"
-            android:theme="@style/Theme.EBookReader" />
+            android:theme="@style/Theme.EBookReader.Page" />
 
 
 
         <activity
             android:name=".ui.bookshelf.BookNotesActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-            android:theme="@style/Theme.EBookReader"
+            android:theme="@style/Theme.EBookReader.Page"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.bookshelf.AnnotationFeedActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-            android:theme="@style/Theme.EBookReader"
+            android:theme="@style/Theme.EBookReader.Page"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.bookshelf.BookDetailsActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-            android:theme="@style/Theme.EBookReader"
+            android:theme="@style/Theme.EBookReader.Page"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.bookshelf.BookReviewActivity"
             android:exported="false"
-            android:theme="@style/Theme.EBookReader"
+            android:theme="@style/Theme.EBookReader.Page"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.bookshelf.BookshelfCategoriesActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-            android:theme="@style/Theme.EBookReader"
+            android:theme="@style/Theme.EBookReader.Page"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.bookshelf.BookshelfCategoryBooksActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-            android:theme="@style/Theme.EBookReader"
+            android:theme="@style/Theme.EBookReader.Page"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.home.AuthorizedFolderBooksActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-            android:theme="@style/Theme.EBookReader"
+            android:theme="@style/Theme.EBookReader.Page"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.home.remote.RemoteLibraryActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-            android:theme="@style/Theme.EBookReader"
+            android:theme="@style/Theme.EBookReader.Page"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.home.remote.RemoteSourceFormActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-            android:theme="@style/Theme.EBookReader"
+            android:theme="@style/Theme.EBookReader.Page"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".ui.home.remote.RemoteBookDetailsActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-            android:theme="@style/Theme.EBookReader"
+            android:theme="@style/Theme.EBookReader.Page"
             android:windowSoftInputMode="adjustResize" />
 
         <service

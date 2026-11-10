@@ -23,6 +23,7 @@ import com.huangder.lumibooks.util.LocaleHelper
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import org.json.JSONObject
+import com.huangder.lumibooks.ui.animation.finishWithPush
 
 /**
  * Add / edit a remote library. A separate Activity so opening it plays the OEM system
@@ -60,7 +61,7 @@ class RemoteSourceFormActivity : ComponentActivity() {
                 val hasSavedPassword = remember(existing?.id) {
                     existing?.let { viewModel.hasPassword(it.id) } == true
                 }
-                ConfigurableActivityBack(predictiveBackEnabled = predictiveBackEnabled, onBack = { finish() })
+                ConfigurableActivityBack(predictiveBackEnabled = predictiveBackEnabled, onBack = { finishWithPush() })
                 RemoteSourceFormScreen(
                     type = type,
                     existing = existing,
@@ -70,7 +71,7 @@ class RemoteSourceFormActivity : ComponentActivity() {
                     onTestAndSave = { name, url, username, password ->
                         viewModel.testAndSave(existing, name, url, username, password)
                     },
-                    onBack = { finish() },
+                    onBack = { finishWithPush() },
                     onSaved = { finish() }
                 )
             }

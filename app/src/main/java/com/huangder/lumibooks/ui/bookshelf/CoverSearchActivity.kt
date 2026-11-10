@@ -122,6 +122,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import com.huangder.lumibooks.ui.animation.finishWithPush
 
 /**
  * 封面网络搜索页：内嵌轻量浏览器（Bing、百度、Google 图片搜索），
@@ -205,7 +206,7 @@ class CoverSearchActivity : ComponentActivity() {
                     CoverSearchScreen(
                         bookId = bookId,
                         bookTitle = bookTitle,
-                        onExit = { finish() }
+                        onExit = { finishWithPush() }
                     )
                 }
             }

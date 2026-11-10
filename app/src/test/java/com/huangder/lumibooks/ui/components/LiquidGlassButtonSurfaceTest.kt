@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.components
 
 import android.app.Application
+import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
@@ -16,11 +17,14 @@ import com.huangder.lumibooks.ui.theme.LiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
+import com.huangder.lumibooks.ui.animation.LocalPageScene
+import com.huangder.lumibooks.ui.animation.PageScene
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Robolectric
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -31,10 +35,12 @@ class LiquidGlassButtonSurfaceTest {
     private val enabled = mutableStateOf(true)
     private val feedback = mutableStateOf(true)
     private var clicks = 0
+    private var pageScene: PageScene? = null
 
     private fun show() {
         compose.setContent {
             CompositionLocalProvider(LocalAppTheme provides "liquid_glass",
+                LocalPageScene provides pageScene,
                 LocalLiquidGlassCapability provides LiquidGlassCapability(true, false),
                 LocalMotionEnabled provides motion.value) {
                 // Custom paths must get motion even when the lens cannot accept their shape.
@@ -83,5 +89,28 @@ class LiquidGlassButtonSurfaceTest {
             compose.mainClock.advanceTimeBy(500)
         }
         compose.runOnIdle { assertEquals(2, clicks) }
+    }
+
+    @Test fun pageNavigationClearsThePressedAppearanceBeforeTheToolbarIsCaptured() {
+        val scene = PageScene(Robolectric.buildActivity(ComponentActivity::class.java).create().get(), false)
+        pageScene = scene
+        show()
+        val initial = width()
+        compose.onNodeWithTag("button").performTouchInput { down(center) }
+        compose.mainClock.advanceTimeBy(400)
+        compose.waitForIdle()
+        assertTrue(width() > initial)
+        compose.onNodeWithTag("button").performTouchInput { up() }
+        compose.runOnIdle {
+            assertEquals(1, clicks)
+            scene.coveredBy = PageScene(scene.activity, true).apply { moving = true }
+        }
+        compose.mainClock.advanceTimeBy(48)
+        compose.waitForIdle()
+        assertEquals("Navigation snapshots use the unpressed control", initial, width(), .1f)
+        compose.runOnIdle { scene.coveredBy = null }
+        compose.mainClock.advanceTimeBy(48)
+        compose.waitForIdle()
+        assertEquals("Returning must not restore the old press", initial, width(), .1f)
     }
 }

@@ -46,7 +46,8 @@ internal fun ListeningPreferencesContent(
         null to stringResource(R.string.tts_listening_resume_show_prompt),
         TtsReaderResumeChoice.KEEP_READING to stringResource(R.string.tts_listening_resume_keep),
         TtsReaderResumeChoice.LISTENING_POSITION to stringResource(R.string.tts_listening_resume_jump),
-        TtsReaderResumeChoice.FURTHEST_PROGRESS to stringResource(R.string.tts_listening_resume_furthest)
+        TtsReaderResumeChoice.FURTHEST_PROGRESS to stringResource(R.string.tts_listening_resume_furthest),
+        TtsReaderResumeChoice.LAST_USED_POSITION to stringResource(R.string.tts_listening_resume_last_used)
     )
     val exitOptions = listOf(
         null to stringResource(R.string.tts_start_ask_each_time),

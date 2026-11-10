@@ -2,6 +2,7 @@
 
 package com.huangder.lumibooks.ui.home
 
+import com.huangder.lumibooks.ui.animation.pagePushToolbarItem
 import com.huangder.lumibooks.ui.icons.ControlIcon
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
@@ -191,6 +192,12 @@ fun HomeScreen(
         uiState.books.sortedByDescending { it.lastReadTime }
     }
     val lastReadBook = booksByLastRead.firstOrNull()
+    val useDefaultCoverGlass = lastReadBook != null && lastReadBook.coverPath == null &&
+        com.huangder.lumibooks.ui.theme.LocalLiquidGlassCapability.current.supported &&
+        !LocalEInkMode.current && !LocalReduceTransparency.current
+    val cardBackdrop = com.huangder.lumibooks.ui.theme.LocalLumiBackgroundBackdrop.current
+        ?: com.huangder.lumibooks.ui.theme.LocalProgressiveBlurBackgroundBackdrop.current
+        ?: avatarBackdrop
     // The most recent book already headlines the Continue-reading card; don't repeat it here.
     val recentBooks = booksByLastRead.drop(1).take(12)
     val toReadCount = remember(uiState.books) { uiState.books.count { it.isWantToRead } }
@@ -224,10 +231,9 @@ fun HomeScreen(
         // Record only this sibling background. Sampling the navigation backdrop from the
         // avatar would include the avatar itself and recurse in native RenderNode traversal.
         Box(Modifier.matchParentSize()
-            .then(if (isLiquidGlass) Modifier.layerBackdrop(avatarBackdrop) else Modifier)
+            .then(if (isLiquidGlass || useDefaultCoverGlass) Modifier.layerBackdrop(avatarBackdrop) else Modifier)
             .background(AppColors.PageBg)) {
-            // Keep the home blur source still at rest; cover crossfades and scroll fading remain.
-            AmbientGlow(glowColors, driftEnabled = false, scrollOffset = {
+            AmbientGlow(glowColors, scrollOffset = {
                 if (listState.firstVisibleItemIndex > 0) Float.MAX_VALUE else listState.firstVisibleItemScrollOffset.toFloat()
             })
         }
@@ -280,6 +286,7 @@ fun HomeScreen(
                         PageEntranceItem(play = playEntranceAnimation, index = 2, modifier = contentInsets) {
                             ContinueReadingCard(
                                 book = lastReadBook,
+                                backgroundBackdrop = cardBackdrop,
                                 downloadState = uiState.downloadStates[lastReadBook.id],
                                 onClick = { bounds -> onNavigateToReader(lastReadBook, bounds) },
                                 onToggleFavorite = { viewModel.updateBook(lastReadBook.copy(isFavorite = !lastReadBook.isFavorite)) },
@@ -412,7 +419,7 @@ private fun HomeHeader(
         // 版本会员提示：仅官方版提供，点过一次或进过会员页即消失
         com.huangder.lumibooks.edition.EditionHomeMembershipPrompt()
         if (onToReadClick != null) {
-            Box {
+            Box(Modifier.pagePushToolbarItem()) {
                 LiquidGlassSurface(
                     shape = CircleShape,
                     backdrop = avatarBackdrop,
@@ -463,7 +470,7 @@ private fun HomeHeader(
             interactive = isLiquidGlass,
             pressFeedbackEnabled = isLiquidGlass,
             onClick = onAvatarClick,
-            modifier = Modifier.size(if (isLiquidGlass) 40.dp else 36.dp)
+            modifier = Modifier.pagePushToolbarItem().size(if (isLiquidGlass) 40.dp else 36.dp)
         ) {
             if (avatarUri != null) {
                 AsyncImage(
@@ -529,6 +536,7 @@ private fun ImportHint(onImportClick: () -> Unit) {
 @Composable
 private fun ContinueReadingCard(
     book: Book,
+    backgroundBackdrop: Backdrop,
     downloadState: BookDownloadState?,
     onClick: (Rect?) -> Unit,
     onToggleFavorite: () -> Unit,
@@ -571,17 +579,11 @@ private fun ContinueReadingCard(
         }
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .shadow(12.dp, AppRoundedCornerShape(AppRadius.lg), ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
-            .cardOutline(AppRoundedCornerShape(AppRadius.lg))
-            .clip(AppRoundedCornerShape(AppRadius.lg))
-            .lumiCardSurface(shape = AppRoundedCornerShape(AppRadius.lg))
-            .cardPressEffect()
-            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                onClick(coverBounds.get().takeUnless { it == Rect.Zero })
-            }
+    ContinueReadingCardFrame(
+        modifier = modifier,
+        // Sample only the sibling page background, never the page layer containing this card.
+        frostedBackdrop = backgroundBackdrop.takeIf { book.coverPath == null },
+        onClick = { onClick(coverBounds.get().takeUnless { it == Rect.Zero }) }
     ) {
         if (useCoverBackground && blurredCoverRequest != null) {
             AsyncImage(

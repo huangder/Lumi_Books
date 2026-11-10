@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="welcome_story_journal_eyebrow">독서 일지</string>
+    <string name="welcome_story_journal_title">책을 펼칠 때마다, 잘 기록됩니다</string>
+    <string name="welcome_story_journal_subtitle">읽기 시작, 하이라이트, 한 장 완독 — 독서 일지가 그 순간을 기억하고, 인사이트가 나의 리듬을 보여 줍니다.</string>
+    <string name="welcome_story_insights_eyebrow">독서 인사이트</string>
+    <string name="welcome_story_insights_title">나의 독서 리듬이 보입니다</string>
+    <string name="welcome_story_insights_subtitle">시간·하이라이트·진도를 날마다 정리해 최근 독서를 한눈에 보여 줍니다.</string>
+    <string name="welcome_story_listening_eyebrow">전체 화면 듣기</string>
+    <string name="welcome_story_listening_title">눈을 감아도, 한 문장도 놓치지 않게</string>
+    <string name="welcome_story_listening_subtitle">새로운 전체 화면 듣기와 문장을 따라가는 플로팅 자막. 이어폰 버튼으로 일시정지와 전환도.</string>
+    <string name="welcome_story_stats_eyebrow">새로워진 통계</string>
+    <string name="welcome_story_stats_title">나의 독서를 한눈에</string>
+    <string name="welcome_story_stats_subtitle">시간·추이·히트맵으로 매주와 매년을 보여 주는 새 통계 페이지.</string>
+    <string name="welcome_story_art_today">오늘</string>
+    <string name="welcome_story_art_journal_started">「바닷가의 등대」 읽기 시작</string>
+    <string name="welcome_story_art_journal_highlight">하이라이트 3개 · 메모 1개</string>
+    <string name="welcome_story_art_journal_chapter">4장 완독</string>
+    <string name="welcome_story_art_insight_goal">오늘의 목표</string>
+    <string name="welcome_story_art_insight_today">오늘 42분 읽음</string>
+    <string name="welcome_story_art_insight_streak">6일 연속 독서 중</string>
+    <string name="welcome_story_art_insight_peak">주로 밤 10시에 읽음</string>
+    <string name="welcome_story_art_stats_week">이번 주 독서</string>
+    <string name="welcome_story_art_stats_duration">%1$d시간 %2$d분</string>
+    <string name="welcome_story_art_stats_heatmap">최근 3개월</string>
+    <string name="welcome_story_art_stats_compare" formatted="false">지난주보다 18% 증가</string>
+</resources>

@@ -8,7 +8,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.foundation.shape.RoundedCornerShape
+import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
@@ -62,14 +62,21 @@ internal fun CoverFlowReaderOverlay(transition: BookReaderTransitionState, modif
     BoxWithConstraints(modifier.fillMaxSize()) {
         val target = androidx.compose.ui.geometry.Rect(0f, 0f, constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat())
         val p = transition.coverFlowProgressSnapshot.value
-        val window = CoverFlowReaderMotion.windowBounds(source, target, p)
-        val windowShape = RoundedCornerShape(
+        val window = readerWindowPixelBounds(CoverFlowReaderMotion.windowBounds(source, target, p))
+        val windowShape = AppRoundedCornerShape(
             CoverFlowReaderMotion.windowCornerRadius(transition.sourceCornerRadiusDp, p).dp
         )
         Box(
             Modifier.offset { IntOffset(window.left.roundToInt(), window.top.roundToInt()) }
                 .size(with(density) { window.width.toDp() }, with(density) { window.height.toDp() })
                 .clip(windowShape)
+                .graphicsLayer {
+                    // Reveal the live page continuously instead of dropping an opaque
+                    // paper layer in a single frame when Ready becomes Reader.
+                    alpha = 1f - transition.readerRevealSnapshot.value *
+                        (if (transition.phase == BookReaderTransitionPhase.Closing)
+                            transition.readerExitAlphaSnapshot.value else 1f)
+                }
                 .background(page)
         )
         if (!transition.zoomOnly) CoverFlowCover(book,

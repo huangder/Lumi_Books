@@ -51,6 +51,7 @@ import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.util.LaunchThemeController
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import com.huangder.lumibooks.ui.animation.finishWithPush
 
 /**
  * 通用 WebView 页面 — 加载 assets/html/ 下的本地 HTML
@@ -113,12 +114,12 @@ class WebViewActivity : ComponentActivity() {
             ) {
                 com.huangder.lumibooks.ui.components.ConfigurableActivityBack(
                     predictiveBackEnabled = launchTheme.predictiveBackEnabled,
-                    onBack = { finish() }
+                    onBack = { finishWithPush() }
                 )
                 com.huangder.lumibooks.ui.components.LiquidGlassDialogHost(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    WebViewPage(title = title, assetFile = file, isDark = isDark, onBack = { finish() })
+                    WebViewPage(title = title, assetFile = file, isDark = isDark, onBack = { finishWithPush() })
                 }
             }
         }

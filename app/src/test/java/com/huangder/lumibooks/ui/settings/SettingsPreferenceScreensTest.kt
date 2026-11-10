@@ -119,6 +119,16 @@ class SettingsPreferenceScreensTest {
             runBlocking { reloaded.ttsStartChoice.first() == null }
         }
         assertNull(reloaded.ttsStartChoice.first())
+        compose.onNodeWithText(label(R.string.tts_listening_resume_setting)).performClick()
+        compose.onNodeWithText(label(R.string.tts_listening_resume_last_used)).performClick()
+        compose.waitUntil(timeoutMillis = 5_000) {
+            runBlocking { reloaded.ttsReaderResumeChoice.first() == TtsReaderResumeChoice.LAST_USED_POSITION }
+        }
+        compose.runOnIdle { showPreferences = false }
+        compose.onNodeWithText("Other page").assertIsDisplayed()
+        compose.runOnIdle { showPreferences = true }
+        compose.onNodeWithText(label(R.string.tts_listening_resume_last_used)).assertIsDisplayed()
+        Unit
     }
 
     @Test fun glassControlsFollowCapabilityAndEInkWithoutResettingStoredOptions() {

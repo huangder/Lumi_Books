@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="welcome_story_journal_eyebrow">阅读日志</string>
+    <string name="welcome_story_journal_title">每一次翻开，都被好好记下</string>
+    <string name="welcome_story_journal_subtitle">开始、划线、读完一章——阅读日志替你记住这些时刻，洞察帮你看见自己的节奏。</string>
+    <string name="welcome_story_insights_eyebrow">阅读洞察</string>
+    <string name="welcome_story_insights_title">看见自己的阅读节奏</string>
+    <string name="welcome_story_insights_subtitle">时长、划线与进度按天整理成洞察，一眼读懂最近的阅读。</string>
+    <string name="welcome_story_listening_eyebrow">全屏听书</string>
+    <string name="welcome_story_listening_title">闭上眼，也不错过一句</string>
+    <string name="welcome_story_listening_subtitle">全新的全屏听书，悬浮字幕逐句跟读；耳机按键就能暂停、切换。</string>
+    <string name="welcome_story_stats_eyebrow">统计焕新</string>
+    <string name="welcome_story_stats_title">你的阅读，一目了然</string>
+    <string name="welcome_story_stats_subtitle">重新设计的统计页，用时长、趋势与热力图讲清每一周、每一年。</string>
+    <string name="welcome_story_art_today">今天</string>
+    <string name="welcome_story_art_journal_started">开始阅读《海边的灯塔》</string>
+    <string name="welcome_story_art_journal_highlight">划线 3 处 · 写下 1 条想法</string>
+    <string name="welcome_story_art_journal_chapter">读完第 4 章</string>
+    <string name="welcome_story_art_insight_goal">今日目标</string>
+    <string name="welcome_story_art_insight_today">今日阅读 42 分钟</string>
+    <string name="welcome_story_art_insight_streak">已连续阅读 6 天</string>
+    <string name="welcome_story_art_insight_peak">最常在晚上 10 点阅读</string>
+    <string name="welcome_story_art_stats_week">本周阅读</string>
+    <string name="welcome_story_art_stats_duration">%1$d 小时 %2$d 分</string>
+    <string name="welcome_story_art_stats_heatmap">近三个月</string>
+    <string name="welcome_story_art_stats_compare" formatted="false">比上周多 18%</string>
+</resources>

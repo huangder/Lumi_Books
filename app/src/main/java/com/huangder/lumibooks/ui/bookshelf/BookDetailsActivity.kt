@@ -125,6 +125,7 @@ import java.io.File
 import java.text.DateFormat
 import java.util.Date
 import javax.inject.Inject
+import com.huangder.lumibooks.ui.animation.finishWithPush
 
 @AndroidEntryPoint
 class BookDetailsActivity : ComponentActivity() {
@@ -183,7 +184,7 @@ class BookDetailsActivity : ComponentActivity() {
                 appFontSize = appFontSize,
                 globalFontMode = font
             ) {
-                ConfigurableActivityBack(predictiveBackEnabled = predictiveBack, onBack = { finish() })
+                ConfigurableActivityBack(predictiveBackEnabled = predictiveBack, onBack = { finishWithPush() })
                 val dialogBackdrop = rememberLayerBackdrop()
                 val controlsBackdrop = rememberLayerBackdrop()
                 val activeDialogBackdrop = dialogBackdrop.takeIf { resolvedTheme == "liquid_glass" }
@@ -201,7 +202,7 @@ class BookDetailsActivity : ComponentActivity() {
                                 .background(AppColors.PageBg)
                         )
                         ProvideLiquidGlassBackdrop(activeControlsBackdrop) {
-                            BookDetailsScreen(bookId = bookId, onBack = { finish() }, onOpenReader = { id ->
+                            BookDetailsScreen(bookId = bookId, onBack = { finishWithPush() }, onOpenReader = { id ->
                                 startActivity(Intent(this@BookDetailsActivity, MainActivity::class.java).putExtra(MainActivity.EXTRA_OPEN_BOOK_ID, id))
                                 finish()
                             })
@@ -814,7 +815,7 @@ private fun readableBookLocation(filePath: String, internalStorageLabel: String,
     }
 }
 
-private fun compactReadingDuration(durationMillis: Long, unitColor: Color): AnnotatedString {
+internal fun compactReadingDuration(durationMillis: Long, unitColor: Color): AnnotatedString {
     val totalMinutes = java.util.concurrent.TimeUnit.MILLISECONDS.toMinutes(durationMillis)
     val hours = totalMinutes / 60
     val minutes = totalMinutes % 60
