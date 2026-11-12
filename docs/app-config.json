@@ -16,12 +16,13 @@
     "force_update_below_version_code": 0
   },
   "notice": {
-    "id": "notice-disabled-20261017",
-    "enabled": false,
+    "id": "notice-20261112-early-donor-thanks",
+    "enabled": true,
     "min_version_code": 1,
     "max_version_code": 999999,
-    "title": "",
-    "message": ""
+    "title": "致谢 Lumi 的早期捐赠者",
+    "message": "感谢每一位在 Lumi 早期给予支持的朋友。你们的捐赠与鼓励，让 Lumi 能够继续成长。\n\n为了表达感谢，Lumi 为 2026 年 11 月 14 日之前捐赠过的朋友准备了一份小礼物：Lumi Premium 权益。\n\n请在浏览器打开以下网址，填写领取表单：\nhttps://f.wps.cn/g/eYdlswhc/\n\n已经领取过的朋友可以忽略本消息。",
+    "image_url": "https://raw.githubusercontent.com/huangder/Lumi_Books/main/docs/media/early-donor-claim-code.png"
   },
   "fonts": [
     {
