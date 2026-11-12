@@ -92,6 +92,7 @@ class ContinuousScrollReaderTest {
         onMenuToggle: () -> Unit = {},
         ttsSentence: androidx.compose.runtime.State<TtsSentencePosition?> = mutableStateOf(null),
         ttsFollow: androidx.compose.runtime.State<Boolean> = mutableStateOf(true),
+        ttsManualResume: androidx.compose.runtime.State<TtsSentencePosition?> = mutableStateOf(null),
         ttsFollowUserPageTurns: Boolean = false,
         onManualScrollStarted: () -> Unit = {},
         notes: List<com.huangder.lumibooks.domain.model.Note> = emptyList(),
@@ -137,6 +138,7 @@ class ContinuousScrollReaderTest {
                     bodyFontWeight = bodyFontWeight.value,
                     ttsCurrentSentence = ttsSentence.value,
                     ttsFollowEnabled = ttsFollow.value,
+                    ttsManualResumeSentence = ttsManualResume.value,
                     ttsFollowUserPageTurns = ttsFollowUserPageTurns,
                     onManualScrollStarted = onManualScrollStarted
                 )
@@ -299,7 +301,11 @@ class ContinuousScrollReaderTest {
         }
         loadChapter = { _, _ -> mixed }
         show(lineHeight = 2f)
-        compose.waitUntil(15_000) { restored }
+        // Restoring the anchor can finish while the item still shows its decode placeholder.
+        compose.waitUntil(15_000) {
+            restored && descendants(composeRoot.rootView).filterIsInstance<ContinuousSelectableTextView>()
+                .any { it.isAttachedToWindow && it.layout != null && it.text.toString() == mixed.toString() }
+        }
         compose.runOnIdle {
             val layout = visibleTextView().layout
             val small = layout.getLineForOffset(mixed.indexOf('\uFFFC'))
@@ -972,6 +978,38 @@ class ContinuousScrollReaderTest {
             assertTrue("Following should resume with the new audio position",
                 list.firstVisibleItemScrollOffset > browsingOffset + 500)
         }
+    }
+
+    @Test fun resumingFollowKeepsTheSettledViewportUntilTheSpokenRangeChanges() {
+        currentChapter = 0
+        chapterCount = 1
+        fun sentence(paragraph: Int): TtsSentencePosition {
+            val start = text.indexOf("Paragraph $paragraph:")
+            return TtsSentencePosition(0, start, text.indexOf('\n', start).takeIf { it >= 0 } ?: text.length)
+        }
+        val highlighted = mutableStateOf<TtsSentencePosition?>(sentence(70))
+        val following = mutableStateOf(true)
+        val resumedAt = mutableStateOf<TtsSentencePosition?>(null)
+        show(ttsSentence = highlighted, ttsFollow = following, ttsManualResume = resumedAt)
+        compose.waitUntil(15_000) { restored && list.firstVisibleItemScrollOffset > 1_000 }
+        var settledOffset = 0
+        compose.runOnIdle {
+            following.value = false
+            highlighted.value = sentence(90)
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            settledOffset = list.firstVisibleItemScrollOffset
+            resumedAt.value = highlighted.value
+            following.value = true
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals(settledOffset, list.firstVisibleItemScrollOffset)
+            highlighted.value = sentence(110)
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { assertTrue(list.firstVisibleItemScrollOffset > settledOffset + 500) }
     }
 
     @Test fun crossChapterFlingKeepsItsSettledPositionAfterParentProgressFeedback() {

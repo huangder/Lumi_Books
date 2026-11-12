@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_annotation_geometry_title">高亮与划线</string>
+    <string name="label_highlight_width">高亮横向延伸</string>
+    <string name="label_highlight_height">高亮高度</string>
+    <string name="label_highlight_offset_y">高亮上下偏移</string>
+    <string name="label_underline_thickness">划线粗细</string>
+    <string name="label_underline_offset_y">划线上下偏移</string>
+</resources>

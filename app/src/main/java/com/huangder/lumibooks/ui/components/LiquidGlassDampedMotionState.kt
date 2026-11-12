@@ -63,9 +63,13 @@ internal class LiquidGlassDampedMotionState(
             val length = valueRange.endInclusive - valueRange.start
             return if (length == 0f) 0f else ((value - valueRange.start) / length).coerceIn(0f, 1f)
         }
-    val pressProgress: Float get() = pressAnimation.value
+    /** Clamped press amount for alpha, highlight and optics consumers. */
+    val pressProgress: Float get() = pressAnimation.value.coerceIn(0f, 1f)
+    /** Scale follows the raw spring so the lift swells and the release briefly dips below rest. */
     val scale: Float
-        get() = if (motionEnabled) 1f + (pressedScale - 1f) * pressProgress else 1f
+        get() = if (motionEnabled) {
+            1f + (pressedScale - 1f) * pressAnimation.value.coerceIn(-0.3f, 1.15f)
+        } else 1f
     val velocity: Float get() = trackedVelocity
     val isInteracting: Boolean get() = directInteraction
 
@@ -221,27 +225,38 @@ internal class LiquidGlassDampedMotionState(
     private fun dragSettleSpec(): AnimationSpec<Float> =
         if (motionEnabled) {
             spring(
-                dampingRatio = 0.78f,
-                stiffness = 420f,
+                dampingRatio = 0.64f,
+                stiffness = 400f,
                 visibilityThreshold = visibilityThreshold
             )
         } else {
             tween(durationMillis = 100)
         }
 
+    // Lift swells slightly past full size, like a droplet being picked up.
     private fun pressInSpec(): AnimationSpec<Float> =
         if (motionEnabled) {
             spring(
-                dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = Spring.StiffnessHigh,
+                dampingRatio = 0.68f,
+                stiffness = 900f,
                 visibilityThreshold = 0.001f
             )
         } else {
             tween(durationMillis = 80)
         }
 
+    // Release is under-damped: the glass drops back, dips a little and settles in a beat.
     private fun pressOutSpec(): AnimationSpec<Float> =
-        if (motionEnabled) tween(durationMillis = 180) else tween(durationMillis = 80)
+        if (motionEnabled) {
+            spring(
+                dampingRatio = 0.56f,
+                stiffness = 420f,
+                // Stop once the residual dip is invisible; the glass thumb redraws until then.
+                visibilityThreshold = 0.004f
+            )
+        } else {
+            tween(durationMillis = 80)
+        }
 
     private fun startPressRelease() {
         pressJob?.cancel()

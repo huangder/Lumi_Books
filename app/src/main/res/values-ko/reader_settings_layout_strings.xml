@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_theme_suites_section">내 테마 세트</string>
+    <string name="reader_theme_suites_footer">사용자 세트를 왼쪽으로 밀면 이름을 바꾸거나 삭제할 수 있습니다. 핸들을 길게 눌러 위아래로 끌면 순서를 바꿀 수 있습니다.</string>
+    <string name="reader_theme_bundle_section">가져오기 및 내보내기</string>
+    <string name="reader_panel_section_text">텍스트</string>
+    <string name="reader_panel_section_spacing">간격 및 정렬</string>
+    <string name="reader_panel_section_margins">여백</string>
+    <string name="reader_panel_section_background_color">배경색</string>
+    <string name="reader_panel_section_background_image">배경 이미지</string>
+    <string name="reader_page_animation_mode">페이지 넘김 방식</string>
+    <string name="reader_page_animation_speed_hint">값이 작을수록 빠르게 넘어갑니다</string>
+</resources>

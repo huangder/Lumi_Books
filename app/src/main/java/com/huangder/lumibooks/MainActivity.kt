@@ -259,6 +259,7 @@ class MainActivity : ComponentActivity() {
     private var pendingExternalImportFolders by mutableStateOf<List<ExternalImportFolder>>(emptyList())
 
     override fun onNewIntent(intent: Intent) {
+        com.huangder.lumibooks.widget.WidgetDiagnostics.openIntent(intent, "on_new_intent")
         super.onNewIntent(intent)
         StartupTrace.event("main_new_intent", StartupTrace.intentFields(intent))
         setIntent(intent)
@@ -267,6 +268,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleNavigationIntent(intent: Intent?) {
+        com.huangder.lumibooks.widget.WidgetDiagnostics.openIntent(intent, "navigation_requested")
         val requestedBookId = intent
             ?.getStringExtra(EXTRA_OPEN_BOOK_ID)
             ?.takeIf { it.isNotBlank() }
@@ -678,6 +680,7 @@ class MainActivity : ComponentActivity() {
      */
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        com.huangder.lumibooks.widget.WidgetDiagnostics.openIntent(intent, "on_create")
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 

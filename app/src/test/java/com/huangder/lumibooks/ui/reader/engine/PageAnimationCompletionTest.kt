@@ -66,6 +66,29 @@ class PageAnimationCompletionTest {
         assertFullyDraggedTurn(ScrollPageAnim(surface()), 200f, 800f, 200f, 0f)
     }
 
+    @Test fun fullyDraggedWaveStillCommitsExactlyOnce() {
+        assertFullyDraggedTurn(WavePageAnim(surface()), 400f, 400f, 0f, 400f)
+    }
+
+    @Test fun waveDragCannotGainDistanceBeyondEitherPageEdge() {
+        for ((startX, edgeX, outsideX) in listOf(Triple(8f, 0f, -50f), Triple(392f, 400f, 450f))) {
+            val controller = WavePageAnim(surface())
+            var completed = 0
+            controller.onCanFlip = { true }
+            controller.onAnimationComplete = { completed++ }
+            event(controller, MotionEvent.ACTION_DOWN, startX, 400f, 0L)
+            controller.confirmPageGesture()
+            event(controller, MotionEvent.ACTION_MOVE, edgeX, 400f, 20L)
+            val edgeOffset = controller.getOffsetX()
+            event(controller, MotionEvent.ACTION_MOVE, outsideX, 400f, 30L)
+            assertEquals(edgeOffset, controller.getOffsetX(), 0f)
+            event(controller, MotionEvent.ACTION_UP, outsideX, 400f, 40L)
+            finish(controller)
+            assertEquals(0, completed)
+            assertFalse(controller.isCompletingTurn)
+        }
+    }
+
     private fun assertFullyDraggedTurn(
         controller: PageAnimationController, startX: Float, startY: Float, endX: Float, endY: Float
     ) {

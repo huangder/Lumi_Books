@@ -21,11 +21,11 @@ data class MarkdownPage(val start: Int, val end: Int, val fragments: List<Markdo
 
 /** Layouts are block-sized. Page lookup never requires a layout of the entire logical chapter. */
 class MarkdownPageProvider(private val source: MarkdownBlockSource, val style: MarkdownPageStyle) {
-    private val layouts = object : LruCache<Int, Pair<Spanned, StaticLayout>>(24 * 1024 * 1024) {
+    private val layouts = object : LruCache<Int, Pair<Spanned, StaticLayout>>(12 * 1024 * 1024) {
         override fun sizeOf(key: Int, value: Pair<Spanned, StaticLayout>): Int =
             markdownRenderBytes(value.first) + value.second.lineCount * 40
     }
-    private val tableLayouts = LruCache<Int, List<MarkdownTableCell>>(16)
+    private val tableLayouts = LruCache<Int, List<MarkdownTableCell>>(8)
     private val tableHeaders = source.document.blocks.filter { it.kind == "table" }.groupBy { it.tableId }.mapValues { it.value.first() }
     val length get() = source.document.text.length
     private val paint = TextPaint(TextPaint.ANTI_ALIAS_FLAG).apply {

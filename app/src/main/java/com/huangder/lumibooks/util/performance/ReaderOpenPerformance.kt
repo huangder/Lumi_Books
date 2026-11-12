@@ -406,8 +406,12 @@ object ReaderOpenPerformance {
         durationMs: Long? = null,
         result: String? = null
     ) {
-        if (!BuildConfig.DIAGNOSTIC_BUILD) return
-        DiagnosticLoggerRegistry.logger?.log(
+        val logger = DiagnosticLoggerRegistry.logger ?: return
+        val widgetSession = logger.activeSession()?.issueType ==
+            com.huangder.lumibooks.util.diagnostics.DiagnosticIssueType.WIDGET
+        if (!BuildConfig.DIAGNOSTIC_BUILD && !widgetSession && level < DiagnosticLevel.WARN &&
+            event !in setOf("open_started", "book_load_entered", "first_content_drawn", "open_interactive")) return
+        logger.log(
             category = "reader",
             event = event,
             level = level,

@@ -51,21 +51,47 @@ async function main() {
   await send('Emulation.setDeviceMetricsOverride', { width: 480, height: 800, deviceScaleFactor: 1, mobile: true });
   await send('Emulation.setTouchEmulationEnabled', { enabled: true });
   await send('Page.enable');
-  const swipe = async (x, from, to) => {
-    await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: from }] });
+  const touch = (type, point) => send('Input.dispatchTouchEvent', { type, touchPoints: point ? [point] : [] });
+  const swipe = async (from, to, checkFrame, release = 'touchEnd') => {
+    await touch('touchStart', from);
     for (let step = 1; step <= 12; step++) {
-      await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: from + (to - from) * step / 12 }] });
-      await wait(20);
+      await touch('touchMove', {
+        x: from.x + (to.x - from.x) * step / 12,
+        y: from.y + (to.y - from.y) * step / 12
+      });
+      await wait(20); // Allow Chromium to present the move before measuring it.
+      await checkFrame?.();
     }
-    await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await touch(release);
     await wait(350);
+  };
+  const bounds = (id) => evaluate(`document.getElementById('${id}').getBoundingClientRect().toJSON()`);
+  const point = (x, y) => ({ x, y });
+  const center = (rect) => point(rect.x + rect.width / 2, rect.y + rect.height / 2);
+  const tap = async (at) => {
+    await touch('touchStart', at);
+    await touch('touchEnd');
+    await wait(350);
+  };
+  const readingPosition = () => evaluate(`(() => {
+    const body = document.body.getBoundingClientRect(), line = document.getElementById('reading-line').getBoundingClientRect();
+    return [window.scrollX, window.scrollY, visualViewport.pageLeft, visualViewport.pageTop,
+      body.x, body.y, line.x, line.y, LumiReader.currentPosition().pageIndex];
+  })()`);
+  const scrollTop = () => evaluate('document.getElementById("lumi-footnote-content").scrollTop');
+  const checkNoReadingActions = async () => {
+    assert.deepEqual(await evaluate(`messages.filter(m =>
+      ['page', 'chapterTurn', 'bookEnd', 'tap', 'image', 'selection'].includes(m.type)).map(m => m.type)`), []);
   };
   for (const layout of ['reflowable', 'pre_paginated']) for (const flow of ['paginated', 'scrolled']) {
     const file = path.join(directory, `${layout}-${flow}.html`);
     fs.writeFileSync(file, `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
       <style>${constant('READER_CSS')}</style></head><body data-lumi-layout="${layout}">
-      <p><a id="note" epub:type="noteref" href="#fn">[1]</a> Reading page</p>
+      <p id="reading-line"><a id="note" epub:type="noteref" href="#fn">[1]</a>
+        <a id="short-note" epub:type="noteref" href="#fn2">[2]</a> Reading page</p>
+      ${'<p style="padding-block: 16px">Reading surface with enough text to fill several pages.</p>'.repeat(60)}
       <aside id="fn" epub:type="footnote">${'<p>Long footnote content for scrolling.</p>'.repeat(80)}</aside>
+      <aside id="fn2" epub:type="footnote"><p>Short footnote.</p></aside>
       <script>window.messages=[];window.lumiNative={postMessage:v=>messages.push(JSON.parse(v))};</script>
       <script>${script}</script></body></html>`);
     await send('Page.navigate', { url: pathToFileURL(file).href });
@@ -73,34 +99,76 @@ async function main() {
       if (await evaluate('!!window.LumiReader')) break;
       await wait(50);
     }
-    await evaluate(`window.LumiReader.configure({flow:'${flow}',nativePaging:true,transition:'none',insets:{top:0,right:0,bottom:0,left:0}})`);
+    await evaluate(`window.LumiReader.configure({flow:'${flow}',nativePaging:false,transition:'slide',insets:{top:0,right:0,bottom:0,left:0}})`);
     await wait(400);
-    await evaluate('document.getElementById("note").click()');
-    await wait(350);
-    const geometry = await evaluate(`(() => {
-      const content=document.getElementById('lumi-footnote-content'), r=content.getBoundingClientRect();
-      return {x:(r.left+r.right)/2,from:r.bottom-25,to:r.top+25,
-        rootAction:getComputedStyle(document.documentElement).touchAction,
-        scrollable:content.scrollHeight>content.clientHeight,
-        open:messages.some(m=>m.type==='footnotePopover'&&m.payload.visible)};
-    })()`);
-    assert.ok(geometry.open, 'Opening must notify the native gesture host');
-    assert.equal(geometry.rootAction, 'pan-y', 'Root must allow the nested note to scroll');
-    assert.ok(geometry.scrollable);
-    await swipe(geometry.x, geometry.from, geometry.to);
-    assert.ok(await evaluate('document.getElementById("lumi-footnote-content").scrollTop > 30'), `${layout}/${flow}: upward swipe must scroll note`);
-    await evaluate('messages.length=0');
-    await swipe(geometry.x, geometry.to, geometry.from);
-    assert.ok(await evaluate('!messages.some(m=>["tap","chapterTurn","image","selection"].includes(m.type))'), 'Note swipe must not trigger reading actions');
-    // Outside input dismisses the note without turning the reading page.
-    await evaluate('document.body.dispatchEvent(new MouseEvent("click",{bubbles:true,cancelable:true,clientX:450,clientY:750}))');
-    await wait(350);
-    assert.ok(await evaluate('!document.getElementById("lumi-footnote-popover") && messages.some(m=>m.type==="footnotePopover"&&!m.payload.visible)'));
-    assert.ok(await evaluate('!document.documentElement.classList.contains("lumi-footnote-open")'));
-    if (flow === 'paginated' || layout === 'pre_paginated') {
-      assert.equal(await evaluate('getComputedStyle(document.documentElement).touchAction'), 'none');
+    if (layout === 'reflowable') {
+      assert.ok(await evaluate('LumiReader.currentPosition().pageCount > 1'), 'Reading fixture must have multiple pages');
     }
-    console.log(`PASS: ${layout}/${flow}: trusted note scroll, gesture isolation, dismissal and paging restoration`);
+    const rootAction = () => evaluate('getComputedStyle(document.documentElement).touchAction');
+    const normalTouchAction = await rootAction();
+    const reading = await readingPosition();
+    const checkPage = async () => assert.deepEqual(await readingPosition(), reading, 'Reading page moved during the stroke');
+    const checkClosed = async () => {
+      await checkPage();
+      assert.ok(await evaluate('!document.getElementById("lumi-footnote-popover") && messages.some(m=>m.type==="footnotePopover"&&!m.payload.visible)'));
+      assert.equal(await rootAction(), normalTouchAction, 'Closing must restore the normal touch behavior');
+      await checkNoReadingActions();
+    };
+    const open = async (anchor) => {
+      await evaluate('messages.length=0');
+      await tap(center(await bounds(anchor)));
+      assert.ok(await evaluate('messages.some(m=>m.type==="footnotePopover"&&m.payload.visible)'));
+      await evaluate('messages.length=0');
+      assert.equal(await rootAction(), 'none');
+      const initial = await bounds('lumi-footnote-popover');
+      return async () => {
+        await checkPage();
+        assert.deepEqual(await bounds('lumi-footnote-popover'), initial, 'Footnote moved during the stroke');
+      };
+    };
+    let checkFrame = await open('note');
+    const content = await bounds('lumi-footnote-content');
+    const bottom = point(content.x + content.width / 2, content.bottom - 25);
+    const top = point(bottom.x + 22, content.top + 25);
+    await swipe(bottom, top, checkFrame);
+    assert.ok(await scrollTop() > 30, 'Upward diagonal swipe must scroll the note');
+    const scrolled = await scrollTop();
+    await swipe(center(content), point(content.right - 5, center(content).y + 6), checkFrame);
+    assert.equal(await scrollTop(), scrolled, 'Horizontal swipe must not scroll the note');
+    await swipe(top, bottom, checkFrame);
+    assert.equal(await scrollTop(), 0, 'Reverse swipe must return to the top');
+    await swipe(top, bottom, checkFrame);
+    assert.equal(await scrollTop(), 0, 'Top boundary must not pan the page');
+    const maximum = await evaluate(`(() => {
+      const content = document.getElementById('lumi-footnote-content');
+      content.scrollTop = content.scrollHeight;
+      return content.scrollTop;
+    })()`);
+    await swipe(bottom, top, checkFrame);
+    assert.equal(await scrollTop(), maximum, 'Bottom boundary must not pan the page');
+    await checkNoReadingActions();
+    await swipe(point(460, 740), point(390, 470), checkFrame, 'touchCancel');
+    await checkFrame();
+    await swipe(point(460, 740), point(390, 470), checkFrame);
+    await checkClosed();
+
+    checkFrame = await open('short-note');
+    const shortContent = await bounds('lumi-footnote-content');
+    const shortStart = center(shortContent);
+    await swipe(shortStart, point(shortStart.x + 18, shortStart.y + 150), checkFrame);
+    assert.equal(await scrollTop(), 0);
+    await tap(point(460, 740));
+    await checkClosed();
+
+    if (layout === 'reflowable' && flow === 'scrolled') {
+      await swipe(point(460, 740), point(460, 400));
+      assert.ok(await evaluate('window.scrollY > 30'), 'A fresh swipe must scroll the reading page');
+    }
+    if (layout === 'reflowable' && flow === 'paginated') {
+      await swipe(point(420, 650), point(80, 650));
+      assert.equal(await evaluate('LumiReader.currentPosition().pageIndex'), 1, 'A fresh swipe must turn the reading page');
+    }
+    console.log(`PASS: ${layout}/${flow}: long/short notes, frame-by-frame page isolation, cancellation and dismissal`);
   }
   await send('Browser.close');
 }

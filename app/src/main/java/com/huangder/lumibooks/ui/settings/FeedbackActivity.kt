@@ -704,6 +704,7 @@ private fun issueLabel(type: DiagnosticIssueType): String = when (type) {
     DiagnosticIssueType.TTS -> stringResource(R.string.diagnostic_issue_tts)
     DiagnosticIssueType.SYNC -> stringResource(R.string.diagnostic_issue_sync)
     DiagnosticIssueType.BACKUP -> stringResource(R.string.diagnostic_issue_backup)
+    DiagnosticIssueType.WIDGET -> stringResource(R.string.diagnostic_issue_widget)
     DiagnosticIssueType.OTHER -> stringResource(R.string.diagnostic_issue_other)
 }
 

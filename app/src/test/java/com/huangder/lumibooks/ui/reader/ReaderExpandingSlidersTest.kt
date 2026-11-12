@@ -8,9 +8,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.text.TextLayoutResult
+import com.huangder.lumibooks.domain.model.AppFontSize
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
+import java.util.Locale
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -33,9 +37,9 @@ class ReaderExpandingSlidersTest {
     private val tags = listOf("reader-font-size-slider", "reader-font-weight-slider",
         "reader-brightness-slider", "reader-mask-slider")
 
-    private fun mount(animated: Boolean = false) {
+    private fun mount(animated: Boolean = false, appFontSize: AppFontSize = AppFontSize.STANDARD) {
         compose.setContent {
-            EBookReaderTheme(appTheme = "lumi", darkTheme = false) {
+            EBookReaderTheme(appTheme = "lumi", darkTheme = false, appFontSize = appFontSize) {
                 Box(Modifier.fillMaxSize().testTag("touch-root")) {
                     ThemeSettingsSheet(visible = true, currentFontSize = font.value,
                         currentFontType = "kaiti", currentBodyFontWeight = weight.value,
@@ -59,6 +63,20 @@ class ReaderExpandingSlidersTest {
     private fun bounds(index: Int): Rect = compose.onNodeWithTag(tags[index]).fetchSemanticsNode().boundsInRoot
     private fun root() = compose.onNodeWithTag("touch-root")
     private fun values() = listOf(font.value, weight.value, brightness.value, mask.value)
+
+    @Test fun typographyValuesFitWithTheLargestAppFontSize() {
+        mount(appFontSize = AppFontSize.EXTRA_LARGE)
+        val locale = Locale.getDefault()
+        val values = listOf(String.format(locale, "%.1f sp", font.value), String.format(locale, "%.1f", weight.value))
+        for (value in values) {
+            val layouts = mutableListOf<TextLayoutResult>()
+            compose.onNodeWithText(value, useUnmergedTree = true).assertIsDisplayed()
+                .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+            val layout = layouts.single()
+            assertTrue("$value is clipped at the bottom", layout.getLineBottom(0) <= layout.size.height + 0.5f)
+        }
+        assertEquals(bounds(0).top, bounds(1).top, 1f)
+    }
 
     @Test fun allFourSlidersExpandTheirOwnRowAndRecoverWithoutChangingThePeer() {
         mount()

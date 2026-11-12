@@ -2,7 +2,8 @@ package com.huangder.lumibooks.domain.model
 
 /** Include fallback settings and both modes, even when a mode is not being edited. */
 internal fun ReaderThemeSuite.usesReaderBackground(selection: String): Boolean =
-    listOfNotNull(settings, bookLayoutSettings, lightSettings, darkSettings).any {
+    listOfNotNull(settings, bookLayoutSettings, lightSettings, darkSettings,
+        bookLayoutLightSettings, bookLayoutDarkSettings).any {
         it.backgroundSelection == selection || it.backgroundColorSelection == selection
     }
 
@@ -19,6 +20,8 @@ internal fun ReaderThemeSuite.withoutReaderBackground(selection: String): Reader
         settings = settings.repaired(),
         bookLayoutSettings = bookLayoutSettings.repaired(),
         lightSettings = lightSettings?.repaired(),
-        darkSettings = darkSettings?.repaired()
+        darkSettings = darkSettings?.repaired(),
+        bookLayoutLightSettings = bookLayoutLightSettings?.repaired(),
+        bookLayoutDarkSettings = bookLayoutDarkSettings?.repaired()
     )
 }

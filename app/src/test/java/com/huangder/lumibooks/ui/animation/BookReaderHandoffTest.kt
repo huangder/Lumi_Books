@@ -249,7 +249,7 @@ class BookReaderHandoffTest {
             bufferOffset: Int, stride: Int) = Unit
     }
 
-    @Test fun `stored page stays up through the wait and the reader appears opaque below it`() = runTest {
+    @Test fun `stored page stays opaque until the ready reader replaces it`() = runTest {
         val state = transition()
         val page = StoredPage()
         state.startOpen(book, null, source, 8f, openingSnapshot = page)
@@ -257,15 +257,16 @@ class BookReaderHandoffTest {
         assertEquals(BookReaderTransitionPhase.ReaderLoading, state.phase)
         assertSame(page, state.openingSnapshot)
         assertEquals(0f, state.readerLayerAlpha, 0f)
+        assertEquals(1f, state.overlayAlpha, 0f)
         state.markReaderReady()
-        runCurrent()
         assertEquals(BookReaderTransitionPhase.Ready, state.phase)
-        assertEquals(1f, state.readerLayerAlpha, 0f)
-        advanceTimeBy(80)
-        assertTrue(state.shellAlphaSnapshot.value in 0.01f..0.99f)
-        assertEquals(1f, state.readerLayerAlpha, 0f)
-        advanceTimeBy(180)
+        assertSame(page, state.openingSnapshot)
+        assertEquals(0f, state.readerLayerAlpha, 0f)
+        assertEquals(1f, state.overlayAlpha, 0f)
+        runCurrent()
         assertEquals(BookReaderTransitionPhase.Reader, state.phase)
+        assertEquals(1f, state.readerLayerAlpha, 0f)
+        assertEquals(0f, state.overlayAlpha, 0f)
         assertNull(state.openingSnapshot)
         advanceUntilIdle()
     }

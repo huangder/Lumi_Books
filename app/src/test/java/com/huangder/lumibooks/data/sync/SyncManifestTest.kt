@@ -9,6 +9,41 @@ import org.json.JSONObject
 
 class SyncManifestTest {
     @Test
+    fun matchingMetadataKeepsTheLocalCoverButStillRepairsAMissingFile() {
+        val metadata = SyncBookMetadata("Title", "Author", "EPUB", 1L, false, 2L)
+
+        assertFalse(shouldDownloadWebdavCover(true, 2L, metadata))
+        assertFalse(shouldDownloadWebdavCover(true, 3L, metadata))
+        assertFalse(shouldDownloadWebdavCover(true, 2L, null))
+        assertTrue(shouldDownloadWebdavCover(true, 1L, metadata))
+        assertTrue(shouldDownloadWebdavCover(false, 2L, metadata))
+    }
+
+    @Test
+    fun aCoverAlreadyPublishedAtTheSameRevisionIsKept() {
+        val metadata = SyncBookMetadata("Title", "Author", "EPUB", 1L, false, 2L)
+        val cover = SyncFileEntry("legacy-cover.jpg", "a".repeat(64), 42L, 2L)
+        val remoteBook = SyncFileEntry("book.epub", "b".repeat(64), 99L, 1L, metadata, cover)
+
+        assertFalse(shouldPublishWebdavCover(2L, remoteBook))
+        assertFalse(shouldPublishWebdavCover(1L, remoteBook))
+        assertTrue(shouldPublishWebdavCover(3L, remoteBook))
+        assertTrue(shouldPublishWebdavCover(2L, remoteBook.copy(cover = null)))
+        assertTrue(shouldPublishWebdavCover(2L, remoteBook.copy(metadata = null)))
+        assertTrue(shouldPublishWebdavCover(2L, null))
+    }
+
+    @Test
+    fun aDownloadedThumbnailMatchesTheManifestBeforeReencoding() {
+        val thumbnail = SyncFileEntry("legacy-cover.jpg", "A".repeat(64), 42L, 2L)
+
+        assertTrue(thumbnail.matchesCoverContent(42L) { "a".repeat(64) })
+        assertFalse(thumbnail.matchesCoverContent(42L) { "b".repeat(64) })
+        assertFalse(thumbnail.matchesCoverContent(43L) { error("Unnecessary hash") })
+        assertFalse(thumbnail.copy(sha256 = "").matchesCoverContent(42L) { error("Unnecessary hash") })
+    }
+
+    @Test
     fun kindleSyncMetadataAndFileNamesRetainTheirFormat() {
         for (format in listOf("AZW", "AZW3")) {
             val metadata = SyncBookMetadata("Title", "Author", format, 1L, false, 2L)

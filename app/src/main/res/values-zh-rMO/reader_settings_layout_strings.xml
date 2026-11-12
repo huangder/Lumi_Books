@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_theme_suites_section">我的主題套裝</string>
+    <string name="reader_theme_suites_footer">左滑自訂套裝可重新命名或刪除，按住右側把手上下拖動可調整順序。</string>
+    <string name="reader_theme_bundle_section">匯入與匯出</string>
+    <string name="reader_panel_section_text">文字</string>
+    <string name="reader_panel_section_spacing">間距與對齊</string>
+    <string name="reader_panel_section_margins">頁邊距</string>
+    <string name="reader_panel_section_background_color">背景色</string>
+    <string name="reader_panel_section_background_image">背景圖片</string>
+    <string name="reader_page_animation_mode">翻頁方式</string>
+    <string name="reader_page_animation_speed_hint">數值越小，翻頁越快</string>
+</resources>

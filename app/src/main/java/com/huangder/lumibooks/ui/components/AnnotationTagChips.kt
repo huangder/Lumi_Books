@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.icons.AppIcons
@@ -22,17 +23,32 @@ import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 
-/** Wrapping labels remain visible on narrow cards and at large font scales. */
+/**
+ * Wrapping labels remain visible on narrow cards and at large font scales.
+ *
+ * [bleedStart]/[bleedEnd] are the paddings between the chips and the clipping card/sheet edge;
+ * the horizontally scrolling variant extends through them (see [horizontalBleed]).
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun AnnotationTagChips(tags: List<String>, onEdit: (() -> Unit)? = null, modifier: Modifier = Modifier) {
+fun AnnotationTagChips(
+    tags: List<String>,
+    onEdit: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    bleedStart: Dp = 0.dp,
+    bleedEnd: Dp = bleedStart
+) {
     if (tags.isEmpty() && onEdit == null) return
     // A single heavily tagged note must not compose an unbounded FlowRow inside
     // the notes LazyColumn. All labels remain reachable by horizontal scrolling.
     if (tags.size > 6) {
         Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            // The trailing edit button keeps its place, so only bleed the end without it.
+            val end = if (onEdit != null) 0.dp else bleedEnd
+            LazyRow(Modifier.horizontalBleed(bleedStart, end).weight(1f),
+                contentPadding = PaddingValues(start = bleedStart, end = end),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(tags, contentType = { "annotation-tag" }) { tag -> AnnotationTagChip(tag, onEdit) }
             }
             if (onEdit != null) AnnotationTagEditButton(tags.isEmpty(), onEdit)

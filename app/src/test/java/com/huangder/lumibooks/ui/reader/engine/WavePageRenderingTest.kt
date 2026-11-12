@@ -43,13 +43,14 @@ class WavePageRenderingTest {
                         { Color.WHITE }, { reverse }))
                     val output = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
                     val sign = direction * if (reverse) 1f else -1f
+                    val startX = if (sign < 0) width.toFloat() else 0f
                     try {
-                        val down = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, width / 2f, height / 2f, 0)
+                        val down = MotionEvent.obtain(0, 0, MotionEvent.ACTION_DOWN, startX, height / 2f, 0)
                         wave.onTouchEvent(down)
                         down.recycle()
                         for (progress in listOf(0.5f, 0.998f)) {
                             val move = MotionEvent.obtain(0, 100, MotionEvent.ACTION_MOVE,
-                                width / 2f + sign * width * progress, height / 2f, 0)
+                                startX + sign * width * progress, height / 2f, 0)
                             wave.onTouchEvent(move)
                             move.recycle()
                             wave.onDraw(Canvas(output))
@@ -104,8 +105,9 @@ class WavePageRenderingTest {
                 }
                 try {
                     val sign = direction * if (reverse) 1f else -1f
+                    val startX = if (sign < 0) 400f else 0f
                     fun move(action: Int, distance: Float, time: Long) {
-                        MotionEvent.obtain(0, time, action, 200f + sign * distance, 400f, 0).also {
+                        MotionEvent.obtain(0, time, action, startX + sign * distance, 400f, 0).also {
                             assertTrue(wave.onTouchEvent(it))
                             it.recycle()
                         }
@@ -124,6 +126,13 @@ class WavePageRenderingTest {
                             assertEquals(Color.BLUE, output.getPixel(incomingX, 700))
                         }
                     }
+                    // A spare preload underneath the animation must stay hidden
+                    // when the pointer comes back inside the direction dead zone.
+                    move(MotionEvent.ACTION_MOVE, 5f, 150)
+                    output.eraseColor(Color.BLUE)
+                    wave.onDraw(Canvas(output))
+                    assertEquals(Color.WHITE, output.getPixel(200, 60))
+                    assertEquals(Color.RED, output.getPixel(200, 80))
                 } finally {
                     wave.abortAnim()
                     bitmaps.forEach {

@@ -128,7 +128,8 @@ internal class ReaderHighlightPainter(
         start: Int,
         end: Int,
         color: Int,
-        outline: Boolean = false
+        outline: Boolean = false,
+        style: ReaderAnnotationStyle = ReaderAnnotationStyle.DEFAULT
     ) {
         if (color ushr 24 == 0) return
         val safeStart = start.coerceIn(0, text.length)
@@ -158,7 +159,8 @@ internal class ReaderHighlightPainter(
                 start = safeStart,
                 end = safeEnd,
                 fontMetrics = fontMetrics,
-                line = line
+                line = line,
+                style = style
             )
         }
         paint.style = previousStyle
@@ -172,7 +174,8 @@ internal class ReaderHighlightPainter(
         start: Int,
         end: Int,
         fontMetrics: Paint.FontMetrics,
-        line: Int
+        line: Int,
+        style: ReaderAnnotationStyle
     ) {
         val lineStart = layout.getLineStart(line)
         val rawLineEnd = layout.getLineEnd(line)
@@ -200,19 +203,24 @@ internal class ReaderHighlightPainter(
         val segmentRight = if (usePathBounds) pathBounds.right else maxOf(segmentStartX, segmentEndX)
         if (segmentRight <= segmentLeft) return
 
-        val lineTop = layout.getLineTop(line).toFloat() + minimumLineGap
-        val lineBottom = layout.getLineBottom(line).toFloat() - minimumLineGap
+        // 用户加高高亮时允许占满行距（不再预留行间空隙），否则保持原有空隙。
+        val lineGap = if (style.highlightHeightDp > 0f) 0f else minimumLineGap
+        val verticalPadding = glyphPadding + style.highlightHeightDp * density
+        val inlinePadding = (horizontalPadding + style.highlightWidthDp * density).coerceAtLeast(0f)
+        val lineTop = layout.getLineTop(line).toFloat() + lineGap
+        val lineBottom = layout.getLineBottom(line).toFloat() - lineGap
         val baseline = layout.getLineBaseline(line).toFloat()
-        val glyphTop = baseline + fontMetrics.ascent - glyphPadding
-        val glyphBottom = baseline + fontMetrics.descent + glyphPadding
-        val top = glyphTop.coerceAtLeast(lineTop)
-        val bottom = glyphBottom.coerceAtMost(lineBottom)
+        val glyphTop = baseline + fontMetrics.ascent - verticalPadding
+        val glyphBottom = baseline + fontMetrics.descent + verticalPadding
+        val offsetY = style.highlightOffsetYDp * density
+        val top = glyphTop.coerceAtLeast(lineTop) + offsetY
+        val bottom = glyphBottom.coerceAtMost(lineBottom) + offsetY
         if (bottom <= top) return
 
         bounds.set(
-            (segmentLeft - horizontalPadding).coerceAtLeast(if (keepCornersInsideLayout) 0f else -horizontalPadding),
+            (segmentLeft - inlinePadding).coerceAtLeast(if (keepCornersInsideLayout) 0f else -inlinePadding),
             top,
-            (segmentRight + horizontalPadding).coerceAtMost(layout.width + if (keepCornersInsideLayout) 0f else horizontalPadding),
+            (segmentRight + inlinePadding).coerceAtMost(layout.width + if (keepCornersInsideLayout) 0f else inlinePadding),
             bottom
         )
         val radius = minOf(cornerRadius, bounds.height() / 2f)

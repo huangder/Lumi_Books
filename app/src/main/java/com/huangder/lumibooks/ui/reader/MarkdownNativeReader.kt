@@ -35,7 +35,7 @@ internal fun markdownPaginationSignature(identity: String, style: MarkdownPageSt
 
 /** Native document surface; menus, dialogs, themes and navigation remain owned by ReaderScreen. */
 @Composable
-internal fun MarkdownNativeReader(
+internal fun MarkdownNativeReaderContent(
     source: MarkdownBlockSource,
     state: ReaderUiState,
     typeface: Typeface,
@@ -50,6 +50,9 @@ internal fun MarkdownNativeReader(
     onPage: (Int, Int, String) -> Unit,
     onPageIndex: (List<Int>) -> Unit = {},
     onManualNavigation: () -> Unit = {},
+    onManualScrollSettled: () -> Unit = {},
+    onVisibleCharacters: (List<ReaderVisibleCharacters>) -> Unit = {},
+    ttsFollowEnabled: Boolean = false,
     onSelection: (EpubSelectionInfo) -> Unit,
     onLink: (String) -> Unit,
     onMenu: () -> Unit,
@@ -60,11 +63,14 @@ internal fun MarkdownNativeReader(
     onTextReady: ((suspend (Int, Int) -> EpubPageText?)?) -> Unit,
     onPaginationReady: (Boolean) -> Unit,
     onError: (String) -> Unit,
+    backgroundPreparationEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val latestPage by rememberUpdatedState(onPage)
     val latestPageIndex by rememberUpdatedState(onPageIndex)
     val latestManualNavigation by rememberUpdatedState(onManualNavigation)
+    val latestManualScrollSettled by rememberUpdatedState(onManualScrollSettled)
+    val latestVisibleCharacters by rememberUpdatedState(onVisibleCharacters)
     val latestSelection by rememberUpdatedState(onSelection)
     val latestLink by rememberUpdatedState(onLink)
     val latestMenu by rememberUpdatedState(onMenu)
@@ -81,6 +87,8 @@ internal fun MarkdownNativeReader(
             pageChanged = { page, count, locator -> latestPage(page, count, locator) }
             pageIndexChanged = { latestPageIndex(it) }
             manualNavigation = { latestManualNavigation() }
+            manualScrollSettled = { latestManualScrollSettled() }
+            visibleCharactersChanged = { latestVisibleCharacters(it) }
             selected = { latestSelection(it) }
             link = { latestLink(it) }
             menu = { latestMenu() }
@@ -93,14 +101,16 @@ internal fun MarkdownNativeReader(
             onTextReady { chapter, page -> if (chapter == 0) pageText(page) else null }
         }
     }, update = { view ->
+        view.backgroundPreparationEnabled = backgroundPreparationEnabled
         view.selectionAccent = if (state.eInkModeEnabled) color else accent
         view.paperColor = paperColor
         view.motionEnabled = motion && !state.eInkModeEnabled
         view.transition = state.pageTransition
         view.transitionDuration = com.huangder.lumibooks.ui.animation.VisualMotion.durationMillis(state.pageAnimationSettings.durationFor(state.pageTransition))
         view.configure(state, typeface, color, dark, continuous)
+        view.annotationStyle = state.annotationStyle
         view.setNotes(notes)
-        view.setTts(ttsSentence)
+        view.setTts(ttsSentence, ttsFollowEnabled)
         view.clearSelection(selectionClearToken)
         view.navigate(navigation)
     }, onRelease = { view -> view.release(); onTurnReady(null); onTextReady(null) })
@@ -204,6 +214,8 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
     var pageChanged: (Int, Int, String) -> Unit = { _, _, _ -> }
     var pageIndexChanged: (List<Int>) -> Unit = {}
     var manualNavigation: () -> Unit = {}
+    var manualScrollSettled: () -> Unit = {}
+    var visibleCharactersChanged: (List<ReaderVisibleCharacters>) -> Unit = {}
     var selected: (EpubSelectionInfo) -> Unit = {}
     var link: (String) -> Unit = {}
     var menu: () -> Unit = {}
@@ -220,6 +232,13 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
     private var provider: MarkdownPageProvider? = null
     private var renderJob: Job? = null
     private var countJob: Job? = null
+    var backgroundPreparationEnabled = true
+        set(value) {
+            if (field == value) return
+            field = value
+            if (!value) closePageIndex()
+            else if (countJob == null && pageStarts.isEmpty()) provider?.let(::buildPageIndex)
+        }
     private var pageIndexCache: ReaderPageIndexCache? = null
     private var paginationBook: com.huangder.lumibooks.domain.model.Book? = null
     private var paginationIdentity = ""
@@ -233,7 +252,18 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
     private var pendingRequest: EpubNavigationRequest? = null
     private var selectionToken = -1
     private var notes: List<Note> = emptyList()
+
+    /** 笔记高亮/划线的用户几何参数；变化时只重绘已创建的文本块。 */
+    var annotationStyle: com.huangder.lumibooks.ui.reader.engine.ReaderAnnotationStyle =
+        com.huangder.lumibooks.ui.reader.engine.ReaderAnnotationStyle.DEFAULT
+        set(value) {
+            if (field == value) return
+            field = value
+            textOwners.keys.forEach { (it as? MarkdownAnnotationTextView)?.annotationStyle = value }
+        }
     private var tts: TtsSentencePosition? = null
+    private var followTts = false
+    private var manualScrollPending = false
     private var searchRange: IntRange? = null
     private val history = ArrayDeque<Int>()
     private var pageStarts: List<Int> = emptyList()
@@ -587,7 +617,10 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
         config = value
         rebuild(preservePagination = colorOnly)
     }
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) { super.onSizeChanged(w, h, oldw, oldh); if (w != oldw || h != oldh) rebuild() }
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (w != oldw || h != oldh) rebuild()
+    }
     private fun rebuild(preservePagination: Boolean = false) {
         cancelSelectionLongPress()
         finishHandleDrag()
@@ -688,6 +721,7 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
         }
     }
     private fun buildPageIndex(engine: MarkdownPageProvider) {
+        if (!backgroundPreparationEnabled) return
         val stamp = generation
         val book = paginationBook
         val style = engine.style
@@ -769,15 +803,21 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
         restoreContinuous(current)
         list.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
-                if (newState == RecyclerView.SCROLL_STATE_DRAGGING) manualNavigation()
+                if (newState == RecyclerView.SCROLL_STATE_DRAGGING) beginManualScroll()
                 scrolling = newState != RecyclerView.SCROLL_STATE_IDLE
                 if (scrolling) touchSession.onScrollStarted()
                 if (!scrolling) {
                     scheduleSelectionRefresh()
                     scheduleProgressPublish(true)
+                    if (manualScrollPending) {
+                        manualScrollPending = false
+                        visibleCharactersChanged(visibleTtsCharacters())
+                        manualScrollSettled()
+                    }
                 }
             }
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                if (manualScrollPending) visibleCharactersChanged(visibleTtsCharacters())
                 val index = manager.findFirstVisibleItemPosition()
                 if (index < 0) return
                 val indices = adapter.groupAt(index)
@@ -875,9 +915,21 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
                 fun settle() {
                     if (restoreGeneration != windowGeneration || recycler !== list) return
                     list.stopScroll()
-                    manager.scrollToPositionWithOffset(item, -top)
+                    val existing = manager.findViewByPosition(item)
+                    if (existing == null || existing.top != -top) manager.scrollToPositionWithOffset(item, -top)
                     list.postOnAnimation {
                         if (restoreGeneration != windowGeneration || recycler !== list) return@postOnAnimation
+                        // The enclosing AndroidView can finish its traversal before
+                        // asynchronously shaped holders request another native pass.
+                        // Flush only that pending list pass while restoring an anchor.
+                        if (list.isLayoutRequested || list.width == 0 || list.height == 0) {
+                            val availableWidth = (width - paddingLeft - paddingRight).coerceAtLeast(1)
+                            val availableHeight = (height - paddingTop - paddingBottom).coerceAtLeast(1)
+                            list.forceLayout()
+                            list.measure(MeasureSpec.makeMeasureSpec(availableWidth, MeasureSpec.EXACTLY),
+                                MeasureSpec.makeMeasureSpec(availableHeight, MeasureSpec.EXACTLY))
+                            list.layout(paddingLeft, paddingTop, width - paddingRight, height - paddingBottom)
+                        }
                         val target = manager.findViewByPosition(item)
                         val visible = target != null &&
                             manager.findFirstVisibleItemPosition() <= item &&
@@ -902,7 +954,9 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
                             // Cached holders may survive a nearby jump without onBind being
                             // called. Restart their cancelled work for the new window generation.
                             if (visible && !windowRendered) continuousAdapter?.refreshVisible(force = false)
-                            settle()
+                            // Yield a real frame interval: immediate vsync hosts can otherwise
+                            // spin forever before asynchronous block shaping gets CPU time.
+                            list.postDelayed({ settle() }, 16L)
                             return@postOnAnimation
                         }
                         restoringContinuous = false
@@ -1289,6 +1343,7 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
             }
         }
         textOwners[tv] = offset
+        tv.annotationStyle = annotationStyle
         if (!tableCell && block.runs.any { it.style == "math-block" }) {
             return HorizontalScrollView(context).apply {
                 isFillViewport = true
@@ -1299,8 +1354,14 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
     }
     fun turn(direction: Int) {
         if (turnPending || transitionView != null) return
+        if (config?.continuous == true) {
+            val list = recycler ?: return
+            if (!list.canScrollVertically(direction)) return
+            beginManualScroll()
+            list.smoothScrollBy(0, direction * (height - paddingTop - paddingBottom))
+            return
+        }
         manualNavigation()
-        if (config?.continuous == true) { recycler?.smoothScrollBy(0, direction * (height - paddingTop - paddingBottom)); return }
         if (direction > 0 && currentEnd < source.document.text.length) { turnPending = true; history.addLast(current); livePage++; showPage(currentEnd, direction = direction) }
         else if (direction < 0 && current > 0) {
             if (history.isNotEmpty()) { turnPending = true; livePage = (livePage - 1).coerceAtLeast(0); showPage(history.removeLast(), direction = direction) }
@@ -1371,7 +1432,43 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
             "notes-updated count=${value.size} attached=${textOwners.keys.count { it.isAttachedToWindow }}")
         applySelection()
     }
-    fun setTts(value: TtsSentencePosition?) { if (tts != value) { tts = value; applySelection() } }
+    private fun beginManualScroll() {
+        manualScrollPending = true
+        visibleCharactersChanged(emptyList())
+        manualNavigation()
+    }
+
+    private fun visibleTtsCharacters(): List<ReaderVisibleCharacters> = buildList {
+        val bounds = android.graphics.Rect()
+        for ((view, start) in textOwners) {
+            val layout = view.layout ?: continue
+            if (!view.isAttachedToWindow || layout.lineCount == 0 || !view.getLocalVisibleRect(bounds)) continue
+            val top = bounds.top - view.totalPaddingTop
+            val bottom = bounds.bottom - view.totalPaddingTop
+            if (bottom <= 0 || top >= layout.height) continue
+            val first = layout.getLineForVertical(top.coerceAtLeast(0))
+            val last = layout.getLineForVertical((bottom - 1).coerceAtMost(layout.height - 1))
+            add(ReaderVisibleCharacters(0, start + layout.getLineStart(first), start + layout.getLineEnd(last)))
+        }
+    }
+
+    fun setTts(value: TtsSentencePosition?, follow: Boolean = false) {
+        if (tts == value && followTts == follow) return
+        if (tts != value) {
+            tts = value
+            applySelection()
+        }
+        followTts = follow
+        if (value == null || config?.continuous != true) return
+        postOnAnimation {
+            if (tts != value || !scope.isActive || scrolling || manualScrollPending || restoringContinuous) return@postOnAnimation
+            val visible = visibleTtsCharacters()
+            visibleCharactersChanged(visible)
+            if (followTts && pendingRequest == null && visible.containsSpeech(value) == false) {
+                restoreContinuous(value.startOffset)
+            }
+        }
+    }
     fun clearSelection(token: Int) {
         if (selectionToken == token) return
         selectionToken = token

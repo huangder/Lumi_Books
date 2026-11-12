@@ -51,7 +51,7 @@ class MarkdownNativeSurfaceTest {
             ?.firstOrNull { it.text.startsWith("Markdown") }
         try {
             compose.waitUntil(15000) {
-                org.robolectric.shadows.ShadowLooper.idleMainLooper()
+                org.robolectric.shadows.ShadowLooper.idleMainLooper(16, java.util.concurrent.TimeUnit.MILLISECONDS)
                 textView()?.layout != null
             }
             compose.runOnIdle { notes.value = listOf(note.copy(color = "#FF0000FF")) }
@@ -101,7 +101,7 @@ class MarkdownNativeSurfaceTest {
         try {
             compose.waitForIdle()
             compose.waitUntil(15000) {
-                org.robolectric.shadows.ShadowLooper.idleMainLooper()
+                org.robolectric.shadows.ShadowLooper.idleMainLooper(16, java.util.concurrent.TimeUnit.MILLISECONDS)
                 check(errors.isEmpty()) { errors.toString() }
                 locator.isNotEmpty()
             }

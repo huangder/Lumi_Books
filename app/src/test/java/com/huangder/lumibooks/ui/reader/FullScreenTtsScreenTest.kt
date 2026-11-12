@@ -3,6 +3,7 @@ package com.huangder.lumibooks.ui.reader
 import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
 import android.view.View
 import androidx.compose.runtime.*
 import androidx.compose.ui.geometry.Offset
@@ -240,6 +241,41 @@ class FullScreenTtsScreenTest {
         compose.mainClock.autoAdvance = true
         next.performTouchInput { doubleClick() }
         compose.runOnIdle { assertEquals(1, seeks) }
+    }
+
+    @Test fun shortSubtitleReachesFullBrightnessBeforePlaybackMovesOn() {
+        val shortChapter = chapter.copy(text = "First sentence. OK. Next sentence.")
+        val page = TtsPageContent(TtsPageLocation(0, 0), shortChapter.text, null, null)
+        val text = listeningText(shortChapter, page, null)
+        state.value = state.value.copy(subtitles = true, text = text, cover = null)
+        show(animated = true)
+        val shortRow = compose.onNodeWithTag("sentence-${text.sentences[1].id}")
+        fun brightestRed(): Float {
+            val bounds = shortRow.fetchSemanticsNode().boundsInRoot
+            return compose.runOnIdle {
+                val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+                try {
+                    view.draw(Canvas(bitmap))
+                    (bounds.top.toInt() until bounds.bottom.toInt()).maxOf { y ->
+                        (bounds.left.toInt() until bounds.right.toInt()).maxOf { x ->
+                            Color.red(bitmap.getPixel(x, y)) / 255f
+                        }
+                    }
+                } finally {
+                    bitmap.recycle()
+                }
+            }
+        }
+        assertTrue("upcoming subtitle is dim", brightestRed() < .8f)
+
+        compose.mainClock.autoAdvance = false
+        compose.runOnIdle { state.value = state.value.copy(text = text.copy(focus = 1)) }
+        advance(48)
+        assertTrue("short subtitle is fully bright while spoken", brightestRed() > .95f)
+
+        compose.runOnIdle { state.value = state.value.copy(text = text.copy(focus = 2)) }
+        compose.mainClock.autoAdvance = true
+        compose.onNodeWithTag("sentence-${text.sentences[2].id}").assertIsDisplayed()
     }
 
     @Test fun changingChaptersKeepsOutgoingSubtitlesUntilTheTransitionCompletes() {

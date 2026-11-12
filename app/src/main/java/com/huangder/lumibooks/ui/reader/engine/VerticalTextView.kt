@@ -53,6 +53,17 @@ internal class VerticalTextView(context: Context) : View(context) {
         }
     })
 
+    /**
+     * 笔记高亮/划线的用户几何参数。竖排时「高度/Y 偏移」作用在垂直于文字方向的 x 轴上，
+     * 正值朝划线所在的列左侧移动；「横向延伸」作用在列内的上下方向。
+     */
+    var annotationStyle: ReaderAnnotationStyle = ReaderAnnotationStyle.DEFAULT
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+        }
+
     fun configure(textSize: Float, textColor: Int, typeface: Typeface, accentColor: Int) {
         defaultTextSize = textSize
         defaultTextColor = textColor
@@ -175,6 +186,7 @@ internal class VerticalTextView(context: Context) : View(context) {
         data class Run(
             val columnIndex: Int,
             val color: Int,
+            val styled: Boolean,
             var lastOffset: Int,
             var left: Float,
             var top: Float,
@@ -189,10 +201,13 @@ internal class VerticalTextView(context: Context) : View(context) {
             if (localStart !in 0 until spannable.length || localEnd !in 1..spannable.length) return@forEach
             val color = highlightColorAt(spannable, localStart, localEnd) ?: return@forEach
             if (color ushr 24 == 0) return@forEach
+            // 只有笔记/规则高亮（且没有被搜索高亮覆盖）才套用用户几何参数。
+            val styled = spannable.getSpans(localStart, localEnd, ReaderSearchHighlightSpan::class.java).isEmpty() &&
+                spannable.getSpans(localStart, localEnd, ReaderHighlightSpan::class.java).isNotEmpty()
             val current = runs.lastOrNull()
             if (
                 current != null && current.columnIndex == glyph.columnIndex &&
-                current.color == color && current.lastOffset == glyph.startOffset
+                current.color == color && current.styled == styled && current.lastOffset == glyph.startOffset
             ) {
                 current.lastOffset = glyph.endOffset
                 current.left = minOf(current.left, glyph.bounds.left)
@@ -203,6 +218,7 @@ internal class VerticalTextView(context: Context) : View(context) {
                 runs += Run(
                     columnIndex = glyph.columnIndex,
                     color = color,
+                    styled = styled,
                     lastOffset = glyph.endOffset,
                     left = glyph.bounds.left,
                     top = glyph.bounds.top,
@@ -218,11 +234,15 @@ internal class VerticalTextView(context: Context) : View(context) {
         val maxRadius = 6f * density
         val oldColor = paint.color
         runs.forEach { run ->
+            val style = if (run.styled) annotationStyle else ReaderAnnotationStyle.DEFAULT
+            val crossInset = columnGap - style.highlightHeightDp * density
+            val inline = (inlinePadding + style.highlightWidthDp * density).coerceAtLeast(0f)
+            val shift = -style.highlightOffsetYDp * density
             val bounds = RectF(
-                run.left + columnGap,
-                (run.top - inlinePadding).coerceAtLeast(0f),
-                run.right - columnGap,
-                (run.bottom + inlinePadding).coerceAtMost(page.height)
+                run.left + crossInset + shift,
+                (run.top - inline).coerceAtLeast(0f),
+                run.right - crossInset + shift,
+                (run.bottom + inline).coerceAtMost(page.height)
             )
             if (bounds.width() <= 0f || bounds.height() <= 0f) return@forEach
             paint.color = run.color
@@ -249,6 +269,7 @@ internal class VerticalTextView(context: Context) : View(context) {
             val columnIndex: Int,
             val mode: Int,
             val color: Int,
+            val styled: Boolean,
             var lastOffset: Int,
             var left: Float,
             var top: Float,
@@ -267,9 +288,11 @@ internal class VerticalTextView(context: Context) : View(context) {
                 ?: spannable.getSpans(start, end, ForegroundColorSpan::class.java)
                     .lastOrNull()?.foregroundColor
                 ?: defaultTextColor
+            val styled = wave != null
             val previous = runs.lastOrNull()
             if (previous != null && previous.columnIndex == glyph.columnIndex &&
-                previous.mode == mode && previous.color == color && previous.lastOffset == glyph.startOffset
+                previous.mode == mode && previous.color == color && previous.styled == styled &&
+                previous.lastOffset == glyph.startOffset
             ) {
                 previous.lastOffset = glyph.endOffset
                 previous.left = minOf(previous.left, glyph.bounds.left)
@@ -280,6 +303,7 @@ internal class VerticalTextView(context: Context) : View(context) {
                     columnIndex = glyph.columnIndex,
                     mode = mode,
                     color = color,
+                    styled = styled,
                     lastOffset = glyph.endOffset,
                     left = glyph.bounds.left,
                     top = glyph.bounds.top,
@@ -291,14 +315,17 @@ internal class VerticalTextView(context: Context) : View(context) {
         val density = resources.displayMetrics.density
         val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = 1.0f * density
             strokeCap = Paint.Cap.ROUND
         }
         runs.forEach { run ->
+            val style = if (run.styled) annotationStyle else ReaderAnnotationStyle.DEFAULT
             linePaint.color = run.color
-            val baseX = (run.left + 1.5f * density).coerceIn(2f * density, page.width - 2f * density)
+            linePaint.strokeWidth = style.underlineThicknessDp * density
+            // 划线在列左侧，正偏移继续向左远离文字。
+            val baseX = (run.left + 1.5f * density - style.underlineOffsetYDp * density)
+                .coerceIn(2f * density, page.width - 2f * density)
             drawReaderUnderline(canvas, linePaint, run.mode, run.top.coerceAtLeast(0f),
-                run.bottom.coerceAtMost(page.height), baseX, true, density)
+                run.bottom.coerceAtMost(page.height), baseX, true, density, style.underlinePatternScale)
         }
     }
 

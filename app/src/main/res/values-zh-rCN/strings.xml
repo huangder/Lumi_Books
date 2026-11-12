@@ -1499,6 +1499,7 @@
     <string name="tts_timer_label">定时</string>
     <string name="tts_listening_position">听书位置</string>
     <string name="tts_follow_page_turns">跟随翻页朗读</string>
+    <string name="tts_listen_from_this_page">从本页听</string>
     <string name="tts_return_to_progress">回到进度处</string>
     <string name="tts_return_to_reading_page">回到读的那一页</string>
     <string name="tts_from_this_page">从此页</string>

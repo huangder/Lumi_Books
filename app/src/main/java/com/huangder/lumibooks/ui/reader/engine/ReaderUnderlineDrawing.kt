@@ -15,9 +15,12 @@ internal fun drawReaderUnderline(
     end: Float,
     cross: Float,
     vertical: Boolean,
-    density: Float
+    density: Float,
+    /** 双线间距、虚线与波浪振幅的放大比例，跟随划线粗细。 */
+    patternScale: Float = 1f
 ) {
     if (end <= start) return
+    val scale = patternScale.coerceAtLeast(1f)
     val oldEffect = paint.pathEffect
     fun line(offset: Float) {
         if (vertical) canvas.drawLine(cross + offset, start, cross + offset, end, paint)
@@ -26,18 +29,18 @@ internal fun drawReaderUnderline(
     when (mode) {
         HighlightRule.UNDERLINE_STRAIGHT -> line(0f)
         HighlightRule.UNDERLINE_DOUBLE -> {
-            line(-1.3f * density)
-            line(1.3f * density)
+            line(-1.3f * density * scale)
+            line(1.3f * density * scale)
         }
         HighlightRule.UNDERLINE_DASHED -> {
-            paint.pathEffect = DashPathEffect(floatArrayOf(4f * density, 3f * density), 0f)
+            paint.pathEffect = DashPathEffect(floatArrayOf(4f * density * scale, 3f * density * scale), 0f)
             line(0f)
         }
         else -> {
             val path = Path()
             var position = start
             while (position < end) {
-                val deviation = 0.8f * density * sin((position - start) / (11f * density) * 2.0 * Math.PI).toFloat()
+                val deviation = 0.8f * density * scale * sin((position - start) / (11f * density) * 2.0 * Math.PI).toFloat()
                 if (position == start) {
                     if (vertical) path.moveTo(cross, position) else path.moveTo(position, cross)
                 } else if (vertical) path.lineTo(cross + deviation, position)

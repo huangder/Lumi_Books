@@ -129,6 +129,8 @@ data class HomeUiState(
     val spineSharpCovers: Boolean = false,
     val importBooksLayoutMode: Int = 2,
     val importMessage: String? = null,
+    /** [importMessage] is an archive confirmation; the banner adds where to find the book. */
+    val archiveNoticePending: Boolean = false,
     val authorizedBookDirectories: List<String> = emptyList(),
     /** Files remembered from the last scan of every authorized folder. */
     val authorizedFolderFiles: List<AuthorizedFolderFile> = emptyList(),
@@ -1407,7 +1409,11 @@ class HomeViewModel @Inject constructor(
     }
 
     fun clearImportMessage() {
-        _uiState.value = _uiState.value.copy(importMessage = null)
+        _uiState.value = _uiState.value.copy(importMessage = null, archiveNoticePending = false)
+    }
+
+    fun clearArchiveNotice() {
+        _uiState.value = _uiState.value.copy(archiveNoticePending = false)
     }
 
     fun createAndAssignTag(bookId: String, rawName: String, parentId: String? = null) {
@@ -2036,59 +2042,58 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    fun deleteBook(book: Book, mode: BookDeleteMode = BookDeleteMode.LOCAL_ONLY) {
-        deleteBooks(listOf(book), mode)
+    fun deleteBook(
+        book: Book,
+        mode: BookDeleteMode = BookDeleteMode.LOCAL_ONLY,
+        onFinished: ((removed: Boolean, message: String?) -> Unit)? = null
+    ) {
+        deleteBooks(listOf(book), mode) { message ->
+            if (onFinished != null) {
+                val removed = message == null || bookRepository.getBookById(book.id) == null
+                onFinished(removed, message)
+            }
+        }
     }
 
     fun deleteBooks(
         books: List<Book>,
-        mode: BookDeleteMode = BookDeleteMode.LOCAL_ONLY
+        mode: BookDeleteMode = BookDeleteMode.LOCAL_ONLY,
+        onFinished: (suspend (String?) -> Unit)? = null
     ) {
         val booksToDelete = books.distinctBy { it.id }
-        if (booksToDelete.isEmpty()) return
+        if (booksToDelete.isEmpty() || _uiState.value.isBookDeleteInProgress) return
         openingSnapshotStore.delete(booksToDelete.map { it.id })
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isBookDeleteInProgress = true)
-            var remoteFailure: String? = null
-            if (mode.cloudFailureBlocksLocalDelete) {
-                val remoteIds = booksToDelete.asSequence()
-                    .filter { it.remoteFileName != null }
-                    .mapTo(mutableSetOf()) { it.id }
-                if (remoteIds.isNotEmpty()) {
-                    val remoteResult = webdavSyncManager.deleteRemoteBooks(remoteIds)
-                    if (!remoteResult.success) {
-                        _uiState.value = _uiState.value.copy(
-                            error = remoteResult.message,
-                            isBookDeleteInProgress = false
-                        )
-                        return@launch
+            try {
+                val failures = when (mode) {
+                    BookDeleteMode.LOCAL_ONLY -> deleteBooksAndManagedData(booksToDelete, mode)
+                    BookDeleteMode.LOCAL_AND_CLOUD -> {
+                        val remoteBooks = booksToDelete.filter { it.remoteFileName != null }
+                        val result = if (remoteBooks.isEmpty()) null else webdavSyncManager.deleteRemoteBooks(remoteBooks)
+                        if (result == null || result.success) {
+                            deleteBooksAndManagedData(booksToDelete, mode)
+                        } else {
+                            listOf(result.message)
+                        }
+                    }
+                    BookDeleteMode.FORCE_LOCAL_AND_CLOUD -> {
+                        var localFailures: List<String>? = null
+                        val result = webdavSyncManager.deleteRemoteBooks(booksToDelete) {
+                            localFailures = deleteBooksAndManagedData(booksToDelete, mode)
+                        }
+                        val failures = localFailures
+                        when {
+                            result.success -> failures.orEmpty()
+                            failures == null -> listOf(result.message)
+                            else -> failures + application.getString(R.string.force_delete_cloud_failed, result.message)
+                        }
                     }
                 }
-            }
-            val failures = deleteBooksAndManagedData(booksToDelete, mode)
-            if (mode.forcesLocalDelete) {
-                val remoteFileNames = booksToDelete.associate { book ->
-                    book.id to (book.remoteFileName ?: "${book.id}.${if (book.format == BookFormat.MARKDOWN) "mdpack" else book.format.name.lowercase()}")
-                }
-                val remoteResult = webdavSyncManager.deleteRemoteBooks(
-                    bookIds = booksToDelete.mapTo(mutableSetOf()) { it.id },
-                    remoteFileNames = remoteFileNames,
-                    publishPortableState = true
-                )
-                if (!remoteResult.success) {
-                    remoteFailure = application.getString(
-                        R.string.force_delete_cloud_failed,
-                        remoteResult.message
-                    )
-                }
-            }
-            val messages = failures + listOfNotNull(remoteFailure)
-            if (messages.isNotEmpty()) {
-                _uiState.value = _uiState.value.copy(
-                    error = messages.joinToString(separator = "\n"),
-                    isBookDeleteInProgress = false
-                )
-            } else {
+                val message = failures.takeIf { it.isNotEmpty() }?.joinToString(separator = "\n")
+                if (message != null) _uiState.value = _uiState.value.copy(error = message)
+                onFinished?.invoke(message)
+            } finally {
                 _uiState.value = _uiState.value.copy(isBookDeleteInProgress = false)
             }
         }
@@ -2148,6 +2153,8 @@ class HomeViewModel @Inject constructor(
                     bookRepository.deleteBook(book)
                     deletedIds += book.id
                 }
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
             } catch (error: Exception) {
                 failures += error.message ?: "Unable to delete ${book.title}"
             }
@@ -2222,7 +2229,10 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 bookRepository.setBooksArchived(listOf(bookId), true)
-                _uiState.value = _uiState.value.copy(importMessage = application.getString(R.string.archive_book_success))
+                _uiState.value = _uiState.value.copy(
+                    importMessage = application.getString(R.string.archive_book_success),
+                    archiveNoticePending = true
+                )
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
             } catch (_: Exception) {
                 _uiState.value = _uiState.value.copy(error = application.getString(R.string.archive_book_failed))

@@ -27,6 +27,7 @@ internal fun AppWidgetProvider.runWidgetUpdate(
         try {
             block()
         } catch (error: Throwable) {
+            WidgetDiagnostics.log("update_failed", mapOf("provider" to tag), throwable = error)
             Log.e(tag, "Unable to update app widget", error)
         } finally {
             pendingResult.finish()
@@ -71,6 +72,7 @@ internal fun openBookPendingIntent(
                 .build()
         )
         .putExtra(MainActivity.EXTRA_OPEN_BOOK_ID, bookId)
+        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
         .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
     return PendingIntent.getActivity(
         context,

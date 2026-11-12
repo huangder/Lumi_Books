@@ -217,6 +217,14 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
             invalidate()
         }
 
+    /** 笔记高亮/划线的用户几何参数；只影响绘制，不触发重排。 */
+    var annotationStyle: ReaderAnnotationStyle = ReaderAnnotationStyle.DEFAULT
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+        }
+
     /** Color for the custom selection background; native Layout selection is disabled. */
     var readerSelectionColor: Int = 0x40007AFF
         set(value) {
@@ -1223,9 +1231,10 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         val density = resources.displayMetrics.density
         val wavePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = 1.0f * density
+            strokeWidth = annotationStyle.underlineThicknessDp * density
             strokeCap = Paint.Cap.ROUND
         }
+        val underlineOffset = annotationStyle.underlineOffsetYDp * density
         val saveCount = canvas.save()
         canvas.translate(
             totalPaddingLeft.toFloat() - scrollX,
@@ -1243,8 +1252,6 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
             val spanEnd = spanned.getSpanEnd(span).coerceIn(spanStart, spanned.length)
             if (spanStart >= spanEnd) return@forEach
             wavePaint.color = span.color
-            val amplitude = 0.8f * density
-            val wavelength = 11f * density
             for (line in maxOf(visible.first, textLayout.getLineForOffset(spanStart))..
                 minOf(visible.last, textLayout.getLineForOffset(spanEnd - 1))) {
                 val layoutLineStart = textLayout.getLineStart(line)
@@ -1264,8 +1271,12 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
                 val x1 = range.right
                 if (x1 <= x0) continue
                 val baseline = textLayout.getLineBaseline(line).toFloat()
-                val underlineCenter = baseline + paint.fontMetrics.descent.coerceAtLeast(1f) + 1f * density
-                drawReaderUnderline(canvas, wavePaint, span.mode, x0, x1, underlineCenter, false, density)
+                val underlineCenter = baseline + paint.fontMetrics.descent.coerceAtLeast(1f) + 1f * density +
+                    underlineOffset
+                drawReaderUnderline(
+                    canvas, wavePaint, span.mode, x0, x1, underlineCenter, false, density,
+                    annotationStyle.underlinePatternScale
+                )
             }
         }
         canvas.restoreToCount(saveCount)
@@ -1325,7 +1336,8 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
             start = spanStart,
             end = spanEnd,
             color = color,
-            outline = (span as? ReaderHighlightSpan)?.outline == true
+            outline = (span as? ReaderHighlightSpan)?.outline == true,
+            style = if (span is ReaderHighlightSpan) annotationStyle else ReaderAnnotationStyle.DEFAULT
         )
     }
 

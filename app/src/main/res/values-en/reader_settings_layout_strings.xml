@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_theme_suites_section">My theme sets</string>
+    <string name="reader_theme_suites_footer">Swipe left on a custom set to rename or delete it. Hold the handle and drag to reorder.</string>
+    <string name="reader_theme_bundle_section">Import &amp; export</string>
+    <string name="reader_panel_section_text">Text</string>
+    <string name="reader_panel_section_spacing">Spacing &amp; alignment</string>
+    <string name="reader_panel_section_margins">Margins</string>
+    <string name="reader_panel_section_background_color">Background color</string>
+    <string name="reader_panel_section_background_image">Background image</string>
+    <string name="reader_page_animation_mode">Page turn style</string>
+    <string name="reader_page_animation_speed_hint">Lower values turn pages faster</string>
+</resources>

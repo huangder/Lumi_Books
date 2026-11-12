@@ -187,6 +187,20 @@ internal fun shouldApplyRemoteMetadata(
 ): Boolean = localMetadataUpdatedAt == null ||
     (remoteMetadata != null && remoteMetadata.updatedAt > localMetadataUpdatedAt)
 
+internal fun shouldDownloadWebdavCover(
+    hasLocalCover: Boolean,
+    localMetadataUpdatedAt: Long?,
+    remoteMetadata: SyncBookMetadata?
+): Boolean = !hasLocalCover || shouldApplyRemoteMetadata(localMetadataUpdatedAt, remoteMetadata)
+
+internal fun shouldPublishWebdavCover(localMetadataUpdatedAt: Long, remoteBook: SyncFileEntry?): Boolean {
+    val remoteMetadata = remoteBook?.metadata
+    return remoteBook?.cover == null || remoteMetadata == null || localMetadataUpdatedAt > remoteMetadata.updatedAt
+}
+
+internal fun SyncFileEntry.matchesCoverContent(size: Long, digest: () -> String): Boolean =
+    sizeBytes == size && sha256.isNotBlank() && sha256.equals(digest(), ignoreCase = true)
+
 internal data class SyncMetadataResolution(
     val metadata: SyncBookMetadata?,
     val localWins: Boolean
@@ -241,3 +255,39 @@ internal fun shouldApplyReadingDataMetadata(
 
 internal fun SyncManifest.activeRemoteBooks(): Map<String, SyncFileEntry> =
     books.filterKeys { it !in deletedBooks }
+
+internal fun SyncManifest.resolveBookDeletionIds(
+    fileNames: Map<String, String>,
+    aliases: Map<String, String>
+): Map<String, String> = fileNames.mapValues { (localId, fileName) ->
+    aliases[localId]?.takeIf { books[it]?.fileName == fileName }
+        ?: localId.takeIf { it in books }
+        ?: books.entries.singleOrNull { it.value.fileName == fileName }?.key
+        ?: aliases[localId]
+        ?: localId
+}
+
+internal fun SyncManifest.withBookDeletions(
+    fileNames: Map<String, String>,
+    wireIds: Map<String, String>,
+    deletedAt: Long
+): SyncManifest {
+    if (fileNames.isEmpty()) return this
+    val deletions = fileNames.entries.associate { (localId, fileName) ->
+        val wireId = wireIds.getValue(localId)
+        val book = books[wireId]
+        val previous = deletedBooks[wireId]
+        wireId to DeletedBookEntry(
+            deletedAt = previous?.deletedAt ?: deletedAt,
+            fileName = book?.fileName ?: previous?.fileName ?: fileName,
+            coverFileName = book?.cover?.fileName ?: previous?.coverFileName ?: "$wireId.jpg",
+            dataFileName = data[wireId]?.fileName ?: previous?.dataFileName ?: "$wireId.json"
+        )
+    }
+    return copy(
+        books = books - deletions.keys,
+        data = data - deletions.keys,
+        deletedBooks = deletedBooks + deletions,
+        bookIdentities = bookIdentities - deletions.keys
+    )
+}

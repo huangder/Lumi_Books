@@ -1619,6 +1619,7 @@ fun BookshelfScreen(
             CloudAwareBookDeleteDialog(
                 bookCount = targets.size,
                 hasRemoteBooks = targets.any { it.remoteFileName != null },
+                hasLocalCopies = targets.any { !it.isCloudOnly },
                 onDismiss = {
                     showBatchDeleteConfirm = false
                     booksPendingDeletion = emptyList()

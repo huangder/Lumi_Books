@@ -11,17 +11,22 @@ class ReaderBackgroundRemovalTest {
         val suite = ReaderThemeSuite("suite", "Custom", selected,
             bookLayoutSettings = selected.copy(fontSize = 20f),
             lightSettings = selected.copy(lineHeight = 2f),
-            darkSettings = selected.copy(textColor = 0xFFEEDDCC.toInt()))
+            darkSettings = selected.copy(textColor = 0xFFEEDDCC.toInt()),
+            bookLayoutLightSettings = selected.copy(fontSize = 21f),
+            bookLayoutDarkSettings = selected.copy(fontSize = 24f))
         val repaired = suite.withoutReaderBackground(removed)
         assertEquals(suite.id, repaired.id)
         for (settings in listOf(repaired.settings, repaired.bookLayoutSettings,
-            repaired.lightSettings!!, repaired.darkSettings!!)) {
+            repaired.lightSettings!!, repaired.darkSettings!!,
+            repaired.bookLayoutLightSettings!!, repaired.bookLayoutDarkSettings!!)) {
             assertEquals("day", settings.backgroundSelection)
             assertEquals("day", settings.backgroundColorSelection)
         }
         assertEquals(20f, repaired.bookLayoutSettings.fontSize, 0f)
         assertEquals(2f, repaired.lightSettings!!.lineHeight, 0f)
         assertEquals(suite.darkSettings!!.textColor, repaired.darkSettings!!.textColor)
+        assertEquals(21f, repaired.bookLayoutLightSettings!!.fontSize, 0f)
+        assertEquals(24f, repaired.bookLayoutDarkSettings!!.fontSize, 0f)
     }
 
     @Test fun deletingImageRestoresItsSurvivingBaseColor() {

@@ -784,7 +784,8 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         val width: Int,
         val height: Int,
         /** 0 is the complete chapter; positive values identify a preview cache entry. */
-        val maxChars: Int = 0
+        val maxChars: Int = 0,
+        val textSizePx: Float
     )
     data class ChapterContentPreview(val text: CharSequence, val isComplete: Boolean)
     private data class AnchoredChapter(
@@ -1620,16 +1621,22 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         getChapterContent(chapterIndex, contentWidth, contentHeight)
 
     /** Request-local geometry: preview/paged/continuous layouts must not resize one another. */
-    fun getChapterContent(chapterIndex: Int, width: Int, height: Int): CharSequence =
-        getChapterContentPreview(chapterIndex, width, height, 0).text
+    fun getChapterContent(
+        chapterIndex: Int, width: Int, height: Int, textSizePx: Float = defaultTextSizePx()
+    ): CharSequence =
+        getChapterContentPreview(chapterIndex, width, height, 0, textSizePx).text
+
+    private fun defaultTextSizePx(): Float =
+        18f * (context?.resources?.displayMetrics?.density ?: 2.75f)
 
     /** Whole-book counting must not evict the chapter text retained for reading. */
     internal fun getChapterContentForPagination(
         chapterIndex: Int,
         width: Int = contentWidth,
-        height: Int = contentHeight
+        height: Int = contentHeight,
+        textSizePx: Float = defaultTextSizePx()
     ): CharSequence =
-        getChapterContentPreviewInternal(chapterIndex, width, height, 0, retainCache = false).text
+        getChapterContentPreviewInternal(chapterIndex, width, height, 0, textSizePx, retainCache = false).text
 
     /**
      * Decode only the first part of a long chapter for continuous scrolling. The returned
@@ -1639,12 +1646,14 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         chapterIndex: Int,
         width: Int,
         height: Int,
-        maxChars: Int = CONTINUOUS_PREVIEW_CHARS
+        maxChars: Int = CONTINUOUS_PREVIEW_CHARS,
+        textSizePx: Float = defaultTextSizePx()
     ): ChapterContentPreview = getChapterContentPreviewInternal(
         chapterIndex,
         width,
         height,
-        maxChars.coerceAtLeast(0)
+        maxChars.coerceAtLeast(0),
+        textSizePx
     )
 
     private fun getChapterContentPreviewInternal(
@@ -1652,6 +1661,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         width: Int,
         height: Int,
         maxChars: Int,
+        textSizePx: Float,
         retainCache: Boolean = true
     ): ChapterContentPreview {
         lastPersistedChapterCacheHit = false
@@ -1661,7 +1671,9 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         }
 
         val revision = contentRevision.get()
-        val loadKey = ContentLoadKey(revision, chapterIndex, width, height, maxChars)
+        // Indentation is measured in the reader's current em. Keep it request-local,
+        // including previews and background pagination, and never reuse another size.
+        val loadKey = ContentLoadKey(revision, chapterIndex, width, height, maxChars, textSizePx)
         contentCache[loadKey]?.let {
             android.util.Log.d("EpubParser", "getChapterContent: idx=$chapterIndex from cache, length=${it.length}")
             return ChapterContentPreview(it, maxChars <= 0 || previewCompleteness[loadKey] == true)
@@ -1723,7 +1735,8 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 // 应用段间距和首行缩进（Canvas 引擎需要在 Spanned 层面处理）
                 val formatted = applyParagraphFormatting(
                     spanned,
-                    chapterTitle = chapters.getOrNull(chapterIndex)?.title.orEmpty()
+                    chapterTitle = chapters.getOrNull(chapterIndex)?.title.orEmpty(),
+                    textSizePx = textSizePx
                 )
                 val formattedAt = android.os.SystemClock.elapsedRealtime()
                 // 修剪末尾多余换行（防止章节末尾出现空白页）
@@ -1748,7 +1761,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                     // A short chapter was already decoded in full. Publish the same result
                     // under the complete key so the follow-up promotion is a cache hit.
                     if (retainCache && maxChars > 0 && previewHtml.isComplete) {
-                        val completeKey = ContentLoadKey(revision, chapterIndex, width, height, 0)
+                        val completeKey = loadKey.copy(maxChars = 0)
                         contentCache.put(completeKey, result)
                         previewCompleteness[completeKey] = true
                     }
@@ -2007,10 +2020,11 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
      */
     private fun applyParagraphFormatting(
         text: CharSequence,
-        chapterTitle: String = ""
+        chapterTitle: String = "",
+        textSizePx: Float = defaultTextSizePx()
     ): CharSequence {
         val density = context?.resources?.displayMetrics?.density ?: 2.75f
-        val indentPx = if (firstLineIndentChars > 0f) (firstLineIndentChars * 18f * density).toInt() else 0
+        val indentPx = if (firstLineIndentChars > 0f) (firstLineIndentChars * textSizePx).roundToInt() else 0
         val spacingPx = if (paragraphSpacingDp > 0f) (paragraphSpacingDp * density).toInt() else 0
 
         // Build paragraph separators once. Repeated insert/delete on a 400K+ Spanned
@@ -2110,8 +2124,9 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
     /** Test hook for the Canvas paragraph formatter; no parser/file state is required. */
     internal fun formatParagraphFormattingForTest(
         text: CharSequence,
-        chapterTitle: String = ""
-    ): CharSequence = applyParagraphFormatting(text, chapterTitle)
+        chapterTitle: String = "",
+        textSizePx: Float = defaultTextSizePx()
+    ): CharSequence = applyParagraphFormatting(text, chapterTitle, textSizePx)
 
     private fun buildLeadingWhitespaceEnd(
         text: CharSequence,

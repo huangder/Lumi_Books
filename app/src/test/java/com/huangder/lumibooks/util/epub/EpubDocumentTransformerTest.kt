@@ -180,7 +180,7 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("var markColor = hasMarkColor ? style.highlightColor : color"))
         // Both CSS Highlight support and the fallback must draw marks with markColor.
         assertEquals(2, Regex(Regex.escape(
-            "appendUnderlineRange(underlineLayer, range, markColor, style.underlineMode)"
+            "appendUnderlineRange(underlineLayer, range, markColor, style.underlineMode, state.annotationGeometry)"
         )).findAll(output).count())
         assertTrue(output.contains("stroke-dasharray"))
     }

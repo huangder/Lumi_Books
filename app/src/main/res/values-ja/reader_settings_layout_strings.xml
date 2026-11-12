@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_theme_suites_section">マイテーマセット</string>
+    <string name="reader_theme_suites_footer">カスタムセットを左にスワイプすると名前の変更や削除ができます。ハンドルを長押しして上下にドラッグすると並べ替えられます。</string>
+    <string name="reader_theme_bundle_section">インポートとエクスポート</string>
+    <string name="reader_panel_section_text">テキスト</string>
+    <string name="reader_panel_section_spacing">間隔と配置</string>
+    <string name="reader_panel_section_margins">余白</string>
+    <string name="reader_panel_section_background_color">背景色</string>
+    <string name="reader_panel_section_background_image">背景画像</string>
+    <string name="reader_page_animation_mode">ページめくりの種類</string>
+    <string name="reader_page_animation_speed_hint">値が小さいほど速くめくれます</string>
+</resources>

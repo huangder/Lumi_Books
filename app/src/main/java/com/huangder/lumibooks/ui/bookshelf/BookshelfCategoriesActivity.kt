@@ -933,7 +933,12 @@ private fun CategoryBooksPage(
     LaunchedEffect(operationState.importMessage, operationState.error) {
         val message = operationState.error ?: operationState.importMessage
         if (message != null) {
-            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            val text = if (operationState.error == null && operationState.archiveNoticePending) {
+                message + "\n" + context.getString(R.string.archive_book_location_hint)
+            } else {
+                message
+            }
+            Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
             if (operationState.error != null) viewModel.clearError() else viewModel.clearImportMessage()
         }
     }
@@ -1266,6 +1271,7 @@ private fun CategoryBooksPage(
         CloudAwareBookDeleteDialog(
             bookCount = targets.size,
             hasRemoteBooks = targets.any { it.remoteFileName != null },
+            hasLocalCopies = targets.any { !it.isCloudOnly },
             onDismiss = {
                 showDeleteConfirm = false
                 pendingDeleteBooks = emptyList()

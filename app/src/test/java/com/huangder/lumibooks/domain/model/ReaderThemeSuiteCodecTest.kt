@@ -241,8 +241,31 @@ class ReaderThemeSuiteCodecTest {
         val updated = suite.withSettings(ReaderLayoutTarget.BOOK_LAYOUT, bookSettings)
 
         assertEquals("serif", suite.settingsFor(ReaderLayoutTarget.READER_LAYOUT).fontType)
+        assertEquals("system", suite.settingsFor(ReaderLayoutTarget.BOOK_LAYOUT).fontType)
+        assertEquals(ReaderThemeSuites.SEPIA_ID, bookSettings.backgroundSelection)
+        assertEquals(ReaderThemeSuites.SEPIA_ID, bookSettings.backgroundColorSelection)
         assertEquals(8f, updated.bookLayoutSettings.marginLeft)
         assertEquals(suite.settings, updated.settings)
+    }
+
+    @Test
+    fun legacySepiaMigrationRestoresPublisherFontAndPreservesCustomFonts() {
+        val legacy = ReaderThemeSettings(
+            backgroundSelection = ReaderThemeSuites.SEPIA_ID,
+            backgroundColorSelection = ReaderThemeSuites.SEPIA_ID,
+            fontType = "serif",
+            fontSize = 23f
+        )
+        val migrated = ReaderThemeSuites.fromLegacy(legacy).suites
+            .first { it.id == ReaderThemeSuites.SEPIA_ID }
+        assertEquals(legacy, migrated.settings)
+        assertEquals(legacy.copy(fontType = "system"), migrated.bookLayoutSettings)
+
+        val custom = legacy.copy(fontType = "custom:my-font")
+        val customized = ReaderThemeSuites.fromLegacy(custom).suites
+            .first { it.id == ReaderThemeSuites.SEPIA_ID }
+        assertEquals(custom, customized.settings)
+        assertEquals(custom, customized.bookLayoutSettings)
     }
 
     @Test
@@ -328,6 +351,37 @@ class ReaderThemeSuiteCodecTest {
     @Test(expected = IllegalArgumentException::class)
     fun lumiBundleRejectsUnknownVersion() {
         LumiThemeBundleCodec.decode("{\"format\":\"lumi-theme-bundle\",\"formatVersion\":99,\"source\":\"LUMI\",\"themes\":[]}")
+    }
+
+    @Test fun publisherLayoutModesRoundTripWithoutChangingReaderModes() {
+        val suite = ReaderThemeSuites.defaults().first { it.id == ReaderThemeSuites.SEPIA_ID }
+        val light = suite.bookLayoutSettings.copy(fontSize = 19f, backgroundSelection = "custom:paper")
+        val dark = suite.bookLayoutSettings.copy(fontSize = 24f, marginLeft = 12f, textColor = 0xFFEEDDCC.toInt())
+        val edited = suite.withModeSettings(ReaderLayoutTarget.BOOK_LAYOUT, false, light)
+            .withModeSettings(ReaderLayoutTarget.BOOK_LAYOUT, true, dark)
+        for (decoded in listOf(
+            ReaderThemeSuiteCodec.decode(ReaderThemeSuiteCodec.encode(listOf(edited))).first { it.id == suite.id },
+            LumiThemeBundleCodec.decode(LumiThemeBundleCodec.encode(listOf(edited))).single()
+        )) {
+            assertEquals(light, decoded.settingsFor(ReaderLayoutTarget.BOOK_LAYOUT, false))
+            assertEquals(dark, decoded.settingsFor(ReaderLayoutTarget.BOOK_LAYOUT, true))
+            assertEquals(suite.settings, decoded.settingsFor(ReaderLayoutTarget.READER_LAYOUT, false))
+            assertEquals(suite.settings, decoded.settingsFor(ReaderLayoutTarget.READER_LAYOUT, true))
+            assertEquals(suite.bookLayoutSettings, decoded.bookLayoutSettings)
+        }
+    }
+
+    @Test fun legacyPublisherLayoutFallsBackToItsOwnSettingsInBothModes() {
+        val suite = ReaderThemeSuiteCodec.decode(
+            """[{"id":"legacy","settings":{"background":"day","fontSize":18},"dark":{"background":"night","fontSize":24},"bookLayoutSettings":{"background":"sepia","fontSize":21}}]"""
+        ).single()
+        assertEquals(suite.bookLayoutSettings, suite.settingsFor(ReaderLayoutTarget.BOOK_LAYOUT, false))
+        assertEquals(suite.bookLayoutSettings, suite.settingsFor(ReaderLayoutTarget.BOOK_LAYOUT, true))
+        val edited = suite.withModeSettings(ReaderLayoutTarget.BOOK_LAYOUT, true,
+            suite.bookLayoutSettings.copy(fontSize = 25f))
+        assertEquals(21f, edited.settingsFor(ReaderLayoutTarget.BOOK_LAYOUT, false).fontSize)
+        assertEquals(25f, edited.settingsFor(ReaderLayoutTarget.BOOK_LAYOUT, true).fontSize)
+        assertEquals(24f, edited.settingsFor(ReaderLayoutTarget.READER_LAYOUT, true).fontSize)
     }
 
     @Test(expected = IllegalArgumentException::class)

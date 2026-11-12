@@ -613,20 +613,28 @@ class TtsController(
         }
     }
 
-    /** Detach visual following while the reader is hidden or awaiting a resume choice. */
-    fun setReaderAttached(bookId: String, attached: Boolean) {
+    /** A foreground reattachment can also catch the reader up to a specific live session. */
+    fun setReaderAttached(
+        bookId: String,
+        attached: Boolean,
+        resumeSessionId: Long? = null,
+        resumeFromPage: TtsPageLocation? = null
+    ) {
         scope.launch {
             commandMutex.withLock {
-                if (_activeBookId.value != bookId) return@withLock
+                if (_activeBookId.value != bookId ||
+                    resumeSessionId != null && resumeSessionId != sessionGeneration
+                ) return@withLock
                 val wasAttached = readerAttached
                 readerAttached = attached
                 pageSource?.setReaderVisible(visualReaderAttached)
                 if (attached) {
                     followReaderPageTurns = true
-                    // Fullscreen may have closed before the reader's RESUME callback.
-                    // Publish the audio page after both sides of the handoff are ready.
-                    if (!wasAttached && visualReaderAttached && _followUserPageTurns.value) {
-                        requestCurrentReaderPage(fullscreenReaderLocation)
+                    // Foregrounding and closing the fullscreen player can happen in either order.
+                    if (!wasAttached && visualReaderAttached &&
+                        (resumeSessionId != null || _followUserPageTurns.value)
+                    ) {
+                        requestCurrentReaderPage(resumeFromPage ?: fullscreenReaderLocation)
                     }
                     return@withLock
                 }

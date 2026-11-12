@@ -98,6 +98,23 @@ class EpubNavigationTest {
         assertTrue(request(51L, sourceChapter = 3, targetChapter = 5).requiresStaging(3))
     }
 
+    @Test fun sameChapterRestoreStagesUntilTheDocumentHasAStableConfiguredLayout() {
+        val request = request(-50L, sourceChapter = 3, targetChapter = 3)
+        val lifecycle = EpubDocumentLifecycle()
+        fun requiresStaging() = request.requiresStaging(3, lifecycle.isStable(
+            lifecycle.configurationGeneration, lifecycle.layoutRevision))
+        lifecycle.beginDocument()
+        assertTrue(requiresStaging())
+        lifecycle.configure("portrait")
+        assertTrue(requiresStaging())
+        lifecycle.observeLayout(lifecycle.configurationGeneration, 1, stable = false)
+        assertTrue(requiresStaging())
+        lifecycle.observeLayout(lifecycle.configurationGeneration, 1, stable = true)
+        assertFalse(requiresStaging())
+        lifecycle.configure("landscape")
+        assertTrue(requiresStaging())
+    }
+
     @Test
     fun chapterFractionResolvesAgainstPreparedPageCount() {
         val destination = EpubNavigationDestination.Page(index = 0, chapterFraction = 0.5f)

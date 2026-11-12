@@ -6,6 +6,7 @@
     <string name="archive_empty">暂无已归档的图书</string>
     <string name="restore_book">恢复</string>
     <string name="archive_book_success">图书已归档</string>
+    <string name="archive_book_location_hint">可在“设置 › 隐私 › 已归档的图书”中找回</string>
     <string name="archive_book_failed">归档失败，请重试</string>
     <string name="archive_restore_success">图书已恢复</string>
     <string name="archive_restore_failed">恢复失败，请重试</string>

@@ -72,15 +72,19 @@ class ReaderThemeColorPanelsTest {
     }
 
     @Test fun publisherLayoutKeepsTextPaletteLocked() {
+        var selectedDark = false
         compose.setContent {
             EBookReaderTheme(motionPreference = MotionPreference.REDUCED) {
                 TextPanel(ReaderThemeSettings(), emptyList(), emptyList(), true, false,
-                    onThemeModeChange = {}, lockTextColor = true,
+                    onThemeModeChange = { selectedDark = it }, lockTextColor = true,
                     onPreviewUpdate = {}, onUpdate = {})
             }
         }
         compose.onNodeWithContentDescription(context.getString(R.string.text_color_custom)).assertDoesNotExist()
         compose.onNodeWithText(context.getString(R.string.reader_theme_publisher_hint)).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.reader_theme_mode_light)).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(R.string.reader_theme_mode_dark)).assertIsDisplayed().performClick()
+        compose.runOnIdle { assertEquals(true, selectedDark) }
     }
 
     private fun save(view: View, name: String) = compose.runOnIdle {

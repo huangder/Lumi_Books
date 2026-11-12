@@ -62,6 +62,57 @@ class ReaderThemeBackgroundPersistenceTest {
         }
     }
 
+    @Test fun publisherLayoutModesPersistAcrossEditorCloseAndResetIndependently() = fixture { manager, model, await ->
+        val book = ReaderLayoutTarget.BOOK_LAYOUT
+        model.beginEditing("photo")
+        model.selectEditingLayout(book)
+        val light = model.uiState.value.editingSettings!!.copy(fontSize = 19f, marginLeft = 24f)
+        model.updateTheme(light)
+        model.selectEditingMode(true)
+        val dark = model.uiState.value.editingSettings!!.copy(fontSize = 25f, marginLeft = 12f)
+        model.updateTheme(dark)
+        model.selectEditingLayout(layout)
+        model.closeEditor()
+        await {
+            val saved = manager.readerThemeSuiteState.first().suites.first { it.id == "photo" }
+            saved.settingsFor(book, false) == light && saved.settingsFor(book, true) == dark
+        }
+        val saved = DataStoreManager(context).readerThemeSuiteState.first().suites.first { it.id == "photo" }
+        assertEquals("custom:shared", saved.settingsFor(layout, false).backgroundSelection)
+        manager.resetAdvancedReaderSettings("photo", book, true)
+        val reset = manager.readerThemeSuiteState.first().suites.first { it.id == "photo" }
+        assertEquals(light, reset.settingsFor(book, false))
+        assertEquals(38f, reset.settingsFor(book, true).marginLeft)
+        assertEquals(25f, reset.settingsFor(book, true).fontSize)
+        assertEquals(saved.settingsFor(layout, true), reset.settingsFor(layout, true))
+    }
+
+    @Test fun photoCopyTargetsOriginalPublisherModeAndKeepsOtherModeAsset() = fixture { manager, model, await ->
+        val book = ReaderLayoutTarget.BOOK_LAYOUT
+        model.beginEditing("photo")
+        model.selectEditingLayout(book)
+        val input = File(context.cacheDir, "book-background.jpg").apply { writeBytes(byteArrayOf(4, 5, 6)) }
+        model.addBackgroundPhoto(Uri.fromFile(input))
+        model.selectEditingMode(true)
+        await {
+            manager.readerThemeSuiteState.first().suites.first { it.id == "photo" }
+                .settingsFor(book, false).backgroundSelection.startsWith("custom:")
+        }
+        val suite = manager.readerThemeSuiteState.first().suites.first { it.id == "photo" }
+        val selection = suite.settingsFor(book, false).backgroundSelection
+        assertEquals(ReaderThemeSuites.DAY_ID, suite.settingsFor(book, true).backgroundSelection)
+        assertEquals(null, manager.removeUnusedReaderBackground(selection.removePrefix("custom:")))
+        model.selectEditingMode(false)
+        await { model.uiState.value.editingSettings?.backgroundSelection == selection }
+        model.removeBackgroundPhoto()
+        await {
+            manager.readerThemeSuiteState.first().suites.first { it.id == "photo" }
+                .settingsFor(book, false).backgroundSelection == ReaderThemeSuites.DAY_ID
+        }
+        assertEquals("custom:shared", manager.readerThemeSuiteState.first().suites.first { it.id == "photo" }
+            .settingsFor(layout, false).backgroundSelection)
+    }
+
     @Test fun photoCopyKeepsItsOriginalModeAndLatestTypography() = fixture { manager, model, await ->
         model.beginEditing("photo")
         val input = File(context.cacheDir, "picked-background.jpg").apply { writeBytes(byteArrayOf(1, 2, 3)) }

@@ -91,7 +91,8 @@ internal data class EpubNavigationRequest(
     val sourcePageIndex: Int,
     val targetChapterIndex: Int,
     val destination: EpubNavigationDestination,
-    val showLoadingPage: Boolean = true
+    val showLoadingPage: Boolean = true,
+    val restoreSourceOnCancel: Boolean = true
 ) {
     fun coalescesPageTurn(
         requestedOrigin: EpubNavigationOrigin,
@@ -102,8 +103,8 @@ internal data class EpubNavigationRequest(
         sourceChapterIndex == sourceChapter && targetChapterIndex == targetChapter &&
         destination == requestedDestination
 
-    fun requiresStaging(activeChapterIndex: Int): Boolean =
-        targetChapterIndex != activeChapterIndex
+    fun requiresStaging(activeChapterIndex: Int, activeDocumentReady: Boolean = true): Boolean =
+        targetChapterIndex != activeChapterIndex || !activeDocumentReady
 }
 
 internal enum class EpubNavigationStage {

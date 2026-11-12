@@ -8,7 +8,6 @@ import com.huangder.lumibooks.ui.components.CollapsingPageScaffold
 import com.huangder.lumibooks.ui.components.AppDialogActionRole
 import com.huangder.lumibooks.ui.icons.directionalIcon
 import com.huangder.lumibooks.ui.icons.AppIcons
-import com.huangder.lumibooks.ui.icons.IconPair
 
 import android.content.res.Configuration
 import android.os.Bundle
@@ -85,7 +84,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -126,6 +124,25 @@ import com.huangder.lumibooks.ui.reader.engine.PageContentView
 import com.huangder.lumibooks.ui.reader.engine.ReadView
 import com.huangder.lumibooks.ui.reader.engine.ReadViewCallbacks
 import com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatter
+import com.huangder.lumibooks.ui.reader.engine.toAnnotationStyle
+import com.huangder.lumibooks.ui.reader.ReaderExpandingSliderRow
+import com.huangder.lumibooks.ui.reader.readerPanelSectionSurface
+import com.huangder.lumibooks.ui.components.GroupedCard
+import com.huangder.lumibooks.ui.components.GroupedRowDivider
+import com.huangder.lumibooks.ui.components.GroupedSectionFooter
+import com.huangder.lumibooks.ui.components.GroupedSectionTitle
+import com.huangder.lumibooks.ui.components.LumiActionRow
+import com.huangder.lumibooks.ui.components.LumiRowMinHeight
+import com.huangder.lumibooks.ui.components.LumiSegmentedControl
+import com.huangder.lumibooks.ui.components.lumiRowClickable
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import com.huangder.lumibooks.domain.model.Note
 import com.huangder.lumibooks.ui.reader.ReaderSettingsSegmentedTag
 import com.huangder.lumibooks.ui.reader.TextColorSetting
 import com.huangder.lumibooks.ui.reader.TextColorSwatch
@@ -158,10 +175,9 @@ import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
 import com.huangder.lumibooks.ui.theme.MotionPreference
-import com.huangder.lumibooks.ui.theme.cardOutline
 import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
-import com.huangder.lumibooks.ui.components.lumiCardSurface
+import com.huangder.lumibooks.ui.components.horizontalBleed
 import com.huangder.lumibooks.util.LaunchThemeController
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -440,7 +456,7 @@ private fun ReaderSettingsPreviewContent(
                                         suite = suite,
                                         backgrounds = state.backgrounds,
                                         customFonts = state.customFonts,
-                                        layout = state.editingLayout,
+                                        requestedLayout = state.editingLayout,
                                         editingDark = state.editingDark,
                                         onLayoutChange = onLayoutChange,
                                         onThemeModeChange = onThemeModeChange,
@@ -492,76 +508,75 @@ private fun ThemeSuiteListScreen(
     var deleteSuite by remember { mutableStateOf<ReaderThemeSuite?>(null) }
     var exportSuite by remember { mutableStateOf<ReaderThemeSuite?>(null) }
     val motionEnabled = LocalMotionEnabled.current
-    val listBackdrop = com.huangder.lumibooks.ui.components.LocalLiquidGlassBackdrop.current
     val listState = rememberLazyListState()
     CollapsingPageScaffold(
         title = stringResource(R.string.reader_theme_suites),
         onBack = onClose,
         actions = {
             LiquidGlassIconButton(AppIcons.Plus, stringResource(R.string.add_theme_suite), { createDialog = true })
-        },
-        bottomBar = {
-            ProvideLiquidGlassBackdrop(listBackdrop) {
-                Row(
-                    modifier = Modifier
-                        .widthIn(max = 840.dp)
-                        .fillMaxWidth()
-                        .padding(horizontal = AppSpace.md, vertical = AppSpace.sm)
-                        .navigationBarsPadding()
-                        .background(Color.Transparent),
-                    horizontalArrangement = Arrangement.spacedBy(AppSpace.sm)
-                ) {
-                    CapsuleButton(
-                        text = stringResource(R.string.theme_bundle_import),
-                        icon = IconPair(AppIcons.UploadSimple, AppIcons.UploadSimple),
-                        selected = false,
-                        modifier = Modifier.weight(1f),
-                        onClick = onImportBundle
-                    )
-                    CapsuleButton(
-                        text = stringResource(R.string.theme_bundle_export),
-                        icon = IconPair(AppIcons.DownloadSimple, AppIcons.DownloadSimple),
-                        selected = false,
-                        modifier = Modifier.weight(1f),
-                        onClick = { exportSuite = state.suites.firstOrNull { it.id == state.activeSuiteId } }
-                    )
-                }
-            }
         }
     ) {
+        // 与设置页一致的分组列表：套装放在同一张卡片里，导入导出单独成组。
         LazyColumn(
             state = listState,
             modifier = Modifier
                 .widthIn(max = 840.dp)
-                .fillMaxWidth(),
-            contentPadding = PaddingValues(
-                start = AppSpace.md,
-                top = AppSpace.sm,
-                end = AppSpace.md,
-                bottom = AppSpace.lg
-            ),
-            verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
+                .fillMaxWidth()
+                .testTag("theme_suite_list"),
+            contentPadding = PaddingValues(bottom = AppSpace.lg),
         ) {
-            items(state.suites, key = ReaderThemeSuite::id) { suite ->
-                ThemeSuiteRow(
-                    suite = suite,
-                    backgrounds = state.backgrounds,
-                    active = suite.id == state.activeSuiteId,
-                    modifier = Modifier.then(
-                        if (motionEnabled) {
-                            Modifier.animateItem(
-                                fadeInSpec = null,
-                                fadeOutSpec = null,
-                                placementSpec = tween(LumiMotion.MenuEnterMillis, easing = AppEasing.Smooth)
+            item(key = "suites_title") {
+                GroupedSectionTitle(stringResource(R.string.reader_theme_suites_section))
+            }
+            item(key = "suites_card") {
+                GroupedCard {
+                    state.suites.forEachIndexed { index, suite ->
+                        key(suite.id) {
+                            if (index > 0) GroupedRowDivider(startInset = ThemeSuiteRowTextInset)
+                            ThemeSuiteRow(
+                                suite = suite,
+                                backgrounds = state.backgrounds,
+                                active = suite.id == state.activeSuiteId,
+                                modifier = Modifier.then(
+                                    if (motionEnabled) {
+                                        Modifier.animateContentSize(
+                                            tween(LumiMotion.MenuEnterMillis, easing = AppEasing.Smooth)
+                                        )
+                                    } else Modifier
+                                ),
+                                onEdit = { onEdit(suite.id) },
+                                onActivate = { onActivate(suite.id) },
+                                onRename = { renameSuite = suite },
+                                onDelete = { deleteSuite = suite },
+                                onMove = { delta -> onMove(suite.id, delta) }
                             )
-                        } else Modifier
-                    ),
-                    onEdit = { onEdit(suite.id) },
-                    onActivate = { onActivate(suite.id) },
-                    onRename = { renameSuite = suite },
-                    onDelete = { deleteSuite = suite },
-                    onMove = { delta -> onMove(suite.id, delta) }
-                )
+                        }
+                    }
+                }
+            }
+            item(key = "suites_footer") {
+                GroupedSectionFooter(stringResource(R.string.reader_theme_suites_footer))
+            }
+            item(key = "bundle_title") {
+                GroupedSectionTitle(stringResource(R.string.reader_theme_bundle_section))
+            }
+            item(key = "bundle_card") {
+                GroupedCard {
+                    LumiActionRow(
+                        title = stringResource(R.string.theme_bundle_import),
+                        icon = AppIcons.UploadSimple,
+                        onClick = onImportBundle,
+                        modifier = Modifier.testTag("theme_bundle_import")
+                    )
+                    GroupedRowDivider(startInset = 54.dp)
+                    LumiActionRow(
+                        title = stringResource(R.string.theme_bundle_export),
+                        icon = AppIcons.DownloadSimple,
+                        value = state.suites.firstOrNull { it.id == state.activeSuiteId }?.let { themeName(it) },
+                        onClick = { exportSuite = state.suites.firstOrNull { it.id == state.activeSuiteId } },
+                        modifier = Modifier.testTag("theme_bundle_export")
+                    )
+                }
             }
         }
     }
@@ -637,7 +652,7 @@ private fun ThemeSuiteListScreen(
 }
 
 @Composable
-private fun ThemeSuiteRow(
+internal fun ThemeSuiteRow(
     suite: ReaderThemeSuite,
     backgrounds: List<ReaderBackgroundPreset>,
     active: Boolean,
@@ -650,8 +665,7 @@ private fun ThemeSuiteRow(
 ) {
     val threshold = with(LocalDensity.current) { 54.dp.toPx() }
     var dragDistance by remember { mutableFloatStateOf(0f) }
-    val shape = AppRoundedCornerShape(AppRadius.lg)
-    val previewShape = AppRoundedCornerShape(AppRadius.md)
+    val previewShape = AppRoundedCornerShape(AppRadius.sm)
     val density = LocalDensity.current
     val revealPx = with(density) { 112.dp.toPx() }
     val offset = remember(suite.id) { Animatable(0f) }
@@ -660,7 +674,7 @@ private fun ThemeSuiteRow(
     var rawOffset by remember(suite.id) { mutableFloatStateOf(0f) }
     val displayOffset = if (isDragging) rawOffset else offset.value
     val revealProgress = (-displayOffset / revealPx).coerceIn(0f, 1f)
-    Box(modifier = modifier.fillMaxWidth()) {
+    Box(modifier = modifier.fillMaxWidth().testTag("theme_suite_row_" + suite.id)) {
         if (!suite.isBuiltIn) {
             Row(
                 modifier = Modifier
@@ -670,7 +684,7 @@ private fun ThemeSuiteRow(
                         alpha = revealProgress
                         translationX = (1f - revealProgress) * 24.dp.toPx()
                     },
-                horizontalArrangement = Arrangement.spacedBy(AppSpace.sm, Alignment.End),
+                horizontalArrangement = Arrangement.spacedBy(AppSpace.xs, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 LiquidGlassIconButton(
@@ -690,10 +704,12 @@ private fun ThemeSuiteRow(
                 )
             }
         }
-        Box(
+        // 行本身铺卡片底色，左滑时盖住身后的操作按钮；卡片负责圆角与阴影。
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .offset { IntOffset(displayOffset.roundToInt(), 0) }
+                .background(AppColors.CardBg)
                 .then(if (suite.isBuiltIn) Modifier else Modifier.pointerInput(suite.id, revealPx) {
                     detectHorizontalDragGestures(
                         onDragStart = {
@@ -726,99 +742,91 @@ private fun ThemeSuiteRow(
                         }
                     )
                 })
-                .shadow(8.dp, shape, ambientColor = AppColors.CardShadow, spotColor = AppColors.CardShadow)
-                .cardOutline(shape)
-                .clip(shape)
-                .lumiCardSurface(shape = shape)
-                .clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() }
-                ) {
+                .lumiRowClickable {
                     if (displayOffset < -1f) scope.launch { offset.animateTo(0f, spring()) }
                     else onEdit()
-                },
-            contentAlignment = Alignment.TopStart
+                }
+                .heightIn(min = LumiRowMinHeight)
+                .padding(start = AppSpace.md, end = AppSpace.xs, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(AppSpace.md),
-            verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                ThemeSuiteThumbnail(
-                    suite = suite,
-                    backgrounds = backgrounds,
-                    shape = previewShape
+            ThemeSuiteThumbnail(
+                suite = suite,
+                backgrounds = backgrounds,
+                shape = previewShape
+            )
+            Spacer(Modifier.width(ThemeSuiteThumbnailGap))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    themeName(suite),
+                    fontSize = AppType.Body,
+                    color = AppColors.TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-                Spacer(Modifier.width(AppSpace.md))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        themeName(suite),
-                        fontSize = AppType.Body,
-                        fontWeight = FontWeight.SemiBold,
-                        color = AppColors.TextPrimary
-                    )
-                    Text(
-                        if (active) {
-                            stringResource(R.string.theme_suite_current)
-                        } else {
-                            stringResource(R.string.theme_suite_tap_to_edit)
-                        },
-                        fontSize = AppType.Caption,
-                        color = AppColors.TextSecondary
-                    )
-                }
-                if (active) {
-                    Icon(
-                        AppIcons.Check,
-                        contentDescription = null,
-                        tint = AppColors.Accent,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                Spacer(Modifier.width(AppSpace.sm))
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    if (active) {
+                        stringResource(R.string.theme_suite_current)
+                    } else {
+                        stringResource(R.string.theme_suite_tap_to_edit)
+                    },
+                    fontSize = AppType.Caption,
+                    color = if (active) AppColors.Accent else AppColors.TextSecondary
+                )
+            }
+            Spacer(Modifier.width(AppSpace.sm))
+            if (active) {
                 Icon(
-                    AppIcons.DotsSixVertical,
-                    contentDescription = stringResource(R.string.theme_suite_drag_to_reorder),
-                    tint = AppColors.TextSecondary,
+                    AppIcons.Check,
+                    contentDescription = stringResource(R.string.theme_suite_current),
+                    tint = AppColors.Accent,
+                    modifier = Modifier.size(20.dp).testTag("theme_suite_active_check")
+                )
+            } else {
+                // 「设为当前」做成行内的小胶囊，不再单独占一行。
+                Text(
+                    stringResource(R.string.theme_suite_set_current),
+                    fontSize = AppType.Footnote,
+                    fontWeight = FontWeight.Medium,
+                    color = AppColors.Accent,
+                    maxLines = 1,
                     modifier = Modifier
-                        .size(36.dp)
-                        .padding(6.dp)
-                        .pointerInput(suite.id) {
-                            detectDragGesturesAfterLongPress(
-                                onDragEnd = { dragDistance = 0f },
-                                onDragCancel = { dragDistance = 0f }
-                            ) { change, drag ->
-                                change.consume()
-                                dragDistance += drag.y
-                                if (abs(dragDistance) >= threshold) {
-                                    onMove(if (dragDistance > 0f) 1 else -1)
-                                    dragDistance = 0f
-                                }
+                        .clip(AppRoundedCornerShape(AppRadius.full))
+                        .background(AppColors.Accent.copy(alpha = 0.12f))
+                        .clickable(onClick = onActivate)
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .testTag("theme_suite_set_current")
+                )
+            }
+            Icon(
+                AppIcons.DotsSixVertical,
+                contentDescription = stringResource(R.string.theme_suite_drag_to_reorder),
+                tint = AppColors.TextSecondary.copy(alpha = 0.7f),
+                modifier = Modifier
+                    .size(40.dp)
+                    .padding(10.dp)
+                    .pointerInput(suite.id) {
+                        detectDragGesturesAfterLongPress(
+                            onDragEnd = { dragDistance = 0f },
+                            onDragCancel = { dragDistance = 0f }
+                        ) { change, drag ->
+                            change.consume()
+                            dragDistance += drag.y
+                            if (abs(dragDistance) >= threshold) {
+                                onMove(if (dragDistance > 0f) 1 else -1)
+                                dragDistance = 0f
                             }
                         }
-                )
-            }
-            if (!active) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (!active) {
-                        LiquidGlassTextButton(
-                            text = stringResource(R.string.theme_suite_set_current),
-                            onClick = onActivate,
-                            tintedColor = AppColors.Accent
-                        )
                     }
-                }
-            }
-        }
+            )
         }
     }
 }
+
+/** 缩略图与文字的间距；行间分隔线从文字处开始（与设置页一致）。 */
+private val ThemeSuiteThumbnailGap = 14.dp
+private val ThemeSuiteRowTextInset = AppSpace.md + 44.dp + ThemeSuiteThumbnailGap
 
 @Composable
 private fun ThemeSuiteThumbnail(
@@ -1002,7 +1010,7 @@ private fun ThemeEditorScreen(
     suite: ReaderThemeSuite,
     backgrounds: List<ReaderBackgroundPreset>,
     customFonts: List<CustomFontPreset>,
-    layout: ReaderLayoutTarget,
+    requestedLayout: ReaderLayoutTarget,
     editingDark: Boolean,
     onLayoutChange: (ReaderLayoutTarget) -> Unit,
     onThemeModeChange: (Boolean) -> Unit,
@@ -1016,6 +1024,11 @@ private fun ThemeEditorScreen(
 ) {
     var panel by remember { mutableStateOf(ThemePanel.NONE) }
     val motionEnabled = LocalMotionEnabled.current
+    // 「原排版」只用于书籍原排版：始终编辑原排版设置，没有阅读器排版可切换。
+    val layout = if (suite.isBookLayoutOnly) ReaderLayoutTarget.BOOK_LAYOUT else requestedLayout
+    LaunchedEffect(suite.id, layout) {
+        if (suite.isBookLayoutOnly) onLayoutChange(ReaderLayoutTarget.BOOK_LAYOUT)
+    }
     val settings = suite.settingsFor(layout, editingDark)
     val preservePublisherLayout = layout == ReaderLayoutTarget.BOOK_LAYOUT
     val previewBackdrop = rememberLayerBackdrop()
@@ -1039,7 +1052,9 @@ private fun ThemeEditorScreen(
                 dark = editingDark,
                 pageTransition = "slide",
                 pageDurationMs = ReaderPageAnimationSettings.SLIDE_DEFAULT_MS,
-                sample = sample
+                sample = sample,
+                showAnnotationSamples = true,
+                bookLayout = layout == ReaderLayoutTarget.BOOK_LAYOUT
             )
         }
         ProvideLiquidGlassBackdrop(previewBackdrop) {
@@ -1048,6 +1063,7 @@ private fun ThemeEditorScreen(
                 layout = layout,
                 onLayoutChange = onLayoutChange,
                 onExit = onExit,
+                showReaderLayout = !suite.isBookLayoutOnly,
                 modifier = Modifier.align(Alignment.TopCenter)
             )
             AnimatedContent(
@@ -1091,7 +1107,7 @@ private fun ThemeEditorScreen(
                                 settings = settings,
                                 backgrounds = backgrounds,
                                 hasImage = imagePreset != null,
-                                showThemeMode = layout == ReaderLayoutTarget.READER_LAYOUT,
+                                showThemeMode = true,
                                 editingDark = editingDark,
                                 onThemeModeChange = onThemeModeChange,
                                 onPreviewUpdate = onPreviewUpdate,
@@ -1154,7 +1170,9 @@ internal fun ThemeEditorTopBar(
     layout: ReaderLayoutTarget,
     onLayoutChange: (ReaderLayoutTarget) -> Unit,
     onExit: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** 「原排版」套装只有书籍原排版，隐藏阅读器排版选项。 */
+    showReaderLayout: Boolean = true
 ) {
     Row(
         modifier = modifier.fillMaxWidth().statusBarsPadding()
@@ -1168,12 +1186,14 @@ internal fun ThemeEditorTopBar(
             onClick = onExit,
             modifier = Modifier.pagePushToolbarItem().testTag("theme_editor_back")
         )
-        OptionCapsule(
-            label = stringResource(R.string.reader_layout_editor_reader),
-            selected = layout == ReaderLayoutTarget.READER_LAYOUT,
-            modifier = Modifier.weight(1f).heightIn(min = 48.dp).pagePushToolbarItem().testTag("theme_editor_reader_layout"),
-            onClick = { onLayoutChange(ReaderLayoutTarget.READER_LAYOUT) }
-        )
+        if (showReaderLayout) {
+            OptionCapsule(
+                label = stringResource(R.string.reader_layout_editor_reader),
+                selected = layout == ReaderLayoutTarget.READER_LAYOUT,
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp).pagePushToolbarItem().testTag("theme_editor_reader_layout"),
+                onClick = { onLayoutChange(ReaderLayoutTarget.READER_LAYOUT) }
+            )
+        }
         OptionCapsule(
             label = stringResource(R.string.reader_layout_editor_book),
             selected = layout == ReaderLayoutTarget.BOOK_LAYOUT,
@@ -1215,98 +1235,88 @@ internal fun BackgroundPanel(
     onRemovePhoto: () -> Unit
 ) {
     var colorDialog by remember { mutableStateOf(false) }
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(start = 16.dp, top = 24.dp, end = 16.dp, bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text(
-            stringResource(R.string.floating_subtitle_background_color),
-            fontSize = AppType.Body,
-            fontWeight = FontWeight.SemiBold,
-            color = AppColors.TextPrimary
-        )
-        if (showThemeMode) {
-            ThemeModeSelector(
-                editingDark = editingDark,
-                onThemeModeChange = onThemeModeChange
-            )
+    PanelColumn {
+        PanelHeader(stringResource(R.string.reader_background_settings)) {
+            if (showThemeMode) {
+                ThemeModeSelector(editingDark = editingDark, onThemeModeChange = onThemeModeChange)
+            }
         }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(readerPresetBackgroundSelections) { selection ->
-                TextColorSwatch(
-                    color = Color(backgroundColor(selection, null, editingDark)),
-                    isSelected = settings.backgroundColorSelection == selection,
-                    contentDescription = stringResource(when (selection) {
-                        "night" -> R.string.theme_night
-                        "sepia" -> R.string.theme_sepia
-                        "green" -> R.string.theme_green
-                        else -> R.string.theme_day
-                    }),
-                    onClick = { onSelectColor(selection) }
-                )
-            }
-            items(backgrounds.filter { it.type == ReaderBackgroundType.COLOR }) { preset ->
-                TextColorSwatch(
-                    color = Color(backgroundColor(preset.selectionKey, preset, editingDark)),
-                    isSelected = settings.backgroundColorSelection == preset.selectionKey,
-                    contentDescription = preset.displayName(preset.value),
-                    onClick = { onSelectColor(preset.selectionKey) }
-                )
-            }
-            item {
-                TextColorSwatch(
-                    color = AppColors.BgGray,
-                    isSelected = false,
-                    contentDescription = stringResource(R.string.background_custom_color),
-                    onClick = { colorDialog = true }
-                ) {
-                    Icon(AppIcons.Plus, contentDescription = null,
-                        tint = AppColors.TextSecondary, modifier = Modifier.size(19.dp))
+        PanelSection(stringResource(R.string.reader_panel_section_background_color)) {
+            // 滚动到分区块边缘：抵消分区块的 16dp 内边距。
+            LazyRow(
+                modifier = Modifier.horizontalBleed(16.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(readerPresetBackgroundSelections) { selection ->
+                    TextColorSwatch(
+                        color = Color(backgroundColor(selection, null, editingDark)),
+                        isSelected = settings.backgroundColorSelection == selection,
+                        contentDescription = stringResource(when (selection) {
+                            "night" -> R.string.theme_night
+                            "sepia" -> R.string.theme_sepia
+                            "green" -> R.string.theme_green
+                            else -> R.string.theme_day
+                        }),
+                        onClick = { onSelectColor(selection) }
+                    )
+                }
+                items(backgrounds.filter { it.type == ReaderBackgroundType.COLOR }) { preset ->
+                    TextColorSwatch(
+                        color = Color(backgroundColor(preset.selectionKey, preset, editingDark)),
+                        isSelected = settings.backgroundColorSelection == preset.selectionKey,
+                        contentDescription = preset.displayName(preset.value),
+                        onClick = { onSelectColor(preset.selectionKey) }
+                    )
+                }
+                item {
+                    TextColorSwatch(
+                        color = AppColors.BgGray,
+                        isSelected = false,
+                        contentDescription = stringResource(R.string.background_custom_color),
+                        onClick = { colorDialog = true }
+                    ) {
+                        Icon(AppIcons.Plus, contentDescription = null,
+                            tint = AppColors.TextSecondary, modifier = Modifier.size(19.dp))
+                    }
                 }
             }
         }
-        if (hasImage) {
-            SettingSlider(
-                stringResource(R.string.background_photo_opacity),
-                settings.backgroundImageOpacity * 100f,
-                0f..100f,
-                99,
-                "%",
-                onPreview = {
-                    onPreviewUpdate(settings.copy(backgroundImageOpacity = it / 100f))
-                },
-                onChange = {
-                    onUpdate(settings.copy(backgroundImageOpacity = it / 100f))
-                }
-            )
-            SettingSlider(
-                stringResource(R.string.background_photo_blur),
-                settings.backgroundImageBlurDp,
-                0f..40f,
-                39,
-                "dp",
-                onPreview = {
-                    onPreviewUpdate(settings.copy(backgroundImageBlurDp = it))
-                },
-                onChange = {
-                    onUpdate(settings.copy(backgroundImageBlurDp = it))
-                }
-            )
-            CommandCapsuleButton(
-                text = stringResource(R.string.background_remove_photo),
-                icon = AppIcons.Trash,
-                onClick = onRemovePhoto,
-                secondary = true
-            )
-        } else {
-            CommandCapsuleButton(
-                text = stringResource(R.string.background_add_photo),
-                icon = AppIcons.Image,
-                onClick = onAddPhoto
-            )
+        PanelSection(stringResource(R.string.reader_panel_section_background_image)) {
+            if (hasImage) {
+                SliderPair(
+                    first = { onActive ->
+                        SettingSlider(
+                            stringResource(R.string.background_photo_opacity),
+                            settings.backgroundImageOpacity * 100f, 0f..100f, 99, "%",
+                            onPreview = { onPreviewUpdate(settings.copy(backgroundImageOpacity = it / 100f)) },
+                            onChange = { onUpdate(settings.copy(backgroundImageOpacity = it / 100f)) },
+                            onActiveChange = onActive
+                        )
+                    },
+                    second = { onActive ->
+                        SettingSlider(
+                            stringResource(R.string.background_photo_blur),
+                            settings.backgroundImageBlurDp, 0f..40f, 39, "dp",
+                            onPreview = { onPreviewUpdate(settings.copy(backgroundImageBlurDp = it)) },
+                            onChange = { onUpdate(settings.copy(backgroundImageBlurDp = it)) },
+                            onActiveChange = onActive
+                        )
+                    }
+                )
+                CommandCapsuleButton(
+                    text = stringResource(R.string.background_remove_photo),
+                    icon = AppIcons.Trash,
+                    onClick = onRemovePhoto,
+                    secondary = true
+                )
+            } else {
+                CommandCapsuleButton(
+                    text = stringResource(R.string.background_add_photo),
+                    icon = AppIcons.Image,
+                    onClick = onAddPhoto
+                )
+            }
         }
     }
     if (colorDialog) {
@@ -1348,141 +1358,309 @@ internal fun TextPanel(
     onPreviewUpdate: (ReaderThemeSettings) -> Unit,
     onUpdate: (ReaderThemeSettings) -> Unit
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Text(
-            stringResource(R.string.reader_text_settings),
-            fontSize = AppType.Body,
-            fontWeight = FontWeight.SemiBold,
-            color = AppColors.TextPrimary
-        )
-        if (!preservePublisherLayout) {
-            ThemeModeSelector(
-                editingDark = editingDark,
-                onThemeModeChange = onThemeModeChange
-            )
+    PanelColumn {
+        PanelHeader(stringResource(R.string.reader_text_settings)) {
+            ThemeModeSelector(editingDark = editingDark, onThemeModeChange = onThemeModeChange)
         }
-        if (lockTextColor) {
-            Text(
-                stringResource(R.string.reader_theme_publisher_hint),
-                fontSize = AppType.BodySmall,
-                color = AppColors.TextSecondary
-            )
-        } else {
-            TextColorSetting(
-                currentOverride = settings.textColor,
-                effectiveTextColor = Color(themeTextColor(settings, backgrounds, editingDark)),
-                onColorChange = { onUpdate(settings.copy(textColor = it)) }
-            )
-        }
-        SettingSlider(
-            stringResource(R.string.label_font_size),
-            settings.fontSize,
-            ReaderThemeSettings.FONT_SIZE_RANGE,
-            15,
-            "sp",
-            onPreview = { onPreviewUpdate(settings.copy(fontSize = it)) },
-            onChange = { onUpdate(settings.copy(fontSize = it)) }
-        )
-        Text(
-            stringResource(R.string.font_label),
-            fontSize = AppType.BodySmall,
-            color = AppColors.TextSecondary
-        )
-        OptionRow(
-            options = listOf(
-                "system" to stringResource(R.string.font_system),
-                "serif" to stringResource(R.string.font_serif),
-                "kaiti" to stringResource(R.string.font_kaiti)
-            ) +
-                customFonts.mapIndexed { index, font ->
-                    font.fontTypeKey to font.displayName(
-                        stringResource(R.string.custom_font_numbered_name, index + 1)
+        PanelSection(stringResource(R.string.reader_panel_section_text)) {
+            if (lockTextColor) {
+                Text(
+                    stringResource(R.string.reader_theme_publisher_hint),
+                    fontSize = AppType.Footnote,
+                    color = AppColors.TextSecondary
+                )
+            } else {
+                TextColorSetting(
+                    currentOverride = settings.textColor,
+                    effectiveTextColor = Color(themeTextColor(settings, backgrounds, editingDark)),
+                    onColorChange = { onUpdate(settings.copy(textColor = it)) },
+                    // 分区块内边距为 16dp，色板滚动到分区块边缘。
+                    edgeBleed = 16.dp
+                )
+            }
+            LabeledControl(stringResource(R.string.font_label)) {
+                OptionRow(
+                    options = listOf(
+                        "system" to stringResource(R.string.font_system),
+                        "serif" to stringResource(R.string.font_serif),
+                        "kaiti" to stringResource(R.string.font_kaiti)
+                    ) +
+                        customFonts.mapIndexed { index, font ->
+                            font.fontTypeKey to font.displayName(
+                                stringResource(R.string.custom_font_numbered_name, index + 1)
+                            )
+                        },
+                    selected = settings.fontType
+                ) { onUpdate(settings.copy(fontType = it)) }
+            }
+            SliderPair(
+                first = { onActive ->
+                    SettingSlider(
+                        stringResource(R.string.label_font_size),
+                        settings.fontSize, ReaderThemeSettings.FONT_SIZE_RANGE, 15, "sp",
+                        onPreview = { onPreviewUpdate(settings.copy(fontSize = it)) },
+                        onChange = { onUpdate(settings.copy(fontSize = it)) },
+                        onActiveChange = onActive
                     )
                 },
-            selected = settings.fontType
-        ) { onUpdate(settings.copy(fontType = it)) }
-        SettingSlider(
-            stringResource(R.string.body_font_weight),
-            settings.bodyFontWeight,
-            100f..900f,
-            7999,
-            "",
-            onPreview = {
-                onPreviewUpdate(settings.copy(bodyFontWeight = (it * 10f).roundToInt() / 10f))
-            },
-            onChange = {
-                onUpdate(settings.copy(bodyFontWeight = (it * 10f).roundToInt() / 10f))
+                second = { onActive ->
+                    SettingSlider(
+                        stringResource(R.string.body_font_weight),
+                        settings.bodyFontWeight, 100f..900f, 7999, "",
+                        onPreview = { onPreviewUpdate(settings.copy(bodyFontWeight = (it * 10f).roundToInt() / 10f)) },
+                        onChange = { onUpdate(settings.copy(bodyFontWeight = (it * 10f).roundToInt() / 10f)) },
+                        onActiveChange = onActive
+                    )
+                }
+            )
+        }
+        PanelSection(stringResource(R.string.reader_panel_section_spacing)) {
+            SliderPair(
+                first = { onActive ->
+                    SettingSlider(
+                        stringResource(R.string.label_line_height),
+                        settings.lineHeight, ReaderThemeSettings.LINE_HEIGHT_RANGE, 19, "×",
+                        onPreview = { onPreviewUpdate(settings.copy(lineHeight = it)) },
+                        onChange = { onUpdate(settings.copy(lineHeight = it)) },
+                        onActiveChange = onActive
+                    )
+                },
+                second = { onActive ->
+                    SettingSlider(
+                        stringResource(R.string.label_letter_spacing),
+                        settings.letterSpacing, ReaderThemeSettings.LETTER_SPACING_RANGE, 29, "dp",
+                        onPreview = { onPreviewUpdate(settings.copy(letterSpacing = it)) },
+                        onChange = { onUpdate(settings.copy(letterSpacing = it)) },
+                        onActiveChange = onActive
+                    )
+                }
+            )
+            SliderPair(
+                first = { onActive ->
+                    SettingSlider(
+                        stringResource(R.string.label_paragraph_spacing),
+                        settings.paragraphSpacing, 0f..30f, 29, "dp",
+                        onPreview = { onPreviewUpdate(settings.copy(paragraphSpacing = it)) },
+                        onChange = { onUpdate(settings.copy(paragraphSpacing = it)) },
+                        onActiveChange = onActive
+                    )
+                },
+                second = { onActive ->
+                    SettingSlider(
+                        stringResource(R.string.label_first_line_indent),
+                        settings.firstLineIndent, 0f..4f, 7, stringResource(R.string.reader_unit_character),
+                        onPreview = { onPreviewUpdate(settings.copy(firstLineIndent = it)) },
+                        onChange = { onUpdate(settings.copy(firstLineIndent = it)) },
+                        onActiveChange = onActive
+                    )
+                }
+            )
+            // 五个选项的文字较长，用可横向滚动的胶囊（与字体一致），避免分段控件截断。
+            LabeledControl(stringResource(R.string.label_text_alignment)) {
+                OptionRow(
+                    listOf(
+                        ReaderTextAlignment.NATURAL.key to stringResource(R.string.text_alignment_natural),
+                        ReaderTextAlignment.LEFT.key to stringResource(R.string.text_alignment_left),
+                        ReaderTextAlignment.CENTER.key to stringResource(R.string.text_alignment_center),
+                        ReaderTextAlignment.RIGHT.key to stringResource(R.string.text_alignment_right),
+                        ReaderTextAlignment.JUSTIFY.key to stringResource(R.string.text_alignment_justify)
+                    ),
+                    settings.textAlignment.key
+                ) { onUpdate(settings.copy(textAlignment = ReaderTextAlignment.fromKey(it))) }
             }
-        )
-        SettingSlider(
-            stringResource(R.string.label_line_height),
-            settings.lineHeight,
-            ReaderThemeSettings.LINE_HEIGHT_RANGE,
-            19,
-            "×",
-            onPreview = { onPreviewUpdate(settings.copy(lineHeight = it)) },
-            onChange = { onUpdate(settings.copy(lineHeight = it)) }
-        )
-        SettingSlider(
-            stringResource(R.string.label_letter_spacing),
-            settings.letterSpacing,
-            ReaderThemeSettings.LETTER_SPACING_RANGE,
-            29,
-            "dp",
-            onPreview = { onPreviewUpdate(settings.copy(letterSpacing = it)) },
-            onChange = { onUpdate(settings.copy(letterSpacing = it)) }
-        )
-        Text(
-            stringResource(R.string.label_text_alignment),
-            fontSize = AppType.BodySmall,
-            color = AppColors.TextSecondary
-        )
-        OptionRow(
-            listOf(
-                ReaderTextAlignment.NATURAL.key to stringResource(R.string.text_alignment_natural),
-                ReaderTextAlignment.LEFT.key to stringResource(R.string.text_alignment_left),
-                ReaderTextAlignment.CENTER.key to stringResource(R.string.text_alignment_center),
-                ReaderTextAlignment.RIGHT.key to stringResource(R.string.text_alignment_right),
-                ReaderTextAlignment.JUSTIFY.key to stringResource(R.string.text_alignment_justify)
-            ),
-            settings.textAlignment.key
-        ) { onUpdate(settings.copy(textAlignment = ReaderTextAlignment.fromKey(it))) }
-        SettingSlider(
-            stringResource(R.string.label_paragraph_spacing),
-            settings.paragraphSpacing, 0f..30f, 29, "dp",
-            onPreview = { onPreviewUpdate(settings.copy(paragraphSpacing = it)) },
-            onChange = { onUpdate(settings.copy(paragraphSpacing = it)) }
-        )
-        SettingSlider(
-            stringResource(R.string.label_first_line_indent),
-            settings.firstLineIndent, 0f..4f, 7, stringResource(R.string.reader_unit_character),
-            onPreview = { onPreviewUpdate(settings.copy(firstLineIndent = it)) },
-            onChange = { onUpdate(settings.copy(firstLineIndent = it)) }
-        )
-        SettingSlider(
-            stringResource(R.string.label_margin_left), settings.marginLeft, 0f..80f, 79, "dp",
-            onPreview = { onPreviewUpdate(settings.copy(marginLeft = it)) },
-            onChange = { onUpdate(settings.copy(marginLeft = it)) }
-        )
-        SettingSlider(
-            stringResource(R.string.label_margin_right), settings.marginRight, 0f..80f, 79, "dp",
-            onPreview = { onPreviewUpdate(settings.copy(marginRight = it)) },
-            onChange = { onUpdate(settings.copy(marginRight = it)) }
-        )
-        SettingSlider(
-            stringResource(R.string.label_margin_top), settings.marginTop, 0f..120f, 119, "dp",
-            onPreview = { onPreviewUpdate(settings.copy(marginTop = it)) },
-            onChange = { onUpdate(settings.copy(marginTop = it)) }
-        )
-        SettingSlider(
-            stringResource(R.string.label_margin_bottom), settings.marginBottom, 0f..120f, 119, "dp",
-            onPreview = { onPreviewUpdate(settings.copy(marginBottom = it)) },
-            onChange = { onUpdate(settings.copy(marginBottom = it)) }
-        )
+        }
+        PanelSection(stringResource(R.string.reader_panel_section_margins)) {
+            SliderPair(
+                first = { onActive ->
+                    SettingSlider(
+                        stringResource(R.string.label_margin_left), settings.marginLeft, 0f..80f, 79, "dp",
+                        onPreview = { onPreviewUpdate(settings.copy(marginLeft = it)) },
+                        onChange = { onUpdate(settings.copy(marginLeft = it)) },
+                        onActiveChange = onActive
+                    )
+                },
+                second = { onActive ->
+                    SettingSlider(
+                        stringResource(R.string.label_margin_right), settings.marginRight, 0f..80f, 79, "dp",
+                        onPreview = { onPreviewUpdate(settings.copy(marginRight = it)) },
+                        onChange = { onUpdate(settings.copy(marginRight = it)) },
+                        onActiveChange = onActive
+                    )
+                }
+            )
+            SliderPair(
+                first = { onActive ->
+                    SettingSlider(
+                        stringResource(R.string.label_margin_top), settings.marginTop, 0f..120f, 119, "dp",
+                        onPreview = { onPreviewUpdate(settings.copy(marginTop = it)) },
+                        onChange = { onUpdate(settings.copy(marginTop = it)) },
+                        onActiveChange = onActive
+                    )
+                },
+                second = { onActive ->
+                    SettingSlider(
+                        stringResource(R.string.label_margin_bottom), settings.marginBottom, 0f..120f, 119, "dp",
+                        onPreview = { onPreviewUpdate(settings.copy(marginBottom = it)) },
+                        onChange = { onUpdate(settings.copy(marginBottom = it)) },
+                        onActiveChange = onActive
+                    )
+                }
+            )
+        }
+        PanelSection(stringResource(R.string.reader_annotation_geometry_title)) {
+            AnnotationGeometrySliders(settings, onPreviewUpdate, onUpdate)
+        }
     }
+}
+
+/** 笔记高亮与划线的位置/尺寸，步长 0.5dp：高亮三项在上，划线两项在下。 */
+@Composable
+private fun AnnotationGeometrySliders(
+    settings: ReaderThemeSettings,
+    onPreviewUpdate: (ReaderThemeSettings) -> Unit,
+    onUpdate: (ReaderThemeSettings) -> Unit
+) {
+    fun halfDpSteps(range: ClosedFloatingPointRange<Float>): Int =
+        ((range.endInclusive - range.start) / 0.5f).roundToInt() - 1
+    val width = ReaderThemeSettings.HIGHLIGHT_WIDTH_RANGE
+    val height = ReaderThemeSettings.HIGHLIGHT_HEIGHT_RANGE
+    val highlightOffset = ReaderThemeSettings.HIGHLIGHT_OFFSET_Y_RANGE
+    val thickness = ReaderThemeSettings.UNDERLINE_THICKNESS_RANGE
+    val underlineOffset = ReaderThemeSettings.UNDERLINE_OFFSET_Y_RANGE
+    SliderPair(
+        first = { onActive ->
+            SettingSlider(
+                stringResource(R.string.label_highlight_width), settings.highlightWidthDp, width,
+                halfDpSteps(width), "dp",
+                onPreview = { onPreviewUpdate(settings.copy(highlightWidthDp = it)) },
+                onChange = { onUpdate(settings.copy(highlightWidthDp = it)) },
+                onActiveChange = onActive
+            )
+        },
+        second = { onActive ->
+            SettingSlider(
+                stringResource(R.string.label_highlight_height), settings.highlightHeightDp, height,
+                halfDpSteps(height), "dp",
+                onPreview = { onPreviewUpdate(settings.copy(highlightHeightDp = it)) },
+                onChange = { onUpdate(settings.copy(highlightHeightDp = it)) },
+                onActiveChange = onActive
+            )
+        }
+    )
+    SettingSlider(
+        stringResource(R.string.label_highlight_offset_y), settings.highlightOffsetYDp, highlightOffset,
+        halfDpSteps(highlightOffset), "dp",
+        onPreview = { onPreviewUpdate(settings.copy(highlightOffsetYDp = it)) },
+        onChange = { onUpdate(settings.copy(highlightOffsetYDp = it)) }
+    )
+    SliderPair(
+        first = { onActive ->
+            SettingSlider(
+                stringResource(R.string.label_underline_thickness), settings.underlineThicknessDp, thickness,
+                halfDpSteps(thickness), "dp",
+                onPreview = { onPreviewUpdate(settings.copy(underlineThicknessDp = it)) },
+                onChange = { onUpdate(settings.copy(underlineThicknessDp = it)) },
+                onActiveChange = onActive
+            )
+        },
+        second = { onActive ->
+            SettingSlider(
+                stringResource(R.string.label_underline_offset_y), settings.underlineOffsetYDp, underlineOffset,
+                halfDpSteps(underlineOffset), "dp",
+                onPreview = { onPreviewUpdate(settings.copy(underlineOffsetYDp = it)) },
+                onChange = { onUpdate(settings.copy(underlineOffsetYDp = it)) },
+                onActiveChange = onActive
+            )
+        }
+    )
+}
+
+// ── 浮动面板的版式组件：面板头 + 分区块，块内控件成对并排，避免逐项罗列 ──
+
+/** 面板内容：可滚动，外边距 16dp，块与块之间 12dp。 */
+@Composable
+private fun PanelColumn(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 16.dp, top = 18.dp, end = 16.dp, bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        content = content
+    )
+}
+
+/** 面板标题与右侧控件（如日/夜切换）同一行。 */
+@Composable
+private fun PanelHeader(title: String, trailing: @Composable RowScope.() -> Unit = {}) {
+    Row(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 36.dp).padding(start = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            title,
+            modifier = Modifier.weight(1f),
+            fontSize = AppType.Headline,
+            fontWeight = FontWeight.SemiBold,
+            color = AppColors.TextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        trailing()
+    }
+}
+
+/** 与阅读器「高级设置」同款的分区块：标题 + 内容，内容间距 16dp。 */
+@Composable
+private fun PanelSection(
+    title: String,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .readerPanelSectionSurface(LocalEInkMode.current)
+            .padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Text(
+            title,
+            fontSize = AppType.Subhead,
+            fontWeight = FontWeight.SemiBold,
+            color = AppColors.TextPrimary,
+            modifier = Modifier.semantics { heading() }
+        )
+        content()
+    }
+}
+
+/** 小标签在上、控件在下的组合（字体、对齐方式）。 */
+@Composable
+private fun LabeledControl(label: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label, fontSize = AppType.Footnote, color = AppColors.TextSecondary)
+        content()
+    }
+}
+
+/** 两个相关滑杆并排；拖动的一侧临时放宽，松手后恢复对半。 */
+@Composable
+private fun SliderPair(
+    first: @Composable (onActive: (Boolean) -> Unit) -> Unit,
+    second: @Composable (onActive: (Boolean) -> Unit) -> Unit
+) {
+    var activeSide by remember { mutableStateOf<Int?>(null) }
+    ReaderExpandingSliderRow(
+        activeSide = activeSide,
+        animate = true,
+        first = {
+            first { active -> activeSide = if (active) 0 else activeSide.takeUnless { it == 0 } }
+        },
+        second = {
+            second { active -> activeSide = if (active) 1 else activeSide.takeUnless { it == 1 } }
+        }
+    )
 }
 
 @Composable
@@ -1502,107 +1680,143 @@ private fun AnimationPreviewScreen(
         ReaderThemeSuites.DAY_ID
     }
     val duration = state.animationSettings.durationFor(mode)
-    val range = ReaderPageAnimationSettings.rangeFor(mode)
-    val step = ReaderPageAnimationSettings.stepFor(mode)
     val sample = rememberSampleText()
     val previewBackdrop = rememberLayerBackdrop()
-    var showDurationInput by remember(mode) { mutableStateOf(false) }
-    var displayedDuration by remember(mode) { mutableFloatStateOf(duration.toFloat()) }
-    var durationIsDragging by remember(mode) { mutableStateOf(false) }
-    LaunchedEffect(duration, mode) {
-        if (!durationIsDragging) displayedDuration = duration.toFloat()
-    }
-    CollapsingPageScaffold(
-        title = stringResource(R.string.reader_page_animation_settings_title), onBack = onClose, contentScrollEnabled = false
-    ) {
-        BoxWithConstraints(Modifier.fillMaxSize().clipToBounds()) {
-            Box(
+    // 预览跟随拖动中的数值，松手后才写入设置。
+    var previewDuration by remember(mode) { mutableIntStateOf(duration) }
+    LaunchedEffect(duration, mode) { previewDuration = duration }
+    // 与主题编辑页同一结构：全屏预览 + 悬浮返回键 + 底部浮动面板，不显示大标题。
+    BoxWithConstraints(Modifier.fillMaxSize().clipToBounds()) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .layerBackdrop(previewBackdrop)
+        ) {
+            PreviewReadView(
+                ReaderThemeSettings(
+                    backgroundSelection = previewTheme,
+                    backgroundColorSelection = previewTheme
+                ),
+                emptyList(),
+                emptyList(),
+                mode,
+                previewDuration,
+                sample,
+                readerTheme = previewTheme
+            )
+        }
+        ProvideLiquidGlassBackdrop(previewBackdrop) {
+            Row(
                 modifier = Modifier
-                    .matchParentSize()
-                    .layerBackdrop(previewBackdrop)
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
+                    .testTag("animation_settings_topbar"),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                PreviewReadView(
-                    ReaderThemeSettings(
-                        backgroundSelection = previewTheme,
-                        backgroundColorSelection = previewTheme
-                    ),
-                    emptyList(),
-                    emptyList(),
-                    mode,
-                    displayedDuration.roundToInt(),
-                    sample,
-                    readerTheme = previewTheme
+                LiquidGlassIconButton(
+                    imageVector = directionalIcon(AppIcons.ArrowLeft, AppIcons.ArrowRight),
+                    contentDescription = stringResource(R.string.reader_back),
+                    onClick = onClose,
+                    modifier = Modifier.pagePushToolbarItem().testTag("animation_settings_back")
                 )
             }
-            ProvideLiquidGlassBackdrop(previewBackdrop) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(start = 12.dp, end = 12.dp, bottom = 16.dp)
+                    .widthIn(max = 560.dp)
+                    .fillMaxWidth()
+                    .heightIn(max = (maxHeight - 88.dp).coerceAtLeast(0.dp)),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                ReaderFloatingPanel {
+                    AnimationSettingsPanel(
+                        mode = mode,
+                        eInkMode = state.eInkMode,
+                        durationMs = duration,
+                        onModeChange = onModeChange,
+                        onDurationPreview = { previewDuration = it; onDurationPreview(mode, it) },
+                        onDurationChange = { previewDuration = it; onDurationChange(mode, it) }
+                    )
+                }
+            }
+        }
+    }
+}
 
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .navigationBarsPadding()
-                        .padding(start = 18.dp, end = 18.dp, bottom = 76.dp)
-                        .fillMaxWidth()
-                        .heightIn(max = (maxHeight - 88.dp).coerceAtLeast(0.dp))
-                ) {
-                    ReaderFloatingPanel(modifier = Modifier.widthIn(max = 640.dp)) {
-                        Column(Modifier.padding(AppSpace.md)) {
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    stringResource(R.string.page_turn_speed),
-                                    fontSize = AppType.Body,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = AppColors.TextPrimary
-                                )
-                                ClickableSliderValue(
-                                    text = "${displayedDuration.roundToInt()} ms",
-                                    onClick = { showDurationInput = true }
-                                )
-                            }
-                            Spacer(Modifier.height(AppSpace.sm))
-                            PillSlider(
-                                value = displayedDuration,
-                                onValueChange = {
-                                    durationIsDragging = false
-                                    val snapped = snapAnimationDuration(it, range, step)
-                                    displayedDuration = snapped.toFloat()
-                                    onDurationChange(mode, snapped)
-                                },
-                                onDragValueChange = {
-                                    durationIsDragging = true
-                                    val snapped = snapAnimationDuration(it, range, step)
-                                    displayedDuration = snapped.toFloat()
-                                    onDurationPreview(mode, snapped)
-                                },
-                                valueRange = range.first.toFloat()..range.last.toFloat(),
-                                step = step.toFloat()
-                            )
-                        }
-                    }
+/** 翻页动画面板：上方选择翻页方式（全宽分段），下方调整该方式的翻页速度。 */
+@Composable
+internal fun AnimationSettingsPanel(
+    mode: String,
+    eInkMode: Boolean,
+    durationMs: Int,
+    onModeChange: (String) -> Unit,
+    onDurationPreview: (Int) -> Unit,
+    onDurationChange: (Int) -> Unit
+) {
+    val modes = buildList {
+        if (!eInkMode) {
+            add("slide" to stringResource(R.string.page_animation_slide_short))
+            add("scroll" to stringResource(R.string.page_animation_scroll_short))
+        }
+        add("fade" to stringResource(R.string.page_animation_fade_short))
+        if (!eInkMode) add("curl" to stringResource(R.string.page_animation_curl_short))
+        add("wave" to stringResource(R.string.page_animation_wave_short))
+    }
+    val range = ReaderPageAnimationSettings.rangeFor(mode)
+    val step = ReaderPageAnimationSettings.stepFor(mode)
+    var showDurationInput by remember(mode) { mutableStateOf(false) }
+    var displayedDuration by remember(mode) { mutableFloatStateOf(durationMs.toFloat()) }
+    var durationIsDragging by remember(mode) { mutableStateOf(false) }
+    LaunchedEffect(durationMs, mode) {
+        if (!durationIsDragging) displayedDuration = durationMs.toFloat()
+    }
+    PanelColumn {
+        PanelSection(stringResource(R.string.reader_page_animation_mode)) {
+            LumiSegmentedControl(
+                labels = modes.map { it.second },
+                selectedIndex = modes.indexOfFirst { it.first == mode }.coerceAtLeast(0),
+                onSelect = { onModeChange(modes[it].first) },
+                modifier = Modifier.testTag("animation_mode_selector")
+            )
+        }
+        PanelSection(stringResource(R.string.page_turn_speed)) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        stringResource(R.string.reader_page_animation_speed_hint),
+                        modifier = Modifier.weight(1f),
+                        fontSize = AppType.Footnote,
+                        color = AppColors.TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    ClickableSliderValue(
+                        text = "${displayedDuration.roundToInt()} ms",
+                        onClick = { showDurationInput = true }
+                    )
                 }
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .widthIn(max = 840.dp)
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .navigationBarsPadding()
-                        .padding(horizontal = AppSpace.md, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (!state.eInkMode) {
-                        AnimationCapsule(stringResource(R.string.page_animation_slide_short), "slide", mode, onModeChange)
-                        AnimationCapsule(stringResource(R.string.page_animation_scroll_short), "scroll", mode, onModeChange)
-                    }
-                    AnimationCapsule(stringResource(R.string.page_animation_fade_short), "fade", mode, onModeChange)
-                    if (!state.eInkMode) {
-                        AnimationCapsule(stringResource(R.string.page_animation_curl_short), "curl", mode, onModeChange)
-                    }
-                    AnimationCapsule(stringResource(R.string.page_animation_wave_short), "wave", mode, onModeChange)
-                }
+                PillSlider(
+                    value = displayedDuration,
+                    onValueChange = {
+                        durationIsDragging = false
+                        val snapped = snapAnimationDuration(it, range, step)
+                        displayedDuration = snapped.toFloat()
+                        onDurationChange(snapped)
+                    },
+                    onDragValueChange = {
+                        durationIsDragging = true
+                        val snapped = snapAnimationDuration(it, range, step)
+                        displayedDuration = snapped.toFloat()
+                        onDurationPreview(snapped)
+                    },
+                    valueRange = range.first.toFloat()..range.last.toFloat(),
+                    step = step.toFloat(),
+                    opaqueLiquidThumb = true
+                )
             }
         }
     }
@@ -1615,7 +1829,7 @@ private fun AnimationPreviewScreen(
             format = { "${formatSliderNumber(it)} ms" },
             onConfirm = {
                 displayedDuration = it
-                onDurationChange(mode, it.roundToInt())
+                onDurationChange(snapAnimationDuration(it, range, step))
             },
             onDismiss = { showDurationInput = false }
         )
@@ -1630,14 +1844,6 @@ private fun snapAnimationDuration(
     .coerceIn(range)
 
 @Composable
-private fun AnimationCapsule(
-    label: String,
-    mode: String,
-    selectedMode: String,
-    onClick: (String) -> Unit
-) = CapsuleButton(label, null, mode == selectedMode) { onClick(mode) }
-
-@Composable
 private fun PreviewReadView(
     settings: ReaderThemeSettings,
     backgrounds: List<ReaderBackgroundPreset>,
@@ -1646,7 +1852,11 @@ private fun PreviewReadView(
     pageDurationMs: Int,
     sample: String,
     readerTheme: String = "day",
-    dark: Boolean = false
+    dark: Boolean = false,
+    /** 在示例正文上画一段高亮和划线（主题编辑页用于观察几何参数）。 */
+    showAnnotationSamples: Boolean = false,
+    /** 预览原排版：按 EPUB WebView 的实际几何换算高亮/划线位置。 */
+    bookLayout: Boolean = false
 ) {
     val density = LocalDensity.current.density
     val effectiveSettings = settings
@@ -1665,6 +1875,11 @@ private fun PreviewReadView(
             skipFirstNonEmptyParagraph = true
         )
     }
+    val previewNotes = remember(sample, showAnnotationSamples) {
+        if (showAnnotationSamples) annotationPreviewNotes(sample) else emptyList()
+    }
+    val annotationStyle = effectiveSettings.toAnnotationStyle()
+        .let { if (bookLayout) it.webViewEquivalent() else it }
     var previewView by remember { mutableStateOf<ReadView?>(null) }
     LaunchedEffect(formattedSample) {
         previewView?.let { view ->
@@ -1729,6 +1944,8 @@ private fun PreviewReadView(
                     width = view.width,
                     height = view.height
                 )
+                view.setAnnotationStyle(annotationStyle)
+                view.setSavedNotes(previewNotes)
                 view.setReaderBackground(
                     color,
                     textColor,
@@ -1744,6 +1961,47 @@ private fun PreviewReadView(
         modifier = Modifier.fillMaxSize()
     )
 }
+
+/**
+ * 预览用的示例高亮与划线：落在第一段正文（跳过标题）上，方便实时观察几何调整的效果。
+ * 只存在于预览 ReadView 中，不写入数据库。
+ */
+internal fun annotationPreviewNotes(sample: String): List<Note> {
+    var cursor = 0
+    var nonEmptyLines = 0
+    while (cursor < sample.length) {
+        val lineEnd = sample.indexOf('\n', cursor).let { if (it < 0) sample.length else it }
+        if (sample.substring(cursor, lineEnd).isNotBlank()) {
+            nonEmptyLines++
+            if (nonEmptyLines == 2) {
+                val length = lineEnd - cursor
+                if (length < 6) return emptyList()
+                val highlightEnd = cursor + minOf(8, length / 3)
+                val underlineStart = minOf(highlightEnd + 4, lineEnd - 2)
+                val underlineEnd = minOf(underlineStart + 20, lineEnd)
+                return listOf(
+                    previewNote(-1, cursor, highlightEnd, sample, "highlight", "#66FFC107"),
+                    previewNote(-2, underlineStart, underlineEnd, sample, "underline", "#FFE53935")
+                )
+            }
+        }
+        cursor = lineEnd + 1
+    }
+    return emptyList()
+}
+
+private fun previewNote(id: Long, start: Int, end: Int, sample: String, type: String, color: String) = Note(
+    id = id,
+    bookId = "reader-settings-preview",
+    chapterIndex = 0,
+    startPosition = start,
+    endPosition = end,
+    selectedText = sample.substring(start, end),
+    note = "",
+    color = color,
+    createdAt = 0L,
+    type = type
+)
 
 @Composable
 private fun rememberSampleText(): String {
@@ -1858,7 +2116,10 @@ private fun SettingSlider(
     steps: Int,
     suffix: String,
     onPreview: (Float) -> Unit,
-    onChange: (Float) -> Unit
+    onChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    /** 拖动开始/结束；并排滑杆据此临时放宽正在拖动的一侧。 */
+    onActiveChange: (Boolean) -> Unit = {}
 ) {
     val step = (range.endInclusive - range.start) / (steps + 1).coerceAtLeast(1)
     val format: (Float) -> String = {
@@ -1872,29 +2133,40 @@ private fun SettingSlider(
     LaunchedEffect(value) {
         if (!isDragging) displayedValue = value
     }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, fontSize = AppType.BodySmall, color = AppColors.TextPrimary)
-        ClickableSliderValue(
-            text = format(displayedValue),
-            onClick = { showInputDialog = true }
+    LaunchedEffect(isDragging) { onActiveChange(isDragging) }
+    // 标签与滑杆是一组，间距只留 2dp，不受外层列间距影响。
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                label,
+                modifier = Modifier.weight(1f),
+                fontSize = AppType.Footnote,
+                color = AppColors.TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            ClickableSliderValue(
+                text = format(displayedValue),
+                onClick = { showInputDialog = true }
+            )
+        }
+        ValueSlider(
+            label = label,
+            value = displayedValue,
+            range = range,
+            steps = steps,
+            onDrag = {
+                isDragging = true
+                displayedValue = it
+                onPreview(it)
+            },
+            onChange = {
+                isDragging = false
+                displayedValue = it
+                onChange(it)
+            }
         )
     }
-    ValueSlider(
-        label = label,
-        value = displayedValue,
-        range = range,
-        steps = steps,
-        onDrag = {
-            isDragging = true
-            displayedValue = it
-            onPreview(it)
-        },
-        onChange = {
-            isDragging = false
-            displayedValue = it
-            onChange(it)
-        }
-    )
     if (showInputDialog) {
         SliderValueInputDialog(
             label = label,
@@ -1921,11 +2193,12 @@ private fun ClickableSliderValue(text: String, onClick: () -> Unit) {
                 interactionSource = remember { MutableInteractionSource() },
                 onClick = onClick
             )
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            // 右侧不留内边距，数值与滑杆右端对齐。
+            .padding(start = 8.dp, top = 4.dp, bottom = 4.dp)
     ) {
         Text(
             text = text,
-            fontSize = AppType.Caption,
+            fontSize = AppType.Footnote,
             fontWeight = FontWeight.SemiBold,
             color = AppColors.TextPrimary
         )
@@ -2096,7 +2369,12 @@ private fun OptionRow(
     selected: String,
     onSelect: (String) -> Unit
 ) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    // Only used inside TextPanel: scroll through its 16.dp padding to the panel edge.
+    LazyRow(
+        modifier = Modifier.horizontalBleed(16.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
         items(options) { (key, label) ->
             OptionCapsule(
                 label = label,

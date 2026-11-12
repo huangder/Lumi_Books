@@ -56,6 +56,32 @@ class LiquidGlassButtonMotionTest {
         }
     }
 
+    @Test fun releaseRingsLikeJellyThenSettlesWithClampedPressProgress() {
+        setup()
+        compose.runOnIdle { state.press(Offset(10f, 10f), 0) }
+        advance(400)
+        compose.runOnIdle { state.release() }
+        var minScale = Float.MAX_VALUE
+        var minWobble = 0f
+        var maxWobble = 0f
+        repeat(60) {
+            advance(16)
+            compose.runOnIdle {
+                assertTrue(state.pressProgress in 0f..1f)
+                minScale = minOf(minScale, state.scaleProgress)
+                minWobble = minOf(minWobble, state.wobble)
+                maxWobble = maxOf(maxWobble, state.wobble)
+            }
+        }
+        assertTrue("Release dips below rest before settling", minScale < -0.01f)
+        assertTrue("Wobble swings both ways", minWobble < -0.005f && maxWobble > 0.002f)
+        advance(2000)
+        compose.runOnIdle {
+            assertEquals(0f, state.wobble, .001f)
+            assertEquals(0f, state.scaleProgress, .001f)
+        }
+    }
+
     @Test fun releaseContinuesFlingVelocityAndResetStopsAllMotion() {
         setup()
         compose.runOnIdle { state.press(Offset.Zero, 0) }

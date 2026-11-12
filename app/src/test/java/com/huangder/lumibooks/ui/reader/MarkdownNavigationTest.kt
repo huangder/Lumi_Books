@@ -22,6 +22,46 @@ import java.util.concurrent.TimeUnit
 @Config(sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class MarkdownNavigationTest {
+    @Test fun hiddenPreparationShapesNearbyBlocksWithoutScanningTheDocument() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup()
+        val doc = MarkdownNativeParser.parse((1..200).joinToString("\n\n") { "## Heading $it\n\n" + "Nearby text. ".repeat(25) })
+        val renders = java.util.concurrent.atomic.AtomicInteger()
+        val source = object : MarkdownBlockSource {
+            override val document = doc
+            override suspend fun renderBlock(index: Int, style: MarkdownRenderStyle): android.text.Spanned {
+                renders.incrementAndGet()
+                return SpannedString(doc.blocks[index].text)
+            }
+            override fun close() = Unit
+        }
+        val surface = MarkdownNativeSurface(activity.get(), source)
+        var committed = false
+        surface.backgroundPreparationEnabled = false
+        surface.navigationFinished = { if (it is EpubNavigationResult.Committed) committed = true }
+        surface.failed = { throw AssertionError(it) }
+        try {
+            activity.get().setContentView(surface, ViewGroup.LayoutParams(600, 900))
+            surface.configure(ReaderUiState(), Typeface.DEFAULT, android.graphics.Color.BLACK, false, false)
+            surface.measure(View.MeasureSpec.makeMeasureSpec(600, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(900, View.MeasureSpec.EXACTLY))
+            surface.layout(0, 0, 600, 900)
+            surface.navigate(EpubNavigationRequest(1, EpubNavigationOrigin.RETURN_TO_SOURCE, 0, 0, 0,
+                EpubNavigationDestination.ChapterStart, false))
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+            while (!committed && System.nanoTime() < deadline) {
+                ShadowLooper.idleMainLooper(16, TimeUnit.MILLISECONDS)
+                surface.measure(View.MeasureSpec.makeMeasureSpec(600, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(900, View.MeasureSpec.EXACTLY))
+                surface.layout(0, 0, 600, 900)
+                Thread.yield()
+            }
+            assertTrue(committed)
+            assertTrue("preparation must stay near the anchor: ${renders.get()} blocks", renders.get() < doc.blocks.size / 2)
+            val provider = surface.javaClass.getDeclaredField("provider").apply { isAccessible = true }
+            val prepared = provider.get(surface)
+            surface.backgroundPreparationEnabled = true
+            assertSame("promotion must reuse the shaped provider", prepared, provider.get(surface))
+        } finally { surface.release(); source.close(); activity.pause().stop().destroy() }
+    }
+
     @Test fun latestJumpSurvivesInitialRestoreReplacementAndRebuild() {
         val activity = Robolectric.buildActivity(Activity::class.java).setup()
         val doc = MarkdownNativeParser.parse((1..1600).joinToString("\n\n") {
@@ -49,7 +89,14 @@ class MarkdownNavigationTest {
         fun verify(id: Long, heading: Int) {
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
             while (results.none { it.operationId == id } && System.nanoTime() < deadline) frame()
-            assertTrue("jump $id must commit: $results", results.any { it.operationId == id })
+            val diagnostics = if (results.none { it.operationId == id }) {
+                val fields = surface.javaClass.declaredFields.filter { it.name in setOf(
+                    "windowGeneration", "restoringContinuous", "current", "requestId", "renderJob", "restoreFrame") }
+                    .joinToString { it.isAccessible = true; "${it.name}=${it.get(surface)}" }
+                val list = surface.getChildAt(0) as? RecyclerView
+                "$fields list=${list?.width}x${list?.height} children=${list?.childCount} requested=${list?.isLayoutRequested}"
+            } else ""
+            assertTrue("jump $id must commit: $results; $diagnostics", results.any { it.operationId == id })
             repeat(15) { frame() }
             val list = surface.getChildAt(0) as RecyclerView
             val manager = list.layoutManager as LinearLayoutManager

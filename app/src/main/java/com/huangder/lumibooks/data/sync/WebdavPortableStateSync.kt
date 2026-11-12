@@ -28,7 +28,10 @@ class WebdavPortableStateSync @Inject constructor(
     private val snapshotManager: PortableSnapshotManager
 ) {
     suspend fun sync(
-        config: WebdavConfig, password: String, wireBookIds: Map<String, String> = emptyMap()
+        config: WebdavConfig,
+        password: String,
+        wireBookIds: Map<String, String> = emptyMap(),
+        deletedBookIds: Set<String> = emptySet()
     ): PortableStateSyncResult {
         val serverUrl = config.serverUrl
         val root = "${config.syncPath}/state-v1"
@@ -63,24 +66,27 @@ class WebdavPortableStateSync @Inject constructor(
                     localBundle.snapshot.books.map { it.id }.toSet()
             }
             val localPayload = selectForLocal(localBundle.snapshot, remotePayload, config)
-                .withoutWebdavBookIds(shadowedIds)
+                .withoutWebdavBookIds(shadowedIds + deletedBookIds)
             val workDir = File(context.cacheDir, "webdav_state_${UUID.randomUUID()}").apply { mkdirs() }
             try {
                 val files = mutableMapOf<String, File>()
-                val remoteAssetIds = remote.assets.mapTo(mutableSetOf()) { it.id }
+                // Logical asset IDs include the owner. Several owners can reference one file.
+                val remoteAssetFiles = remote.assets.mapTo(mutableSetOf()) { it.webdavFileKey() }
                 for (asset in remotePayload.assets) {
                     val localSource = localBundle.assetSources[asset.id]
                     if (localSource != null) {
                         val localFile = materialize(localSource, workDir)
                         files[asset.id] = localFile
-                        if (asset.id !in remoteAssetIds) {
+                        val fileKey = asset.webdavFileKey()
+                        if (fileKey !in remoteAssetFiles) {
                             client.uploadStream(
                                 url = WebdavUrl.append(serverUrl, root, "assets", asset.fileName),
                                 contentLength = asset.sizeBytes,
-                                inputStreamProvider = localSource.openStream,
+                                inputStreamProvider = { localFile.inputStream().buffered() },
                                 username = config.username,
                                 password = password
                             )
+                            remoteAssetFiles += fileKey
                             uploadedAssets++
                         }
                     } else if (assetReferenced(localPayload, asset.id)) {
@@ -393,7 +399,9 @@ internal fun chooseWebdavBooksForDevice(
     }
 }
 
-private fun File.sha256(): String = inputStream().buffered().use { input ->
+private fun PortableAsset.webdavFileKey() = Triple(fileName, sha256, sizeBytes)
+
+internal fun File.sha256(): String = inputStream().buffered().use { input ->
     val digest = MessageDigest.getInstance("SHA-256")
     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
     while (true) {

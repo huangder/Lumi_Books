@@ -107,7 +107,9 @@ import kotlinx.coroutines.flow.*
 // Period selection
 // ---------------------------------------------------------------------------------------------
 
-@Composable internal fun ScopeSelector(scope: StatisticsScope, onSelect: (StatisticsScope) -> Unit, includeAll: Boolean = true) {
+/** [edgeBleed]: list padding the overflowing selector may scroll through to reach the screen edge. */
+@Composable internal fun ScopeSelector(scope: StatisticsScope, onSelect: (StatisticsScope) -> Unit, includeAll: Boolean = true,
+    edgeBleed: Dp = 0.dp) {
     val scopes = StatisticsScope.entries.filter { includeAll || it != StatisticsScope.ALL }
     val labels = scopes.map { item ->
         stringResource(when (item) {
@@ -133,7 +135,8 @@ import kotlinx.coroutines.flow.*
         // A scroll container clips its content (and the pill's shadow), so only use one when the
         // labels genuinely do not fit, e.g. very large fonts.
         if (needed <= maxWidth) InsightSegmented(labels, selectedIndex, select)
-        else Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 4.dp)) {
+        else Row(Modifier.horizontalBleed(edgeBleed).horizontalScroll(rememberScrollState())
+            .padding(horizontal = edgeBleed, vertical = 4.dp)) {
             // Scrolling: give every segment comfortable room so no label is ellipsized.
             InsightSegmented(labels, selectedIndex, select, Modifier.width((labelWidth + 28.dp) * scopes.size + 4.dp))
         }

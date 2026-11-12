@@ -163,8 +163,7 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
             state.copy(
                 suites = state.suites.map { suite ->
                     if (suite.id == suiteId) {
-                        if (layout == ReaderLayoutTarget.READER_LAYOUT) suite.withModeSettings(_uiState.value.editingDark, settings)
-                        else suite.withSettings(layout, settings)
+                        suite.withModeSettings(layout, state.editingDark, settings)
                     } else suite
                 }
             )
@@ -185,7 +184,7 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
                 suiteId,
                 layout,
                 settings,
-                modeDark = dark.takeIf { layout == ReaderLayoutTarget.READER_LAYOUT }
+                modeDark = dark
             )
         }
     }
@@ -275,6 +274,8 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
                             suite.lightSettings?.let(::add)
                             suite.darkSettings?.let(::add)
                             add(suite.bookLayoutSettings)
+                            suite.bookLayoutLightSettings?.let(::add)
+                            suite.bookLayoutDarkSettings?.let(::add)
                         }
                     }
                     .flatMap { settings ->
@@ -573,7 +574,7 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
                 suiteId,
                 layout,
                 preset,
-                modeDark = dark.takeIf { layout == ReaderLayoutTarget.READER_LAYOUT }
+                modeDark = dark
             )
         }
     }
@@ -597,7 +598,7 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
                 suite.id,
                 layout,
                 updatedSettings,
-                modeDark = state.editingDark.takeIf { layout == ReaderLayoutTarget.READER_LAYOUT }
+                modeDark = state.editingDark
             )
             if (preset?.type == ReaderBackgroundType.IMAGE) {
                 val removed = dataStoreManager.removeUnusedReaderBackground(preset.id) ?: return@launch
@@ -674,11 +675,7 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
             state.copy(
                 suites = state.suites.map {
                     if (it.id == suite.id) {
-                        if (layout == ReaderLayoutTarget.READER_LAYOUT) {
-                            it.withModeSettings(state.editingDark, updatedSettings)
-                        } else {
-                            it.withSettings(layout, updatedSettings)
-                        }
+                        it.withModeSettings(layout, state.editingDark, updatedSettings)
                     } else it
                 }
             )
@@ -688,7 +685,7 @@ class ReaderSettingsPreviewViewModel @Inject constructor(
                 suite.id,
                 layout,
                 updatedSettings,
-                modeDark = state.editingDark.takeIf { layout == ReaderLayoutTarget.READER_LAYOUT }
+                modeDark = state.editingDark
             )
         }
     }

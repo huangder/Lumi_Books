@@ -50,6 +50,8 @@ class TtsPlayerPanelTest {
     private val readerMenu = mutableStateOf(false)
     private val playback = mutableStateOf(TtsPlaybackState.PAUSED)
     private val followPageTurns = mutableStateOf(false)
+    private val fromPagePrompt = mutableStateOf(false)
+    private var startsFromPage = 0
     private val chapterTitle = mutableStateOf("Chapter one")
     private lateinit var view: View
     private var plays = 0
@@ -98,6 +100,8 @@ class TtsPlayerPanelTest {
                                 sleepTimerRemainingMs = null,
                                 followUserPageTurns = followPageTurns.value,
                                 onFollowUserPageTurnsChange = { followPageTurns.value = it },
+                                showFromCurrentPage = fromPagePrompt.value,
+                                onStartFromCurrentPage = { startsFromPage++; fromPagePrompt.value = false },
                                 onPlayPause = { plays++ }, onStop = { stops++ },
                                 onOpenFullscreen = { fullscreens++ },
                                 onSkipForward = { next++ }, onSkipBackward = { previous++ },
@@ -137,6 +141,28 @@ class TtsPlayerPanelTest {
         compose.runOnIdle { assertFalse(followPageTurns.value) }
         more(R.string.tts_expand_controls)
         control(R.string.tts_follow_page_turns).assertIsNotSelected()
+    }
+
+    @Test fun fromPagePromptOpensInwardAndLeavesTheDockedHandleInPlace() {
+        show(width = 320)
+        for (dock in listOf(ReaderTtsDock.LEFT, ReaderTtsDock.RIGHT)) {
+            compose.runOnIdle {
+                position.value = ReaderTtsPosition(if (dock == ReaderTtsDock.LEFT) 0f else 1f,
+                    .5f, dock = dock, saved = true)
+                fromPagePrompt.value = true
+            }
+            val handle = compose.onNodeWithTag("reader-tts-edge-handle")
+            val button = compose.onNodeWithTag("reader-tts-from-current-page")
+            val handleBounds = handle.fetchSemanticsNode().boundsInRoot
+            val buttonBounds = button.fetchSemanticsNode().boundsInRoot
+            assertEquals(handleBounds.center.y, buttonBounds.center.y, .01f)
+            assertTrue(if (dock == ReaderTtsDock.LEFT) buttonBounds.left > handleBounds.right
+                else buttonBounds.right < handleBounds.left)
+            button.assertIsDisplayed().performClick()
+            handle.assertIsDisplayed()
+            button.assertDoesNotExist()
+        }
+        assertEquals(2, startsFromPage)
     }
 
     @Test fun compactControlsExpandOnDemandAndKeepPlaybackActions() {

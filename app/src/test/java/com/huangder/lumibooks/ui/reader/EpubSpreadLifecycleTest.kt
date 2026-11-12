@@ -7,6 +7,9 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.MotionEvent
 import android.view.View
+import androidx.webkit.WebViewAssetLoader
+import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
+import com.huangder.lumibooks.util.epub.*
 import com.huangder.lumibooks.ui.reader.engine.PageAnimationController
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -48,11 +51,60 @@ class EpubSpreadLifecycleTest {
     }
 
     @Test fun constructionOwnsOnlyThreePairsAndExposesNoUncommittedLeaf() {
-        assertEquals(6, host.allWebViews().size)
-        assertEquals(6, host.allWebViews().distinct().size)
+        assertTrue(host.allWebViews().isEmpty())
         assertEquals(3, host.childCount)
         assertTrue(host.visibleWebViews().isEmpty())
         assertNull(host.readyView(EpubPageTarget(0, 0)))
+    }
+
+    @Test fun calibratedViewportRestartsPendingNavigationWithoutCancellingTheCaller() {
+        val request = EpubNavigationRequest(45, EpubNavigationOrigin.TOC, 0, 4, 0,
+            EpubNavigationDestination.Page(12))
+        val results = mutableListOf<EpubNavigationResult>()
+        val starts = mutableListOf<Long>()
+        host.onNavigationResult = { results += it }
+        host.onNavigationStage = { req, stage ->
+            if (stage == EpubNavigationStage.STARTING) starts += req.operationId
+        }
+        fun update(identity: String) = host.update(TestSession, identity, request, "slide", 200,
+            false, ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT, android.graphics.Color.WHITE)
+        update("predicted")
+        // Keep an already visible spread while another location is still preparing.
+        prepare(slot("current"), spread(4))
+        set(host, "state", EpubSpreadState(spread(4), EpubSpreadPage(EpubPageTarget(0, 4), 20),
+            EpubSpreadPage(EpubPageTarget(0, 5), 20), false))
+        update("measured")
+        assertEquals(listOf(45L, 45L), starts)
+        assertTrue("calibration must not clear the foreground request", results.isEmpty())
+        val preparation = get(host, "preparation")!!
+        assertEquals(request, get(preparation, "request"))
+    }
+
+    @Test fun hidingAnOrientationReleasesAdjacentLeavesAndRetainsTheCurrentPair() {
+        listOf("previous", "current", "next").forEach { leaves(slot(it)) }
+        val activePair = leaves(slot("current")).map { get(it, "view") as EpubContentWebView }
+        val discarded = host.allWebViews().filter { it !in activePair }
+        host.backgroundPreparationEnabled = false
+        assertEquals(activePair, host.allWebViews())
+        discarded.forEach { assertTrue(it.released); assertNull(it.parent) }
+        activePair.forEach { assertFalse(it.released); assertNotNull(it.parent) }
+        // Promotion creates only the leaves needed by the next actual request.
+        host.backgroundPreparationEnabled = true
+        assertEquals(2, host.allWebViews().size)
+        leaves(slot("next"))
+        assertEquals(4, host.allWebViews().size)
+    }
+
+    @Test fun hiddenLocatorUpdatesDoNotAccumulateDisplacedPairs() {
+        host.backgroundPreparationEnabled = false
+        repeat(3) { step ->
+            val destination = slot("next")
+            prepare(destination, spread(step * 2))
+            commit(destination, 0)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(2, host.allWebViews().size)
+            assertEquals(host.visibleWebViews(), host.allWebViews())
+        }
     }
 
     @Test fun partialDestinationNeverCommitsHalfOfASpread() {
@@ -72,6 +124,7 @@ class EpubSpreadLifecycleTest {
     }
 
     @Test fun committedGroupsRotateTogetherAndReuseTheSameSixWebViews() {
+        listOf("previous", "current", "next").forEach { leaves(slot(it)) }
         val original = host.allWebViews().toSet()
         val initial = slot("next")
         prepare(initial, spread(0))
@@ -162,6 +215,7 @@ class EpubSpreadLifecycleTest {
     }
 
     @Test fun deadBackgroundRendererIsReplacedWithoutIncreasingTheLiveViewPool() {
+        listOf("previous", "current", "next").forEach { leaves(slot(it)) }
         val original = host.allWebViews().toSet()
         val background = leaves(slot("next"))[0]
         val dead = get(background, "view") as EpubContentWebView
@@ -311,6 +365,46 @@ class EpubSpreadLifecycleTest {
         assertEquals(1, bookmarks)
     }
 
+    @Test fun strokeOnOtherLeafDismissesTheFootnoteAndNeverReachesThatLeaf() {
+        gestureFixture()
+        val (other, owner) = host.visibleWebViews()
+        // Robolectric's WebView shadow does not measure content. Give the real
+        // event-dispatch hierarchy the two leaf rectangles used by this test.
+        (slot("current") as View).layout(0, 0, 1000, 700)
+        other.apply { left = 0; top = 0; right = 490; bottom = 700 }
+        owner.apply { left = 510; top = 0; right = 1000; bottom = 700 }
+        val events = mutableListOf<Int>()
+        other.setOnTouchListener { _, event -> events += event.actionMasked; true }
+
+        fun dispatch(action: Int, y: Float) {
+            val x = (other.left + other.right) / 2f
+            val event = MotionEvent.obtain(0, 100, action, x, y, 0)
+            try { assertTrue(host.dispatchTouchEvent(event)) } finally { event.recycle() }
+        }
+
+        dispatch(MotionEvent.ACTION_DOWN, 350f)
+        dispatch(MotionEvent.ACTION_UP, 350f)
+        assertEquals("Normal leaf dispatch before opening", listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP), events)
+        events.clear()
+        owner.footnotePopoverVisible = true
+
+        dispatch(MotionEvent.ACTION_DOWN, 350f)
+        dispatch(MotionEvent.ACTION_MOVE, 250f)
+        dispatch(MotionEvent.ACTION_CANCEL, 250f)
+        assertNull(shadowOf(owner).lastEvaluatedJavascript)
+
+        dispatch(MotionEvent.ACTION_DOWN, 350f)
+        dispatch(MotionEvent.ACTION_MOVE, 250f)
+        dispatch(MotionEvent.ACTION_UP, 250f)
+        assertEquals("if (window.LumiReader) window.LumiReader.dismissFootnote();", shadowOf(owner).lastEvaluatedJavascript)
+        assertTrue(events.isEmpty())
+
+        owner.footnotePopoverVisible = false
+        dispatch(MotionEvent.ACTION_DOWN, 350f)
+        dispatch(MotionEvent.ACTION_UP, 350f)
+        assertEquals(listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP), events)
+    }
+
     private fun gestureFixture(transition: String = "slide"): EpubSpreadTarget {
         prepare(slot("next"), spread(4))
         commit(slot("next"), 0)
@@ -357,7 +451,8 @@ class EpubSpreadLifecycleTest {
     private fun slot(name: String): Any = get(host, name)!!
 
     @Suppress("UNCHECKED_CAST")
-    private fun leaves(slot: Any): List<Any> = get(slot, "leaves") as List<Any>
+    private fun leaves(slot: Any): List<Any> = slot.javaClass.getDeclaredMethod("getLeaves")
+        .apply { isAccessible = true }.invoke(slot) as List<Any>
 
     private fun prepare(slot: Any, target: EpubSpreadTarget, secondReady: Boolean = true) {
         slot.javaClass.getDeclaredMethod("arrange", EpubSpreadTarget::class.java).apply { isAccessible = true }
@@ -381,5 +476,22 @@ class EpubSpreadLifecycleTest {
 
     private fun set(owner: Any, name: String, value: Any?) {
         owner.javaClass.getDeclaredField(name).apply { isAccessible = true }.set(owner, value)
+    }
+
+    private object TestSession : BookRenderSession {
+        override val chapterCount = 1
+        override val assetLoader = WebViewAssetLoader.Builder().build()
+        override fun chapterUrl(chapterIndex: Int, fragment: String?) = "https://appassets.androidplatform.net/book.xhtml"
+        override fun chapterHref(chapterIndex: Int) = "book.xhtml"
+        override fun chapterIndexForUrl(url: String) = if (url.contains("book.xhtml")) 0 else null
+        override fun imageUrl(sourceChapterIndex: Int, source: String): String? = null
+        override fun readImageUrl(url: String): EpubResource? = null
+        override fun resolveInternalLink(sourceChapterIndex: Int, href: String): Pair<Int, String?>? = null
+        override fun readerFontUrl(filePath: String?): String? = null
+        override fun readerBackgroundUrl(filePath: String?): String? = null
+        override fun renditionLayout(chapterIndex: Int) = EpubRenditionLayout.REFLOWABLE
+        override fun pageProgressionDirection(chapterIndex: Int) = EpubPageProgressionDirection.LTR
+        override fun searchText(chapterIndex: Int) = ""
+        override fun close() = Unit
     }
 }

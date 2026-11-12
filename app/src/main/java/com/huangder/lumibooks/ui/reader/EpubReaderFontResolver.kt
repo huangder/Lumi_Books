@@ -43,14 +43,20 @@ internal fun rememberEpubRuleFontUrls(
             .filter { it.isNotBlank() }.toSet()
     }
     val urls by produceState(emptyMap<String, String>(), session, fontTypes, customFonts) {
-        val paths = fontTypes.mapNotNull { type ->
-            prepareEpubReaderFontPath(context, type, customFonts.firstOrNull { it.fontTypeKey == type }?.path)
-                ?.let { type to it }
-        }
-        value = paths.mapNotNull { (type, path) -> session.readerFontUrl(path)?.let { type to it } }.toMap()
+        value = prepareEpubRuleFontUrls(context, session, fontTypes, customFonts)
     }
     return urls
 }
+
+internal suspend fun prepareEpubRuleFontUrls(
+    context: Context,
+    session: BookRenderSession,
+    fontTypes: Set<String>,
+    customFonts: List<CustomFontPreset>
+): Map<String, String> = fontTypes.mapNotNull { type ->
+    val path = prepareEpubReaderFontPath(context, type, customFonts.firstOrNull { it.fontTypeKey == type }?.path)
+    session.readerFontUrl(path)?.let { type to it }
+}.toMap()
 
 internal suspend fun prepareEpubReaderFontPath(
     context: Context,

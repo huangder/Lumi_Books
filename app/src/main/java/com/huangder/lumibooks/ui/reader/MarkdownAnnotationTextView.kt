@@ -10,6 +10,7 @@ import android.widget.TextView
 import com.huangder.lumibooks.domain.model.HighlightRule
 import com.huangder.lumibooks.domain.model.Note
 import com.huangder.lumibooks.highlight.RuleStyleJson
+import com.huangder.lumibooks.ui.reader.engine.ReaderAnnotationStyle
 import com.huangder.lumibooks.ui.reader.engine.ReaderHighlightPainter
 import com.huangder.lumibooks.ui.reader.engine.ReaderHighlightSpan
 import com.huangder.lumibooks.ui.reader.engine.ReaderLineGeometry
@@ -32,6 +33,14 @@ internal open class MarkdownAnnotationTextView(context: Context) : TextView(cont
         strokeWidth = density
         strokeCap = Paint.Cap.ROUND
     }
+
+    /** 笔记高亮/划线的用户几何参数；只影响绘制。 */
+    var annotationStyle: ReaderAnnotationStyle = ReaderAnnotationStyle.DEFAULT
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+        }
 
     override fun onDraw(canvas: Canvas) {
         drawAnnotations(canvas, underlines = false)
@@ -56,13 +65,15 @@ internal open class MarkdownAnnotationTextView(context: Context) : TextView(cont
                 val lineGeometry = geometryFor(layout, text)
                 spans.forEach { span ->
                     highlightPainter.drawRange(canvas, layout, text, lineGeometry,
-                        text.getSpanStart(span), text.getSpanEnd(span), span.color)
+                        text.getSpanStart(span), text.getSpanEnd(span), span.color, style = annotationStyle)
                 }
                 return
             }
             val spans = text.getSpans(start, end, WaveUnderlineSpan::class.java)
             if (spans.isEmpty()) return
             val lineGeometry = geometryFor(layout, text)
+            underlinePaint.strokeWidth = annotationStyle.underlineThicknessDp * density
+            val underlineOffset = annotationStyle.underlineOffsetYDp * density
             spans.forEach { span ->
                 val a = text.getSpanStart(span).coerceIn(0, text.length)
                 val b = text.getSpanEnd(span).coerceIn(a, text.length)
@@ -74,8 +85,10 @@ internal open class MarkdownAnnotationTextView(context: Context) : TextView(cont
                     val lineEnd = minOf(b, readerLineContentEnd(text, layout.getLineStart(line), layout.getLineEnd(line)))
                     if (lineStart >= lineEnd || (lineStart until lineEnd).all { text[it].isWhitespace() }) continue
                     val range = lineGeometry.horizontalRange(line, lineStart, lineEnd) ?: continue
-                    val cross = layout.getLineBaseline(line) + paint.fontMetrics.descent.coerceAtLeast(1f) + density
-                    drawReaderUnderline(canvas, underlinePaint, span.mode, range.left, range.right, cross, false, density)
+                    val cross = layout.getLineBaseline(line) + paint.fontMetrics.descent.coerceAtLeast(1f) + density +
+                        underlineOffset
+                    drawReaderUnderline(canvas, underlinePaint, span.mode, range.left, range.right, cross, false,
+                        density, annotationStyle.underlinePatternScale)
                 }
             }
         } finally {

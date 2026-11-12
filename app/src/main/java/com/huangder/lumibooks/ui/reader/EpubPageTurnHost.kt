@@ -294,6 +294,14 @@ internal class EpubPageTurnHost(
         }
     }
 
+    /** Retain measured documents, but speculative bitmaps never belong to a hidden direction. */
+    fun trimOrientationPreloads() {
+        if (released) return
+        discardWarmPage()
+        releaseHardwareCapture()
+        recyclePageBitmaps()
+    }
+
     fun preloadView(slot: PreloadSlot): EpubContentWebView? = when (slot) {
         PreloadSlot.PREVIOUS -> previousWebView
         PreloadSlot.NEXT -> nextWebView
@@ -1374,8 +1382,9 @@ internal class EpubPageTurnHost(
         if (EpubTurnTrace.enabled) traceGestureBefore(event)
         val handled = dispatchPageTouchEvent(event)
         if (EpubTurnTrace.enabled) traceGestureAfter(event)
-        trackBookEndPull(event)
+        if (!footnoteTouchStream) trackBookEndPull(event)
         if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            footnoteTouchStream = false
             endTouchStream(event)
         }
         return handled
@@ -1572,9 +1581,15 @@ internal class EpubPageTurnHost(
                     waitingGestureDirection = PageAnimationController.Direction.NONE
                     clearWaitingGestureEvent()
                     val extent = if (transition == "scroll") height else width
-                    val distance = if (transition == "scroll") event.y - touchStartY else event.x - touchStartX
+                    val distance = if (transition == "scroll") {
+                        event.y - touchStartY
+                    } else {
+                        horizontalGestureDelta(touchStartX, event.x)
+                    }
+                    val matchesTarget = transition != "wave" ||
+                        epubPageDirectionForHorizontalDelta(distance, reverseAxis) == direction
                     if (event.actionMasked == MotionEvent.ACTION_UP &&
-                        abs(distance) >= extent * PageAnimationController.FLIP_THRESHOLD
+                        matchesTarget && abs(distance) >= extent * PageAnimationController.FLIP_THRESHOLD
                     ) {
                         queuePendingSlideTurn(direction, "swipe_release")
                         post(::startQueuedTurnIfReady)
@@ -2126,8 +2141,12 @@ internal class EpubPageTurnHost(
         ) == true
     }
 
+    private fun horizontalGestureDelta(startX: Float, endX: Float): Float =
+        controller.horizontalGestureX(endX) - controller.horizontalGestureX(startX)
+
     private fun tryBeginSlideGesture(event: MotionEvent): Boolean {
-        val dx = abs(event.x - touchStartX)
+        val deltaX = horizontalGestureDelta(touchStartX, event.x)
+        val dx = abs(deltaX)
         val dy = abs(event.y - touchStartY)
         val elapsed = event.eventTime - touchDownTime
         // 4px 阈值会把轻点链接时的正常手指抖动误判为翻页手势并取消 WebView 点击。
@@ -2151,7 +2170,7 @@ internal class EpubPageTurnHost(
             }
         } else {
             epubPageDirectionForHorizontalDelta(
-                deltaX = event.x - touchStartX,
+                deltaX = deltaX,
                 reverseAxis = reverseAxis
             )
         }
@@ -3180,7 +3199,7 @@ internal class EpubPageTurnHost(
                 pendingSlideDownY = event.y
             }
             MotionEvent.ACTION_MOVE -> {
-                val deltaX = event.x - pendingSlideDownX
+                val deltaX = horizontalGestureDelta(pendingSlideDownX, event.x)
                 val deltaY = event.y - pendingSlideDownY
                 val pageIntent = if (transition == "scroll") {
                     abs(deltaY) > BUSY_TAP_MOVE_LIMIT_PX && abs(deltaY) > abs(deltaX)
@@ -3202,7 +3221,7 @@ internal class EpubPageTurnHost(
                 val direction = if (isCapturedSlideTap(event)) {
                     capturedTapDirection(event.x)
                 } else {
-                    val deltaX = event.x - pendingSlideDownX
+                    val deltaX = horizontalGestureDelta(pendingSlideDownX, event.x)
                     val deltaY = event.y - pendingSlideDownY
                     val pageIntent = if (transition == "scroll") {
                         abs(deltaY) > BUSY_TAP_MOVE_LIMIT_PX && abs(deltaY) > abs(deltaX)
@@ -3470,7 +3489,9 @@ internal class EpubPageTurnHost(
     private fun dispatchMappedEvent(source: MotionEvent) {
         if (source.actionMasked == MotionEvent.ACTION_MOVE && transition != "scroll") {
             val desired = epubPageDirectionForHorizontalDelta(
-                source.x - touchStartX, frozenReverseAxis ?: reverseAxis, BUSY_TAP_MOVE_LIMIT_PX
+                horizontalGestureDelta(touchStartX, source.x),
+                frozenReverseAxis ?: reverseAxis,
+                BUSY_TAP_MOVE_LIMIT_PX
             )
             val old = turnContext
             if (old != null && desired != PageAnimationController.Direction.NONE && desired != old.direction) {

@@ -49,6 +49,7 @@ import com.huangder.lumibooks.domain.model.ReaderThemeSuite
 import com.huangder.lumibooks.domain.model.ReaderThemeSuiteCodec
 import com.huangder.lumibooks.domain.model.ReaderThemeSuiteState
 import com.huangder.lumibooks.domain.model.ReaderThemeSuites
+import com.huangder.lumibooks.domain.model.ReaderThemeSuites.withPublisherFontForLegacySepia
 import com.huangder.lumibooks.domain.model.usesReaderBackground
 import com.huangder.lumibooks.domain.model.ReaderLayoutTarget
 import com.huangder.lumibooks.domain.model.PdfPageMode
@@ -387,8 +388,8 @@ class DataStoreManager @Inject constructor(
         private val TXT_TOC_LEGADO_RULES = stringPreferencesKey("txt_toc_legado_rules_v1")
         private val TXT_TOC_COMPAT_NOTICE = booleanPreferencesKey("txt_toc_compat_notice_ack_v1")
         private val READER_THEME_SUITES_VERSION = intPreferencesKey("reader_theme_suites_version")
-        /** 主题套装数据版本：5 = 页眉页脚边距绑定套装。 */
-        private const val READER_THEME_SUITES_VERSION_VALUE = 5
+        /** 主题套装数据版本：6 = 原排版护眼套装恢复原书字体。 */
+        private const val READER_THEME_SUITES_VERSION_VALUE = 6
         private val PAGE_TRANSITION = stringPreferencesKey("page_transition")
         private val PAGE_TRANSITION_SLIDE_DURATION_MS = intPreferencesKey("page_transition_slide_duration_ms")
         private val PAGE_TRANSITION_SCROLL_DURATION_MS = intPreferencesKey("page_transition_scroll_duration_ms")
@@ -1999,24 +2000,18 @@ class DataStoreManager @Inject constructor(
                 marginLeft = 38f, marginRight = 38f,
                 marginTop = 64f, marginBottom = 64f,
                 cornerMargins = ReaderCornerMargins()
-            )
+            ).withDefaultAnnotationGeometry()
             if (targetSuiteId == null) {
                 preferences.updateActiveReaderThemeSuite { resetTypography() }
             } else {
                 val suites = readThemeSuites(preferences)
                 preferences[READER_THEME_SUITES] = ReaderThemeSuiteCodec.encode(
                     suites.map { suite ->
-                        if (suite.id != targetSuiteId) suite else when (layout) {
-                            ReaderLayoutTarget.BOOK_LAYOUT -> suite.withSettings(
-                                layout, suite.settingsFor(layout).resetTypography()
+                        if (suite.id != targetSuiteId) suite else if (modeDark != null) {
+                            suite.withModeSettings(
+                                layout, modeDark, suite.settingsFor(layout, modeDark).resetTypography()
                             )
-                            ReaderLayoutTarget.READER_LAYOUT -> if (modeDark != null) {
-                                suite.withModeSettings(
-                                    modeDark,
-                                    suite.settingsFor(layout, modeDark).resetTypography()
-                                )
-                            } else suite.withSettings(layout, suite.settings.resetTypography())
-                        }
+                        } else suite.withSettings(layout, suite.settingsFor(layout).resetTypography())
                     }
                 )
             }
@@ -2108,7 +2103,9 @@ class DataStoreManager @Inject constructor(
                             settings = suite.settings.copy(cornerMargins = margins),
                             bookLayoutSettings = suite.bookLayoutSettings.copy(cornerMargins = margins),
                             lightSettings = suite.lightSettings?.copy(cornerMargins = margins),
-                            darkSettings = suite.darkSettings?.copy(cornerMargins = margins)
+                            darkSettings = suite.darkSettings?.copy(cornerMargins = margins),
+                            bookLayoutLightSettings = suite.bookLayoutLightSettings?.copy(cornerMargins = margins),
+                            bookLayoutDarkSettings = suite.bookLayoutDarkSettings?.copy(cornerMargins = margins)
                         )
                     }
                 }
@@ -2201,8 +2198,8 @@ class DataStoreManager @Inject constructor(
             if (suites.none { it.id == suiteId }) return@edit
             val updated = ReaderThemeSuites.normalized(suites.map { suite ->
                 if (suite.id != suiteId) suite
-                else if (layout == ReaderLayoutTarget.READER_LAYOUT && modeDark != null) {
-                    suite.withModeSettings(modeDark, settings)
+                else if (modeDark != null) {
+                    suite.withModeSettings(layout, modeDark, settings)
                 } else {
                     suite.withSettings(layout, settings)
                 }
@@ -2250,8 +2247,8 @@ class DataStoreManager @Inject constructor(
                             preset.selectionKey
                         } else current.backgroundColorSelection
                     )
-                    if (layout == ReaderLayoutTarget.READER_LAYOUT && modeDark != null) {
-                        suite.withModeSettings(modeDark, settings)
+                    if (modeDark != null) {
+                        suite.withModeSettings(layout, modeDark, settings)
                     } else suite.withSettings(layout, settings)
                 }
             }
@@ -3324,8 +3321,15 @@ class DataStoreManager @Inject constructor(
 
     private fun readThemeSuites(preferences: Preferences): List<ReaderThemeSuite> {
         val decoded = ReaderThemeSuiteCodec.decode(preferences[READER_THEME_SUITES])
+        val version = preferences[READER_THEME_SUITES_VERSION] ?: 0
+        // Before v6, the built-in sepia theme inherited the reflow serif in book layout.
+        val suites = if (version < 6) {
+            decoded.map { it.withPublisherFontForLegacySepia() }
+        } else {
+            decoded
+        }
         return ReaderThemeSuites.normalized(
-            decoded.ifEmpty { ReaderThemeSuites.defaults() }
+            suites.ifEmpty { ReaderThemeSuites.defaults() }
         )
     }
 

@@ -22,9 +22,26 @@ data class ReaderThemeSettings(
     val marginRight: Float = 38f,
     val marginTop: Float = 64f,
     val marginBottom: Float = 64f,
-    val cornerMargins: ReaderCornerMargins = ReaderCornerMargins()
+    val cornerMargins: ReaderCornerMargins = ReaderCornerMargins(),
+    /** Extra horizontal extension (dp, each side) of note highlights. */
+    val highlightWidthDp: Float = 0f,
+    /** Extra vertical extension (dp, top and bottom) of note highlights. */
+    val highlightHeightDp: Float = 0f,
+    /** Vertical shift (dp, positive = down) of note highlights. */
+    val highlightOffsetYDp: Float = 0f,
+    /** Stroke width (dp) of note underlines. */
+    val underlineThicknessDp: Float = DEFAULT_UNDERLINE_THICKNESS_DP,
+    /** Shift (dp, positive = away from text) of note underlines. */
+    val underlineOffsetYDp: Float = 0f
 ) {
     companion object {
+        const val DEFAULT_UNDERLINE_THICKNESS_DP = 1f
+        val HIGHLIGHT_WIDTH_RANGE = -3f..8f
+        val HIGHLIGHT_HEIGHT_RANGE = -4f..8f
+        val HIGHLIGHT_OFFSET_Y_RANGE = -8f..8f
+        val UNDERLINE_THICKNESS_RANGE = 0.5f..4f
+        val UNDERLINE_OFFSET_Y_RANGE = -8f..8f
+
         val FONT_SIZE_RANGE = 12f..33f
         val LINE_HEIGHT_RANGE = 0.5f..2.5f
         val LETTER_SPACING_RANGE = -5f..10f
@@ -36,6 +53,15 @@ data class ReaderThemeSettings(
         val HORIZONTAL_MARGIN_RANGE = MIN_MARGIN_DP..MAX_HORIZONTAL_MARGIN_DP
         val VERTICAL_MARGIN_RANGE = MIN_MARGIN_DP..MAX_VERTICAL_MARGIN_DP
     }
+
+    /** 高亮/划线几何回到默认值（重置排版时一并使用）。 */
+    fun withDefaultAnnotationGeometry(): ReaderThemeSettings = copy(
+        highlightWidthDp = 0f,
+        highlightHeightDp = 0f,
+        highlightOffsetYDp = 0f,
+        underlineThicknessDp = DEFAULT_UNDERLINE_THICKNESS_DP,
+        underlineOffsetYDp = 0f
+    )
 }
 
 /** Which reader layout a set of typography/background settings belongs to. */
@@ -55,7 +81,10 @@ data class ReaderThemeSuite(
     /** Optional light/dark overrides. Legacy suites use [settings] for both modes. */
     val lightSettings: ReaderThemeSettings? = null,
     val darkSettings: ReaderThemeSettings? = null,
-    val darkMaskOpacity: Float = 0f
+    val darkMaskOpacity: Float = 0f,
+    /** Publisher-layout overrides fall back to the existing shared layout settings. */
+    val bookLayoutLightSettings: ReaderThemeSettings? = null,
+    val bookLayoutDarkSettings: ReaderThemeSettings? = null
 ) {
     val isBuiltIn: Boolean get() = id in ReaderThemeSuites.BUILT_IN_IDS
 
@@ -79,10 +108,20 @@ data class ReaderThemeSuite(
     fun settingsFor(layout: ReaderLayoutTarget, dark: Boolean): ReaderThemeSettings =
         if (layout == ReaderLayoutTarget.READER_LAYOUT) {
             (if (dark) darkSettings else lightSettings) ?: settings
-        } else bookLayoutSettings
+        } else (if (dark) bookLayoutDarkSettings else bookLayoutLightSettings) ?: bookLayoutSettings
 
     fun withModeSettings(dark: Boolean, updated: ReaderThemeSettings): ReaderThemeSuite =
         if (dark) copy(darkSettings = updated) else copy(lightSettings = updated)
+
+    fun withModeSettings(
+        layout: ReaderLayoutTarget,
+        dark: Boolean,
+        updated: ReaderThemeSettings
+    ): ReaderThemeSuite = when (layout) {
+        ReaderLayoutTarget.READER_LAYOUT -> withModeSettings(dark, updated)
+        ReaderLayoutTarget.BOOK_LAYOUT -> if (dark) copy(bookLayoutDarkSettings = updated)
+            else copy(bookLayoutLightSettings = updated)
+    }
 }
 
 data class ReaderThemeSuiteState(
@@ -161,6 +200,10 @@ object ReaderThemeSuites {
                 backgroundSelection = SEPIA_ID,
                 backgroundColorSelection = SEPIA_ID,
                 fontType = "serif"
+            ),
+            bookLayoutSettings = ReaderThemeSettings(
+                backgroundSelection = SEPIA_ID,
+                backgroundColorSelection = SEPIA_ID
             )
         ),
         ReaderThemeSuite(
@@ -190,7 +233,12 @@ object ReaderThemeSuites {
         return ReaderThemeSuiteState(
             suites = defaults().map { suite ->
                 if (suite.id == activeId) {
-                    suite.copy(settings = settings, bookLayoutSettings = settings, lightSettings = settings, darkSettings = settings)
+                    suite.copy(
+                        settings = settings,
+                        bookLayoutSettings = settings,
+                        lightSettings = settings,
+                        darkSettings = settings
+                    ).withPublisherFontForLegacySepia()
                 } else {
                     suite
                 }
@@ -198,6 +246,13 @@ object ReaderThemeSuites {
             activeSuiteId = activeId
         )
     }
+
+    internal fun ReaderThemeSuite.withPublisherFontForLegacySepia(): ReaderThemeSuite =
+        if (id == SEPIA_ID && bookLayoutSettings.fontType == "serif") {
+            copy(bookLayoutSettings = bookLayoutSettings.copy(fontType = "system"))
+        } else {
+            this
+        }
 
     fun normalized(suites: List<ReaderThemeSuite>): List<ReaderThemeSuite> {
         val seen = mutableSetOf<String>()
@@ -210,6 +265,8 @@ object ReaderThemeSuites {
                     bookLayoutSettings = suite.bookLayoutSettings.sanitized(),
                     lightSettings = suite.lightSettings?.sanitized(),
                     darkSettings = suite.darkSettings?.sanitized(),
+                    bookLayoutLightSettings = suite.bookLayoutLightSettings?.sanitized(),
+                    bookLayoutDarkSettings = suite.bookLayoutDarkSettings?.sanitized(),
                     darkMaskOpacity = suite.darkMaskOpacity.coerceIn(0f, 0.8f)
                 )
                 suite.customName.isNullOrBlank() -> null
@@ -219,6 +276,8 @@ object ReaderThemeSuites {
                     bookLayoutSettings = suite.bookLayoutSettings.sanitized(),
                     lightSettings = suite.lightSettings?.sanitized(),
                     darkSettings = suite.darkSettings?.sanitized(),
+                    bookLayoutLightSettings = suite.bookLayoutLightSettings?.sanitized(),
+                    bookLayoutDarkSettings = suite.bookLayoutDarkSettings?.sanitized(),
                     darkMaskOpacity = suite.darkMaskOpacity.coerceIn(0f, 0.8f)
                 )
             }
@@ -246,8 +305,17 @@ object ReaderThemeSuites {
         marginLeft = marginLeft.coerceIn(ReaderThemeSettings.HORIZONTAL_MARGIN_RANGE),
         marginRight = marginRight.coerceIn(ReaderThemeSettings.HORIZONTAL_MARGIN_RANGE),
         marginTop = marginTop.coerceIn(ReaderThemeSettings.VERTICAL_MARGIN_RANGE),
-        marginBottom = marginBottom.coerceIn(ReaderThemeSettings.VERTICAL_MARGIN_RANGE)
+        marginBottom = marginBottom.coerceIn(ReaderThemeSettings.VERTICAL_MARGIN_RANGE),
+        highlightWidthDp = highlightWidthDp.finiteOr(0f).coerceIn(ReaderThemeSettings.HIGHLIGHT_WIDTH_RANGE),
+        highlightHeightDp = highlightHeightDp.finiteOr(0f).coerceIn(ReaderThemeSettings.HIGHLIGHT_HEIGHT_RANGE),
+        highlightOffsetYDp = highlightOffsetYDp.finiteOr(0f).coerceIn(ReaderThemeSettings.HIGHLIGHT_OFFSET_Y_RANGE),
+        underlineThicknessDp = underlineThicknessDp
+            .finiteOr(ReaderThemeSettings.DEFAULT_UNDERLINE_THICKNESS_DP)
+            .coerceIn(ReaderThemeSettings.UNDERLINE_THICKNESS_RANGE),
+        underlineOffsetYDp = underlineOffsetYDp.finiteOr(0f).coerceIn(ReaderThemeSettings.UNDERLINE_OFFSET_Y_RANGE)
     )
+
+    private fun Float.finiteOr(fallback: Float): Float = if (isFinite()) this else fallback
 }
 
 object ReaderThemeSuiteCodec {
@@ -289,6 +357,8 @@ object ReaderThemeSuiteCodec {
                                 bookLayoutSettings = bookLayoutSettings,
                                 lightSettings = lightSettings,
                                 darkSettings = darkSettings,
+                                bookLayoutLightSettings = item.optJSONObject("bookLayoutLight")?.toThemeSettings(),
+                                bookLayoutDarkSettings = item.optJSONObject("bookLayoutDark")?.toThemeSettings(),
                                 darkMaskOpacity = item.optDouble("darkMaskOpacity", 0.0).toFloat()
                             )
                         )
@@ -322,6 +392,11 @@ object ReaderThemeSuiteCodec {
             cornerMargins.topDp?.let { put("topDp", it.toDouble()) }
             cornerMargins.bottomDp?.let { put("bottomDp", it.toDouble()) }
         })
+        put("highlightWidthDp", highlightWidthDp.toDouble())
+        put("highlightHeightDp", highlightHeightDp.toDouble())
+        put("highlightOffsetYDp", highlightOffsetYDp.toDouble())
+        put("underlineThicknessDp", underlineThicknessDp.toDouble())
+        put("underlineOffsetYDp", underlineOffsetYDp.toDouble())
     }
 
     private fun ReaderThemeSuite.toJsonObject() = JSONObject().apply {
@@ -331,6 +406,8 @@ object ReaderThemeSuiteCodec {
         put("bookLayoutSettings", bookLayoutSettings.toJson())
         lightSettings?.let { put("light", it.toJson()) }
         darkSettings?.let { put("dark", it.toJson()) }
+        bookLayoutLightSettings?.let { put("bookLayoutLight", it.toJson()) }
+        bookLayoutDarkSettings?.let { put("bookLayoutDark", it.toJson()) }
         put("darkMaskOpacity", darkMaskOpacity.toDouble())
     }
 
@@ -366,7 +443,15 @@ object ReaderThemeSuiteCodec {
                 topDp = optionalMargin("topDp"),
                 bottomDp = optionalMargin("bottomDp")
             )
-        } ?: ReaderCornerMargins()
+        } ?: ReaderCornerMargins(),
+        highlightWidthDp = optDouble("highlightWidthDp", 0.0).toFloat(),
+        highlightHeightDp = optDouble("highlightHeightDp", 0.0).toFloat(),
+        highlightOffsetYDp = optDouble("highlightOffsetYDp", 0.0).toFloat(),
+        underlineThicknessDp = optDouble(
+            "underlineThicknessDp",
+            ReaderThemeSettings.DEFAULT_UNDERLINE_THICKNESS_DP.toDouble()
+        ).toFloat(),
+        underlineOffsetYDp = optDouble("underlineOffsetYDp", 0.0).toFloat()
         )
     }
 }
@@ -400,6 +485,8 @@ object LumiThemeBundleCodec {
                 if (theme.has("darkMaskOpacity")) validateNumber(theme, "darkMaskOpacity", 0.0, 0.8, "theme")
                 validateSettings(theme.optJSONObject("settings"), "settings")
                 theme.optJSONObject("bookLayoutSettings")?.let { validateSettings(it, "bookLayoutSettings") }
+                theme.optJSONObject("bookLayoutLight")?.let { validateSettings(it, "bookLayoutLight") }
+                theme.optJSONObject("bookLayoutDark")?.let { validateSettings(it, "bookLayoutDark") }
             }
             val decodedLegacy = ReaderThemeSuiteCodec.decode(legacy.toString())
             require(decodedLegacy.size == legacy.length()) { "Invalid legacy theme bundle" }
@@ -423,6 +510,8 @@ object LumiThemeBundleCodec {
             theme.optJSONObject("bookLayoutSettings")?.let { validateSettings(it, "bookLayoutSettings") }
             theme.optJSONObject("light")?.let { validateSettings(it, "light") }
             theme.optJSONObject("dark")?.let { validateSettings(it, "dark") }
+            theme.optJSONObject("bookLayoutLight")?.let { validateSettings(it, "bookLayoutLight") }
+            theme.optJSONObject("bookLayoutDark")?.let { validateSettings(it, "bookLayoutDark") }
         }
         val decoded = ReaderThemeSuiteCodec.decode(themes.toString())
         require(decoded.size == themes.length()) { "Invalid theme bundle" }
@@ -450,6 +539,11 @@ object LumiThemeBundleCodec {
         validateNumber(settings, "marginRight", 0.0, ReaderThemeSettings.MAX_HORIZONTAL_MARGIN_DP.toDouble(), label)
         validateNumber(settings, "marginTop", 0.0, ReaderThemeSettings.MAX_VERTICAL_MARGIN_DP.toDouble(), label)
         validateNumber(settings, "marginBottom", 0.0, ReaderThemeSettings.MAX_VERTICAL_MARGIN_DP.toDouble(), label)
+        validateRange(settings, "highlightWidthDp", ReaderThemeSettings.HIGHLIGHT_WIDTH_RANGE, label)
+        validateRange(settings, "highlightHeightDp", ReaderThemeSettings.HIGHLIGHT_HEIGHT_RANGE, label)
+        validateRange(settings, "highlightOffsetYDp", ReaderThemeSettings.HIGHLIGHT_OFFSET_Y_RANGE, label)
+        validateRange(settings, "underlineThicknessDp", ReaderThemeSettings.UNDERLINE_THICKNESS_RANGE, label)
+        validateRange(settings, "underlineOffsetYDp", ReaderThemeSettings.UNDERLINE_OFFSET_Y_RANGE, label)
         if (settings.has("cornerMargins")) {
             val margins = settings.optJSONObject("cornerMargins")
             require(margins != null) { "Invalid $label cornerMargins" }
@@ -480,6 +574,13 @@ object LumiThemeBundleCodec {
             "Invalid $label $key"
         }
     }
+
+    private fun validateRange(
+        settings: JSONObject,
+        key: String,
+        range: ClosedFloatingPointRange<Float>,
+        label: String
+    ) = validateNumber(settings, key, range.start.toDouble(), range.endInclusive.toDouble(), label)
 
     private fun validateInteger(settings: JSONObject, key: String, min: Int, max: Int, label: String) {
         val value = settings.opt(key) ?: return

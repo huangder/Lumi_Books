@@ -1427,6 +1427,7 @@
     <string name="tts_timer_label">타이머</string>
     <string name="tts_listening_position">듣기 위치</string>
     <string name="tts_follow_page_turns">페이지 이동 따라 읽기</string>
+    <string name="tts_listen_from_this_page">이 페이지부터 듣기</string>
     <string name="default_avatar">기본 프로필 이미지</string>
     <string name="book_title_original_hint">원래 책 제목 표시</string>
     <string name="book_author_original_hint">원래 저자 표시</string>

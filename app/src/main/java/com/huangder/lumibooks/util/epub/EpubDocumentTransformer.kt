@@ -678,8 +678,8 @@ a[href*="#ref-footnotebookmark-end-"] img {
   width: 20px !important;
   height: 20px !important;
 }
-/* The root's paging touch-action also constrains nested scroll containers. */
-html.lumi-footnote-open { touch-action: pan-y; }
+/* A footnote gesture must never pan the WebView viewport. */
+html.lumi-footnote-open { touch-action: none !important; }
 #lumi-footnote-popover {
   position: fixed;
   left: 12px;
@@ -706,7 +706,7 @@ html.lumi-footnote-open { touch-action: pan-y; }
   transform: translateY(var(--lumi-footnote-motion-y, -8px)) scale(0.965);
   transform-origin: var(--lumi-footnote-arrow-x, 50%) top;
   will-change: opacity, transform;
-  touch-action: pan-y;
+  touch-action: none !important;
   -webkit-user-select: text;
   user-select: text;
 }
@@ -744,7 +744,7 @@ html.lumi-footnote-open { touch-action: pan-y; }
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
+  touch-action: none !important;
 }
 #lumi-footnote-content > :first-child { margin-top: 0 !important; }
 #lumi-footnote-content > :last-child { margin-bottom: 0 !important; }
@@ -932,6 +932,9 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
   var viewportFrozen = false;
   var selectionDispatchTimer = 0;
   var scrollNotifyTimer = 0;
+  var ttsScrollSettleTimer = 0;
+  var ttsManualScrollPending = false;
+  var ttsManualScrollDragging = false;
   var searchHighlightTimer = 0;
   var touchStartX = 0;
   var touchStartY = 0;
@@ -3154,7 +3157,7 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
    */
   function applyReaderPageBackgroundLayer(active) {
     var layer = document.getElementById('lumi-reader-background');
-    var url = active && state.readerBackgroundHasImage && state.readerBackgroundUrl
+    var url = active && !state.readerBackgroundInHost && state.readerBackgroundHasImage && state.readerBackgroundUrl
       ? String(state.readerBackgroundUrl)
       : '';
     if (!url) {
@@ -3265,7 +3268,7 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
   function geometryConfigKey(config) {
     var geometry = {};
     var paintKeys = ['configurationGeneration', 'theme', 'backgroundColor', 'autoTextColor', 'textColor',
-      'backgroundImage', 'backgroundUrl', 'backgroundImageOpacity', 'backgroundImageBlurDp',
+      'backgroundImage', 'backgroundInHost', 'backgroundUrl', 'backgroundImageOpacity', 'backgroundImageBlurDp',
       'coverBackgroundColor', 'publisherPaintOnly', 'preservePublisherBackground',
       'scrollViewportBackgroundColor',
       'progressionValue', 'restoreProgressionInclusive', 'transition', 'transitionDurationMs', 'visualDurationScale',
@@ -3363,6 +3366,7 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
     state.coverBackgroundColor = config.coverBackgroundColor ? String(config.coverBackgroundColor) : null;
     state.autoTextColor = config.autoTextColor ? String(config.autoTextColor) : null;
     state.readerBackgroundHasImage = config.backgroundImage === true;
+    state.readerBackgroundInHost = config.backgroundInHost === true;
     state.readerBackgroundUrl = config.backgroundUrl ? String(config.backgroundUrl) : null;
     state.readerBackgroundOpacity = typeof config.backgroundImageOpacity === 'number'
       ? Math.max(0, Math.min(1, config.backgroundImageOpacity)) : 1;
@@ -3712,10 +3716,27 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
     return merged;
   }
 
-  function shapeHighlightRects(rects, vertical) {
-    var inlinePadding = 3;
-    var blockInset = 1.5;
-    var minimumBlockGap = blockInset * 2;
+  // User-tuned note geometry (CSS px). Missing values keep the original look.
+  function annotationGeometry(geometry) {
+    function num(value, fallback) {
+      var n = Number(value);
+      return isFinite(n) ? n : fallback;
+    }
+    geometry = geometry || {};
+    return {
+      highlightWidth: num(geometry.highlightWidth, 0),
+      highlightHeight: num(geometry.highlightHeight, 0),
+      highlightOffset: num(geometry.highlightOffset, 0),
+      underlineThickness: Math.max(0.1, num(geometry.underlineThickness, 1)),
+      underlineOffset: num(geometry.underlineOffset, 0)
+    };
+  }
+
+  function shapeHighlightRects(rects, vertical, geometry) {
+    var g = annotationGeometry(geometry);
+    var inlinePadding = Math.max(0, 3 + g.highlightWidth);
+    var blockInset = 1.5 - g.highlightHeight;
+    var minimumBlockGap = Math.max(0, blockInset * 2);
     var tracks = [];
     rects.forEach(function (rect) {
       var previous = tracks.length ? tracks[tracks.length - 1] : null;
@@ -3757,6 +3778,14 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
           rect.right += inlinePadding;
           rect.top = Math.max(rect.top + blockInset, minimumStart);
           rect.bottom = Math.min(rect.bottom - blockInset, maximumEnd);
+        }
+        // Positive offset moves toward the underline side: down, or left in vertical text.
+        if (vertical) {
+          rect.left -= g.highlightOffset;
+          rect.right -= g.highlightOffset;
+        } else {
+          rect.top += g.highlightOffset;
+          rect.bottom += g.highlightOffset;
         }
       });
     });
@@ -3805,6 +3834,7 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
   function resetScrolledChapterDrag(animate) {
     clearTimeout(scrollChapterAnimationTimer);
     scrollChapterTurnPending = false;
+    scheduleTtsScrollSettled();
     var body = document.body;
     if (body) {
       body.style.transition = animate
@@ -3858,8 +3888,10 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
     post('chapterTurn', { direction: direction < 0 ? 1 : -1, animated: true });
   }
 
-  function appendUnderlineRange(layer, range, color, mode) {
+  function appendUnderlineRange(layer, range, color, mode, geometry) {
     if (!range) return 0;
+    var g = annotationGeometry(geometry);
+    var patternScale = Math.max(1, g.underlineThickness);
     var layerRect = layer.getBoundingClientRect();
     var scaleX = layer.offsetWidth > 0 ? layerRect.width / layer.offsetWidth : 1;
     var scaleY = layer.offsetHeight > 0 ? layerRect.height / layer.offsetHeight : scaleX;
@@ -3878,8 +3910,9 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
       svg.setAttribute('class', 'lumi-underline-block');
       svg.style.left = ((rect.left - layerRect.left) / scaleX) + 'px';
       svg.style.top = ((rect.top - layerRect.top) / scaleY) + 'px';
-      var svgWidth = vertical ? 8 : width;
-      var svgHeight = vertical ? height : 8;
+      var band = 8 * patternScale;
+      var svgWidth = vertical ? band : width;
+      var svgHeight = vertical ? height : band;
       svg.setAttribute('width', svgWidth);
       svg.setAttribute('height', svgHeight);
       svg.setAttribute('viewBox', '0 0 ' + svgWidth + ' ' + svgHeight);
@@ -3887,33 +3920,34 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
       svg.style.height = svgHeight + 'px';
       var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       var d = '';
-      var center = 4;
+      var center = band / 2;
       var length = vertical ? height : width;
       function point(along, across) {
         return vertical ? across.toFixed(2) + ' ' + along.toFixed(2) : along.toFixed(2) + ' ' + across.toFixed(2);
       }
       if (Number(mode) === 1 || Number(mode) === 2 || Number(mode) === 4) {
-        var first = Number(mode) === 2 ? center - 1.25 : center;
+        var doubleGap = 1.25 * patternScale;
+        var first = Number(mode) === 2 ? center - doubleGap : center;
         d = 'M' + point(0, first) + ' L' + point(length, first);
-        if (Number(mode) === 2) d += ' M' + point(0, center + 1.25) + ' L' + point(length, center + 1.25);
-        if (Number(mode) === 4) path.setAttribute('stroke-dasharray', '4 3');
+        if (Number(mode) === 2) d += ' M' + point(0, center + doubleGap) + ' L' + point(length, center + doubleGap);
+        if (Number(mode) === 4) path.setAttribute('stroke-dasharray', (4 * patternScale) + ' ' + (3 * patternScale));
       } else {
         for (var along = 0; along < length; along += 1) {
-          var across = center + Math.sin(along / 11 * Math.PI * 2) * 0.7;
+          var across = center + Math.sin(along / 11 * Math.PI * 2) * 0.7 * patternScale;
           d += (along === 0 ? 'M' : 'L') + point(along, across) + ' ';
         }
         d += ' L' + point(length, center);
       }
       if (vertical) {
         // Put the entire stroke outside the glyph box, with room for double/wavy lines.
-        svg.style.left = (((rect.left - layerRect.left) / scaleX) - svgWidth) + 'px';
+        svg.style.left = (((rect.left - layerRect.left) / scaleX) - svgWidth - g.underlineOffset) + 'px';
       } else {
-        svg.style.top = ((rect.bottom - layerRect.top) / scaleY) + 'px';
+        svg.style.top = (((rect.bottom - layerRect.top) / scaleY) + g.underlineOffset) + 'px';
       }
       path.setAttribute('d', d);
       path.setAttribute('fill', 'none');
       path.setAttribute('stroke', color);
-      path.setAttribute('stroke-width', '1');
+      path.setAttribute('stroke-width', String(g.underlineThickness));
       path.setAttribute('stroke-linecap', 'round');
       svg.appendChild(path);
       layer.appendChild(svg);
@@ -3927,7 +3961,7 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
 // 单个 Kotlin 字符串常量超过 64KB 会被编译器拒绝（UTF8 string too large），
 // 阅读脚本因此拆成多段，运行时再拼接。
 private const val READER_SCRIPT_PART_3 = """
-  function appendHighlightRange(layer, range, color, extraClass, outlineColor) {
+  function appendHighlightRange(layer, range, color, extraClass, outlineColor, geometry) {
     if (!range) return 0;
     var layerRect = layer.getBoundingClientRect();
     var scaleX = layer.offsetWidth > 0 ? layerRect.width / layer.offsetWidth : 1;
@@ -3943,7 +3977,7 @@ private const val READER_SCRIPT_PART_3 = """
       };
     });
     var vertical = state.writingMode.indexOf('vertical') === 0 || state.writingMode.indexOf('sideways') === 0;
-    var merged = shapeHighlightRects(mergeHighlightRects(rects, vertical), vertical);
+    var merged = shapeHighlightRects(mergeHighlightRects(rects, vertical), vertical, geometry);
     merged.forEach(function (rect) {
       if (rect.right <= rect.left || rect.bottom <= rect.top) return;
       var block = document.createElement('span');
@@ -4105,22 +4139,26 @@ private const val READER_SCRIPT_PART_3 = """
           }
           if (style.highlightMode !== 2) {
             appendHighlightRange(layer, range, markFillColor, null,
-              style.highlightMode === 1 ? markColor : null);
+              style.highlightMode === 1 ? markColor : null, state.annotationGeometry);
           }
-          if (item.type === 'underline') appendUnderlineRange(underlineLayer, range, markColor, style.underlineMode);
+          if (item.type === 'underline') {
+            appendUnderlineRange(underlineLayer, range, markColor, style.underlineMode, state.annotationGeometry);
+          }
         } else {
           if (style.highlightMode !== 2) {
             appendHighlightRange(layer, range, markFillColor, null,
-              style.highlightMode === 1 ? markColor : null);
+              style.highlightMode === 1 ? markColor : null, state.annotationGeometry);
           }
-          if (item.type === 'underline') appendUnderlineRange(underlineLayer, range, markColor, style.underlineMode);
+          if (item.type === 'underline') {
+            appendUnderlineRange(underlineLayer, range, markColor, style.underlineMode, state.annotationGeometry);
+          }
         }
         return;
       }
       if (item.type === 'underline') {
-        appendUnderlineRange(underlineLayer, range, color, 3);
+        appendUnderlineRange(underlineLayer, range, color, 3, state.annotationGeometry);
       } else {
-        appendHighlightRange(layer, range, color);
+        appendHighlightRange(layer, range, color, null, null, state.annotationGeometry);
       }
       } catch (_) { post('highlightDiagnostic', { stage: 'item', failed: true }); }
     });
@@ -4156,10 +4194,13 @@ private const val READER_SCRIPT_PART_3 = """
     return true;
   }
 
-  function setHighlights(items) {
+  function setHighlights(items, geometry) {
     items = Array.isArray(items) ? items : [];
-    var key = JSON.stringify(items);
+    // Geometry only repaints the highlight layer; it never joins the layout key below.
+    var nextGeometry = annotationGeometry(geometry);
+    var key = JSON.stringify([items, nextGeometry]);
     if (key === highlightItemsKey) return true;
+    state.annotationGeometry = nextGeometry;
     var locator = state.ready ? currentLocator() : null;
     var nextLayoutKey = JSON.stringify(items.filter(function (item) {
       return item && item.ruleStyle && (
@@ -4260,7 +4301,8 @@ private const val READER_SCRIPT_PART_3 = """
   }
 
   function followTtsHighlight() {
-    if (state.flow !== 'scrolled' || state.fixed || !state.ttsHighlight || state.ttsFollowSuspended) return;
+    if (state.flow !== 'scrolled' || state.fixed || !state.ttsHighlight ||
+        state.ttsFollowSuspended || ttsManualScrollPending) return;
     var tts = state.ttsHighlight;
     var range = rangeAtOffsets(textIndex(), tts.start, tts.end);
     if (!range) return;
@@ -4275,6 +4317,38 @@ private const val READER_SCRIPT_PART_3 = """
       var targetBottom = last.bottom - first.top > bottom ? first.bottom : last.bottom;
       window.scrollBy(0, targetBottom - bottom);
     }
+  }
+
+  function isTtsRangeVisible(start, end) {
+    if (state.flow !== 'scrolled' || !state.configured || state.paginating ||
+        scrollChapterTurnPending) return null;
+    var index = textIndex();
+    if (start < 0 || end <= start || end > index.text.length) return null;
+    var range = rangeAtOffsets(index, start, end);
+    if (!range) return null;
+    var inset = scrollContentInsets();
+    var top = readerBox().top + inset.top;
+    var bottom = viewportHeight() - inset.bottom;
+    var right = viewportWidth();
+    return Array.prototype.some.call(range.getClientRects(), function (rect) {
+      return rect.width > 0 && rect.height > 0 && rect.bottom > top && rect.top < bottom &&
+        rect.right > 0 && rect.left < right;
+    });
+  }
+
+  function scheduleTtsScrollSettled() {
+    if (!ttsManualScrollPending || ttsManualScrollDragging) return;
+    clearTimeout(ttsScrollSettleTimer);
+    var y = window.scrollY;
+    ttsScrollSettleTimer = setTimeout(function () {
+      if (ttsManualScrollDragging || scrollChapterTurnPending) return;
+      if (window.scrollY !== y) {
+        scheduleTtsScrollSettled();
+        return;
+      }
+      ttsManualScrollPending = false;
+      post('manualScrollSettled', { characterOffset: currentLocator().textPosition });
+    }, 100);
   }
 
   function setTtsHighlight(start, end, color, follow) {
@@ -4841,14 +4915,28 @@ private const val READER_SCRIPT_PART_3B = """
     });
   }
 
+  var footnoteTouch = null;
   document.addEventListener('touchstart', function (event) {
+    if (event.touches.length === 1) footnoteTouch = null;
+    var popover = document.getElementById('lumi-footnote-popover');
+    if (popover && !footnoteTouch && event.touches.length === 1) {
+      var noteFinger = event.touches[0];
+      var insideNote = popover.contains(event.target);
+      var content = insideNote && event.target.closest('#lumi-footnote-content');
+      footnoteTouch = {
+        popover: popover, inside: insideNote, content: content,
+        x: noteFinger.clientX, y: noteFinger.clientY, lastY: noteFinger.clientY,
+        scrollTop: content ? content.scrollTop : 0, axis: null
+      };
+    }
+    if (footnoteTouch && event.touches.length > 1) footnoteTouch.axis = 'blocked';
     var existingSelection = window.getSelection();
     initialSelectionRangeApplied = !!(existingSelection && !existingSelection.isCollapsed);
     cancelImageLongPress();
     imageLongPressTriggered = false;
     touchPaging = false;
     pageStageDurationOverride = 0;
-    if (document.getElementById('lumi-footnote-popover')) return;
+    if (footnoteTouch || popover) return;
     touchVelocityX = 0;
     if (event.touches.length !== 1) return;
     var touch = event.touches[0];
@@ -4880,7 +4968,29 @@ private const val READER_SCRIPT_PART_3B = """
   }, { passive: true, capture: true });
 
   document.addEventListener('touchmove', function (event) {
-    if (document.getElementById('lumi-footnote-popover')) return;
+    if (footnoteTouch) {
+      var note = footnoteTouch;
+      if (event.touches.length !== 1 || !note.inside || !note.popover.isConnected) {
+        event.preventDefault();
+        return;
+      }
+      var finger = event.touches[0];
+      var noteDx = Math.abs(finger.clientX - note.x);
+      var noteDy = Math.abs(finger.clientY - note.y);
+      if (!note.axis && Math.max(noteDx, noteDy) >= 6) {
+        note.axis = noteDy > noteDx ? 'vertical' : 'blocked';
+      }
+      if (!note.axis) return;
+      event.preventDefault();
+      if (note.axis === 'vertical' && note.content) {
+        var limit = note.content.scrollHeight - note.content.clientHeight;
+        note.scrollTop = Math.max(0, Math.min(limit, note.scrollTop + note.lastY - finger.clientY));
+        note.content.scrollTop = note.scrollTop;
+        note.lastY = finger.clientY;
+      }
+      return;
+    }
+    if (document.getElementById('lumi-footnote-popover')) { event.preventDefault(); return; }
     if (event.touches.length !== 1) { cancelImageLongPress(); return; }
     var touch = event.touches[0];
     var dx = touch.clientX - touchStartX;
@@ -4888,9 +4998,11 @@ private const val READER_SCRIPT_PART_3B = """
     if (state.flow === 'scrolled' && !state.fixed && Math.abs(dy) >= 12) {
       autoReadingResumeAfter = Date.now() + 700;
     }
-    if (state.flow === 'scrolled' && !state.fixed && !state.ttsFollowSuspended && Math.abs(dy) >= 12) {
-      // Stop locally before a queued highlight update or the native bridge can move the viewport.
-      state.ttsFollowSuspended = true;
+    if (state.flow === 'scrolled' && !state.fixed && !ttsManualScrollDragging && Math.abs(dy) >= 12) {
+      // Protect the gesture immediately, before the native follow state reaches this document.
+      clearTimeout(ttsScrollSettleTimer);
+      ttsManualScrollDragging = true;
+      ttsManualScrollPending = true;
       post('manualScroll', {});
     }
     if (Math.abs(dx) >= 12 || Math.abs(dy) >= 12) cancelImageLongPress();
@@ -4973,6 +5085,10 @@ private const val READER_SCRIPT_PART_3B = """
   }, { passive: false });
 
   document.addEventListener('touchend', function (event) {
+    if (!event.touches.length) {
+      ttsManualScrollDragging = false;
+      scheduleTtsScrollSettled();
+    }
     var completedImageLongPress = imageLongPressTriggered;
     cancelImageLongPress();
     imageLongPressTriggered = false;
@@ -4982,14 +5098,19 @@ private const val READER_SCRIPT_PART_3B = """
       state.suppressClickUntil = Date.now() + 700;
       return;
     }
-    var activePopover = document.getElementById('lumi-footnote-popover');
-    var insidePopover = event.target && event.target.closest && event.target.closest('#lumi-footnote-popover');
-    if (insidePopover) { touchPaging = false; return; }
-    if (activePopover) {
-      event.preventDefault();
-      closeFootnotePopover();
+    if (footnoteTouch) {
+      var note = footnoteTouch;
+      if (!note.inside || note.axis) event.preventDefault();
+      if (!event.touches.length) {
+        footnoteTouch = null;
+        if (!note.inside && note.popover.isConnected) closeFootnotePopover();
+      }
       touchPaging = false;
-      state.suppressClickUntil = Date.now() + 450;
+      return;
+    }
+    if (document.getElementById('lumi-footnote-popover')) {
+      event.preventDefault();
+      touchPaging = false;
       return;
     }
     if (event.changedTouches.length !== 1) { touchPaging = false; return; }
@@ -5108,7 +5229,14 @@ private const val READER_SCRIPT_PART_3B = """
     else pageStageDurationOverride = 0;
   }, { passive: false, capture: true });
 
-  document.addEventListener('touchcancel', function () {
+  document.addEventListener('touchcancel', function (event) {
+    if (footnoteTouch) {
+      if (!event.touches.length) footnoteTouch = null;
+      else footnoteTouch.axis = 'blocked';
+      return;
+    }
+    ttsManualScrollDragging = false;
+    scheduleTtsScrollSettled();
     cancelImageLongPress();
     imageLongPressTriggered = false;
     if (scrollChapterDragDirection) resetScrolledChapterDrag(true);
@@ -5344,6 +5472,12 @@ private const val READER_SCRIPT_PART_3B = """
   window.addEventListener('scroll', function () {
     if (state.fixed || state.scrollGuard) return;
     if (state.flow === 'scrolled') {
+      if (ttsManualScrollPending && state.ttsHighlight) {
+        var spoken = state.ttsHighlight;
+        var visible = isTtsRangeVisible(spoken.start, spoken.end);
+        if (visible !== null) post('ttsVisibility', { start: spoken.start, end: spoken.end, visible: visible });
+      }
+      scheduleTtsScrollSettled();
       clearTimeout(scrollNotifyTimer);
       scrollNotifyTimer = setTimeout(function () {
         var metrics = scrollMetrics();
@@ -5397,6 +5531,7 @@ private const val READER_SCRIPT_PART_3B = """
       }
     },
     moveSelectionHandle: moveSelectionHandle,
+    dismissFootnote: function () { closeFootnotePopover(); },
     configure: configure,
     reportLayoutStatus: reportLayoutStatus,
     next: function () { turnByDirection(1); },
@@ -5423,6 +5558,7 @@ private const val READER_SCRIPT_PART_3B = """
     setHighlights: setHighlights,
     setDictionarySelection: setDictionarySelection,
     setTtsHighlight: setTtsHighlight,
+    isTtsRangeVisible: isTtsRangeVisible,
     setTtsFollowEnabled: function (enabled) { state.ttsFollowSuspended = !enabled; },
     findText: findText,
     clearSearchHighlight: clearSearchHighlight,

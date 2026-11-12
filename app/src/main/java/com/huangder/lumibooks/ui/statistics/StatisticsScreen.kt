@@ -119,7 +119,7 @@ internal fun StatisticsScreen(
                             }
                         }
                     }
-                    item("tabs") { PageEntranceItem(play = playEntranceAnimation, index = 1) { ScopeSelector(state.selection.scope, viewModel::selectScope) } }
+                    item("tabs") { PageEntranceItem(play = playEntranceAnimation, index = 1) { ScopeSelector(state.selection.scope, viewModel::selectScope, edgeBleed = AppSpace.lg) } }
                     if (state.selection.scope != StatisticsScope.ALL) item("period") {
                         val range = state.selection.range(today)
                         PeriodNavigation(periodLabel(range), state.selection.shift(1, today) != state.selection,

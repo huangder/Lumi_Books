@@ -1,6 +1,10 @@
 package com.huangder.lumibooks.ui.reader
 
 import com.huangder.lumibooks.tts.TtsListeningPosition
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -95,6 +99,7 @@ class ListeningReaderSessionTest {
         repeat(4) { session.suspendForBackground(42) }
         assertFalse(session.followEnabled.value)
         assertEquals(true, session.returnFromBackground(42))
+        assertTrue(session.followEnabled.value)
         assertNull(session.beginCheck())
         val manuallyRequested = target.copy(chapterIndex = 5, characterOffset = 900)
         session.requestJump(manuallyRequested, 42)
@@ -113,6 +118,23 @@ class ListeningReaderSessionTest {
         assertNull(session.beginCheck())
         assertNull(session.returnFromBackground(8))
         assertFalse(session.followEnabled.value)
+    }
+
+    @Test fun backgroundReturnKeepsManualBrowsingEligibleForTheNextGesture() {
+        val session = ListeningReaderSession()
+        session.follow()
+        session.beginManualBrowse(8)
+        session.settleManualBrowse(8, canPrompt = true)
+        assertTrue(session.suspendForBackground(8))
+        assertFalse(session.suspendForBackground(8))
+        assertNull(session.manualBrowse.value)
+        assertEquals(true, session.returnFromBackground(8))
+        assertFalse(session.followEnabled.value)
+        assertFalse(session.manualBrowse.value!!.showPrompt)
+        assertFalse(session.manualBrowse.value!!.settled)
+        session.beginManualBrowse(8)
+        session.settleManualBrowse(8, canPrompt = true)
+        assertTrue(session.manualBrowse.value!!.canPrompt)
     }
 
     @Test fun backgroundReturnFromAnExplicitReadingChoiceKeepsTheReadingPosition() {
@@ -209,6 +231,99 @@ class ListeningReaderSessionTest {
         assertTrue(session.followEnabled.value)
         session.pageTurn()
         assertFalse(session.followEnabled.value)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun manualBrowsingTimesOutOncePerSettledGestureAndResetsOnTheNextGesture() = runTest {
+        val session = ListeningReaderSession()
+        session.follow()
+        session.beginManualBrowse(42)
+        assertFalse(session.followEnabled.value)
+        session.settleManualBrowse(43, canPrompt = true)
+        assertFalse(session.manualBrowse.value!!.settled)
+        session.settleManualBrowse(42, canPrompt = true)
+        session.showManualBrowsePrompt(this)
+        assertTrue(session.manualBrowse.value!!.showPrompt)
+        advanceTimeBy(2_000)
+
+        session.beginManualBrowse(42)
+        session.settleManualBrowse(42, canPrompt = true)
+        session.showManualBrowsePrompt(this)
+        advanceTimeBy(2_999)
+        assertTrue(session.manualBrowse.value!!.showPrompt)
+        advanceTimeBy(1)
+        runCurrent()
+        assertFalse(session.manualBrowse.value!!.showPrompt)
+        session.showManualBrowsePrompt(this)
+        assertFalse(session.manualBrowse.value!!.showPrompt)
+        session.follow()
+        assertNull(session.manualBrowse.value)
+        assertTrue(session.followEnabled.value)
+    }
+
+    @Test fun browsingCannotOverrideAnExplicitReadingChoiceOrCarryToAnotherSession() {
+        val session = ListeningReaderSession()
+        session.keepReading()
+        session.beginManualBrowse(42)
+        assertNull(session.manualBrowse.value)
+        session.follow()
+        session.beginManualBrowse(42)
+        session.beginManualBrowse(43)
+        assertNull(session.manualBrowse.value)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun offscreenDuringDragPromptsImmediatelyAndFingerUpDoesNotRestartTheTimeout() = runTest {
+        val session = ListeningReaderSession()
+        session.follow()
+        session.beginManualBrowse(42)
+        fun update(visible: Boolean?) = session.updateManualBrowseVisibility(visible, true, true, this)
+        assertFalse(update(true))
+        assertFalse(session.manualBrowse.value!!.showPrompt)
+        assertFalse(update(null))
+        assertFalse(update(false))
+        assertTrue(session.manualBrowse.value!!.showPrompt)
+        assertFalse(session.manualBrowse.value!!.settled)
+        assertFalse(session.followEnabled.value)
+        advanceTimeBy(2_000)
+        session.settleManualBrowse(42, canPrompt = true)
+        assertFalse(update(false))
+        advanceTimeBy(1_000)
+        runCurrent()
+        assertFalse(session.manualBrowse.value!!.showPrompt)
+        assertFalse(update(false))
+        assertFalse(session.manualBrowse.value!!.showPrompt)
+        session.beginManualBrowse(42)
+        assertFalse(update(false))
+        assertTrue(session.manualBrowse.value!!.showPrompt)
+        assertFalse(update(true))
+        assertFalse(session.manualBrowse.value!!.showPrompt)
+        assertFalse(session.followEnabled.value)
+        session.settleManualBrowse(42, canPrompt = true)
+        assertTrue(update(true))
+        assertTrue(session.followEnabled.value)
+        assertNull(session.manualBrowse.value)
+    }
+
+    @Test fun pageGesturesStillWaitForCommitBeforeOfferingThePrompt() = runTest {
+        val session = ListeningReaderSession()
+        session.follow()
+        session.beginManualBrowse(42)
+        session.updateManualBrowseVisibility(false, true, false, this)
+        assertFalse(session.manualBrowse.value!!.showPrompt)
+        session.settleManualBrowse(42, canPrompt = false)
+        session.updateManualBrowseVisibility(false, true, false, this)
+        assertFalse(session.manualBrowse.value!!.showPrompt)
+    }
+
+    @Test fun speechVisibilityUsesExclusiveOffsetsAndBothPages() {
+        val visible = listOf(ReaderVisibleCharacters(0, 100, 200), ReaderVisibleCharacters(1, 0, 120))
+        assertEquals(false, visible.containsSpeech(TtsSentencePosition(0, 80, 100)))
+        assertEquals(false, visible.containsSpeech(TtsSentencePosition(0, 200, 220)))
+        assertEquals(true, visible.containsSpeech(TtsSentencePosition(0, 99, 101)))
+        assertEquals(true, visible.containsSpeech(TtsSentencePosition(1, 40, 60)))
+        assertEquals(false, visible.containsSpeech(TtsSentencePosition(2, 40, 60)))
+        assertNull(emptyList<ReaderVisibleCharacters>().containsSpeech(TtsSentencePosition(0, 0, 1)))
     }
 
     @Test fun browsingInvalidatesAnOpeningCheckThatHasNotFinishedLoading() {

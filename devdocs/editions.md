@@ -85,3 +85,15 @@ Adding a module or a NOTICE statement does not override GPL obligations.
 
 Do not install test APKs or run connected Android tests. Use local JVM tests,
 compilation and packaging checks; install only the debug app when requested.
+
+Reader changes involving large Compose lambdas also need a fresh minified release
+build: JVM tests and debug builds do not exercise R8/D8's release register allocation.
+Keep page content, overlays and sheets in separate composable slots instead of
+capturing all reader state in one nested glass-host lambda. To check the resulting DEX with
+ART without installing an APK or touching app data, run `tools/verify-reader-dex.ps1`
+with `-Apk` and `-Mapping` pointing to that build's release APK and mapping.txt.
+Set `ANDROID_HOME` and `JAVA_HOME`; use `-Serial` if several devices are connected.
+The tool checks that the APK and mapping have the same R8 ID before loading the
+reader classes. This checks class verification, not rendering or reading behavior.
+`ReaderDexArgumentBudgetTest` also guards generated JVM method signatures against
+growing back toward the failing near-limit capture size; it does not replace ART.

@@ -83,6 +83,18 @@ internal class LiquidGlassTabMotionState(
     } else {
         snap()
     }
+    // Landing: the axes ring at different rates, so the prism wobbles like jelly as it shrinks
+    // back onto the tab instead of deflating evenly.
+    private val releaseScaleXAnimationSpec = if (motionEnabled) {
+        spring(0.50f, 300f, 0.001f)
+    } else {
+        snap()
+    }
+    private val releaseScaleYAnimationSpec = if (motionEnabled) {
+        spring(0.58f, 240f, 0.001f)
+    } else {
+        snap()
+    }
 
     private val valueAnimation = Animatable(initialValue.coerceIn(valueRange), visibilityThreshold)
     private val velocityAnimation = Animatable(0f, 5f)
@@ -143,8 +155,8 @@ internal class LiquidGlassTabMotionState(
             pressJob?.cancel()
             coroutineScope {
                 launch { pressProgressAnimation.animateTo(0f, pressProgressAnimationSpec) }
-                launch { scaleXAnimation.animateTo(initialScale, scaleXAnimationSpec) }
-                launch { scaleYAnimation.animateTo(initialScale, scaleYAnimationSpec) }
+                launch { scaleXAnimation.animateTo(initialScale, releaseScaleXAnimationSpec) }
+                launch { scaleYAnimation.animateTo(initialScale, releaseScaleYAnimationSpec) }
             }
         }
     }

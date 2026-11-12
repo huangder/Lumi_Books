@@ -185,6 +185,7 @@ internal class NativeEpubSurface(context: Context, private val session: EpubRend
                 onTapLeft = { edge(edgeTap.leftAction) }; onTapRight = { edge(edgeTap.rightAction) }; onTapCenter = { events().menu() }
                 onAnimationComplete = { val direction = currentDirection
                     if (direction != PageAnimationController.Direction.NONE) {
+                        events().manual()
                         current += if (direction == PageAnimationController.Direction.NEXT) 1 else -1
                         selectedRange = null; refreshDecorations(); updateSlots(); publish()
                     }
@@ -322,8 +323,8 @@ internal class NativeEpubSurface(context: Context, private val session: EpubRend
         val target = current + if (direction > 0) 1 else -1
         if (target !in layout!!.pages.indices) { events().manual(); events().chapter(if (direction > 0) 1 else -1); return true }
         if (!canFlip(dir)) return false
-        events().manual(); clearSelection()
-        if (transition == "none") { current = target; updateSlots(); publish() }
+        clearSelection()
+        if (transition == "none") { events().manual(); current = target; updateSlots(); publish() }
         else when (val a = animation) { is CurlPageAnim -> return a.startFromTap(dir); is WavePageAnim -> a.startFromTap(dir); is SlidePageAnim -> a.startFromTap(dir) }
         return true
     }

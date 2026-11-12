@@ -609,6 +609,7 @@ private fun ListeningSubtitleChapter(
             verticalArrangement = Arrangement.spacedBy(24.dp)) {
             itemsIndexed(text.sentences, key = { _, sentence -> sentence.id }) { index, sentence ->
                 val relative = index - text.focus
+                val focused = relative == 0
                 val lag = remember { Animatable(0f) }
                 LaunchedEffect(focusId) {
                     if (animated && relative > 0 && !browsing) {
@@ -617,16 +618,17 @@ private fun ListeningSubtitleChapter(
                         lag.animateTo(0f, spring(.78f, 200f))
                     } else lag.snapTo(0f)
                 }
-                val opacity by animateFloatAsState(if (relative == 0) 1f else maxOf(.16f, .65f - abs(relative) * .1f),
-                    if (animated) tween(220) else snap(), label = "sentence opacity")
+                val opacity by animateFloatAsState(if (focused) 1f else maxOf(.16f, .65f - abs(relative) * .1f),
+                    if (animated && !focused) tween(220) else snap(), label = "sentence opacity")
                 val blur by animateFloatAsState(if (relative > 0 && !clearWhileScrolling && !reduce)
                     minOf(relative * .65f, 2.5f) else 0f,
-                    if (animated && !clearWhileScrolling) tween(140) else snap(), label = "sentence blur")
+                    if (animated && !focused && !clearWhileScrolling) tween(140) else snap(), label = "sentence blur")
                 Text(sentence.segment.text, color = foreground, fontSize = 24.sp, lineHeight = 37.sp,
                     fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth().graphicsLayer {
-                        translationY = if (clearWhileScrolling) 0f else lag.value * density
-                        alpha = opacity
-                        renderEffect = if (Build.VERSION.SDK_INT >= 31 && blur > .01f)
+                        // A short clause can end before the surrounding rows finish animating.
+                        translationY = if (focused || clearWhileScrolling) 0f else lag.value * density
+                        alpha = if (focused) 1f else opacity
+                        renderEffect = if (!focused && Build.VERSION.SDK_INT >= 31 && blur > .01f)
                             BlurEffect(blur * density, blur * density, TileMode.Decal) else null
                     }.testTag("sentence-${sentence.id}")
                         .combinedClickable(enabled = enabled, indication = null,

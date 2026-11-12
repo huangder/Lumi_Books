@@ -7,6 +7,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
 import android.util.Log
@@ -71,6 +72,7 @@ internal class EpubSpreadTurnHost(
     context: Context,
     private val afterDetachedFrame: (View, () -> Unit) -> Unit = ::afterEpubDetachedFrame
 ) : FrameLayout(context) {
+    var deferChapterConfiguration: (EpubContentWebView, Int, () -> Unit) -> Boolean = { _, _, _ -> false }
     var configureReader: (EpubContentWebView, EpubSpreadLeafRequest) -> Unit = { _, _ -> }
     var onInteraction: (EpubContentWebView, Int, String, JSONObject) -> Unit = { _, _, _, _ -> }
     var onSpreadChanged: (EpubSpreadState) -> Unit = {}
@@ -113,7 +115,23 @@ internal class EpubSpreadTurnHost(
     }
 
     private inner class SpreadSlot : FrameLayout(context), PageBitmapSource, CurlFrameSource {
-        val leaves = List(2) { Leaf(EpubContentWebView(context)) }
+        private var leafStorage: List<Leaf>? = null
+        val leaves: List<Leaf> get() = leafStorage ?: List(2) { Leaf(EpubContentWebView(context)).also { leaf ->
+                addView(leaf.view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+                attach(leaf)
+            } }.also { leafStorage = it }
+        val existingLeaves get() = leafStorage.orEmpty()
+        fun releaseLeaves() {
+            val old = existingLeaves.map { it.view }
+            leafStorage = null
+            val window = rootView
+            old.forEach { view ->
+                view.beginRelease()
+                if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) WebViewCompat.removeWebMessageListener(view, "lumiNative")
+                removeView(view)
+            }
+            if (old.isNotEmpty()) afterDetachedFrame(window) { old.forEach(EpubContentWebView::destroy) }
+        }
         var target: EpubSpreadTarget? = null
         var snapshot: Bitmap? = null
         override val pageBitmap get() = snapshot
@@ -121,13 +139,11 @@ internal class EpubSpreadTurnHost(
 
         init {
             setWillNotDraw(false)
-            leaves.forEach { leaf ->
-                addView(leaf.view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-                attach(leaf)
-            }
         }
 
-        override fun onDraw(canvas: Canvas) { canvas.drawColor(pageBackgroundColor) }
+        override fun onDraw(canvas: Canvas) {
+            if (fade == null || !spreadBackground.hasImage) spreadBackground.draw(canvas, width, height)
+        }
 
         fun arrange(spread: EpubSpreadTarget) {
             target = spread
@@ -166,6 +182,15 @@ internal class EpubSpreadTurnHost(
 
     private val bitmapPool = RenderResourcePool<Bitmap> { if (!it.isRecycled) it.recycle() }
     private var pageBackgroundColor = Color.WHITE
+    private val spreadBackground = ReaderSpreadBackground(context) {
+        listOf(previous, current, next).forEach { it.invalidateSnapshot(); it.invalidate() }
+        invalidate()
+    }
+
+    fun setReaderBackground(color: Int, path: String?, opacity: Float, blurDp: Float) {
+        spreadBackground.configure(color, path, opacity, blurDp)
+        allWebViews().forEach { it.setBackgroundColor(if (path != null) Color.TRANSPARENT else color) }
+    }
     private var previous = SpreadSlot()
     private var current = SpreadSlot()
     private var next = SpreadSlot()
@@ -185,6 +210,18 @@ internal class EpubSpreadTurnHost(
     private var lastOperationId: Long? = null
     private var pendingTurn = 0
     private val preloadDirections = ArrayDeque<Int>()
+    var backgroundPreparationEnabled = true
+        set(value) {
+            if (field == value) return
+            field = value
+            if (value) post { drainPreloads() }
+            else {
+                // A retained alternate direction owns just its current spread.
+                cancelPreparation(replaced = false)
+                abortAnimation()
+                listOf(previous, next).forEach { clearSlot(it); it.releaseLeaves() }
+            }
+        }
     private var controller: PageAnimationController? = null
     private var animationCommit: (() -> Unit)? = null
     private var fade: ValueAnimator? = null
@@ -192,6 +229,7 @@ internal class EpubSpreadTurnHost(
     private val bookmarkPull = BookmarkPullGestureTracker()
     private var pullingBookmark = false
     private var footnoteTouchStream = false
+    private var outsideFootnoteOwner: EpubContentWebView? = null
     private var touchX = 0f
     private var touchY = 0f
     private var lastTouchX = 0f
@@ -213,13 +251,13 @@ internal class EpubSpreadTurnHost(
     }
 
     fun allWebViews(): List<EpubContentWebView> =
-        if (released) emptyList() else listOf(previous, current, next).flatMap { it.leaves.map(Leaf::view) }
+        if (released) emptyList() else listOf(previous, current, next).flatMap { it.existingLeaves.map(Leaf::view) }
 
     fun visibleWebViews(): List<EpubContentWebView> = if (released) emptyList() else
         current.target?.pages?.indices?.map { current.leaves[it].view }.orEmpty()
 
     fun readyView(target: EpubPageTarget): EpubContentWebView? =
-        if (released) null else listOf(current, previous, next).asSequence().flatMap { it.leaves.asSequence() }
+        if (released) null else listOf(current, previous, next).asSequence().flatMap { it.existingLeaves.asSequence() }
             .firstOrNull { it.page?.target == target }?.view
 
     fun evaluateVisible(script: String) { visibleWebViews().forEach { it.evaluateJavascript(script, null) } }
@@ -238,6 +276,9 @@ internal class EpubSpreadTurnHost(
         val sessionChanged = this.session !== session
         val layoutChanged = sessionChanged || this.configurationIdentity != configurationIdentity || requestedReverseAxis != reverseAxis
         val pendingRequest = preparation?.request
+        val restartingRequest = if (layoutChanged && (state == null || pendingRequest != null)) {
+            request ?: pendingRequest
+        } else null
         this.transition = transition
         this.durationMillis = durationMillis.coerceIn(1, 1000)
         this.edgeTapMode = edgeTapMode
@@ -248,7 +289,10 @@ internal class EpubSpreadTurnHost(
         this.session = session
         this.configurationIdentity = configurationIdentity
         if (layoutChanged) {
-            cancelPreparation(replaced = true)
+            // A calibrated viewport replaces host work, not the navigation itself.
+            // Reporting cancellation for this same ID would clear the caller's request.
+            cancelPreparation(replaced = true,
+                notifyCancellation = pendingRequest?.operationId != restartingRequest?.operationId)
             abortAnimation()
             planner = EpubSpreadPlanner(session.chapterCount, session::pagePresentation, this.reverseAxis, width >= height)
             listOf(previous, next).forEach(::clearSlot)
@@ -261,8 +305,8 @@ internal class EpubSpreadTurnHost(
         if (request != null && request.operationId != lastOperationId) {
             lastOperationId = request.operationId
             jump(request)
-        } else if (layoutChanged && state == null && (request ?: pendingRequest) != null) {
-            jump((request ?: pendingRequest)!!)
+        } else if (restartingRequest != null) {
+            jump(restartingRequest)
         } else if (layoutChanged && session.chapterCount > 0) {
             val focused = state?.focused
             jump(EpubNavigationRequest(
@@ -480,6 +524,11 @@ internal class EpubSpreadTurnHost(
         if (released || leaf.configured || !leaf.documentReady || leaf.view.released || leaf.view.width <= 0 || leaf.view.height <= 0) return
         val expectedWidth = leaf.view.layoutParams.width.let { if (it == LayoutParams.MATCH_PARENT) width else it }
         if (leaf.view.width != expectedWidth || leaf.view.height != height) return
+        val fence = leaf.fence
+        if (deferChapterConfiguration(leaf.view, request.target.chapterIndex) {
+                if (leaf.request === request && leaf.fence == fence) configure(leaf)
+            }
+        ) return
         leaf.configured = true
         preparation?.request?.let { onNavigationStage(it, EpubNavigationStage.CONFIGURING) }
         configureReader(leaf.view, request)
@@ -877,6 +926,11 @@ internal class EpubSpreadTurnHost(
         }
     }
 
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        if (fade != null && spreadBackground.hasImage) spreadBackground.draw(canvas, width, height)
+    }
+
     override fun dispatchDraw(canvas: Canvas) {
         val animation = controller
         if (animation != null && animation.drawsDirectlyOnCanvas && animationCommit != null) {
@@ -917,6 +971,14 @@ internal class EpubSpreadTurnHost(
     }
 
     private fun drainPreloads() {
+        if (!backgroundPreparationEnabled) {
+            // Hidden locator updates can commit another chapter without changing
+            // the mode flag. Drop the displaced pair after every such commit too.
+            if (preparation == null && animationCommit == null && !gestureClaimed) {
+                listOf(previous, next).forEach { clearSlot(it); it.releaseLeaves() }
+            }
+            return
+        }
         if (released || preparation != null || animationCommit != null || gestureClaimed || state == null) return
         while (preloadDirections.isNotEmpty()) {
             val direction = preloadDirections.removeFirst()
@@ -930,7 +992,7 @@ internal class EpubSpreadTurnHost(
         preparation = null
         preparationSlot = null
         listOf(previous, next).forEach { slot ->
-            slot.leaves.forEach { leaf ->
+            slot.existingLeaves.forEach { leaf ->
                 if (leaf.ready != null) {
                     leaf.fence++
                     leaf.ready = null
@@ -946,7 +1008,7 @@ internal class EpubSpreadTurnHost(
     private fun clearSlot(slot: SpreadSlot) {
         slot.target = null
         slot.invalidateSnapshot()
-        slot.leaves.forEach { leaf ->
+        slot.existingLeaves.forEach { leaf ->
             leaf.fence++
             leaf.timeout?.let(::removeCallbacks)
             leaf.timeout = null
@@ -971,11 +1033,33 @@ internal class EpubSpreadTurnHost(
     }
 
     private fun slotOf(view: EpubContentWebView): SpreadSlot? =
-        listOf(previous, current, next).firstOrNull { slot -> slot.leaves.any { it.view === view } }
+        listOf(previous, current, next).firstOrNull { slot -> slot.existingLeaves.any { it.view === view } }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (released) return true
         lastTouchX = event.x
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            outsideFootnoteOwner = visibleWebViews().firstOrNull { it.footnotePopoverVisible }?.takeUnless { view ->
+                val bounds = Rect()
+                view.getDrawingRect(bounds)
+                offsetDescendantRectToMyCoords(view, bounds)
+                event.x >= bounds.left && event.x < bounds.right &&
+                    event.y >= bounds.top && event.y < bounds.bottom
+            }
+        }
+        outsideFootnoteOwner?.let { owner ->
+            // The other leaf has its own document and would interpret this stroke as reading input.
+            when (event.actionMasked) {
+                MotionEvent.ACTION_UP -> {
+                    outsideFootnoteOwner = null
+                    if (owner.footnotePopoverVisible) {
+                        owner.evaluateJavascript("if (window.LumiReader) window.LumiReader.dismissFootnote();", null)
+                    }
+                }
+                MotionEvent.ACTION_CANCEL -> outsideFootnoteOwner = null
+            }
+            return true
+        }
         return super.dispatchTouchEvent(event)
     }
 
@@ -1205,7 +1289,7 @@ internal class EpubSpreadTurnHost(
         if (w <= 0 || h <= 0) return
         listOf(previous, current, next).forEach { slot -> slot.target?.let(slot::arrange); slot.invalidateSnapshot() }
         onViewportChanged(w, h)
-        listOf(previous, current, next).flatMap { it.leaves }.forEach { leaf -> if (!leaf.configured) leaf.view.post { configure(leaf) } }
+        listOf(previous, current, next).flatMap { it.existingLeaves }.forEach { leaf -> if (!leaf.configured) leaf.view.post { configure(leaf) } }
     }
 
     private fun captureSlot(slot: SpreadSlot): Boolean {
@@ -1227,8 +1311,8 @@ internal class EpubSpreadTurnHost(
             ?: Bitmap.createBitmap(size.width, size.height, Bitmap.Config.ARGB_8888)
         output.density = resources.displayMetrics.densityDpi
         val canvas = Canvas(output)
-        canvas.drawColor(pageBackgroundColor)
         canvas.scale(size.width.toFloat() / width, size.height.toFloat() / height)
+        spreadBackground.draw(canvas, width, height)
         for (view in views) {
             val old = leafCapture
             val frame = capture(view, old, androidx.compose.ui.unit.IntSize(view.width, view.height))
@@ -1249,7 +1333,10 @@ internal class EpubSpreadTurnHost(
             runCatching {
                 EpubHardwareSnapshot(size.width, size.height).use { pipeline ->
                     pipeline.capture(view, reusable, resources.displayMetrics.densityDpi,
-                        size.width.toFloat() / view.width, size.height.toFloat() / view.height) { it.drawColor(pageBackgroundColor) }
+                        size.width.toFloat() / view.width, size.height.toFloat() / view.height) {
+                            it.drawColor(if (spreadBackground.hasImage) Color.TRANSPARENT else pageBackgroundColor,
+                                android.graphics.PorterDuff.Mode.SRC)
+                        }
                 }
             }.onFailure { trace("snapshot", "hardwareFailure=$it") }.getOrNull()?.let { return it }
             // Software WebView.draw can use different viewport geometry too.
@@ -1261,7 +1348,8 @@ internal class EpubSpreadTurnHost(
         bitmap.density = resources.displayMetrics.densityDpi
         val canvas = Canvas(bitmap)
         canvas.scale(size.width.toFloat() / view.width, size.height.toFloat() / view.height)
-        canvas.drawColor(pageBackgroundColor)
+        canvas.drawColor(if (spreadBackground.hasImage) Color.TRANSPARENT else pageBackgroundColor,
+            android.graphics.PorterDuff.Mode.SRC)
         view.draw(canvas)
         return bitmap
     }
@@ -1281,6 +1369,7 @@ internal class EpubSpreadTurnHost(
         val views = allWebViews()
         val window = rootView
         released = true
+        spreadBackground.release()
         cancelPreparation(replaced = false)
         abortAnimation()
         views.forEach { view ->

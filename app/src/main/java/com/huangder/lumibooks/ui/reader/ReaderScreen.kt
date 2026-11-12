@@ -88,6 +88,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -373,7 +374,8 @@ internal data class ContinuousScrollRequest(
     val chapterFraction: Float = 0f,
     val origin: TtsPageChangeOrigin = TtsPageChangeOrigin.USER,
     val characterOffset: Int? = null,
-    val requestId: Long = System.nanoTime()
+    val requestId: Long = System.nanoTime(),
+    val lineViewportTop: Int = 0
 )
 
 private data class ReaderMenuSnapshot(
@@ -1287,6 +1289,8 @@ private fun ReaderScreenContent(
     val listeningResumeJumpRequest by viewModel.listeningResumeJumpRequest.collectAsState()
     val ttsStartPrompt by viewModel.ttsStartPrompt.collectAsState()
     val ttsReaderFollowEnabled by viewModel.ttsReaderFollowEnabled.collectAsState()
+    val manualListeningBrowse by viewModel.manualListeningBrowse.collectAsState()
+    val ttsManualResumeSentence by viewModel.ttsManualResumeSentence.collectAsState()
     val eInkMode = rawUiState.eInkModeEnabled
     val motionEnabled = LocalMotionEnabled.current
     val basePageTransition = com.huangder.lumibooks.domain.model.ReaderPageTransition.effectiveKey(
@@ -1351,14 +1355,17 @@ private fun ReaderScreenContent(
     ) {
         mutableStateOf(emptyList<com.huangder.lumibooks.domain.model.Note>())
     }
-    LaunchedEffect(bookId, uiState.currentChapterIndex, uiState.contentRevision, highlightRules, activeHighlightPalette) {
-        currentRulePreviewNotes = viewModel.highlightRulePreviewNotes(uiState.currentChapterIndex, highlightRules)
-            .map { note -> note.copy(color = resolveReaderHighlightColor(note.color)) }
+    LaunchedEffect(bookId, uiState.book?.format, uiState.currentChapterIndex,
+        uiState.contentRevision, highlightRules, activeHighlightPalette) {
+        if (uiState.book?.format?.name == "MARKDOWN") {
+            currentRulePreviewNotes = viewModel.highlightRulePreviewNotes(uiState.currentChapterIndex, highlightRules)
+                .map { note -> note.copy(color = resolveReaderHighlightColor(note.color)) }
+        }
     }
-    val renderedEpubNotes = remember(renderedNotes, currentRulePreviewNotes, knownHighlightRuleIds) {
+    val savedEpubNotes = remember(renderedNotes, knownHighlightRuleIds) {
         renderedNotes.filterNot { note ->
             note.isGeneratedByHighlightRule && note.sourceRuleId in knownHighlightRuleIds
-        } + currentRulePreviewNotes
+        }
     }
     val storedBookmarks by viewModel.bookmarks.collectAsState()
     val bookmarks = remember(storedBookmarks, uiState.renderMode) {
@@ -1422,7 +1429,7 @@ private fun ReaderScreenContent(
             }
         }
     }
-    LaunchedEffect(nightDisplay, uiState.activeThemeSuiteIdFor(uiState.readerLayoutTarget())) {
+    LaunchedEffect(nightDisplay, uiState.readerLayoutTarget(), uiState.activeThemeSuiteIdFor(uiState.readerLayoutTarget())) {
         viewModel.applyReaderThemeMode(nightDisplay)
     }
     val useWideLayout = viewport.width >= 600.dp
@@ -1460,7 +1467,7 @@ private fun ReaderScreenContent(
     val isVerticalWriting = uiState.readerWritingMode == ReaderWritingMode.VERTICAL_RL &&
         uiState.useNewEngine && !isBookLayout
     // 只判断“是否允许双页”（窗口宽度/设置/模式），实际由 ReadView 按横向或近正方形尺寸决定。
-    val twoPageSpreadEligible = uiState.twoPageSpreadEnabled && useWideLayout &&
+    val twoPageSpreadEligible = uiState.twoPageSpreadEnabled &&
         uiState.useNewEngine && !isBookLayout && !eInkMode &&
         uiState.readerWritingMode == ReaderWritingMode.HORIZONTAL &&
         basePageTransition !in setOf("continuous", "scroll")
@@ -1714,6 +1721,10 @@ private fun ReaderScreenContent(
         derivedStateOf { continuousVisibleCharacters.value.isNotEmpty() }
     }
     var epubManualNavigationPending by remember(bookId) { mutableStateOf(false) }
+    var epubBrowseFromPage by remember(bookId) { mutableStateOf<Pair<Int, Int>?>(null) }
+    var epubScrollBrowseChapter by remember(bookId) { mutableStateOf<Int?>(null) }
+    var epubScrollBrowseAnchor by remember(bookId) { mutableStateOf<Pair<Int, Int>?>(null) }
+    var epubTtsVisibility by remember(bookId) { mutableStateOf<Pair<TtsSentencePosition, Boolean>?>(null) }
     fun captureReaderLocation(
         chapter: Int = uiState.currentChapterIndex,
         page: Int = uiState.currentPageIndex,
@@ -1731,6 +1742,9 @@ private fun ReaderScreenContent(
             paginationKey = if (renderer) rendererPageKey else nativeBookPages.generation)
     }
     fun beginManualReaderNavigation() {
+        epubBrowseFromPage = null
+        epubScrollBrowseChapter = null
+        epubScrollBrowseAnchor = null
         if (isBookLayout && !isBookLayoutContinuousScroll && !isMarkdownNative) {
             epubManualNavigationPending = true
         }
@@ -1743,8 +1757,24 @@ private fun ReaderScreenContent(
     fun beginManualReaderBrowsing() {
         if (isBookLayout && !isBookLayoutContinuousScroll && !isMarkdownNative) {
             epubManualNavigationPending = true
+            epubBrowseFromPage = originalSpreadState?.first?.target?.let { it.chapterIndex to it.pageIndex }
+                ?: (uiState.currentChapterIndex to uiState.currentPageIndex)
+            // A page gesture can still be cancelled. With page-follow off, detach on commit.
+            if (viewModel.isListeningToThisBook() && !ttsState.followUserPageTurns) {
+                viewModel.onReadingInteraction()
+                return
+            }
         }
-        viewModel.onListeningReaderPageTurn()
+        if (isBookLayoutContinuousScroll) {
+            epubTtsVisibility = null
+            epubScrollBrowseChapter = uiState.currentChapterIndex
+            epubScrollBrowseAnchor = null
+        }
+        if (isBookLayoutContinuousScroll || isContinuousScrollMode) {
+            viewModel.onListeningReaderBrowseStarted()
+        } else {
+            viewModel.onListeningReaderPageTurn()
+        }
     }
     var epubNavigationStage by remember(bookId) {
         mutableStateOf(EpubNavigationStage.STARTING)
@@ -1925,7 +1955,11 @@ private fun ReaderScreenContent(
             if (webProvider == null) {
                 Toast.makeText(context, R.string.tts_page_not_ready, Toast.LENGTH_SHORT).show()
             } else {
-                viewModel.startBookLayoutTts(webProvider, restoreSavedPosition)
+                val characterOffset = if (isBookLayoutContinuousScroll && !restoreSavedPosition) {
+                    epubScrollBrowseAnchor?.takeIf { it.first == uiState.currentChapterIndex }?.second
+                        ?: readerLocatorCharacter(uiState.epubLocatorJson)
+                } else null
+                viewModel.startBookLayoutTts(webProvider, restoreSavedPosition, characterOffset)
             }
         } else {
             viewModel.startTts(restoreSavedPosition)
@@ -2080,7 +2114,7 @@ private fun ReaderScreenContent(
     }
 
     var rendererVisibleCharacters by remember(rendererPageKey, uiState.currentChapterIndex,
-        uiState.currentPageIndex) { mutableStateOf<List<ReaderVisibleCharacters>>(emptyList()) }
+        uiState.currentPageIndex, originalSpreadState?.target) { mutableStateOf<List<ReaderVisibleCharacters>>(emptyList()) }
     LaunchedEffect(rendererPageKey, epubPageTextProvider, uiState.currentChapterIndex,
         uiState.currentPageIndex, uiState.rightChapterIndex, uiState.rightPageIndex, uiState.pageReady,
         originalSpreadState) {
@@ -2311,6 +2345,34 @@ private fun ReaderScreenContent(
     // 处理返回键：触发退出动画，而不是直接关闭
     val isAnySheetOpen = excerptRequest != null || localDictionaryQuery != null || annotationTagState.editingTarget != null || showNotesList || showNoteInput || pendingBookmarkRemarkId != null || showToc || showThemeSheet || showHighlightRules ||
         showAdvancedSheet || showSearch || showWebSearch || showTxtEncodingDialog || showTxtTocDialog || showReplaceInput
+    val canShowListeningBrowsePrompt = readerActive && !isAnySheetOpen && !uiState.isMenuVisible
+    val spokenTextVisible = if (manualListeningBrowse != null) ttsCurrentSentence?.let { sentence ->
+        when {
+            isBookLayoutContinuousScroll -> epubTtsVisibility?.takeIf { it.first == sentence }?.second
+            isContinuousScrollMode -> continuousVisibleCharacters.value.containsSpeech(sentence)
+            isBookLayout -> rendererVisibleCharacters.containsSpeech(sentence)
+            else -> {
+                val layoutEngine = viewModel.pageLayoutEngine
+                val visible = buildList {
+                    fun addPage(chapter: Int, page: Int) {
+                        layoutEngine.getPageLayout(chapter, page)?.let {
+                            add(ReaderVisibleCharacters(chapter, it.startCharOffset, it.endCharOffset))
+                        }
+                    }
+                    addPage(uiState.currentChapterIndex, uiState.currentPageIndex)
+                    uiState.rightPageIndex?.let { addPage(uiState.rightChapterIndex ?: uiState.currentChapterIndex, it) }
+                }
+                visible.containsSpeech(sentence)
+            }
+        }
+    } else null
+    LaunchedEffect(manualListeningBrowse?.generation, manualListeningBrowse?.settled, spokenTextVisible,
+        canShowListeningBrowsePrompt, readerActive, ttsCurrentSentence, ttsState.activeBookId, ttsState.playbackState) {
+        val browse = manualListeningBrowse ?: return@LaunchedEffect
+        if (viewModel.ttsSentencePosition.value != ttsCurrentSentence) return@LaunchedEffect
+        viewModel.updateManualListeningBrowse(browse.generation, spokenTextVisible.takeIf { readerActive },
+            canShowListeningBrowsePrompt, promptWhileBrowsing = isContinuousScrollMode || isBookLayoutContinuousScroll)
+    }
     val bookmarkPullSupported = (isBookLayout && !isBookLayoutContinuousScroll) ||
         (uiState.useNewEngine && !renderedContinuousScrollMode && !isVerticalWriting)
     val bookmarkPullEnabled = bookmarkPullSupported &&
@@ -3057,26 +3119,9 @@ private fun ReaderScreenContent(
         )
     }
 
-    androidx.compose.runtime.CompositionLocalProvider(
-        LocalLiquidGlassContrastEnabled provides (uiState.readerButtonContrastEnabled && !eInkMode),
-        com.huangder.lumibooks.ui.components.LocalLiquidGlassBackdrop provides activeReaderGlassBackdrop
-    ) {
-    com.huangder.lumibooks.ui.components.LiquidGlassDialogHost(
-        modifier = Modifier.fillMaxSize(), backdrop = activeReaderGlassBackdrop
-    ) {
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(composeBgColor)
-            .semantics { testTagsAsResourceId = true }
-            .testTag(
-                if (firstContentReported) READER_CONTENT_READY_TAG else READER_CONTENT_LOADING_TAG
-            )
-            .onGloballyPositioned { coordinates ->
-                readerRootWindowPosition.value = coordinates.positionInWindow()
-                readerRootSize.value = coordinates.size
-            }
-    ) {
+    // Declare these slots outside the glass hosts so their generated Compose lambdas
+    // do not capture all the reader state in one method. ART rejected that release DEX.
+    val readerPage: @Composable () -> Unit = {
         // Canvas 引擎（阅读器排版）的注释气泡：进出动画（180ms 进入 / 140ms 退出，见动效规范 7.1）
         LaunchedEffect(footnoteBubble) {
             if (footnoteBubble != null) {
@@ -3165,6 +3210,9 @@ private fun ReaderScreenContent(
                             else rendererBookPages.withChapter(0, starts.size, starts)
                     },
                     onManualNavigation = ::beginManualReaderBrowsing,
+                    onManualScrollSettled = { viewModel.onListeningReaderBrowseSettled() },
+                    onVisibleCharacters = { continuousVisibleCharacters.value = it },
+                    ttsFollowEnabled = ttsReaderFollowEnabled && ttsCurrentSentence != ttsManualResumeSentence,
                     onSelection = { selection ->
                         val overlapping = findOverlappingNotes(readerNotes, 0, selection.startPosition, selection.endPosition, "highlight")
                         selectionState = SelectionState(
@@ -3213,6 +3261,7 @@ private fun ReaderScreenContent(
                 EpubWebViewReader(
                     session = activeEpubSession,
                     twoPageSpread = bookLayoutSpreadEligible,
+                    orientationSpreadEnabled = uiState.twoPageSpreadEnabled && !eInkMode,
                     onSpreadChanged = { originalSpreadState = it },
                     onFocusedPageChanged = { page ->
                         originalSpreadState = originalSpreadState?.copy(focused = page)
@@ -3278,18 +3327,35 @@ private fun ReaderScreenContent(
                     marginLeftDp = uiState.marginLeftDp,
                     edgeTapMode = uiState.readerEdgeTapMode,
                     longPressSelectionRange = uiState.longPressSelectionRange,
-                    // Keep all notes available; each EPUB WebView routes them by loaded chapter.
-                    notes = renderedEpubNotes,
+                    annotationStyle = uiState.annotationStyle,
+                    notes = savedEpubNotes,
+                    highlightRules = highlightRules,
+                    ruleHighlightsRevision = uiState.contentRevision,
+                    loadRuleHighlights = viewModel::highlightRulePreviewNotes,
                     ttsCurrentSentence = ttsCurrentSentence,
                     ttsHighlightColor = TtsSentenceHighlightSpan.computeHighlightColor(
                         readerBackgroundColorInt
                     ),
                     ttsFollowEnabled = ttsReaderFollowEnabled,
+                    ttsManualResumeSentence = ttsManualResumeSentence,
+                    ttsViewportGeneration = manualListeningBrowse?.generation,
+                    onTtsVisibility = { generation, sentence, visible ->
+                        if (viewModel.manualListeningBrowse.value?.generation == generation) {
+                            epubTtsVisibility = sentence to visible
+                        }
+                    },
                     searchRequest = epubSearchRequest,
                     onManualScrollStarted = {
                         beginManualReaderBrowsing()
                         if (epubNavigationRequest?.origin == EpubNavigationOrigin.TTS) {
                             epubNavigationRequest = null
+                        }
+                    },
+                    onManualScrollSettled = { chapter, offset ->
+                        if (epubScrollBrowseChapter == chapter) {
+                            epubScrollBrowseChapter = null
+                            epubScrollBrowseAnchor = offset?.let { chapter to it }
+                            viewModel.onListeningReaderBrowseSettled()
                         }
                     },
                     locatorRequest = epubLocatorRequest,
@@ -3327,6 +3393,16 @@ private fun ReaderScreenContent(
                         }
                         val manualNavigation = epubManualNavigationPending
                         epubManualNavigationPending = false
+                        val browseFrom = epubBrowseFromPage
+                        epubBrowseFromPage = null
+                        val committedPage = originalSpreadState?.first?.target?.takeIf { bookLayoutSpreadEligible }
+                            ?.let { it.chapterIndex to it.pageIndex } ?: (chapterIndex to pageIndex)
+                        val userPageTurn = browseFrom != null && browseFrom != committedPage &&
+                            (epubNavigationRequest == null || epubNavigationRequest?.origin == EpubNavigationOrigin.PAGE_TURN) &&
+                            viewModel.ttsPageChangeOriginFor(chapterIndex, pageIndex) == TtsPageChangeOrigin.USER
+                        if (userPageTurn && !ttsState.followUserPageTurns) {
+                            viewModel.onListeningReaderBrowseStarted(recordUse = false)
+                        }
                         if (manualNavigation &&
                             viewModel.ttsPageChangeOriginFor(chapterIndex, pageIndex) == TtsPageChangeOrigin.USER) {
                             rememberTtsReturnLocation(chapterIndex, pageIndex, locatorJson)
@@ -3339,6 +3415,15 @@ private fun ReaderScreenContent(
                             pageCount,
                             locatorJson
                         )
+                        if (userPageTurn || isBookLayoutContinuousScroll &&
+                            epubScrollBrowseChapter?.let { it != chapterIndex } == true
+                        ) {
+                            epubScrollBrowseChapter = null
+                            if (isBookLayoutContinuousScroll) {
+                                epubScrollBrowseAnchor = readerLocatorCharacter(locatorJson)?.let { chapterIndex to it }
+                            }
+                            viewModel.onListeningReaderBrowseSettled()
+                        }
                         epubPageRequest?.let { request ->
                             val expectedPage = request.chapterFraction?.let { fraction ->
                                 pageIndexForChapterFraction(fraction, pageCount)
@@ -3694,7 +3779,7 @@ private fun ReaderScreenContent(
                         if (origin == TtsPageChangeOrigin.USER) {
                             // The gesture already recorded its source. A late scroll callback
                             // must not supersede a newer listening command.
-                            viewModel.onListeningReaderPageTurn(recordUse = false)
+                            if (ttsState.followUserPageTurns) viewModel.onListeningReaderPageTurn(recordUse = false)
                             rememberTtsReturnLocation(chapterIndex, visiblePage, chapterFraction = chapterFraction)
                         } else {
                             lastVisibleReaderLocation = captureReaderLocation(chapterIndex, visiblePage,
@@ -3703,6 +3788,7 @@ private fun ReaderScreenContent(
                         viewModel.onContinuousScrollPosition(
                             chapterIndex, chapterFraction, origin, visibleCharacter
                         )
+                        if (origin == TtsPageChangeOrigin.USER) viewModel.onListeningReaderBrowseSettled()
                     },
                     onViewportAnchor = {
                         continuousReturnAnchor.value = it
@@ -3720,8 +3806,10 @@ private fun ReaderScreenContent(
                     chineseMode = uiState.chineseMode,
                     ttsCurrentSentence = ttsCurrentSentence,
                     longPressSelectionRange = uiState.longPressSelectionRange,
+                    annotationStyle = uiState.annotationStyle,
                     comicModeEnabled = uiState.comicModeEnabled,
                     ttsFollowEnabled = ttsReaderFollowEnabled,
+                    ttsManualResumeSentence = ttsManualResumeSentence,
                     onManualScrollStarted = ::beginManualReaderBrowsing,
                     ttsFollowUserPageTurns = ttsState.followUserPageTurns,
                     imageAdjustments = uiState.imageAdjustments.forDisplay(eInkMode),
@@ -3743,7 +3831,7 @@ private fun ReaderScreenContent(
                                 origin: TtsPageChangeOrigin
                             ) {
                                 if (origin == TtsPageChangeOrigin.USER) {
-                                    viewModel.onListeningReaderPageTurn(recordUse = false)
+                                    viewModel.onListeningReaderBrowseStarted(recordUse = false)
                                     rememberTtsReturnLocation(chapterIndex, pageInChapter)
                                 } else {
                                     lastVisibleReaderLocation = captureReaderLocation(chapterIndex, pageInChapter)
@@ -3755,6 +3843,7 @@ private fun ReaderScreenContent(
                                 viewModel.onNewEnginePageChanged(
                                     globalPage, chapterIndex, pageInChapter, chapterTotalPages, origin
                                 )
+                                if (origin == TtsPageChangeOrigin.USER) viewModel.onListeningReaderBrowseSettled()
                             }
 
                             override fun onSpreadPageChanged(
@@ -3985,6 +4074,7 @@ private fun ReaderScreenContent(
                                 }
                             }
                         })
+                        orientationContentProvider = viewModel::chapterTextForViewport
                         setContentProvider { chapterIndex ->
                             viewModel.getChapterText(
                                 index = chapterIndex,
@@ -4042,7 +4132,8 @@ private fun ReaderScreenContent(
                                 uiState.pageAnimationSettings.durationFor(effectivePageTransition)
                             ),
                             edgeTapMode = uiState.readerEdgeTapMode,
-                            paginationContentIdentity = viewModel.paginationContentIdentity()
+                            paginationContentIdentity = viewModel.paginationContentIdentity(),
+                            annotationStyle = uiState.annotationStyle
                         )
                     )
                     // 正文盒子直接取排版引擎量出来的可见区域（含它对上下边距、角落信息区的调整），
@@ -4078,7 +4169,497 @@ private fun ReaderScreenContent(
                 LegacyWebViewContent(uiState, viewModel, composeBgColor)
             }
         }
+    }
 
+    // Keep each sheet outside the menu host lambda: capturing every sheet callback
+    // here creates near-limit DEX methods and excessive compiler data-flow analysis.
+    val readerCatalogSheet: @Composable () -> Unit = {
+    // 目录底部弹出
+    TocSheet(
+        visible = showToc,
+        requestClose = requestCloseToc,
+        glassBackdrop = activeReaderGlassBackdrop,
+        tocEntries = uiState.tocEntries,
+        currentChapter = uiState.currentChapterIndex,
+        currentAnchor = uiState.currentTocAnchor,
+        bookmarks = bookmarks,
+        chapterTitles = uiState.chapterTitles,
+        onChapterSelected = { entry ->
+            scope.launch {
+                val target = viewModel.resolveTocTarget(
+                    chapterIndex = entry.chapterIndex,
+                    anchor = entry.anchor
+                ) ?: return@launch
+                beginManualReaderNavigation()
+                val readView = readViewRef.value
+                if (isMarkdownNative) {
+                    epubSearchRequest = null
+                    epubLocatorRequest = null
+                    epubPageRequest = null
+                    navigateEpub(
+                        EpubNavigationOrigin.TOC,
+                        target.chapterIndex,
+                        entry.anchor?.takeIf { it.isNotBlank() }?.let {
+                            EpubNavigationDestination.Fragment(it)
+                        } ?: EpubNavigationDestination.ChapterStart,
+                        false
+                    )
+                } else if (isContinuousScrollMode) {
+                    jumpToContinuousChapter(target.chapterIndex)
+                } else if (isBookLayout) {
+                    epubSearchRequest = null
+                    epubLocatorRequest = null
+                    epubPageRequest = null
+                    navigateEpub(
+                        EpubNavigationOrigin.TOC,
+                        target.chapterIndex,
+                        entry.anchor?.takeIf { it.isNotBlank() }?.let {
+                            EpubNavigationDestination.Fragment(it)
+                        } ?: EpubNavigationDestination.ChapterStart,
+                        true
+                    )
+                } else if (!isBookLayout && uiState.useNewEngine && readView != null) {
+                    // Reload even when state already reports the selected chapter.
+                    if (entry.anchor.isNullOrBlank()) {
+                        readView.jumpToChapter(target.chapterIndex)
+                    } else {
+                        readView.jumpToCharacter(
+                            target.chapterIndex,
+                            target.characterOffset
+                        )
+                    }
+                } else {
+                    viewModel.setChapter(target.chapterIndex)
+                }
+            }
+            showToc = false
+            requestCloseToc = false
+        },
+        onBookmarkClick = bookmarkClick@ { bm ->
+            if (bm.isStale) {
+                Toast.makeText(context, R.string.markdown_original_changed, Toast.LENGTH_SHORT).show()
+                return@bookmarkClick
+            }
+            beginManualReaderNavigation()
+            if (isBookLayout) {
+                val chapterHref = epubSession?.chapterHref(bm.chapterIndex).orEmpty()
+                val locatorJson = bm.locatorJson?.let { json ->
+                    if (comicPositionFromLocator(json) != null) JSONObject(json).put("href", chapterHref).toString() else json
+                }
+                    ?.takeIf { isEpubLocatorForChapter(it, chapterHref) }
+                    ?: bm.characterOffset?.let { characterOffset ->
+                        createEpubFallbackLocator(
+                            href = chapterHref,
+                            charOffset = characterOffset,
+                            chapterTextLength = viewModel.getChapterTextLength(bm.chapterIndex).coerceAtLeast(1)
+                        )
+                    }
+                epubSearchRequest = null
+                epubLocatorRequest = null
+                epubPageRequest = null
+                navigateEpub(
+                    EpubNavigationOrigin.BOOKMARK,
+                    bm.chapterIndex,
+                    locatorJson?.let { EpubNavigationDestination.Locator(it) }
+                        ?: EpubNavigationDestination.Page(
+                            bm.position.toInt().coerceAtLeast(0)
+                        ),
+                    true
+                )
+            } else if (isContinuousScrollMode) {
+                jumpToContinuousChapter(bm.chapterIndex)
+            } else {
+                bm.characterOffset?.let { readViewRef.value?.jumpToCharacter(bm.chapterIndex, it) }
+                    ?: readViewRef.value?.jumpToChapter(bm.chapterIndex, bm.position.toInt())
+            }
+            showToc = false
+            requestCloseToc = false
+        },
+        onShareBookmark = { bm -> showExcerpt(bm.title, bm.remark, bm.chapterIndex) },
+        onDeleteBookmark = { bm -> viewModel.deleteBookmark(bm) },
+        availableTags = availableAnnotationTags,
+        onEditBookmarkTags = annotationTagState::editBookmark,
+        onEditBookmarkRemark = { bm, remark, tags -> viewModel.updateBookmarkRemarkAndTags(bm.syncId, remark, tags) },
+        onCreateTag = viewModel::createAnnotationTag,
+        onDismiss = { showToc = false; requestCloseToc = false }
+    )
+    }
+
+    val readerThemeSheet: @Composable () -> Unit = {
+    // 主题设置弹窗
+    ThemeSettingsSheet(
+        visible = showThemeSheet,
+        requestClose = requestCloseTheme,
+        currentFontSize = uiState.activeThemeSettingsForMode(uiState.themeEditingDark).fontSize,
+        currentFontType = uiState.activeThemeSettingsForMode(uiState.themeEditingDark).fontType,
+        currentCustomFontPath = uiState.customFonts.firstOrNull {
+            "custom:${it.id}" == uiState.activeThemeSettingsForMode(uiState.themeEditingDark).fontType
+        }?.path,
+        currentBodyFontWeight = uiState.activeThemeSettingsForMode(uiState.themeEditingDark).bodyFontWeight,
+        onBodyFontWeightChange = viewModel::saveBodyFontWeight,
+        onBodyFontWeightPreview = viewModel::previewBodyFontWeight,
+        currentTheme = uiState.activeThemeSettingsForMode(uiState.themeEditingDark).backgroundSelection,
+        currentBackgroundSelection = uiState.activeThemeSettingsForMode(uiState.themeEditingDark).backgroundSelection,
+        customBackgrounds = uiState.customReaderBackgrounds,
+        readerThemeSuites = uiState.readerThemeSuites,
+        activeReaderThemeSuiteId = uiState.activeReaderThemeSuiteId,
+        isAppDark = appIsDark,
+        readerThemeSuiteBookScoped = uiState.readerThemeSuiteBookScoped,
+        readerButtonContrastEnabled = uiState.readerButtonContrastEnabled,
+        customFonts = uiState.customFonts,
+        currentPreserveEpubBackground = effectivePreserveEpubBackground,
+        currentBrightness = uiState.brightness,
+        currentDarkMaskOpacity = uiState.activeThemeDarkMaskOpacity(),
+        currentOptimizeLayout = uiState.optimizeLayout,
+        currentUseEpubCss = uiState.useEpubCss,
+        supportsBookLayout = supportsBookLayout && !isMarkdownNative,
+        currentRenderMode = uiState.renderMode,
+        currentWritingMode = uiState.readerWritingMode,
+        supportsWritingMode = uiState.useNewEngine && !isBookLayout,
+        currentChineseMode = uiState.chineseMode,
+        currentPageTransition = effectivePageTransition,
+        supportsChineseConversion = !isMarkdownNative,
+        supportsPageTransitions = !isMarkdownNative,
+        currentDisplayMode = uiState.readerDisplayMode,
+        editingDark = uiState.themeEditingDark,
+        onFontSizeChange = { viewModel.saveFontSize(it) },
+        onFontSizePreview = viewModel::previewFontSize,
+        onLayoutPreviewActiveChange = { epubLayoutPreviewActive = it },
+        onThemeChange = { viewModel.saveReaderTheme(it) },
+        onModeThemeChange = viewModel::saveReaderThemeForMode,
+        onModeChange = viewModel::selectThemeEditMode,
+        onExportThemeBundle = { suiteId ->
+            pendingExportThemeId = suiteId
+            exportThemeLauncher.launch("lumi-theme.lumi-theme.json")
+        },
+        onImportThemeBundle = { importThemeLauncher.launch(arrayOf("application/json", "application/zip", "text/plain", "application/octet-stream")) },
+        onBackgroundSelect = { viewModel.selectReaderBackground(it) },
+        onAddBackgroundColor = { color, name -> viewModel.addCustomReaderBackgroundColor(color, name) },
+        onAddBackgroundImage = { uri, name -> viewModel.addCustomReaderBackgroundImage(uri, name) },
+        onDeleteBackground = { viewModel.deleteCustomReaderBackground(it) },
+        onThemeSuiteSelect = viewModel::selectReaderThemeSuite,
+        onThemeSuiteCreate = viewModel::createReaderThemeSuite,
+        onThemeSuiteDelete = viewModel::deleteReaderThemeSuite,
+        onThemeSuitesReorder = viewModel::reorderReaderThemeSuites,
+        onThemeSuiteBookScopedChange = viewModel::setApplyThemeSuiteToBook,
+        onReaderButtonContrastChange = viewModel::saveReaderButtonContrastEnabled,
+        onPreserveEpubBackgroundChange = viewModel::savePreserveEpubBackground,
+        onBrightnessChange = { viewModel.saveBrightness(it) },
+        onDarkMaskOpacityChange = viewModel::saveReaderDarkMaskOpacity,
+        onDarkMaskOpacityPreview = viewModel::previewReaderDarkMaskOpacity,
+        onOptimizeLayoutChange = { viewModel.saveOptimizeLayout(it) },
+        onUseEpubCssChange = { viewModel.saveUseEpubCss(it) },
+        onRenderModeChange = viewModel::saveRenderMode,
+        supportsNativeEpubCss = uiState.book?.format == BookFormat.EPUB,
+        nativeEpubCssEnabled = uiState.nativeEpubCssEnabled,
+        onNativeEpubCssChange = viewModel::saveNativeEpubCssEnabled,
+        onWritingModeChange = viewModel::saveReaderWritingMode,
+        onChineseModeChange = { viewModel.saveChineseMode(it) },
+        onPageTransitionChange = { mode ->
+            // Capture from the attached page before changing modes detaches it.
+            val anchor = if (!isBookLayout && !isContinuousScrollMode) {
+                readViewRef.value?.getCurrentPageTextAnchor()
+            } else null
+            viewModel.savePageTransition(mode, anchor)
+        },
+        onDisplayModeChange = viewModel::saveReaderDisplayMode,
+        onOpenAdvanced = {
+            if (!openAdvancedAfterThemeClose) {
+                openAdvancedAfterThemeClose = true
+                requestCloseTheme = true
+                scope.launch {
+                    delay(if (eInkMode || !motionEnabled) 0L else delayMillis(90L))
+                    if (openAdvancedAfterThemeClose) {
+                        showAdvancedSheet = true
+                        openAdvancedAfterThemeClose = false
+                    }
+                }
+            }
+        },
+        eInkModeEnabled = eInkMode,
+        onDismiss = {
+            if (!openAdvancedAfterThemeClose) {
+                viewModel.selectThemeEditMode(nightDisplay)
+            }
+            showThemeSheet = false
+            requestCloseTheme = false
+        }
+    )
+    }
+
+    val readerHighlightRulesSheet: @Composable () -> Unit = {
+    HighlightRulesSheet(
+        visible = showHighlightRules,
+        requestClose = requestCloseHighlightRules,
+        rules = highlightRules,
+        customFonts = uiState.customFonts,
+        materializeNotes = highlightSettings.materializeNotes,
+        scanState = highlightScanState,
+        eInkModeEnabled = eInkMode,
+        backdrop = activeReaderGlassBackdrop,
+        onMaterializeChange = viewModel::setHighlightRulesMaterialized,
+        onSaveRule = viewModel::saveHighlightRule,
+        onDuplicateRule = viewModel::duplicateHighlightRule,
+        onDeleteRule = viewModel::deleteHighlightRule,
+        onRuleEnabledChange = viewModel::setHighlightRuleEnabled,
+        onMoveRule = viewModel::moveHighlightRule,
+        onImportRules = viewModel::importHighlightRules,
+        onExportRules = viewModel::exportHighlightRules,
+        onImportFont = { uri, displayName ->
+            scope.launch { viewModel.importFont(context, uri, displayName) }
+        },
+        onCancelScan = viewModel::cancelHighlightRuleScan,
+        onRebuild = viewModel::rebuildHighlightRuleNotes,
+        onDismiss = {
+            showHighlightRules = false
+            requestCloseHighlightRules = false
+        }
+    )
+    }
+
+    val readerSearchSheets: @Composable () -> Unit = {
+    // 搜索弹窗
+    SearchSheet(
+        visible = showSearch,
+        requestClose = requestCloseSearch,
+        query = searchQuery,
+        results = searchResults,
+        isSearching = isSearching,
+        hasSearched = hasSearched,
+        onQueryChange = { value ->
+            if (value != searchQuery) {
+                cancelActiveSearch()
+                searchResults = emptyList()
+                searchResultQuery = ""
+                hasSearched = false
+            }
+            searchQuery = value
+        },
+        onSearch = {
+            submitSearch(searchQuery)
+        },
+        onResultClick = resultClick@{ result ->
+            if (searchResultQuery != searchQuery) return@resultClick
+            val epubSearchLocator = if (isBookLayout) {
+                result.epubLocator ?: run {
+                    Toast.makeText(
+                        context,
+                        R.string.epub_search_location_failed,
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    return@resultClick
+                }
+            } else {
+                null
+            }
+            val source = captureReaderLocation()
+            linkReturnLocation = source
+            linkReturnToken += 1
+
+            if (isBookLayout) {
+                epubSearchRequestToken++
+                epubLocatorRequest = null
+                epubPageRequest = null
+                epubSearchRequest = EpubSearchRequest(
+                    token = epubSearchRequestToken,
+                    chapterIndex = result.chapterIndex,
+                    locator = epubSearchLocator!!
+                )
+                navigateEpub(
+                    EpubNavigationOrigin.SEARCH,
+                    result.chapterIndex,
+                    EpubNavigationDestination.Locator(
+                        epubSearchLocator.toJson().toString()
+                    ),
+                    true
+                )
+            } else if (isContinuousScrollMode) {
+                continuousSearchHighlight = ContinuousSearchHighlight(
+                    chapterIndex = result.chapterIndex,
+                    start = result.charOffset,
+                    end = result.charOffset + result.matchLength
+                )
+                val destinationFraction = result.charOffset.toFloat()
+                    .div(viewModel.getChapterTextLength(result.chapterIndex).coerceAtLeast(1))
+                    .coerceIn(0f, 0.9999f)
+                jumpToContinuousChapter(result.chapterIndex, destinationFraction)
+            } else {
+                readViewRef.value?.jumpToSearchResult(
+                    result.chapterIndex,
+                    result.charOffset,
+                    result.matchLength
+                )
+            }
+            showSearch = false
+            cancelActiveSearch()
+            requestCloseSearch = false
+            searchQuery = ""
+            searchResultQuery = ""
+            searchResults = emptyList()
+            hasSearched = false
+        },
+        onDismiss = {
+            showSearch = false
+            cancelActiveSearch()
+            requestCloseSearch = false
+            searchQuery = ""
+            searchResultQuery = ""
+            searchResults = emptyList()
+            hasSearched = false
+        }
+    )
+
+    NetworkSearchSheet(
+        visible = showWebSearch,
+        initialQuery = searchQuery,
+        onDismiss = {
+            showWebSearch = false
+            searchQuery = ""
+        }
+    )
+    }
+
+    val readerAdvancedSheet: @Composable () -> Unit = {
+    // 高级排版设置弹窗。不要在组合阶段同步读取/格式化整章文本：
+    // 大型 EPUB 的 getChapterText() 可能需要数十秒，并且会阻塞主线程导致 ANR。
+    var previewText by remember(bookId) { mutableStateOf("") }
+    var previewImage by remember(bookId) { mutableStateOf<android.graphics.drawable.Drawable?>(null) }
+    LaunchedEffect(showAdvancedSheet, uiState.currentChapterIndex, uiState.contentRevision) {
+        if (!showAdvancedSheet) {
+            previewText = ""
+            previewImage = null
+            return@LaunchedEffect
+        }
+        val chapterIndex = uiState.currentChapterIndex
+        val chapter = withContext(Dispatchers.IO) { viewModel.getChapterText(chapterIndex) }
+        previewText = chapter?.toString()?.replace('\uFFFC', ' ')?.take(420).orEmpty()
+        previewImage = (chapter as? android.text.Spanned)?.let {
+            it.getSpans(0, it.length, ImageSpan::class.java).firstOrNull()?.drawable
+        }
+    }
+    AdvancedSettingsSheet(
+        visible = showAdvancedSheet,
+        requestClose = requestCloseAdvanced,
+        previewText = previewText,
+        previewImage = previewImage,
+        currentLineHeight = editorThemeSettings.lineHeight,
+        currentLetterSpacing = editorThemeSettings.letterSpacing,
+        currentTextAlignment = editorThemeSettings.textAlignment,
+        currentFontType = editorThemeSettings.fontType,
+        customFontPath = uiState.customFontPath,
+        customFonts = uiState.customFonts,
+        currentBackgroundSelection = editorThemeSettings.backgroundSelection,
+        customBackgrounds = uiState.customReaderBackgrounds,
+        currentPreserveEpubBackground = effectivePreserveEpubBackground,
+        showPreserveEpubBackground = supportsBookLayout,
+        currentPageImageCrop = uiState.pageImageCrop,
+        showPageImageCrop = supportsBookLayout &&
+            uiState.renderMode == EpubRenderMode.BOOK_LAYOUT,
+        imageAdjustmentsEnabled = uiState.book?.format?.name in setOf("PDF", "CBZ") ||
+            (supportsEpubFeatures && (uiState.comicModeEnabled ||
+                epubSession?.isMediaOnlyPage(uiState.currentChapterIndex) == true)),
+        currentImageBrightness = uiState.imageBrightness,
+        currentImageContrast = uiState.imageContrast,
+        currentImageSharpen = uiState.imageSharpen,
+        onImageBrightnessChange = viewModel::saveImageBrightness,
+        onImageContrastChange = viewModel::saveImageContrast,
+        onImageSharpenChange = viewModel::saveImageSharpen,
+        publisherSuiteActive = publisherPaintSuiteActive,
+        currentMarginLeft = editorThemeSettings.marginLeft,
+        currentMarginRight = editorThemeSettings.marginRight,
+        currentMarginTop = editorThemeSettings.marginTop,
+        currentMarginBottom = editorThemeSettings.marginBottom,
+        currentCornerMargins = uiState.readerCornerMargins,
+        currentBgColor = Color(editorBackgroundColorInt),
+        currentBackgroundImagePath = editorBackgroundImagePath,
+        currentTextColor = Color(editorThemeSettings.textColor ?: editorAutomaticTextColorInt),
+        currentTextColorOverride = editorThemeSettings.textColor,
+        currentFontSizeSp = editorThemeSettings.fontSize,
+        editingDark = uiState.themeEditingDark,
+        preservePublisherLayout = isBookLayout,
+        currentWritingMode = uiState.readerWritingMode,
+        fontDownloadKey = uiState.fontDownloadKey,
+        fontDownloadFailed = uiState.fontDownloadFailed,
+        onLineHeightChange = { viewModel.saveLineHeight(it) },
+        onLineHeightPreview = viewModel::previewLineHeight,
+        onLetterSpacingChange = { viewModel.saveLetterSpacing(it) },
+        onLetterSpacingPreview = viewModel::previewLetterSpacing,
+        onTextAlignmentChange = viewModel::saveTextAlignment,
+        onFontTypeChange = { viewModel.saveFontType(it) },
+        onImportFont = { uri, displayName ->
+            scope.launch {
+                val preset = viewModel.importFont(context, uri, displayName)
+                if (preset != null) {
+                    viewModel.saveCustomFontPath(preset.path)
+                    viewModel.saveFontType(preset.fontTypeKey)
+                }
+            }
+        },
+        onDeleteCustomFont = { id -> viewModel.deleteCustomFont(id) },
+        onBackgroundSelect = viewModel::selectReaderBackground,
+        onAddBackgroundColor = viewModel::addCustomReaderBackgroundColor,
+        onAddBackgroundImage = viewModel::addCustomReaderBackgroundImage,
+        onDeleteBackground = viewModel::deleteCustomReaderBackground,
+        onThemeEditModeChange = viewModel::selectThemeEditMode,
+        onPreserveEpubBackgroundChange = viewModel::savePreserveEpubBackground,
+        onPageImageCropChange = viewModel::savePageImageCrop,
+        onMarginLeftChange = { viewModel.saveMarginLeft(it) },
+        onMarginRightChange = { viewModel.saveMarginRight(it) },
+        onMarginTopChange = { viewModel.saveMarginTop(it) },
+        onMarginBottomChange = { viewModel.saveMarginBottom(it) },
+        onMarginLeftPreview = viewModel::previewMarginLeft,
+        onMarginRightPreview = viewModel::previewMarginRight,
+        onMarginTopPreview = viewModel::previewMarginTop,
+        onMarginBottomPreview = viewModel::previewMarginBottom,
+        onCornerMarginsChange = viewModel::saveReaderCornerMargins,
+        onCornerMarginsPreview = viewModel::previewReaderCornerMargins,
+        currentParagraphSpacing = editorThemeSettings.paragraphSpacing,
+        currentFirstLineIndent = editorThemeSettings.firstLineIndent,
+        onParagraphSpacingChange = { viewModel.saveParagraphSpacing(it) },
+        onParagraphSpacingPreview = viewModel::previewParagraphSpacing,
+        onFirstLineIndentChange = { viewModel.saveFirstLineIndent(it) },
+        onFirstLineIndentPreview = viewModel::previewFirstLineIndent,
+        onLayoutPreviewActiveChange = { epubLayoutPreviewActive = it },
+        readerTopLeftContent = uiState.readerTopLeftContent,
+        readerTopRightContent = uiState.readerTopRightContent,
+        readerBottomLeftContent = uiState.readerBottomLeftContent,
+        readerBottomRightContent = uiState.readerBottomRightContent,
+        volumeKeyUpAction = uiState.volumeKeyUpAction,
+        volumeKeyDownAction = uiState.volumeKeyDownAction,
+        bookmarkRemarkPromptEnabled = uiState.bookmarkRemarkPromptEnabled,
+        bionicReadingEnabled = uiState.bionicReadingEnabled,
+        comicModeEnabled = uiState.comicModeEnabled,
+        screenSleepTimeoutSeconds = uiState.screenSleepTimeoutSeconds,
+        readerEdgeTapMode = uiState.readerEdgeTapMode,
+        onReaderCornerContentChange = viewModel::saveReaderCornerContent,
+        onVolumeKeyActionsChange = { up, down -> viewModel.saveVolumeKeyActions(up, down) },
+        onBookmarkRemarkPromptEnabledChange = viewModel::saveBookmarkRemarkPromptEnabled,
+        onBionicReadingEnabledChange = viewModel::saveBionicReadingEnabled,
+        onComicModeChange = viewModel::saveComicMode,
+        onScreenSleepTimeoutChange = { seconds ->
+            viewModel.saveScreenSleepTimeoutSeconds(seconds)
+            if (seconds != DataStoreManager.SCREEN_SLEEP_TIMEOUT_FOLLOW_SYSTEM &&
+                !Settings.System.canWrite(context)
+            ) {
+                requestWriteSettingsPermission()
+            }
+        },
+        onReaderEdgeTapModeChange = viewModel::saveReaderEdgeTapMode,
+        onTextColorChange = { viewModel.saveReaderTextColor(it) },
+        onResetSettings = {
+            if (isBookLayout) viewModel.resetBookLayoutReaderSettings()
+            else viewModel.resetAdvancedReaderSettings()
+        },
+        eInkModeEnabled = eInkMode,
+        onDismiss = {
+            viewModel.selectThemeEditMode(nightDisplay)
+            showAdvancedSheet = false
+            requestCloseAdvanced = false
+        }
+    )
+    }
+
+    val readerOverlays: @Composable BoxScope.() -> Unit = {
         // 底部系统手势排除：正文边距为 0 时最后几行会伸进系统手势导航预留区，
         // 且下滑唤出的临时导航栏显示期间会吃掉该区域的触摸（表现为"最后几行时灵时不灵"）。
         // 此处声明排除（系统上限 200dp），左右边缘不动，保留返回手势。
@@ -4844,11 +5425,22 @@ private fun ReaderScreenContent(
                     onCancelSleepTimer = viewModel::cancelSleepTimer,
                     onFollowUserPageTurnsChange = viewModel::setTtsFollowUserPageTurns,
                     onReturnToProgress = returnToTtsProgress,
-                    onStartFromCurrentPage = { startTtsFromCurrentPage(false) },
-                    canReturnToProgress = ttsCurrentPage?.location?.let { location ->
-                        location.chapterIndex != uiState.currentChapterIndex ||
-                            location.pageIndex != uiState.currentPageIndex
-                    } == true,
+                    onStartFromCurrentPage = {
+                        viewModel.dismissManualListeningBrowsePrompt()
+                        startTtsFromCurrentPage(false)
+                    },
+                    showFromCurrentPage = canShowListeningBrowsePrompt && manualListeningBrowse?.showPrompt == true,
+                    canReturnToProgress = when {
+                        spokenTextVisible != null -> !spokenTextVisible
+                        ttsReaderFollowEnabled && (isContinuousScrollMode || isBookLayoutContinuousScroll) -> false
+                        else -> ttsCurrentPage?.location?.let { location ->
+                            val left = location.chapterIndex == uiState.currentChapterIndex &&
+                                location.pageIndex == uiState.currentPageIndex
+                            val right = location.chapterIndex == (uiState.rightChapterIndex ?: uiState.currentChapterIndex) &&
+                                location.pageIndex == uiState.rightPageIndex
+                            !left && !right
+                        } == true
+                    },
                     readerMenuVisible = uiState.isMenuVisible,
                     readerBackgroundColor = composeBgColor,
                     readerContentColor = Color(readerTextColorInt),
@@ -4865,481 +5457,12 @@ private fun ReaderScreenContent(
                 )
             }
 
-            // 目录底部弹出
-            TocSheet(
-                visible = showToc,
-                requestClose = requestCloseToc,
-                glassBackdrop = activeReaderGlassBackdrop,
-                tocEntries = uiState.tocEntries,
-                currentChapter = uiState.currentChapterIndex,
-                currentAnchor = uiState.currentTocAnchor,
-                bookmarks = bookmarks,
-                chapterTitles = uiState.chapterTitles,
-                onChapterSelected = { entry ->
-                    scope.launch {
-                        val target = viewModel.resolveTocTarget(
-                            chapterIndex = entry.chapterIndex,
-                            anchor = entry.anchor
-                        ) ?: return@launch
-                        beginManualReaderNavigation()
-                        val readView = readViewRef.value
-                        if (isMarkdownNative) {
-                            epubSearchRequest = null
-                            epubLocatorRequest = null
-                            epubPageRequest = null
-                            navigateEpub(
-                                EpubNavigationOrigin.TOC,
-                                target.chapterIndex,
-                                entry.anchor?.takeIf { it.isNotBlank() }?.let {
-                                    EpubNavigationDestination.Fragment(it)
-                                } ?: EpubNavigationDestination.ChapterStart,
-                                false
-                            )
-                        } else if (isContinuousScrollMode) {
-                            jumpToContinuousChapter(target.chapterIndex)
-                        } else if (isBookLayout) {
-                            epubSearchRequest = null
-                            epubLocatorRequest = null
-                            epubPageRequest = null
-                            navigateEpub(
-                                EpubNavigationOrigin.TOC,
-                                target.chapterIndex,
-                                entry.anchor?.takeIf { it.isNotBlank() }?.let {
-                                    EpubNavigationDestination.Fragment(it)
-                                } ?: EpubNavigationDestination.ChapterStart,
-                                true
-                            )
-                        } else if (!isBookLayout && uiState.useNewEngine && readView != null) {
-                            // Reload even when state already reports the selected chapter.
-                            if (entry.anchor.isNullOrBlank()) {
-                                readView.jumpToChapter(target.chapterIndex)
-                            } else {
-                                readView.jumpToCharacter(
-                                    target.chapterIndex,
-                                    target.characterOffset
-                                )
-                            }
-                        } else {
-                            viewModel.setChapter(target.chapterIndex)
-                        }
-                    }
-                    showToc = false
-                    requestCloseToc = false
-                },
-                onBookmarkClick = bookmarkClick@ { bm ->
-                    if (bm.isStale) {
-                        Toast.makeText(context, R.string.markdown_original_changed, Toast.LENGTH_SHORT).show()
-                        return@bookmarkClick
-                    }
-                    beginManualReaderNavigation()
-                    if (isBookLayout) {
-                        val chapterHref = epubSession?.chapterHref(bm.chapterIndex).orEmpty()
-                        val locatorJson = bm.locatorJson?.let { json ->
-                            if (comicPositionFromLocator(json) != null) JSONObject(json).put("href", chapterHref).toString() else json
-                        }
-                            ?.takeIf { isEpubLocatorForChapter(it, chapterHref) }
-                            ?: bm.characterOffset?.let { characterOffset ->
-                                createEpubFallbackLocator(
-                                    href = chapterHref,
-                                    charOffset = characterOffset,
-                                    chapterTextLength = viewModel.getChapterTextLength(bm.chapterIndex).coerceAtLeast(1)
-                                )
-                            }
-                        epubSearchRequest = null
-                        epubLocatorRequest = null
-                        epubPageRequest = null
-                        navigateEpub(
-                            EpubNavigationOrigin.BOOKMARK,
-                            bm.chapterIndex,
-                            locatorJson?.let { EpubNavigationDestination.Locator(it) }
-                                ?: EpubNavigationDestination.Page(
-                                    bm.position.toInt().coerceAtLeast(0)
-                                ),
-                            true
-                        )
-                    } else if (isContinuousScrollMode) {
-                        jumpToContinuousChapter(bm.chapterIndex)
-                    } else {
-                        bm.characterOffset?.let { readViewRef.value?.jumpToCharacter(bm.chapterIndex, it) }
-                            ?: readViewRef.value?.jumpToChapter(bm.chapterIndex, bm.position.toInt())
-                    }
-                    showToc = false
-                    requestCloseToc = false
-                },
-                onShareBookmark = { bm -> showExcerpt(bm.title, bm.remark, bm.chapterIndex) },
-                onDeleteBookmark = { bm -> viewModel.deleteBookmark(bm) },
-                availableTags = availableAnnotationTags,
-                onEditBookmarkTags = annotationTagState::editBookmark,
-                onEditBookmarkRemark = { bm, remark, tags -> viewModel.updateBookmarkRemarkAndTags(bm.syncId, remark, tags) },
-                onCreateTag = viewModel::createAnnotationTag,
-                onDismiss = { showToc = false; requestCloseToc = false }
-            )
+            readerCatalogSheet()
+            readerThemeSheet()
+            readerHighlightRulesSheet()
+            readerSearchSheets()
+            readerAdvancedSheet()
 
-            // 主题设置弹窗
-            ThemeSettingsSheet(
-                visible = showThemeSheet,
-                requestClose = requestCloseTheme,
-                currentFontSize = uiState.activeThemeSettingsForMode(uiState.themeEditingDark).fontSize,
-                currentFontType = uiState.activeThemeSettingsForMode(uiState.themeEditingDark).fontType,
-                currentCustomFontPath = uiState.customFonts.firstOrNull {
-                    "custom:${it.id}" == uiState.activeThemeSettingsForMode(uiState.themeEditingDark).fontType
-                }?.path,
-                currentBodyFontWeight = uiState.activeThemeSettingsForMode(uiState.themeEditingDark).bodyFontWeight,
-                onBodyFontWeightChange = viewModel::saveBodyFontWeight,
-                onBodyFontWeightPreview = viewModel::previewBodyFontWeight,
-                currentTheme = uiState.activeThemeSettingsForMode(uiState.themeEditingDark).backgroundSelection,
-                currentBackgroundSelection = uiState.activeThemeSettingsForMode(uiState.themeEditingDark).backgroundSelection,
-                customBackgrounds = uiState.customReaderBackgrounds,
-                readerThemeSuites = uiState.readerThemeSuites,
-                activeReaderThemeSuiteId = uiState.activeReaderThemeSuiteId,
-                isAppDark = appIsDark,
-                readerThemeSuiteBookScoped = uiState.readerThemeSuiteBookScoped,
-                readerButtonContrastEnabled = uiState.readerButtonContrastEnabled,
-                customFonts = uiState.customFonts,
-                currentPreserveEpubBackground = effectivePreserveEpubBackground,
-                currentBrightness = uiState.brightness,
-                currentDarkMaskOpacity = uiState.activeThemeDarkMaskOpacity(),
-                currentOptimizeLayout = uiState.optimizeLayout,
-                currentUseEpubCss = uiState.useEpubCss,
-                supportsBookLayout = supportsBookLayout && !isMarkdownNative,
-                currentRenderMode = uiState.renderMode,
-                currentWritingMode = uiState.readerWritingMode,
-                supportsWritingMode = uiState.useNewEngine && !isBookLayout,
-                currentChineseMode = uiState.chineseMode,
-                currentPageTransition = effectivePageTransition,
-                supportsChineseConversion = !isMarkdownNative,
-                supportsPageTransitions = !isMarkdownNative,
-                currentDisplayMode = uiState.readerDisplayMode,
-                editingDark = uiState.themeEditingDark,
-                onFontSizeChange = { viewModel.saveFontSize(it) },
-                onFontSizePreview = viewModel::previewFontSize,
-                onLayoutPreviewActiveChange = { epubLayoutPreviewActive = it },
-                onThemeChange = { viewModel.saveReaderTheme(it) },
-                onModeThemeChange = viewModel::saveReaderThemeForMode,
-                onModeChange = viewModel::selectThemeEditMode,
-                onExportThemeBundle = { suiteId ->
-                    pendingExportThemeId = suiteId
-                    exportThemeLauncher.launch("lumi-theme.lumi-theme.json")
-                },
-                onImportThemeBundle = { importThemeLauncher.launch(arrayOf("application/json", "application/zip", "text/plain", "application/octet-stream")) },
-                onBackgroundSelect = { viewModel.selectReaderBackground(it) },
-                onAddBackgroundColor = { color, name -> viewModel.addCustomReaderBackgroundColor(color, name) },
-                onAddBackgroundImage = { uri, name -> viewModel.addCustomReaderBackgroundImage(uri, name) },
-                onDeleteBackground = { viewModel.deleteCustomReaderBackground(it) },
-                onThemeSuiteSelect = viewModel::selectReaderThemeSuite,
-                onThemeSuiteCreate = viewModel::createReaderThemeSuite,
-                onThemeSuiteDelete = viewModel::deleteReaderThemeSuite,
-                onThemeSuitesReorder = viewModel::reorderReaderThemeSuites,
-                onThemeSuiteBookScopedChange = viewModel::setApplyThemeSuiteToBook,
-                onReaderButtonContrastChange = viewModel::saveReaderButtonContrastEnabled,
-                onPreserveEpubBackgroundChange = viewModel::savePreserveEpubBackground,
-                onBrightnessChange = { viewModel.saveBrightness(it) },
-                onDarkMaskOpacityChange = viewModel::saveReaderDarkMaskOpacity,
-                onDarkMaskOpacityPreview = viewModel::previewReaderDarkMaskOpacity,
-                onOptimizeLayoutChange = { viewModel.saveOptimizeLayout(it) },
-                onUseEpubCssChange = { viewModel.saveUseEpubCss(it) },
-                onRenderModeChange = viewModel::saveRenderMode,
-                supportsNativeEpubCss = uiState.book?.format == BookFormat.EPUB,
-                nativeEpubCssEnabled = uiState.nativeEpubCssEnabled,
-                onNativeEpubCssChange = viewModel::saveNativeEpubCssEnabled,
-                onWritingModeChange = viewModel::saveReaderWritingMode,
-                onChineseModeChange = { viewModel.saveChineseMode(it) },
-                onPageTransitionChange = { mode ->
-                    // Capture from the attached page before changing modes detaches it.
-                    val anchor = if (!isBookLayout && !isContinuousScrollMode) {
-                        readViewRef.value?.getCurrentPageTextAnchor()
-                    } else null
-                    viewModel.savePageTransition(mode, anchor)
-                },
-                onDisplayModeChange = viewModel::saveReaderDisplayMode,
-                onOpenAdvanced = {
-                    if (!openAdvancedAfterThemeClose) {
-                        openAdvancedAfterThemeClose = true
-                        requestCloseTheme = true
-                        scope.launch {
-                            delay(if (eInkMode || !motionEnabled) 0L else delayMillis(90L))
-                            if (openAdvancedAfterThemeClose) {
-                                showAdvancedSheet = true
-                                openAdvancedAfterThemeClose = false
-                            }
-                        }
-                    }
-                },
-                eInkModeEnabled = eInkMode,
-                onDismiss = {
-                    if (!openAdvancedAfterThemeClose) {
-                        viewModel.selectThemeEditMode(nightDisplay)
-                    }
-                    showThemeSheet = false
-                    requestCloseTheme = false
-                }
-            )
-
-            HighlightRulesSheet(
-                visible = showHighlightRules,
-                requestClose = requestCloseHighlightRules,
-                rules = highlightRules,
-                customFonts = uiState.customFonts,
-                materializeNotes = highlightSettings.materializeNotes,
-                scanState = highlightScanState,
-                eInkModeEnabled = eInkMode,
-                backdrop = activeReaderGlassBackdrop,
-                onMaterializeChange = viewModel::setHighlightRulesMaterialized,
-                onSaveRule = viewModel::saveHighlightRule,
-                onDuplicateRule = viewModel::duplicateHighlightRule,
-                onDeleteRule = viewModel::deleteHighlightRule,
-                onRuleEnabledChange = viewModel::setHighlightRuleEnabled,
-                onMoveRule = viewModel::moveHighlightRule,
-                onImportRules = viewModel::importHighlightRules,
-                onExportRules = viewModel::exportHighlightRules,
-                onImportFont = { uri, displayName ->
-                    scope.launch { viewModel.importFont(context, uri, displayName) }
-                },
-                onCancelScan = viewModel::cancelHighlightRuleScan,
-                onRebuild = viewModel::rebuildHighlightRuleNotes,
-                onDismiss = {
-                    showHighlightRules = false
-                    requestCloseHighlightRules = false
-                }
-            )
-
-            // 搜索弹窗
-            SearchSheet(
-                visible = showSearch,
-                requestClose = requestCloseSearch,
-                query = searchQuery,
-                results = searchResults,
-                isSearching = isSearching,
-                hasSearched = hasSearched,
-                onQueryChange = { value ->
-                    if (value != searchQuery) {
-                        cancelActiveSearch()
-                        searchResults = emptyList()
-                        searchResultQuery = ""
-                        hasSearched = false
-                    }
-                    searchQuery = value
-                },
-                onSearch = {
-                    submitSearch(searchQuery)
-                },
-                onResultClick = resultClick@{ result ->
-                    if (searchResultQuery != searchQuery) return@resultClick
-                    val epubSearchLocator = if (isBookLayout) {
-                        result.epubLocator ?: run {
-                            Toast.makeText(
-                                context,
-                                R.string.epub_search_location_failed,
-                                Toast.LENGTH_SHORT
-                            ).show()
-                            return@resultClick
-                        }
-                    } else {
-                        null
-                    }
-                    val source = captureReaderLocation()
-                    linkReturnLocation = source
-                    linkReturnToken += 1
-
-                    if (isBookLayout) {
-                        epubSearchRequestToken++
-                        epubLocatorRequest = null
-                        epubPageRequest = null
-                        epubSearchRequest = EpubSearchRequest(
-                            token = epubSearchRequestToken,
-                            chapterIndex = result.chapterIndex,
-                            locator = epubSearchLocator!!
-                        )
-                        navigateEpub(
-                            EpubNavigationOrigin.SEARCH,
-                            result.chapterIndex,
-                            EpubNavigationDestination.Locator(
-                                epubSearchLocator.toJson().toString()
-                            ),
-                            true
-                        )
-                    } else if (isContinuousScrollMode) {
-                        continuousSearchHighlight = ContinuousSearchHighlight(
-                            chapterIndex = result.chapterIndex,
-                            start = result.charOffset,
-                            end = result.charOffset + result.matchLength
-                        )
-                        val destinationFraction = result.charOffset.toFloat()
-                            .div(viewModel.getChapterTextLength(result.chapterIndex).coerceAtLeast(1))
-                            .coerceIn(0f, 0.9999f)
-                        jumpToContinuousChapter(result.chapterIndex, destinationFraction)
-                    } else {
-                        readViewRef.value?.jumpToSearchResult(
-                            result.chapterIndex,
-                            result.charOffset,
-                            result.matchLength
-                        )
-                    }
-                    showSearch = false
-                    cancelActiveSearch()
-                    requestCloseSearch = false
-                    searchQuery = ""
-                    searchResultQuery = ""
-                    searchResults = emptyList()
-                    hasSearched = false
-                },
-                onDismiss = {
-                    showSearch = false
-                    cancelActiveSearch()
-                    requestCloseSearch = false
-                    searchQuery = ""
-                    searchResultQuery = ""
-                    searchResults = emptyList()
-                    hasSearched = false
-                }
-            )
-
-            NetworkSearchSheet(
-                visible = showWebSearch,
-                initialQuery = searchQuery,
-                onDismiss = {
-                    showWebSearch = false
-                    searchQuery = ""
-                }
-            )
-
-            // 高级排版设置弹窗。不要在组合阶段同步读取/格式化整章文本：
-            // 大型 EPUB 的 getChapterText() 可能需要数十秒，并且会阻塞主线程导致 ANR。
-            var previewText by remember(bookId) { mutableStateOf("") }
-            var previewImage by remember(bookId) { mutableStateOf<android.graphics.drawable.Drawable?>(null) }
-            LaunchedEffect(showAdvancedSheet, uiState.currentChapterIndex, uiState.contentRevision) {
-                if (!showAdvancedSheet) {
-                    previewText = ""
-                    previewImage = null
-                    return@LaunchedEffect
-                }
-                val chapterIndex = uiState.currentChapterIndex
-                val chapter = withContext(Dispatchers.IO) { viewModel.getChapterText(chapterIndex) }
-                previewText = chapter?.toString()?.replace('\uFFFC', ' ')?.take(420).orEmpty()
-                previewImage = (chapter as? android.text.Spanned)?.let {
-                    it.getSpans(0, it.length, ImageSpan::class.java).firstOrNull()?.drawable
-                }
-            }
-            AdvancedSettingsSheet(
-                visible = showAdvancedSheet,
-                requestClose = requestCloseAdvanced,
-                previewText = previewText,
-                previewImage = previewImage,
-                currentLineHeight = editorThemeSettings.lineHeight,
-                currentLetterSpacing = editorThemeSettings.letterSpacing,
-                currentTextAlignment = editorThemeSettings.textAlignment,
-                currentFontType = editorThemeSettings.fontType,
-                customFontPath = uiState.customFontPath,
-                customFonts = uiState.customFonts,
-                currentBackgroundSelection = editorThemeSettings.backgroundSelection,
-                customBackgrounds = uiState.customReaderBackgrounds,
-                currentPreserveEpubBackground = effectivePreserveEpubBackground,
-                showPreserveEpubBackground = supportsBookLayout,
-                currentPageImageCrop = uiState.pageImageCrop,
-                showPageImageCrop = supportsBookLayout &&
-                    uiState.renderMode == EpubRenderMode.BOOK_LAYOUT,
-                imageAdjustmentsEnabled = uiState.book?.format?.name in setOf("PDF", "CBZ") ||
-                    (supportsEpubFeatures && (uiState.comicModeEnabled ||
-                        epubSession?.isMediaOnlyPage(uiState.currentChapterIndex) == true)),
-                currentImageBrightness = uiState.imageBrightness,
-                currentImageContrast = uiState.imageContrast,
-                currentImageSharpen = uiState.imageSharpen,
-                onImageBrightnessChange = viewModel::saveImageBrightness,
-                onImageContrastChange = viewModel::saveImageContrast,
-                onImageSharpenChange = viewModel::saveImageSharpen,
-                publisherSuiteActive = publisherPaintSuiteActive,
-                currentMarginLeft = editorThemeSettings.marginLeft,
-                currentMarginRight = editorThemeSettings.marginRight,
-                currentMarginTop = editorThemeSettings.marginTop,
-                currentMarginBottom = editorThemeSettings.marginBottom,
-                currentCornerMargins = uiState.readerCornerMargins,
-                currentBgColor = Color(editorBackgroundColorInt),
-                currentBackgroundImagePath = editorBackgroundImagePath,
-                currentTextColor = Color(editorThemeSettings.textColor ?: editorAutomaticTextColorInt),
-                currentTextColorOverride = editorThemeSettings.textColor,
-                currentFontSizeSp = editorThemeSettings.fontSize,
-                editingDark = uiState.themeEditingDark,
-                preservePublisherLayout = isBookLayout,
-                currentWritingMode = uiState.readerWritingMode,
-                fontDownloadKey = uiState.fontDownloadKey,
-                fontDownloadFailed = uiState.fontDownloadFailed,
-                onLineHeightChange = { viewModel.saveLineHeight(it) },
-                onLineHeightPreview = viewModel::previewLineHeight,
-                onLetterSpacingChange = { viewModel.saveLetterSpacing(it) },
-                onLetterSpacingPreview = viewModel::previewLetterSpacing,
-                onTextAlignmentChange = viewModel::saveTextAlignment,
-                onFontTypeChange = { viewModel.saveFontType(it) },
-                onImportFont = { uri, displayName ->
-                    scope.launch {
-                        val preset = viewModel.importFont(context, uri, displayName)
-                        if (preset != null) {
-                            viewModel.saveCustomFontPath(preset.path)
-                            viewModel.saveFontType(preset.fontTypeKey)
-                        }
-                    }
-                },
-                onDeleteCustomFont = { id -> viewModel.deleteCustomFont(id) },
-                onBackgroundSelect = viewModel::selectReaderBackground,
-                onAddBackgroundColor = viewModel::addCustomReaderBackgroundColor,
-                onAddBackgroundImage = viewModel::addCustomReaderBackgroundImage,
-                onDeleteBackground = viewModel::deleteCustomReaderBackground,
-                onThemeEditModeChange = viewModel::selectThemeEditMode,
-                onPreserveEpubBackgroundChange = viewModel::savePreserveEpubBackground,
-                onPageImageCropChange = viewModel::savePageImageCrop,
-                onMarginLeftChange = { viewModel.saveMarginLeft(it) },
-                onMarginRightChange = { viewModel.saveMarginRight(it) },
-                onMarginTopChange = { viewModel.saveMarginTop(it) },
-                onMarginBottomChange = { viewModel.saveMarginBottom(it) },
-                onMarginLeftPreview = viewModel::previewMarginLeft,
-                onMarginRightPreview = viewModel::previewMarginRight,
-                onMarginTopPreview = viewModel::previewMarginTop,
-                onMarginBottomPreview = viewModel::previewMarginBottom,
-                onCornerMarginsChange = viewModel::saveReaderCornerMargins,
-                onCornerMarginsPreview = viewModel::previewReaderCornerMargins,
-                currentParagraphSpacing = editorThemeSettings.paragraphSpacing,
-                currentFirstLineIndent = editorThemeSettings.firstLineIndent,
-                onParagraphSpacingChange = { viewModel.saveParagraphSpacing(it) },
-                onParagraphSpacingPreview = viewModel::previewParagraphSpacing,
-                onFirstLineIndentChange = { viewModel.saveFirstLineIndent(it) },
-                onFirstLineIndentPreview = viewModel::previewFirstLineIndent,
-                onLayoutPreviewActiveChange = { epubLayoutPreviewActive = it },
-                readerTopLeftContent = uiState.readerTopLeftContent,
-                readerTopRightContent = uiState.readerTopRightContent,
-                readerBottomLeftContent = uiState.readerBottomLeftContent,
-                readerBottomRightContent = uiState.readerBottomRightContent,
-                volumeKeyUpAction = uiState.volumeKeyUpAction,
-                volumeKeyDownAction = uiState.volumeKeyDownAction,
-                bookmarkRemarkPromptEnabled = uiState.bookmarkRemarkPromptEnabled,
-                bionicReadingEnabled = uiState.bionicReadingEnabled,
-                comicModeEnabled = uiState.comicModeEnabled,
-                screenSleepTimeoutSeconds = uiState.screenSleepTimeoutSeconds,
-                readerEdgeTapMode = uiState.readerEdgeTapMode,
-                onReaderCornerContentChange = viewModel::saveReaderCornerContent,
-                onVolumeKeyActionsChange = { up, down -> viewModel.saveVolumeKeyActions(up, down) },
-                onBookmarkRemarkPromptEnabledChange = viewModel::saveBookmarkRemarkPromptEnabled,
-                onBionicReadingEnabledChange = viewModel::saveBionicReadingEnabled,
-                onComicModeChange = viewModel::saveComicMode,
-                onScreenSleepTimeoutChange = { seconds ->
-                    viewModel.saveScreenSleepTimeoutSeconds(seconds)
-                    if (seconds != DataStoreManager.SCREEN_SLEEP_TIMEOUT_FOLLOW_SYSTEM &&
-                        !Settings.System.canWrite(context)
-                    ) {
-                        requestWriteSettingsPermission()
-                    }
-                },
-                onReaderEdgeTapModeChange = viewModel::saveReaderEdgeTapMode,
-                onTextColorChange = { viewModel.saveReaderTextColor(it) },
-                onResetSettings = {
-                    if (isBookLayout) viewModel.resetBookLayoutReaderSettings()
-                    else viewModel.resetAdvancedReaderSettings()
-                },
-                eInkModeEnabled = eInkMode,
-                onDismiss = {
-                    viewModel.selectThemeEditMode(nightDisplay)
-                    showAdvancedSheet = false
-                    requestCloseAdvanced = false
-                }
-            )
         }
 
         epubNavigationRequest?.takeIf {
@@ -5408,6 +5531,30 @@ private fun ReaderScreenContent(
             )
         }
     }
+    }
+
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalLiquidGlassContrastEnabled provides (uiState.readerButtonContrastEnabled && !eInkMode),
+        com.huangder.lumibooks.ui.components.LocalLiquidGlassBackdrop provides activeReaderGlassBackdrop
+    ) {
+    com.huangder.lumibooks.ui.components.LiquidGlassDialogHost(
+        modifier = Modifier.fillMaxSize(), backdrop = activeReaderGlassBackdrop
+    ) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(composeBgColor)
+            .semantics { testTagsAsResourceId = true }
+            .testTag(
+                if (firstContentReported) READER_CONTENT_READY_TAG else READER_CONTENT_LOADING_TAG
+            )
+            .onGloballyPositioned { coordinates ->
+                readerRootWindowPosition.value = coordinates.positionInWindow()
+                readerRootSize.value = coordinates.size
+            }
+    ) {
+        readerPage()
+        readerOverlays()
 
     // ── 笔记/高亮列表 ──
     NotesListSheet(
@@ -7960,7 +8107,8 @@ internal fun continuousTypicalChapterHeightChangedEnough(previousPx: Int, nextPx
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-internal fun ContinuousScrollReader(
+internal fun ContinuousScrollReaderContent(
+    onRestoreRequestComplete: (Long, Boolean) -> Unit = { _, _ -> },
     chapterCount: Int,
     currentChapter: Int,
     initialChapterFraction: Float,
@@ -8009,6 +8157,8 @@ internal fun ContinuousScrollReader(
     ttsSentenceJumpEnabled: Boolean,
     longPressSelectionRange: com.huangder.lumibooks.domain.model.LongPressSelectionRange =
         com.huangder.lumibooks.domain.model.LongPressSelectionRange.DEFAULT,
+    annotationStyle: com.huangder.lumibooks.ui.reader.engine.ReaderAnnotationStyle =
+        com.huangder.lumibooks.ui.reader.engine.ReaderAnnotationStyle.DEFAULT,
     chineseMode: String = "original",
     ttsCurrentSentence: TtsSentencePosition? = null,
     comicModeEnabled: Boolean = false,
@@ -8023,6 +8173,7 @@ internal fun ContinuousScrollReader(
     /** Optional last list item shown after the final chapter; receives whether it is mostly visible. */
     finishPage: (@Composable (visible: Boolean) -> Unit)? = null,
     ttsFollowEnabled: Boolean = true,
+    ttsManualResumeSentence: TtsSentencePosition? = null,
     ttsFollowUserPageTurns: Boolean = false,
     onManualScrollStarted: () -> Unit = {},
     listState: androidx.compose.foundation.lazy.LazyListState =
@@ -8199,10 +8350,12 @@ internal fun ContinuousScrollReader(
     // EpubParser owns mutable width and ZIP state. Decode requests can be queued in
     // parallel, but the parser call itself must stay serialized so an old width cannot
     // race a new setting and produce a mismatched chapter span.
-    val chapterDecodeMutex = remember { Mutex() }
+    val localDecodeMutex = remember { Mutex() }
+    val chapterDecodeMutex = LocalOrientationDecodeMutex.current ?: localDecodeMutex
     // ZIP reads are serialized by [chapterDecodeMutex]; cap the surrounding jobs so formatting
     // and cache publication cannot build an unbounded backlog during a fast fling.
-    val chapterDecodePermits = remember { Semaphore(2) }
+    val localDecodePermits = remember { Semaphore(2) }
+    val chapterDecodePermits = LocalOrientationDecodePermits.current ?: localDecodePermits
     // 同一章会被「恢复定位 / 预加载 / 条目自身」同时请求；没有去重时 EPUB 会被解析三遍，
     // 先到的那次还可能被 updateReaderContentWidth 清掉解析缓存而返回空章节。
     val inFlightChapterLoads = remember(chapterCount) {
@@ -8400,7 +8553,6 @@ internal fun ContinuousScrollReader(
     val latestTtsFollowEnabled by rememberUpdatedState(ttsFollowEnabled)
     val latestTtsFollowUserPageTurns by rememberUpdatedState(ttsFollowUserPageTurns)
     val latestTtsSentence by rememberUpdatedState(ttsCurrentSentence)
-    // With manual page-follow off, only an explicit return/start resumes visual following.
     LaunchedEffect(ttsFollowEnabled) {
         if (ttsFollowEnabled) manualScrollBlocksTts = false
     }
@@ -8416,10 +8568,8 @@ internal fun ContinuousScrollReader(
     }
     fun beginManualScroll() {
         awaitingManualTtsPosition = false
-        if (!manualScrollBlocksTts) {
-            manualScrollBlocksTts = true
-            latestManualScrollStarted()
-        }
+        manualScrollBlocksTts = true
+        latestManualScrollStarted()
         userScrollPending = true
         userScrollGeneration++
     }
@@ -8588,7 +8738,8 @@ internal fun ContinuousScrollReader(
         target: Int,
         fraction: Float,
         characterOffset: Int?,
-        startUserScrollGeneration: Int
+        startUserScrollGeneration: Int,
+        lineViewportTop: Int = 0
     ): Float? {
         // Decode before waiting for frames: slow chapters must not consume the restore while they
         // still show a placeholder, or lose their load when preceding chapters push them offscreen.
@@ -8615,7 +8766,7 @@ internal fun ContinuousScrollReader(
                     continuousImageCharacterTop(text, contentWidthPx, imageGapPx, offset)
                 }
         }
-        val scrollOffset = (textOffset?.toFloat() ?: (item.size * fraction))
+        val scrollOffset = (textOffset?.let { it.toFloat() - lineViewportTop } ?: (item.size * fraction))
             .coerceIn(0f, (item.size - 1).coerceAtLeast(0).toFloat())
         // A single absolute placement also works for a target several viewports into a chapter.
         listState.scrollToItem(target, scrollOffset.roundToInt())
@@ -8647,7 +8798,8 @@ internal fun ContinuousScrollReader(
                     target,
                     fraction,
                     if (request != null) request.characterOffset else restoreCharacterOffset,
-                    startUserScrollGeneration
+                    startUserScrollGeneration,
+                    request?.lineViewportTop ?: 0
                 )
             }
             reached?.let { value ->
@@ -8655,6 +8807,16 @@ internal fun ContinuousScrollReader(
             }
         } finally {
             isRestoringPosition = false
+            if (reached != null) firstVisibleItem()?.let { (index, offset, _) ->
+                val text = rawChapterTextCache[index] ?: return@let
+                val fullWidth = continuousChapterImages(text).isNotEmpty() &&
+                    (comicModeEnabled || continuousChapterIsCover(text))
+                latestOnViewportAnchor(captureContinuousViewportAnchor(index, offset, text,
+                    chapterTextViews[index]?.get()?.layout,
+                    if (fullWidth) viewportWidthPx else contentWidthPx, imageGapPx,
+                    if (comicModeEnabled) 0 else viewportHeightPx))
+            }
+            request?.let { onRestoreRequestComplete(it.requestId, reached != null) }
             // Also consume on cancellation (a width change or a newer request), otherwise
             // a stopped navigation can be replayed as an initial restore after finger-up.
             initialRestoreCompleted = true
@@ -8666,12 +8828,13 @@ internal fun ContinuousScrollReader(
 
     val ttsChapterTextComplete = ttsCurrentSentence?.let { chapterTextComplete[it.chapterIndex] }
     LaunchedEffect(ttsCurrentSentence, ttsFollowEnabled, manualScrollBlocksTts, chapterLayoutKey, viewportHeightPx,
-        initialRestoreCompleted, ttsChapterTextComplete, requestedPosition, isRestoringPosition) {
+        initialRestoreCompleted, ttsChapterTextComplete, requestedPosition, isRestoringPosition, ttsManualResumeSentence) {
         val scrollGeneration = userScrollGeneration
         fun canFollow() = latestTtsFollowEnabled && !manualScrollBlocksTts &&
             !userDragging && userScrollGeneration == scrollGeneration
         if (!canFollow() || requestedPosition != null || isRestoringPosition) return@LaunchedEffect
         val sentence = ttsCurrentSentence ?: return@LaunchedEffect
+        if (sentence == ttsManualResumeSentence) return@LaunchedEffect
         if (!initialRestoreCompleted || viewportHeightPx <= 0 ||
             sentence.chapterIndex !in 0 until chapterCount
         ) return@LaunchedEffect
@@ -9104,6 +9267,7 @@ internal fun ContinuousScrollReader(
                         textView.savedAnnotations = notes.filter { it.chapterIndex == chapterIndex }
                         textView.ttsJumpEnabled = ttsSentenceJumpEnabled
                         textView.longPressSelectionRange = longPressSelectionRange
+                        textView.annotationStyle = annotationStyle
                         textView.onSentenceDoubleTap = { characterOffset ->
                             onSentenceDoubleTap(chapterIndex, characterOffset)
                         }
@@ -10385,7 +10549,7 @@ private fun TocBookmarkItem(
                 if (bookmark.remark.isNotBlank()) {
                     Text(bookmark.remark, fontSize = AppType.Caption, color = LightTextSecondary)
                 }
-                AnnotationTagChips(bookmark.tags, modifier = Modifier.padding(top = 4.dp))
+                AnnotationTagChips(bookmark.tags, modifier = Modifier.padding(top = 4.dp), bleedEnd = 16.dp)
             }
         }
     }
@@ -12513,7 +12677,7 @@ private fun NoteInputSheetContent(
                             .padding(14.dp).focusRequester(focusRequester),
                         maxLines = 10
                     )
-                    AnnotationTagChips(tags, onEdit = { keyboard?.hide(); showTagSheet = true }, modifier = Modifier.padding(top = 8.dp))
+                    AnnotationTagChips(tags, onEdit = { keyboard?.hide(); showTagSheet = true }, modifier = Modifier.padding(top = 8.dp), bleedStart = AppSpace.lg)
                     if (footer != null) {
                         Spacer(Modifier.height(12.dp))
                         Text(footer, fontSize = AppType.Caption, color = AppColors.TextSecondary)
@@ -12872,7 +13036,7 @@ internal fun HighlightNoteItem(
                     )
                 }
                 if (item.isStale) Text(stringResource(R.string.markdown_original_changed), fontSize = AppType.Caption, color = AccentColor)
-                AnnotationTagChips(item.tags, modifier = Modifier.padding(top = 6.dp))
+                AnnotationTagChips(item.tags, modifier = Modifier.padding(top = 6.dp), bleedEnd = 16.dp)
                 Spacer(Modifier.height(4.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically) {

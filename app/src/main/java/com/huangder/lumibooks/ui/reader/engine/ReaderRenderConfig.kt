@@ -44,5 +44,7 @@ data class ReaderRenderConfig(
     val pageTransition: String,
     val pageTransitionDurationMs: Int,
     val edgeTapMode: ReaderEdgeTapMode,
-    val paginationContentIdentity: String = ""
+    val paginationContentIdentity: String = "",
+    /** 笔记高亮/划线几何；只影响绘制，不参与分页。 */
+    val annotationStyle: ReaderAnnotationStyle = ReaderAnnotationStyle.DEFAULT
 )

@@ -138,11 +138,13 @@ abstract class PageAnimationController(
 
     // ── 触摸处理 ──
 
+    internal open fun horizontalGestureX(x: Float): Float = x
+
     open fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
                 abortAnim()
-                startX = event.x
+                startX = horizontalGestureX(event.x)
                 startY = event.y
                 touchX = startX
                 touchY = startY
@@ -160,10 +162,10 @@ abstract class PageAnimationController(
                 // 🔥 延迟初始化：当 PageContentView 中途拦截滑动时，
                 // 动画控制器收到 MOVE 但没有前置 DOWN，在此初始化状态
                 if (!isDragging && !isLongPressed) {
-                    startX = event.x
+                    startX = horizontalGestureX(event.x)
                     startY = event.y
-                    lastX = event.x
-                    touchX = event.x
+                    lastX = startX
+                    touchX = startX
                     touchY = event.y
                     hasMoved = true
                     isDragging = true
@@ -173,13 +175,14 @@ abstract class PageAnimationController(
                 }
 
                 val width = readView.width.toFloat().coerceAtLeast(1f)
-                val boundedX = event.x.coerceIn(startX - width, startX + width)
-                val dx = boundedX - lastX
+                val gestureX = horizontalGestureX(event.x)
+                val boundedX = gestureX.coerceIn(startX - width, startX + width)
                 touchX = boundedX
                 touchY = event.y
                 lastX = boundedX
 
-                if (!hasMoved && Math.abs(event.x - startX) > longPressSlopPx) {
+                val cumulativeDx = gestureX - startX
+                if (!hasMoved && Math.abs(cumulativeDx) > longPressSlopPx) {
                     hasMoved = true
                 }
 
@@ -193,7 +196,6 @@ abstract class PageAnimationController(
                 }
 
                 if (hasMoved) {
-                    val cumulativeDx = event.x - startX
                     direction = directionForHorizontalDelta(cumulativeDx, 12f)
                     readView.invalidate()
                 }
@@ -213,7 +215,7 @@ abstract class PageAnimationController(
                 isDragging = false
 
                 val width = readView.width.toFloat().coerceAtLeast(1f)
-                touchX = event.x.coerceIn(startX - width, startX + width)
+                touchX = horizontalGestureX(event.x).coerceIn(startX - width, startX + width)
                 val dx = touchX - startX
                 val vy = Math.abs(event.y - startY)
                 val dt = (event.eventTime - downTime).coerceAtLeast(0L)

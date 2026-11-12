@@ -64,6 +64,8 @@ internal class PdfTextAnnotationController(val session: PdfTextSession) {
     var enabled by mutableStateOf(true)
     var notes by mutableStateOf<List<Note>>(emptyList())
     var range by mutableStateOf(LongPressSelectionRange.DEFAULT)
+    /** 笔记高亮/划线的用户几何参数（选区与定位闪烁不使用）。 */
+    var annotationStyle by mutableStateOf(com.huangder.lumibooks.ui.reader.engine.ReaderAnnotationStyle.DEFAULT)
     var editing by mutableStateOf(false)
     var showNotes by mutableStateOf(false)
     var editingNote by mutableStateOf<Note?>(null)
@@ -288,7 +290,8 @@ internal fun BoxScope.PdfPageTextLayer(
                     locator.quads.forEach { quad ->
                         drawPdfTextMark(quad, transform, if (eInk) Color.Black else color,
                             note.type == "underline", noteUnderlineMode(note), eInk, zoomScale = zoomScale,
-                            neighboringLines = currentModel?.lineQuads.orEmpty())
+                            neighboringLines = currentModel?.lineQuads.orEmpty(),
+                            annotationStyle = controller.annotationStyle)
                     }
                 }
                 selection?.model?.quads(selection.start, selection.end)?.forEach {
@@ -361,7 +364,9 @@ private fun PdfSelectionHandle(
 internal fun DrawScope.drawPdfTextMark(
     quad: PdfTextQuad, transform: PdfTextTransform, color: Color,
     underline: Boolean, style: Int, eInk: Boolean, zoomScale: Float = 1f,
-    neighboringLines: List<PdfTextQuad> = emptyList()
+    neighboringLines: List<PdfTextQuad> = emptyList(),
+    annotationStyle: com.huangder.lumibooks.ui.reader.engine.ReaderAnnotationStyle =
+        com.huangder.lumibooks.ui.reader.engine.ReaderAnnotationStyle.DEFAULT
 ) {
     val p = quad.points.map { transform.display(it).let { point -> Offset(point.x, point.y) } }
     val advance = p[1] - p[0]
@@ -371,7 +376,7 @@ internal fun DrawScope.drawPdfTextMark(
     val screenDensity = density / zoomScale.coerceAtLeast(1f)
     val unit = advance / length
     val normal = Offset(-unit.y, unit.x)
-    val padding = minOf(0.6f * screenDensity, height * 0.04f)
+    val padding = minOf(0.6f * screenDensity, height * 0.04f) + annotationStyle.highlightHeightDp * screenDensity
     var top = -padding
     var bottom = height + padding
     val gap = minOf(screenDensity, height * 0.1f)
@@ -402,16 +407,20 @@ internal fun DrawScope.drawPdfTextMark(
         }
         if (!underline) {
             if (bottom > top) {
-                val horizontalPadding = minOf(1.5f * screenDensity, height * 0.08f)
+                val horizontalPadding = (minOf(1.5f * screenDensity, height * 0.08f) +
+                    annotationStyle.highlightWidthDp * screenDensity).coerceAtLeast(0f)
                 val radius = minOf(2f * screenDensity, (bottom - top) * 0.12f, length * 0.15f)
-                native.drawRoundRect(-horizontalPadding, top, length + horizontalPadding,
-                    bottom, radius, radius, paint)
+                val offset = annotationStyle.highlightOffsetYDp * screenDensity
+                native.drawRoundRect(-horizontalPadding, top + offset, length + horizontalPadding,
+                    bottom + offset, radius, radius, paint)
             }
         } else {
             paint.style = android.graphics.Paint.Style.STROKE
-            paint.strokeWidth = screenDensity
+            paint.strokeWidth = annotationStyle.underlineThicknessDp * screenDensity
             paint.strokeCap = android.graphics.Paint.Cap.ROUND
-            drawReaderUnderline(native, paint, style, 0f, length, height + 2f * screenDensity, false, screenDensity)
+            val cross = height + 2f * screenDensity + annotationStyle.underlineOffsetYDp * screenDensity
+            drawReaderUnderline(native, paint, style, 0f, length, cross, false, screenDensity,
+                annotationStyle.underlinePatternScale)
         }
         native.restoreToCount(save)
     }

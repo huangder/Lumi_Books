@@ -282,8 +282,8 @@ class PageContentView(context: Context) : FrameLayout(context) {
     }
 
     /** 渐变动画结束 / abort 时恢复背景色；图片背景由下一次 setReaderBackground 完整恢复。 */
-    internal fun restoreBackgroundForFade(bgColor: Int) {
-        setBackgroundColor(bgColor)
+    internal fun restoreBackgroundForFade(@Suppress("UNUSED_PARAMETER") bgColor: Int) {
+        setBackgroundColor(currentBgColor)
         backgroundImageView.alpha = readerBackgroundImageOpacity
         textView.alpha = 1f
         justifiedView.alpha = 1f
@@ -786,6 +786,13 @@ class PageContentView(context: Context) : FrameLayout(context) {
         textView.invalidate()
         justifiedView.invalidate()
         verticalTextView.invalidate()
+    }
+
+    /** 笔记高亮/划线的用户几何参数：只重绘，不重排。 */
+    fun setAnnotationStyle(style: ReaderAnnotationStyle) {
+        justifiedView.annotationStyle = style
+        verticalTextView.annotationStyle = style
+        (textView as? RoundedHighlightTextView)?.annotationStyle = style
     }
 
     /**

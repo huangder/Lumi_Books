@@ -624,7 +624,7 @@ internal fun HighlightNoteItem(
                     onTextLayout = { if (expandable && !expanded && it.hasVisualOverflow) truncated = true }
                 )
             }
-            AnnotationTagChips(note.tags, modifier = Modifier.padding(top = 6.dp))
+            AnnotationTagChips(note.tags, modifier = Modifier.padding(top = 6.dp), bleedStart = 16.dp)
 
             Spacer(Modifier.height(AppSpace.sm))
 
@@ -709,7 +709,7 @@ internal fun BookmarkItem(
                         Text(bookmark.remark, fontSize = AppType.Caption,
                             color = AppColors.TextSecondary)
                     }
-                    AnnotationTagChips(bookmark.tags, modifier = Modifier.padding(top = 6.dp))
+                    AnnotationTagChips(bookmark.tags, modifier = Modifier.padding(top = 6.dp), bleedEnd = 16.dp)
                 }
             }
         }

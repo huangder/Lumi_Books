@@ -185,7 +185,10 @@ internal fun CoverFlowFolderNavigation(
     // fades at both edges rather than being cut by the row bounds.
     val fadeWidth = 20.dp
     Row(Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        LazyRow(Modifier.weight(1f)
+        // Bleed through the row's 8.dp padding so tabs scroll (and fade) at the screen edge;
+        // the end side stays put when the add button sits next to it.
+        val bleedEnd = if (showAddBook) 0.dp else 8.dp
+        LazyRow(Modifier.horizontalBleed(8.dp, bleedEnd).weight(1f)
             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
             .drawWithContent {
                 drawContent()
@@ -194,7 +197,7 @@ internal fun CoverFlowFolderNavigation(
                     0f to Color.Transparent, fade to Color.Black, 1f - fade to Color.Black, 1f to Color.Transparent
                 ), blendMode = BlendMode.DstIn)
             },
-            contentPadding = PaddingValues(horizontal = 12.dp),
+            contentPadding = PaddingValues(start = 12.dp + 8.dp, end = 12.dp + bleedEnd),
             horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally)) {
             items(folders, key = { it.id }) { folder ->
                 var bounds by remember { mutableStateOf(Rect.Zero) }

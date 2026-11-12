@@ -1427,6 +1427,7 @@
     <string name="tts_timer_label">タイマー</string>
     <string name="tts_listening_position">再生位置</string>
     <string name="tts_follow_page_turns">ページ移動に追従</string>
+    <string name="tts_listen_from_this_page">このページから聴く</string>
     <string name="default_avatar">デフォルトのアバター</string>
     <string name="book_title_original_hint">元の書名を表示</string>
     <string name="book_author_original_hint">元の著者名を表示</string>

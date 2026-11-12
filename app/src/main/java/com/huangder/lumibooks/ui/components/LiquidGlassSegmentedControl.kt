@@ -61,8 +61,8 @@ import com.kyant.backdrop.effects.vibrancy
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-private const val SegmentSpringDamping = 0.68f
-private const val SegmentSpringStiffness = 520f
+private const val SegmentSpringDamping = 0.62f
+private const val SegmentSpringStiffness = 480f
 private const val SegmentOvershootFraction = 0.08f
 private val SegmentMaximumOvershoot = 6.dp
 private val SegmentMinimumTouchHeight = 44.dp

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_annotation_geometry_title">ハイライトと下線</string>
+    <string name="label_highlight_width">ハイライトの横幅</string>
+    <string name="label_highlight_height">ハイライトの高さ</string>
+    <string name="label_highlight_offset_y">ハイライトの上下位置</string>
+    <string name="label_underline_thickness">下線の太さ</string>
+    <string name="label_underline_offset_y">下線の上下位置</string>
+</resources>

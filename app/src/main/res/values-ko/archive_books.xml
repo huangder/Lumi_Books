@@ -6,6 +6,7 @@
     <string name="archive_empty">보관된 도서가 없습니다</string>
     <string name="restore_book">복원</string>
     <string name="archive_book_success">도서를 보관했습니다</string>
+    <string name="archive_book_location_hint">설정 › 개인정보 › 보관된 도서에서 찾을 수 있습니다</string>
     <string name="archive_book_failed">도서를 보관하지 못했습니다. 다시 시도하세요.</string>
     <string name="archive_restore_success">도서를 복원했습니다</string>
     <string name="archive_restore_failed">도서를 복원하지 못했습니다. 다시 시도하세요.</string>

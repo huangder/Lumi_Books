@@ -47,10 +47,9 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asComposeRenderEffect
@@ -66,6 +65,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.withFrameNanos
@@ -388,7 +388,7 @@ internal class BookReaderTransitionState internal constructor(
         } else when (phase) {
             BookReaderTransitionPhase.Opening, BookReaderTransitionPhase.ReaderLoading -> 0f
             // Keep paper opaque beneath the shell; fading both layers exposes the shelf.
-            BookReaderTransitionPhase.Ready -> 1f
+            BookReaderTransitionPhase.Ready -> if (openingSnapshot == null) 1f else 0f
             BookReaderTransitionPhase.Closing -> if (readerExitAlphaAnim.value > 0f) 1f else 0f
             BookReaderTransitionPhase.Reader -> 1f
             BookReaderTransitionPhase.Library -> 0f
@@ -397,6 +397,8 @@ internal class BookReaderTransitionState internal constructor(
     val overlayAlpha: Float
         get() = if (phase == BookReaderTransitionPhase.Closing) {
             maxOf(shellAlphaAnim.value, 1f - readerExitAlphaAnim.value)
+        } else if (phase == BookReaderTransitionPhase.Ready && openingSnapshot != null) {
+            1f
         } else shellAlphaAnim.value
 
     var activeBookId by mutableStateOf<String?>(null)
@@ -666,7 +668,7 @@ internal class BookReaderTransitionState internal constructor(
         if (phaseState.value == BookReaderTransitionPhase.Library) return false
         val visibleReaderAlpha = when (phase) {
             BookReaderTransitionPhase.Reader -> 1f
-            BookReaderTransitionPhase.Ready -> if (openingSnapshot != null) 1f else 1f - shellAlphaAnim.value
+            BookReaderTransitionPhase.Ready -> if (openingSnapshot == null) 1f - shellAlphaAnim.value else 0f
             else -> 0f
         }
         val anchor = coverAnchors[anchorKey]
@@ -782,20 +784,13 @@ internal class BookReaderTransitionState internal constructor(
         setPhase(BookReaderTransitionPhase.Ready)
         revealJob = scope.launch {
             if (openingSnapshot != null) {
-                // The live page sits fully opaque below the identical stored page, so only the
-                // copy fades; nothing behind the reader can show through during the swap.
+                // Keep showing the stored page until the live page can replace it in one frame.
+                // Blending two renders makes text and page chrome flicker if their pixels differ.
                 readerRevealAnim.snapTo(1f)
-                shellAlphaAnim.animateTo(
-                    targetValue = 0f,
-                    animationSpec = VisualMotion.tween(
-                        durationMillis = BookReaderMotion.CONTENT_REVEAL_MS,
-                        easing = FastOutSlowInEasing
-                    )
-                )
-                if (phaseState.value == BookReaderTransitionPhase.Ready && windowMotionComplete) {
-                    setPhase(BookReaderTransitionPhase.Reader)
-                    openingSnapshot = null
-                }
+                shellAlphaAnim.snapTo(0f)
+                snapshotJob?.cancel()
+                setPhase(BookReaderTransitionPhase.Reader)
+                openingSnapshot = null
                 return@launch
             }
             if (presentation == BookReaderPresentation.CoverFlow) {
@@ -1182,14 +1177,19 @@ private fun OpeningPageLayer(
                 val window = readerWindowPixelBounds(BookReaderMotion.windowBounds(source, target,
                     transition.positionSnapshot.value, transition.sizeSnapshot.value, controlOffsetPx))
                 val fit = minOf(window.width / page.width, window.height / page.height)
-                translate(
-                    left = window.left + (window.width - page.width * fit) / 2f,
-                    top = window.top + (window.height - page.height * fit) / 2f
-                ) {
-                    scale(fit, fit, pivot = Offset.Zero) {
-                        drawImage(page, alpha = alpha)
-                    }
-                }
+                val width = (page.width * fit).roundToInt()
+                val height = (page.height * fit).roundToInt()
+                if (width <= 0 || height <= 0) return@drawBehind
+                drawImage(
+                    image = page,
+                    dstOffset = IntOffset(
+                        (window.center.x - width / 2f).roundToInt(),
+                        (window.center.y - height / 2f).roundToInt()
+                    ),
+                    dstSize = IntSize(width, height),
+                    alpha = alpha,
+                    filterQuality = FilterQuality.Medium
+                )
             }
     )
 }
@@ -1273,11 +1273,7 @@ internal fun BookHeroWindowOverlay(
                 .graphicsLayer {
                     shape = heroShape.copy(androidx.compose.foundation.shape.CornerSize(windowCornerRadius.dp))
                     clip = true
-                    // Over the live page the stored page fades alone: paper fading with it
-                    // would show through and lighten the text for the length of the fade.
-                    alpha = if (transition.openingSnapshot != null &&
-                        transition.phase == BookReaderTransitionPhase.Ready) 0f
-                    else transition.overlayAlpha.coerceIn(0f, 1f)
+                    alpha = transition.overlayAlpha.coerceIn(0f, 1f)
                 }
         ) {
             Box(

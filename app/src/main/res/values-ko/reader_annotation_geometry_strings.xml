@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_annotation_geometry_title">하이라이트 및 밑줄</string>
+    <string name="label_highlight_width">하이라이트 가로 확장</string>
+    <string name="label_highlight_height">하이라이트 높이</string>
+    <string name="label_highlight_offset_y">하이라이트 세로 위치</string>
+    <string name="label_underline_thickness">밑줄 두께</string>
+    <string name="label_underline_offset_y">밑줄 세로 위치</string>
+</resources>

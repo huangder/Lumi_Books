@@ -327,7 +327,8 @@ fun BookDetailsScreen(
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 FloatingDetailTag(
                     modifier = Modifier.navigationBarsPadding().padding(bottom = 12.dp),
-                    onDelete = { deleteOpen = true }, onEdit = { editing = true }, onMove = { moveOpen = true },
+                    onDelete = { if (!library.isBookDeleteInProgress) deleteOpen = true },
+                    onEdit = { editing = true }, onMove = { moveOpen = true },
                     onNotes = { context.startActivity(Intent(context, BookNotesActivity::class.java).putExtra(BookNotesActivity.EXTRA_BOOK_ID, book.id)) },
                     onRead = { onOpenReader(book.id) }
                 )
@@ -399,11 +400,17 @@ fun BookDetailsScreen(
     if (deleteOpen) CloudAwareBookDeleteDialog(
         bookCount = 1,
         hasRemoteBooks = book.remoteFileName != null,
+        hasLocalCopies = !book.isCloudOnly,
         onDismiss = { deleteOpen = false },
         onDelete = { mode: BookDeleteMode ->
-            homeViewModel.deleteBook(book, mode)
             deleteOpen = false
-            onBack()
+            homeViewModel.deleteBook(book, mode) { removed, message ->
+                if (message != null) {
+                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                    homeViewModel.clearError()
+                }
+                if (removed) onBack()
+            }
         }
     )
 }

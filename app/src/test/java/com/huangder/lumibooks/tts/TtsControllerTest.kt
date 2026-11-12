@@ -487,6 +487,59 @@ class TtsControllerTest {
         }
     }
 
+    @Test fun foregroundReattachesToTheLivePageWithoutSeekingAndFollowsTheNextTurn() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val engine = FakePlaybackEngine()
+        val controller = controller(engine)
+        val first = TtsPageLocation(0, 0)
+        val second = TtsPageLocation(0, 1)
+        val third = TtsPageLocation(0, 2)
+        val source = FakePageSource(
+            page(0, "First.", next = second),
+            page(1, "Second.", previous = first, next = third),
+            page(2, "Third.", previous = second)
+        )
+        try {
+            controller.start("book", source, 0, 0)
+            val session = controller.currentSessionId
+            controller.setReaderAttached("book", false)
+            runCurrent()
+            engine.complete(engine.lastUtteranceId)
+            runCurrent()
+            assertEquals(second, controller.currentPage.value?.location)
+            assertTrue(controller.pageTurnRequests.replayCache.isEmpty())
+            assertFalse(controller.followUserPageTurns.value)
+
+            controller.setReaderAttached("book", true, resumeSessionId = session - 1, resumeFromPage = first)
+            runCurrent()
+            assertFalse(source.viewProviderVisible)
+            assertTrue(controller.pageTurnRequests.replayCache.isEmpty())
+
+            val spokenBeforeReturn = engine.spokenTexts.toList()
+            controller.setReaderAttached("book", true, resumeSessionId = session, resumeFromPage = first)
+            runCurrent()
+            val catchUp = controller.pageTurnRequests.replayCache.single()
+            assertEquals(second, catchUp.location)
+            assertTrue(controller.isPageTurnRequestActive(catchUp))
+            controller.onPageVisible("book", 0, 0, controller.pageChangeOriginFor("book", 0, 0))
+            controller.acknowledgePageTurnRequest(catchUp)
+            runCurrent()
+            assertEquals(spokenBeforeReturn, engine.spokenTexts)
+
+            engine.complete(engine.lastUtteranceId)
+            runCurrent()
+            val nextTurn = controller.pageTurnRequests.replayCache.single()
+            assertEquals(third, nextTurn.location)
+            controller.acknowledgePageTurnRequest(nextTurn)
+            runCurrent()
+            assertEquals("Third.", engine.spokenTexts.last())
+        } finally {
+            controller.shutdown()
+            runCurrent()
+            Dispatchers.resetMain()
+        }
+    }
+
     @Test
     fun userPageTurnsMovePlaybackOnlyWhenFollowPageTurnsIsEnabled() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))

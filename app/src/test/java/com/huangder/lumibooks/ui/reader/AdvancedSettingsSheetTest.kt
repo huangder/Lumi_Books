@@ -1,6 +1,8 @@
 package com.huangder.lumibooks.ui.reader
 
 import android.app.Application
+import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
@@ -10,6 +12,7 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -33,7 +36,7 @@ import org.robolectric.annotation.GraphicsMode
 class AdvancedSettingsSheetTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun bookLayoutShowsSpacingAndCommitsChanges() = verifyBookSpacing()
+    @Test fun imageOnlyBookStillShowsTextPreviewAndCommitsSpacingChanges() = verifyBookSpacing(withImage = true)
 
     @Test
     @Config(qualifiers = "en-rUS-w891dp-h411dp-xxhdpi")
@@ -133,13 +136,18 @@ class AdvancedSettingsSheetTest {
         assertEquals(1, compose.onAllNodes(lineSliderMatcher).fetchSemanticsNodes().size)
     }
 
-    private fun verifyBookSpacing() {
+    private fun verifyBookSpacing(withImage: Boolean = false) {
         val lineHeight = mutableFloatStateOf(1.5f)
         val letterSpacing = mutableFloatStateOf(0f)
         val context = RuntimeEnvironment.getApplication()
+        val previewImage = if (withImage) {
+            BitmapDrawable(context.resources, Bitmap.createBitmap(24, 24, Bitmap.Config.ARGB_8888))
+        } else null
         compose.setContent {
             AdvancedSettingsSheet(
-                visible = true, previewText = "A preview paragraph with enough words to fill several lines.",
+                visible = true,
+                previewText = if (withImage) "" else "A preview paragraph with enough words to fill several lines.",
+                previewImage = previewImage, imageAdjustmentsEnabled = withImage,
                 currentLineHeight = lineHeight.floatValue, currentLetterSpacing = letterSpacing.floatValue,
                 currentFontType = "system", currentBackgroundSelection = "day", customBackgrounds = emptyList(),
                 currentMarginLeft = 38f, currentMarginRight = 38f,
@@ -182,5 +190,15 @@ class AdvancedSettingsSheetTest {
         compose.onNode(letterSlider).performScrollTo()
             .performSemanticsAction(SemanticsActions.SetProgress) { it(-2f) }
         compose.runOnIdle { assertEquals(-2f, letterSpacing.floatValue, 0.01f) }
+        if (withImage) {
+            val textPreview = compose.onNodeWithText(context.getString(R.string.preview_text).take(18), substring = true)
+            val imagePreview = compose.onNodeWithTag("reader-image-adjustment-preview")
+            textPreview.assertIsDisplayed()
+            imagePreview.assertDoesNotExist()
+            compose.onNodeWithText(context.getString(R.string.reader_image_adjustment))
+                .performScrollTo().performClick()
+            imagePreview.performScrollTo().assertIsDisplayed()
+            textPreview.assertIsDisplayed()
+        }
     }
 }

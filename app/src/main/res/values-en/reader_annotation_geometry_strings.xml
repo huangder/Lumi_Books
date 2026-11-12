@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_annotation_geometry_title">Highlight &amp; underline</string>
+    <string name="label_highlight_width">Highlight width</string>
+    <string name="label_highlight_height">Highlight height</string>
+    <string name="label_highlight_offset_y">Highlight vertical offset</string>
+    <string name="label_underline_thickness">Underline thickness</string>
+    <string name="label_underline_offset_y">Underline vertical offset</string>
+</resources>

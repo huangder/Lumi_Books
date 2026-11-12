@@ -30,6 +30,7 @@ import androidx.compose.ui.input.pointer.positionChange
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.tanh
 
@@ -37,7 +38,15 @@ import kotlin.math.tanh
 internal class LiquidGlassButtonInteractionState(
     private val animationScope: CoroutineScope
 ) {
-    private val pressProgressAnimation = Animatable(0f, 0.001f)
+    // Thresholds are chosen so a spring stops once its motion is below a fraction of a pixel,
+    // instead of re-rendering the glass for an invisible tail.
+    private val pressProgressAnimation = Animatable(0f, 0.004f)
+    // Volume-preserving jelly: positive widens and flattens the glass, negative narrows and
+    // lengthens it. Press and release kick it, and a soft spring lets it ring out, so the
+    // surface keeps quivering briefly after the finger has left.
+    private val wobbleAnimation = Animatable(0f, 0.0015f)
+    private var wobbleJob: Job? = null
+    private var wobbleVertical = false
     private val positionAnimation = Animatable(
         Offset.Zero,
         Offset.VectorConverter,
@@ -54,7 +63,12 @@ internal class LiquidGlassButtonInteractionState(
     private var pressed = false
     private var pressVelocity = 0f
 
-    val pressProgress: Float get() = pressProgressAnimation.value
+    /** Clamped press amount for alpha, highlight and optics consumers. */
+    val pressProgress: Float get() = pressProgressAnimation.value.coerceIn(0f, 1f)
+    /** Unclamped spring value: swells above 1 on press and dips below 0 on release. */
+    val scaleProgress: Float get() = pressProgressAnimation.value
+    val wobble: Float get() = wobbleAnimation.value
+    val wobbleIsVertical: Boolean get() = wobbleVertical
     val position: Offset get() = fingerPosition
     val offset: Offset get() = positionAnimation.value - startPosition
 
@@ -71,11 +85,13 @@ internal class LiquidGlassButtonInteractionState(
         positionJob?.cancel()
         val initialVelocity = pressVelocity.coerceIn(-12f, 12f)
         pressJob = animationScope.launch {
-            pressProgressAnimation.animateTo(1f, buttonInteractionSpring(), initialVelocity) {
+            pressProgressAnimation.animateTo(1f, buttonPressSpring(), initialVelocity) {
                 pressVelocity = velocity
             }
             pressVelocity = 0f
         }
+        // Touching liquid spreads it sideways for a moment before it lifts.
+        kickWobble(LiquidGlassPressWobbleKick, vertical = false)
     }
 
     fun dragTo(position: Offset, timeMillis: Long = 0L) {
@@ -96,14 +112,30 @@ internal class LiquidGlassButtonInteractionState(
         pressJob?.cancel()
         positionJob?.cancel()
         val initialPressVelocity = pressVelocity.coerceIn(-12f, 12f)
+        // Read the pull before the return animation starts moving it.
+        val pull = offset
         pressJob = animationScope.launch {
-            pressProgressAnimation.animateTo(0f, buttonInteractionSpring(), initialPressVelocity) {
+            pressProgressAnimation.animateTo(0f, buttonReleaseSpring(), initialPressVelocity) {
                 pressVelocity = velocity
             }
             pressVelocity = 0f
         }
         positionJob = animationScope.launch {
             positionAnimation.animateTo(startPosition, buttonPositionSpring(), initialVelocity)
+        }
+        // The droplet snaps back along the axis it was pulled, then rings out.
+        val vertical = abs(pull.y) > abs(pull.x)
+        val pullBoost = if (cancelled) 0f else (pull.getDistance() / 24f).coerceAtMost(1f)
+        kickWobble(-LiquidGlassReleaseWobbleKick * (1f + pullBoost), vertical)
+    }
+
+    private fun kickWobble(velocity: Float, vertical: Boolean) {
+        // Keep the current axis while the surface is still visibly ringing.
+        if (abs(wobbleAnimation.value) < 0.004f) wobbleVertical = vertical
+        val combined = (wobbleAnimation.velocity + velocity).coerceIn(-3f, 3f)
+        wobbleJob?.cancel()
+        wobbleJob = animationScope.launch {
+            wobbleAnimation.animateTo(0f, buttonWobbleSpring(), combined)
         }
     }
 
@@ -112,23 +144,45 @@ internal class LiquidGlassButtonInteractionState(
         pressJob?.cancel()
         positionJob?.cancel()
         pressVelocity = 0f
+        wobbleJob?.cancel()
+        wobbleJob = animationScope.launch { wobbleAnimation.snapTo(0f) }
         pressJob = animationScope.launch { pressProgressAnimation.snapTo(0f) }
         positionJob = animationScope.launch { positionAnimation.snapTo(startPosition) }
     }
 
 }
 
-private fun buttonInteractionSpring() = spring(
-    dampingRatio = 0.66f,
-    stiffness = 520f,
-    visibilityThreshold = 0.001f
+// Lift: quick, with a barely perceptible swell past full size.
+private fun buttonPressSpring() = spring(
+    dampingRatio = 0.64f,
+    stiffness = 600f,
+    visibilityThreshold = 0.004f
 )
 
+// Return: softly under-damped, so the glass dips just below rest size once, then settles.
+private fun buttonReleaseSpring() = spring(
+    dampingRatio = 0.55f,
+    stiffness = 380f,
+    visibilityThreshold = 0.004f
+)
+
+// Elastic snap-back after a drag, slightly overshooting the origin once.
 private fun buttonPositionSpring() = spring(
-    dampingRatio = 0.66f,
-    stiffness = 520f,
+    dampingRatio = 0.58f,
+    stiffness = 420f,
     visibilityThreshold = Offset.VisibilityThreshold
 )
+
+// Restrained jelly: one clear quiver and a faint echo, felt more than seen.
+private fun buttonWobbleSpring() = spring(
+    dampingRatio = 0.38f,
+    stiffness = 340f,
+    visibilityThreshold = 0.0015f
+)
+
+internal const val LiquidGlassPressWobbleKick = 0.45f
+internal const val LiquidGlassReleaseWobbleKick = 0.75f
+internal const val LiquidGlassMaxWobble = 0.035f
 
 internal fun Modifier.liquidGlassButtonGesture(
     state: LiquidGlassButtonInteractionState,
@@ -224,13 +278,16 @@ internal fun liquidGlassButtonLayerTransform(
     dragOffset: Offset,
     expansionPx: Float,
     motionEnabled: Boolean,
-    maxTranslationPx: Float = expansionPx * 1.5f
+    maxTranslationPx: Float = expansionPx * 1.5f,
+    wobble: Float = 0f,
+    wobbleVertical: Boolean = false
 ): LiquidGlassButtonLayerTransform {
     if (!motionEnabled || width <= 0f || height <= 0f) {
         return LiquidGlassButtonLayerTransform(0f, 0f, 1f, 1f)
     }
 
-    val progress = pressProgress.coerceIn(0f, 1.12f)
+    // Let the spring overshoot through: a swell past 1 on press, a dip below 0 on release.
+    val progress = pressProgress.coerceIn(-0.35f, 1.2f)
     val shortSide = min(width, height)
     val distance = dragOffset.getDistance()
     val direction = if (distance > 0f) dragOffset / distance else Offset.Zero
@@ -240,11 +297,15 @@ internal fun liquidGlassButtonLayerTransform(
     val xx = direction.x * direction.x
     val yy = direction.y * direction.y
     val baseScale = 1f + 0.16f * progress
+    // Jelly deformation roughly preserves area: one axis grows while the other shrinks.
+    val jelly = wobble.coerceIn(-LiquidGlassMaxWobble, LiquidGlassMaxWobble)
+    val jellyX = if (wobbleVertical) -jelly * 0.8f else jelly
+    val jellyY = if (wobbleVertical) jelly else -jelly * 0.8f
     return LiquidGlassButtonLayerTransform(
         translationX = direction.x * translation,
         translationY = direction.y * translation,
-        scaleX = baseScale + amount * (0.06f * xx - 0.03f * yy),
-        scaleY = baseScale + amount * (0.06f * yy - 0.03f * xx)
+        scaleX = baseScale + amount * (0.06f * xx - 0.03f * yy) + jellyX,
+        scaleY = baseScale + amount * (0.06f * yy - 0.03f * xx) + jellyY
     )
 }
 

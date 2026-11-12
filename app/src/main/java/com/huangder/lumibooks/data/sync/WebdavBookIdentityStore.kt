@@ -20,4 +20,14 @@ class WebdavBookIdentityStore @Inject constructor(private val dao: SyncStateDao)
     suspend fun save(libraryKey: String, ids: Map<String, String>) {
         dao.putState(SyncStateEntity("webdav_book_ids:$libraryKey", JSONObject(ids).toString()))
     }
+
+    suspend fun readPendingDeletes(libraryKey: String): Map<String, String> {
+        val raw = dao.getValue("webdav_pending_deletes:$libraryKey") ?: return emptyMap()
+        val json = JSONObject(raw)
+        return json.keys().asSequence().associateWith { json.getString(it) }
+    }
+
+    suspend fun savePendingDeletes(libraryKey: String, files: Map<String, String>) {
+        dao.putState(SyncStateEntity("webdav_pending_deletes:$libraryKey", JSONObject(files).toString()))
+    }
 }

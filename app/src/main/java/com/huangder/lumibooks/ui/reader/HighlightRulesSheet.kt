@@ -18,7 +18,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -105,6 +104,7 @@ import com.huangder.lumibooks.ui.components.animateBottomSheetIn
 import com.huangder.lumibooks.ui.components.animateBottomSheetOut
 import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
 import com.huangder.lumibooks.ui.components.adaptiveSheetFrame
+import com.huangder.lumibooks.ui.components.horizontalBleed
 import com.kyant.backdrop.Backdrop
 import com.huangder.lumibooks.ui.icons.AppIcons
 import com.huangder.lumibooks.ui.theme.AppColors
@@ -951,14 +951,17 @@ private fun HighlightRuleEditorSheet(
                         0xFF202124
                     ).map { it.toInt() }
                     val customColorSelected = parsedColor != null && parsedColor !in swatches
-                    BoxWithConstraints(
+                    Box(
                         modifier = Modifier.fillMaxWidth(),
                         contentAlignment = Alignment.CenterStart
                     ) {
+                        // Scroll through the sheet's 24.dp content padding to the sheet edge.
                         Row(
                             modifier = Modifier
-                                .width(maxWidth + 24.dp)
-                                .horizontalScroll(rememberScrollState()),
+                                .horizontalBleed(24.dp)
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 24.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -1039,14 +1042,17 @@ private fun HighlightRuleEditorSheet(
                         0xFFFFEB3B, 0xFFE53935, 0xFF1976D2, 0xFF00897B, 0xFF7E57C2, 0xFFEF6C00
                     ).map { it.toInt() }
                     val customHighlightColorSelected = parsedHighlightColor != null && parsedHighlightColor !in highlightSwatches
-                    BoxWithConstraints(
+                    Box(
                         modifier = Modifier.fillMaxWidth(),
                         contentAlignment = Alignment.CenterStart
                     ) {
+                        // Scroll through the sheet's 24.dp content padding to the sheet edge.
                         Row(
                             modifier = Modifier
-                                .width(maxWidth + 24.dp)
-                                .horizontalScroll(rememberScrollState()),
+                                .horizontalBleed(24.dp)
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 24.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {

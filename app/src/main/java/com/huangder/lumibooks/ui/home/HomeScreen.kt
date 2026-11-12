@@ -784,6 +784,7 @@ private fun ContinueReadingCard(
         CloudAwareBookDeleteDialog(
             bookCount = 1,
             hasRemoteBooks = book.remoteFileName != null,
+            hasLocalCopies = !book.isCloudOnly,
             onDismiss = { showDeleteConfirm = false },
             onDelete = { mode ->
                 showDeleteConfirm = false

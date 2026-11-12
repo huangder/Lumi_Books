@@ -107,6 +107,7 @@ import com.huangder.lumibooks.util.epub.BookRenderSource
 import com.huangder.lumibooks.util.epub.EpubLocator
 import com.huangder.lumibooks.util.epub.BookSearchSource
 import com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatter
+import com.huangder.lumibooks.ui.reader.engine.toAnnotationStyle
 import com.huangder.lumibooks.ui.reader.engine.ReaderRuleTypefaceSpan
 import com.huangder.lumibooks.ui.reader.engine.applyReaderPunctuationCompression
 import com.huangder.lumibooks.ui.reader.engine.WaveUnderlineSpan
@@ -122,6 +123,7 @@ import com.huangder.lumibooks.tts.TtsStartRequest
 import com.huangder.lumibooks.tts.TtsPageSource
 import com.huangder.lumibooks.tts.TtsPageContent
 import com.huangder.lumibooks.tts.TtsPageTurnRequest
+import com.huangder.lumibooks.tts.TtsPageLocation
 import com.huangder.lumibooks.tts.TtsPlaybackState
 import com.huangder.lumibooks.tts.TtsProsodyMode
 import com.huangder.lumibooks.tts.ExternalTtsException
@@ -422,6 +424,9 @@ data class ReaderUiState(
     val readerBottomRightContent: ReaderCornerContent = defaultReaderCornerContent(ReaderPageCorner.BOTTOM_RIGHT),
     /** 四角信息区（页眉/页脚）边距；空字段表示跟随正文 / 沿用旧版默认位置。 */
     val readerCornerMargins: ReaderCornerMargins = ReaderCornerMargins(),
+    /** 当前套装的笔记高亮/划线几何参数。 */
+    val annotationStyle: com.huangder.lumibooks.ui.reader.engine.ReaderAnnotationStyle =
+        com.huangder.lumibooks.ui.reader.engine.ReaderAnnotationStyle.DEFAULT,
     val contentRevision: Long = 0L,
     val selectionMenuItems: SelectionMenuSettings = SelectionMenuSettings(),
     val longPressSelectionRange: LongPressSelectionRange = LongPressSelectionRange.DEFAULT
@@ -694,6 +699,9 @@ class ReaderViewModel @Inject constructor(
     val listeningResumePrompt = listeningReaderSession.prompt
     val listeningResumeJumpRequest = listeningReaderSession.jumpRequest
     val ttsReaderFollowEnabled = listeningReaderSession.followEnabled
+    internal val manualListeningBrowse = listeningReaderSession.manualBrowse
+    private val _ttsManualResumeSentence = MutableStateFlow<TtsSentencePosition?>(null)
+    internal val ttsManualResumeSentence = _ttsManualResumeSentence.asStateFlow()
     private val ttsStartRequest = TtsStartRequest(viewModelScope, dataStoreManager, bookId)
     val ttsStartPrompt = ttsStartRequest.prompt
 
@@ -715,8 +723,9 @@ class ReaderViewModel @Inject constructor(
 
     fun suspendListeningReader() {
         dismissTtsStart()
-        listeningReaderSession.suspendForBackground(liveListeningSessionId())
-        ttsController.setReaderAttached(bookId, false)
+        if (listeningReaderSession.suspendForBackground(liveListeningSessionId())) {
+            ttsController.setReaderAttached(bookId, false)
+        }
     }
 
     private fun liveListeningSessionId(): Long? = ttsController.currentSessionId.takeIf {
@@ -737,7 +746,13 @@ class ReaderViewModel @Inject constructor(
         val liveSession = liveListeningSessionId()
         when (listeningReaderSession.returnFromBackground(liveSession, ttsController.followUserPageTurns.value)) {
             true -> {
-                if (listeningReaderSession.followEnabled.value) ttsController.setReaderAttached(bookId, true)
+                if (liveSession != null && listeningReaderSession.followEnabled.value) {
+                    _ttsManualResumeSentence.value = null
+                    ttsController.setReaderAttached(
+                        bookId, true, resumeSessionId = liveSession,
+                        resumeFromPage = TtsPageLocation(readingChapter, readingPage)
+                    )
+                }
                 return
             }
             false -> return
@@ -828,6 +843,36 @@ class ReaderViewModel @Inject constructor(
         ttsController.setReaderAttached(bookId, false)
     }
 
+    internal fun onListeningReaderBrowseStarted(recordUse: Boolean = true) {
+        if (recordUse) onReadingInteraction()
+        if (followManualReaderNavigation()) return
+        listeningReaderSession.beginManualBrowse(liveListeningSessionId())
+        ttsController.setReaderAttached(bookId, false)
+    }
+
+    internal fun onListeningReaderBrowseSettled(canPrompt: Boolean = true) {
+        listeningReaderSession.settleManualBrowse(liveListeningSessionId(), canPrompt)
+    }
+
+    internal fun dismissManualListeningBrowsePrompt() = listeningReaderSession.dismissManualBrowsePrompt()
+
+    internal fun updateManualListeningBrowse(
+        generation: Long, visible: Boolean?, allowPrompt: Boolean, promptWhileBrowsing: Boolean = false
+    ) {
+        val browse = manualListeningBrowse.value ?: return
+        if (browse.generation != generation) return
+        if (browse.sessionId != liveListeningSessionId()) {
+            listeningReaderSession.clearManualBrowse()
+            return
+        }
+        if (listeningReaderSession.updateManualBrowseVisibility(
+                visible, allowPrompt, promptWhileBrowsing, viewModelScope
+            )) {
+            _ttsManualResumeSentence.value = _ttsSentencePosition.value
+            ttsController.setReaderAttached(bookId, true)
+        }
+    }
+
     /** A deliberate jump ends the opening hint and applies the capsule's page-follow policy. */
     fun onListeningReaderManualNavigation() {
         onReadingInteraction()
@@ -842,6 +887,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun enableListeningReaderFollow() {
+        _ttsManualResumeSentence.value = null
         listeningReaderSession.follow()
         ttsController.setReaderAttached(bookId, true)
     }
@@ -958,6 +1004,11 @@ class ReaderViewModel @Inject constructor(
     /** Restores an external reader's persisted anchor without saving this session's stale page. */
     fun reloadStoredReadingPosition(requestToken: Long) {
         if (requestToken == 0L || requestToken == lastExternalPositionReloadToken) return
+        val operationId = "widget-position-reload-$requestToken"
+        fun traceReload(event: String, attributes: Map<String, Any?> = emptyMap(), error: Throwable? = null) =
+            com.huangder.lumibooks.widget.WidgetDiagnostics.log(event, attributes,
+                bookId = bookId, throwable = error, operationId = operationId)
+        traceReload("position_reload_requested", mapOf("readerLoaded" to (_uiState.value.book != null)))
         lastExternalPositionReloadToken = requestToken
         // A freshly created reader already loads the latest persisted position.
         if (_uiState.value.book == null) return
@@ -968,17 +1019,24 @@ class ReaderViewModel @Inject constructor(
         externalPositionReloadJob?.cancel()
         externalPositionReloadJob = viewModelScope.launch {
             try {
+                traceReload("position_reload_started")
                 val latest = progressWriteMutex.withLock {
                     bookRepository.getBookById(bookId)
-                } ?: return@launch
+                } ?: run {
+                    traceReload("position_reload_missing_book")
+                    return@launch
+                }
                 val preferences = dataStoreManager.readerPreferences(bookId).first()
                 loadBook(preferences, latest, isCacheRecovery = true)
                 pageLayoutEngine.invalidateAll()
                 preloadCache.clear()
                 _uiState.value = _uiState.value.copy(contentRevision = _uiState.value.contentRevision + 1)
+                traceReload("position_reload_completed", mapOf("hasReaderError" to (_uiState.value.error != null)))
             } catch (error: CancellationException) {
+                traceReload("position_reload_cancelled")
                 throw error
             } catch (error: Exception) {
+                traceReload("position_reload_failed", error = error)
                 _uiState.value = _uiState.value.copy(isLoading = false, error = error.message)
             } finally {
                 if (requestToken == lastExternalPositionReloadToken) externalPositionReloading = false
@@ -1136,18 +1194,14 @@ class ReaderViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            // 收集 TTS 当前朗读句子的字符偏移，用于 UI 淡高亮
-            combine(ttsController.currentClause, ttsController.listeningFrame, ttsController.fullscreenVisible) {
-                segment, frame, fullscreen -> Triple(segment, frame.page, fullscreen)
-            }.collectLatest { (segment, page, fullscreen) ->
-                if (segment != null && page != null && !fullscreen) {
-                    _ttsSentencePosition.value = TtsSentencePosition(
-                            chapterIndex = page.location.chapterIndex,
-                            startOffset = segment.startCharacterOffset,
-                            endOffset = segment.endCharacterOffset
-                        )
-                } else {
-                    _ttsSentencePosition.value = null
+            // 正文跟随需要覆盖完整的语音句子；currentClause 只用于悬浮字幕的短小句，
+            // 长句换行时如果复用它，高亮会在第一行结束。字幕仍然继续使用 clause。
+            combine(ttsController.listeningFrame, ttsController.fullscreenVisible) { frame, fullscreen ->
+                frame.readerHighlightPosition(fullscreen)
+            }.collectLatest { position ->
+                _ttsSentencePosition.value = position
+                if (position != null && position != _ttsManualResumeSentence.value) {
+                    _ttsManualResumeSentence.value = null
                 }
             }
         }
@@ -1963,8 +2017,9 @@ class ReaderViewModel @Inject constructor(
         if (!ReaderThemeSuites.supportsLayout(suite, layout)) return
         if (state.activeThemeSuiteId() == suiteId) return
 
-        parser?.paragraphSpacingDp = suite.settings.paragraphSpacing
-        parser?.firstLineIndentChars = suite.settings.firstLineIndent
+        val selectedSettings = suite.settingsFor(layout, state.themeEditingDark)
+        parser?.paragraphSpacingDp = selectedSettings.paragraphSpacing
+        parser?.firstLineIndentChars = selectedSettings.firstLineIndent
         parser?.clearHtmlCache()
         _uiState.value = state.withReaderThemeSettings(
             suite.settingsFor(layout, state.themeEditingDark)
@@ -2032,11 +2087,12 @@ class ReaderViewModel @Inject constructor(
             }
         }
         val suite = state.readerThemeSuites.firstOrNull { it.id == nextActiveId } ?: return
-        parser?.paragraphSpacingDp = suite.settings.paragraphSpacing
-        parser?.firstLineIndentChars = suite.settings.firstLineIndent
+        val selectedSettings = suite.settingsFor(layout, state.themeEditingDark)
+        parser?.paragraphSpacingDp = selectedSettings.paragraphSpacing
+        parser?.firstLineIndentChars = selectedSettings.firstLineIndent
         parser?.clearHtmlCache()
         _uiState.value = state
-            .withReaderThemeSettings(suite.settingsFor(layout))
+            .withReaderThemeSettings(suite.settingsFor(layout, state.themeEditingDark))
             .copy(
                 activeReaderThemeSuiteId = nextActiveId,
                 activeReaderLayoutThemeSuiteId =
@@ -2087,11 +2143,12 @@ class ReaderViewModel @Inject constructor(
         val suite = ReaderThemeSuites.newCustom(UUID.randomUUID().toString(), name)
         val updated = state.readerThemeSuites + suite
         val layout = state.readerLayoutTarget()
-        parser?.paragraphSpacingDp = suite.settings.paragraphSpacing
-        parser?.firstLineIndentChars = suite.settings.firstLineIndent
+        val selectedSettings = suite.settingsFor(layout, state.themeEditingDark)
+        parser?.paragraphSpacingDp = selectedSettings.paragraphSpacing
+        parser?.firstLineIndentChars = selectedSettings.firstLineIndent
         parser?.clearHtmlCache()
         _uiState.value = state.withReaderThemeSettings(
-            suite.settingsFor(layout)
+            suite.settingsFor(layout, state.themeEditingDark)
         ).copy(
             readerThemeSuites = updated,
             activeReaderThemeSuiteId = suite.id,
@@ -2197,10 +2254,11 @@ class ReaderViewModel @Inject constructor(
         )
         if (wasEffectiveRemoved) {
             remaining.firstOrNull { it.id == nextEffectiveId }?.let { replacement ->
-                parser?.paragraphSpacingDp = replacement.settings.paragraphSpacing
-                parser?.firstLineIndentChars = replacement.settings.firstLineIndent
+                val replacementSettings = replacement.settingsFor(layout, state.themeEditingDark)
+                parser?.paragraphSpacingDp = replacementSettings.paragraphSpacing
+                parser?.firstLineIndentChars = replacementSettings.firstLineIndent
                 parser?.clearHtmlCache()
-                next = next.withReaderThemeSettings(replacement.settingsFor(layout))
+                next = next.withReaderThemeSettings(replacement.settingsFor(layout, state.themeEditingDark))
             }
             refreshReaderNotes(_notes.value)
         }
@@ -2273,6 +2331,7 @@ class ReaderViewModel @Inject constructor(
             marginTopDp = settings.marginTop,
             marginBottomDp = settings.marginBottom,
             readerCornerMargins = settings.cornerMargins,
+            annotationStyle = settings.toAnnotationStyle(),
             paragraphSpacing = settings.paragraphSpacing,
             firstLineIndent = settings.firstLineIndent,
             readerTheme = settings.backgroundSelection
@@ -2293,11 +2352,7 @@ class ReaderViewModel @Inject constructor(
     ): ReaderUiState = copy(
         readerThemeSuites = readerThemeSuites.map { suite ->
             if (suite.id == activeThemeSuiteIdFor(layout)) {
-                if (layout == ReaderLayoutTarget.READER_LAYOUT) {
-                    suite.withModeSettings(themeEditingDark, suite.settingsFor(layout, themeEditingDark).transform())
-                } else {
-                    suite.withSettings(layout, suite.settingsFor(layout).transform())
-                }
+                suite.withModeSettings(layout, themeEditingDark, suite.settingsFor(layout, themeEditingDark).transform())
             } else {
                 suite
             }
@@ -2308,7 +2363,7 @@ class ReaderViewModel @Inject constructor(
         layout: ReaderLayoutTarget = readerLayoutTarget()
     ): ReaderThemeSettings =
         readerThemeSuites.firstOrNull { it.id == activeThemeSuiteIdFor(layout) }
-            ?.let { suite -> if (layout == ReaderLayoutTarget.READER_LAYOUT) suite.settingsFor(layout, themeEditingDark) else suite.settingsFor(layout) }
+            ?.settingsFor(layout, themeEditingDark)
             ?: ReaderThemeSettings(
                 backgroundSelection = readerBackgroundSelection,
                 backgroundColorSelection = readerBackgroundColorSelection,
@@ -2327,7 +2382,12 @@ class ReaderViewModel @Inject constructor(
                 marginRight = marginRightDp,
                 marginTop = marginTopDp,
                 marginBottom = marginBottomDp,
-                cornerMargins = readerCornerMargins
+                cornerMargins = readerCornerMargins,
+                highlightWidthDp = annotationStyle.highlightWidthDp,
+                highlightHeightDp = annotationStyle.highlightHeightDp,
+                highlightOffsetYDp = annotationStyle.highlightOffsetYDp,
+                underlineThicknessDp = annotationStyle.underlineThicknessDp,
+                underlineOffsetYDp = annotationStyle.underlineOffsetYDp
             )
 
     private fun effectiveThemeSettingsForBook(
@@ -2359,7 +2419,7 @@ class ReaderViewModel @Inject constructor(
         layout: ReaderLayoutTarget = _uiState.value.readerLayoutTarget()
     ) {
         val suiteId = _uiState.value.activeThemeSuiteIdFor(layout)
-        val modeDark = _uiState.value.themeEditingDark.takeIf { layout == ReaderLayoutTarget.READER_LAYOUT }
+        val modeDark = _uiState.value.themeEditingDark
         viewModelScope.launch {
             dataStoreManager.updateReaderThemeSuite(
                 suiteId,
@@ -2423,10 +2483,10 @@ class ReaderViewModel @Inject constructor(
     fun applyReaderThemeMode(dark: Boolean) {
         activeReaderThemeDark = dark
         val state = _uiState.value
-        if (state.readerLayoutTarget() != ReaderLayoutTarget.READER_LAYOUT) return
-        val suite = state.readerThemeSuites.firstOrNull { it.id == state.activeThemeSuiteIdFor(ReaderLayoutTarget.READER_LAYOUT) }
+        val layout = state.readerLayoutTarget()
+        val suite = state.readerThemeSuites.firstOrNull { it.id == state.activeThemeSuiteIdFor(layout) }
             ?: return
-        val settings = suite.settingsFor(ReaderLayoutTarget.READER_LAYOUT, dark)
+        val settings = suite.settingsFor(layout, dark)
         // Apply the complete mode-specific settings. Comparing only a few fields
         // leaves stale line-height, image, alignment, or other values visible when
         // light and dark themes differ only in one of those fields.
@@ -2453,8 +2513,7 @@ class ReaderViewModel @Inject constructor(
         val updated = suite.settingsFor(layout, dark).transform()
         val replaced = state.readerThemeSuites.map { current ->
             if (current.id != suiteId) current
-            else if (layout == ReaderLayoutTarget.READER_LAYOUT) current.withModeSettings(dark, updated)
-            else current.withSettings(layout, updated)
+            else current.withModeSettings(layout, dark, updated)
         }
         _uiState.value = state.copy(readerThemeSuites = replaced, themeEditingDark = dark)
             .let { next -> if (dark == next.themeEditingDark) next.withReaderThemeSettings(updated) else next }
@@ -2578,7 +2637,7 @@ class ReaderViewModel @Inject constructor(
                 suiteId,
                 layout,
                 preset,
-                modeDark = dark.takeIf { layout == ReaderLayoutTarget.READER_LAYOUT }
+                modeDark = dark
             )
         }
     }
@@ -2631,8 +2690,7 @@ class ReaderViewModel @Inject constructor(
                             current.backgroundColorSelection
                         }
                     )
-                if (layout == ReaderLayoutTarget.READER_LAYOUT) suite.withModeSettings(state.themeEditingDark, updated)
-                else suite.withSettings(layout, updated)
+                suite.withModeSettings(layout, state.themeEditingDark, updated)
             } else {
                 suite
             }
@@ -2654,7 +2712,7 @@ class ReaderViewModel @Inject constructor(
                 targetSuiteId,
                 layout,
                 preset,
-                modeDark = state.themeEditingDark.takeIf { layout == ReaderLayoutTarget.READER_LAYOUT }
+                modeDark = state.themeEditingDark
             )
         }
     }
@@ -2705,15 +2763,17 @@ class ReaderViewModel @Inject constructor(
         val updated = current.customFonts.filter { it.id != id }
         val deletedPath = current.customFonts.find { it.id == id }?.path
         val deletedFontKey = "custom:$id"
+        fun ReaderThemeSettings.repairFont(): ReaderThemeSettings =
+            if (fontType == deletedFontKey) copy(fontType = "system") else this
         val repairedSuites = current.readerThemeSuites.map { suite ->
-            ReaderLayoutTarget.entries.fold(suite) { acc, layout ->
-                val layoutSettings = acc.settingsFor(layout)
-                if (layoutSettings.fontType == deletedFontKey) {
-                    acc.withSettings(layout, layoutSettings.copy(fontType = "system"))
-                } else {
-                    acc
-                }
-            }
+            suite.copy(
+                settings = suite.settings.repairFont(),
+                bookLayoutSettings = suite.bookLayoutSettings.repairFont(),
+                lightSettings = suite.lightSettings?.repairFont(),
+                darkSettings = suite.darkSettings?.repairFont(),
+                bookLayoutLightSettings = suite.bookLayoutLightSettings?.repairFont(),
+                bookLayoutDarkSettings = suite.bookLayoutDarkSettings?.repairFont()
+            )
         }
         // 如果当前用的是被删字体，切回 system
         if (current.fontType == deletedFontKey) {
@@ -3098,7 +3158,7 @@ class ReaderViewModel @Inject constructor(
         // Each layout keeps its own typography/background; mirror the newly
         // active bucket into the flat reader fields right away.
         _uiState.value = nextSuite
-            ?.let { switched.withReaderThemeSettings(it.settingsFor(nextLayout)) }
+            ?.let { switched.withReaderThemeSettings(it.settingsFor(nextLayout, switched.themeEditingDark)) }
             ?: switched
         viewModelScope.launch {
             runCatching {
@@ -3778,7 +3838,7 @@ class ReaderViewModel @Inject constructor(
             marginTop = 64f,
             marginBottom = 64f,
             cornerMargins = ReaderCornerMargins()
-        )
+        ).withDefaultAnnotationGeometry()
         _uiState.value = _uiState.value
             .withUpdatedActiveThemeSettings(ReaderLayoutTarget.READER_LAYOUT) { resetSettings }
             .withReaderThemeSettings(resetSettings)
@@ -3821,6 +3881,7 @@ class ReaderViewModel @Inject constructor(
     /** 从 URI 导入字体文件到内部存储，注册到自定义字体列表，返回新建的 CustomFontPreset */
     fun resetBookLayoutReaderSettings() {
         val suiteId = _uiState.value.activeThemeSuiteIdFor(ReaderLayoutTarget.BOOK_LAYOUT)
+        val editingDark = _uiState.value.themeEditingDark
         val resetSettings = _uiState.value.currentThemeSettings(ReaderLayoutTarget.BOOK_LAYOUT).copy(
             textColor = null, fontType = "system", lineHeight = 1.5f,
             letterSpacing = 0f, textAlignment = ReaderTextAlignment.NATURAL,
@@ -3828,7 +3889,7 @@ class ReaderViewModel @Inject constructor(
             marginLeft = 38f, marginRight = 38f,
             marginTop = 64f, marginBottom = 64f,
             cornerMargins = ReaderCornerMargins()
-        )
+        ).withDefaultAnnotationGeometry()
         _uiState.value = _uiState.value
             .withUpdatedActiveThemeSettings(ReaderLayoutTarget.BOOK_LAYOUT) { resetSettings }
             .withReaderThemeSettings(resetSettings)
@@ -3846,7 +3907,7 @@ class ReaderViewModel @Inject constructor(
                 readerCornerMargins = ReaderCornerMargins()
             )
         viewModelScope.launch {
-            dataStoreManager.resetAdvancedReaderSettings(suiteId, ReaderLayoutTarget.BOOK_LAYOUT)
+            dataStoreManager.resetAdvancedReaderSettings(suiteId, ReaderLayoutTarget.BOOK_LAYOUT, editingDark)
         }
     }
 
@@ -4918,7 +4979,8 @@ class ReaderViewModel @Inject constructor(
         val book = state.book ?: return
         if (!state.useNewEngine || state.isLoading) return
         val startChapter = state.currentChapterIndex
-        val isContinuousScroll = state.readerWritingMode.usesContinuousScroll(
+        val isMarkdown = book.format == BookFormat.MARKDOWN
+        val isContinuousScroll = isMarkdown || state.readerWritingMode.usesContinuousScroll(
             state.pageTransition,
             state.eInkModeEnabled
         )
@@ -4946,10 +5008,12 @@ class ReaderViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            val chapterLength = withContext(Dispatchers.IO) {
-                getChapterText(startChapter)?.length ?: 0
+            val viewportOffset = if (isMarkdown) readerLocatorCharacter(state.epubLocatorJson)
+                else continuousViewportCharacter?.takeIf { it.first == startChapter }?.second
+            val startOffset = viewportOffset ?: run {
+                val chapterLength = withContext(Dispatchers.IO) { getChapterText(startChapter)?.length ?: 0 }
+                continuousStartCharacterOffset(continuousChapterFraction, chapterLength)
             }
-            val startOffset = continuousStartCharacterOffset(continuousChapterFraction, chapterLength)
             startTtsSession(
                 bookId = book.id,
                 bookTitle = book.title,
@@ -4964,7 +5028,8 @@ class ReaderViewModel @Inject constructor(
 
     internal fun startBookLayoutTts(
         webPageProvider: suspend (chapterIndex: Int, pageIndex: Int) -> EpubPageText?,
-        restoreSavedPosition: Boolean = true
+        restoreSavedPosition: Boolean = true,
+        startCharacterOffset: Int? = null
     ) {
         val state = _uiState.value
         val book = state.book ?: return
@@ -4986,6 +5051,7 @@ class ReaderViewModel @Inject constructor(
             source,
             state.currentChapterIndex,
             state.currentPageIndex,
+            startCharacterOffset = startCharacterOffset,
             restoreSavedPosition = restoreSavedPosition
         )
     }
@@ -5019,7 +5085,9 @@ class ReaderViewModel @Inject constructor(
         startCharacterOffset: Int? = null,
         restoreSavedPosition: Boolean = true
     ) {
-        enableListeningReaderFollow()
+        _ttsManualResumeSentence.value = _ttsSentencePosition.value
+        listeningReaderSession.follow()
+        ttsController.setReaderAttached(bookId, true)
         ContextCompat.startForegroundService(
             context,
             TtsForegroundService.startIntent(context, bookTitle)
@@ -5392,6 +5460,10 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    internal suspend fun chapterTextForViewport(chapter: Int, width: Int, height: Int): CharSequence? = withContext(Dispatchers.IO) {
+        buildChapterText(chapter, width, height, frameworkDrawsText = false, backgroundPagination = true)
+    }
+
     private suspend fun chapterTextForPageIndex(chapter: Int): CharSequence? = try {
         withContext(Dispatchers.IO) {
             buildChapterText(chapter, pageLayoutEngine.visibleWidth, pageLayoutEngine.visibleHeight,
@@ -5438,10 +5510,12 @@ class ReaderViewModel @Inject constructor(
     ): CharSequence? {
         val activeParser = parser
         if (activeParser is com.huangder.lumibooks.util.parser.MarkdownParser) return if (index == 0) activeParser.searchText else null
+        val state = _uiState.value
+        val epubTextSizePx = state.fontSize * context.resources.displayMetrics.density
         val continuousEpub = activeParser.epubParserOrNull?.takeIf {
             frameworkDrawsText && contentWidthPx != null
         }
-        if (contentWidthPx != null && continuousEpub == null && !backgroundPagination) {
+        if (contentWidthPx != null && continuousEpub == null && !backgroundPagination && !frameworkDrawsText) {
             if (contentHeightPx != null) {
                 updateReaderContentSize(contentWidthPx, contentHeightPx)
             } else {
@@ -5452,15 +5526,21 @@ class ReaderViewModel @Inject constructor(
             if (backgroundPagination && activeParser.epubParserOrNull != null) {
                 val epub = activeParser.epubParserOrNull!!
                 epub.getChapterContentForPagination(index,
-                    contentWidthPx ?: epub.contentWidth, contentHeightPx ?: epub.contentHeight)
+                    contentWidthPx ?: epub.contentWidth, contentHeightPx ?: epub.contentHeight,
+                    textSizePx = epubTextSizePx)
             } else if (continuousEpub != null) {
                 if (previewChars != null) {
-                    continuousEpub.getChapterContentPreview(index, contentWidthPx!!, 0, previewChars).also {
+                    continuousEpub.getChapterContentPreview(index, contentWidthPx!!, 0, previewChars,
+                        textSizePx = epubTextSizePx).also {
                         onPreviewCompleteness?.invoke(it.isComplete)
                     }.text
                 } else {
-                    continuousEpub.getChapterContent(index, contentWidthPx!!, 0)
+                    continuousEpub.getChapterContent(index, contentWidthPx!!, 0, textSizePx = epubTextSizePx)
                 }
+            }
+            else if (activeParser.epubParserOrNull != null) {
+                val epub = activeParser.epubParserOrNull!!
+                epub.getChapterContent(index, epub.contentWidth, epub.contentHeight, textSizePx = epubTextSizePx)
             }
             else activeParser?.getChapterContent(index)
         } catch (_: Exception) { null }
@@ -5488,7 +5568,6 @@ class ReaderViewModel @Inject constructor(
         }
         if (raw.isEmpty()) return raw
 
-        val state = _uiState.value
         val isTxt = raw !is Spanned
         var skipFirstParagraphIndent = false
         val chapterText = if (isTxt) {
@@ -5612,6 +5691,8 @@ class ReaderViewModel @Inject constructor(
                             suite.lightSettings?.let(::add)
                             suite.darkSettings?.let(::add)
                             add(suite.bookLayoutSettings)
+                            suite.bookLayoutLightSettings?.let(::add)
+                            suite.bookLayoutDarkSettings?.let(::add)
                         }
                     }
                     .flatMap { settings -> listOf(settings.backgroundSelection, settings.backgroundColorSelection) }

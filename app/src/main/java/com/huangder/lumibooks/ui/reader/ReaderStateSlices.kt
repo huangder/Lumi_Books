@@ -18,6 +18,7 @@ import com.huangder.lumibooks.domain.model.ReaderThemeSuite
 import com.huangder.lumibooks.domain.model.ReaderThemeSuites
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.domain.model.defaultReaderCornerContent
+import com.huangder.lumibooks.ui.reader.engine.toAnnotationStyle
 import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.util.parser.TocEntry
 import com.huangder.lumibooks.util.parser.TxtEncoding
@@ -72,7 +73,9 @@ data class ReaderRenderSettingsState(
     val eInkModeEnabled: Boolean = false,
     val twoPageSpreadEnabled: Boolean = true,
     val readerEdgeTapMode: ReaderEdgeTapMode = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT,
-    val readerWritingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL
+    val readerWritingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL,
+    val annotationStyle: com.huangder.lumibooks.ui.reader.engine.ReaderAnnotationStyle =
+        com.huangder.lumibooks.ui.reader.engine.ReaderAnnotationStyle.DEFAULT
 )
 
 data class ReaderPositionState(
@@ -172,7 +175,8 @@ internal fun ReaderUiState.toRenderSettingsState() = ReaderRenderSettingsState(
     eInkModeEnabled = eInkModeEnabled,
     twoPageSpreadEnabled = twoPageSpreadEnabled,
     readerEdgeTapMode = readerEdgeTapMode,
-    readerWritingMode = readerWritingMode
+    readerWritingMode = readerWritingMode,
+    annotationStyle = annotationStyle
 )
 
 internal fun ReaderUiState.toPositionState() = ReaderPositionState(
@@ -282,6 +286,7 @@ internal fun ReaderUiState.withActiveThemeSettingsForMode(dark: Boolean): Reader
         marginTopDp = settings.marginTop,
         marginBottomDp = settings.marginBottom,
         readerCornerMargins = settings.cornerMargins,
+        annotationStyle = settings.toAnnotationStyle(),
         paragraphSpacing = settings.paragraphSpacing,
         firstLineIndent = settings.firstLineIndent,
         bodyFontWeight = settings.bodyFontWeight,
@@ -312,7 +317,12 @@ private fun ReaderUiState.currentThemeSettingsFallback() = com.huangder.lumibook
     marginRight = marginRightDp,
     marginTop = marginTopDp,
     marginBottom = marginBottomDp,
-    cornerMargins = readerCornerMargins
+    cornerMargins = readerCornerMargins,
+    highlightWidthDp = annotationStyle.highlightWidthDp,
+    highlightHeightDp = annotationStyle.highlightHeightDp,
+    highlightOffsetYDp = annotationStyle.highlightOffsetYDp,
+    underlineThicknessDp = annotationStyle.underlineThicknessDp,
+    underlineOffsetYDp = annotationStyle.underlineOffsetYDp
 )
 
 internal fun readerFormatSupportsBookLayout(format: String?): Boolean =

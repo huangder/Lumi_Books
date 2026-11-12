@@ -25,7 +25,22 @@ class DefaultDiagnosticSessionManager @Inject constructor(
 ) : DiagnosticSessionManager {
     private val builder = DiagnosticBundleBuilder(context, logger)
 
-    override fun start(issueType: DiagnosticIssueType): DiagnosticSession = logger.startSession(issueType)
+    override fun start(issueType: DiagnosticIssueType): DiagnosticSession {
+        val session = logger.startSession(issueType)
+        if (session.issueType == DiagnosticIssueType.WIDGET) runCatching {
+            val manager = android.appwidget.AppWidgetManager.getInstance(context)
+            manager.installedProviders.filter { it.provider.packageName == context.packageName }.forEach { provider ->
+                val ids = manager.getAppWidgetIds(provider.provider)
+                com.huangder.lumibooks.widget.WidgetDiagnostics.log("provider_snapshot", mapOf(
+                    "provider" to provider.provider.className, "widgetCount" to ids.size,
+                    "minWidthPx" to provider.minWidth, "minHeightPx" to provider.minHeight,
+                    "resizeMode" to provider.resizeMode))
+                ids.forEach { id -> com.huangder.lumibooks.widget.WidgetDiagnostics.host(
+                    context, id, manager.getAppWidgetOptions(id), "session_started") }
+            }
+        }
+        return session
+    }
 
     override fun stop(sessionId: String) = logger.stopSession(sessionId)
 
@@ -58,9 +73,16 @@ private class DiagnosticBundleBuilder(
             addAll(logger.snapshot().filter { it.timestamp >= now - eventWindowMs })
             if (request.includePreviousCrash) logger.previousCrash()?.let(::add)
         }
-        val selected = if (request.startupOnly && BuildConfig.STARTUP_TRACE_ENABLED) {
+        val recent = if (request.startupOnly && BuildConfig.STARTUP_TRACE_ENABLED) {
             selectStartupEvents(logger.snapshot(), now, maxEvents)
         } else selectEvents(all, request, session).takeLast(maxEvents)
+        // A recovered crash can predate the recent window or belong to a stopped
+        // session. Explicit inclusion must retain both the crash and its last steps.
+        val crashEvidence = if (request.includePreviousCrash) {
+            logger.previousCrashContext() + listOfNotNull(logger.previousCrash())
+        } else emptyList()
+        val selected = (recent.takeLast((maxEvents - crashEvidence.size).coerceAtLeast(0)) + crashEvidence)
+            .distinct().sortedBy { it.timestamp }
         val outputDir = File(context.cacheDir, "diagnostics").also { it.mkdirs() }
         outputDir.listFiles()?.filter { now - it.lastModified() > 24 * 60 * 60 * 1000L }?.forEach { it.delete() }
         val output = File(outputDir, "lumi-diagnostic-${now}.zip")

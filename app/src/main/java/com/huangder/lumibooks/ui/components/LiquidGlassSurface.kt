@@ -7,6 +7,7 @@ import com.huangder.lumibooks.ui.theme.AppSurfaceRole
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import com.huangder.lumibooks.ui.animation.VisualMotion.tween
+import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -205,14 +206,16 @@ internal fun Modifier.liquidGlassBackdrop(
         },
         layerBlock = {
             if (buttonInteraction && applyButtonTransform) {
-                val interactionProgress = buttonInteractionState?.pressProgress ?: pressProgress
+                val interactionProgress = buttonInteractionState?.scaleProgress ?: pressProgress
                 val transform = liquidGlassButtonLayerTransform(
                     width = size.width,
                     height = size.height,
                     pressProgress = interactionProgress,
                     dragOffset = buttonInteractionState?.offset ?: Offset.Zero,
                     expansionPx = 4.dp.toPx(),
-                    motionEnabled = motionEnabled
+                    motionEnabled = motionEnabled,
+                    wobble = buttonInteractionState?.wobble ?: 0f,
+                    wobbleVertical = buttonInteractionState?.wobbleIsVertical ?: false
                 )
                 translationX = transform.translationX
                 translationY = transform.translationY
@@ -517,7 +520,10 @@ fun LiquidGlassSurface(
     val pageInMotion = pageScene?.let { it.moving || it.coveredBy?.moving == true } == true
     val pressScale by animateFloatAsState(
         targetValue = if (!pageInMotion && !isLiquidGlass && enabled && pressFeedbackEnabled && onClick != null && motionEnabled && pressed) 0.96f else 1f,
-        animationSpec = if (motionEnabled && !pageInMotion) tween(durationMillis = 90) else snap(),
+        // Springy rather than a linear dip, so the fallback press still feels elastic.
+        animationSpec = if (motionEnabled && !pageInMotion) {
+            if (pressed) spring(dampingRatio = 0.7f, stiffness = 1400f) else spring(dampingRatio = 0.4f, stiffness = 520f)
+        } else snap(),
         label = "liquidGlassSurfacePressScale"
     )
     val lensShape = remember(shape, density) {
@@ -621,9 +627,11 @@ fun LiquidGlassSurface(
     val surfaceTransformModifier = if (activeInteractionState != null) {
         Modifier.graphicsLayer {
             val transform = liquidGlassButtonLayerTransform(
-                size.width, size.height, activeInteractionState.pressProgress,
+                size.width, size.height, activeInteractionState.scaleProgress,
                 activeInteractionState.offset, 4.dp.toPx(), motionEnabled,
-                maxTranslationPx = 6.dp.toPx()
+                maxTranslationPx = 6.dp.toPx(),
+                wobble = activeInteractionState.wobble,
+                wobbleVertical = activeInteractionState.wobbleIsVertical
             )
             translationX = transform.translationX
             translationY = transform.translationY
@@ -634,9 +642,11 @@ fun LiquidGlassSurface(
     val contentTransformModifier = if (activeInteractionState != null) {
         Modifier.graphicsLayer {
             val transform = liquidGlassButtonContentTransform(liquidGlassButtonLayerTransform(
-                size.width, size.height, activeInteractionState.pressProgress,
+                size.width, size.height, activeInteractionState.scaleProgress,
                 activeInteractionState.offset, 4.dp.toPx(), motionEnabled,
-                maxTranslationPx = 6.dp.toPx()
+                maxTranslationPx = 6.dp.toPx(),
+                wobble = activeInteractionState.wobble,
+                wobbleVertical = activeInteractionState.wobbleIsVertical
             ))
             translationX = transform.translationX
             translationY = transform.translationY

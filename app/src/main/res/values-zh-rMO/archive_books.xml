@@ -6,6 +6,7 @@
     <string name="archive_empty">暫無已歸檔的圖書</string>
     <string name="restore_book">恢復</string>
     <string name="archive_book_success">圖書已歸檔</string>
+    <string name="archive_book_location_hint">可在「設定 › 隱私 › 已歸檔的圖書」中找回</string>
     <string name="archive_book_failed">歸檔失敗，請重試</string>
     <string name="archive_restore_success">圖書已恢復</string>
     <string name="archive_restore_failed">恢復失敗，請重試</string>

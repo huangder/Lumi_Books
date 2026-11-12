@@ -13,6 +13,7 @@ enum class DiagnosticIssueType(val id: String, val categories: Set<String>) {
     TTS("tts", setOf("app", "tts", "reader")),
     SYNC("sync", setOf("app", "sync")),
     BACKUP("backup", setOf("app", "backup", "conversion")),
+    WIDGET("widget", setOf("app", "widget", "reader", "interaction")),
     OTHER("other", emptySet());
 
     companion object {
@@ -118,6 +119,7 @@ interface DiagnosticLogger {
     fun recordCrashSynchronously(throwable: Throwable, threadName: String? = null)
     fun hasPreviousCrash(): Boolean
     fun previousCrash(): DiagnosticEvent?
+    fun previousCrashContext(): List<DiagnosticEvent> = emptyList()
     suspend fun flush()
     fun clearPreviousCrash()
 }

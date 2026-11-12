@@ -95,6 +95,7 @@ import com.huangder.lumibooks.data.sync.BookDownloadState
 import com.huangder.lumibooks.ui.components.BookCoverStatusBadge
 import com.huangder.lumibooks.ui.components.BookProgressStatus
 import com.huangder.lumibooks.domain.model.LibraryFolder
+import com.huangder.lumibooks.ui.components.horizontalBleed
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.animation.HorizontalOverscrollBounce
 import com.huangder.lumibooks.ui.animation.BookCoverTitleColor
@@ -763,12 +764,13 @@ private fun SearchResultActionRow(
     val organise = !book.isHidden
     val favoritePink = if (LocalIsDarkTheme.current) Color(0xFFFF8A80) else Color(0xFFE85D5D)
     val gap = 4.dp
-    HorizontalOverscrollBounce(modifier = Modifier.fillMaxWidth()) {
+    // List items sit inside the shelf's 14.dp list padding; let the actions scroll to the screen edge.
+    HorizontalOverscrollBounce(modifier = Modifier.horizontalBleed(14.dp).fillMaxWidth()) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
-            .padding(vertical = 6.dp),
+            .padding(horizontal = 14.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(gap),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -904,12 +906,12 @@ internal fun FolderListActionRow(
     onRemoveCover: () -> Unit,
     onMove: () -> Unit
 ) {
-    HorizontalOverscrollBounce(modifier = Modifier.fillMaxWidth()) {
+    HorizontalOverscrollBounce(modifier = Modifier.horizontalBleed(14.dp).fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
-                .padding(vertical = 6.dp),
+                .padding(horizontal = 14.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

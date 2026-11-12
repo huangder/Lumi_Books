@@ -7,6 +7,7 @@ import androidx.compose.animation.togetherWith
 import com.huangder.lumibooks.ui.animation.VisualMotion.spring
 import androidx.compose.animation.core.animateFloatAsState
 import com.huangder.lumibooks.ui.animation.VisualMotion.tween
+import androidx.compose.animation.core.FastOutLinearInEasing
 import com.huangder.lumibooks.ui.animation.VisualMotion.delayMillis
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -222,45 +223,49 @@ fun LiquidGlassDialogHost(
                             if (spec.properties.dismissOnClickOutside) spec.onDismissRequest()
                         }
                 ) {
+                    // Restrained, Apple-like motion: the card settles in on a soft spring with a
+                    // barely visible overshoot and leaves quickly, with no bounce, mostly by fading.
+                    // Exits are tweens that end with the fade. A spring tail would keep the
+                    // invisible glass card, blur included, rendering after it has faded out.
                     val containerEnter = if (!motionEnabled) {
                         fadeIn(tween(140))
                     } else if (spec.alignment == Alignment.BottomCenter) {
                         scaleIn(
-                            initialScale = 0.86f,
-                            animationSpec = spring(dampingRatio = 0.70f, stiffness = 145f),
+                            initialScale = 0.94f,
+                            animationSpec = spring(dampingRatio = 0.82f, stiffness = 300f),
                             transformOrigin = TransformOrigin(0.5f, 1f)
                         ) + slideInVertically(
                             initialOffsetY = { it },
-                            animationSpec = spring(dampingRatio = 0.70f, stiffness = 145f)
-                        ) + fadeIn(tween(120))
+                            animationSpec = spring(dampingRatio = 0.86f, stiffness = 260f)
+                        ) + fadeIn(tween(140))
                     } else {
                         scaleIn(
-                            initialScale = 0.86f,
-                            animationSpec = spring(dampingRatio = 0.62f, stiffness = 260f)
+                            initialScale = 0.92f,
+                            animationSpec = spring(dampingRatio = 0.78f, stiffness = 360f)
                         ) + slideInVertically(
-                            initialOffsetY = { it / 10 },
-                            animationSpec = spring(dampingRatio = 0.66f, stiffness = 260f)
-                        ) + fadeIn(tween(120))
+                            initialOffsetY = { it / 28 },
+                            animationSpec = spring(dampingRatio = 0.86f, stiffness = 360f)
+                        ) + fadeIn(tween(140))
                     }
                     val containerExit = if (!motionEnabled) {
                         fadeOut(tween(160))
                     } else if (spec.alignment == Alignment.BottomCenter) {
                         scaleOut(
-                            targetScale = 0.88f,
-                            animationSpec = tween(240),
+                            targetScale = 0.96f,
+                            animationSpec = tween(220, easing = FastOutLinearInEasing),
                             transformOrigin = TransformOrigin(0.5f, 1f)
                         ) + slideOutVertically(
                             targetOffsetY = { it },
-                            animationSpec = tween(260)
-                        ) + fadeOut(tween(180))
+                            animationSpec = tween(220, easing = FastOutLinearInEasing)
+                        ) + fadeOut(tween(200))
                     } else {
                         scaleOut(
-                            targetScale = 0.90f,
-                            animationSpec = tween(190)
+                            targetScale = 0.96f,
+                            animationSpec = tween(150)
                         ) + slideOutVertically(
-                            targetOffsetY = { it / 12 },
-                            animationSpec = tween(190)
-                        ) + fadeOut(tween(150))
+                            targetOffsetY = { it / 40 },
+                            animationSpec = tween(150)
+                        ) + fadeOut(tween(140))
                     }
                     AnimatedVisibility(
                         visible = state.visible,
@@ -275,13 +280,13 @@ fun LiquidGlassDialogHost(
                                     fadeIn(tween(120)) togetherWith fadeOut(tween(140))
                                 } else {
                                     (scaleIn(
-                                        initialScale = 0.88f,
-                                        animationSpec = spring(dampingRatio = 0.68f, stiffness = 210f)
+                                        initialScale = 0.94f,
+                                        animationSpec = spring(dampingRatio = 0.80f, stiffness = 340f)
                                     ) + fadeIn(tween(150))) togetherWith
                                         (scaleOut(
-                                            targetScale = 0.92f,
-                                            animationSpec = tween(210)
-                                        ) + fadeOut(tween(170)))
+                                            targetScale = 0.97f,
+                                            animationSpec = tween(150)
+                                        ) + fadeOut(tween(140)))
                                 }
                             },
                             modifier = Modifier.fillMaxSize(),

@@ -132,6 +132,9 @@ class DefaultDiagnosticLogger @Inject constructor(
             put("message", redactor.sanitize(throwable.message.orEmpty()))
             put("stackTrace", redactor.sanitizeStackTrace(stackTrace(throwable)))
             put("sessionId", activeSession()?.id ?: JSONObject.NULL)
+            // Async event writes may not finish before the process exits. Keep the
+            // already redacted tail with the crash in the same synchronous write.
+            put("context", org.json.JSONArray(snapshot().takeLast(200).map { it.toJson() }))
         }
         runCatching { crashFile.writeText(crash.toString(), Charsets.UTF_8) }
         log("app", "uncaught_exception", DiagnosticLevel.FATAL, throwable = throwable)
@@ -157,6 +160,13 @@ class DefaultDiagnosticLogger @Inject constructor(
     override fun clearPreviousCrash() {
         runCatching { crashFile.delete() }
     }
+
+    override fun previousCrashContext(): List<DiagnosticEvent> = runCatching {
+        val context = JSONObject(crashFile.readText()).optJSONArray("context")
+        if (context == null) emptyList() else (0 until context.length()).mapNotNull { index ->
+            runCatching { DiagnosticEvent.fromJson(context.getJSONObject(index)) }.getOrNull()
+        }
+    }.getOrDefault(emptyList())
 
     override suspend fun flush() {
         while (true) {

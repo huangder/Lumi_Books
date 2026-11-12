@@ -301,6 +301,7 @@ fun HiddenLibraryScreen(
         CloudAwareBookDeleteDialog(
             bookCount = targets.size,
             hasRemoteBooks = targets.any { it.remoteFileName != null },
+            hasLocalCopies = targets.any { !it.isCloudOnly },
             onDismiss = { pendingDelete = emptyList() },
             onDelete = { mode ->
                 pendingDelete = emptyList()

@@ -93,6 +93,60 @@ class PageLayoutEngine {
         }
     }
     private val cacheLock = Any()
+    private data class Snapshot(val layouts: Map<Int, ChapterLayout>, val pages: ReaderBookPages)
+    private var alternateKey: String? = null
+    private var alternate: Snapshot? = null
+    internal var layoutBuildCount: Int = 0
+        private set
+
+    private fun geometryKey(): String = listOf(paginationIdentity, paginationLayoutIdentity,
+        textWidth, textHeight, marginLeft, marginRight, marginTop, marginBottom,
+        ownTextPaint.textSize, configuredFontIdentity ?: ownTextPaint.typeface,
+        lineSpacingExtra, lineSpacingMultiplier, letterSpacing, textAlignment, writingMode,
+        useDisplayDensityForSpans, chapterCount, activeTextPaint.textSize,
+        activeTextPaint.textScaleX, activeTextPaint.textSkewX, activeTextPaint.isFakeBoldText,
+        activeTextPaint.density, activeTextPaint.fontFeatureSettings, activeTextPaint.fontVariationSettings,
+        activeTextPaint.textLocales).joinToString("|")
+
+    private fun snapshot() = Snapshot(layoutCache.entries.toList().takeLast(3).associate { it.key to it.value }, _bookPages.value)
+
+    private fun trimLayouts() {
+        while (layoutCache.size + (alternate?.layouts?.size ?: 0) > 8 && (alternate?.layouts?.size ?: 0) > 1) {
+            alternate = alternate?.let { saved -> saved.copy(layouts = saved.layouts.entries.drop(1).associate { it.key to it.value }) }
+        }
+        while (layoutCache.size + (alternate?.layouts?.size ?: 0) > 8) {
+            layoutCache.remove(layoutCache.keys.first())
+        }
+    }
+
+    /** Independent paint/configuration: speculative layout cannot change the active engine. */
+    internal fun forViewport(width: Int, height: Int, right: Float, top: Float, bottom: Float): PageLayoutEngine = synchronized(cacheLock) {
+        PageLayoutEngine().also { engine ->
+            engine.paginationIdentity = paginationIdentity
+            engine.paginationLayoutIdentity = paginationLayoutIdentity
+            engine.configure(width, height, ownTextPaint.textSize, lineSpacingExtra, lineSpacingMultiplier,
+                letterSpacing, typeface = ownTextPaint.typeface, marginLeftPx = marginLeft,
+                marginRightPx = right, marginTopPx = top, marginBottomPx = bottom,
+                chapterCount = chapterCount, useDisplayDensityForSpans = useDisplayDensityForSpans,
+                textAlignment = textAlignment, writingMode = writingMode, fontIdentity = configuredFontIdentity)
+            engine.sharedTextPaint = TextPaint().apply { set(activeTextPaint) }
+            alternate?.takeIf { alternateKey == engine.geometryKey() }?.let { saved ->
+                engine.layoutCache.putAll(saved.layouts)
+                engine._bookPages.value = saved.pages.copy(generation = engine.layoutGeneration)
+            }
+        }
+    }
+
+    internal fun retainPrepared(engine: PageLayoutEngine, expectedGeneration: Long) = synchronized(cacheLock) {
+        if (layoutGeneration != expectedGeneration) return@synchronized
+        synchronized(engine.cacheLock) {
+            alternateKey = engine.geometryKey()
+            alternate = engine.snapshot()
+        }
+        trimLayouts()
+    }
+
+    internal fun trimAlternate() = synchronized(cacheLock) { alternate = null; alternateKey = null }
     private var layoutGeneration: Long = 0L
     private var paginationIdentity: String = ""
     private var paginationLayoutIdentity: String = ""
@@ -183,6 +237,8 @@ class PageLayoutEngine {
             Typeface.create(baseTypeface, if (fontWeight >= 600f) Typeface.BOLD else Typeface.NORMAL)
         }
         synchronized(cacheLock) {
+        val previousKey = geometryKey()
+        val previousSnapshot = snapshot()
         val changed = textWidth != width || textHeight != height ||
                 ownTextPaint.textSize != fontSizePx || lineSpacingExtra != lineSpacingPx ||
                 lineSpacingMultiplier != lineSpacingMult ||
@@ -217,7 +273,16 @@ class PageLayoutEngine {
         this.writingMode = writingMode
 
         if (changed) {
-            invalidateAll()
+            val nextKey = geometryKey()
+            val saved = alternate.takeIf { alternateKey == nextKey }
+            layoutGeneration++
+            layoutCache.clear()
+            if (saved != null) layoutCache.putAll(saved.layouts)
+            _bookPages.value = saved?.pages?.copy(generation = layoutGeneration)
+                ?: ReaderBookPages(layoutGeneration, List(chapterCount) { null })
+            alternateKey = previousKey
+            alternate = previousSnapshot.takeIf { it.pages.chapterCounts.size == chapterCount }
+            trimLayouts()
         }
         }
     }
@@ -239,6 +304,7 @@ class PageLayoutEngine {
                 throw CancellationException("Reader layout changed")
             }
             layoutCache[chapterIndex]?.let { return@withContext it }
+            layoutBuildCount++
             LayoutInput(
                 generation = layoutGeneration,
                 visibleWidth = visibleWidth,
@@ -298,7 +364,7 @@ class PageLayoutEngine {
             coroutineContext.ensureActive()
             synchronized(cacheLock) {
                 if (input.generation == layoutGeneration) {
-                    if (cacheResult) layoutCache[chapterIndex] = result
+                    if (cacheResult) { layoutCache[chapterIndex] = result; trimLayouts() }
                     _bookPages.value = _bookPages.value.withChapter(chapterIndex, result.totalPages,
                         result.pages.map { it.startCharOffset })
                 }
@@ -448,7 +514,7 @@ class PageLayoutEngine {
         coroutineContext.ensureActive()
         synchronized(cacheLock) {
             if (input.generation == layoutGeneration) {
-                if (cacheResult) layoutCache[chapterIndex] = result
+                if (cacheResult) { layoutCache[chapterIndex] = result; trimLayouts() }
                 _bookPages.value = _bookPages.value.withChapter(chapterIndex, result.totalPages,
                     result.pages.map { it.startCharOffset })
             }
@@ -592,6 +658,7 @@ class PageLayoutEngine {
 
     fun invalidateChapter(chapterIndex: Int) {
         synchronized(cacheLock) {
+            trimAlternate()
             layoutGeneration++
             layoutCache.remove(chapterIndex)
             _bookPages.value = _bookPages.value.copy(generation = layoutGeneration,
@@ -604,6 +671,7 @@ class PageLayoutEngine {
 
     fun invalidateAll() {
         synchronized(cacheLock) {
+            trimAlternate()
             layoutGeneration++
             layoutCache.clear()
             _bookPages.value = ReaderBookPages(layoutGeneration, List(chapterCount) { null })
@@ -612,6 +680,7 @@ class PageLayoutEngine {
 
     /** Refresh colors/annotations without throwing away confirmed page boundaries. */
     fun refreshLayouts() = synchronized(cacheLock) {
+        trimAlternate()
         layoutGeneration++
         layoutCache.clear()
         _bookPages.value = _bookPages.value.copy(generation = layoutGeneration)

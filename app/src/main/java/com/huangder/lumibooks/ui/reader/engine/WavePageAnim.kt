@@ -38,19 +38,21 @@ class WavePageAnim(
         baseDurationMs = durationMs.coerceIn(1, 1000)
     }
 
+    override fun horizontalGestureX(x: Float): Float = x.coerceIn(0f, readView.width.toFloat())
+
     override fun onDraw(canvas: Canvas) {
         val width = readView.width
         val height = readView.height
-        if (width <= 0 || height <= 0 || direction == Direction.NONE ||
-            (!isRunning && !isDragging && !isFlipAnim)
-        ) return
+        if (width <= 0 || height <= 0 || (!isRunning && !isDragging && !isFlipAnim)) return
         ensureSnapshots(width, height, direction)
-        val oldPage = oldSnapshot ?: return
-        val newPage = newSnapshot ?: return
-        pageBounds.set(0, 0, width, height)
-
+        // The host may draw a spare preload underneath the sweep. Keep it
+        // covered when the drag returns to its origin or has no target bitmap.
         canvas.drawColor(readView.bgColor)
+        val oldPage = oldSnapshot ?: return
+        pageBounds.set(0, 0, width, height)
         drawSnapshot(canvas, oldPage)
+        if (direction == Direction.NONE) return
+        val newPage = newSnapshot ?: return
         val progress = ((touchX - startX) * horizontalTurnSign(direction) / width)
             .coerceIn(0f, 1f)
         if (progress >= 1f) {
@@ -136,14 +138,15 @@ class WavePageAnim(
     }
 
     private fun ensureSnapshots(width: Int, height: Int, pageDirection: Direction) {
-        if (snapshotWidth == width && snapshotHeight == height && snapshotDirection == pageDirection &&
-            oldSnapshot != null && newSnapshot != null
+        if (snapshotWidth == width && snapshotHeight == height && oldSnapshot != null &&
+            (pageDirection == Direction.NONE || snapshotDirection == pageDirection && newSnapshot != null)
         ) return
         recycleSnapshots()
         snapshotWidth = width
         snapshotHeight = height
         snapshotDirection = pageDirection
         oldSnapshot = capture(readView.curPageView, width, height)
+        if (pageDirection == Direction.NONE) return
         val target = if (pageDirection == Direction.NEXT) readView.nextPageView else readView.prevPageView
         newSnapshot = capture(target, width, height)
         revealShader = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

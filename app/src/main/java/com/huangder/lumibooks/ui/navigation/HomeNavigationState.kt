@@ -8,6 +8,7 @@ import com.huangder.lumibooks.ui.home.HomeUiState
 internal data class HomeNavigationState(
     val isLoading: Boolean,
     val importMessage: String?,
+    val archiveNoticePending: Boolean,
     val tagMessage: String?,
     val error: String?,
     val lastReadBook: Book?,
@@ -22,7 +23,7 @@ internal data class HomeNavigationState(
 )
 
 internal fun HomeUiState.forNavigation() = HomeNavigationState(
-    isLoading, importMessage, tagMessage, error,
+    isLoading, importMessage, archiveNoticePending, tagMessage, error,
     books.maxByOrNull { it.lastReadTime }, hiddenBooks.mapTo(HashSet()) { it.id },
     authorizedBookDirectories, importBooksLayoutMode, folders.associate { it.id to it.name },
     todayReadingTime, dailyGoal, weeklyData, streakDays

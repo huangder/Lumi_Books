@@ -12,12 +12,14 @@ import com.huangder.lumibooks.domain.model.WebdavConfig
 import com.huangder.lumibooks.mineru.MineruTokenStore
 import com.huangder.lumibooks.translation.TranslationTokenStore
 import com.huangder.lumibooks.tts.ExternalTtsTokenStore
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
+import okio.Buffer
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -153,6 +155,56 @@ class WebdavProgressPersistenceTest {
                 remoteFiles.getValue("/LumiBooks/state-v1/state.json"))
             assertEquals("cloud", uploaded.books.single().id)
             assertEquals(0.65f, uploaded.books.single().readingProgress)
+        } finally {
+            server.shutdown()
+            db.close()
+        }
+    }
+
+    @Test
+    fun `state sync shares an uploaded cover across book owners and subsequent syncs`() = runBlocking {
+        val context = RuntimeEnvironment.getApplication()
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        val identities = SyncIdentityStore(db.syncStateDao())
+        val repository = BookRepositoryImpl(db.bookDao(), db.syncStateDao(), identities)
+        val manager = PortableSnapshotManager(context, db, DataStoreManager(context), identities,
+            MineruTokenStore(context), ExternalTtsTokenStore(context), TranslationTokenStore(context))
+        val remoteFiles = ConcurrentHashMap<String, ByteArray>()
+        val server = MockWebServer()
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val path = request.requestUrl!!.encodedPath
+                return when (request.method) {
+                    "MKCOL" -> MockResponse().setResponseCode(201)
+                    "GET" -> remoteFiles[path]?.let { MockResponse().setBody(Buffer().write(it)) }
+                        ?: MockResponse().setResponseCode(404)
+                    "PUT" -> { remoteFiles[path] = request.body.readByteArray(); MockResponse().setResponseCode(201) }
+                    "PROPFIND" -> MockResponse().setResponseCode(207)
+                        .setBody("<d:multistatus xmlns:d=\"DAV:\"/>")
+                    else -> MockResponse().setResponseCode(204)
+                }
+            }
+        }
+        try {
+            server.start()
+            val cover = File(context.cacheDir, "shared.jpg").apply { writeText("Same cover bytes") }
+            val firstBook = book().copy(coverPath = cover.path)
+            repository.insertBook(firstBook)
+            repository.insertBook(firstBook.copy(id = "second"))
+            val config = WebdavConfig(enabled = true, serverUrl = server.url("/").toString(),
+                username = "test", syncProfileAndSettings = false, syncLibraryOrganization = true)
+            val sync = WebdavPortableStateSync(context, WebdavClient(), manager)
+
+            assertEquals(1, sync.sync(config, "test").uploadedAssets)
+            repository.insertBook(firstBook.copy(id = "third"))
+            assertEquals(0, sync.sync(config, "test").uploadedAssets)
+            assertEquals(0, sync.sync(config, "test").uploadedAssets)
+
+            val state = com.huangder.lumibooks.data.backup.PortableSnapshot.fromJson(
+                remoteFiles.getValue("/LumiBooks/state-v1/state.json").toString(Charsets.UTF_8))
+            assertEquals(3, state.books.map { it.coverAssetId }.toSet().size)
+            assertEquals(1, state.assets.map { it.fileName }.toSet().size)
+            assertEquals(1, remoteFiles.keys.count { "/state-v1/assets/" in it })
         } finally {
             server.shutdown()
             db.close()

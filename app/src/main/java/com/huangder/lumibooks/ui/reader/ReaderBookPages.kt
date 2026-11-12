@@ -69,6 +69,12 @@ internal fun readerPhysicalPageLabel(page: Int, total: Int, rightPage: Int? = nu
 
 internal data class ReaderVisibleCharacters(val chapter: Int, val start: Int, val end: Int)
 
+internal fun List<ReaderVisibleCharacters>.containsSpeech(position: TtsSentencePosition): Boolean? {
+    if (isEmpty()) return null
+    return any { it.chapter == position.chapterIndex && it.start < it.end &&
+        it.start < position.endOffset && position.startOffset < it.end }
+}
+
 internal fun readerLocatorCharacter(locator: String?): Int? = locator?.let {
     runCatching { org.json.JSONObject(it) }.getOrNull()
         ?.takeIf { json -> json.has("textPosition") }

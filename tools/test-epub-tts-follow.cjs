@@ -7,7 +7,7 @@ const { pathToFileURL } = require('node:url');
 const { spawnSync } = require('node:child_process');
 const source = readFileSync(join(__dirname, '../app/src/main/java/com/huangder/lumibooks/util/epub/EpubDocumentTransformer.kt'), 'utf8');
 const css = source.match(/private const val READER_CSS = """([\s\S]*?)"""/)[1];
-const script = [...source.matchAll(/private const val READER_SCRIPT_PART_(?:1B|[123]) = """([\s\S]*?)"""/g)].map(m => m[1]).join('');
+const script = [...source.matchAll(/private const val READER_SCRIPT_PART_(?:[123]B?) = """([\s\S]*?)"""/g)].map(m => m[1]).join('');
 
 async function verify() {
   const check = (condition, message) => { if (!condition) throw Error(message); };
@@ -17,8 +17,9 @@ async function verify() {
     reader.configure({ flow: 'scrolled', transition: 'none', canTurnPrevious: false, canTurnNext: false });
     await delay(300);
     const text = document.getElementById('reading').textContent;
+    const offset = paragraph => text.indexOf('Paragraph ' + paragraph + ':');
     const highlight = paragraph => {
-      const start = text.indexOf('Paragraph ' + paragraph + ':');
+      const start = offset(paragraph);
       reader.setTtsHighlight(start, start + 40, '#aaccff', true);
     };
     const touch = (type, y) => {
@@ -31,6 +32,7 @@ async function verify() {
     highlight(70);
     await delay(50);
     check(window.scrollY > 1000, 'The initial spoken sentence should be brought into view');
+    check(reader.isTtsRangeVisible(offset(70), offset(70) + 40) === true, 'A spoken range on screen must be visible');
     touch('touchstart', 300);
     touch('touchmove', 180);
     // Synthetic touch events do not perform a browser drag. Move the viewport as a drag would.
@@ -41,14 +43,45 @@ async function verify() {
     highlight(90);
     await delay(50);
     check(window.scrollY === browsingY, 'A queued highlight must not move the viewport during a drag');
+    check(reader.isTtsRangeVisible(offset(90), offset(90) + 40) === false,
+      'Visibility must be available while the finger is still down');
+    window.scrollBy(0, -30);
+    // Synthetic scrolling has no compositor drag in headless Chromium. Deliver its scroll event.
+    window.dispatchEvent(new Event('scroll'));
+    await delay(25);
+    check(__lumiMessages.some(m => m.type === 'ttsVisibility' && m.payload.start === offset(90) && m.payload.visible === false),
+      'Scrolling must report offscreen speech before finger-up');
+    check(!__lumiMessages.some(m => m.type === 'manualScrollSettled'), 'The offscreen event must precede settling');
+    window.scrollTo(0, browsingY);
     touch('touchend', 180);
     highlight(100);
-    await delay(100);
+    await delay(60);
     check(window.scrollY === browsingY, 'Finger-up must not resume TTS following');
     reader.setTtsFollowEnabled(false);
+    window.scrollBy(0, -30);
+    const flungY = window.scrollY;
+    await delay(65);
+    check(!__lumiMessages.some(m => m.type === 'manualScrollSettled'), 'Inertial movement must postpone the settled event');
+    await delay(100);
+    check(__lumiMessages.filter(m => m.type === 'manualScrollSettled').length === 1, 'A manual drag must report its settled viewport once');
+    check(reader.isTtsRangeVisible(offset(70), offset(70) + 40) === false, 'A spoken range outside the screen must be hidden');
+    const spokenRange = document.createRange();
+    spokenRange.setStart(document.getElementById('reading').firstChild, offset(70));
+    spokenRange.setEnd(document.getElementById('reading').firstChild, offset(70) + 40);
+    window.scrollBy(0, Math.ceil(spokenRange.getBoundingClientRect().bottom) + 1);
+    check(reader.isTtsRangeVisible(offset(70), offset(70) + 40) === false, 'A range just above the first visible line is hidden');
+    window.scrollBy(0, -Math.ceil(spokenRange.getBoundingClientRect().height) - 4);
+    check(reader.isTtsRangeVisible(offset(70), offset(70) + 40) === true, 'Returning the range into the viewport makes it visible');
+    window.scrollTo(0, flungY);
+    touch('touchstart', 300);
+    touch('touchmove', 180);
+    touch('touchend', 180);
+    await delay(150);
+    check(__lumiMessages.filter(m => m.type === 'manualScrollSettled').length === 2,
+      'Dragging again while detached must report a new settled viewport');
     highlight(110);
     await delay(50);
-    check(window.scrollY === browsingY, 'Native follow suspension must keep the browsing position');
+    check(window.scrollY === flungY, 'Native follow suspension must keep the browsing position');
     reader.setTtsFollowEnabled(true);
     highlight(110);
     await delay(50);
@@ -61,7 +94,7 @@ async function verify() {
     highlight(110);
     await delay(50);
     check(window.scrollY === returnedY, 'A tap without dragging must leave automatic following enabled');
-    document.getElementById('result').textContent = JSON.stringify({ passed: true, checks: 7 });
+    document.getElementById('result').textContent = JSON.stringify({ passed: true, checks: 17 });
   } catch (error) {
     document.getElementById('result').textContent = JSON.stringify({ passed: false, error: error.message });
   }

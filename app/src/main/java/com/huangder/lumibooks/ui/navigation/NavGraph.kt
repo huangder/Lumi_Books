@@ -35,11 +35,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
@@ -452,7 +450,7 @@ fun MainNavGraph(
     var cloudOpenSource by remember {
         mutableStateOf<Triple<String, Rect?, com.huangder.lumibooks.ui.animation.BookReaderPresentation?>?>(null)
     }
-    val snackbarHostState = remember { SnackbarHostState() }
+    val notificationBannerState = remember { com.huangder.lumibooks.ui.components.NotificationBannerState() }
     val entranceTracker = remember { PageEntranceTracker() }
     val hazeState = remember { HazeState() }
     val eInkMode = LocalEInkMode.current
@@ -802,9 +800,23 @@ fun MainNavGraph(
         }
     }
 
+    val archiveLocationHint = stringResource(R.string.archive_book_location_hint)
     LaunchedEffect(snackbarMessage) {
         val message = snackbarMessage ?: return@LaunchedEffect
-        snackbarHostState.showSnackbar(message)
+        val archiveNotice = homeUiState.archiveNoticePending && homeUiState.importMessage == message
+        if (archiveNotice) homeViewModel.clearArchiveNotice()
+        notificationBannerState.show(
+            if (archiveNotice) {
+                com.huangder.lumibooks.ui.components.BannerMessage(
+                    title = message,
+                    body = archiveLocationHint,
+                    onClick = { com.huangder.lumibooks.ui.privacy.openArchivedBooks(context) },
+                    durationMillis = 3_000L
+                )
+            } else {
+                com.huangder.lumibooks.ui.components.BannerMessage(title = message)
+            }
+        )
         when {
             transientMessage == message -> transientMessage = null
             homeUiState.importMessage == message -> homeViewModel.clearImportMessage()
@@ -1854,21 +1866,16 @@ fun MainNavGraph(
             onSaveGoal = { minutes -> homeViewModel.saveDailyGoal(minutes) }
         )
 
-        SnackbarHost(
-            hostState = snackbarHostState,
+        com.huangder.lumibooks.ui.components.NotificationBannerHost(
+            state = notificationBannerState,
+            liquidGlassBackdrop = liquidGlassBackdrop.takeIf {
+                isLiquidGlass && canCaptureNavigationBackdrop
+            },
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(
-                    // The side rail frees the bottom edge but occupies the start edge.
-                    start = 20.dp + sideNavigationReserve,
-                    end = 20.dp,
-                    bottom = when {
-                        useSideNavigation -> 24.dp
-                        useMaterial3Navigation -> 96.dp
-                        else -> 88.dp
-                    }
-                )
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                // The side rail occupies the start edge in landscape.
+                .padding(start = 12.dp + sideNavigationReserve, end = 12.dp)
         )
 
         // The hero is above navigation, so the destination's passcode gate cannot cover it.
