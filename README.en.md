@@ -83,7 +83,7 @@ Lumi is a local e-book reader for Android. Books and reading data are stored on 
 
 - Three app styles: Default (custom theme color), Material 3 (dynamic color) and Liquid Glass (adjustable glass transparency).
 - Dark mode can follow the system or be set separately.
-- The interface supports 7 languages: Simplified Chinese, Traditional Chinese (Taiwan (China), Hong Kong, Macau), English, 日本語 and 한국어.
+- The interface supports 7 languages: Simplified Chinese, Traditional Chinese (Taiwan (China), Hong Kong (China), Macau (China)), English, 日本語 and 한국어.
 
 ## Privacy
 
