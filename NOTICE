@@ -7,7 +7,7 @@ Distribution of a combined build requires appropriate rights for all included
 code; this notice does not create an exception to any third-party license.
 
 Lumi original code, the analytic paper-curl renderer and the Lumi-authored TXT
-heading presets are distributed under GNU GPLv3. The rule-file codec is
+heading presets are distributed under the Apache License 2.0. The rule-file codec is
 an independent compatibility implementation. User-imported rules retain their
 original ownership and license; they are not part of the distributed presets.
 
