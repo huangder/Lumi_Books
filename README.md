@@ -2,7 +2,7 @@
 
 <div align="center">
 
-<img src="docs/readme-icon.png" alt="Lumi" width="120">
+<img src="docs/media/lumi2.webp" alt="Lumi" width="120">
 
 # Lumi
 
@@ -24,50 +24,9 @@ Lumi 是一款 Android 本地电子书阅读器。书籍和阅读数据默认保
 
 ## 截图
 
-<table align="center" width="100%">
-  <tr>
-    <td align="center" width="50%">
-      <b>首页</b>
-      <br/>
-      <br/>
-      <img src="docs/media/screen/shelf-light.webp" width="90%" alt="首页">
-    </td>
-    <td align="center" width="50%">
-      <b>阅读</b>
-      <br/>
-      <br/>
-      <img src="docs/media/screen/reader-text.webp" width="90%" alt="阅读页">
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
-      <b>阅读设置</b>
-      <br/>
-      <br/>
-      <img src="docs/media/screen/reading-themes.webp" width="90%" alt="阅读设置">
-    </td>
-    <td align="center" width="50%">
-      <b>听书</b>
-      <br/>
-      <br/>
-      <img src="docs/media/screen/audiobook.webp" width="90%" alt="听书">
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
-      <b>批注与书签</b>
-      <br/>
-      <br/>
-      <img src="docs/media/screen/annotations.webp" width="90%" alt="批注与书签">
-    </td>
-    <td align="center" width="50%">
-      <b>导入与远程书库</b>
-      <br/>
-      <br/>
-      <img src="docs/media/screen/remote-library.webp" width="90%" alt="导入与远程书库">
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <img src="docs/media/readme-screenshots.webp" width="800" alt="Lumi 首页、阅读、阅读设置和听书的截图">
+</p>
 
 ## 功能
 

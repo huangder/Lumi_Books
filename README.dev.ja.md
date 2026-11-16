@@ -2,7 +2,7 @@
 
 <div align="center">
 
-<img src="docs/readme-icon.png" alt="Lumi" width="96">
+<img src="docs/media/lumi2.webp" alt="Lumi" width="96">
 
 # Lumi 開発者ガイド
 

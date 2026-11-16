@@ -2,7 +2,7 @@
 
 <div align="center">
 
-<img src="docs/readme-icon.png" alt="Lumi" width="120">
+<img src="docs/media/lumi2.webp" alt="Lumi" width="120">
 
 # Lumi
 
@@ -21,9 +21,7 @@
 Lumi is a local e-book reader for Android. Books and reading data are stored on your phone by default. The basic features are free, open source and ad-free.
 
 <p align="center">
-  <img src="docs/media/screen/shelf-light.webp" width="30%" alt="Bookshelf">
-  <img src="docs/media/screen/reader-text.webp" width="30%" alt="Reader page">
-  <img src="docs/media/screen/widgets.webp" width="30%" alt="Home screen widgets">
+  <img src="docs/media/readme-screenshots.webp" width="800" alt="Lumi screenshots showing Home, Reader, Reading settings, and Audiobook">
 </p>
 
 ## Features

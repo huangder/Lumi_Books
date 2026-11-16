@@ -2,7 +2,7 @@
 
 <div align="center">
 
-<img src="docs/readme-icon.png" alt="Lumi" width="120">
+<img src="docs/media/lumi2.webp" alt="Lumi" width="120">
 
 # Lumi
 
@@ -21,9 +21,7 @@
 Lumi は Android 向けのローカル電子書籍リーダーです。書籍と読書データは既定で端末内に保存されます。基本機能は無料・オープンソース・広告なしで提供されます。
 
 <p align="center">
-  <img src="docs/media/screen/shelf-light.webp" width="30%" alt="書棚">
-  <img src="docs/media/screen/reader-text.webp" width="30%" alt="読書画面">
-  <img src="docs/media/screen/widgets.webp" width="30%" alt="ホーム画面ウィジェット">
+  <img src="docs/media/readme-screenshots.webp" width="800" alt="Lumi のホーム、読書画面、読書設定、読み上げのスクリーンショット">
 </p>
 
 ## 機能
