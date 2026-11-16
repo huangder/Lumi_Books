@@ -73,4 +73,11 @@ class TtsLocaleResolverTest {
     fun `punctuation only text does not force a locale switch`() {
         assertNull(TtsLocaleResolver.localeForText("……！？", Locale.US))
     }
+
+    @Test
+    fun onlyMultiTtsUsesNativePlayback() {
+        assertEquals(true, isNativePlaybackTtsEngine("org.nobody.multitts"))
+        assertEquals(false, isNativePlaybackTtsEngine("com.google.android.tts"))
+        assertEquals(false, isNativePlaybackTtsEngine(null))
+    }
 }

@@ -104,17 +104,31 @@ class LumiDawnRenderTest {
         theme: String = "lumi",
         accent: String? = null,
         journal: Boolean = true,
+        pickedTheme: String? = null,
         suffix: String = ""
     ) {
         show(dark, ink, theme, accent) {
             com.huangder.lumibooks.ui.brand.LumiDawnStage {
-                WelcomeFeatureStoriesPage(hasReadingJournal = journal, onContinue = {}, initialStory = index)
+                WelcomeFeatureStoriesPage(
+                    hasReadingJournal = journal,
+                    onContinue = {},
+                    initialStory = index,
+                    themeOptions = listOf("liquid_glass", "lumi", "material3"),
+                    selectedTheme = pickedTheme
+                )
             }
         }
         val title = when (WelcomeStory.entries[index]) {
             WelcomeStory.JOURNAL -> if (journal) R.string.welcome_story_journal_title else R.string.welcome_story_insights_title
             WelcomeStory.LISTENING -> R.string.welcome_story_listening_title
             WelcomeStory.STATS -> R.string.welcome_story_stats_title
+            // A picked theme's name is also on its chip; its one-line pitch is unique.
+            WelcomeStory.APPEARANCE -> when (pickedTheme) {
+                null -> R.string.welcome_story_appearance_title_pick
+                "liquid_glass" -> R.string.welcome_theme_desc_liquid_glass
+                "material3" -> R.string.welcome_theme_desc_material3
+                else -> R.string.welcome_theme_desc_flat
+            }
         }
         compose.onNodeWithText(context.getString(title)).assertIsDisplayed()
         val next = compose.onNodeWithTag("welcome-story-next").assertIsDisplayed()
@@ -131,6 +145,9 @@ class LumiDawnRenderTest {
     @Test fun storyJournalLight() = story(0)
     @Test fun storyListeningLight() = story(1)
     @Test fun storyStatsLight() = story(2)
+    @Test fun storyAppearanceUnpicked() = story(3)
+    @Test fun storyAppearancePickedFlat() = story(3, pickedTheme = "lumi", suffix = "-flat")
+    @Test fun storyAppearanceMaterialDark() = story(3, dark = true, pickedTheme = "material3", suffix = "-m3")
     @Test fun storyJournalDark() = story(0, dark = true)
     @Test fun storyStatsDark() = story(2, dark = true)
     @Test fun storyInsightsWithoutJournal() = story(0, journal = false, suffix = "-oss")

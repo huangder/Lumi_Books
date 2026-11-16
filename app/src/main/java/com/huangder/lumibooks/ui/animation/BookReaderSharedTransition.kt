@@ -11,6 +11,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
@@ -61,6 +62,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -202,6 +204,27 @@ internal object BookReaderMotion {
         val halfWindow = COVER_CROSSFADE_FRACTION / 2f
         return ((progress - (COVER_STAGE_FRACTION - halfWindow)) /
             COVER_CROSSFADE_FRACTION).coerceIn(0f, 1f)
+    }
+
+    /**
+     * Share of the reported display radius the full-screen window ends on. Display corners are
+     * often continuous curves rather than the reported circle; a slightly tighter arc stays
+     * inside the physical curve, so no library pixels show at the corners.
+     */
+    const val SCREEN_CORNER_FIT = 0.8f
+
+    /**
+     * Window radius in dp. With a rounded display the growing window takes on the hardware
+     * corner shape, so the full-screen frame already matches the reader; otherwise it
+     * settles square.
+     */
+    fun cornerRadius(startRadius: Float, screenRadius: Float, progress: Float): Float {
+        if (screenRadius <= 0f) return cornerRadius(startRadius, progress)
+        val target = screenRadius * SCREEN_CORNER_FIT
+        val elapsed = WINDOW_DURATION_MS * progress.coerceIn(0f, 1f)
+        return if (elapsed <= 100f) startRadius
+        else lerp(startRadius, target,
+            FastOutSlowInEasing.transform((elapsed - 100f) / (WINDOW_DURATION_MS - 100f)))
     }
 
     fun cornerRadius(startRadius: Float, progress: Float): Float {
@@ -365,7 +388,7 @@ internal class BookReaderTransitionState internal constructor(
         BookReaderMotion.SizeEasing.transform(windowProgressAnim.value)
     }
     val cornerRadiusSnapshot: State<Float> = derivedStateOf {
-        BookReaderMotion.cornerRadius(sourceCornerRadiusDp, windowProgressAnim.value)
+        BookReaderMotion.cornerRadius(sourceCornerRadiusDp, screenCornerRadiusDp, windowProgressAnim.value)
     }
     val coverFadeSnapshot: State<Float> = derivedStateOf {
         BookReaderMotion.coverFade(windowProgressAnim.value)
@@ -427,6 +450,8 @@ internal class BookReaderTransitionState internal constructor(
 
     var sourceCornerRadiusDp by mutableFloatStateOf(BookReaderMotion.DEFAULT_CORNER_RADIUS_DP)
         private set
+    /** Physical display corner radius; the window lands on it when it fills the screen. */
+    var screenCornerRadiusDp by mutableFloatStateOf(0f)
 
     var readerReady by mutableStateOf(false)
         private set
@@ -1085,6 +1110,13 @@ internal fun BookReaderLibraryLayer(
     content: @Composable () -> Unit
 ) {
     val coordinateSpace = remember { LibraryCoordinateSpace() }
+    val view = LocalView.current
+    val density = LocalDensity.current.density
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    // Read once per window configuration; insets are attached by the time effects run.
+    LaunchedEffect(view, density, configuration) {
+        transition.screenCornerRadiusDp = screenCornerRadiusPx(view) / density
+    }
     CompositionLocalProvider(LocalLibraryCoordinateSpace provides coordinateSpace) {
         Box(Modifier.fillMaxSize().bookReaderLibraryLayer(transition, blurEnabled)
             .onPlaced { coordinateSpace.coordinates = it }) { content() }
@@ -1099,7 +1131,8 @@ internal fun Modifier.bookReaderWindowClip(
     transition: BookReaderTransitionState,
     outside: Boolean = false
 ): Modifier {
-    val windowShape = AppRoundedCornerShape(0.dp)
+    // Circular arcs, like the hardware corners the full-screen window lands on.
+    val windowShape = RoundedCornerShape(0.dp)
     return drawWithCache {
         val path = Path()
         onDrawWithContent {
@@ -1122,7 +1155,8 @@ internal fun Modifier.bookReaderWindowClip(
                         BookReaderMotion.CONTROL_POINT_OFFSET_DP.dp.toPx())
                 })
                 val radius = if (isCoverFlow) {
-                    CoverFlowReaderMotion.windowCornerRadius(transition.sourceCornerRadiusDp, progress).dp.toPx()
+                    CoverFlowReaderMotion.windowCornerRadius(transition.sourceCornerRadiusDp,
+                        transition.screenCornerRadiusDp, progress).dp.toPx()
                 } else transition.cornerRadiusSnapshot.value.dp.toPx()
                 path.reset()
                 path.addPath(windowShape.copy(CornerSize(radius))
@@ -1262,6 +1296,7 @@ internal fun BookHeroWindowOverlay(
         ))
         val windowCornerRadius = transition.cornerRadiusSnapshot.value.coerceAtLeast(0f)
         val heroShape = AppRoundedCornerShape(0.dp)
+        val windowShape = RoundedCornerShape(0.dp)
 
         Box(
             modifier = Modifier
@@ -1271,7 +1306,7 @@ internal fun BookHeroWindowOverlay(
                     height = with(density) { window.height.toDp() }
                 )
                 .graphicsLayer {
-                    shape = heroShape.copy(androidx.compose.foundation.shape.CornerSize(windowCornerRadius.dp))
+                    shape = windowShape.copy(CornerSize(windowCornerRadius.dp))
                     clip = true
                     alpha = transition.overlayAlpha.coerceIn(0f, 1f)
                 }

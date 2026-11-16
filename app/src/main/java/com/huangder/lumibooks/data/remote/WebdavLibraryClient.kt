@@ -60,7 +60,9 @@ class WebdavLibraryClient @Inject constructor() {
             val books = entries
                 .filter { !it.isCollection && !it.name.startsWith('.') }
                 .mapNotNull { entry ->
-                    val extension = RemoteBookFiles.extensionFromName(entry.name) ?: return@mapNotNull null
+                    val extension = RemoteBookFiles.extensionFromName(entry.name)
+                        ?: com.huangder.lumibooks.domain.model.BookFormat.wordExtensionForMimeType(entry.contentType)
+                        ?: return@mapNotNull null
                     val segments = WebdavListingParser.normalizedSegments(entry.url)
                     val relative = if (segments.take(rootSegments.size) == rootSegments) {
                         segments.drop(rootSegments.size)

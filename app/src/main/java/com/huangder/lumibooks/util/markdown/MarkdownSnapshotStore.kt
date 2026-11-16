@@ -6,6 +6,7 @@ import android.provider.DocumentsContract
 import com.huangder.lumibooks.util.BookFileAccess
 import com.huangder.lumibooks.util.AuthorizedStorageManager
 import com.huangder.lumibooks.util.FileUtils
+import com.huangder.lumibooks.util.parser.BookNameMetadata
 import org.json.JSONObject
 import org.json.JSONArray
 import java.io.File
@@ -32,7 +33,12 @@ object MarkdownSnapshotStore {
         return File(FileUtils.getBooksDirectory(context), "markdown/$bookId").apply { mkdirs() }
     }
 
-    fun create(context: Context, bookId: String, source: String, parentUri: String? = null): File {
+    fun create(context: Context, bookId: String, source: String, parentUri: String? = null): File =
+        createWithMetadata(context, bookId, source, parentUri).file
+
+    internal data class CreatedSnapshot(val file: File, val metadata: BookNameMetadata)
+
+    internal fun createWithMetadata(context: Context, bookId: String, source: String, parentUri: String?): CreatedSnapshot {
         val stage = File(bookRoot(context, bookId), "stage-${UUID.randomUUID()}").apply { mkdirs() }
         try {
             val markdown = File(stage, "document.md")
@@ -58,7 +64,7 @@ object MarkdownSnapshotStore {
                 .put("title", parsed.title ?: BookFileAccess.displayName(context, source)?.substringBeforeLast('.').orEmpty())
                 .put("author", parsed.author.orEmpty()).put("assets", assets)
             File(stage, "manifest.json").writeText(manifest.toString())
-            return commit(stage, bookRoot(context, bookId))
+            return CreatedSnapshot(commit(stage, bookRoot(context, bookId)), BookNameMetadata(parsed.title, parsed.author))
         } catch (error: Throwable) { stage.deleteRecursively(); throw error }
     }
 

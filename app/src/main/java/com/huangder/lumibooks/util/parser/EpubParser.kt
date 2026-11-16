@@ -101,6 +101,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             """footnotebookmark[-_]?(?:start|back)""",
             RegexOption.IGNORE_CASE
         )
+        private val NUMBERED_NOTE_ANCHOR_REGEX = Regex("""(wz|wzyy)_([0-9]+_[0-9]+)""", RegexOption.IGNORE_CASE)
         private val NOTEREF_SEMANTICS_REGEX = Regex("""(^|\s)(noteref|doc-noteref)(\s|$)""")
         private val NOTE_BODY_SEMANTICS_REGEX = Regex("""(^|\s)(footnote|endnote|rearnote|doc-footnote|doc-endnote)(\s|$)""")
         private val BACKLINK_SEMANTICS_REGEX = Regex("""(^|\s)(backlink|doc-backlink)(\s|$)""")
@@ -157,6 +158,17 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 .joinToString(" ")
                 .lowercase()
             if (NOTE_BODY_SEMANTICS_REGEX.containsMatchIn(semantics)) return false
+
+            // Some EPUBs use matching wz_<number> and wzyy_<number> IDs without note semantics.
+            NUMBERED_NOTE_ANCHOR_REGEX.matchEntire(sourceId)?.let { match ->
+                val (prefix, number) = match.destructured
+                if (prefix.equals("wz", ignoreCase = true) &&
+                    fragment.equals("wzyy_$number", ignoreCase = true)
+                ) return true
+                if (prefix.equals("wzyy", ignoreCase = true) &&
+                    fragment.equals("wz_$number", ignoreCase = true)
+                ) return false
+            }
             if (NOTEREF_SEMANTICS_REGEX.containsMatchIn(semantics)) return true
             if (listOf("class", "id", "title").any {
                     tagAttribute(openTag, it)?.let(::hasFootnoteHint) == true
@@ -479,7 +491,10 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                     index !in used && fragment != null &&
                         bodies[index].id?.equals(fragment, ignoreCase = true) == true
                 }
-                if (bodyIndex == null) bodyIndex = bodies.indices.firstOrNull { it !in used }
+                // Numbered pairs have an explicit target that may be in another TOC slice.
+                if (bodyIndex == null && fragment?.let(NUMBERED_NOTE_ANCHOR_REGEX::matches) != true) {
+                    bodyIndex = bodies.indices.firstOrNull { it !in used }
+                }
                 if (bodyIndex == null) {
                     hrefs += reference.href
                     return@forEach
@@ -1004,6 +1019,15 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
 
     override fun openRenderSession(): EpubRenderSession =
         EpubRenderSession.open(epubFilePath, parsedPackage ?: EpubPackageReader.read(epubFilePath))
+
+    internal fun openRenderSession(program: com.huangder.lumibooks.replacement.ReplacementProgram): EpubRenderSession =
+        EpubRenderSession.open(epubFilePath, parsedPackage, program)
+
+    internal fun isReflowableChapter(index: Int): Boolean {
+        val path = chapterSources.getOrNull(index)?.path ?: return false
+        return parsedPackage?.spine?.firstOrNull { it.manifestItem.fullPath.equals(path, ignoreCase = true) }
+            ?.renditionLayout != com.huangder.lumibooks.util.epub.EpubRenditionLayout.PRE_PAGINATED
+    }
 
     override suspend fun searchBook(query: String, maxResults: Int): List<EpubSearchMatch> {
         val epubPackage = parsedPackage ?: EpubPackageReader.read(epubFilePath)
@@ -1982,7 +2006,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             ?.let { if (it.isNotBlank()) return it }
 
         val documentHref = trimmed.substringBefore('#').substringBefore('?')
-        var targetChapter = if (documentHref.isBlank()) {
+        val targetChapter = if (documentHref.isBlank()) {
             sourceChapterIndex
         } else {
             resolveLinkedChapter(sourceChapterIndex, documentHref)
@@ -1992,18 +2016,13 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         val fragment = if ('#' in trimmed) decodeUrlComponent(trimmed.substringAfter('#')) else ""
         if (fragment.isEmpty()) return null
 
-        val targetPath = chapterSources.getOrNull(targetChapter)?.path
-        targetChapter = findLogicalChapterIndex(canonicalPath(targetPath.orEmpty()), fragment)
-            ?: targetChapter
-
+        // Footnote bodies can be outside the TOC slice that contains their reference.
         val rawHtml = try {
             synchronized(zipLock) {
                 val zipFile = sessionZipFile ?: return null
                 val source = chapterSources.getOrNull(targetChapter) ?: return null
                 val zipEntry = findEntry(zipFile, source.path) ?: return null
-                zipFile.getInputStream(zipEntry).bufferedReader().use {
-                    sliceLogicalChapterHtml(it.readText(), source)
-                }
+                zipFile.getInputStream(zipEntry).bufferedReader().use { it.readText() }
             }
         } catch (_: Exception) {
             return null

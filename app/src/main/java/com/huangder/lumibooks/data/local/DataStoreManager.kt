@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.data.local
 
+import com.huangder.lumibooks.replacement.BookReplacementRules
+
 import com.huangder.lumibooks.domain.model.AppFontSize
 import com.huangder.lumibooks.domain.model.LongPressSelectionRange
 import com.huangder.lumibooks.domain.model.SelectionMenuSettings
@@ -24,6 +26,7 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.huangder.lumibooks.R
+import com.huangder.lumibooks.domain.model.ReceivedNotice
 import com.huangder.lumibooks.domain.model.CustomFontPreset
 import com.huangder.lumibooks.domain.model.CustomFontPresetCodec
 import com.huangder.lumibooks.domain.model.HighlightPalette
@@ -85,6 +88,7 @@ import com.huangder.lumibooks.tts.TtsReaderResumeChoice
 import com.huangder.lumibooks.tts.ExternalTtsSettings
 import com.huangder.lumibooks.tts.ExternalTtsConfig
 import com.huangder.lumibooks.tts.FloatingSubtitleSettings
+import com.huangder.lumibooks.tts.FloatingSubtitleStyle
 import com.huangder.lumibooks.tts.TtsSettingsStore
 import com.huangder.lumibooks.domain.model.BookPositionUse
 import com.huangder.lumibooks.domain.model.BookPositionSource
@@ -105,6 +109,8 @@ import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 import com.huangder.lumibooks.data.backup.PortablePreference
+import com.huangder.lumibooks.data.backup.isReaderThemePreference
+import com.huangder.lumibooks.data.backup.withoutProcessedBackgrounds
 import com.huangder.lumibooks.data.backup.shouldApplyIncomingPortablePreference
 import java.security.MessageDigest
 import java.io.File
@@ -166,6 +172,7 @@ data class ReaderPreferencesSnapshot(
     val volumeKeyDownAction: ReaderVolumeKeyAction,
     val bookmarkRemarkPromptEnabled: Boolean,
     val bionicReadingEnabled: Boolean,
+    val pageBottomAligned: Boolean,
     val comicModeEnabled: Boolean,
     val lineGuideEnabled: Boolean,
     val lineGuideDimLevel: Int,
@@ -253,6 +260,23 @@ class DataStoreManager @Inject constructor(
             it[stringPreferencesKey("raster_manual_crop_$bookId")] = crop.normalized().encode()
         }
     }
+
+    internal fun replacementRules(bookId: String): Flow<BookReplacementRules> =
+        context.dataStore.data.map { BookReplacementRules.decode(it[replacementRulesKey(bookId)]) }
+            .distinctUntilChanged()
+
+    internal suspend fun updateReplacementRules(
+        bookId: String,
+        transform: (BookReplacementRules) -> BookReplacementRules
+    ) {
+        val key = replacementRulesKey(bookId)
+        context.dataStore.edit { preferences ->
+            val next = transform(BookReplacementRules.decode(preferences[key]))
+            if (next == BookReplacementRules()) preferences.remove(key) else preferences[key] = next.encode()
+        }
+    }
+
+    private fun replacementRulesKey(bookId: String) = stringPreferencesKey("local_replacement_rules_$bookId")
 
     fun bookReview(bookId: String): Flow<String> = context.dataStore.data.map { preferences ->
         preferences[stringPreferencesKey("book_review_$bookId")].orEmpty()
@@ -412,6 +436,11 @@ class DataStoreManager @Inject constructor(
         private val TTS_FLOATING_CORNER_RADIUS_DP = floatPreferencesKey("tts_floating_corner_radius_dp")
         private val TTS_FLOATING_WIDTH_DP = floatPreferencesKey("tts_floating_width_dp")
         private val TTS_FLOATING_HEIGHT_DP = floatPreferencesKey("tts_floating_height_dp")
+        private val TTS_FLOATING_STYLE = stringPreferencesKey("tts_floating_style")
+        private val TTS_FLOATING_FONT_SIZE_SP = floatPreferencesKey("tts_floating_font_size_sp")
+        private val TTS_FLOATING_HIGHLIGHT_COLOR = stringPreferencesKey("tts_floating_highlight_color")
+        private val TTS_FLOATING_SHOW_NEXT_LINE = booleanPreferencesKey("tts_floating_show_next_line")
+        private val TTS_FLOATING_LOCKED = booleanPreferencesKey("tts_floating_locked")
         private val PREFERRED_TTS_ENGINE = stringPreferencesKey("preferred_tts_engine")
         private val TTS_PROVIDER_SELECTION = stringPreferencesKey("tts_provider_selection")
         private val TTS_START_CHOICE = stringPreferencesKey("tts_start_choice")
@@ -435,6 +464,7 @@ class DataStoreManager @Inject constructor(
         private val VOLUME_KEY_DOWN_ACTION = stringPreferencesKey("volume_key_down_action")
         private val BOOKMARK_REMARK_PROMPT_ENABLED = booleanPreferencesKey("bookmark_remark_prompt_enabled")
         private val BIONIC_READING_ENABLED = booleanPreferencesKey("bionic_reading_enabled")
+        private val READER_PAGE_BOTTOM_ALIGNED = booleanPreferencesKey("reader_page_bottom_aligned")
         private val COMIC_MODE = booleanPreferencesKey("comic_mode")
         private val SCREEN_SLEEP_TIMEOUT_SECONDS = intPreferencesKey("screen_sleep_timeout_seconds")
         private val READER_EDGE_TAP_MODE = stringPreferencesKey("reader_edge_tap_mode")
@@ -485,6 +515,8 @@ class DataStoreManager @Inject constructor(
         private val BOOKSHELF_LAYOUT_MODE = intPreferencesKey("bookshelf_layout_mode")
         private val SPINE_SHARP_COVERS = booleanPreferencesKey("spine_sharp_covers")
         private val BOOKSHELF_SORT_MODE = stringPreferencesKey("bookshelf_sort_mode")
+        private val BOOKSHELF_CUSTOM_ORDER = stringPreferencesKey("bookshelf_custom_order")
+        private val SPINE_ROW_BREAKS = stringPreferencesKey("spine_row_breaks")
         private val IMPORT_BOOKS_LAYOUT_MODE = intPreferencesKey("import_books_layout_mode")
         private val FOLDER_BOOKS_LAYOUT_MODE = intPreferencesKey("folder_books_layout_mode")
         private val FOLDER_BOOKS_SORT_MODE = stringPreferencesKey("folder_books_sort_mode")
@@ -549,6 +581,7 @@ class DataStoreManager @Inject constructor(
         // 是否已完成首次启动的更新检查
         private val HAS_CHECKED_UPDATE_ON_START = booleanPreferencesKey("has_checked_update_on_start")
         private val ACKNOWLEDGED_NOTICE_IDS = stringSetPreferencesKey("acknowledged_notice_ids")
+        private val RECEIVED_NOTICES = stringPreferencesKey("received_notices_v1")
         private val IGNORED_APP_UPDATE_VERSION_CODE = longPreferencesKey("ignored_app_update_version_code")
         private val PORTABLE_PREFERENCE_METADATA = stringPreferencesKey("portable_preference_metadata_v1")
     }
@@ -669,6 +702,7 @@ class DataStoreManager @Inject constructor(
                     else ReaderVolumeKeyAction.SYSTEM_VOLUME,
                 bookmarkRemarkPromptEnabled = preferences[BOOKMARK_REMARK_PROMPT_ENABLED] ?: true,
                 bionicReadingEnabled = preferences[BIONIC_READING_ENABLED] ?: false,
+                pageBottomAligned = preferences[READER_PAGE_BOTTOM_ALIGNED] ?: false,
                 comicModeEnabled = preferences[COMIC_MODE] ?: false,
                 lineGuideEnabled = preferences[booleanPreferencesKey("line_guide_enabled_$bookId")] ?: false,
                 lineGuideDimLevel = (preferences[intPreferencesKey("line_guide_dim_$bookId")] ?: 2).coerceIn(0, 4),
@@ -898,7 +932,14 @@ class DataStoreManager @Inject constructor(
             widthDp = preferences[TTS_FLOATING_WIDTH_DP]
                 ?: FloatingSubtitleSettings.DEFAULT_WIDTH_DP,
             heightDp = preferences[TTS_FLOATING_HEIGHT_DP]
-                ?: FloatingSubtitleSettings.DEFAULT_HEIGHT_DP
+                ?: FloatingSubtitleSettings.DEFAULT_HEIGHT_DP,
+            style = FloatingSubtitleStyle.fromName(preferences[TTS_FLOATING_STYLE]),
+            fontSizeSp = preferences[TTS_FLOATING_FONT_SIZE_SP]
+                ?: FloatingSubtitleSettings.DEFAULT_FONT_SIZE_SP,
+            highlightColorHex = preferences[TTS_FLOATING_HIGHLIGHT_COLOR]
+                ?: FloatingSubtitleSettings.DEFAULT_HIGHLIGHT_COLOR,
+            showNextLine = preferences[TTS_FLOATING_SHOW_NEXT_LINE] ?: true,
+            locked = preferences[TTS_FLOATING_LOCKED] ?: false
         ).normalized()
     }
 
@@ -1019,6 +1060,11 @@ class DataStoreManager @Inject constructor(
 
     val bionicReadingEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[BIONIC_READING_ENABLED] ?: false
+    }
+
+    /** 翻页模式下整页正文是否对齐到同一条下边线（会微调行距）。 */
+    val pageBottomAligned: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[READER_PAGE_BOTTOM_ALIGNED] ?: false
     }
 
     /** 漫画模式：图片按屏宽等比缩放、整页无缝上下拼接滚动 */
@@ -1220,6 +1266,21 @@ class DataStoreManager @Inject constructor(
     val bookshelfSortMode: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[BOOKSHELF_SORT_MODE] ?: "DATE_ADDED"
     }
+
+    /** Book ids in the order the user arranged them by dragging, for the custom sort. */
+    val bookshelfCustomOrder: Flow<List<String>> = context.dataStore.data.map { preferences ->
+        preferences[BOOKSHELF_CUSTOM_ORDER].orEmpty().split('\n').filter { it.isNotEmpty() }
+    }.distinctUntilChanged()
+
+    /** Spine shelf rows the user placed books on: book id → row break before it. */
+    val spineRowBreaks: Flow<Map<String, Int>> = context.dataStore.data.map { preferences ->
+        preferences[SPINE_ROW_BREAKS].orEmpty().split('\n').mapNotNull { line ->
+            val tab = line.lastIndexOf('\t')
+            if (tab <= 0) return@mapNotNull null
+            val count = line.substring(tab + 1).toIntOrNull()?.takeIf { it > 0 } ?: return@mapNotNull null
+            line.substring(0, tab) to count
+        }.toMap()
+    }.distinctUntilChanged()
 
     /** Single DataStore read used to refresh the non-blocking Activity launch snapshot. */
     val launchThemeSnapshot: Flow<LaunchThemeSnapshot> = context.dataStore.data.map { preferences ->
@@ -1522,6 +1583,21 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { preferences -> preferences[BOOKSHELF_SORT_MODE] = mode }
     }
 
+    suspend fun saveBookshelfCustomOrderAndSort(
+        order: List<String>,
+        mode: String,
+        spineRowBreaks: Map<String, Int>? = null
+    ) {
+        context.dataStore.edit { preferences ->
+            preferences[BOOKSHELF_CUSTOM_ORDER] = order.joinToString("\n")
+            if (spineRowBreaks != null) {
+                preferences[SPINE_ROW_BREAKS] = spineRowBreaks.entries
+                    .joinToString("\n") { (id, count) -> "$id\t$count" }
+            }
+            preferences[BOOKSHELF_SORT_MODE] = mode
+        }
+    }
+
     val portablePreferenceChanges: Flow<Int> = context.dataStore.data.map { preferences ->
         preferences.asMap()
             .filterKeys { isPortablePreferenceKey(it.name) }
@@ -1705,6 +1781,17 @@ class DataStoreManager @Inject constructor(
             preferences[TTS_FLOATING_CORNER_RADIUS_DP] = value.cornerRadiusDp
             preferences[TTS_FLOATING_WIDTH_DP] = value.widthDp
             preferences[TTS_FLOATING_HEIGHT_DP] = value.heightDp
+            preferences[TTS_FLOATING_STYLE] = value.style.name
+            preferences[TTS_FLOATING_FONT_SIZE_SP] = value.fontSizeSp
+            preferences[TTS_FLOATING_HIGHLIGHT_COLOR] = value.highlightColorHex
+            preferences[TTS_FLOATING_SHOW_NEXT_LINE] = value.showNextLine
+            preferences[TTS_FLOATING_LOCKED] = value.locked
+        }
+    }
+
+    suspend fun saveFloatingSubtitleLocked(locked: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[TTS_FLOATING_LOCKED] = locked
         }
     }
 
@@ -1850,6 +1937,12 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    suspend fun savePageBottomAligned(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[READER_PAGE_BOTTOM_ALIGNED] = enabled
+        }
+    }
+
     suspend fun saveComicMode(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[COMIC_MODE] = enabled
@@ -1988,6 +2081,7 @@ class DataStoreManager @Inject constructor(
             preferences[VOLUME_KEY_DOWN_ACTION] = ReaderVolumeKeyAction.SYSTEM_VOLUME.storageValue
             preferences[BOOKMARK_REMARK_PROMPT_ENABLED] = true
             preferences[BIONIC_READING_ENABLED] = false
+            preferences[READER_PAGE_BOTTOM_ALIGNED] = false
             preferences[SCREEN_SLEEP_TIMEOUT_SECONDS] = DEFAULT_SCREEN_SLEEP_TIMEOUT_SECONDS
             preferences[READER_EDGE_TAP_MODE] = ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT.key
             ReaderPageCorner.entries.forEach { corner ->
@@ -2411,8 +2505,8 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { it[booleanPreferencesKey("native_epub_css_$bookId")] = enabled }
     }
 
-    /** Markdown opens in WebView by default; an explicit layout choice survives reopening. */
-    suspend fun initializeMarkdownRenderMode(bookId: String) {
+    /** Formats with tables and embedded media can default to WebView while retaining explicit choices. */
+    suspend fun initializeBookLayoutMode(bookId: String) {
         val key = stringPreferencesKey("epub_render_mode_$bookId")
         context.dataStore.edit { preferences ->
             if (!preferences.contains(key)) preferences[key] = EpubRenderMode.BOOK_LAYOUT.storageValue
@@ -3280,6 +3374,20 @@ class DataStoreManager @Inject constructor(
         preferences[ACKNOWLEDGED_NOTICE_IDS] ?: emptySet()
     }
 
+    internal val receivedNotices: Flow<List<ReceivedNotice>> = context.dataStore.data
+        .map { it[RECEIVED_NOTICES] }
+        .distinctUntilChanged()
+        .map(::decodeReceivedNotices)
+
+    internal suspend fun recordReceivedNotice(notice: ReceivedNotice) {
+        context.dataStore.edit { preferences ->
+            val existing = decodeReceivedNotices(preferences[RECEIVED_NOTICES])
+            if (existing.none { it.id == notice.id }) {
+                preferences[RECEIVED_NOTICES] = encodeReceivedNotices(existing + notice)
+            }
+        }
+    }
+
     /** App update versionCode ignored by the user. Same version will not auto-pop again. */
     val ignoredAppUpdateVersionCode: Flow<Long> = context.dataStore.data.map { preferences ->
         preferences[IGNORED_APP_UPDATE_VERSION_CODE] ?: 0L
@@ -3375,60 +3483,71 @@ class DataStoreManager @Inject constructor(
     }
 
     suspend fun exportPortablePreferences(deviceId: String): List<PortablePreference> {
-        val preferences = context.dataStore.data.first()
-        val previous = parsePortablePreferenceMetadata(preferences[PORTABLE_PREFERENCE_METADATA])
-        val now = System.currentTimeMillis()
-        val current = preferences.asMap()
-            .asSequence()
-            .filter { (key, _) -> isPortablePreferenceKey(key.name) }
-            .mapNotNull { (key, value) -> encodePortablePreference(key.name, value) }
-            .associateBy { it.key }
-
         val result = mutableListOf<PortablePreference>()
-        val metadata = JSONObject()
-        for ((key, encoded) in current) {
-            val fingerprint = portablePreferenceFingerprint(encoded.type, encoded.value)
-            val old = previous[key]
-            val updatedAt = old?.takeIf { it.fingerprint == fingerprint && !it.deleted }?.updatedAt ?: now
-            val owner = old?.takeIf { it.fingerprint == fingerprint && !it.deleted }?.deviceId ?: deviceId
-            result += encoded.copy(updatedAt = updatedAt, deviceId = owner)
-            metadata.put(key, portablePreferenceMetadataJson(fingerprint, updatedAt, owner, false))
+        context.dataStore.edit { preferences ->
+            val previous = parsePortablePreferenceMetadata(preferences[PORTABLE_PREFERENCE_METADATA])
+            val now = System.currentTimeMillis()
+            val current = preferences.asMap()
+                .asSequence()
+                .filter { (key, _) -> isPortablePreferenceKey(key.name) }
+                .mapNotNull { (key, value) -> encodePortablePreference(key.name, value) }
+                .associateBy { it.key }
+            val metadata = JSONObject()
+            for ((key, encoded) in current) {
+                val fingerprint = encoded.portableFingerprint()
+                val unchanged = previous[key]?.takeIf {
+                    !it.deleted && encoded.matchesPortableFingerprint(it.fingerprint)
+                }
+                val updatedAt = unchanged?.updatedAt ?: now
+                val owner = unchanged?.deviceId ?: deviceId
+                result += encoded.copy(updatedAt = updatedAt, deviceId = owner)
+                metadata.put(key, portablePreferenceMetadataJson(fingerprint, updatedAt, owner, false))
+            }
+            for ((key, old) in previous) {
+                if (key in current || !isPortablePreferenceKey(key)) continue
+                val updatedAt = if (old.deleted) old.updatedAt else now
+                val owner = if (old.deleted) old.deviceId else deviceId
+                result += PortablePreference(key, PortablePreference.TYPE_DELETED, "", updatedAt, owner)
+                metadata.put(key, portablePreferenceMetadataJson("", updatedAt, owner, true))
+            }
+            preferences[PORTABLE_PREFERENCE_METADATA] = metadata.toString()
         }
-        for ((key, old) in previous) {
-            if (key in current || !isPortablePreferenceKey(key)) continue
-            val updatedAt = if (old.deleted) old.updatedAt else now
-            val owner = if (old.deleted) old.deviceId else deviceId
-            result += PortablePreference(key, PortablePreference.TYPE_DELETED, "", updatedAt, owner)
-            metadata.put(key, portablePreferenceMetadataJson("", updatedAt, owner, true))
-        }
-        context.dataStore.edit { it[PORTABLE_PREFERENCE_METADATA] = metadata.toString() }
         return result
     }
 
-    suspend fun applyPortablePreferences(entries: List<PortablePreference>) {
+    suspend fun applyPortablePreferences(
+        entries: List<PortablePreference>,
+        expectedThemePreferences: List<PortablePreference>? = null
+    ) {
         if (entries.isEmpty()) return
         val saved = context.dataStore.edit { preferences ->
             val alreadyUnlocked = preferences[LUMI_EASTER_EGG_UNLOCKED] == true
             val metadata = JSONObject(preferences[PORTABLE_PREFERENCE_METADATA] ?: "{}")
+            val canApplyTheme = expectedThemePreferences == null || !entries.any { isReaderThemePreference(it.key) } ||
+                preferences.themeFingerprints() == expectedThemePreferences
+                    .filter { isReaderThemePreference(it.key) && !it.deleted }
+                    .associate { it.key to it.portableFingerprint() }
             for (entry in entries) {
                 if (!isPortablePreferenceKey(entry.key)) continue
+                if (!canApplyTheme && isReaderThemePreference(entry.key)) continue
                 val oldMetadata = metadata.optJSONObject(entry.key)
                 val currentValue = preferences.asMap().entries
                     .firstOrNull { it.key.name == entry.key }
                     ?.let { (key, value) -> encodePortablePreference(key.name, value) }
+                val previousFingerprint = oldMetadata?.optString("fingerprint")
                 val currentFingerprint = currentValue?.let {
-                    portablePreferenceFingerprint(it.type, it.value)
+                    if (it.matchesPortableFingerprint(previousFingerprint)) previousFingerprint else it.portableFingerprint()
                 }
                 if (!shouldApplyIncomingPortablePreference(
                         hasPreviousMetadata = oldMetadata != null,
                         hasCurrentValue = currentValue != null,
                         currentFingerprint = currentFingerprint,
-                        previousFingerprint = oldMetadata?.optString("fingerprint"),
+                        previousFingerprint = previousFingerprint,
                         previousWasDeleted = oldMetadata?.optBoolean("deleted") == true
                     )
                 ) continue
                 applyPortablePreference(preferences, entry)
-                val fingerprint = if (entry.deleted) "" else portablePreferenceFingerprint(entry.type, entry.value)
+                val fingerprint = if (entry.deleted) "" else entry.portableFingerprint()
                 metadata.put(
                     entry.key,
                     portablePreferenceMetadataJson(
@@ -3521,6 +3640,7 @@ class DataStoreManager @Inject constructor(
     }
 
     private fun isPortablePreferenceKey(key: String): Boolean {
+        if (key.startsWith("local_replacement_rules_")) return false
         // Action ordering belongs to this installation, not to another device's progress.
         if (key.startsWith("local_book_position_use_")) return false
         if (key == PORTABLE_PREFERENCE_METADATA.name) return false
@@ -3536,6 +3656,20 @@ class DataStoreManager @Inject constructor(
         val bytes = MessageDigest.getInstance("SHA-256").digest("$type\u0000$value".toByteArray())
         return bytes.joinToString("") { "%02x".format(it) }
     }
+
+    private fun PortablePreference.portableFingerprint(): String =
+        portablePreferenceFingerprint(type, withoutProcessedBackgrounds().value)
+
+    private fun PortablePreference.matchesPortableFingerprint(fingerprint: String?): Boolean {
+        val normalized = withoutProcessedBackgrounds()
+        return portablePreferenceFingerprint(type, normalized.value) == fingerprint ||
+            (normalized.value != value && portablePreferenceFingerprint(type, value) == fingerprint)
+    }
+
+    private fun Preferences.themeFingerprints(): Map<String, String> = asMap().entries
+        .filter { (key, _) -> isReaderThemePreference(key.name) }
+        .mapNotNull { (key, value) -> encodePortablePreference(key.name, value) }
+        .associate { it.key to it.portableFingerprint() }
 
     private data class PortablePreferenceMetadata(
         val fingerprint: String,
@@ -3579,6 +3713,7 @@ class DataStoreManager @Inject constructor(
             "accepted_privacy_version",
             "has_checked_update_on_start",
             "acknowledged_notice_ids",
+            RECEIVED_NOTICES.name,
             "ignored_app_update_version_code",
             "has_seen_welcome",
             "completed_welcome_install_time",

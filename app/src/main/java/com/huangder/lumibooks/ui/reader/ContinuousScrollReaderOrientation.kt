@@ -88,7 +88,6 @@ internal fun ContinuousScrollReader(
     finishPage: (@Composable (visible: Boolean) -> Unit)? = null,
     ttsFollowEnabled: Boolean = true,
     ttsManualResumeSentence: TtsSentencePosition? = null,
-    ttsFollowUserPageTurns: Boolean = false,
     onManualScrollStarted: () -> Unit = {},
     listState: androidx.compose.foundation.lazy.LazyListState =
         rememberLazyListState(
@@ -157,7 +156,6 @@ internal fun ContinuousScrollReader(
         finishPage = finishPage,
         ttsFollowEnabled = ttsFollowEnabled,
         ttsManualResumeSentence = ttsManualResumeSentence,
-        ttsFollowUserPageTurns = ttsFollowUserPageTurns,
         onManualScrollStarted = onManualScrollStarted,
         listState = listState,
     )
@@ -235,7 +233,6 @@ private class ContinuousScrollReaderOrientationArguments(
     val finishPage: (@Composable (visible: Boolean) -> Unit)?,
     val ttsFollowEnabled: Boolean,
     val ttsManualResumeSentence: TtsSentencePosition?,
-    val ttsFollowUserPageTurns: Boolean,
     val onManualScrollStarted: () -> Unit,
     val listState: androidx.compose.foundation.lazy.LazyListState,
 ) {
@@ -331,7 +328,6 @@ private class ContinuousScrollReaderOrientationArguments(
             finishPage = if (active) finishPage else null,
             ttsFollowEnabled = active && ttsFollowEnabled,
             ttsManualResumeSentence = ttsManualResumeSentence,
-            ttsFollowUserPageTurns = ttsFollowUserPageTurns,
             onManualScrollStarted = {
                 requests.value?.let { request ->
                     events.abandon(request.requestId)

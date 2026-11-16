@@ -119,12 +119,15 @@ class AuthorizedStorageManager @Inject constructor() {
                         }
                         directories += ScannedDirectory(childUri, treeUri, parentUri, name, childPath)
                         queue += id to childPath
-                    } else if (FileUtils.getFileExtension(name) in SUPPORTED_EXTENSIONS) {
+                        continue
+                    }
+                    val importName = FileUtils.bookImportName(name, mime)
+                    if (importName != null) {
                         documents += ScannedDocument(
                             uri = childUri,
                             treeUri = treeUri,
                             parentUri = parentUri,
-                            name = name,
+                            name = importName,
                             relativeDirectory = relativePath,
                             lastModified = if (modifiedIndex >= 0 && !cursor.isNull(modifiedIndex)) cursor.getLong(modifiedIndex) else 0L,
                             size = if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) cursor.getLong(sizeIndex).coerceAtLeast(0L) else 0L,
@@ -288,6 +291,8 @@ class AuthorizedStorageManager @Inject constructor() {
         "azw3" -> "application/x-mobi8-ebook"
         "cbz" -> "application/vnd.comicbook+zip"
         "md", "markdown" -> "text/markdown"
+        "docx" -> com.huangder.lumibooks.domain.model.BookFormat.DOCX_MIME
+        "doc" -> com.huangder.lumibooks.domain.model.BookFormat.DOC_MIME
         else -> "text/plain"
     }
 
@@ -304,7 +309,4 @@ class AuthorizedStorageManager @Inject constructor() {
 
     private fun MessageDigest.toHex(): String = digest().joinToString("") { "%02x".format(it) }
 
-    companion object {
-        private val SUPPORTED_EXTENSIONS = setOf("epub", "pdf", "txt", "mobi", "azw", "azw3", "cbz", "md", "markdown")
-    }
 }

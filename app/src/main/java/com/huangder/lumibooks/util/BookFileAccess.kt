@@ -130,9 +130,14 @@ object BookFileAccess {
     }
 
     fun openInputStream(context: Context, location: String): InputStream {
-        if (!isContentUri(location)) return File(location).inputStream().buffered()
-        return withDocumentAccess(context, Uri.parse(location)) { uri ->
-            context.contentResolver.openInputStream(uri)
+        val uri = Uri.parse(location)
+        if (uri.scheme.equals("file", ignoreCase = true)) {
+            val path = uri.path ?: throw java.io.FileNotFoundException(location)
+            return File(path).inputStream().buffered()
+        }
+        if (!uri.scheme.equals("content", ignoreCase = true)) return File(location).inputStream().buffered()
+        return withDocumentAccess(context, uri) { readable ->
+            context.contentResolver.openInputStream(readable)
         }
             ?.buffered()
             ?: error("Unable to open book document")

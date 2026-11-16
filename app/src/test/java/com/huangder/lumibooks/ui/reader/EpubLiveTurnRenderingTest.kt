@@ -10,6 +10,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
+import com.huangder.lumibooks.ui.reader.engine.PageBitmapSource
 import org.junit.Assert.*
 import org.junit.After
 import org.junit.Before
@@ -530,6 +531,53 @@ class EpubLiveTurnRenderingTest {
         assertEquals(EpubPageTarget(0, 4), host.currentPageTarget())
         assertFalse(host.isPreloadReady(EpubPageTurnHost.PreloadSlot.NEXT))
         assertFalse(host.isPreloadReady(EpubPageTurnHost.PreloadSlot.PREVIOUS))
+    }
+
+    @Test fun turnDuringFontResizeUsesTheNewPageCount() {
+        host.setCurrentPage(0, 2, 3)
+        host.onHasPotentialTurn = { direction, target, pageCount ->
+            hasPotentialEpubPageTurn(target, pageCount, chapterCount = 1, direction = direction)
+        }
+        var bookEnds = 0
+        host.onBookEnd = { bookEnds++ }
+        host.activeWebView.documentLifecycle.configure("larger-font")
+        host.invalidateLayout()
+
+        assertTrue(host.requestTurn(1))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(0, bookEnds)
+
+        val next = EpubPageTarget(0, 5)
+        host.setCurrentPage(0, 4, 8) {
+            host.markPreloadLoading(EpubPageTurnHost.PreloadSlot.NEXT, next, 9)
+            host.markPreloadReady(EpubPageTurnHost.PreloadSlot.NEXT, next, 9, 5, 8, host.nextWebView)
+        }
+        host.onPageCommit = { _, target, count -> host.setCurrentPage(target.chapterIndex, target.pageIndex, count) }
+        shadowOf(Looper.getMainLooper()).idle()
+        SystemClock.sleep(500)
+        repeat(3) { host.computeScroll(); frame().recycle() }
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(next, host.currentPageTarget())
+        assertEquals(0, bookEnds)
+    }
+
+    @Test fun repaginationKeepsThePreviewAboveTheWebViewUntilTheNewFrame() {
+        fun visibleColor() = frame().let { bitmap ->
+            bitmap.getPixel(200, 400).also { bitmap.recycle() }
+        }
+
+        host.beginLayoutPreview()
+        val preview = (host.getChildAt(host.childCount - 1) as PageBitmapSource).pageBitmap!!
+        // Resetting the page slots must not expose a partially drawn new page.
+        host.activeWebView.background = ColorDrawable(Color.MAGENTA)
+        host.invalidateLayout()
+        assertEquals(Color.RED, visibleColor())
+        assertFalse(preview.isRecycled)
+
+        host.setCurrentPage(0, 2, 4, onSettled = host::endLayoutPreview)
+        assertEquals(Color.MAGENTA, visibleColor())
+        assertTrue(preview.isRecycled)
     }
 
     @Test fun swipeRequestsStaleNeighbourAgainAndResumesAfterReprepare() {

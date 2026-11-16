@@ -128,7 +128,7 @@ internal fun TtsPlayerPanel(
     usesAndroidTts: Boolean,
     sleepTimerRemainingMs: Long?,
     sleepTimerDurationMs: Long? = sleepTimerRemainingMs,
-    followUserPageTurns: Boolean = false,
+    autoPageTurn: Boolean = true,
     onPlayPause: () -> Unit,
     onStop: () -> Unit,
     onOpenFullscreen: () -> Unit = {},
@@ -140,7 +140,7 @@ internal fun TtsPlayerPanel(
     onPitchModeChange: (TtsProsodyMode) -> Unit,
     onSetSleepTimer: (Int) -> Unit,
     onCancelSleepTimer: () -> Unit,
-    onFollowUserPageTurnsChange: (Boolean) -> Unit = {},
+    onAutoPageTurnChange: (Boolean) -> Unit = {},
     onReturnToProgress: () -> Unit = {},
     onStartFromCurrentPage: () -> Unit = {},
     showFromCurrentPage: Boolean = false,
@@ -243,14 +243,13 @@ internal fun TtsPlayerPanel(
     }
     val returnLabel = stringResource(R.string.tts_return_to_progress)
     val fromPageLabel = stringResource(R.string.tts_from_this_page)
-    val followPageLabel = stringResource(R.string.tts_follow_page_turns)
-    val currentFollowUserPageTurns by rememberUpdatedState(followUserPageTurns)
-    val currentOnFollowUserPageTurnsChange by rememberUpdatedState(onFollowUserPageTurnsChange)
+    val autoPageTurnLabel = stringResource(R.string.tts_auto_page_turn)
+    val currentAutoPageTurn by rememberUpdatedState(autoPageTurn)
+    val currentOnAutoPageTurnChange by rememberUpdatedState(onAutoPageTurnChange)
     val timerLabel = stringResource(R.string.tts_timer_label)
     val rateLabel = stringResource(R.string.tts_speech_rate)
     val pitchLabel = stringResource(R.string.tts_pitch_label)
     fun toggleControls() {
-        if (readerMenuVisible) return
         if (actionsExpanded) {
             menuHost?.dismiss()
             actionsExpanded = false
@@ -261,8 +260,8 @@ internal fun TtsPlayerPanel(
             items = listOf(
                 LiquidGlassMenuItem(returnLabel, enabled = canReturnToProgress, onClick = onReturnToProgress),
                 LiquidGlassMenuItem(fromPageLabel, onClick = onStartFromCurrentPage),
-                LiquidGlassMenuItem(followPageLabel, selectedState = { currentFollowUserPageTurns },
-                    onClick = { currentOnFollowUserPageTurnsChange(!currentFollowUserPageTurns) }),
+                LiquidGlassMenuItem(autoPageTurnLabel, selectedState = { currentAutoPageTurn },
+                    onClick = { currentOnAutoPageTurnChange(!currentAutoPageTurn) }),
                 LiquidGlassMenuItem(timerLabel, dividerBefore = true,
                     subtitle = sleepTimerRemainingMs?.let(::formatSleepTimer), submenuItems = choices(TtsMenuKind.Timer)),
                 LiquidGlassMenuItem(rateLabel, subtitle = if (usesAndroidTts && speechRateMode == TtsProsodyMode.FOLLOW_ENGINE)
@@ -300,7 +299,7 @@ internal fun TtsPlayerPanel(
                 .coerceAtMost(((availableWidth - 288.dp) / 2).coerceAtLeast(0.dp))
             val actionWidth = 48.dp
             val actionReach = actionWidth * 3 + 16.dp
-            val fittedX = if (!actionsExpanded || readerMenuVisible || dock != ReaderTtsDock.NONE) anchorX
+            val fittedX = if (!actionsExpanded || dock != ReaderTtsDock.NONE) anchorX
                 else if (expandLeft) anchorX.coerceAtLeast(inset + actionReach)
                 else anchorX.coerceAtMost((availableWidth - inset - 128.dp - actionReach).coerceAtLeast(0.dp))
             // Keep the menu handoff on one vector path.  A second anchor animation
@@ -355,7 +354,7 @@ internal fun TtsPlayerPanel(
                 }
             }
             androidx.compose.animation.AnimatedVisibility(
-                visible = actionsExpanded && !readerMenuVisible && dock == ReaderTtsDock.NONE,
+                visible = actionsExpanded && dock == ReaderTtsDock.NONE,
                 enter = if (motionEnabled) fadeIn(tween(180)) + scaleIn(tween(180), initialScale = .9f) else EnterTransition.None,
                 exit = if (motionEnabled) fadeOut(tween(140)) else ExitTransition.None,
                 modifier = Modifier.offset(x = if (expandLeft) capsuleX - actionReach else capsuleX + 136.dp)

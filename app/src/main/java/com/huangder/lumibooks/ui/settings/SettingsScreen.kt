@@ -57,6 +57,7 @@ import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.components.LiquidGlassDialog
+import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -130,6 +131,13 @@ fun SettingsScreen(
 
     AdaptiveSettingsOverview(
         onBack = onNavigateBack,
+        actions = {
+            LiquidGlassIconButton(
+                imageVector = AppIcons.ChatCircle,
+                contentDescription = stringResource(R.string.notice_history_title),
+                onClick = { context.startActivity(DetailActivity.createIntent(context, NOTICE_HISTORY_CATEGORY)) }
+            )
+        },
         overview = {
             Spacer(Modifier.height(AppSpace.sm))
 

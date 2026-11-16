@@ -1,10 +1,10 @@
 package com.huangder.lumibooks.ui.welcome
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -32,12 +32,14 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -90,8 +92,27 @@ import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.sin
 
-/** The three headline updates of this release, in the order they are told. */
-internal enum class WelcomeStory { JOURNAL, LISTENING, STATS }
+/** The three headline updates of this release, then the appearance choice, in order. */
+internal enum class WelcomeStory { JOURNAL, LISTENING, STATS, APPEARANCE }
+
+/** Preview crop of the home screen's bottom edge in each app theme. */
+internal fun welcomeThemePreview(theme: String): Int = when (theme) {
+    "liquid_glass" -> R.drawable.welcome_theme_liquid_glass
+    "material3" -> R.drawable.welcome_theme_material3
+    else -> R.drawable.welcome_theme_flat
+}
+
+private fun welcomeThemeName(theme: String): Int = when (theme) {
+    "liquid_glass" -> R.string.app_theme_liquid_glass
+    "material3" -> R.string.app_theme_material3
+    else -> R.string.app_theme_lumi
+}
+
+private fun welcomeThemeDescription(theme: String): Int = when (theme) {
+    "liquid_glass" -> R.string.welcome_theme_desc_liquid_glass
+    "material3" -> R.string.welcome_theme_desc_material3
+    else -> R.string.welcome_theme_desc_flat
+}
 
 private val StoryHighlight = Color(0xFFFFE08A)
 
@@ -111,14 +132,23 @@ private class StoryPalette(colors: LumiDawnColors, ink: Boolean) {
 internal fun WelcomeFeatureStoriesPage(
     hasReadingJournal: Boolean,
     onContinue: () -> Unit,
-    initialStory: Int = 0
+    initialStory: Int = 0,
+    /** Themes the user may pick on the last story; empty leaves the appearance story out. */
+    themeOptions: List<String> = emptyList(),
+    /** The theme the user explicitly picked here, or null until they tap one. */
+    selectedTheme: String? = null,
+    onSelectTheme: (String) -> Unit = {}
 ) {
-    val stories = WelcomeStory.entries
+    val stories = remember(themeOptions.isNotEmpty()) {
+        WelcomeStory.entries.filter { it != WelcomeStory.APPEARANCE || themeOptions.isNotEmpty() }
+    }
     val pager = rememberPagerState(initialPage = initialStory.coerceIn(0, stories.lastIndex)) { stories.size }
     val scope = rememberCoroutineScope()
     val colors = lumiDawnColors()
     val motion = lumiDawnMotion()
     val lastPage = pager.currentPage == stories.lastIndex
+    // The appearance story must be answered before the flow can move on.
+    val canContinue = !(lastPage && stories[pager.currentPage] == WelcomeStory.APPEARANCE && selectedTheme == null)
 
     ConfigurableBackHandler(enabled = pager.currentPage > 0) {
         scope.launch { pager.animateScrollToPage(pager.currentPage - 1, animationSpec = StoryPageTurn) }
@@ -165,8 +195,14 @@ internal fun WelcomeFeatureStoriesPage(
                     story = stories[page],
                     index = page,
                     offset = offset,
-                    active = pager.currentPage == page && motion,
-                    hasReadingJournal = hasReadingJournal
+                    // Follow the page being turned to, not the one past the halfway point, so
+                    // the incoming art starts its loop as it slides in rather than mid-turn.
+                    active = pager.targetPage == page,
+                    motion = motion,
+                    hasReadingJournal = hasReadingJournal,
+                    themeOptions = themeOptions,
+                    selectedTheme = selectedTheme,
+                    onSelectTheme = onSelectTheme
                 )
             }
 
@@ -187,6 +223,7 @@ internal fun WelcomeFeatureStoriesPage(
                 LumiDawnArrowButton(
                     label = stringResource(if (lastPage) R.string.welcome_continue else R.string.welcome_next),
                     expanded = true,
+                    enabled = canContinue,
                     onClick = {
                         if (lastPage) onContinue()
                         else scope.launch { pager.animateScrollToPage(pager.currentPage + 1, animationSpec = StoryPageTurn) }
@@ -209,12 +246,25 @@ private fun StoryPage(
     index: Int,
     offset: Float,
     active: Boolean,
-    hasReadingJournal: Boolean
+    motion: Boolean,
+    hasReadingJournal: Boolean,
+    themeOptions: List<String>,
+    selectedTheme: String?,
+    onSelectTheme: (String) -> Unit
 ) {
     val colors = lumiDawnColors()
     val palette = StoryPalette(colors, LocalEInkMode.current)
     val showJournal = hasReadingJournal || story != WelcomeStory.JOURNAL
     val (eyebrow, title, subtitle) = when (story) {
+        WelcomeStory.APPEARANCE -> if (selectedTheme == null) Triple(
+            R.string.welcome_story_appearance_eyebrow,
+            R.string.welcome_story_appearance_title_pick,
+            R.string.welcome_story_appearance_subtitle_pick
+        ) else Triple(
+            R.string.welcome_story_appearance_eyebrow,
+            welcomeThemeName(selectedTheme),
+            welcomeThemeDescription(selectedTheme)
+        )
         WelcomeStory.JOURNAL -> if (showJournal) Triple(
             R.string.welcome_story_journal_eyebrow, R.string.welcome_story_journal_title, R.string.welcome_story_journal_subtitle
         ) else Triple(
@@ -254,16 +304,19 @@ private fun StoryPage(
                         scaleY = s * (0.94f + 0.06f * artIn)
                         alpha = artIn * (1f - 0.55f * distance)
                     }
-                    .semantics { invisibleToUser() }
+                    // The theme chips are real controls; the drawn stories are decoration.
+                    .then(if (story == WelcomeStory.APPEARANCE) Modifier else Modifier.semantics { invisibleToUser() })
             ) {
-                // Restart the loop from its first frame whenever the page becomes current.
-                key(active) {
-                    val progress = rememberStoryLoop(active, story)
+                if (story == WelcomeStory.APPEARANCE) {
+                    ThemePickerArt(themeOptions, selectedTheme, onSelectTheme, motion, colors)
+                } else {
+                    val progress = rememberStoryLoop(active, motion, story)
                     when (story) {
                         // The photo fills the card's width; the drawn stories keep a design size.
                         WelcomeStory.LISTENING -> ListeningPhotoArt(progress)
                         WelcomeStory.JOURNAL -> FitArt { JournalStoryArt(progress, showJournal, colors, palette) }
                         WelcomeStory.STATS -> FitArt { StatsStoryArt(progress, colors, palette) }
+                        WelcomeStory.APPEARANCE -> Unit
                     }
                 }
             }
@@ -317,25 +370,128 @@ private fun WelcomeStory.loopMillis(): Int = when (this) {
     WelcomeStory.JOURNAL -> 3_800
     WelcomeStory.LISTENING -> 5_200
     WelcomeStory.STATS -> 4_000
+    WelcomeStory.APPEARANCE -> 1
 }
 
 private fun WelcomeStory.restingFrame(): Float = when (this) {
     WelcomeStory.JOURNAL -> 0.86f
     WelcomeStory.LISTENING -> 0.5f
     WelcomeStory.STATS -> 0.88f
+    WelcomeStory.APPEARANCE -> 1f
+}
+
+/**
+ * The story's loop position. A page waiting to come in sits on frame 0, exactly where its loop
+ * starts, so turning to it never shows a finished frame that then jumps back. A page leaving
+ * holds whatever frame it was on while it slides out, and restarts from 0 next time it is
+ * turned to. Without motion every page rests on its complete frame.
+ */
+@Composable
+private fun rememberStoryLoop(active: Boolean, motion: Boolean, story: WelcomeStory): Float {
+    val progress = remember(story) { Animatable(if (motion) 0f else story.restingFrame()) }
+    LaunchedEffect(active, motion) {
+        if (!motion) {
+            progress.snapTo(story.restingFrame())
+            return@LaunchedEffect
+        }
+        if (!active) return@LaunchedEffect
+        progress.snapTo(0f)
+        while (true) {
+            progress.animateTo(1f, tween(story.loopMillis(), easing = LinearEasing))
+            progress.snapTo(0f)
+        }
+    }
+    return progress.value
+}
+
+// ---------------------------------------------------------------------------------------------
+// 04 · Appearance
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * A real capture of the lower home screen in the chosen theme, above one chip per theme. Until the user picks, the first option is shown dimmed as a hint of what is on offer.
+ */
+@Composable
+private fun ThemePickerArt(
+    themeOptions: List<String>,
+    selectedTheme: String?,
+    onSelectTheme: (String) -> Unit,
+    motion: Boolean,
+    colors: LumiDawnColors
+) {
+    val shown = selectedTheme ?: themeOptions.first()
+    val previewAlpha by animateFloatAsState(
+        targetValue = if (selectedTheme == null) 0.5f else 1f,
+        animationSpec = if (motion) tween(320) else snap(),
+        label = "themePreviewAlpha"
+    )
+    Column(Modifier.fillMaxSize().padding(start = 18.dp, end = 18.dp, bottom = 20.dp)) {
+        // The capture stands on its bottom edge and runs up past the card's top edge, which
+        // cuts it off cleanly. The crops start below the home screen's book row on purpose.
+        Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
+            Crossfade(
+                targetState = shown,
+                animationSpec = if (motion) tween(360) else snap(),
+                modifier = Modifier.fillMaxSize(),
+                label = "themePreview"
+            ) { theme ->
+                Image(
+                    painter = painterResource(welcomeThemePreview(theme)),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    alignment = Alignment.BottomCenter,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = previewAlpha }
+                )
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+        Row(
+            Modifier.fillMaxWidth().selectableGroup(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            themeOptions.forEach { theme ->
+                ThemeChip(
+                    label = stringResource(welcomeThemeName(theme)),
+                    selected = theme == selectedTheme,
+                    onClick = { onSelectTheme(theme) },
+                    colors = colors,
+                    modifier = Modifier.weight(1f).testTag("welcome-theme-$theme")
+                )
+            }
+        }
+    }
 }
 
 @Composable
-private fun rememberStoryLoop(active: Boolean, story: WelcomeStory): Float {
-    if (!active) return story.restingFrame()
-    val transition = rememberInfiniteTransition(label = "story-${story.name}")
-    val value by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(story.loopMillis(), easing = LinearEasing), RepeatMode.Restart),
-        label = "storyLoop"
-    )
-    return value
+private fun ThemeChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    colors: LumiDawnColors,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(percent = 50)
+    Box(
+        modifier
+            .height(44.dp)
+            .clip(shape)
+            .background(if (selected) colors.accent else colors.base.copy(alpha = 0.7f))
+            .border(1.dp, if (selected) colors.accent else colors.hairline, shape)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .padding(horizontal = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            label,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = if (selected) Color.White else colors.ink,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 private val ArtDesignWidth = 300.dp

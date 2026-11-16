@@ -1064,9 +1064,11 @@ class SettingsViewModel @Inject constructor(
             try {
                 com.huangder.lumibooks.util.cache.ReaderCacheStore.get(context).clear()
                 com.huangder.lumibooks.util.kindle.KindleEpubCache.clear(context)
+                com.huangder.lumibooks.util.word.WordEpubCache.clear(context)
                 context.cacheDir.listFiles()?.forEach { entry ->
                     if (entry.name != ExternalTtsAudioCache.DIRECTORY_NAME && entry.name != "reader_cache" &&
-                        entry.name != com.huangder.lumibooks.util.kindle.KindleEpubCache.DIRECTORY) {
+                        entry.name != com.huangder.lumibooks.util.kindle.KindleEpubCache.DIRECTORY &&
+                        entry.name != com.huangder.lumibooks.util.word.WordEpubCache.DIRECTORY) {
                         entry.deleteRecursively()
                     }
                 }

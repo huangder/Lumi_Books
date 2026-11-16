@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="book_metadata_repair_action">补全信息</string>
+    <string name="book_metadata_repair_title">补全书名和作者</string>
+    <string name="book_metadata_repair_empty">所选书籍没有可补全的书名或作者。</string>
+    <string name="book_metadata_repair_no_suggestion">%1$d 本书没有可用建议。</string>
+    <string name="book_metadata_repair_preview_error">无法加载补全预览。</string>
+    <string name="book_metadata_repair_apply">应用到 %1$d 本书</string>
+    <string name="book_metadata_repair_updated">已更新 %1$d 本书。</string>
+    <string name="book_metadata_repair_changed">%1$d 本书的记录在预览后有变化，已跳过。</string>
+    <string name="book_metadata_repair_failed">%1$d 本书更新失败。</string>
+    <string name="book_metadata_repair_field_change">%1$s　%2$s → %3$s</string>
+</resources>

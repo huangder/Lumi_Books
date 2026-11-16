@@ -30,6 +30,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -43,6 +44,7 @@ class TtsForegroundService : Service() {
         const val ACTION_PREVIOUS = "com.huangder.lumibooks.tts.PREVIOUS"
         const val ACTION_NEXT = "com.huangder.lumibooks.tts.NEXT"
         const val ACTION_STOP = "com.huangder.lumibooks.tts.STOP"
+        const val ACTION_UNLOCK_FLOATING = "com.huangder.lumibooks.tts.UNLOCK_FLOATING"
         private const val EXTRA_BOOK_TITLE = "book_title"
         private const val TAG = "TtsForegroundService"
 
@@ -55,6 +57,7 @@ class TtsForegroundService : Service() {
 
     @Inject lateinit var ttsController: TtsController
     @Inject lateinit var notificationManager: TtsNotificationManager
+    @Inject lateinit var floatingSubtitleOverlayController: FloatingSubtitleOverlayController
     @Inject lateinit var bookRepository: BookRepository
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -199,6 +202,14 @@ class TtsForegroundService : Service() {
                 applyBookMetadata(bookId)
             }
         }
+        serviceScope.launch {
+            floatingSubtitleOverlayController.overlayLocked.drop(1).collect {
+                val state = ttsController.playbackState.value
+                if (foregroundStarted && state != TtsPlaybackState.IDLE) {
+                    postPlaybackNotification(state, ttsController.currentPage.value?.location?.chapterIndex ?: 0)
+                }
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -222,6 +233,10 @@ class TtsForegroundService : Service() {
             ACTION_NEXT -> {
                 logTransportCommand("notification", "NEXT")
                 ttsController.skip(forward = true)
+            }
+            ACTION_UNLOCK_FLOATING -> {
+                logTransportCommand("notification", "UNLOCK_FLOATING")
+                floatingSubtitleOverlayController.setLocked(false)
             }
             ACTION_STOP -> {
                 logTransportCommand("notification", "STOP")
@@ -271,7 +286,8 @@ class TtsForegroundService : Service() {
             chapterIndex = chapterIndex,
             isPlaying = state == TtsPlaybackState.PLAYING,
             mediaSessionToken = mediaSession.sessionToken,
-            largeIcon = coverBitmap
+            largeIcon = coverBitmap,
+            floatingLocked = floatingSubtitleOverlayController.overlayLocked.value
         )
 
     private fun postPlaybackNotification(state: TtsPlaybackState, chapterIndex: Int) {

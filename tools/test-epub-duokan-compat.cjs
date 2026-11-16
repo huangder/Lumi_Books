@@ -55,7 +55,10 @@ async function verify(options) {
       el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true,
         clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
     };
-    for (const id of ['bare-note', 'linked-note', 'plain-type-note', 'sample-note', 'art-note']) {
+    const numberedBody = document.getElementById('wzyy_1_2');
+    check(numberedBody.parentElement.hasAttribute('data-lumi-footnote-body'), 'numbered note body leaves reading flow');
+    check(!numberedBody.hasAttribute('data-lumi-footnote-ref'), 'numbered backlink keeps its direction');
+    for (const id of ['bare-note', 'linked-note', 'plain-type-note', 'sample-note', 'art-note', 'wz_1_2']) {
       check(getComputedStyle(document.getElementById(id)).webkitTapHighlightColor === 'rgba(0, 0, 0, 0)',
         id + ' must not flash the WebView pressed-link overlay');
       const el = document.getElementById(id);
@@ -74,7 +77,8 @@ async function verify(options) {
       await wait(120);
       const note = document.getElementById('lumi-footnote-popover');
       check(!!note, id + ' opens note');
-      check(note.textContent.includes(id === 'bare-note' ? 'Literal <b>note</b>' : 'Linked note content'),
+      const expected = { 'bare-note': 'Literal <b>note</b>', 'wz_1_2': 'Numbered note content' };
+      check(note.textContent.includes(expected[id] || 'Linked note content'),
         id + ' displays correct body');
       check(!window.messages.some(m => ['tap', 'image', 'link', 'chapterTurn'].includes(m.type)),
         id + ' must not trigger image preview, page turn or navigation');
@@ -111,7 +115,7 @@ const results = [];
 for (const flow of ['scrolled', 'paginated']) for (const [size, fullWindow] of [[[480, 1000], false], [[1000, 760], false], [[480, 1000], true]]) {
   const options = { flow, size, fullWindow };
   const name = flow + '-' + size.join('x') + (fullWindow ? '-full-window' : '');
-  const fixture = `<!doctype html><html><head><meta charset="utf-8"><style>
+  const fixture = `<!doctype html><html><head><meta charset="utf-8"><base href="physical.html"><style>
     body{font:20px/1.5 serif}p{margin:4px 0}.photo{height:3.5em;vertical-align:middle}
     .wrap{float:right;width:40%;margin-left:6px}.wrap img{width:100%}#large-float{width:80%}
     img.duokan-footnote{width:1em;height:1em}
@@ -121,6 +125,8 @@ for (const flow of ['scrolled', 'paginated']) for (const [size, fullWindow] of [
     <p><a id="linked-note" epub:type="noteref" href="#fn1">[1]</a></p>
     <p><a id="plain-type-note" type="noteref" href="#opaque">note</a></p>
     <p><a id="sample-note" class="duokan-footnote" type="noteref" href="#fn2"><img src="${image}"></a></p>
+    <p><a id="wz_1_2" href="physical.html#wzyy_1_2"><sup>2</sup></a></p>
+    <p><a id="wzyy_1_2" href="physical.html#wz_1_2">[2]</a> Numbered note content</p>
     <a class="duokan-footnote" type="noteref" href="#fn1" data-lumi-footnote-illustration-ref="true" data-lumi-media-wrapper="true">
       <img id="art-note" class="duokan-image-static" width="100%" data-lumi-footnote-illustration="true" src="${image}"></a>
     <aside id="fn1" epub:type="footnote">Linked note content</aside>

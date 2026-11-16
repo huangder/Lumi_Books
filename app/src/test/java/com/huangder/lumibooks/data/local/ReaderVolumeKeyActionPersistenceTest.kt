@@ -57,6 +57,19 @@ class ReaderVolumeKeyActionPersistenceTest {
     }
 
     @Test
+    fun savesListeningActionsIndependentlyForEachKey() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.dataStore.edit { it.clear() }
+        val manager = DataStoreManager(context)
+
+        val upAction = ReaderVolumeKeyAction.TOGGLE_TTS_SESSION
+        val downAction = ReaderVolumeKeyAction.TOGGLE_TTS_PLAY_PAUSE
+        manager.saveVolumeKeyActions(upAction, downAction)
+
+        assertEquals(upAction to downAction, manager.volumeKeyActions.first())
+    }
+
+    @Test
     fun advancedReaderSettingsResetVolumeActionsToSystemDefaults() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.dataStore.edit { it.clear() }

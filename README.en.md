@@ -2,129 +2,116 @@
 
 <div align="center">
 
-🌐 [中文](README.md) · **English** · [日本語](README.ja.md) · [한국어](README.ko.md)
+<img src="docs/readme-icon.png" alt="Lumi" width="120">
 
-📖 **User Guide** · [⚙️ Developer Docs](README.dev.en.md)
+# Lumi
+
+**Keep your reading to yourself.**
+
+[![Version](https://img.shields.io/badge/version-2.3.11-coral)](https://github.com/huangder/Lumi_Books/releases)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+[![Android](https://img.shields.io/badge/Android-8.0%2B-blue)](https://developer.android.com)
+
+[中文](README.md) · **English** · [日本語](README.ja.md) · [한국어](README.ko.md)
+
+**User Guide** · [Developer Guide](README.dev.en.md)
 
 </div>
 
----
-
-# Lumi — Born for Reading
-
-> A clean, elegant Android local ebook reader. Supports EPUB, PDF, TXT, MOBI and CBZ comics. Privacy-first, local-first.
-
-[![Version](https://img.shields.io/badge/version-2.1.9-coral)](https://github.com/huangder/Lumi_Books/releases)
-[![License](https://img.shields.io/badge/license-GPLv3-green)](LICENSE)
-[![Android](https://img.shields.io/badge/Android-8.0%2B-blue)](https://developer.android.com)
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.3.10-purple)](https://kotlinlang.org)
-[![Sponsor](https://img.shields.io/badge/%E2%9D%A4%EF%B8%8F-Sponsor-ff385c)](https://huangder.top/sponsor.html)
+Lumi is a local e-book reader for Android. Books and reading data are stored on your phone by default. The basic features are free, open source and ad-free.
 
 <p align="center">
-  <img src="docs/hero.png" alt="Lumi Reader Screenshot" width="80%">
+  <img src="docs/media/screen/shelf-light.webp" width="30%" alt="Bookshelf">
+  <img src="docs/media/screen/reader-text.webp" width="30%" alt="Reader page">
+  <img src="docs/media/screen/widgets.webp" width="30%" alt="Home screen widgets">
 </p>
 
----
+## Features
 
-## ✨ Features
+### Reading
 
-### 📖 Reading Experience
-- Supports EPUB, PDF, TXT and MOBI ebooks plus CBZ comic archives
-- **EPUB dual rendering modes**: Book Layout (preserves publisher HTML/CSS/fonts) + Reader Layout (unified typography)
-- **CBZ comics**: Reads images straight out of the archive — no extraction, no conversion; chapter folders, ComicInfo.xml metadata, right-to-left paging and two-page spreads
-- Custom Canvas + StaticLayout rendering engine with smooth page-turn animations
-- **Four page-turn effects**: Slide, Scroll, Fade, Curl (realistic page-curl simulation)
-- **Bionic Reading**: Bold word prefixes to improve reading speed and focus
-- Multiple reading themes (Day / Night / Sepia / Green + custom colors)
-- Fine typography controls: font size, line height, letter spacing, paragraph spacing, independent four-side margins, first-line indent
-- Custom text colors & background (HSL color picker + photo from gallery)
-- **Custom fonts**: Built-in LXGW WenKai, Fangsong, Kaiti + import your own (.ttf)
-- Smart gesture system (tap left/right to turn pages, center for menu, drag-to-flip)
-- Volume key page turning (configurable direction)
-- Configurable corner info display (chapter / progress / page number / battery)
-- **Chinese conversion**: Per-book switch between Original / Simplified / Traditional characters
-- Screen sleep timeout override (keep screen on while reading)
+- Supports EPUB, PDF, TXT, MOBI, AZW / AZW3 (no DRM), CBZ comics, DOCX / DOC and Markdown.
+- EPUB can switch between "publisher layout" (keeps the publisher's styles and fonts) and "reader layout" (unified fonts and typesetting).
+- Page turning options: swipe left and right, vertical scroll, fade and realistic page curl.
+- Adjustable font size, font, line spacing, letter spacing and margins. Supports vertical text, Simplified/Traditional conversion, Bionic Reading and custom reading backgrounds.
+- Two-page reading on tablets and in landscape.
+- TXT supports chapter rules: headings are detected by format, or you can define chapters yourself. Replacement rules let you set replace or delete rules for TXT, EPUB and MOBI without modifying the original file.
 
-### 🎧 TTS & Audiobook
-- System TTS engine integration
-- **Third-party TTS API support**: OpenAI-compatible TTS, Xiaomi MiMo Chat TTS
-- Streaming audio cache with configurable auto-cleanup limits
-- Foreground service with notification controls (play / pause / prev / next sentence)
+### Annotations and excerpts
 
-### ✨ Text Selection & Annotations
-- Native Android text selection + custom Compose floating menu
-- 6-color highlights with tap-to-view and color editing
-- Notes linked to highlighted text
-- Full-text search with blinking highlight indicators
-- Bookmarks: add / delete / quick jump
-- **Annotation export** (bookmarks + highlights + notes)
+- Highlights, underlines, notes and bookmarks. Highlight colors can be customized with a full color picker.
+- "All Highlights and Notes" collects annotations from all books. It supports search and filtering by tag and color.
+- Excerpt cards turn selected text, notes or bookmarks into images that you can save or share.
+- Notes can be downloaded and exported, which helps you organize your reading records.
+- Supports dictionary lookup and translation on selected text. Translation can use an OpenAI-compatible API.
 
-### 📚 Bookshelf Management
-- Import local files (system file picker + book folder authorization, no copying needed)
-- Auto-extracted book covers (Coil image loading)
-- **Full-text search** across your entire library
-- **Custom tags** for organizing books
-- Custom covers (pick from gallery)
-- Edit book metadata (title, author)
-- Favorites & delete management
-- Long-press context menu with glassmorphism overlay
+### Bookshelf and remote libraries
 
-### 📊 Reading Statistics
-- Today's reading time + weekly trends
-- Customizable daily reading goal
-- Week / Month / Year tab navigation
-- Monthly heatmap (calendar grid, colored by reading time)
-- Yearly heatmap (GitHub contribution graph style, 53×7 Canvas rendering)
-- Weekly bar chart
-- Reading streak tracking
+- Import books through the system file picker or an authorized library folder, without copying them.
+- Covers are extracted automatically. You can also set a custom cover, edit the title and author, or fill in metadata in batch.
+- The bookshelf supports Cover Flow, spine layout, drag-to-sort and archiving.
+- Connect to an OPDS catalog or a WebDAV server to browse, search and download books.
 
-### ☁️ Cloud Sync & Backup
-- **WebDAV cloud sync**: Manual or automatic sync of books, reading progress, notes, and bookmarks to your own WebDAV server
-- Connection test + last sync timestamp
-- **Local backup & restore** (ZIP export/import: database + DataStore + covers + books)
-- Storage usage visualization
+### Listening mode
 
-### 🎨 Themes & Appearance
-- **Three app themes**: Default (customizable, initially Lumi Pink), Material 3 (dynamic color), Liquid Glass
-- Liquid Glass: adjustable transparency + HDR touch highlight
-- Dark mode (follow system / light / dark)
-- Motion Pro animations (Beta)
-- Optional splash screen
-- Predictive back gesture support
-- UI element transition animations
-- **Multi-language support**: 7 locales — Simplified Chinese, Traditional Chinese (Taiwan, China), Traditional Chinese (Hong Kong, China), Traditional Chinese (Macau, China), English, 日本語, 한국어
+- Use the system voice, or connect to the speech synthesis of an OpenAI-compatible API or Xiaomi MiMo.
+- The full-screen listening page has a cover mode and a subtitle mode. You can switch chapters and speech engines.
+- Listening continues after you leave the book. Floating subtitles show the text being read.
+- Supports headset controls and lock screen media controls.
 
-### ⚙️ Smart PDF Processing
-- **Local extraction**: On-device PDF text layer extraction (no scanned PDF support)
-- **MinerU cloud parsing** (third-party service):
-  - Lightweight mode: free, no token, up to 10MB / 20 pages
-  - Precision mode: personal token required, up to 200MB / 200 pages, VLM-powered
-  - Manual mode: process on MinerU website, then import ZIP/Markdown result
-- Convert PDFs to reflowable ebooks with consistent reading experience
+### Statistics and widgets
 
-### 🔒 Privacy Protection
-- **Local-first** — Reading data stays on-device by default; cover search, remote fonts, contributor avatars, update checks, and any WebDAV, MinerU, or third-party TTS features you enable connect to their respective services as needed
-- **Zero third-party SDKs** — No analytics, ads, push notifications, or crash reporting
-- **Android sandbox storage** — All data stored in app-private directories only
-- **Open source, auditable** — Full source code publicly available for review
-- Privacy policy & terms displayed on first launch with transparent disclosure
-- Sensitive credentials (WebDAV, TTS API Key) encrypted via Android KeyStore
+- Reading time, daily goals, and weekly, monthly and yearly trends and heatmaps.
+- Reading streak, annotation count, personal reviews and ratings.
+- Home screen widgets can show the book you are reading, and can also display excerpts.
 
----
+### Sync and backup
 
-## 📥 Get It
+- WebDAV syncs books, reading progress, annotations and notes, manually or automatically. You can view the sync status and logs.
+- Local backups are exported and imported as ZIP files, containing the database, settings, covers and books.
+- Sensitive data such as the WebDAV password and the API Keys for TTS and translation are encrypted with Android KeyStore.
+
+### PDF parsing
+
+- Local parsing: extracts the text layer of a PDF and generates a reflowable e-book. Scanned files are not supported.
+- MinerU cloud parsing (third-party service):
+  - Lightweight parsing: no Token needed, currently free, up to 10 MB and 20 pages per file.
+  - Precise parsing: requires a personal Token, up to 200 MB and 200 pages per file.
+  - Manual import: process the file on the MinerU website, then import the resulting ZIP or Markdown.
+
+### Appearance
+
+- Three app styles: Default (custom theme color), Material 3 (dynamic color) and Liquid Glass (adjustable glass transparency).
+- Dark mode can follow the system or be set separately.
+- The interface supports 7 languages: Simplified Chinese, Traditional Chinese (Taiwan, Hong Kong, Macau), English, 日本語 and 한국어.
+
+## Privacy
+
+- Reading data is stored on the device by default. App data is in the Android app-private directory.
+- The dependencies contain no analytics, advertising, push or crash reporting SDKs.
+- Lumi connects to the network only when you use the related features: cover search, remote fonts, WebDAV, MinerU, external speech and translation APIs, update checks and contributor avatars.
+- The privacy policy and terms of use are shown on first launch.
+
+## Download
 
 Download the latest APK from [GitHub Releases](https://github.com/huangder/Lumi_Books/releases).
 
----
+Alternative downloads: [Baidu Netdisk](https://pan.baidu.com/s/1vDdFsoqQuuZlntUTUjssZw?pwd=lumi) (password: lumi) · [Lanzou Cloud (蓝奏云)](https://wwaug.lanzoub.com/b0xxfmxvi) (password: lumi)
 
-## 📄 Changelog
+## Editions
 
-See [Changelog](https://huangder.top/changelog.html)
+Lumi comes in an open-source edition and an official edition:
 
----
+- **Open-source edition** (built from this repository): all reading features and basic excerpt styles. It has no membership entry, reading report or tag management.
+- **Official edition**: adds optional Premium features on top of the open-source edition, including the reading report, advanced excerpt templates and tag management. The reading report and advanced excerpts can be previewed, and exporting requires unlocking. The official edition offers a 5-day trial.
 
-## ⭐ Star History
+For release notes, see the [changelog page](https://huangder.top/changelog.html). They are also available in the app.
+
+## Support Lumi
+
+If Lumi is useful to you, you can support the developer through the [sponsorship page](https://huangder.top/sponsor.html), or with the **Sponsor** button on the right side of the GitHub page. Sponsorship is entirely voluntary and does not affect any feature or issue handling.
+
+## Star History
 
 <p align="center">
   <a href="https://star-history.com/#huangder/Lumi_Books&Date">
@@ -132,30 +119,14 @@ See [Changelog](https://huangder.top/changelog.html)
   </a>
 </p>
 
----
+## License
 
-## ❤️ Support Lumi
+Lumi's original code is open-sourced under the [Apache License 2.0](LICENSE). Third-party dependencies and adapted code follow their own licenses. The page curl renderer and the built-in TXT heading presets are independent implementations. The Liquid Glass effect is adapted from [AndroidLiquidGlass / Backdrop](https://github.com/Kyant0/AndroidLiquidGlass), licensed under Apache 2.0.
 
-Lumi will remain free, open source, and ad-free. If it has been useful to you, you can support its continued development through the [sponsorship page](https://huangder.top/sponsor.html).
+© 2026 Huangder
 
-The **Sponsor** button in the GitHub repository sidebar will also list the available support options. Sponsorship is entirely optional and does not affect feature access or issue handling.
+## Links
 
----
-
-## 📜 License
-
-Lumi's original code is open-sourced under the [GNU GPLv3](LICENSE). Third-party dependencies and adaptations follow their respective licenses. The paper-curl renderer and bundled TXT heading presets are independently implemented; the Liquid Glass implementation is adapted from [AndroidLiquidGlass / Backdrop](https://github.com/Kyant0/AndroidLiquidGlass) under Apache 2.0. © 2026 Huangder
-
----
-
-## 🔗 Links
-
-- 🌐 Website: [huangder.top](https://huangder.top)
-- 📦 GitHub: [github.com/huangder/Lumi_Books](https://github.com/huangder/Lumi_Books)
-- 📧 Email: huangder0104@126.com
-
----
-
-<p align="center">
-  <sub>A good book deserves a good reader.</sub>
-</p>
+- Website: [huangder.top](https://huangder.top)
+- GitHub: [github.com/huangder/Lumi_Books](https://github.com/huangder/Lumi_Books)
+- Email: huangder0104@126.com

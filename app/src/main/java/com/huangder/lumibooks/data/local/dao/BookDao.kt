@@ -67,6 +67,32 @@ interface BookDao {
     @Upsert
     suspend fun insertBook(book: BookEntity)
 
+    @Query("""
+        INSERT INTO book_highlight_rule_states (bookId, ruleId, enabled, position)
+        SELECT :bookId, state.ruleId, state.enabled, rule.position
+        FROM book_highlight_rule_states AS state
+        JOIN highlight_rules AS rule ON rule.id = state.ruleId
+        WHERE state.bookId = (
+            SELECT book.id FROM books AS book
+            WHERE book.id != :bookId AND book.isHidden = 0 AND book.isArchived = 0
+                AND book.format IN (:eligibleFormats)
+                AND EXISTS (
+                    SELECT 1 FROM book_highlight_rule_states AS saved
+                    JOIN highlight_rules AS existingRule ON existingRule.id = saved.ruleId
+                    WHERE saved.bookId = book.id
+                )
+            ORDER BY book.lastReadTime DESC, book.id
+            LIMIT 1
+        )
+    """)
+    suspend fun inheritHighlightRuleSwitches(bookId: String, eligibleFormats: List<String>)
+
+    @Transaction
+    suspend fun insertBookWithInheritedHighlightSwitches(book: BookEntity, eligibleFormats: List<String>) {
+        insertBook(book)
+        inheritHighlightRuleSwitches(book.id, eligibleFormats)
+    }
+
     @Upsert
     suspend fun upsertBooks(books: List<BookEntity>)
 
@@ -75,6 +101,34 @@ interface BookDao {
 
     @Update
     suspend fun updateBook(book: BookEntity)
+
+    @Query("""
+        UPDATE books SET title = :title, author = :author,
+            coverPath = COALESCE(:newCoverPath, coverPath),
+            metadataUpdatedAt = MAX(:updatedAt, metadataUpdatedAt + 1)
+        WHERE id = :id AND title = :expectedTitle AND author = :expectedAuthor
+            AND metadataUpdatedAt = :expectedUpdatedAt AND filePath = :expectedFilePath
+            AND sourceUri IS :expectedSourceUri AND isCloudOnly = 0 AND isMissing = 0
+            AND sourceDisplayName IS :expectedSourceName AND sourceSha256 IS :expectedSourceHash
+            AND sourceLastModified = :expectedSourceModified
+            AND (:newCoverPath IS NULL OR coverPath IS :expectedCoverPath)
+    """)
+    suspend fun compareAndSetBookMetadata(
+        id: String,
+        expectedTitle: String,
+        expectedAuthor: String,
+        expectedUpdatedAt: Long,
+        expectedFilePath: String,
+        expectedSourceUri: String?,
+        expectedSourceName: String?,
+        expectedSourceHash: String?,
+        expectedSourceModified: Long,
+        expectedCoverPath: String?,
+        title: String,
+        author: String,
+        newCoverPath: String?,
+        updatedAt: Long
+    ): Int
 
     @Query("UPDATE books SET sourceSha256 = :sha256 WHERE id = :bookId")
     suspend fun updateSourceSha256(bookId: String, sha256: String)

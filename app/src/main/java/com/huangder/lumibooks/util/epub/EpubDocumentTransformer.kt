@@ -363,7 +363,7 @@ object EpubDocumentTransformer {
         val parser = if (useXmlParser) Parser.xmlParser() else Parser.htmlParser()
         val document = Jsoup.parse(ByteArrayInputStream(bytes), null, path, parser)
         document.outputSettings().syntax(Document.OutputSettings.Syntax.xml).charset(Charsets.UTF_8)
-        if (document.selectFirst("body[data-lumi-markdown]") != null) {
+        if (document.selectFirst("body[data-lumi-markdown], body[data-lumi-replacement]") != null) {
             document.outputSettings().prettyPrint(false)
         }
         sanitize(document)
@@ -1214,9 +1214,10 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
     var endInfo = null;
     for (var i = 0; i < index.nodes.length; i++) {
       var info = index.nodes[i];
-      if (!startInfo && start >= info.start && start <= info.end) startInfo = info;
-      if (end >= info.start && end <= info.end) { endInfo = info; break; }
+      if (!startInfo && start >= info.start && (start < info.end || start === index.text.length)) startInfo = info;
+      if (!endInfo && end > info.start && end <= info.end) endInfo = info;
     }
+    if (end === start) endInfo = startInfo;
     if (!startInfo || !endInfo) return null;
     var range = document.createRange();
     range.setStart(startInfo.node, Math.max(0, start - startInfo.start));
@@ -2137,10 +2138,11 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
     document.body.style.setProperty('position', state.fixed ? 'fixed' : 'relative');
     // WebView may scroll on its compositor before JS/clip-path animations catch
     // up. Fixed copies of the PAPER cover those frames; they never track scrollY.
+    // Keep the margin paper above the SVG underline layer as well as the text.
     var masks = document.createElementNS(document.documentElement.namespaceURI, 'div');
     masks.id = 'lumi-scroll-viewport-masks';
     masks.setAttribute('aria-hidden', 'true');
-    masks.style.cssText = 'position:fixed!important;inset:0!important;pointer-events:none!important;z-index:2147482000!important;';
+    masks.style.cssText = 'position:fixed!important;inset:0!important;pointer-events:none!important;z-index:2147483001!important;';
     var width = state.viewportWidth, height = state.viewportHeight;
     [inset.top ? [0, height - inset.top] : null,
       inset.bottom ? [height - inset.bottom, 0] : null].forEach(function (edges) {
@@ -2183,7 +2185,7 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
           return [property, node.style.getPropertyValue(property), node.style.getPropertyPriority(property)];
         }));
         if (getComputedStyle(node).position === 'static') node.style.setProperty('position', 'relative', 'important');
-        node.style.setProperty('z-index', '2147482001', 'important');
+        node.style.setProperty('z-index', '2147483002', 'important');
       });
     }
     (state.fixed ? document.documentElement : document.body).appendChild(masks);
@@ -2470,6 +2472,10 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
     state.layoutRevision += 1;
     state.stableLayoutRevision = -1;
     state.paginating = true;
+    // A page animation owns geometry from before this layout. Clear it before
+    // moving to the new page, even if its destination has the same page index.
+    touchPaging = false;
+    clearPageStage();
     var paginateStarted = traceNow();
     var body = document.body;
     clearOverflowFits();
@@ -2689,17 +2695,17 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
     }
   }
 
-  // Layout and drawing have separate lifetimes. Publish only a revision whose
-  // geometry stayed unchanged across two frames, never an arbitrary delay.
+  // Measure layout boxes. CSS transforms and page translations can keep
+  // changing paint coordinates even when pagination has already settled.
   function publishStableLayout() {
     var revision = state.layoutRevision;
     var generation = state.configurationGeneration;
     function geometry() {
       var values = [viewportWidth(), viewportHeight()];
-      [document.body].concat(Array.prototype.slice.call(document.querySelectorAll('img,svg,video')))
+      [document.body].concat(Array.prototype.slice.call(document.body.querySelectorAll('img,svg,video')))
         .forEach(function (element) {
-          var rect = element.getBoundingClientRect();
-          values.push(rect.left, rect.top, rect.width, rect.height);
+          values.push(element.offsetLeft || 0, element.offsetTop || 0,
+            element.offsetWidth || element.clientWidth, element.offsetHeight || element.clientHeight);
         });
       return values;
     }
@@ -2929,6 +2935,26 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
     });
   }
 
+  function readerFontWeightDescriptor(value) {
+    var descriptor = String(value || '400');
+    return /^\d+(?:\.\d+)?(?: \d+(?:\.\d+)?)?$/.test(descriptor) ? descriptor : '400';
+  }
+
+  function primaryFontFamily(value) {
+    var match = /^\s*(?:"([^"]*)"|'([^']*)'|([^,]+))/.exec(value);
+    return match ? (match[1] || match[2] || match[3] || '').trim().toLowerCase() : '';
+  }
+
+  function publisherWeightFamilies() {
+    var families = new Set();
+    if (document.fonts) document.fonts.forEach(function (face) {
+      if (face.status !== 'error' && readerFontWeightDescriptor(face.weight).includes(' ')) {
+        families.add(primaryFontFamily(face.family));
+      }
+    });
+    return families;
+  }
+
   function applyReaderOverrides(config) {
     var existing = document.getElementById('lumi-reader-overrides');
     var family = config.fontFamily ? String(config.fontFamily) : '';
@@ -2946,18 +2972,20 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
     var hasParagraphSpacing = config.paragraphSpacingDp != null && Number.isFinite(paragraphSpacingDp);
     var firstLineIndent = Number(config.firstLineIndent);
     var hasFirstLineIndent = config.firstLineIndent != null && Number.isFinite(firstLineIndent);
-    if (!family && !textAlignment && bodyFontWeight === 400 && !hasLetterSpacing &&
+    var fontWeightDescriptor = readerFontWeightDescriptor(config.fontWeightDescriptor);
+    var variableOverride = fontUrl && fontWeightDescriptor.includes(' ');
+    var publisherVariable = !family && bodyFontWeight !== 400 ? publisherWeightFamilies() : new Set();
+    var hasOutline = bodyFontWeight > 400 && !variableOverride;
+    if (!family && !textAlignment && !hasOutline && !publisherVariable.size && !hasLetterSpacing &&
         !hasLineHeight && !hasParagraphSpacing && !hasFirstLineIndent) {
       if (existing) existing.remove();
+      updatePublisherWeightTargets(publisherVariable);
       return;
     }
     var style = existing || document.createElement('style');
     style.id = 'lumi-reader-overrides';
     var rules = '';
-    // Advertising a static face as 100..900 disables Chromium's synthetic bold.
-    // Only a font with an actual wght axis may declare a weight range.
-    var fontWeightDescriptor = String(config.fontWeightDescriptor || '400');
-    if (!/^\d+(?:\.\d+)?(?: \d+(?:\.\d+)?)?$/.test(fontWeightDescriptor)) fontWeightDescriptor = '400';
+    // Only a face with a wght axis may declare a weight range.
     if (fontUrl) {
       rules += '@font-face{font-family:"Lumi Reader Override";src:url(' + JSON.stringify(fontUrl) + ');font-style:normal;font-weight:' + fontWeightDescriptor + ';font-display:swap;}';
     }
@@ -2988,10 +3016,40 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
       firstLineIndent = Math.max(0, Math.min(4, firstLineIndent));
       rules += 'p{text-indent:' + firstLineIndent.toFixed(3) + 'em !important;}';
     }
-    if (bodyFontWeight !== 400) rules += textSelector + '{font-weight:' + bodyFontWeight + ' !important;}';
+    if (variableOverride && bodyFontWeight !== 400) {
+      rules += textSelector + '{font-weight:' + bodyFontWeight + ' !important;}';
+    }
+    if (hasOutline) {
+      // Synthetic font-weight switches to a single bold face. Stroke adds ink without changing advances.
+      var outline = ((bodyFontWeight - 400) / 500 * 0.055).toFixed(5);
+      rules += textSelector + '{-webkit-text-stroke:' + outline + 'em currentColor !important;}';
+      rules += 'body [data-lumi-rule-font]{-webkit-text-stroke-width:0 !important;}';
+    }
+    if (publisherVariable.size) {
+      // Set the axis directly so static descendants retain their inherited CSS font-weight.
+      rules += '[data-lumi-publisher-vf]{font-variation-settings:"wght" ' + bodyFontWeight + ' !important;' +
+        (hasOutline ? '-webkit-text-stroke-width:0 !important;' : '') + '}';
+      rules += 'body [data-lumi-rule-font],body [data-lumi-bionic]{font-variation-settings:normal !important;}';
+    }
     if (textAlignment) rules += textSelector + '{text-align:' + textAlignment + ' !important;}';
     if (style.textContent !== rules) style.textContent = rules;
     if (!existing) document.head.appendChild(style);
+    updatePublisherWeightTargets(publisherVariable);
+  }
+
+  function updatePublisherWeightTargets(families) {
+    var marker = 'data-lumi-publisher-vf';
+    if (!families.size) {
+      document.querySelectorAll('[' + marker + ']').forEach(function (element) { element.removeAttribute(marker); });
+      return;
+    }
+    var changes = [];
+    document.querySelectorAll('body, body *').forEach(function (element) {
+      if (element.namespaceURI !== 'http://www.w3.org/1999/xhtml') return;
+      var variable = families.has(primaryFontFamily(getComputedStyle(element).fontFamily));
+      if (element.hasAttribute(marker) !== variable) changes.push([element, variable]);
+    });
+    changes.forEach(function (change) { change[0].toggleAttribute(marker, change[1]); });
   }
 
   /**
@@ -3411,8 +3469,8 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
       if (config.theme === 'green_dark') document.documentElement.classList.add('lumi-green-dark');
     }
     if (geometryChanged && (state.ready || state.mediaSettled)) {
+      if (liveLocator) state.pendingLocator = liveLocator;
       paginate(state.pendingProgression);
-      if (liveLocator) restore(liveLocator);
     } else if (state.ready) {
       applyPublisherBackgroundLayer();
       applyReaderPaperBackground(readerBackgroundActive);
@@ -3511,6 +3569,11 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
         range.setStart(node, Math.min(target.textOffset || 0, node.nodeValue.length));
         range.collapse(true);
       } catch (_) { range = null; }
+    }
+    if (!range && target.replacementAnchor && typeof target.textPosition === 'number') {
+      var index = textIndex();
+      var position = Math.max(0, Math.min(index.text.length, target.textPosition));
+      range = rangeAtOffsets(index, position, position);
     }
     if (!range) range = quoteRange(target);
     if (range) return Math.max(0, Math.min(state.total - 1, pageForRange(range)));
@@ -4036,7 +4099,11 @@ private const val READER_SCRIPT_PART_3 = """
       if (segment.start > 0) target = target.splitText(segment.start);
       var span = document.createElement('span');
       span.setAttribute('data-lumi-rule-style', 'true');
-      if (Number(style.fontWeight) >= 600) span.style.setProperty('font-weight', '700', 'important');
+      if (hasFontFamily || Number(style.fontWeight) >= 600) span.setAttribute('data-lumi-rule-font', '');
+      if (style.fontUrl || Number(style.fontWeight) >= 600) {
+        var weight = Math.max(100, Math.min(900, Number(style.fontWeight) || 400));
+        span.style.setProperty('font-weight', String(weight), 'important');
+      }
       if (style.italic === true) span.style.setProperty('font-style', 'italic', 'important');
       if (hasFontFamily) {
         var family = /^(serif|sans-serif|monospace)$/.test(style.fontFamily)
@@ -4057,22 +4124,28 @@ private const val READER_SCRIPT_PART_3 = """
     if (!ruleStylesDirty || !document.body) return;
     ruleStylesDirty = false;
     try {
-      var oldRuleFonts = document.getElementById('lumi-rule-fonts');
-      if (oldRuleFonts) oldRuleFonts.remove();
+      var fontStyleElement = document.getElementById('lumi-rule-fonts');
       var fontCss = [];
+      var registeredFamilies = new Set();
       (state.highlightItems || []).forEach(function (item) {
         var style = item && item.ruleStyle;
         if (!style || !style.fontFamily || !style.fontUrl) return;
-        var family = String(style.fontFamily).replace(/[^a-zA-Z0-9_-]/g, '_');
-        var url = String(style.fontUrl).replace(/['\\]/g, '');
-        fontCss.push('@font-face{font-family:"' + family + '";src:url("' + url + '");font-display:swap;}');
+        if (registeredFamilies.has(style.fontFamily)) return;
+        registeredFamilies.add(style.fontFamily);
+        var family = JSON.stringify(style.fontFamily);
+        var url = JSON.stringify(style.fontUrl);
+        var weight = readerFontWeightDescriptor(style.fontWeightDescriptor);
+        fontCss.push('@font-face{font-family:' + family + ';src:url(' + url + ');font-weight:' + weight + ';font-display:swap;}');
       });
       if (fontCss.length) {
-        var fontStyleElement = document.createElement('style');
-        fontStyleElement.id = 'lumi-rule-fonts';
-        fontStyleElement.textContent = fontCss.join('\n');
-        (document.head || document.documentElement).appendChild(fontStyleElement);
-      }
+        if (!fontStyleElement) {
+          fontStyleElement = document.createElement('style');
+          fontStyleElement.id = 'lumi-rule-fonts';
+          (document.head || document.documentElement).appendChild(fontStyleElement);
+        }
+        var nextFontCss = fontCss.join('\n');
+        if (fontStyleElement.textContent !== nextFontCss) fontStyleElement.textContent = nextFontCss;
+      } else if (fontStyleElement) fontStyleElement.remove();
       clearRuleInlineStyles();
       (state.highlightItems || []).forEach(function (item) {
         try {
@@ -4587,6 +4660,14 @@ private const val READER_SCRIPT_PART_3 = """
     // Duokan footnote bodies link back to the source marker via *_start_*.
     if (isFootnoteBacklinkHint(fragment)) return false;
     if (/^jz_[a-z0-9_-]+$/i.test(anchor.id || '') && /^jzyy_[a-z0-9_-]+$/i.test(fragment)) return false;
+    // Match the numbered anchor pair without treating ordinary superscript links as notes.
+    var numberedNote = /^(wz|wzyy)_([0-9]+_[0-9]+)$/i.exec(anchor.id || '');
+    if (numberedNote) {
+      var prefix = numberedNote[1].toLowerCase();
+      var targetId = fragment.toLowerCase();
+      if (prefix === 'wz' && targetId === 'wzyy_' + numberedNote[2]) return true;
+      if (prefix === 'wzyy' && targetId === 'wz_' + numberedNote[2]) return false;
+    }
     if (hasFootnoteSemantics(anchor, true)) return true;
     if (hasFootnoteMarkerLabel(anchor)) return true;
     if (hasFootnoteHint(anchor.className) || hasFootnoteHint(anchor.id) ||
@@ -4636,8 +4717,11 @@ private const val READER_SCRIPT_PART_3 = """
   function sameDocumentFootnoteUrl(anchor) {
     var url;
     try { url = new URL(anchor.href, document.baseURI); } catch (_) { return null; }
-    if (!isSameDocumentLink(anchor, url)) return null;
-    return url;
+    if (isSameDocumentLink(anchor, url)) return url;
+    // An explicit link to the physical chapter may already have its target in this TOC slice.
+    var base = new URL(document.baseURI);
+    return url.origin === base.origin && url.pathname === base.pathname && url.search === base.search &&
+      footnoteTarget(document, decodedFragment(url)) ? url : null;
   }
 
   /**
@@ -4690,13 +4774,17 @@ private const val READER_SCRIPT_PART_3 = """
       return String(node.textContent || '').length <= 16000;
     });
     if (!candidates.length) return pairs;
+    var resolvedBodies = references.map(function (anchor) {
+      var fragment = decodedFragment(sameDocumentFootnoteUrl(anchor));
+      return footnoteContentElement(footnoteTarget(document, fragment));
+    });
+    var reservedBodies = new Set(resolvedBodies);
     var used = [];
     for (var i = 0; i < references.length; i++) {
       var anchor = references[i];
       var fragment = decodedFragment(sameDocumentFootnoteUrl(anchor));
-      var target = fragment ? footnoteTarget(document, fragment) : null;
       // 注释正文可能是"段首行内锚点"所在的段落，先解析成气泡实际展示的那一块再配对
-      var resolved = footnoteContentElement(target);
+      var resolved = resolvedBodies[i];
       var body = null;
       if (resolved) {
         for (var c = 0; c < candidates.length; c++) {
@@ -4709,7 +4797,7 @@ private const val READER_SCRIPT_PART_3 = """
       }
       if (!body) {
         for (var n = 0; n < candidates.length; n++) {
-          if (used.indexOf(n) >= 0) continue;
+          if (used.indexOf(n) >= 0 || reservedBodies.has(candidates[n])) continue;
           body = candidates[n];
           used.push(n);
           break;
@@ -5212,6 +5300,8 @@ private const val READER_SCRIPT_PART_3B = """
     }
     if (isTap && (!window.getSelection || window.getSelection().isCollapsed)) {
       var ratio = tapRatio;
+      state.suppressClickUntil = Date.now() + 450;
+      if (state.flow === 'scrolled' && (ratio < 0.3 || ratio > 0.7)) return;
       if (ratio < 0.3) {
         if (state.nativePaging) post('tap', { zone: 'left' });
         else turnByDirection(state.edgeTapLeft, true);
@@ -5224,7 +5314,6 @@ private const val READER_SCRIPT_PART_3B = """
         pageStageDurationOverride = 0;
         post('tap', { zone: 'center' });
       }
-      state.suppressClickUntil = Date.now() + 450;
     }
     else pageStageDurationOverride = 0;
   }, { passive: false, capture: true });
@@ -5309,6 +5398,7 @@ private const val READER_SCRIPT_PART_3B = """
       return;
     }
     var ratio = event.clientX / viewportWidth();
+    if (state.flow === 'scrolled' && (ratio < 0.3 || ratio > 0.7)) return;
     if (ratio < 0.3) {
       if (state.nativePaging) post('tap', { zone: 'left' });
       else turnByDirection(state.edgeTapLeft, true);

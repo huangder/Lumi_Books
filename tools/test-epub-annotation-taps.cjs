@@ -13,8 +13,22 @@ async function verify(flow) {
   const check = (condition, message) => { if (!condition) throw Error(message); };
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
   try {
-    window.LumiReader.configure({ flow, nativePaging: true, transition: 'none',
+    const viewportWidth = Math.round(window.visualViewport?.width || window.outerWidth || window.innerWidth);
+    const configure = nativePaging => window.LumiReader.configure({ flow, nativePaging, transition: 'none',
+      viewport: { width: viewportWidth, height: window.innerHeight },
       insets: { top: 0, right: 0, bottom: 0, left: 0 } });
+    const tap = (element, x, y, input) => {
+      if (input === 'touch') {
+        const touch = new Touch({ identifier: 1, target: element, clientX: x, clientY: y });
+        element.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true,
+          touches: [touch], targetTouches: [touch], changedTouches: [touch] }));
+        element.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true,
+          touches: [], targetTouches: [], changedTouches: [touch] }));
+      }
+      // Also exercise the synthetic click following touchend.
+      element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+    };
+    configure(true);
     await wait(350);
     const target = document.getElementById('marked');
     const exact = target.textContent;
@@ -43,17 +57,7 @@ async function verify(flow) {
         const x = (rect.left + rect.right) / 2, y = (rect.top + rect.bottom) / 2;
         const element = document.elementFromPoint(x, y);
         window.messages.length = 0;
-        const click = () => element.dispatchEvent(new MouseEvent('click', {
-          bubbles: true, cancelable: true, clientX: x, clientY: y
-        }));
-        if (input === 'touch') {
-          const touch = new Touch({ identifier: 1, target: element, clientX: x, clientY: y });
-          element.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true,
-            touches: [touch], targetTouches: [touch], changedTouches: [touch] }));
-          element.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true,
-            touches: [], targetTouches: [], changedTouches: [touch] }));
-        }
-        click(); // Also exercise the synthetic click following touchend.
+        tap(element, x, y, input);
         const selections = window.messages.filter(m => m.type === 'selection');
         check(selections.length === (selectable ? 1 : 0),
           `${label} ${input}: expected ${selectable ? 1 : 0} selection events, got ${selections.length}`);
@@ -61,7 +65,11 @@ async function verify(flow) {
           check(selections[0].payload.annotationOnly === true, 'Manual tap must open annotation menu');
           check(selections[0].payload.text === exact, 'Manual tap selected the wrong text');
         } else {
-          check(window.messages.some(m => m.type === 'tap'), 'Rule text must keep normal reader tap actions');
+          const ratio = x / viewportWidth;
+          const zone = ratio < 0.3 ? 'left' : ratio > 0.7 ? 'right' : 'center';
+          const expectedTap = flow === 'paginated' || zone === 'center';
+          check(window.messages.some(m => m.type === 'tap' && m.payload.zone === zone) === expectedTap,
+            'Rule text must follow the current reader tap zones');
         }
         checks++;
       }
@@ -77,7 +85,26 @@ async function verify(flow) {
     const selection = window.messages.find(m => m.type === 'selection');
     check(selection && selection.payload.text === exact && !selection.payload.annotationOnly,
       'Text selection over a rule highlight must still open the selection menu');
-    document.getElementById('result').textContent = JSON.stringify({ passed: true, checks: checks + 1 });
+    checks++;
+    window.getSelection().removeAllRanges();
+    window.LumiReader.setHighlights([]);
+    for (const nativePaging of [true, false]) {
+      configure(nativePaging);
+      for (const [ratio, zone] of [[0.1, 'left'], [0.5, 'center'], [0.9, 'right']]) {
+        for (const input of ['click', 'touch']) {
+          await wait(470);
+          window.messages.length = 0;
+          tap(document.body, ratio * viewportWidth, 300, input);
+          const actions = window.messages.filter(m => m.type === 'tap' || m.type === 'manualScroll');
+          const expected = zone === 'center' || flow === 'paginated'
+            ? [zone === 'center' || nativePaging ? zone : 'manualScroll'] : [];
+          check(JSON.stringify(actions.map(m => m.payload.zone || m.type)) === JSON.stringify(expected),
+            `${input} ${zone}, nativePaging ${nativePaging}: unexpected actions ${JSON.stringify(actions)}`);
+          checks++;
+        }
+      }
+    }
+    document.getElementById('result').textContent = JSON.stringify({ passed: true, checks });
   } catch (error) {
     document.getElementById('result').textContent = JSON.stringify({ passed: false, error: error.message });
   }
@@ -107,7 +134,7 @@ try {
     assert.ok(report.passed, `${layout}, ${flow}, vertical ${vertical}: ${report.error}`);
     checks += report.checks;
   }
-  console.log(`PASS: ${checks} EPUB annotation tap checks across fixed/reflowable layouts, horizontal/vertical text and paginated/scrolled flows.`);
+  console.log(`PASS: ${checks} EPUB tap checks across fixed/reflowable layouts, horizontal/vertical text and paginated/scrolled flows.`);
 } finally {
   const absolute = resolve(directory);
   assert.equal(dirname(absolute), resolve(tmpdir()));

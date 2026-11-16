@@ -3,6 +3,7 @@ package com.huangder.lumibooks.util
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import com.huangder.lumibooks.domain.model.BookFormat
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -115,6 +116,19 @@ object FileUtils {
                 if (nameIndex >= 0) cursor.getString(nameIndex) else null
             }
         }.getOrNull()
+    }
+
+    fun getBookImportName(context: Context, uri: Uri): String? {
+        val name = getFileNameFromUri(context, uri) ?: uri.lastPathSegment?.substringAfterLast('/')
+        if (name != null && getFileExtension(name) in BookFormat.importExtensions) return name
+        val mime = runCatching { context.contentResolver.getType(uri) }.getOrNull()
+        return bookImportName(name, mime)
+    }
+
+    internal fun bookImportName(name: String?, mimeType: String?): String? {
+        if (name != null && getFileExtension(name) in BookFormat.importExtensions) return name
+        val extension = BookFormat.wordExtensionForMimeType(mimeType) ?: return null
+        return "${name?.takeIf(String::isNotBlank) ?: "Word"}.$extension"
     }
 
     /**

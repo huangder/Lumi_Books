@@ -66,6 +66,7 @@ import java.util.Locale
 fun WebdavSettingsDetail(
     viewModel: SettingsViewModel,
     requestLocalNetworkPermission: RequestLocalNetworkPermission,
+    onOpenLogs: () -> Unit = {},
     onConfigure: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -163,6 +164,11 @@ fun WebdavSettingsDetail(
                         )
                     }
                 }
+                WebdavSecondaryButton(
+                    label = stringResource(R.string.webdav_status_view_logs),
+                    icon = AppIcons.FileText,
+                    onClick = onOpenLogs
+                )
                 WebdavSecondaryButton(
                     label = stringResource(R.string.webdav_disable),
                     icon = AppIcons.CloudSlash,

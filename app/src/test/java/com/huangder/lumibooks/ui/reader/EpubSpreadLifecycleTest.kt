@@ -10,7 +10,9 @@ import android.view.View
 import androidx.webkit.WebViewAssetLoader
 import com.huangder.lumibooks.domain.model.ReaderEdgeTapMode
 import com.huangder.lumibooks.util.epub.*
+import com.huangder.lumibooks.ui.reader.engine.CurlPageAnim
 import com.huangder.lumibooks.ui.reader.engine.PageAnimationController
+import com.huangder.lumibooks.ui.reader.engine.RenderResourcePool
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -95,6 +97,30 @@ class EpubSpreadLifecycleTest {
         assertEquals(4, host.allWebViews().size)
     }
 
+    @Test fun fontResizeKeepsTheCurrentLocatorWhenANeighbourIsPreparing() {
+        val opening = EpubNavigationRequest(45, EpubNavigationOrigin.RETURN_TO_SOURCE, 0, 0, 0,
+            EpubNavigationDestination.Page(0))
+        val target = spread(4)
+        val locator = """{"href":"chapter.xhtml","exact":"Current paragraph"}"""
+        val focused = EpubSpreadPage(target.first, 20, locator)
+        prepare(slot("current"), target)
+        set(host, "state", EpubSpreadState(target, focused, EpubSpreadPage(target.second!!, 20), false))
+        set(host, "session", TestSession)
+        set(host, "lastOperationId", opening.operationId)
+        set(host, "configurationIdentity", "small font")
+        set(host, "planner", EpubSpreadPlanner(TestSession.chapterCount, TestSession::pagePresentation)
+            .apply { updatePageCount(0, 20) })
+        assertTrue(host.turn(1))
+
+        host.update(TestSession, "large font", opening, "slide", 200, false,
+            ReaderEdgeTapMode.LEFT_PREVIOUS_RIGHT_NEXT, android.graphics.Color.WHITE)
+        val preparation = get(host, "preparation")!!
+        val request = get(preparation, "request") as EpubNavigationRequest
+        assertEquals(EpubNavigationDestination.Locator(locator), request.destination)
+        assertTrue(host.turn(1))
+        assertSame(preparation, get(host, "preparation"))
+    }
+
     @Test fun hiddenLocatorUpdatesDoNotAccumulateDisplacedPairs() {
         host.backgroundPreparationEnabled = false
         repeat(3) { step ->
@@ -105,6 +131,22 @@ class EpubSpreadLifecycleTest {
             assertEquals(2, host.allWebViews().size)
             assertEquals(host.visibleWebViews(), host.allWebViews())
         }
+    }
+
+    @Test fun returningToLandscapeStartsPreloadWithoutWaitingForATap() {
+        val target = spread(2)
+        prepare(slot("current"), target)
+        set(host, "state", EpubSpreadState(target, EpubSpreadPage(target.first, 20),
+            EpubSpreadPage(target.second!!, 20), false))
+        set(host, "session", TestSession)
+        set(host, "planner", EpubSpreadPlanner(TestSession.chapterCount, TestSession::pagePresentation)
+            .apply { updatePageCount(0, 20) })
+
+        host.backgroundPreparationEnabled = false
+        host.backgroundPreparationEnabled = true
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(spread(0), get(slot("previous"), "target"))
     }
 
     @Test fun partialDestinationNeverCommitsHalfOfASpread() {
@@ -144,6 +186,30 @@ class EpubSpreadLifecycleTest {
         assertEquals(listOf(EpubPageTarget(0, 2), EpubPageTarget(0, 3)),
             listOf(notified!!.first.target, notified!!.second!!.target))
         assertEquals(original, host.allWebViews().toSet())
+    }
+
+    @Test fun curlTapStartsWithThePreparedSnapshots() {
+        val source = slot("current")
+        val destination = slot("next")
+        val target = spread(0)
+        prepare(source, target)
+        prepare(destination, spread(2))
+        set(host, "session", TestSession)
+        set(host, "state", EpubSpreadState(target, EpubSpreadPage(target.first, 20),
+            EpubSpreadPage(target.second!!, 20), false))
+        set(host, "transition", "curl")
+        @Suppress("UNCHECKED_CAST")
+        val pool = get(host, "bitmapPool") as RenderResourcePool<Bitmap>
+        val frames = listOf(source, destination).map { slot ->
+            Bitmap.createBitmap(host.width, host.height, Bitmap.Config.ARGB_8888).also { frame ->
+                pool.track(frame)
+                set(slot, "snapshot", frame)
+            }
+        }
+        assertTrue(host.turn(1))
+        assertTrue((get(host, "controller") as? CurlPageAnim)?.isRunning == true)
+        assertSame(frames[0], get(source, "snapshot"))
+        assertSame(frames[1], get(destination, "snapshot"))
     }
 
     @Test fun stalePositioningCommandAndOldLayoutFenceCannotBecomeReady() {

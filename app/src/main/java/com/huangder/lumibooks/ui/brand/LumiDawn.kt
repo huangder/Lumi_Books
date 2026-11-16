@@ -28,6 +28,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -263,18 +265,24 @@ fun LumiDawnStage(
     accent: Color? = null,
     content: @Composable () -> Unit
 ) {
+    // The pages sit under a different parent with and without glass. Moving them (rather than
+    // composing them afresh) keeps their state, e.g. the welcome step, across a live theme switch.
+    val currentContent by rememberUpdatedState(content)
+    val pages = remember {
+        movableContentOf {
+            CompositionLocalProvider(LocalLumiDawnBackdrop provides true) { currentContent() }
+        }
+    }
     Box(modifier.fillMaxSize()) {
         if (lumiDawnGlass()) {
             val backdrop = rememberLayerBackdrop()
             Box(Modifier.fillMaxSize().layerBackdrop(backdrop)) {
                 CompositionLocalProvider(LocalLumiDawnBackdrop provides false) { LumiDawnBackground(accent = accent) }
             }
-            ProvideLiquidGlassBackdrop(backdrop) {
-                CompositionLocalProvider(LocalLumiDawnBackdrop provides true, content = content)
-            }
+            ProvideLiquidGlassBackdrop(backdrop) { pages() }
         } else {
             CompositionLocalProvider(LocalLumiDawnBackdrop provides false) { LumiDawnBackground(accent = accent) }
-            CompositionLocalProvider(LocalLumiDawnBackdrop provides true, content = content)
+            pages()
         }
     }
 }
@@ -393,7 +401,8 @@ fun LumiDawnArrowButton(
     label: String,
     expanded: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
 ) {
     val colors = lumiDawnColors()
     val motion = lumiDawnMotion()
@@ -418,14 +427,15 @@ fun LumiDawnArrowButton(
     if (glass) {
         LiquidGlassButton(
             onClick = onClick,
-            modifier = sized,
+            modifier = sized.graphicsLayer { alpha = if (enabled) 1f else 0.45f },
+            enabled = enabled,
             shape = RoundedCornerShape(percent = 50),
             tintedColor = AppColors.Accent,
             contentColor = content,
             content = inner
         )
     } else {
-        DawnPressable(onClick, true, sized, fill = colors.buttonFill, border = null) {
+        DawnPressable(onClick, enabled, sized, fill = colors.buttonFill, border = null) {
             Row(verticalAlignment = Alignment.CenterVertically, content = inner)
         }
     }

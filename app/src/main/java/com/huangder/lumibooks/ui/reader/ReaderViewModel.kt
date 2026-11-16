@@ -1,5 +1,16 @@
 package com.huangder.lumibooks.ui.reader
 
+import com.huangder.lumibooks.replacement.BookReplacementRules
+import com.huangder.lumibooks.replacement.ReplacementPreview
+import com.huangder.lumibooks.replacement.ReplacementProgram
+import com.huangder.lumibooks.replacement.ReplacementResult
+import com.huangder.lumibooks.replacement.ReplacementRule
+import com.huangder.lumibooks.util.epub.BookTextSearch
+import com.huangder.lumibooks.util.epub.EpubRenderSession
+import com.huangder.lumibooks.util.epub.MobiRenderSession
+import com.huangder.lumibooks.util.parser.EpubParser
+import com.huangder.lumibooks.util.parser.KindleParser
+
 import com.huangder.lumibooks.reading.ReadingActivityTracker
 import com.huangder.lumibooks.util.parser.MarkdownParser
 
@@ -81,6 +92,7 @@ import com.huangder.lumibooks.util.DownloadedFonts
 import com.huangder.lumibooks.util.BookFileAccess
 import com.huangder.lumibooks.util.FileUtils
 import com.huangder.lumibooks.util.ReaderBackgroundImageProcessor
+import com.huangder.lumibooks.util.ReaderFontFileFormat
 import com.huangder.lumibooks.util.TimeUtils
 import com.huangder.lumibooks.util.cache.ReaderCacheStore
 import com.huangder.lumibooks.util.performance.ReaderOpenPerformance
@@ -101,6 +113,7 @@ import com.huangder.lumibooks.util.parser.TxtTocRule
 import com.huangder.lumibooks.util.parser.TxtTocRuleDiagnostics
 import com.huangder.lumibooks.util.parser.TxtReplaceText
 import com.huangder.lumibooks.util.parser.TxtReplaceRange
+import com.huangder.lumibooks.util.parser.usableBookAuthor
 import com.huangder.lumibooks.util.epub.EpubRenderMode
 import com.huangder.lumibooks.util.epub.BookRenderSession
 import com.huangder.lumibooks.util.epub.BookRenderSource
@@ -109,7 +122,10 @@ import com.huangder.lumibooks.util.epub.BookSearchSource
 import com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatter
 import com.huangder.lumibooks.ui.reader.engine.toAnnotationStyle
 import com.huangder.lumibooks.ui.reader.engine.ReaderRuleTypefaceSpan
+import com.huangder.lumibooks.ui.reader.engine.ResolvedReaderTypeface
 import com.huangder.lumibooks.ui.reader.engine.applyReaderPunctuationCompression
+import com.huangder.lumibooks.ui.reader.engine.readerFileFont
+import com.huangder.lumibooks.ui.reader.engine.readerSerifTypeface
 import com.huangder.lumibooks.ui.reader.engine.WaveUnderlineSpan
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.service.TtsForegroundService
@@ -383,6 +399,7 @@ data class ReaderUiState(
     val volumeKeyDownAction: ReaderVolumeKeyAction = ReaderVolumeKeyAction.SYSTEM_VOLUME,
     val bookmarkRemarkPromptEnabled: Boolean = true,
     val bionicReadingEnabled: Boolean = false,
+    val pageBottomAligned: Boolean = false,
     val comicModeEnabled: Boolean = false,
     val epubComicReader: Boolean = false,
     val nativeEpubCssEnabled: Boolean = false,
@@ -428,6 +445,7 @@ data class ReaderUiState(
     val annotationStyle: com.huangder.lumibooks.ui.reader.engine.ReaderAnnotationStyle =
         com.huangder.lumibooks.ui.reader.engine.ReaderAnnotationStyle.DEFAULT,
     val contentRevision: Long = 0L,
+    val replacementRevision: Long = 0L,
     val selectionMenuItems: SelectionMenuSettings = SelectionMenuSettings(),
     val longPressSelectionRange: LongPressSelectionRange = LongPressSelectionRange.DEFAULT
 )
@@ -448,7 +466,7 @@ data class ReaderTtsState(
     val errorMessage: String? = null,
     val sleepTimerRemainingMs: Long? = null,
     val sleepTimerDurationMs: Long? = null,
-    val followUserPageTurns: Boolean = false
+    val autoPageTurn: Boolean = true
 )
 
 data class HighlightRuleImportResult(
@@ -672,6 +690,14 @@ class ReaderViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ReaderUiState())
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
 
+    private val _replacementRules = MutableStateFlow(BookReplacementRules())
+    internal val replacementRules = _replacementRules.asStateFlow()
+    private val _replacementBookLayoutNotes = MutableStateFlow<List<Note>>(emptyList())
+    internal val replacementBookLayoutNotes = _replacementBookLayoutNotes.asStateFlow()
+    @Volatile private var replacementProgram = ReplacementProgram.Empty
+    private data class CanvasReplacementKey(val program: ReplacementProgram, val chapter: Int, val source: String)
+    private val canvasReplacements = android.util.LruCache<CanvasReplacementKey, ReplacementResult>(6)
+
     private val _ttsState = MutableStateFlow(ReaderTtsState())
     val ttsState: StateFlow<ReaderTtsState> = _ttsState.asStateFlow()
 
@@ -744,7 +770,7 @@ class ReaderViewModel @Inject constructor(
         val state = _uiState.value
         val book = state.book ?: return
         val liveSession = liveListeningSessionId()
-        when (listeningReaderSession.returnFromBackground(liveSession, ttsController.followUserPageTurns.value)) {
+        when (listeningReaderSession.returnFromBackground(liveSession)) {
             true -> {
                 if (liveSession != null && listeningReaderSession.followEnabled.value) {
                     _ttsManualResumeSentence.value = null
@@ -828,24 +854,14 @@ class ReaderViewModel @Inject constructor(
         if (listeningReaderSession.completeJump(position)) ttsController.setReaderAttached(bookId, true)
     }
 
-    private fun followManualReaderNavigation(): Boolean {
-        if (!ttsController.followUserPageTurns.value || !isListeningToThisBook()) return false
-        listeningReaderSession.follow()
-        ttsController.onReaderNavigationStarted(bookId)
-        return true
-    }
-
-    /** Browsing keeps the audio attached when the capsule's page-follow option is enabled. */
-    fun onListeningReaderPageTurn(recordUse: Boolean = true) {
-        if (recordUse) onReadingInteraction()
-        if (followManualReaderNavigation()) return
+    fun onListeningReaderPageTurn() {
+        onReadingInteraction()
         listeningReaderSession.pageTurn()
         ttsController.setReaderAttached(bookId, false)
     }
 
     internal fun onListeningReaderBrowseStarted(recordUse: Boolean = true) {
         if (recordUse) onReadingInteraction()
-        if (followManualReaderNavigation()) return
         listeningReaderSession.beginManualBrowse(liveListeningSessionId())
         ttsController.setReaderAttached(bookId, false)
     }
@@ -873,10 +889,9 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    /** A deliberate jump ends the opening hint and applies the capsule's page-follow policy. */
+    /** A deliberate jump dismisses the opening hint and keeps the audio at its current position. */
     fun onListeningReaderManualNavigation() {
         onReadingInteraction()
-        if (followManualReaderNavigation()) return
         listeningReaderSession.navigate()
         ttsController.setReaderAttached(bookId, false)
     }
@@ -892,9 +907,8 @@ class ReaderViewModel @Inject constructor(
         ttsController.setReaderAttached(bookId, true)
     }
 
-    fun setTtsFollowUserPageTurns(enabled: Boolean) {
-        ttsController.setFollowUserPageTurns(enabled)
-        if (enabled && isListeningToThisBook()) enableListeningReaderFollow()
+    fun setTtsAutoPageTurn(enabled: Boolean) {
+        ttsController.setAutoPageTurn(enabled)
     }
 
     private val _bookmarks = MutableStateFlow<List<Bookmark>>(emptyList())
@@ -1129,12 +1143,19 @@ class ReaderViewModel @Inject constructor(
                 }
                 val initialPreferences = preferencesDeferred.await()
                 val openedBook = bookDeferred.await()
-                val preferences = if (openedBook?.format == BookFormat.MARKDOWN) {
-                    dataStoreManager.initializeMarkdownRenderMode(bookId)
+                val format = openedBook?.format
+                val storedPreferences = if (format == BookFormat.MARKDOWN || format?.isWord == true) {
+                    dataStoreManager.initializeBookLayoutMode(bookId)
                     dataStoreManager.readerPreferences(bookId).first()
                 } else initialPreferences
+                val preferences = wordReaderPreferences(storedPreferences, format)
                 applyReaderPreferences(preferences)
                 observeReaderSettings()
+                if (format.supportsReplacementRules()) {
+                    val stored = dataStoreManager.replacementRules(bookId).first()
+                    _replacementRules.value = stored
+                    replacementProgram = ReplacementProgram(stored.rules.takeIf { stored.enabled }.orEmpty())
+                }
                 loadBook(preferences, openedBook)
             }
         }
@@ -1189,8 +1210,8 @@ class ReaderViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            ttsController.followUserPageTurns.collectLatest { enabled ->
-                _ttsState.value = _ttsState.value.copy(followUserPageTurns = enabled)
+            ttsController.autoPageTurn.collectLatest { enabled ->
+                _ttsState.value = _ttsState.value.copy(autoPageTurn = enabled)
             }
         }
         viewModelScope.launch {
@@ -1300,9 +1321,20 @@ class ReaderViewModel @Inject constructor(
     private fun observeReaderSettings() {
         viewModelScope.launch {
             dataStoreManager.readerPreferences(bookId)
-                .collectLatest(::applyReaderPreferences)
+                .collectLatest { preferences ->
+                    applyReaderPreferences(wordReaderPreferences(preferences, _uiState.value.book?.format))
+                }
         }
     }
+
+    private val wordWebViewAvailable by lazy {
+        androidx.webkit.WebViewCompat.getCurrentWebViewPackage(context) != null
+    }
+
+    private fun wordReaderPreferences(preferences: ReaderPreferencesSnapshot, format: BookFormat?): ReaderPreferencesSnapshot =
+        if (format?.isWord == true && preferences.renderMode == EpubRenderMode.BOOK_LAYOUT && !wordWebViewAvailable) {
+            preferences.copy(renderMode = EpubRenderMode.READER_LAYOUT)
+        } else preferences
 
     private fun applyReaderPreferences(preferences: ReaderPreferencesSnapshot) {
         if (pendingImageAdjustments == preferences.imageAdjustments) pendingImageAdjustments = null
@@ -1396,6 +1428,7 @@ class ReaderViewModel @Inject constructor(
             volumeKeyDownAction = preferences.volumeKeyDownAction,
             bookmarkRemarkPromptEnabled = preferences.bookmarkRemarkPromptEnabled,
             bionicReadingEnabled = preferences.bionicReadingEnabled,
+            pageBottomAligned = preferences.pageBottomAligned,
             comicModeEnabled = preferences.comicModeEnabled,
             lineGuideEnabled = preferences.lineGuideEnabled,
             lineGuideDimLevel = preferences.lineGuideDimLevel,
@@ -1713,6 +1746,11 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             dataStoreManager.bionicReadingEnabled.collectLatest { enabled ->
                 _uiState.value = _uiState.value.copy(bionicReadingEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.pageBottomAligned.collectLatest { enabled ->
+                _uiState.value = _uiState.value.copy(pageBottomAligned = enabled)
             }
         }
         viewModelScope.launch {
@@ -2812,7 +2850,198 @@ class ReaderViewModel @Inject constructor(
     fun getRenderSession(): BookRenderSession? {
         renderSession?.let { return it }
         val source = parser as? BookRenderSource ?: return null
-        return source.openRenderSession().also { renderSession = it }
+        return openReplacementSession(source, replacementProgram).also { renderSession = it }
+    }
+
+    private fun openReplacementSession(source: BookRenderSource, program: ReplacementProgram): BookRenderSession =
+        when (source) {
+            is EpubParser -> source.openRenderSession(program)
+            is KindleParser -> source.openRenderSession(program)
+            else -> source.openRenderSession()
+        }
+
+    @Synchronized
+    private fun changeReplacementProgram(program: ReplacementProgram) {
+        replacementProgram = program
+        renderSession?.close()
+        renderSession = null
+    }
+
+    private fun BookRenderSession?.chapterReplacement(
+        chapter: Int,
+        program: ReplacementProgram? = null,
+        preview: String? = null
+    ): ReplacementResult? = when (this) {
+        is EpubRenderSession -> if (program == null) replacementResult(chapter) else replacementResult(chapter, program, preview)
+        is MobiRenderSession -> if (program == null) replacementResult(chapter) else replacementResult(chapter, program, preview)
+        else -> null
+    }
+
+    internal suspend fun previewReplacement(
+        chapter: Int,
+        rules: BookReplacementRules,
+        draft: ReplacementRule
+    ): ReplacementPreview? = kotlinx.coroutines.runInterruptible(Dispatchers.IO) {
+        val program = ReplacementProgram(rules.upsert(draft.copy(enabled = true)).rules)
+        val state = _uiState.value
+        if (state.epubComicReader) return@runInterruptible null
+        val source = parser ?: return@runInterruptible null
+        if (source is TxtParser) {
+            return@runInterruptible program.apply(source.getChapterContent(chapter).toString(), previewRule = draft.id).preview
+        }
+        if (state.renderMode == EpubRenderMode.READER_LAYOUT) {
+            val epub = source.epubParserOrNull
+            if (epub?.isReflowableChapter(chapter) == false) return@runInterruptible null
+            val text = epub?.getChapterContent(chapter, epub.contentWidth, epub.contentHeight,
+                textSizePx = state.fontSize * context.resources.displayMetrics.density)
+                ?: source.getChapterContent(chapter)
+            return@runInterruptible program.applyToReaderText(text, txt = false, previewRule = draft.id).preview
+        }
+        (source as? BookRenderSource)?.let { getRenderSession().chapterReplacement(chapter, program, draft.id)?.preview }
+    }
+
+    internal suspend fun updateReplacementRules(transform: (BookReplacementRules) -> BookReplacementRules) = viewModelScope.async {
+        // Closing the sheet can cancel its caller after the DataStore write has completed.
+        // The reader owns applying the saved rules to the live chapter.
+        replacementWrites.withLock {
+            val before = _replacementRules.value
+            dataStoreManager.updateReplacementRules(bookId, transform)
+            val after = dataStoreManager.replacementRules(bookId).first()
+            val oldRules = before.rules.filter { before.enabled && it.enabled }.map { it.copy(name = "") }
+            val newRules = after.rules.filter { after.enabled && it.enabled }.map { it.copy(name = "") }
+            if (oldRules == newRules) {
+                _replacementRules.value = after
+                return@withLock
+            }
+            val state = _uiState.value
+            val chapter = state.currentChapterIndex
+            val bookLayout = state.renderMode == EpubRenderMode.BOOK_LAYOUT
+            val flow = if (state.readerWritingMode.usesContinuousScroll(state.pageTransition, state.eInkModeEnabled)) {
+                ReaderPositionFlow.CONTINUOUS
+            } else ReaderPositionFlow.PAGED
+            val visible = if (flow == ReaderPositionFlow.CONTINUOUS) {
+                continuousViewportCharacter?.takeIf { it.first == chapter }?.second
+            } else pageLayoutEngine.getPageLayout(chapter, state.currentPageIndex)?.startCharOffset
+            val program = ReplacementProgram(newRules)
+            ++progressWriteVersion
+            val nextPosition = withContext(Dispatchers.IO) {
+                val original = if (bookLayout) epubReplacementLocator(chapter, state.epubLocatorJson, toSource = true) else null
+                val sourceOffset = if (!bookLayout) visible?.let { canvasReplacement(chapter)?.offsets?.source(it) ?: it } else null
+                changeReplacementProgram(program)
+                val locator = if (bookLayout) epubReplacementLocator(chapter, original, toSource = false) else null
+                val displayOffset = sourceOffset?.let { canvasReplacement(chapter)?.offsets?.display(it) ?: it }
+                locator to displayOffset
+            }
+            if (_ttsState.value.activeBookId == bookId) stopTts()
+            preloadJobs.values.forEach { it.cancel() }
+            preloadJobs.clear()
+            preloadCache.clear()
+            pageLayoutEngine.invalidateAll()
+            val current = _uiState.value
+            val fraction = (state.currentPageIndex.toFloat() / state.totalPages.coerceAtLeast(1)).coerceIn(0f, 0.9999f)
+            _uiState.value = current.copy(
+                contentRevision = current.contentRevision + 1,
+                replacementRevision = current.replacementRevision + 1,
+                epubLocatorJson = nextPosition.first,
+                pendingPageFraction = fraction,
+                pendingReaderPosition = if (!bookLayout) ReaderPositionLocator(
+                    chapter, fraction, flow, characterOffset = nextPosition.second
+                ) else null
+            )
+            _replacementRules.value = after
+            refreshReaderNotes(_notes.value)
+        }
+    }.await()
+
+    private val replacementWrites = kotlinx.coroutines.sync.Mutex()
+
+    private fun epubReplacementLocator(chapter: Int, raw: String?, toSource: Boolean): String? {
+        if (raw == null || !replacementProgram.active) return raw
+        return getRenderSession().chapterReplacement(chapter)?.projectLocator(raw, toSource) ?: raw
+    }
+
+    private fun canvasReplacement(chapter: Int): ReplacementResult? {
+        val program = replacementProgram
+        if (!program.active) return null
+        var result: ReplacementResult? = null
+        buildChapterText(chapter, null, null, frameworkDrawsText = false,
+            trackReplacement = { result = it })
+        return result
+    }
+
+    private fun displayCharacterOffset(chapter: Int, offset: Int, txtDecodedOffset: Boolean = false): Int {
+        val result = canvasReplacement(chapter) ?: return offset
+        val decoded = if (txtDecodedOffset) (parser as? TxtParser)?.getChapterContent(chapter) else null
+        val original = if (decoded == null) offset else {
+            mapReaderTxtOffsetToSource(result.source, decoded, offset)
+        }
+        return result.offsets.display(original)
+    }
+
+    internal suspend fun displayedBookmark(bookmark: Bookmark): Bookmark = withContext(Dispatchers.IO) {
+        if (!replacementProgram.active) return@withContext bookmark
+        val chapter = bookmark.chapterIndex
+        if (_uiState.value.renderMode == EpubRenderMode.BOOK_LAYOUT) {
+            bookmark.copy(locatorJson = epubReplacementLocator(chapter, bookmark.locatorJson, toSource = false))
+        } else {
+            val offset = bookmark.characterOffset ?: return@withContext bookmark
+            bookmark.copy(position = bookmarkPositionForCharacterOffset(displayCharacterOffset(chapter, offset)))
+        }
+    }
+
+    private fun canvasReplacement(chapter: Int, source: CharSequence, program: ReplacementProgram): ReplacementResult? {
+        val state = _uiState.value
+        if (!program.active || !state.book?.format.supportsReplacementRules() || state.epubComicReader ||
+            parser.epubParserOrNull?.isReflowableChapter(chapter) == false) return null
+        val key = CanvasReplacementKey(program, chapter, source.toString())
+        return canvasReplacements.get(key) ?: program.applyToReaderText(source, state.book?.format == BookFormat.TXT)
+            .also { canvasReplacements.put(key, it) }
+    }
+
+    private fun noteInOriginalText(note: Note, webSelection: Boolean): Note {
+        val replacement = canvasReplacement(note.chapterIndex) ?: return note
+        val start = replacement.offsets.source(note.startPosition).coerceIn(0, replacement.source.length)
+        val end = replacement.offsets.source(note.endPosition, end = true).coerceIn(start, replacement.source.length)
+        val exact = replacement.source.substring(start, end.coerceAtLeast(start))
+        val web = if (webSelection) getRenderSession().chapterReplacement(note.chapterIndex) else null
+        val rawStart = readerLocatorCharacter(note.startLocatorJson)
+        val rawEnd = readerLocatorCharacter(note.endLocatorJson)
+        val webRange = if (rawStart != null && rawEnd != null) rawStart until rawEnd else null
+        val locators = if (web != null && webRange != null) {
+            web.projectLocator(note.startLocatorJson, true, selection = webRange) to
+                web.projectLocator(note.endLocatorJson, true, end = true, selection = webRange)
+        } else createHighlightLocatorPair(replacement.source, start, end.coerceAtLeast(start), exact)
+        return note.copy(startPosition = start, endPosition = end,
+            startLocatorJson = locators.first, endLocatorJson = locators.second)
+    }
+
+    private fun ReplacementResult.projectNote(note: Note, web: Boolean): Note? {
+        val startLocator = note.startLocatorJson
+        val endLocator = note.endLocatorJson
+        val rawStart = if (web) readerLocatorCharacter(startLocator) else null
+        val rawEnd = if (web) readerLocatorCharacter(endLocator) else null
+        val existing = if (rawStart == null || rawEnd == null) resolveReaderNote(note, source) else null
+        val start = (rawStart ?: existing?.startPosition ?: note.startPosition).coerceIn(0, source.length)
+        val end = (rawEnd ?: existing?.endPosition ?: note.endPosition).coerceIn(start, source.length)
+        val startDisplay = offsets.display(start).coerceIn(0, display.length)
+        val endDisplay = offsets.display(end, end = true).coerceIn(startDisplay, display.length)
+        if (end > start && startDisplay == endDisplay) return null
+        val exact = display.substring(startDisplay, endDisplay)
+        val href = if (web) getRenderSession()?.chapterHref(note.chapterIndex) else null
+        val locators = createHighlightLocatorPair(display, startDisplay, endDisplay, exact, href)
+        return note.copy(startPosition = startDisplay, endPosition = endDisplay, selectedText = exact,
+            startLocatorJson = locators.first, endLocatorJson = locators.second)
+    }
+
+    private fun resolveReplacementBookLayoutNotes(notes: List<Note>): List<Note> {
+        if (notes.isEmpty() || !replacementProgram.active) return notes
+        val session = getRenderSession() ?: return notes
+        val chapters = mutableMapOf<Int, ReplacementResult?>()
+        return notes.mapNotNull { note ->
+            if (note.isStale || isEpubComicInk(note.type)) return@mapNotNull null
+            val result = chapters.getOrPut(note.chapterIndex) { session.chapterReplacement(note.chapterIndex) }
+            if (result == null || !result.offsets.changed) note else result.projectNote(note, web = true)
+        }
     }
 
     fun dismissEpubLayoutHint(doNotShowAgain: Boolean = false) {
@@ -2926,7 +3155,7 @@ class ReaderViewModel @Inject constructor(
 
     fun requestEpubComicReader() {
         val book = _uiState.value.book ?: return
-        if (!book.format.supportsEpubFeatures || _uiState.value.epubComicReader || epubComicJob?.isActive == true) return
+        if (!book.format.supportsEpubFeatures || book.format.isWord || _uiState.value.epubComicReader || epubComicJob?.isActive == true) return
         _uiState.value = _uiState.value.copy(epubComicPreparing = true, epubComicError = null)
         epubComicJob = viewModelScope.launch {
             try {
@@ -3020,7 +3249,7 @@ class ReaderViewModel @Inject constructor(
     private suspend fun restoreComicReaderOnOpen(enabled: Boolean) {
         val state = _uiState.value
         val book = state.book ?: return
-        if (!book.format.supportsEpubFeatures) return
+        if (!book.format.supportsEpubFeatures || book.format.isWord) return
         val saved = comicPositionFromLocator(book.locatorJson)
         if (!enabled) {
             if (saved != null) applyTextComicPosition(saved)
@@ -3122,6 +3351,7 @@ class ReaderViewModel @Inject constructor(
     fun saveRenderMode(mode: EpubRenderMode) {
         if (_uiState.value.book?.format == BookFormat.MARKDOWN) return
         val state = _uiState.value
+        if (state.book?.format?.isWord == true && mode == EpubRenderMode.BOOK_LAYOUT && !wordWebViewAvailable) return
         val format = state.book?.format?.name
         if (!readerFormatSupportsBookLayout(format)) return
         if (state.renderMode == mode) return
@@ -3646,6 +3876,11 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch { dataStoreManager.saveBionicReadingEnabled(enabled) }
     }
 
+    fun savePageBottomAligned(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(pageBottomAligned = enabled)
+        viewModelScope.launch { dataStoreManager.savePageBottomAligned(enabled) }
+    }
+
     fun saveComicMode(enabled: Boolean) {
         _uiState.value = _uiState.value.copy(comicModeEnabled = enabled)
         viewModelScope.launch { dataStoreManager.saveComicMode(enabled) }
@@ -3926,9 +4161,17 @@ class ReaderViewModel @Inject constructor(
                 val safeName = trimmedName.substring(0, nameEnd)
                 val id = java.util.UUID.randomUUID().toString().replace("-", "").take(12)
                 val fontDir = java.io.File(context.filesDir, "fonts").apply { mkdirs() }
-                val target = java.io.File(fontDir, "custom_$id.ttf")
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    target.outputStream().use { output -> input.copyTo(output) }
+                val temporary = File(fontDir, "custom_$id.tmp")
+                val target = try {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        temporary.outputStream().use { output -> input.copyTo(output) }
+                    } ?: return@withContext null
+                    val format = ReaderFontFileFormat.detect(temporary) ?: return@withContext null
+                    val destination = File(fontDir, "custom_$id.${format.extension}")
+                    if (!temporary.renameTo(destination)) return@withContext null
+                    destination
+                } finally {
+                    temporary.delete()
                 }
                 if (target.exists() && target.length() > 0) {
                     val preset = com.huangder.lumibooks.domain.model.CustomFontPreset(
@@ -4215,7 +4458,7 @@ class ReaderViewModel @Inject constructor(
                             try {
                                 if (useFastTxtOpen) {
                                     activeParser.parseFastOpen(book.filePath).also { fastTxtOpen = it }.content
-                                } else if (activeParser is MarkdownParser) {
+                                } else if (activeParser is MarkdownParser || book.format.isWord) {
                                     kotlinx.coroutines.runInterruptible { activeParser.parse(book.filePath) }
                                 } else {
                                     activeParser.parse(book.filePath)
@@ -4237,25 +4480,34 @@ class ReaderViewModel @Inject constructor(
                     }
 
                     // 解析出更准确的作者时，静默回填数据库并用新值更新 UI
-                    val parsedAuthor = content.author
-                    val unknownAuthorTokens = setOf("未知作者", "著者不明", "unknown author", "unknown", "作者不详", "作者不詳", "")
-                    val storedIsUnknown = book.author.trim().lowercase() in unknownAuthorTokens
-                    val parsedIsReal = parsedAuthor.isNotBlank() && parsedAuthor.trim().lowercase() !in unknownAuthorTokens
+                    val parsedAuthor = content.author.usableBookAuthor()
                     var displayBook = if (activeParser is com.huangder.lumibooks.util.parser.MarkdownParser) {
                         withContext(Dispatchers.IO) { markdownUpdateManager.migrateNative(book, activeParser.searchText) }
                     } else book
-                    if (storedIsUnknown && parsedIsReal) {
+                    if (book.format.isWord && com.huangder.lumibooks.util.word.isWordCacheTitle(book.title)) {
+                        val sourceTitle = book.sourceDisplayName?.substringBeforeLast('.')
+                        val repairedTitle = content.title.ifBlank { sourceTitle.orEmpty() }
+                        if (repairedTitle.isNotBlank()) displayBook = displayBook.copy(title = repairedTitle)
+                    }
+                    if (book.author.usableBookAuthor() == null && parsedAuthor != null) {
                         displayBook = displayBook.copy(author = parsedAuthor)
                     }
                     val parsedCoverPath = content.coverPath?.takeIf { it.isNotBlank() }
                     if (displayBook.coverPath.isNullOrBlank() && parsedCoverPath != null) {
                         displayBook = displayBook.copy(coverPath = parsedCoverPath)
                     }
-                    if (displayBook != book) {
+                    if (displayBook.title != book.title || displayBook.author != book.author || displayBook.coverPath != book.coverPath) {
                         val metadata = displayBook
                         openWorkGate.schedule("metadata") {
                             openBackgroundScope.launch {
-                                try { bookRepository.updateBookMetadata(metadata) }
+                                try {
+                                    bookRepository.compareAndSetBookMetadata(
+                                        expected = book,
+                                        title = metadata.title,
+                                        author = metadata.author,
+                                        newCoverPath = metadata.coverPath?.takeIf { it != book.coverPath }
+                                    )
+                                }
                                 catch (cancelled: CancellationException) { throw cancelled }
                                 catch (error: Exception) { android.util.Log.w("Reader", "Metadata backfill failed", error) }
                             }
@@ -4322,6 +4574,11 @@ class ReaderViewModel @Inject constructor(
                     } else {
                         com.huangder.lumibooks.domain.model.CbzReadingDirection.LEFT_TO_RIGHT
                     }
+                    val displayEpubLocator = if (renderMode == EpubRenderMode.BOOK_LAYOUT && replacementProgram.active) {
+                        withContext(Dispatchers.IO) {
+                            epubReplacementLocator(startChapter, displayBook.locatorJson, toSource = false)
+                        }
+                    } else displayBook.locatorJson
                     _uiState.value = _uiState.value.copy(
                         book = displayBook,
                         chapterCount = chapterCount,
@@ -4358,7 +4615,7 @@ class ReaderViewModel @Inject constructor(
                         txtIndexState = fastTxtOpen?.state ?: TxtIndexState.COMPLETE,
                         txtIndexProgress = fastTxtOpen?.let { 0f },
                         showTxtEncodingHint = showTxtEncodingHint,
-                        epubLocatorJson = displayBook.locatorJson.takeIf {
+                        epubLocatorJson = displayEpubLocator.takeIf {
                             renderMode == EpubRenderMode.BOOK_LAYOUT &&
                                 ReaderPositionLocator.fromJson(it) == null
                         },
@@ -4412,6 +4669,18 @@ class ReaderViewModel @Inject constructor(
                     // （format 为空 → 一律按阅读器排版取设置），书籍信息到位后必须再同步一次，
                     // 否则书籍原排版会套用阅读器排版那套背景/边距/字号。
                     applyActiveThemeSettingsForCurrentLayout()
+
+                    if (renderMode == EpubRenderMode.READER_LAYOUT && replacementProgram.active) {
+                        val displayPosition = storedReaderPosition?.let { stored ->
+                            val offset = stored.characterOffset?.let { character ->
+                                withContext(Dispatchers.IO) {
+                                    displayCharacterOffset(stored.chapterIndex, character, activeParser is TxtParser && stored.sourceByteOffset != null)
+                                }
+                            }
+                            stored.copy(characterOffset = offset)
+                        }
+                        _uiState.value = _uiState.value.copy(pendingReaderPosition = displayPosition)
+                    }
 
                     restoreComicReaderOnOpen(preferences.epubComicReader)
 
@@ -5172,6 +5441,10 @@ class ReaderViewModel @Inject constructor(
     fun isListeningToThisBook(): Boolean = ttsController.activeBookId.value == bookId &&
         ttsController.playbackState.value != TtsPlaybackState.IDLE
 
+    fun toggleTtsSession(onStart: () -> Unit) {
+        if (isListeningToThisBook()) stopTts() else onStart()
+    }
+
     private var ttsExitDecisionBusy = false
 
     fun requestTtsReaderExit(onAsk: () -> Unit, onExit: (Boolean) -> Unit) {
@@ -5207,7 +5480,8 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun toggleTtsPlayPause() {
-        when (_ttsState.value.playbackState) {
+        if (ttsController.activeBookId.value != bookId) return
+        when (ttsController.playbackState.value) {
             TtsPlaybackState.PLAYING -> ttsController.pause()
             TtsPlaybackState.PAUSED -> ttsController.resume()
             else -> Unit
@@ -5411,11 +5685,14 @@ class ReaderViewModel @Inject constructor(
                     listOf(note.chapterIndex, note.startPosition, note.endPosition, it).joinToString("|")
                 } }
             }
-            ("$rules|$notes").also {
+            val typographyVersion = if (rules.isEmpty() && notes.isEmpty()) "" else "rule-typeface-v2|"
+            ("$typographyVersion$rules|$notes").also {
                 paginationStyleIdentity = PaginationStyleIdentity(ruleList, noteList, fonts, it)
             }
         }
-        return paginationHash(state.paginationContentKey() + "|" + styles)
+        val replacementKey = replacementProgram.cacheKey
+        return paginationHash(state.paginationContentKey() + "|" + styles +
+            if (replacementKey.isEmpty()) "" else "|replacement:$replacementKey")
     }
 
     internal suspend fun indexBookPages(generation: Long, countMissing: Boolean = true) = kotlinx.coroutines.coroutineScope {
@@ -5506,11 +5783,13 @@ class ReaderViewModel @Inject constructor(
         frameworkDrawsText: Boolean,
         previewChars: Int? = null,
         onPreviewCompleteness: ((Boolean) -> Unit)? = null,
-        backgroundPagination: Boolean = false
+        backgroundPagination: Boolean = false,
+        trackReplacement: ((ReplacementResult) -> Unit)? = null
     ): CharSequence? {
         val activeParser = parser
         if (activeParser is com.huangder.lumibooks.util.parser.MarkdownParser) return if (index == 0) activeParser.searchText else null
         val state = _uiState.value
+        val program = replacementProgram
         val epubTextSizePx = state.fontSize * context.resources.displayMetrics.density
         val continuousEpub = activeParser.epubParserOrNull?.takeIf {
             frameworkDrawsText && contentWidthPx != null
@@ -5529,12 +5808,13 @@ class ReaderViewModel @Inject constructor(
                     contentWidthPx ?: epub.contentWidth, contentHeightPx ?: epub.contentHeight,
                     textSizePx = epubTextSizePx)
             } else if (continuousEpub != null) {
-                if (previewChars != null) {
+                if (previewChars != null && !program.active) {
                     continuousEpub.getChapterContentPreview(index, contentWidthPx!!, 0, previewChars,
                         textSizePx = epubTextSizePx).also {
                         onPreviewCompleteness?.invoke(it.isComplete)
                     }.text
                 } else {
+                    onPreviewCompleteness?.invoke(true)
                     continuousEpub.getChapterContent(index, contentWidthPx!!, 0, textSizePx = epubTextSizePx)
                 }
             }
@@ -5569,17 +5849,21 @@ class ReaderViewModel @Inject constructor(
         if (raw.isEmpty()) return raw
 
         val isTxt = raw !is Spanned
+        val txtReplacement = if (isTxt) canvasReplacement(index, raw, program)?.takeIf { it.offsets.changed } else null
+        val input = txtReplacement?.display ?: raw
+        val formattingEdits = if (txtReplacement != null) ReplacementFormattingEdits() else null
         var skipFirstParagraphIndent = false
-        val chapterText = if (isTxt) {
+        fun chapterText(value: CharSequence, edits: ReplacementFormattingEdits?): CharSequence = if (isTxt) {
             // 只有解析器识别出的真实章节标题才加大加粗。无目录 TXT 的章节标题是
             // “第 N 章 + 正文摘要”的合成值，不能把原始首段整行误当成标题。
-            val newlineIdx = raw.indexOf('\n')
+            val newlineIdx = value.indexOf('\n')
             if (newlineIdx > 0) {
-                val title = raw.substring(0, newlineIdx)
+                val title = value.substring(0, newlineIdx)
                 val parsedChapterTitle = state.chapterTitles.getOrNull(index).orEmpty()
                 if (shouldStyleTxtChapterTitle(title, parsedChapterTitle)) {
                     skipFirstParagraphIndent = true
-                    val body = raw.substring(newlineIdx + 1)
+                    val body = value.substring(newlineIdx + 1)
+                    edits?.record(newlineIdx + 1, "", "\n")
                     val spannable = SpannableString("$title\n\n$body")
                     val titleEnd = title.length
                     spannable.setSpan(
@@ -5596,14 +5880,15 @@ class ReaderViewModel @Inject constructor(
                     )
                     spannable
                 } else {
-                    raw
+                    value
                 }
             } else {
-                raw
+                value
             }
         } else {
-            raw
+            value
         }
+        val chapterText = chapterText(input, formattingEdits)
 
         // EpubParser has already applied paragraph spacing and indentation while decoding HTML.
         // Rebuilding the same 400K+ Spanned here is both redundant and quadratic on Android's
@@ -5618,13 +5903,25 @@ class ReaderViewModel @Inject constructor(
                 chapterTitle = state.chapterTitles.getOrNull(index),
                 skipFirstParagraphIndent = skipFirstParagraphIndent
             )
-            txtFormattingCache[formattingKey] ?: ReaderParagraphFormatter.applyFirstLineIndent(
-                text = chapterText,
+            fun format(text: CharSequence, edits: ReplacementFormattingEdits?) = ReaderParagraphFormatter.format(
+                text = text,
                 indentCharacters = state.firstLineIndent,
                 textSizePx = state.fontSize * context.resources.displayMetrics.scaledDensity,
                 paragraphSpacingPx = state.paragraphSpacing * context.resources.displayMetrics.density,
-                skipFirstNonEmptyParagraph = skipFirstParagraphIndent
-            ).also { txtFormattingCache[formattingKey] = it }
+                skipFirstNonEmptyParagraph = skipFirstParagraphIndent,
+                onEdit = edits?.let { it::record }
+            )
+            if (txtReplacement != null) {
+                val display = format(chapterText, formattingEdits)
+                if (trackReplacement != null) {
+                    val sourceEdits = ReplacementFormattingEdits()
+                    skipFirstParagraphIndent = false
+                    val source = format(chapterText(raw, sourceEdits), sourceEdits)
+                    trackReplacement(ReplacementResult(source.toString(), display.toString(),
+                        sourceEdits.stages(reverse = true) + txtReplacement.stages + formattingEdits!!.stages()))
+                }
+                display
+            } else txtFormattingCache[formattingKey] ?: format(chapterText, null).also { txtFormattingCache[formattingKey] = it }
         } else {
             chapterText
         }
@@ -5635,11 +5932,18 @@ class ReaderViewModel @Inject constructor(
             state.chapterTitles.getOrNull(index)
         )
         val aligned = applyReaderTextAlignment(formatted, state.textAlignment, titleParagraphEnd)
+        val replacement = if (isTxt) null else canvasReplacement(index, aligned, program)
+        val display = if (replacement != null && replacement.offsets.changed) {
+            trackReplacement?.invoke(replacement)
+            replacement.styledDisplay(aligned)
+        } else aligned
         // 竖排由独立排版器逐字度量，不识别挤压 span，保持原字宽以免分页与绘制错位。
-        if (state.readerWritingMode.isVertical) return applyHighlightRuleStyles(index, aligned)
+        if (state.readerWritingMode.isVertical || trackReplacement != null) {
+            return if (trackReplacement == null) applyHighlightRuleStyles(index, display) else display
+        }
         // 全角标点挤压：标点只占半个汉字宽，行内更紧凑、行尾也更容易对齐。
         // 放在最后一步，段落缩进/对齐都会连同 span 一起复制。
-        val styled = prepareReaderEnglishHyphenation(applyHighlightRuleStyles(index, aligned))
+        val styled = prepareReaderEnglishHyphenation(applyHighlightRuleStyles(index, display))
         if (usesReaderEnglishHyphenation(styled)) return styled
         return applyReaderPunctuationCompression(
             styled,
@@ -6019,20 +6323,16 @@ class ReaderViewModel @Inject constructor(
                 match.style.italic -> Typeface.ITALIC
                 else -> null
             }
-            resolveHighlightTypeface(match.style.fontType)?.let { typeface ->
+            val ruleTypeface = resolveHighlightTypeface(match.style.fontType, match.style.fontWeight, typefaceStyle)
+            if (ruleTypeface != null) {
                 spannable.setSpan(
-                    ReaderRuleTypefaceSpan(
-                        typeface = typeface,
-                        bold = match.style.fontWeight >= 600,
-                        italic = match.style.italic
-                    ),
+                    ReaderRuleTypefaceSpan(ruleTypeface, match.style.italic),
                     start,
                     end,
                     Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
                 )
-            }
-            typefaceStyle?.let { style ->
-                spannable.setSpan(StyleSpan(style), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            } else if (typefaceStyle != null) {
+                spannable.setSpan(StyleSpan(typefaceStyle), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
             when (match.style.underlineMode) {
                 HighlightRule.UNDERLINE_STRAIGHT,
@@ -6050,24 +6350,24 @@ class ReaderViewModel @Inject constructor(
         return spannable
     }
 
-    private fun resolveHighlightTypeface(fontType: String): Typeface? {
-        if (fontType.isBlank()) return null
-        return when {
-            fontType == "serif" -> com.huangder.lumibooks.ui.reader.engine.readerSerifTypeface(context)
-            fontType == "sans_serif" -> Typeface.SANS_SERIF
-            fontType == "monospace" -> Typeface.MONOSPACE
+    private fun resolveHighlightTypeface(fontType: String, weight: Int, style: Int?): ResolvedReaderTypeface? {
+        val face = when {
+            fontType == "serif" -> return ResolvedReaderTypeface(readerSerifTypeface(context, weight), false)
+            fontType == "sans_serif" || fontType == "monospace" -> {
+                val base = if (fontType == "monospace") Typeface.MONOSPACE else Typeface.SANS_SERIF
+                return ResolvedReaderTypeface(Typeface.create(base, style ?: Typeface.NORMAL), false)
+            }
             fontType == "fangsong" -> DownloadedFonts.typeface(context, "fangsong")
             fontType == "kaiti" -> runCatching {
                 androidx.core.content.res.ResourcesCompat.getFont(context, R.font.lxgw_wenkai)
             }.getOrNull()
             fontType.startsWith("custom:") -> {
-                val id = fontType.removePrefix("custom:")
-                _uiState.value.customFonts.firstOrNull { it.id == id }
-                    ?.path
-                    ?.let { path -> runCatching { Typeface.createFromFile(java.io.File(path)) }.getOrNull() }
+                val path = _uiState.value.customFonts.firstOrNull { it.fontTypeKey == fontType }?.path
+                return path?.let { readerFileFont(File(it)).resolve(weight) }
             }
             else -> null
-        }
+        } ?: return null
+        return ResolvedReaderTypeface(face, weight >= 600)
     }
 
     internal fun resolveTxtEditorCharOffset(chapterIndex: Int, readerOffset: Int): Int {
@@ -6076,6 +6376,10 @@ class ReaderViewModel @Inject constructor(
         } catch (_: Exception) {
             null
         } ?: return readerOffset.coerceAtLeast(0)
+        val replacement = canvasReplacement(chapterIndex)
+        if (replacement != null) {
+            return mapReaderTxtOffsetToSource(sourceText, replacement.source, replacement.offsets.source(readerOffset))
+        }
         val readerText = getChapterText(chapterIndex) ?: sourceText
         return mapReaderTxtOffsetToSource(sourceText, readerText, readerOffset)
     }
@@ -6090,6 +6394,11 @@ class ReaderViewModel @Inject constructor(
         } catch (_: Exception) {
             null
         } ?: return null
+        val replacement = canvasReplacement(chapterIndex)
+        if (replacement != null) {
+            return mapReaderTxtRangeToSource(sourceText, replacement.source,
+                replacement.offsets.source(readerStart), replacement.offsets.source(readerEndExclusive, end = true))
+        }
         val readerText = getChapterText(chapterIndex) ?: sourceText
         return mapReaderTxtRangeToSource(sourceText, readerText, readerStart, readerEndExclusive)
     }
@@ -6097,7 +6406,9 @@ class ReaderViewModel @Inject constructor(
     /** 在 IO 线程解析 EPUB 相对路径/锚点，返回原生阅读引擎可跳转的位置。 */
     suspend fun resolveBookLink(sourceChapterIndex: Int, href: String): BookLinkTarget? {
         return withContext(Dispatchers.IO) {
-            parser?.resolveLink(sourceChapterIndex, href)
+            parser?.resolveLink(sourceChapterIndex, href)?.let { target ->
+                target.copy(characterOffset = displayCharacterOffset(target.chapterIndex, target.characterOffset))
+            }
         }
     }
 
@@ -6122,9 +6433,7 @@ class ReaderViewModel @Inject constructor(
     ): BookLinkTarget? {
         if (chapterIndex !in 0 until _uiState.value.chapterCount) return null
         if (anchor.isNullOrBlank()) return BookLinkTarget(chapterIndex)
-        return withContext(Dispatchers.IO) {
-            parser?.resolveLink(chapterIndex, "#$anchor")
-        } ?: BookLinkTarget(chapterIndex)
+        return resolveBookLink(chapterIndex, "#$anchor") ?: BookLinkTarget(chapterIndex)
     }
 
     /**
@@ -6220,7 +6529,22 @@ class ReaderViewModel @Inject constructor(
             createdAt = System.currentTimeMillis(),
             syncId = syncId
         )
-        viewModelScope.launch { readingRepository.insertBookmark(bookmark) }
+        viewModelScope.launch {
+            val sourceBookmark = withContext(Dispatchers.IO) {
+                if (state.renderMode == EpubRenderMode.BOOK_LAYOUT) {
+                    bookmark.copy(locatorJson = epubReplacementLocator(bookmark.chapterIndex, bookmark.locatorJson, toSource = true))
+                } else {
+                    val replacement = canvasReplacement(bookmark.chapterIndex)
+                    val visible = characterOffset ?: pageLayoutEngine.getPageLayout(
+                        bookmark.chapterIndex, state.currentPageIndex
+                    )?.startCharOffset
+                    if (replacement != null && visible != null) bookmark.copy(
+                        position = bookmarkPositionForCharacterOffset(replacement.offsets.source(visible))
+                    ) else bookmark
+                }
+            }
+            readingRepository.insertBookmark(sourceBookmark)
+        }
         return syncId
     }
 
@@ -6323,7 +6647,7 @@ class ReaderViewModel @Inject constructor(
         val book = state.book ?: return null
         val syncId = java.util.UUID.randomUUID().toString()
         val resolvedChapterIndex = if (chapterIndex >= 0) chapterIndex else state.currentChapterIndex
-        val note = Note(
+        val draft = Note(
             bookId = book.id,
             chapterIndex = resolvedChapterIndex,
             startPosition = if (startPosition > 0 || chapterIndex >= 0) startPosition else 0,
@@ -6339,6 +6663,16 @@ class ReaderViewModel @Inject constructor(
             syncId = syncId,
             tags = tags
         )
+        if (replacementProgram.active) {
+            viewModelScope.launch {
+                val original = withContext(Dispatchers.IO) {
+                    noteInOriginalText(draft, state.renderMode == EpubRenderMode.BOOK_LAYOUT)
+                }
+                readingRepository.insertNote(original)
+            }
+            return syncId
+        }
+        val note = draft
         // Render immediately instead of waiting for Room's Flow to emit the inserted record.
         // The database observer replaces this temporary id=0 record with the persisted one.
         _notes.value = _notes.value + note
@@ -6392,15 +6726,21 @@ class ReaderViewModel @Inject constructor(
 
     fun updateNote(note: Note) {
         viewModelScope.launch {
+            val stored = _notes.value.firstOrNull { it.id == note.id && it.syncId == note.syncId }
+            val updated = if (stored != null && replacementProgram.active) note.copy(
+                startPosition = stored.startPosition, endPosition = stored.endPosition,
+                selectedText = stored.selectedText, startLocatorJson = stored.startLocatorJson,
+                endLocatorJson = stored.endLocatorJson
+            ) else note
             if (note.isGeneratedByHighlightRule) {
                 highlightRuleRepository.addExclusion(
                     note.bookId,
                     requireNotNull(note.sourceRuleId),
                     requireNotNull(note.sourceMatchKey)
                 )
-                readingRepository.updateNote(note.detachFromHighlightRule())
+                readingRepository.updateNote(updated.detachFromHighlightRule())
             } else {
-                readingRepository.updateNote(note)
+                readingRepository.updateNote(updated)
             }
         }
     }
@@ -6527,7 +6867,10 @@ class ReaderViewModel @Inject constructor(
             runCatching {
                 if (source is com.huangder.lumibooks.util.parser.MarkdownParser &&
                     _uiState.value.renderMode == EpubRenderMode.BOOK_LAYOUT) source.searchText
-                else source?.getChapterContent(chapterIndex)?.toString()
+                else if (replacementProgram.active) {
+                    if (_uiState.value.renderMode == EpubRenderMode.BOOK_LAYOUT) getRenderSession()?.searchText(chapterIndex)
+                    else getChapterText(chapterIndex)?.toString()
+                } else source?.getChapterContent(chapterIndex)?.toString()
             }.getOrNull()
         }
             ?: return emptyList()
@@ -6686,7 +7029,12 @@ class ReaderViewModel @Inject constructor(
                 )
                 if (plan.isEmpty) return@launch
                 val prepared = withContext(Dispatchers.IO) {
-                    prepareAnnotationLocators(plan, chapterText, readerFormatSupportsBookLayout(book.format.name))
+                    if (replacementProgram.active) {
+                        plan.copy(
+                            inserts = plan.inserts.map { noteInOriginalText(it, webSelection = false) },
+                            updates = plan.updates.map { noteInOriginalText(it, webSelection = false) }
+                        )
+                    } else prepareAnnotationLocators(plan, chapterText, readerFormatSupportsBookLayout(book.format.name))
                 }
                 val optimistic = applyAnnotationPlanToMemory(snapshot, prepared)
                 _notes.value = optimistic
@@ -6749,9 +7097,7 @@ class ReaderViewModel @Inject constructor(
             readingRepository.getNotesByBookId(bookId).collectLatest { list ->
                 if (list.any { !it.isStale && legacyMarkdownLocator(it.startLocatorJson) } && migrateRestoredMarkdownAnnotations()) return@collectLatest
                 _notes.value = list
-                _readerNotes.value = withContext(Dispatchers.IO) {
-                    resolveReaderNotes(list)
-                }
+                refreshReaderNotes(list)
             }
         }
     }
@@ -6781,9 +7127,19 @@ class ReaderViewModel @Inject constructor(
         if (note.chapterIndex !in 0 until _uiState.value.chapterCount) return null
         resolvedReaderNote(note)?.let { return it }
         return withContext(Dispatchers.IO) {
+            val replacement = canvasReplacement(note.chapterIndex)
+            if (replacement != null && replacement.offsets.changed) {
+                return@withContext replacement.projectNote(note, web = false)
+            }
             val text = getChapterText(note.chapterIndex)
             resolveReaderNoteNavigation(note, text)
         }
+    }
+
+    internal suspend fun displayedEpubNote(note: Note): Note? = withContext(Dispatchers.IO) {
+        if (!replacementProgram.active) return@withContext note
+        val replacement = getRenderSession().chapterReplacement(note.chapterIndex) ?: return@withContext note
+        if (replacement.offsets.changed) replacement.projectNote(note, web = true) else note
     }
 
     internal fun resolveAnnotationSelection(
@@ -6846,7 +7202,13 @@ class ReaderViewModel @Inject constructor(
         readerNotesJob?.cancel()
         readerNotesJob = viewModelScope.launch {
             val resolved = withContext(Dispatchers.IO) { resolveReaderNotes(notes) }
-            if (_notes.value == notes) _readerNotes.value = resolved
+            val bookLayoutNotes = if (replacementProgram.active && _uiState.value.book?.format != BookFormat.TXT) {
+                withContext(Dispatchers.IO) { resolveReplacementBookLayoutNotes(notes) }
+            } else notes
+            if (_notes.value == notes) {
+                _readerNotes.value = resolved
+                _replacementBookLayoutNotes.value = bookLayoutNotes
+            }
         }
     }
 
@@ -6854,7 +7216,10 @@ class ReaderViewModel @Inject constructor(
         if (notes.isEmpty()) return emptyList()
         if (_uiState.value.book?.format == BookFormat.PDF) return notes.filterNot { it.isStale || it.isInkStroke }
         val chapterCache = mutableMapOf<Int, CharSequence?>()
+        val replacementCache = mutableMapOf<Int, ReplacementResult?>()
         return notes.filterNot { it.isStale || isEpubComicInk(it.type) }.mapNotNull { note ->
+            val result = replacementCache.getOrPut(note.chapterIndex) { canvasReplacement(note.chapterIndex) }
+            if (result != null && result.offsets.changed) return@mapNotNull result.projectNote(note, web = false)
             val readerChapterText = chapterCache.getOrPut(note.chapterIndex) {
                 runCatching { getChapterText(note.chapterIndex) }.getOrNull()
             } ?: return@mapNotNull null
@@ -6894,6 +7259,7 @@ class ReaderViewModel @Inject constructor(
 
     private suspend fun saveProgressFor(state: ReaderUiState) {
         if (externalPositionReloading) return
+        if (state.replacementRevision != _uiState.value.replacementRevision) return
         val book = state.book ?: return
         val position = captureRecoveryPosition(state) ?: return
         persistRecoveryPosition(book, position)
@@ -6948,6 +7314,11 @@ class ReaderViewModel @Inject constructor(
         } else {
             0f
         }.coerceIn(0f, 0.9999f)
+        val sourceOffset = if (characterOffset != null && replacementProgram.active) {
+            withContext(Dispatchers.IO) {
+                canvasReplacement(state.currentChapterIndex)?.offsets?.source(characterOffset) ?: characterOffset
+            }
+        } else characterOffset
         val sourceByteOffset = (parser as? TxtParser)?.let { txtParser ->
             if (state.txtIndexState == TxtIndexState.FAST_PARTIAL) {
                 largeTxtFastRanges.getOrNull(state.currentChapterIndex)?.let { (start, end) ->
@@ -6955,8 +7326,14 @@ class ReaderViewModel @Inject constructor(
                 }
             } else {
                 withContext(Dispatchers.IO) {
-                    characterOffset?.let {
-                        txtParser.characterOffsetToByte(state.currentChapterIndex, it)
+                    sourceOffset?.let {
+                        val chapter = state.currentChapterIndex
+                        val source = canvasReplacement(chapter)?.source
+                        val decoded = txtParser.getChapterContent(chapter)
+                        val offset = if (source != null && replacementProgram.active) {
+                            mapReaderTxtOffsetToSource(decoded, source, it)
+                        } else it
+                        txtParser.characterOffsetToByte(chapter, offset)
                     } ?: txtParser.getChapterByteRange(state.currentChapterIndex)?.let { (start, end) ->
                         start + ((end - start).coerceAtLeast(0L) * chapterFraction).toLong()
                     }
@@ -6976,11 +7353,13 @@ class ReaderViewModel @Inject constructor(
                 } else {
                     ReaderPositionFlow.PAGED
                 },
-                characterOffset = characterOffset,
+                characterOffset = sourceOffset,
                 sourceByteOffset = sourceByteOffset
             ).toJson()
         } else {
-            state.epubLocatorJson.takeIf { state.renderMode == EpubRenderMode.BOOK_LAYOUT }
+            if (state.renderMode == EpubRenderMode.BOOK_LAYOUT) withContext(Dispatchers.IO) {
+                epubReplacementLocator(state.currentChapterIndex, state.epubLocatorJson, toSource = true)
+            } else null
         }
         return ReaderCacheRecoveryPosition(
             readingProgress = progress,
@@ -7069,6 +7448,21 @@ class ReaderViewModel @Inject constructor(
             val state = _uiState.value
             val titles = state.chapterTitles
             val formatName = state.book?.format?.name
+            if (state.renderMode == EpubRenderMode.BOOK_LAYOUT && replacementProgram.active) {
+                val session = getRenderSession()
+                if (session != null) {
+                    return@withContext BookTextSearch.collect(
+                        chapterCount = session.chapterCount,
+                        query = query,
+                        maxResults = resultLimit,
+                        chapterText = session::searchText,
+                        chapterHref = session::chapterHref
+                    ).map { match ->
+                        SearchResult(match.chapterIndex, titles.getOrNull(match.chapterIndex).orEmpty(),
+                            match.charOffset, match.context, match.matchLength, match.locator)
+                    }
+                }
+            }
             if ((readerFormatSupportsBookLayout(formatName)) &&
                 state.renderMode == EpubRenderMode.BOOK_LAYOUT &&
                 activeParser is BookSearchSource

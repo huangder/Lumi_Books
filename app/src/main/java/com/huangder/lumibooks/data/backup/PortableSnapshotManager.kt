@@ -18,8 +18,6 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 import java.io.InputStream
 import java.security.MessageDigest
@@ -34,7 +32,9 @@ data class PortableAssetSource(
 
 data class PortableSnapshotBundle(
     val snapshot: PortableSnapshot,
-    val assetSources: Map<String, PortableAssetSource>
+    val assetSources: Map<String, PortableAssetSource>,
+    val originalPreferences: List<PortablePreference> = emptyList(),
+    val localThemeAssetIdsByPath: Map<String, String> = emptyMap()
 )
 
 @Singleton
@@ -60,7 +60,10 @@ class PortableSnapshotManager internal constructor(
     ) : this(context, database, dataStoreManager, syncIdentityStore, mineruTokenStore,
         externalTtsTokenStore, translationTokenStore, beforeApply = activityObserver::prepare)
 
-    suspend fun capture(includeBookFiles: Boolean = true): PortableSnapshotBundle = withContext(Dispatchers.IO) {
+    suspend fun capture(
+        includeBookFiles: Boolean = true,
+        includePreferences: Boolean = true
+    ): PortableSnapshotBundle = withContext(Dispatchers.IO) {
         val deviceId = syncIdentityStore.deviceId()
         val bookDao = database.bookDao()
         val syncDao = database.syncStateDao()
@@ -87,10 +90,10 @@ class PortableSnapshotManager internal constructor(
             val sha = digest.digest().joinToString("") { "%02x".format(it) }
             val extension = displayName.substringAfterLast('.', "bin")
                 .lowercase().takeIf { it.matches(Regex("[a-z0-9]{1,10}")) } ?: "bin"
-            val logicalId = "$sha-${stableSuffix("$kind\u0000$ownerId")}"
-            val asset = PortableAsset(logicalId, kind, ownerId, "$sha.$extension", sha, size)
-            sources.putIfAbsent(logicalId, PortableAssetSource(asset, opener))
-            return logicalId
+            val id = "$sha-${stableSuffix("$kind\u0000$ownerId")}"
+            val asset = PortableAsset(id, kind, ownerId, "$sha.$extension", sha, size).withStableReaderThemeId()
+            sources.putIfAbsent(asset.id, PortableAssetSource(asset, opener))
+            return asset.id
         }
 
         fun addFile(kind: String, ownerId: String, file: File): String? {
@@ -118,22 +121,37 @@ class PortableSnapshotManager internal constructor(
             folder.copy(coverPath = assetId?.let { "asset://$it" })
         }
 
-        val avatar = File(context.filesDir, "avatars/avatar.jpg")
-        addFile("avatar", "profile", avatar)
-        listOf("fonts" to "font", "reader_backgrounds" to "reader_background").forEach { (directory, kind) ->
-            File(context.filesDir, directory).walkTopDown()
-                .filter { it.isFile && !it.name.contains(".blurred-") }
-                .forEach { file -> addFile(kind, file.relativeTo(File(context.filesDir, directory)).path, file) }
+        val originalPreferences = if (includePreferences) dataStoreManager.exportPortablePreferences(deviceId) else emptyList()
+        val themePreferences = originalPreferences.map { it.withoutProcessedBackgrounds() }
+        val localThemeAssetIdsByPath = mutableMapOf<String, String>()
+        if (includePreferences) {
+            addFile("avatar", "profile", File(context.filesDir, "avatars/avatar.jpg"))
+            for ((directory, kind) in listOf("fonts" to "font", "reader_backgrounds" to "reader_background")) {
+                val root = File(context.filesDir, directory)
+                root.walkTopDown()
+                    .filter { it.isFile && !it.name.contains(".blurred-") && it.isInside(root) }
+                    .forEach { file ->
+                        addFile(kind, file.relativeTo(root).invariantSeparatorsPath, file)?.let {
+                            localThemeAssetIdsByPath[file.absolutePath] = it
+                        }
+                    }
+            }
+            val importRoot = File(context.filesDir, "theme_imports")
+            for ((path, kind) in themePreferences.flatMap { it.readerThemeAssetPaths() }.distinct()) {
+                val file = File(path)
+                if (file.isAbsolute && file.isInside(importRoot)) {
+                    addFile(kind, file.relativeTo(importRoot).invariantSeparatorsPath, file)?.let {
+                        localThemeAssetIdsByPath[path] = it
+                    }
+                }
+            }
         }
 
-        val preferences = dataStoreManager.exportPortablePreferences(deviceId).map { preference ->
+        val preferences = themePreferences.map { preference ->
             if (preference.type != PortablePreference.TYPE_STRING) return@map preference
-            preference.copy(
-                value = replacePathsInPortableString(
-                    preference.value,
-                    pathAssets.mapValues { "asset://${it.value}" }
-                )
-            )
+            preference.copy(value = mapPortableString(preference.value) { leaf ->
+                pathAssets[leaf]?.let { "asset://$it" } ?: leaf
+            })
         }
 
         PortableSnapshotBundle(
@@ -159,7 +177,9 @@ class PortableSnapshotManager internal constructor(
                 highlightRuleExclusions = database.highlightRuleDao().getAllExclusions(),
                 journalEvents = database.readingJournalDao().getAll()
             ),
-            assetSources = sources
+            assetSources = sources,
+            originalPreferences = originalPreferences,
+            localThemeAssetIdsByPath = localThemeAssetIdsByPath
         )
     }
 
@@ -167,34 +187,24 @@ class PortableSnapshotManager internal constructor(
         incomingSnapshot: PortableSnapshot,
         assetFiles: Map<String, File>,
         replace: Boolean,
-        replaceAssetDirectories: Boolean = replace
+        replaceAssetDirectories: Boolean = replace,
+        expectedThemePreferences: List<PortablePreference>? = null
     ) = withContext(Dispatchers.IO) {
         val snapshot = incomingSnapshot.flattenLegacyTagHierarchy()
         val deviceId = syncIdentityStore.deviceId()
         validateSnapshot(snapshot, assetFiles)
         // Freeze this installation's pre-existing history before restore/sync can replace it.
         beforeApply()
-        val oldPreferences = dataStoreManager.exportPortablePreferences(deviceId)
+        val oldPreferences = if (expectedThemePreferences == null) dataStoreManager.exportPortablePreferences(deviceId) else null
         val preparedAssets = prepareAssets(snapshot, assetFiles, replaceAssetDirectories)
         val assetPaths = preparedAssets.paths
-        val preferences = snapshot.preferences.map { preference ->
-            if (preference.type != PortablePreference.TYPE_STRING) return@map preference
-            preference.copy(
-                value = replacePathsInPortableString(
-                    preference.value,
-                    assetPaths.mapKeys { "asset://${it.key}" }
-                )
-            )
-        }
+        val preferences = snapshot.preferences.map { it.mapAssetReferences(assetPaths::get) }
         try {
             preparedAssets.commit()
-            if (replace) dataStoreManager.replacePortablePreferences(preferences, deviceId)
-            else dataStoreManager.applyPortablePreferences(preferences)
-            if (!mineruTokenStore.hasToken()) dataStoreManager.saveMineruMode("disabled")
-            if (!externalTtsTokenStore.hasToken()) dataStoreManager.disableExternalTts()
-            val translationSettings = dataStoreManager.translationSettings.first()
-            if (!translationTokenStore.hasToken(translationSettings.credentialScope)) {
-                dataStoreManager.saveTranslationSettings(translationSettings.copy(enabled = false))
+            if (expectedThemePreferences == null) {
+                if (replace) dataStoreManager.replacePortablePreferences(preferences, deviceId)
+                else dataStoreManager.applyPortablePreferences(preferences)
+                disableServicesWithoutCredentials()
             }
 
             database.withTransaction {
@@ -324,13 +334,28 @@ class PortableSnapshotManager internal constructor(
                 applyJournalEvents(snapshot.journalEvents, replace)
                 applyTombstones(snapshot)
             }
+            if (expectedThemePreferences != null) {
+                dataStoreManager.applyPortablePreferences(preferences, expectedThemePreferences)
+            }
             preparedAssets.finish()
         } catch (error: Throwable) {
-            runCatching { dataStoreManager.replacePortablePreferences(oldPreferences, deviceId) }
+            if (oldPreferences != null) {
+                runCatching { dataStoreManager.replacePortablePreferences(oldPreferences, deviceId) }
+            }
             preparedAssets.rollback()
             throw error
         } finally {
             preparedAssets.cleanup()
+        }
+        if (expectedThemePreferences != null && preferences.isNotEmpty()) disableServicesWithoutCredentials()
+    }
+
+    private suspend fun disableServicesWithoutCredentials() {
+        if (!mineruTokenStore.hasToken()) dataStoreManager.saveMineruMode("disabled")
+        if (!externalTtsTokenStore.hasToken()) dataStoreManager.disableExternalTts()
+        val translationSettings = dataStoreManager.translationSettings.first()
+        if (!translationTokenStore.hasToken(translationSettings.credentialScope)) {
+            dataStoreManager.saveTranslationSettings(translationSettings.copy(enabled = false))
         }
     }
 
@@ -372,7 +397,7 @@ class PortableSnapshotManager internal constructor(
         val token = UUID.randomUUID().toString()
         val roots = assetRoots()
         val stagingRoots = roots.mapValues { (_, target) -> File(target.parentFile, ".${target.name}.restore-$token") }
-        val required = referencedAssetIds(snapshot)
+        val required = snapshot.referencedAssetIds()
         val paths = mutableMapOf<String, String>()
         val stagedFiles = linkedMapOf<File, File>()
         try {
@@ -425,30 +450,14 @@ class PortableSnapshotManager internal constructor(
         for (asset in snapshot.assets) {
             require(asset.id.matches(Regex("[a-f0-9]{64}(?:-[a-f0-9]{16})?"))) { "Invalid asset ID" }
             require(asset.sha256.matches(Regex("[a-f0-9]{64}")) && asset.sizeBytes > 0L) { "Invalid asset metadata" }
-            require(asset.fileName == File(asset.fileName).name && '/' !in asset.fileName && '\\' !in asset.fileName) {
+            require(asset.hasSafeFileName()) {
                 "Invalid asset filename"
             }
         }
-        for (assetId in referencedAssetIds(snapshot)) {
+        for (assetId in snapshot.referencedAssetIds()) {
             require(assets.containsKey(assetId)) { "Referenced asset is not declared: $assetId" }
             val source = files[assetId]
             require(source?.isFile == true) { "Referenced asset is missing: $assetId" }
-        }
-    }
-
-    private fun referencedAssetIds(snapshot: PortableSnapshot): Set<String> = buildSet {
-        snapshot.books.forEach { book ->
-            book.bodyAssetId?.let(::add)
-            book.coverAssetId?.let(::add)
-        }
-        snapshot.folders.forEach { folder ->
-            folder.coverPath?.takeIf { it.startsWith("asset://") }?.removePrefix("asset://")?.let(::add)
-        }
-        val pattern = Regex("asset://([a-f0-9]{64}(?:-[a-f0-9]{16})?)")
-        snapshot.preferences.forEach { preference ->
-            if (preference.type == PortablePreference.TYPE_STRING) {
-                pattern.findAll(preference.value).forEach { add(it.groupValues[1]) }
-            }
         }
     }
 
@@ -474,34 +483,6 @@ class PortableSnapshotManager internal constructor(
             "folder_cover" -> File(root, "folder_custom_${owner}_${asset.sha256}.$extension")
             "book_cover" -> File(root, "custom_${owner}_${asset.sha256}.$extension")
             else -> File(root, asset.fileName)
-        }
-    }
-
-    private fun replacePathsInPortableString(value: String, replacements: Map<String, String>): String {
-        fun replaceText(text: String): String = replacements.entries.fold(text) { current, (old, new) ->
-            current.replace(old, new).replace(old.replace('\\', '/'), new)
-        }
-
-        fun transform(value: Any?): Any? = when (value) {
-            is JSONObject -> value.apply {
-                keys().asSequence().toList().forEach { key -> put(key, transform(opt(key))) }
-            }
-            is JSONArray -> value.apply {
-                for (index in 0 until length()) put(index, transform(opt(index)))
-            }
-            is String -> replaceText(value)
-            else -> value
-        }
-
-        val trimmed = value.trimStart()
-        return when {
-            trimmed.startsWith('{') -> runCatching { transform(JSONObject(value)).toString() }.getOrElse {
-                replaceText(value)
-            }
-            trimmed.startsWith('[') -> runCatching { transform(JSONArray(value)).toString() }.getOrElse {
-                replaceText(value)
-            }
-            else -> replaceText(value)
         }
     }
 
@@ -651,3 +632,15 @@ private fun File.sha256Portable(): String = inputStream().buffered().use { input
     }
     digest.digest().joinToString("") { "%02x".format(it) }
 }
+
+internal fun isReaderThemeAssetKind(kind: String): Boolean = kind == "font" || kind == "reader_background"
+
+internal fun PortableAsset.withStableReaderThemeId(): PortableAsset {
+    if (!isReaderThemeAssetKind(kind)) return this
+    // Restore installs theme files under their content-addressed names.
+    return copy(id = "$sha256-${stableSuffix("$kind\u0000$fileName")}", ownerId = fileName)
+}
+
+private fun File.isInside(directory: File): Boolean = runCatching {
+    canonicalFile.toPath().startsWith(directory.canonicalFile.toPath())
+}.getOrDefault(false)

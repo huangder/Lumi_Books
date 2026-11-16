@@ -193,7 +193,7 @@ class SystemTtsEngineTest {
     }
 
     @Test
-    fun multiTtsQueuesOneSuccessorAndReplaysEarlyCallbacksOnlyOnAdoptionAcrossPageTurns() = runTest {
+    fun multiTtsQueuesBoundedSuccessorsAndReplaysEarlyCallbacksOnlyOnAdoptionAcrossPageTurns() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val player = SystemTtsAudioPlayer(backgroundScope) { throw AssertionError("Unexpected local playback") }
         val engine = TtsEngine(ApplicationProvider.getApplicationContext(), player)
@@ -210,8 +210,10 @@ class SystemTtsEngineTest {
             assertTrue(engine.supportsQueuedPlayback)
             engine.speak("First.", "first")
             assertTrue(engine.queueNext("Second.", "second").isSuccess)
+            assertTrue(engine.queueNext("Third.", "third").isSuccess)
+            assertTrue(engine.queueNext("Fourth.", "fourth").isSuccess)
             assertTrue(engine.queueNext("Overflow.", "overflow").isFailure)
-            assertEquals(listOf("first", "second"), shadow.spokenRequests.map { it.id })
+            assertEquals(listOf("first", "second", "third", "fourth"), shadow.spokenRequests.map { it.id })
             callbacks.onStart("first")
             callbacks.onStart("second") // Android can deliver this before the controller handles first's done.
             callbacks.onStart("second")
@@ -226,7 +228,8 @@ class SystemTtsEngineTest {
             assertTrue(engine.speak("Second.", "second").isSuccess)
             assertEquals(listOf("first", "second"), started)
             assertEquals(listOf("first", "second"), done)
-            assertEquals(2, shadow.spokenRequests.size)
+            assertTrue(engine.speak("Third.", "third").isSuccess) // The rest of the queue survives.
+            assertEquals(4, shadow.spokenRequests.size)
             assertEquals(stops, shadow.stopCount)
             assertTrue(shadow.spokenRequests.all { it.queueMode == TextToSpeech.QUEUE_ADD })
             assertTrue(shadow.requests.isEmpty())

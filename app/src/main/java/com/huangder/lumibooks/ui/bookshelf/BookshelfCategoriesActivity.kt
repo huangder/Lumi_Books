@@ -921,6 +921,7 @@ private fun CategoryBooksPage(
     var pendingDeleteMode by remember { mutableStateOf(BookDeleteMode.LOCAL_ONLY) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showBatchTagSheet by remember { mutableStateOf(false) }
+    var metadataRepairBookIds by remember { mutableStateOf<Set<String>?>(null) }
     var showBatchMoveSheet by remember { mutableStateOf(false) }
     var tagTargetBook by remember { mutableStateOf<Book?>(null) }
     var editingBook by remember { mutableStateOf<Book?>(null) }
@@ -1058,6 +1059,9 @@ private fun CategoryBooksPage(
                             com.huangder.lumibooks.ui.components.SelectionAction(AppIcons.Tag, stringResource(R.string.tag_sheet_title)) {
                                 showBatchTagSheet = true
                             },
+                            com.huangder.lumibooks.ui.components.SelectionAction(AppIcons.TextT, stringResource(R.string.book_metadata_repair_action)) {
+                                metadataRepairBookIds = selectedBookIds.toSet()
+                            },
                             com.huangder.lumibooks.ui.components.SelectionAction(AppIcons.Trash, stringResource(R.string.delete), destructive = true) {
                                 pendingDeleteBooks = books.filter { it.id in selectedBookIds }
                                 showDeleteConfirm = true
@@ -1176,6 +1180,10 @@ private fun CategoryBooksPage(
             }
         )
     }
+    metadataRepairBookIds?.let { bookIds ->
+        BookMetadataRepairSheet(bookIds, viewModel, onDismiss = { metadataRepairBookIds = null })
+    }
+
     if (showBatchTagSheet) {
         BatchBookTagSheet(
             bookIds = selectedBookIds,

@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -38,7 +39,8 @@ internal fun CoverFlowScrollbar(
     bookCount: Int,
     enabled: Boolean,
     motionEnabled: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    thumbColor: (() -> Color)? = null
 ) {
     if (bookCount <= 1) return
     val scope = rememberCoroutineScope()
@@ -122,7 +124,8 @@ internal fun CoverFlowScrollbar(
         val width = thumbWidth(size.width)
         val x = (size.width - width) * (if (rtl) 1f - fraction() else fraction())
         val height = 5.dp.toPx()
-        drawRoundRect(color.copy(alpha = 0.36f), Offset(x, y - height / 2f),
+        // The light-field tint is read here only, so its crossfade redraws just this canvas.
+        drawRoundRect(thumbColor?.invoke()?.copy(alpha = 0.55f) ?: color.copy(alpha = 0.36f), Offset(x, y - height / 2f),
             Size(width, height), CornerRadius(height / 2f))
     }
 }

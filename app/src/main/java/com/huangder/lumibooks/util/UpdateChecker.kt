@@ -38,7 +38,8 @@ object UpdateChecker {
         val minVersionCode: Long,
         val maxVersionCode: Long,
         val title: String,
-        val message: String
+        val message: String,
+        val imageUrl: String? = null
     )
 
     /** Remote update config. */
@@ -166,7 +167,7 @@ object UpdateChecker {
         URI(scheme, null, host, port, path, uri.rawQuery, null).toASCIIString()
     }.getOrNull()
 
-    private fun parseNotice(json: JSONObject?): NoticeConfig? {
+    internal fun parseNotice(json: JSONObject?): NoticeConfig? {
         if (json == null) return null
         val id = json.optString("id", "").trim()
         val title = json.optString("title", "").trim()
@@ -178,7 +179,12 @@ object UpdateChecker {
             minVersionCode = json.optLong("min_version_code", 0L),
             maxVersionCode = json.optLong("max_version_code", Long.MAX_VALUE),
             title = title,
-            message = message
+            message = message,
+            imageUrl = (json.opt("image_url") as? String)?.trim()?.takeIf { value ->
+                val uri = runCatching { URI(value) }.getOrNull()
+                uri != null && uri.scheme.equals("https", ignoreCase = true) &&
+                    uri.host != null && uri.userInfo == null
+            }
         )
     }
 

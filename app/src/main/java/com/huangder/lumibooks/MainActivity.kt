@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
@@ -51,8 +52,12 @@ import com.huangder.lumibooks.domain.model.BookFormat
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.ui.navigation.MainNavGraph
 import com.huangder.lumibooks.ui.navigation.Screen
-import com.huangder.lumibooks.ui.home.backfillMissingSourceHashes
+import com.huangder.lumibooks.ui.home.BookImportPipeline
+import com.huangder.lumibooks.ui.home.findBookAtExternalLocation
 import com.huangder.lumibooks.ui.home.findMatchingAuthorizedBook
+import com.huangder.lumibooks.util.word.WordEpubCache
+import com.huangder.lumibooks.util.word.WordException
+import com.huangder.lumibooks.util.word.userMessage
 import com.huangder.lumibooks.tts.TtsController
 import com.huangder.lumibooks.tts.TtsPlaybackState
 import com.huangder.lumibooks.service.TtsMediaButtons
@@ -65,6 +70,8 @@ import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
 import com.huangder.lumibooks.ui.components.rememberLocalNetworkPermissionGate
 import com.huangder.lumibooks.ui.components.PolicyUpdateDialog
 import com.huangder.lumibooks.ui.components.RemoteNoticeDialog
+import com.huangder.lumibooks.domain.model.EARLY_DONOR_NOTICE_ID
+import com.huangder.lumibooks.domain.model.ReceivedNotice
 import com.huangder.lumibooks.ui.components.WebdavSyncUpgradeDialog
 import com.huangder.lumibooks.ui.settings.DetailActivity
 import com.huangder.lumibooks.ui.welcome.WelcomeActivity
@@ -85,10 +92,15 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import dagger.hilt.android.AndroidEntryPoint
 import java.io.File
+import java.io.IOException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
@@ -104,7 +116,6 @@ private const val REMOTE_TERMS_URL = "https://huangder.top/terms.html"
 private const val REMOTE_PRIVACY_URL = "https://huangder.top/privacy.html"
 
 /** 外部打开/分享导入支持的书籍扩展名。 */
-private val SUPPORTED_IMPORT_EXTENSIONS = setOf("epub", "pdf", "txt", "mobi", "azw", "azw3", "cbz", "md", "markdown")
 
 private fun Intent?.extractImportUris(): List<Uri> {
     val importIntent = this ?: return emptyList()
@@ -154,12 +165,6 @@ private data class PendingAppUpdate(
     val force: Boolean
 )
 
-private data class PendingRemoteNotice(
-    val id: String,
-    val title: String,
-    val message: String
-)
-
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
@@ -195,6 +200,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var bookRepository: BookRepository
+
+    @Inject
+    lateinit var bookImportPipeline: BookImportPipeline
 
     @Inject
     lateinit var builtinGuideSeeder: BuiltinGuideSeeder
@@ -246,7 +254,8 @@ class MainActivity : ComponentActivity() {
     private var pendingAppUpdate by mutableStateOf<PendingAppUpdate?>(null)
 
     /** Pending remote notice dialog; non-null means show it after startup. */
-    private var pendingRemoteNotice by mutableStateOf<PendingRemoteNotice?>(null)
+    private var pendingRemoteNotice by mutableStateOf<UpdateChecker.NoticeConfig?>(null)
+    private var pendingEarlyDonorNotice by mutableStateOf(false)
 
     /** Pending terms/privacy policy update dialog; non-null means show it after startup. */
     private var pendingPolicyUpdate by mutableStateOf<PendingPolicyUpdate?>(null)
@@ -257,6 +266,7 @@ class MainActivity : ComponentActivity() {
     /** Externally opened files waiting for a copy/move decision. */
     private var pendingExternalImportUris by mutableStateOf<List<Uri>>(emptyList())
     private var pendingExternalImportFolders by mutableStateOf<List<ExternalImportFolder>>(emptyList())
+    private val externalImportMutex = Mutex()
 
     override fun onNewIntent(intent: Intent) {
         com.huangder.lumibooks.widget.WidgetDiagnostics.openIntent(intent, "on_new_intent")
@@ -302,11 +312,15 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             val directories = runCatching { dataStoreManager.authorizedBookDirectories.first() }
                 .getOrDefault(emptyList())
-            val knownBooks = withContext(Dispatchers.IO) { bookRepository.getAllBooks().first() }
-            val needsChoice = directories.isNotEmpty() &&
-                uris.any { uri -> needsExternalImportChoice(uri, knownBooks) }
-            val folders = if (needsChoice) {
-                withContext(Dispatchers.IO) { resolveAuthorizedFolderChoices(directories) }
+            val folders = if (directories.isNotEmpty()) {
+                withContext(Dispatchers.IO) {
+                    val knownBooks = bookRepository.getAllBooks().first()
+                    if (uris.any { uri -> needsExternalImportChoice(uri, knownBooks) }) {
+                        resolveAuthorizedFolderChoices(directories)
+                    } else {
+                        emptyList()
+                    }
+                }
             } else {
                 emptyList()
             }
@@ -321,15 +335,8 @@ class MainActivity : ComponentActivity() {
 
     /** 需要用户决定保存位置：文件受支持，且书库里还没有它的记录。 */
     private fun needsExternalImportChoice(uri: Uri, knownBooks: List<Book>): Boolean {
-        val fileName = FileUtils.getFileNameFromUri(this, uri) ?: return false
-        if (FileUtils.getFileExtension(fileName) !in SUPPORTED_IMPORT_EXTENSIONS) return false
-        if (findAppManagedBook(uri, knownBooks) != null) return false
-        return findMatchingAuthorizedBook(
-            documentKey = authorizedStorageManager.documentKey(uri),
-            uri = uri.toString(),
-            sha256 = null,
-            books = knownBooks
-        ) == null
+        if (FileUtils.getBookImportName(this, uri) == null) return false
+        return findDirectExternalBook(uri, authorizedStorageManager.documentKey(uri), knownBooks) == null
     }
 
     /** 授权文件夹的展示名，读取失败时退回树 URI 的最后一段路径。 */
@@ -363,19 +370,28 @@ class MainActivity : ComponentActivity() {
             var imported = 0
             var opened = 0
             var failed = 0
-            uris.forEach { uri ->
-                runCatching { importBookFromUri(uri, mode, targetTreeUri) }
-                    .onSuccess { outcome ->
-                        when (outcome) {
-                            ImportOutcome.IMPORTED -> imported++
-                            ImportOutcome.OPENED -> opened++
-                            ImportOutcome.UNSUPPORTED -> failed++
+            var wordFailure: String? = null
+            externalImportMutex.withLock {
+                uris.forEach { uri ->
+                    runCatching { importBookFromUri(uri, mode, targetTreeUri) }
+                        .onSuccess { outcome ->
+                            when (outcome) {
+                                ImportOutcome.IMPORTED -> imported++
+                                ImportOutcome.OPENED -> opened++
+                                ImportOutcome.UNSUPPORTED -> failed++
+                            }
                         }
-                    }
-                    .onFailure { error ->
-                        failed++
-                        Log.e("MainActivity", "Unable to import shared book: $uri", error)
-                    }
+                        .onFailure { error ->
+                            if (error is CancellationException) throw error
+                            failed++
+                            if (wordFailure == null) wordFailure = when (error) {
+                                is WordImportFailed -> error.message
+                                is WordException -> error.userMessage(this@MainActivity)
+                                else -> null
+                            }
+                            Log.e("MainActivity", "Unable to import shared book: $uri", error)
+                        }
+                }
             }
             withContext(Dispatchers.Main) {
                 val message = when {
@@ -384,15 +400,21 @@ class MainActivity : ComponentActivity() {
                     opened > 0 -> getString(R.string.import_summary_with_opened, imported, opened)
                     else -> getString(R.string.import_summary, imported)
                 }
-                Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
+                val detail = wordFailure
+                Toast.makeText(this@MainActivity, listOfNotNull(message, detail).joinToString("\n"),
+                    if (detail == null) Toast.LENGTH_SHORT else Toast.LENGTH_LONG).show()
             }
         }
     }
 
     private enum class ImportOutcome { IMPORTED, OPENED, UNSUPPORTED }
+    private class WordImportFailed(message: String) : java.io.IOException(message)
 
     /** 外部文件的保存方式：复制进应用目录，或移动进授权文件夹。 */
     private enum class ExternalImportMode { COPY_INTO_APP, MOVE_TO_AUTHORIZED }
+
+    private fun findDirectExternalBook(uri: Uri, documentKey: String?, books: List<Book>): Book? =
+        findAppManagedBook(uri, books) ?: findBookAtExternalLocation(uri, documentKey, books)
 
     /**
      * FileProvider URIs created by this app point at the same managed file stored in the book
@@ -428,50 +450,37 @@ class MainActivity : ComponentActivity() {
         mode: ExternalImportMode = ExternalImportMode.COPY_INTO_APP,
         targetTreeUri: String? = null
     ): ImportOutcome {
-        val fileName = FileUtils.getFileNameFromUri(this, uri) ?: return ImportOutcome.UNSUPPORTED
+        val fileName = FileUtils.getBookImportName(this, uri) ?: return ImportOutcome.UNSUPPORTED
         val extension = FileUtils.getFileExtension(fileName)
-        if (extension !in SUPPORTED_IMPORT_EXTENSIONS) return ImportOutcome.UNSUPPORTED
+        val format = BookFormat.fromExtension(extension) ?: return ImportOutcome.UNSUPPORTED
 
         val sourceKey = authorizedStorageManager.documentKey(uri)
         val sourceUri = uri.toString()
-        var knownBooks = bookRepository.getAllBooks().first()
-        val directExisting = findAppManagedBook(uri, knownBooks) ?: findMatchingAuthorizedBook(
-            documentKey = sourceKey,
-            uri = sourceUri,
-            sha256 = null,
-            books = knownBooks
-        )
-        if (directExisting != null) {
-            withContext(Dispatchers.Main) {
-                requestedOpenBookId = directExisting.id
-                requestedOpenBookDirect = true
+        val knownBooks = bookRepository.getAllBooks().first()
+        val directExisting = findDirectExternalBook(uri, sourceKey, knownBooks)
+        if (directExisting != null && (!format.isWord || !directExisting.isCloudOnly)) {
+            return openExistingBook(directExisting.id)
+        }
+
+        if (format.isWord) {
+            return if (mode == ExternalImportMode.COPY_INTO_APP) {
+                externalWordOutcome(importExternalWord(uri, fileName, copy = true))
+            } else {
+                val treeUri = targetTreeUri?.let(Uri::parse) ?: return ImportOutcome.UNSUPPORTED
+                importMovedWord(uri, fileName, treeUri)
             }
-            return ImportOutcome.OPENED
         }
 
         val sourceHash = runCatching { authorizedStorageManager.sha256(this, sourceUri) }.getOrNull()
         val existing = if (sourceHash != null) {
-            knownBooks = backfillMissingSourceHashes(
-                books = knownBooks,
-                hashLocation = { location ->
-                    runCatching { authorizedStorageManager.sha256(this, location) }.getOrNull()
-                },
-                persist = bookRepository::updateSourceSha256
-            )
             findMatchingAuthorizedBook(
                 documentKey = sourceKey,
                 uri = sourceUri,
                 sha256 = sourceHash,
-                books = knownBooks
+                books = bookImportPipeline.repairMissingSourceHashes(this, knownBooks)
             )
         } else null
-        if (existing != null) {
-            withContext(Dispatchers.Main) {
-                requestedOpenBookId = existing.id
-                requestedOpenBookDirect = true
-            }
-            return ImportOutcome.OPENED
-        }
+        if (existing != null) return openExistingBook(existing.id)
 
         return when (mode) {
             ExternalImportMode.COPY_INTO_APP -> importCopiedBook(
@@ -495,6 +504,61 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private suspend fun importExternalWord(
+        uri: Uri,
+        name: String,
+        copy: Boolean,
+        parent: Uri? = null
+    ): BookImportPipeline.Outcome = bookImportPipeline.import(
+        context = this,
+        documents = listOf(BookImportPipeline.Document(
+            uri = uri,
+            name = name,
+            sourceDirectoryDocumentUri = parent?.toString(),
+            sourceLastModified = authorizedStorageManager.queryLastModified(this, uri)
+        )),
+        copyIntoApp = copy,
+        targetFolderId = null,
+        groupByAuthorizedSource = false,
+        inheritHighlightSwitches = true
+    ).outcomes.single()
+
+    private suspend fun externalWordOutcome(outcome: BookImportPipeline.Outcome): ImportOutcome = when (outcome.status) {
+        BookImportPipeline.Status.IMPORTED -> ImportOutcome.IMPORTED
+        BookImportPipeline.Status.DUPLICATE -> openExistingBook(checkNotNull(outcome.bookId))
+        BookImportPipeline.Status.UNSUPPORTED -> ImportOutcome.UNSUPPORTED
+        BookImportPipeline.Status.FAILED -> throw WordImportFailed(outcome.failureMessage ?: getString(R.string.word_error_io))
+    }
+
+    private suspend fun openExistingBook(bookId: String): ImportOutcome = withContext(Dispatchers.Main) {
+        requestedOpenBookId = bookId
+        requestedOpenBookDirect = true
+        ImportOutcome.OPENED
+    }
+
+    private suspend fun importMovedWord(uri: Uri, name: String, treeUri: Uri): ImportOutcome {
+        val hash = runInterruptible { WordEpubCache.sourceHash(this, uri.toString()) }
+        bookImportPipeline.findExisting(this, null, authorizedStorageManager.documentKey(uri), hash)
+            ?.takeUnless { it.isCloudOnly }?.let { return openExistingBook(it.id) }
+        val root = authorizedStorageManager.treeRootUri(treeUri)
+        val move = authorizedStorageManager.copyThenDelete(this, uri.toString(), root, name, deleteSource = false)
+        val destination = move.destinationUri
+        var keepDestination = false
+        try {
+            if (move.sha256 != hash) throw WordImportFailed(getString(R.string.word_error_io))
+            val outcome = importExternalWord(destination, name, copy = false, parent = root)
+            if (outcome.status == BookImportPipeline.Status.IMPORTED) {
+                keepDestination = true
+                runCatching { DocumentsContract.deleteDocument(contentResolver, uri) }
+                rememberAuthorizedCopy(treeUri, root, destination, name,
+                    authorizedStorageManager.documentKey(destination), authorizedStorageManager.queryLastModified(this, destination))
+            }
+            return externalWordOutcome(outcome)
+        } finally {
+            if (!keepDestination) runCatching { DocumentsContract.deleteDocument(contentResolver, destination) }
+        }
+    }
+
     /** 复制到应用私有目录，沿用一直以来的外部打开导入行为。 */
     private suspend fun importCopiedBook(
         uri: Uri,
@@ -503,7 +567,7 @@ class MainActivity : ComponentActivity() {
         sourceKey: String?,
         sourceHash: String?
     ): ImportOutcome {
-        val format = extension.toBookFormat()
+        val format = checkNotNull(BookFormat.fromExtension(extension))
         val bookId = FileUtils.generateBookId()
         if (format == BookFormat.MARKDOWN) {
             runCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
@@ -537,7 +601,7 @@ class MainActivity : ComponentActivity() {
              sourceLastModified = authorizedStorageManager.queryLastModified(this, uri)
          )
         try {
-            bookRepository.insertBook(book)
+            bookRepository.insertExternalBook(book)
         } catch (error: Throwable) {
             FileUtils.deleteAppManagedBookFile(this, file.absolutePath)
             FileUtils.deleteAppOwnedFile(this, coverPath)
@@ -548,7 +612,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * 把外部文件搬进授权文件夹：先复制到授权目录，再尽力删除原文件。
+     * 把外部文件搬进授权文件夹：先复制并入库，再尽力删除原文件。
      * ACTION_VIEW 通常只授予读权限，删不掉时保留原文件，等价于复制。
      */
     private suspend fun importMovedBook(
@@ -569,41 +633,59 @@ class MainActivity : ComponentActivity() {
         }.getOrNull() ?: return ImportOutcome.UNSUPPORTED
 
         val location = move.destinationUri.toString()
+        val format = checkNotNull(BookFormat.fromExtension(extension))
+        val bookId = FileUtils.generateBookId()
+        val documentKey = authorizedStorageManager.documentKey(move.destinationUri)
+        val lastModified = authorizedStorageManager.queryLastModified(this, move.destinationUri)
+        var markdownSnapshot: File? = null
+        var coverPath: String? = null
+        val book = try {
+            if (format == BookFormat.MARKDOWN) {
+                markdownSnapshot = com.huangder.lumibooks.util.markdown.MarkdownSnapshotStore
+                    .create(this, bookId, location, treeRootUri.toString())
+            }
+            val readingLocation = markdownSnapshot?.absolutePath ?: location
+            coverPath = extractBookCover(readingLocation, format)
+            val (parsedTitle, parsedAuthor) = resolveBookMetadata(readingLocation, fileName, format)
+            val now = System.currentTimeMillis()
+            Book(
+                id = bookId,
+                title = parsedTitle,
+                author = parsedAuthor,
+                filePath = readingLocation,
+                coverPath = coverPath,
+                format = format,
+                lastReadTime = now,
+                readingProgress = 0f,
+                createdAt = now,
+                sourceUri = location,
+                sourceDocumentKey = documentKey,
+                sourceParentUri = treeRootUri.toString(),
+                sourceSha256 = move.sha256,
+                sourceDisplayName = fileName,
+                sourceLastModified = lastModified
+            ).also { bookRepository.insertExternalBook(it) }
+        } catch (error: Throwable) {
+            runCatching { DocumentsContract.deleteDocument(contentResolver, move.destinationUri) }
+            markdownSnapshot?.let { FileUtils.deleteAppManagedBookFile(this, it.absolutePath) }
+            FileUtils.deleteAppOwnedFile(this, coverPath)
+            throw error
+        }
         val sourceRemoved = runCatching {
             DocumentsContract.deleteDocument(contentResolver, uri)
         }.getOrDefault(false)
         if (!sourceRemoved) {
             Log.w("MainActivity", "Book copied into an authorized folder but the source stayed: $uri")
         }
+        rememberAuthorizedCopy(treeUri, treeRootUri, move.destinationUri, fileName, documentKey, lastModified)
+        Log.d("MainActivity", "Moved book from intent into authorized folder: ${book.title}")
+        return ImportOutcome.IMPORTED
+    }
 
-        val format = extension.toBookFormat()
-        val bookId = FileUtils.generateBookId()
-        val readingLocation = if (format == BookFormat.MARKDOWN) {
-            com.huangder.lumibooks.util.markdown.MarkdownSnapshotStore.create(this, bookId, location, treeRootUri.toString()).absolutePath
-        } else location
-        val coverPath = extractBookCover(readingLocation, format)
-        val (parsedTitle, parsedAuthor) = resolveBookMetadata(readingLocation, fileName, format)
-        val documentKey = authorizedStorageManager.documentKey(move.destinationUri)
-        val lastModified = authorizedStorageManager.queryLastModified(this, move.destinationUri)
-        val now = System.currentTimeMillis()
-        val book = Book(
-            id = bookId,
-            title = parsedTitle,
-            author = parsedAuthor,
-            filePath = readingLocation,
-            coverPath = coverPath,
-            format = format,
-            lastReadTime = now,
-            readingProgress = 0f,
-            createdAt = now,
-            sourceUri = location,
-            sourceDocumentKey = documentKey,
-            sourceParentUri = treeRootUri.toString(),
-            sourceSha256 = move.sha256,
-            sourceDisplayName = fileName,
-            sourceLastModified = lastModified
-        )
-        bookRepository.insertBook(book)
+    private suspend fun rememberAuthorizedCopy(
+        treeUri: Uri, root: Uri, destination: Uri, fileName: String, documentKey: String?, lastModified: Long
+    ) {
+        val location = destination.toString()
         // 让“选择文件夹书籍”页面立刻能看到这本书，无需等待下次扫描。
         runCatching {
             authorizedFolderSnapshotStore.addDocument(
@@ -611,7 +693,7 @@ class MainActivity : ComponentActivity() {
                 document = AuthorizedFolderDocumentSnapshot(
                     documentUri = location,
                     documentKey = documentKey,
-                    parentDocumentUri = treeRootUri.toString(),
+                    parentDocumentUri = root.toString(),
                     displayName = fileName,
                     relativeDirectory = null,
                     size = BookFileAccess.size(this, location),
@@ -619,8 +701,6 @@ class MainActivity : ComponentActivity() {
                 )
             )
         }
-        Log.d("MainActivity", "Moved book from intent into authorized folder: ${book.title}")
-        return ImportOutcome.IMPORTED
     }
 
     private fun extractBookCover(location: String, format: BookFormat): String? = runCatching {
@@ -662,16 +742,6 @@ class MainActivity : ComponentActivity() {
         }.getOrDefault(fallback)
     }
 
-    private fun String.toBookFormat(): BookFormat = when (this) {
-        "epub" -> BookFormat.EPUB
-        "pdf" -> BookFormat.PDF
-        "mobi" -> BookFormat.MOBI
-        "azw" -> BookFormat.AZW
-        "azw3" -> BookFormat.AZW3
-        "cbz" -> BookFormat.CBZ
-        "md", "markdown", "mdpack" -> BookFormat.MARKDOWN
-        else -> BookFormat.TXT
-    }
 
     /**
      * 不拦截 ActionMode：选区检测由 ReadView 的 SpanWatcher 处理，
@@ -883,7 +953,7 @@ class MainActivity : ComponentActivity() {
                         }
                         val globalGlassDialogVisible = !onReaderRoute && (
                             pendingAppUpdate != null ||
-                                pendingRemoteNotice != null ||
+                                pendingEarlyDonorNotice || pendingRemoteNotice != null ||
                                 policyDialog != null ||
                                 pendingWebdavSyncUpgrade ||
                                 // 外部导入询问弹窗也是玻璃容器，同样需要在它显示期间捕获主内容，
@@ -952,6 +1022,7 @@ class MainActivity : ComponentActivity() {
                     // Startup dialog priority: app update > notice > policy > sync upgrade.
                     // 阅读页不渲染启动弹窗，避免 layerBackdrop 切换导致内容闪烁。
                     val appUpdate = pendingAppUpdate
+                    val earlyDonorNotice = pendingEarlyDonorNotice
                     val remoteNotice = pendingRemoteNotice
                     when {
                         !onReaderRoute && appUpdate != null -> {
@@ -978,16 +1049,20 @@ class MainActivity : ComponentActivity() {
                                 }
                             )
                         }
+                        !onReaderRoute && earlyDonorNotice -> {
+                            RemoteNoticeDialog(
+                                title = stringResource(R.string.early_donor_notice_title),
+                                message = stringResource(R.string.early_donor_notice_message),
+                                imageResId = R.drawable.early_donor_claim_code,
+                                onConfirm = { acknowledgeStartupNotice(EARLY_DONOR_NOTICE_ID) }
+                            )
+                        }
                         !onReaderRoute && remoteNotice != null -> {
                             RemoteNoticeDialog(
                                 title = remoteNotice.title,
                                 message = remoteNotice.message,
-                                onConfirm = {
-                                    lifecycleScope.launch {
-                                        dataStoreManager.acknowledgeNotice(remoteNotice.id)
-                                    }
-                                    pendingRemoteNotice = null
-                                }
+                                imageUrl = remoteNotice.imageUrl,
+                                onConfirm = { acknowledgeStartupNotice(remoteNotice.id) }
                             )
                         }
                         !onReaderRoute && policyDialog != null -> {
@@ -1096,13 +1171,45 @@ class MainActivity : ComponentActivity() {
     }
 
 
-    /**
-     * 启动时自动检查更新：拉取 update_config.json，
-     * 对比条款/政策版本，如有更新则标记待弹窗。
-     */
+    private fun acknowledgeStartupNotice(id: String) {
+        if (id == EARLY_DONOR_NOTICE_ID) {
+            pendingEarlyDonorNotice = false
+        } else {
+            pendingRemoteNotice = null
+        }
+        lifecycleScope.launch { dataStoreManager.acknowledgeNotice(id) }
+    }
+
+    private suspend fun archiveStartupNotice(
+        id: String,
+        title: String,
+        message: String,
+        imageUrl: String? = null
+    ) {
+        try {
+            dataStoreManager.recordReceivedNotice(
+                ReceivedNotice(id, title, message, System.currentTimeMillis(), imageUrl)
+            )
+        } catch (error: IOException) {
+            Log.w("MainActivity", "Failed to save startup notice history", error)
+        }
+    }
+
+    /** Load the bundled notice before starting the remote configuration request. */
     private fun performStartupUpdateCheck() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
+                val acknowledgedNoticeIds = dataStoreManager.acknowledgedNoticeIds.first()
+                // The bundled announcement can be recovered even if it was confirmed before history existed.
+                archiveStartupNotice(
+                    EARLY_DONOR_NOTICE_ID,
+                    getString(R.string.early_donor_notice_title),
+                    getString(R.string.early_donor_notice_message)
+                )
+                withContext(Dispatchers.Main) {
+                    pendingEarlyDonorNotice = EARLY_DONOR_NOTICE_ID !in acknowledgedNoticeIds
+                }
+
                 val config = UpdateChecker.fetchUpdateConfig() ?: return@launch
                 val packageInfo = try {
                     packageManager.getPackageInfo(packageName, 0)
@@ -1112,7 +1219,6 @@ class MainActivity : ComponentActivity() {
 
                 val acceptedTerms = dataStoreManager.acceptedTermsVersion.first()
                 val acceptedPrivacy = dataStoreManager.acceptedPrivacyVersion.first()
-                val acknowledgedNoticeIds = dataStoreManager.acknowledgedNoticeIds.first()
                 val ignoredAppUpdateVersionCode = dataStoreManager.ignoredAppUpdateVersionCode.first()
 
                 val result = UpdateChecker.evaluate(
@@ -1122,6 +1228,9 @@ class MainActivity : ComponentActivity() {
                     acceptedTerms = acceptedTerms,
                     acceptedPrivacy = acceptedPrivacy
                 )
+
+                val remoteNotice = result.notice
+                remoteNotice?.let { archiveStartupNotice(it.id, it.title, it.message, it.imageUrl) }
 
                 val nextAppUpdate = result
                     .takeIf {
@@ -1142,9 +1251,8 @@ class MainActivity : ComponentActivity() {
                             force = it.isForceUpdate
                         )
                     }
-                val nextNotice = result.notice
-                    ?.takeIf { it.id !in acknowledgedNoticeIds }
-                    ?.let { PendingRemoteNotice(id = it.id, title = it.title, message = it.message) }
+                val nextNotice = remoteNotice
+                    ?.takeIf { it.id != EARLY_DONOR_NOTICE_ID && it.id !in acknowledgedNoticeIds }
                 val nextPolicy = if (result.hasTermsUpdate || result.hasPrivacyUpdate) {
                     PendingPolicyUpdate(
                         hasTermsUpdate = result.hasTermsUpdate,

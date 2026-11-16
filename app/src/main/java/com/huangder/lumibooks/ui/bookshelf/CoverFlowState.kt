@@ -44,6 +44,16 @@ internal class CoverFlowState(initialPosition: Float = 0f, initialBookId: String
         focusedId = ids.getOrNull(index)
     }
 
+    /**
+     * Adopts the order a drag on the stage produced, keeping the dragged [focusId] in focus at
+     * the current position; the caller then settles onto it.
+     */
+    fun finishReorder(newIds: List<String>, focusId: String) {
+        interrupt()
+        ids = newIds
+        focusedId = focusId
+    }
+
     fun restoreBook(bookId: String) {
         val index = ids.indexOf(bookId)
         if (index < 0) return

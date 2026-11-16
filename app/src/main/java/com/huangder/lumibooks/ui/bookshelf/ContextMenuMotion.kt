@@ -27,9 +27,9 @@ internal object ContextMenuMotion {
     val ActionsPanelEnter: SpringSpec<Float>
         get() = spring(dampingRatio = 0.72f, stiffness = 380f)
 
-    /** 被长按封面的放大。 */
+    /** 被长按封面的放大：略微冲过头再缓缓回弹，而不是戛然而止。 */
     val CoverScaleEnter: SpringSpec<Float>
-        get() = spring(dampingRatio = 0.62f, stiffness = 420f)
+        get() = spring(dampingRatio = 0.5f, stiffness = 240f)
 
     /** 封面放大后的位置微调。 */
     val CoverPositionEnter: SpringSpec<Float>

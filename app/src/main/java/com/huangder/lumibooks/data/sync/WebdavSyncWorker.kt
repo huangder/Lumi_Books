@@ -33,7 +33,10 @@ class WebdavSyncWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         val config = dataStoreManager.webdavConfig.first()
         if (!config.enabled || config.syncMode != "auto") return Result.success()
-        val result = syncManager.fullSync()
+        val result = syncManager.fullSync(
+            checkRemoteBookFiles = false,
+            trigger = WebdavSyncTrigger.AUTO
+        )
         return when (webdavWorkerDecision(result, runAttemptCount, MAX_RETRIES)) {
             WebdavWorkerDecision.SUCCESS -> Result.success()
             WebdavWorkerDecision.RETRY -> Result.retry()

@@ -64,6 +64,9 @@ class DetailActivity : ComponentActivity() {
     @Inject
     lateinit var webdavAutoSyncScheduler: WebdavAutoSyncScheduler
 
+    @Inject
+    lateinit var webdavSyncLogStore: com.huangder.lumibooks.data.sync.WebdavSyncLogStore
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -131,6 +134,8 @@ class DetailActivity : ComponentActivity() {
                     val onBack = { finishWithPush() }
 
                     when (category) {
+                        NOTICE_HISTORY_CATEGORY -> NoticeHistoryRoute(dataStoreManager, onBack)
+                        WEBDAV_LOGS_CATEGORY -> WebdavLogRoute(webdavSyncLogStore, onBack)
                         "reading" -> DetailPage(
                             stringResource(R.string.title_reading_settings),
                             onBack,
@@ -201,7 +206,13 @@ class DetailActivity : ComponentActivity() {
                             ExternalTtsConfigurationDetail(viewModel, onSaved = onBack)
                         }
                         "webdav" -> DetailPage(stringResource(R.string.title_webdav), onBack) {
-                            WebdavSettingsDetail(viewModel, requestLocalNetworkPermission) {
+                            WebdavSettingsDetail(
+                                viewModel,
+                                requestLocalNetworkPermission,
+                                onOpenLogs = {
+                                    startActivity(createIntent(this@DetailActivity, WEBDAV_LOGS_CATEGORY))
+                                }
+                            ) {
                                 startActivity(
                                     Intent(this@DetailActivity, DetailActivity::class.java)
                                         .putExtra("category", "webdav_config")

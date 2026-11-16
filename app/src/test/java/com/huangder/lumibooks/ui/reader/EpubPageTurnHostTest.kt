@@ -289,21 +289,20 @@ class EpubPageTurnHostTest {
     }
 
     @Test
-    fun promotedPageNotificationMustMatchThePromotedTarget() {
-        assertTrue(
-            epubPageNotificationMatchesTarget(
-                target = EpubPageTarget(2, 1),
-                chapterIndex = 2,
-                pageIndex = 1
-            )
-        )
-        assertFalse(
-            epubPageNotificationMatchesTarget(
-                target = EpubPageTarget(2, 1),
-                chapterIndex = 2,
-                pageIndex = 0
-            )
-        )
+    fun promotionRejectsAnOldPageButAllowsTheNextTurn() {
+        val handoff = EpubPageHandoff(EpubPageTarget(2, 1), pageSerial = 12L)
+        assertTrue(handoff.accepts(chapterIndex = 2, pageIndex = 1, notificationSerial = 12L))
+        assertFalse(handoff.accepts(chapterIndex = 2, pageIndex = 1, notificationSerial = 11L))
+        assertFalse(handoff.accepts(chapterIndex = 2, pageIndex = 0, notificationSerial = 12L))
+        assertTrue(handoff.accepts(chapterIndex = 2, pageIndex = 2, notificationSerial = 13L))
+        assertFalse(handoff.accepts(chapterIndex = 3, pageIndex = 2, notificationSerial = 13L))
+    }
+
+    @Test
+    fun handoffWithoutAnAcknowledgedSerialRequiresTheRequestedPage() {
+        val handoff = EpubPageHandoff(EpubPageTarget(2, 1))
+        assertTrue(handoff.accepts(chapterIndex = 2, pageIndex = 1, notificationSerial = 12L))
+        assertFalse(handoff.accepts(chapterIndex = 2, pageIndex = 0, notificationSerial = 13L))
     }
 
     @Test

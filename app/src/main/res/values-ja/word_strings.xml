@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="word_error_invalid">Word 文書が壊れているか、読める内容がありません。</string>
+    <string name="word_error_encrypted">この Word 文書はパスワードで保護されています。</string>
+    <string name="word_error_unsupported">この Word 文書の形式には対応していません。</string>
+    <string name="word_error_limit">Word 文書が大きすぎるため、この端末で変換できません。</string>
+    <string name="word_error_io">Word ファイルを読み込めないか、閲覧用のキャッシュを保存できません。</string>
+    <string name="word_error_conversion">Word 文書を閲覧用に変換できませんでした。</string>
+    <string name="word_share_original">元のファイルを共有</string>
+</resources>

@@ -32,7 +32,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -41,12 +40,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -57,13 +54,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.SelectionMenuAction
 import com.huangder.lumibooks.domain.model.SelectionMenuSettings
-import com.huangder.lumibooks.ui.animation.AppEasing
-import com.huangder.lumibooks.ui.animation.LumiMotion
-import com.huangder.lumibooks.ui.animation.VisualMotion
 import com.huangder.lumibooks.ui.icons.AppIcons
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRadius
@@ -102,10 +95,6 @@ internal fun SelectionMenuAction.icon(): ImageVector = when (this) {
     SelectionMenuAction.REPLACE -> AppIcons.ArrowsLeftRight
 }
 
-private val ReorderEdgeZone = 56.dp
-private val ReorderMaxScrollPerFrame = 14.dp
-private const val DraggedCardScale = 1.02f
-
 /**
  * Editable list of selection menu actions: a visibility switch per action and long-press
  * handles for drag reordering. Every change is reported through [onChange] right away; the
@@ -122,18 +111,9 @@ fun SelectionMenuSettingsEditor(
     contentPadding: PaddingValues = PaddingValues(0.dp),
     onReorderingChange: (Boolean) -> Unit = {}
 ) {
-    val density = LocalDensity.current
-    val scope = rememberCoroutineScope()
     val motionEnabled = LocalMotionEnabled.current && !LocalEInkMode.current
     val haptics = LocalHapticFeedback.current
-    val reorder = remember(listState, scope, density) {
-        SelectionMenuReorderState(
-            listState = listState,
-            scope = scope,
-            edgeZonePx = with(density) { ReorderEdgeZone.toPx() },
-            maxScrollPerFramePx = with(density) { ReorderMaxScrollPerFrame.toPx() }
-        )
-    }
+    val reorder = rememberLazyListReorderState(listState, SelectionMenuAction::storageKey)
     // Gesture callbacks outlive recompositions; always act on the newest settings.
     val currentSettings by rememberUpdatedState(settings)
     val currentOnChange by rememberUpdatedState(onChange)
@@ -147,7 +127,6 @@ fun SelectionMenuSettingsEditor(
         verticalArrangement = Arrangement.spacedBy(AppSpace.sm)
     ) {
         items(order, key = SelectionMenuAction::storageKey) { action ->
-            val dragged = reorder.draggedAction == action
             val index = order.indexOf(action)
             SelectionMenuActionCard(
                 action = action,
@@ -163,7 +142,8 @@ fun SelectionMenuSettingsEditor(
                 handleModifier = Modifier.pointerInput(action, reorder) {
                     fun endDrag(commit: Boolean) {
                         if (commit) {
-                            reorder.finish()?.let { currentOnChange(currentSettings.withOrder(it)) }
+                            reorder.finish(animateDrop = motionEnabled)
+                                ?.let { currentOnChange(currentSettings.withOrder(it)) }
                         } else {
                             reorder.cancel()
                         }
@@ -176,29 +156,14 @@ fun SelectionMenuSettingsEditor(
                                 currentOnReorderingChange(true)
                             }
                         },
-                        onDragEnd = { if (reorder.draggedAction == action) endDrag(commit = true) },
-                        onDragCancel = { if (reorder.draggedAction == action) endDrag(commit = false) }
+                        onDragEnd = { if (reorder.draggedItem == action) endDrag(commit = true) },
+                        onDragCancel = { if (reorder.draggedItem == action) endDrag(commit = false) }
                     ) { change, dragAmount ->
                         change.consume()
                         reorder.dragBy(dragAmount.y)
                     }
                 },
-                modifier = Modifier
-                    .then(
-                        // The dragged card follows the finger; only its neighbours glide.
-                        if (motionEnabled && !dragged) Modifier.animateItem(
-                            fadeInSpec = null,
-                            fadeOutSpec = null,
-                            placementSpec = VisualMotion.tween(LumiMotion.MenuEnterMillis, easing = AppEasing.Smooth)
-                        ) else Modifier
-                    )
-                    .zIndex(if (dragged) 1f else 0f)
-                    .graphicsLayer {
-                        translationY = reorder.translationOf(action)
-                        val scale = if (dragged && motionEnabled) DraggedCardScale else 1f
-                        scaleX = scale
-                        scaleY = scale
-                    }
+                modifier = reorderableItemMotion(action, reorder, motionEnabled)
             )
         }
     }

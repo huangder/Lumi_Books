@@ -18,7 +18,18 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.unit.IntOffset
+import com.huangder.lumibooks.ui.bookshelf.BookDragCallbacks
+import com.huangder.lumibooks.ui.bookshelf.longPressDragOrMenuAt
+import com.huangder.lumibooks.ui.bookshelf.HOLD_TO_MENU_MILLIS
+import androidx.compose.runtime.rememberUpdatedState
+import com.huangder.lumibooks.ui.bookshelf.longPressMenuSemantics
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -134,7 +145,14 @@ internal data class SpineShelfParams(
     val onSelectionToggle: (Book) -> Unit,
     val onHaptic: () -> Unit,
     /** True while the book menu is up, so the tab bar and tab swipes stay out of the way. */
-    val onMenuVisibleChange: (Boolean) -> Unit
+    val onMenuVisibleChange: (Boolean) -> Unit,
+    /** Shelf rows the user chose: book id → [SpineEntry.breakBefore]. */
+    val rowBreaks: Map<String, Int> = emptyMap(),
+    /**
+     * Commits a drag with the new order of [books]' ids and their row breaks (books left out
+     * flow on from their neighbour); null turns dragging off.
+     */
+    val onArrange: ((order: List<String>, breaks: Map<String, Int>) -> Unit)? = null
 )
 
 private const val FOLDER_PREFIX = "folder:"
@@ -143,6 +161,10 @@ private const val DROP_TOTAL_MS = 2600
 private const val MENU_OPEN_MS = 440
 private const val MENU_CLOSE_MS = 360
 private const val TICK_GAP_MS = 55L
+private const val DRAG_PLACEMENT_MS = 260
+/** Size a still long press grows a spine to before its menu opens. */
+private const val SPINE_HOLD_SCALE = 1.14f
+private const val DRAG_SETTLE_MS = 240
 
 /** Children own the whole horizontal gesture, so the main tabs never page from the shelf's edge. */
 private val HorizontalGestureGuard = object : NestedScrollConnection {
@@ -181,6 +203,58 @@ private class SpineMenu {
     }
 }
 
+/**
+ * A book being dragged along the shelf. The shelf is laid out from [draft] meanwhile, with the
+ * dragged book's place left empty; the book itself floats above the shelf under the finger.
+ */
+@Stable
+private class SpineDrag {
+    /** Lifted by a long press, not yet dragged or turned into a menu. */
+    var liftedId by mutableStateOf<String?>(null)
+    /** Whose menu a long hold opened: it stays grown on the shelf until the menu is gone. */
+    var menuHeldId by mutableStateOf<String?>(null)
+    var book by mutableStateOf<Book?>(null)
+    var draft by mutableStateOf<List<Book>?>(null)
+    var breaks by mutableStateOf<Map<String, Int>?>(null)
+    /** Floating item box in scene pixels: where it started, plus the finger travel. */
+    var start = Rect.Zero
+    var travelX by mutableFloatStateOf(0f)
+    var travelY by mutableFloatStateOf(0f)
+    var flat = false
+    /** Drop animation from the release point into the book's new place. */
+    var settleFrom = Rect.Zero
+    var settleTo by mutableStateOf<Rect?>(null)
+    val settle = Animatable(0f)
+
+    val active: Boolean get() = book != null && settleTo == null && draft != null
+    /** Shelf id that stays empty on the shelf: dragged or still settling. */
+    val hiddenId: String? get() = book?.id
+
+    fun floatingRect(): Rect {
+        val target = settleTo
+        return if (target == null) {
+            start.translate(travelX, travelY)
+        } else {
+            val t = settle.value
+            Rect(
+                lerp(settleFrom.left, target.left, t),
+                lerp(settleFrom.top, target.top, t),
+                lerp(settleFrom.right, target.right, t),
+                lerp(settleFrom.bottom, target.bottom, t)
+            )
+        }
+    }
+
+    fun clear() {
+        book = null
+        draft = null
+        breaks = null
+        settleTo = null
+        travelX = 0f
+        travelY = 0f
+    }
+}
+
 private class MenuStages(val stand: Float, val pull: Float, val grow: Float, val panel: Float, val scrim: Float)
 
 private fun menuStages(p: Float): MenuStages {
@@ -200,11 +274,14 @@ private fun SpineScene(params: SpineShelfParams, modifier: Modifier) {
     val motion = LocalMotionEnabled.current && !eInk
     val scope = rememberCoroutineScope()
     val scene = params.sceneKey
-    val books = params.books
-    val bookById = remember(books) { books.associateBy { it.id } }
+    val drag = remember { SpineDrag() }
+    val books = drag.draft ?: params.books
+    val rowBreaks = drag.breaks ?: params.rowBreaks
+    val bookById = remember(params.books) { params.books.associateBy { it.id } }
     val folderById = remember(params.folders) { params.folders.associateBy { FOLDER_PREFIX + it.id } }
-    val entries = remember(params.folders, books) {
-        params.folders.map { SpineEntry(FOLDER_PREFIX + it.id, isFolder = true) } + books.map { SpineEntry(it.id) }
+    val entries = remember(params.folders, books, rowBreaks) {
+        params.folders.map { SpineEntry(FOLDER_PREFIX + it.id, isFolder = true) } +
+            books.map { SpineEntry(it.id, breakBefore = rowBreaks[it.id] ?: 0) }
     }
     val origin = remember { arrayOf(Offset.Zero) }
     val bayOrigins = remember { HashMap<Int, Offset>() }
@@ -233,6 +310,7 @@ private fun SpineScene(params: SpineShelfParams, modifier: Modifier) {
         }
     }
     BackHandler(enabled = menu.busy) { closeMenu() }
+    LaunchedEffect(menu.busy) { if (!menu.busy) drag.menuHeldId = null }
 
     BoxWithConstraints(
         modifier
@@ -320,6 +398,9 @@ private fun SpineScene(params: SpineShelfParams, modifier: Modifier) {
             val bottom = rowTopPx(row) + with(density) { (rowHeight - board).toPx() } - placed.lift * px
             return Rect(left, bottom - placed.height * px, left + placed.width * px, bottom)
         }
+        // A drag outlives the composition it started in (the shelf is laid out again from the
+        // draft on every move), so its coroutines and callbacks look geometry up through these.
+        val latestSpineRect by rememberUpdatedState<(String) -> Rect?> { id -> spineRect(id) }
 
         // The menu stands on the bottom safe edge (the tab bar hides while it is up); the
         // cover is sized and centred in whatever space is left above it.
@@ -348,11 +429,19 @@ private fun SpineScene(params: SpineShelfParams, modifier: Modifier) {
             if (menu.busy && !menu.closing) menu.card = cardRect()
         }
 
-        fun beginLift(id: String, assign: () -> Unit): Boolean {
+        /** [grownBy]: the spine's hold scale, so the book leaves (and returns to) that size. */
+        fun beginLift(id: String, haptic: Boolean = true, grownBy: Float = 1f, assign: () -> Unit): Boolean {
             if (params.isEditing || !params.enabled || menu.busy) return false
-            val spine = spineRect(id) ?: return false
             val placed = placedById[id]
-            params.onHaptic()
+            val spine = spineRect(id)?.let { rect ->
+                // Grows as the shelf item does: about the bottom-left corner when leaning,
+                // otherwise about the bottom centre.
+                val w = rect.width * grownBy
+                val h = rect.height * grownBy
+                val left = if (placed?.pose == SpinePose.Leaning) rect.left else rect.center.x - w / 2f
+                Rect(left, rect.bottom - h, left + w, rect.bottom)
+            } ?: return false
+            if (haptic) params.onHaptic()
             assign()
             menu.spine = spine
             menu.spineAngle = placed?.angle ?: 0f
@@ -368,6 +457,160 @@ private fun SpineScene(params: SpineShelfParams, modifier: Modifier) {
         }
 
         val onLongPress: (Book) -> Unit = { book -> beginLift(book.id) { menu.book = book } }
+
+        // ── Drag to reorder ──
+        val edgeZonePx = with(density) { 48.dp.toPx() }
+        val maxEdgeStepPx = with(density) { 14.dp.toPx() }
+        val rowHeightPx = with(density) { rowHeight.toPx() }
+
+        val topPx = with(density) { top.toPx() }
+        val bayWidthPx = with(density) { bayWidth.toPx() }
+
+        /**
+         * Puts the dragged book on the shelf row under the floating spine, between the books
+         * left and right of it there; an empty row takes it at its start.
+         */
+        fun followFinger() {
+            val book = drag.book ?: return
+            val center = drag.floatingRect().center
+            val visibleBays = listState.layoutInfo.visibleItemsInfo.mapTo(HashSet()) { it.index }
+            val bay = bayOrigins.entries.firstOrNull { (index, origin) ->
+                index in visibleBays && index <= pages.lastIndex &&
+                    center.x >= origin.x && center.x < origin.x + bayWidthPx
+            }?.key ?: return
+            val rowInBay = ((center.y - topPx) / rowHeightPx).toInt().coerceIn(0, rows - 1)
+            val targetRow = bay * rows + rowInBay
+            val model = pages.flatMap { it.rows }.map { row -> SpineRowModel(row.items.map { it.id }, row.explicit) }
+            val rowIds = model.getOrNull(targetRow)?.ids.orEmpty().filter { it != book.id }
+            val insertAt = rowIds.count { id -> (spineRect(id)?.center?.x ?: Float.MAX_VALUE) < center.x }
+            val arranged = arrangeSpineRows(
+                rows = model,
+                dragged = book.id,
+                targetRow = targetRow,
+                insertAt = insertAt,
+                isFolder = { it.startsWith(FOLDER_PREFIX) },
+                groupOf = { id -> if (bookById[id]?.isPinned == true) 0 else 1 }
+            ) ?: return
+            if (arranged.breaks == drag.breaks && arranged.order == drag.draft?.map { it.id }) return
+            drag.draft = arranged.order.mapNotNull { bookById[it] }
+            drag.breaks = arranged.breaks
+        }
+
+        fun edgeStep(): Float {
+            if (!drag.active) return 0f
+            val x = drag.floatingRect().center.x
+            return when {
+                x < edgeZonePx && listState.canScrollBackward ->
+                    -maxEdgeStepPx * ((edgeZonePx - x) / edgeZonePx).coerceIn(0f, 1f)
+                x > bounds.width - edgeZonePx && listState.canScrollForward ->
+                    maxEdgeStepPx * ((x - bounds.width + edgeZonePx) / edgeZonePx).coerceIn(0f, 1f)
+                else -> 0f
+            }
+        }
+
+        val latestFollow by rememberUpdatedState<() -> Unit> { followFinger() }
+        val latestEdgeStep by rememberUpdatedState<() -> Float> { edgeStep() }
+        LaunchedEffect(drag.active) {
+            if (!drag.active) return@LaunchedEffect
+            while (true) {
+                withFrameNanos { }
+                val step = latestEdgeStep()
+                if (step != 0f) {
+                    listState.scrollBy(step)
+                    latestFollow()
+                }
+            }
+        }
+
+        fun finishDrag() {
+            val book = drag.book ?: return
+            val draft = drag.draft
+            val breaks = drag.breaks
+            val from = drag.floatingRect()
+            val order = draft?.map { it.id }
+            if (order != null && breaks != null &&
+                (order != params.books.map { it.id } || breaks != params.rowBreaks.filterKeys { it in order.toHashSet() })
+            ) {
+                params.onArrange?.invoke(order, breaks)
+            }
+            drag.draft = null
+            drag.breaks = null
+            if (!motion) {
+                drag.clear()
+                return
+            }
+            drag.settleFrom = from
+            drag.settleTo = from
+            scope.launch {
+                try {
+                    // One frame so the shelf is laid out in the committed order.
+                    withFrameNanos { }
+                    val target = latestSpineRect(book.id)
+                    if (target != null && target.right > 0f && target.left < bounds.width) {
+                        drag.settleTo = target
+                        drag.settle.snapTo(0f)
+                        drag.settle.animateTo(1f, tween(DRAG_SETTLE_MS, easing = FastOutSlowInEasing))
+                    }
+                } finally {
+                    if (drag.book?.id == book.id) drag.clear()
+                }
+            }
+        }
+
+        fun startDrag(book: Book): Boolean {
+            drag.liftedId = null
+            if (menu.busy || drag.book != null) return false
+            val rect = spineRect(book.id) ?: return false
+            drag.start = rect
+            drag.flat = placedById[book.id]?.pose == SpinePose.Flat
+            drag.travelX = 0f
+            drag.travelY = 0f
+            drag.settleTo = null
+            drag.draft = params.books
+            drag.breaks = params.rowBreaks
+            drag.book = book
+            return true
+        }
+
+        /** The book whose spine is under [point], in scene pixels. */
+        fun bookAt(point: Offset): Book? {
+            for ((id, placed) in placedById) {
+                if (placed.isFolder) continue
+                val rect = spineRect(id) ?: continue
+                if (rect.contains(point)) return bookById[id]
+            }
+            return null
+        }
+
+        val latestStartDrag by rememberUpdatedState<(Book) -> Boolean> { book -> startDrag(book) }
+        val latestFinishDrag by rememberUpdatedState<() -> Unit> { finishDrag() }
+        val latestOpenMenu by rememberUpdatedState<(Book) -> Unit> { book ->
+            drag.menuHeldId = book.id
+            if (!beginLift(book.id, grownBy = SPINE_HOLD_SCALE) { menu.book = book }) drag.menuHeldId = null
+        }
+        val dragEnabled = params.onArrange != null && !params.isEditing && params.enabled
+
+        fun dragCallbacks(book: Book) = BookDragCallbacks(
+            onLift = {
+                params.onHaptic()
+                drag.liftedId = book.id
+            },
+            onDragStart = { latestStartDrag(book) },
+            onDrag = { delta ->
+                drag.travelX += delta.x
+                drag.travelY += delta.y
+                latestFollow()
+            },
+            onDragEnd = { latestFinishDrag() },
+            onDragCancel = {
+                drag.liftedId = null
+                if (drag.active) drag.clear()
+            },
+            onMenu = {
+                drag.liftedId = null
+                latestOpenMenu(book)
+            }
+        )
 
         val onFolderLongPress: (LibraryFolder) -> Unit = { folder ->
             beginLift(FOLDER_PREFIX + folder.id) { menu.folder = folder }
@@ -394,6 +637,9 @@ private fun SpineScene(params: SpineShelfParams, modifier: Modifier) {
                     scaleX = 1f - 0.04f * dim
                     scaleY = 1f - 0.04f * dim
                     renderEffect = if (blurAllowed && dim > 0f) blurSteps.at(dim, this.density) else null
+                }
+                .longPressDragOrMenuAt(enabled = dragEnabled && !menu.busy, key = Unit) { point ->
+                    bookAt(point)?.let { dragCallbacks(it) }
                 }
         ) {
         LazyRow(
@@ -430,7 +676,11 @@ private fun SpineScene(params: SpineShelfParams, modifier: Modifier) {
                                     params = params,
                                     accent = accent,
                                     dropClock = dropClock,
-                                    hidden = { menu.liftedId == item.id },
+                                    hidden = { menu.liftedId == item.id || drag.hiddenId == item.id },
+                                    lifted = { drag.liftedId == item.id || drag.menuHeldId == item.id },
+                                    animatePlacement = motion && drag.book != null,
+                                    dragEnabled = dragEnabled,
+                                    onMenu = { bookById[item.id]?.let { latestOpenMenu(it) } },
                                     onClick = onClick,
                                     onLongPress = onLongPress,
                                     onFolderLongPress = onFolderLongPress
@@ -441,6 +691,31 @@ private fun SpineScene(params: SpineShelfParams, modifier: Modifier) {
                 }
             }
         }
+        }
+
+        drag.book?.let { book ->
+            val live = bookById[book.id] ?: book
+            val start = drag.start
+            val widthDp = with(density) { start.width.toDp() }
+            val heightDp = with(density) { start.height.toDp() }
+            Box(
+                Modifier
+                    .requiredSize(widthDp, heightDp)
+                    .align(Alignment.TopStart)
+                    .graphicsLayer {
+                        val rect = drag.floatingRect()
+                        translationX = rect.left
+                        translationY = rect.top
+                        val lift = if (drag.settleTo == null) 1f else 1f - drag.settle.value
+                        val scale = 1f + 0.06f * lift
+                        scaleX = scale
+                        scaleY = scale
+                        shadowElevation = 10.dp.toPx() * lift
+                    }
+            ) {
+                BookSpineFace(live, horizontal = drag.flat, width = widthDp, height = heightDp,
+                    sharp = params.sharpCovers, modifier = Modifier.fillMaxSize())
+            }
         }
 
         if (menu.busy) {
@@ -545,11 +820,35 @@ private fun ShelfItem(
     accent: Color,
     dropClock: Animatable<Float, *>,
     hidden: () -> Boolean,
+    lifted: () -> Boolean,
+    /** While a book is dragged its neighbours glide to their new places instead of jumping. */
+    animatePlacement: Boolean,
+    /** The shelf handles long presses on books (drag or menu); this item only clicks. */
+    dragEnabled: Boolean,
+    onMenu: () -> Unit,
     onClick: (Book) -> Unit,
     onLongPress: (Book) -> Unit,
     onFolderLongPress: (LibraryFolder) -> Unit
 ) {
     if (book == null && folder == null) return
+    val placementSpec: AnimationSpec<Dp> = if (animatePlacement) {
+        tween(DRAG_PLACEMENT_MS, easing = FastOutSlowInEasing)
+    } else snap()
+    val animatedX by animateDpAsState(x, placementSpec, label = "spine-x")
+    val animatedY by animateDpAsState(y, placementSpec, label = "spine-y")
+    val animatedAngle by animateFloatAsState(
+        item.angle,
+        if (animatePlacement) tween(DRAG_PLACEMENT_MS, easing = FastOutSlowInEasing) else snap(),
+        label = "spine-angle"
+    )
+    val holding = lifted()
+    // A still hold grows the spine steadily until the menu takes the book off the shelf.
+    val liftScale by animateFloatAsState(
+        if (holding) SPINE_HOLD_SCALE else 1f,
+        if (holding) tween(HOLD_TO_MENU_MILLIS.toInt(), easing = LinearEasing) else tween(140),
+        label = "spine-lift"
+    )
+    val bookDrag = book != null && dragEnabled
     val deleting = book != null && book.id in params.deletingBookIds
     val selected = book != null && params.isEditing && book.id in params.selectedBookIds
     val gone by animateFloatAsState(if (deleting) 0f else 1f, tween(260), label = "spine-delete")
@@ -559,14 +858,19 @@ private fun ShelfItem(
     val height = item.height.dp
     Box(
         Modifier
-            .offset(x = x, y = y)
+            .offset { IntOffset(animatedX.roundToPx(), animatedY.roundToPx()) }
             .size(width, height)
             .graphicsLayer {
-                dropTransform(item, rowIndex, rowTopPx, dropClock.value)
+                val clock = dropClock.value
+                dropTransform(item, rowIndex, rowTopPx, clock)
+                if (clock >= SETTLED) rotationZ = animatedAngle
                 translationY -= 6.dp.toPx() * raised
+                scaleX *= liftScale
+                scaleY *= liftScale
                 alpha *= gone * if (hidden()) 0f else 1f
             }
             .semantics { contentDescription = label }
+            .longPressMenuSemantics(enabled = bookDrag, onMenu = onMenu)
             .combinedClickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -576,10 +880,12 @@ private fun ShelfItem(
                         folder != null && !params.isEditing && params.enabled -> params.onFolderClick(folder)
                     }
                 },
-                onLongClick = {
-                    when {
-                        book != null -> onLongPress(book)
-                        folder != null -> onFolderLongPress(folder)
+                onLongClick = if (bookDrag) null else {
+                    {
+                        when {
+                            book != null -> onLongPress(book)
+                            folder != null -> onFolderLongPress(folder)
+                        }
                     }
                 }
             )

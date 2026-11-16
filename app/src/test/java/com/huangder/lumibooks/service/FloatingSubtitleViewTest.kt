@@ -26,7 +26,7 @@ class FloatingSubtitleViewTest {
     private val actions = mutableListOf<String>()
     private fun view() = FloatingSubtitleView(context, { false }, { actions += "subtitle" },
         { actions += "play" }, { actions += "previous" }, { actions += "next" },
-        { actions += "close" }, { actions += "return" }).apply {
+        { actions += "close" }, { actions += "return" }, { actions += "lock" }).apply {
         subtitle.text = "The next chapter begins here."
         appearance(FloatingSubtitleSettings())
     }
@@ -36,8 +36,9 @@ class FloatingSubtitleViewTest {
         view.setInfo("The Long Way", "Chapter 3 / 12")
         view.setProgress(.4f)
         view.showMode(FloatingSubtitleMode.SUBTITLE, false)
-        layout(view, 320, 56)
-        assertEquals(1, view.subtitle.layout.lineCount)
+        val barHeight = view.barHeightPx(FloatingSubtitleSettings())
+        layout(view, 320, barHeight)
+        assertTrue(view.subtitle.layout.lineCount <= FloatingSubtitleView.LYRICS_VISIBLE_LINES)
         val barPlay = visible(view, R.string.tts_play).single()
         assertEquals(40, barPlay.width)
         assertTrue(barPlay.right <= 320 - 4)
@@ -45,16 +46,17 @@ class FloatingSubtitleViewTest {
         capture(view, "subtitle")
         view.subtitle.performClick()
         view.showMode(FloatingSubtitleMode.CONTROLS, false)
-        layout(view, 320, 56 + FloatingSubtitleView.DETAILS_HEIGHT_DP.toInt())
+        layout(view, 320, barHeight + FloatingSubtitleView.DETAILS_HEIGHT_DP.toInt())
         val play = visible(view, R.string.tts_play).single()
         assertEquals(barPlay.left, play.left)
         val controls = listOf(R.string.tts_previous_sentence, R.string.tts_next_sentence,
-            R.string.tts_return_to_book, R.string.tts_stop).map { visible(view, it).single() }
+            R.string.floating_subtitle_lock, R.string.tts_return_to_book, R.string.tts_stop)
+            .map { visible(view, it).single() }
         controls.zipWithNext().forEach { (a, b) -> assertTrue(a.right <= b.left) }
         controls.forEach { assertEquals(44, it.width) }
         assertEquals(320 - controls.last().right, controls.first().left)
         (listOf(play) + controls).forEach { it.performClick() }
-        assertEquals(listOf("subtitle", "play", "previous", "next", "return", "close"), actions)
+        assertEquals(listOf("subtitle", "play", "previous", "next", "lock", "return", "close"), actions)
         capture(view, "controls")
         view.setPlaying(true)
         assertEquals(1, visible(view, R.string.tts_pause).size)
@@ -64,6 +66,7 @@ class FloatingSubtitleViewTest {
 
     @Test fun longSubtitleRemainsOneScrollableLineStartingAtTheBeginning() {
         val view = view()
+        view.appearance(FloatingSubtitleSettings(style = com.huangder.lumibooks.tts.FloatingSubtitleStyle.BAR))
         view.subtitle.text = "A long sentence that continues beyond the capsule width and must remain readable from its first word."
         view.showMode(FloatingSubtitleMode.SUBTITLE, false)
         layout(view, 320, 56)
@@ -71,6 +74,39 @@ class FloatingSubtitleViewTest {
         assertEquals(0f, view.subtitle.layout.getLineLeft(0))
         assertTrue(view.subtitle.layout.getLineWidth(0) > view.subtitle.width)
         capture(view, "long-subtitle")
+    }
+
+    @Test fun lyricsWrapTheSentenceAndShowTheNextOneDimmed() {
+        val view = view()
+        val settings = FloatingSubtitleSettings()
+        view.setLines("A long sentence that continues beyond the capsule width and wraps onto further lines below it.",
+            "The following sentence.")
+        view.showMode(FloatingSubtitleMode.SUBTITLE, false)
+        layout(view, 320, view.barHeightPx(settings))
+        assertTrue(view.subtitle.layout.lineCount > 1)
+        assertEquals(View.VISIBLE, view.nextLine.visibility)
+        assertEquals("The following sentence.", view.nextLine.text.toString())
+        assertTrue(view.nextLine.top >= view.subtitle.bottom)
+        assertTrue(view.nextLine.bottom <= view.barHeightPx(settings))
+        // The whole spoken sentence takes the highlight colour; nothing is coloured partially.
+        assertEquals(android.graphics.Color.parseColor(settings.highlightColorHex), view.subtitle.currentTextColor)
+        assertTrue(view.nextLine.currentTextColor != view.subtitle.currentTextColor)
+        capture(view, "lyrics")
+        view.setLines("Next.", null)
+        assertEquals(View.INVISIBLE, view.nextLine.visibility)
+        view.appearance(settings.copy(showNextLine = false))
+        assertEquals(View.GONE, view.nextLine.visibility)
+        assertTrue(view.barHeightPx(settings.copy(showNextLine = false)) < view.barHeightPx(settings))
+    }
+
+    @Test fun lockedOverlayHidesThePlayButton() {
+        val view = view()
+        view.setLocked(true)
+        layout(view, 320, view.barHeightPx(FloatingSubtitleSettings()))
+        assertTrue(visible(view, R.string.tts_play).isEmpty())
+        view.setLocked(false)
+        layout(view, 320, view.barHeightPx(FloatingSubtitleSettings()))
+        assertEquals(1, visible(view, R.string.tts_play).size)
     }
 
     @Test fun edgeTabsRestoreTheSubtitleOnTap() {

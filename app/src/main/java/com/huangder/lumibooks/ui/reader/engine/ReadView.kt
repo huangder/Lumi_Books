@@ -58,6 +58,10 @@ internal fun calculateReaderVerticalBalanceOffset(
  * from the bottom margin to the top margin once per reader configuration. The
  * result is quantized to the same integer pixels used by [TextView] padding
  * and preserves the total inset exactly.
+ *
+ * With [bottomAligned] every full page is stretched to the bottom margin by
+ * [applyReaderPageBottomAlignment], so both margins are used exactly as set.
+ * The total inset, and therefore pagination, is the same in both modes.
  */
 internal data class ReaderVerticalMargins(
     val topPx: Int,
@@ -72,10 +76,12 @@ internal fun resolveReaderVerticalMargins(
     lineHeightMultiplier: Float,
     lineSpacingExtraPx: Float,
     typeface: Typeface,
-    protectedBottomInsetPx: Float = 0f
+    protectedBottomInsetPx: Float = 0f,
+    bottomAligned: Boolean = false
 ): ReaderVerticalMargins {
     val baseTopPx = baseMarginTopPx.toInt().coerceAtLeast(0)
     val baseBottomPx = baseMarginBottomPx.toInt().coerceAtLeast(0)
+    if (bottomAligned) return ReaderVerticalMargins(baseTopPx, baseBottomPx)
     val protectedBottomPx = protectedBottomInsetPx
         .toInt()
         .coerceIn(0, baseBottomPx)
@@ -405,6 +411,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     // Track the actual stream before selection/guide routing can consume its
     // terminal event. Gesture ownership alone can otherwise outlive the pointer.
     private var rvPointerStreamActive = false
+    private var rvTouchStartedDuringPageTurn = false
     private var rvBoundaryGestureSuppressed = false
     // Forward drag past the last page, reported so the finish page can follow the finger.
     private var rvBookEndPulling = false
@@ -436,6 +443,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var currentFirstLineIndent: Float = 2f
     private var currentBodyFontWeight: Float = 400f
     private var currentBionicReadingEnabled: Boolean = false
+    /** 整页正文对齐到同一条下边线（用户开关，默认关闭）。 */
+    private var currentPageBottomAligned: Boolean = false
     private var currentUseDisplayDensityForSpans: Boolean = false
     private var currentChineseMode: String = "original"
     private var currentAnnotationStyle: ReaderAnnotationStyle = ReaderAnnotationStyle.DEFAULT
@@ -808,7 +817,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 lineHeightMultiplier = currentLineHeightMult,
                 lineSpacingExtraPx = lineSpacingExtra,
                 typeface = resolvedTypeface.typeface,
-                protectedBottomInsetPx = currentBottomOverlayInsetDp * density
+                protectedBottomInsetPx = currentBottomOverlayInsetDp * density,
+                bottomAligned = currentPageBottomAligned
             )
         }
         // 全部槽位都配置，确保翻页时样式一致；双页时左/右半页镜像边距
@@ -832,7 +842,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 accentColor = accentColor,
                 textAlignment = currentTextAlignment,
                 writingMode = currentWritingMode,
-                boldText = resolvedTypeface.fakeBold
+                boldText = resolvedTypeface.fakeBold,
+                bottomAligned = currentPageBottomAligned
             )
             right.configure(
                 fontSizePx = currentFontSizePx,
@@ -849,7 +860,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 accentColor = accentColor,
                 textAlignment = currentTextAlignment,
                 writingMode = currentWritingMode,
-                boldText = resolvedTypeface.fakeBold
+                boldText = resolvedTypeface.fakeBold,
+                bottomAligned = currentPageBottomAligned
             )
         }
         applyAnnotationStyleToPages()
@@ -987,6 +999,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         firstLineIndent: Float = 2f,
         bodyFontWeight: Float = 400f,
         bionicReadingEnabled: Boolean = false,
+        pageBottomAligned: Boolean = false,
         useDisplayDensityForSpans: Boolean = false,
         writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL,
         twoPageSpread: Boolean = false,
@@ -1019,6 +1032,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             currentFirstLineIndent = firstLineIndent
             currentBodyFontWeight = (bodyFontWeight * 10f).roundToInt().coerceIn(1000, 9000) / 10f
             currentBionicReadingEnabled = bionicReadingEnabled
+            currentPageBottomAligned = pageBottomAligned
             currentUseDisplayDensityForSpans = useDisplayDensityForSpans
             currentWritingMode = writingMode
             currentTwoPageSpreadEnabled = twoPageSpread
@@ -1045,6 +1059,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val normalizedBodyFontWeight = (bodyFontWeight * 10f).roundToInt().coerceIn(1000, 9000) / 10f
         val bodyFontWeightChanged = currentBodyFontWeight != normalizedBodyFontWeight
         val bionicReadingChanged = currentBionicReadingEnabled != bionicReadingEnabled
+        val pageBottomAlignedChanged = currentPageBottomAligned != pageBottomAligned
         val paginationLayoutChanged =
             currentUseDisplayDensityForSpans != useDisplayDensityForSpans
         val writingModeChanged = currentWritingMode != writingMode
@@ -1059,7 +1074,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val sizeChanged = !isConfigured || configuredWidth != width || configuredHeight != height
         val needsRelayout = themeChanged || chapterCountChanged || fontSizeChanged || lineHeightChanged ||
                 letterSpacingChanged || textAlignmentChanged || fontTypeChanged || customFontPathChanged || marginChanged ||
-                overlayInsetChanged || paragraphSpacingChanged || bionicReadingChanged ||
+                overlayInsetChanged || paragraphSpacingChanged || bionicReadingChanged || pageBottomAlignedChanged ||
                 firstLineIndentChanged || bodyFontWeightChanged || paginationLayoutChanged ||
                 writingModeChanged || spreadModeChanged || sizeChanged
         // 旋转/进出双页/窗口 resize（含 ColorOS 小窗）时，重新分页必须基于“当前真实槽位”的章与页，
@@ -1068,7 +1083,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         // 槽位在异步加载中（isLoaded=false）时 chapterIndex/pageIndex 仍是本次目标位置，
         // 必须继续作为锚点；否则连续 resize 期间会回退到 startChapter/pendingStartChapter
         // （初始化早期可能为 0），把阅读进度清零。
-        val relayoutToCurrent = sizeChanged || spreadModeChanged || marginChanged
+        val relayoutToCurrent = sizeChanged || spreadModeChanged || marginChanged || pageBottomAlignedChanged
         val curSlotForRelayout = slotManager.getCurSlot()
         val hasCurrentAnchor = curSlotForRelayout.chapterIndex >= 0
         val effectiveStartChapter = if (relayoutToCurrent && hasCurrentAnchor) {
@@ -1117,6 +1132,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         currentFirstLineIndent = firstLineIndent
         currentBodyFontWeight = normalizedBodyFontWeight
         currentBionicReadingEnabled = bionicReadingEnabled
+        currentPageBottomAligned = pageBottomAligned
         currentUseDisplayDensityForSpans = useDisplayDensityForSpans
         currentWritingMode = writingMode
         currentTwoPageSpreadEnabled = twoPageSpread
@@ -1172,7 +1188,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 lineHeightMultiplier = lineHeightMult,
                 lineSpacingExtraPx = lineSpacing,
                 typeface = resolvedTypeface.typeface,
-                protectedBottomInsetPx = bottomOverlayInsetDp * density
+                protectedBottomInsetPx = bottomOverlayInsetDp * density,
+                bottomAligned = currentPageBottomAligned
             )
         }
 
@@ -1473,6 +1490,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                     firstLineIndent = firstLineIndent,
                     bodyFontWeight = bodyFontWeight,
                     bionicReadingEnabled = bionicReadingEnabled,
+                    pageBottomAligned = pageBottomAligned,
                     useDisplayDensityForSpans = useDisplayDensityForSpans,
                     writingMode = writingMode,
                     twoPageSpread = twoPageSpread
@@ -1842,6 +1860,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             MotionEvent.ACTION_DOWN -> {
                 pendingPageChangeOrigin = TtsPageChangeOrigin.USER
                 removeCallbacks(rvImageLongPressRunnable)
+                rvTouchStartedDuringPageTurn = animationController.isRunning ||
+                    animationController.isCompletingTurn
                 // A committed curl belongs to the page the user can already see. Commit it
                 // before classifying the next pointer stream so rapid swipes start from that
                 // visible page instead of repeatedly reusing the old current slot.
@@ -1885,7 +1905,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                             rootWindowInsets?.displayCutout?.safeInsetTop?.toFloat() ?: 0f else 0f)
                 )
                 rvImageLongPressHandled = false
-                val hitView = pageViewAt(ev.x, ev.y)
+                val hitView = if (rvTouchStartedDuringPageTurn) null else pageViewAt(ev.x, ev.y)
                 rvPendingImageView = hitView
                 rvPendingImageLongPress = hitView?.getImageAt(
                     ev.x - hitView.left,
@@ -2181,6 +2201,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     }
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+        // An overlapping page can receive DOWN and then have its text replaced
+        // before the long press fires. Keep this entire stream with ReadView.
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN && rvTouchStartedDuringPageTurn) return true
         if (ev.actionMasked == MotionEvent.ACTION_DOWN && currentTwoPageSpread) {
             val page = pageViewAt(ev.x, ev.y)
             val slot = slotManager.getCurSlot()
@@ -2524,7 +2547,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             (currentMarginTopDp + currentTopOverlayInsetDp) * density,
             (currentMarginBottomDp + currentBottomOverlayInsetDp) * density,
             currentFontSizePx, currentLineHeightMult, 2.5f * density,
-            curPageView.textView.typeface, currentBottomOverlayInsetDp * density)
+            curPageView.textView.typeface, currentBottomOverlayInsetDp * density,
+            bottomAligned = currentPageBottomAligned)
         val prepared = layoutEngine.forViewport(pageWidth, target.height, right,
             margins.topPx.toFloat(), margins.bottomPx.toFloat())
         orientationPreparation.schedule {
@@ -3130,6 +3154,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 firstLineIndent = currentFirstLineIndent,
                 bodyFontWeight = currentBodyFontWeight,
                 bionicReadingEnabled = currentBionicReadingEnabled,
+                pageBottomAligned = currentPageBottomAligned,
                 useDisplayDensityForSpans = currentUseDisplayDensityForSpans,
                 writingMode = currentWritingMode,
                 twoPageSpread = currentTwoPageSpreadEnabled,

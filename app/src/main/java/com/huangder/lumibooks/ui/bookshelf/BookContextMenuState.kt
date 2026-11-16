@@ -103,7 +103,14 @@ class BookContextMenuState(private val scope: CoroutineScope) {
     fun onLongPressConfirmed(
         book: Book,
         bounds: Rect,
-        onHaptic: () -> Unit
+        onHaptic: () -> Unit,
+        /**
+         * Scale of [bounds] the cover already shows: a held book has grown past its resting
+         * [bounds]. The menu cover starts there and settles at the usual menu size.
+         */
+        coverStartScale: Float = 1f,
+        /** Growth speed the cover already has (scale per second): it overshoots, then settles. */
+        coverScaleVelocity: Float = 0f
     ) {
         if (phase != ContextMenuPhase.Idle && phase != ContextMenuPhase.Pressing) return
         selectedBook = book
@@ -126,10 +133,11 @@ class BookContextMenuState(private val scope: CoroutineScope) {
             coroutineScope {
                 // 封面放大
                 launch {
-                    coverScale.snapTo(1f)
+                    coverScale.snapTo(coverStartScale)
                     coverScale.animateTo(
                         targetValue = ContextMenuMotion.CoverScaleValue,
-                        animationSpec = ContextMenuMotion.CoverScaleEnter
+                        animationSpec = ContextMenuMotion.CoverScaleEnter,
+                        initialVelocity = coverScaleVelocity
                     )
                 }
                 launch {

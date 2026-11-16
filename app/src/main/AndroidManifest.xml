@@ -260,6 +260,15 @@
                 <data android:mimeType="application/epub+zip" />
             </intent-filter>
 
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/msword" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+            </intent-filter>
+
             <!-- TXT 文件关联 -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -306,6 +315,10 @@
                 <data android:pathPattern=".*\\.AZW3" />
                 <data android:pathPattern=".*\\.cbz" />
                 <data android:pathPattern=".*\\.CBZ" />
+                <data android:pathPattern=".*\\.doc" />
+                <data android:pathPattern=".*\\.DOC" />
+                <data android:pathPattern=".*\\.docx" />
+                <data android:pathPattern=".*\\.DOCX" />
             </intent-filter>
 
             <!-- 在系统分享菜单中显示 LUMI，并支持一次导入一本或多本书 -->
@@ -324,6 +337,8 @@
                 <data android:mimeType="application/x-mobi8-ebook" />
                 <data android:mimeType="application/vnd.comicbook+zip" />
                 <data android:mimeType="application/x-cbz" />
+                <data android:mimeType="application/msword" />
+                <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
             </intent-filter>
         </activity>
 
@@ -480,6 +495,10 @@
             android:foregroundServiceType="mediaPlayback" />
 
         <!-- 耳机线控 / 蓝牙媒体按键（Android 12+ 由 MediaSession 指向此接收器） -->
+        <receiver
+            android:name=".service.FloatingSubtitleUnlockReceiver"
+            android:exported="false" />
+
         <receiver
             android:name=".service.TtsMediaButtonReceiver"
             android:exported="true">

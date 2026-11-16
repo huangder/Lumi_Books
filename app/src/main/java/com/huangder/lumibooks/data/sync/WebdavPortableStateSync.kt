@@ -8,6 +8,11 @@ import com.huangder.lumibooks.data.backup.PortableSnapshot
 import com.huangder.lumibooks.data.backup.PortableSnapshotBundle
 import com.huangder.lumibooks.data.backup.PortableSnapshotManager
 import com.huangder.lumibooks.data.backup.PortableSnapshotMerger
+import com.huangder.lumibooks.data.backup.assetReferenceIds
+import com.huangder.lumibooks.data.backup.hasSafeFileName
+import com.huangder.lumibooks.data.backup.isReaderThemeAssetKind
+import com.huangder.lumibooks.data.backup.isReaderThemePreference
+import com.huangder.lumibooks.data.backup.referencedAssetIds
 import com.huangder.lumibooks.domain.model.WebdavConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
@@ -18,7 +23,8 @@ import javax.inject.Singleton
 
 data class PortableStateSyncResult(
     val uploadedAssets: Int,
-    val downloadedAssets: Int
+    val downloadedAssets: Int,
+    val readerThemeDeferred: Boolean = false
 )
 
 @Singleton
@@ -37,15 +43,19 @@ class WebdavPortableStateSync @Inject constructor(
         val root = "${config.syncPath}/state-v1"
         client.ensureDirectory(serverUrl, config.username, password, root)
         client.ensureDirectory(serverUrl, config.username, password, "$root/assets")
-        val captured = snapshotManager.capture(includeBookFiles = false).forWebdav(config)
+        val captured = snapshotManager.capture(
+            includeBookFiles = false,
+            includePreferences = config.syncProfileAndSettings
+        ).forWebdav(config)
         // A legacy placeholder and a newly imported body may represent the same verified wire ID.
         // Keep every reference for merging, but use the physical book's descriptor only once.
         val placeholderIds = captured.snapshot.books.filter { book -> book.isCloudOnly &&
             wireBookIds.any { (local, wire) -> local != book.id && wire == book.id }
         }.mapTo(mutableSetOf()) { it.id }
-        val localBundle = captured.copy(snapshot = captured.snapshot.copy(
+        val physicalSnapshot = captured.snapshot.copy(
             books = captured.snapshot.books.filter { it.id !in placeholderIds }
-        ).remapWebdavBookIds(wireBookIds))
+        )
+        val localSnapshot = physicalSnapshot.remapWebdavBookIds(wireBookIds)
         val currentIds = captured.snapshot.books.mapTo(mutableSetOf()) { it.id }
         val localBookIds = wireBookIds.filterKeys { it in currentIds }
             .entries.associate { (local, wire) -> wire to local }
@@ -56,29 +66,73 @@ class WebdavPortableStateSync @Inject constructor(
             val remoteVersioned = downloadStateOrNull(serverUrl, root, config.username, password)
             val remote = remoteVersioned?.let {
                 PortableSnapshot.fromJson(it.data.toString(Charsets.UTF_8))
-            } ?: emptySnapshot(localBundle.snapshot.sourceDeviceId)
-            val merged = PortableSnapshotMerger.merge(localBundle.snapshot, remote)
-            val remotePayload = selectForRemote(localBundle.snapshot, remote, merged, config)
+            } ?: emptySnapshot(localSnapshot.sourceDeviceId)
+            val remoteForMerge = if (config.syncProfileAndSettings) {
+                remote.repairReaderThemeAssetReferences(captured)
+            } else remote
+            val local = if (config.syncProfileAndSettings) {
+                localSnapshot.repairReaderThemeAssetReferences(captured, remoteForMerge)
+            } else localSnapshot
+            val merged = PortableSnapshotMerger.merge(local, remoteForMerge)
+            val candidate = selectForRemote(local, remoteForMerge, merged, config)
             val shadowedIds = currentIds.filterTo(mutableSetOf()) { wireBookIds[it]?.let { wire -> wire != it } == true }
             // A progress record is not a downloadable book. Wait for the user's local import.
             if (config.syncReadingProgressOnly && !config.syncBookFiles) {
-                shadowedIds += remotePayload.books.map { it.id }.toSet() -
-                    localBundle.snapshot.books.map { it.id }.toSet()
+                shadowedIds += candidate.books.map { it.id }.toSet() - local.books.map { it.id }.toSet()
             }
-            val localPayload = selectForLocal(localBundle.snapshot, remotePayload, config)
-                .withoutWebdavBookIds(shadowedIds + deletedBookIds)
             val workDir = File(context.cacheDir, "webdav_state_${UUID.randomUUID()}").apply { mkdirs() }
             try {
                 val files = mutableMapOf<String, File>()
                 // Logical asset IDs include the owner. Several owners can reference one file.
                 val remoteAssetFiles = remote.assets.mapTo(mutableSetOf()) { it.webdavFileKey() }
-                for (asset in remotePayload.assets) {
-                    val localSource = localBundle.assetSources[asset.id]
+                val themeResult = if (config.syncProfileAndSettings) {
+                    candidate.readerThemeAssetsOrNull()?.let {
+                        stageReaderThemeAssets(it, captured.assetSources, remoteAssetFiles, files, config, password, root, workDir)
+                    }
+                } else PortableStateSyncResult(0, 0)
+                val themeDeferred = themeResult == null
+                if (themeResult != null) {
+                    uploadedAssets += themeResult.uploadedAssets
+                    downloadedAssets += themeResult.downloadedAssets
+                }
+                val remotePayload = if (themeDeferred) {
+                    candidate.copy(
+                        preferences = candidate.preferences.withoutReaderTheme() +
+                            remote.preferences.filter { isReaderThemePreference(it.key) },
+                        assets = candidate.assets.filterNot { isReaderThemeAssetKind(it.kind) }
+                    ).withReferencedAssets().retainingReaderThemeAssetsFrom(remote)
+                } else if (!config.syncProfileAndSettings) {
+                    candidate.retainingReaderThemeAssetsFrom(remote)
+                } else candidate
+                val physicalPayload = selectForLocal(local, remotePayload, config, themeDeferred)
+                    .withoutWebdavBookIds(shadowedIds + deletedBookIds)
+                    .remapWebdavBookIds(localBookIds)
+                val physicalBaseline = if (themeDeferred) {
+                    physicalSnapshot.copy(preferences = physicalSnapshot.preferences.withoutReaderTheme())
+                } else physicalSnapshot
+                val localByKey = physicalBaseline.preferences.associateBy { it.key }
+                val danglingThemeKeys = captured.originalPreferences
+                    .filter { isReaderThemePreference(it.key) && it.assetReferenceIds().isNotEmpty() }
+                    .mapTo(mutableSetOf()) { it.key }
+                val changedPreferences = physicalPayload.preferences.filter {
+                    it != localByKey[it.key] || it.key in danglingThemeKeys
+                }
+                val shouldApply = changedPreferences.isNotEmpty() || stateFingerprint(physicalPayload.withReferencedAssets()) !=
+                    stateFingerprint(physicalBaseline.withReferencedAssets())
+                val applyPayload = physicalPayload.copy(preferences = changedPreferences).withReferencedAssets()
+                val requiredLocally = if (shouldApply) applyPayload.referencedAssetIds() else emptySet()
+                val remoteIds = remotePayload.assets.mapTo(mutableSetOf()) { it.id }
+                for (asset in (remotePayload.assets + applyPayload.assets).distinctBy { it.id }) {
+                    if (isReaderThemeAssetKind(asset.kind)) continue
+                    val localSource = captured.assetSources[asset.id]
+                    val fileKey = asset.webdavFileKey()
+                    val needsUpload = localSource != null && asset.id in remoteIds && fileKey !in remoteAssetFiles
+                    if (!needsUpload && asset.id !in requiredLocally) continue
+                    require(asset.hasSafeFileName()) { "Invalid asset filename" }
                     if (localSource != null) {
                         val localFile = materialize(localSource, workDir)
                         files[asset.id] = localFile
-                        val fileKey = asset.webdavFileKey()
-                        if (fileKey !in remoteAssetFiles) {
+                        if (needsUpload) {
                             client.uploadStream(
                                 url = WebdavUrl.append(serverUrl, root, "assets", asset.fileName),
                                 contentLength = asset.sizeBytes,
@@ -89,7 +143,7 @@ class WebdavPortableStateSync @Inject constructor(
                             remoteAssetFiles += fileKey
                             uploadedAssets++
                         }
-                    } else if (assetReferenced(localPayload, asset.id)) {
+                    } else {
                         val target = File(workDir, asset.fileName)
                         val result = client.downloadToFile(
                             WebdavUrl.append(serverUrl, root, "assets", asset.fileName),
@@ -98,7 +152,9 @@ class WebdavPortableStateSync @Inject constructor(
                             password,
                             asset.sizeBytes
                         )
-                        require(result.sha256 == asset.sha256) { "Synced asset checksum mismatch" }
+                        require(result.sha256 == asset.sha256 && result.bytesWritten == asset.sizeBytes) {
+                            "Synced asset checksum or size mismatch"
+                        }
                         files[asset.id] = target
                         downloadedAssets++
                     }
@@ -138,22 +194,25 @@ class WebdavPortableStateSync @Inject constructor(
                         } else throw error
                     }
                 }
-                if (stateFingerprint(localPayload) != stateFingerprint(localBundle.snapshot)) {
+                if (shouldApply) {
                     snapshotManager.apply(
-                        localPayload.remapWebdavBookIds(localBookIds),
+                        applyPayload,
                         files,
                         // State snapshots intentionally omit book bodies. Apply them as a
                         // merge so a cloud book discovered from manifest.json cannot disappear
                         // just because it was not present in the state snapshot being applied.
                         replace = false,
-                        replaceAssetDirectories = false
+                        replaceAssetDirectories = false,
+                        expectedThemePreferences = captured.originalPreferences
                     )
                 }
-                cleanupUnreferencedAssets(serverUrl, root, config.username, password, remotePayload)
+                if (!themeDeferred && remotePayload.readerThemeAssetsOrNull() != null) {
+                    cleanupUnreferencedAssets(serverUrl, root, config.username, password, remote, remotePayload)
+                }
                 if (config.syncReadingDetails) {
                     com.huangder.lumibooks.reading.journal.ReadingJournalSettings.recordBackup(context)
                 }
-                return PortableStateSyncResult(uploadedAssets, downloadedAssets)
+                return PortableStateSyncResult(uploadedAssets, downloadedAssets, themeDeferred)
             } finally {
                 workDir.deleteRecursively()
             }
@@ -224,17 +283,20 @@ class WebdavPortableStateSync @Inject constructor(
             },
             assets = (remote.assets + local.assets).associateBy { it.id }.values.toList()
         )
-        return stripHighlightRuleLibraryForWebdav(
-            selected.copy(assets = selected.assets.filter { assetReferenced(selected, it.id) })
-        )
+        return stripHighlightRuleLibraryForWebdav(selected.withReferencedAssets())
     }
 
     private fun selectForLocal(
         local: PortableSnapshot,
         remotePayload: PortableSnapshot,
-        config: WebdavConfig
+        config: WebdavConfig,
+        readerThemeDeferred: Boolean
     ) = remotePayload.copy(
-        preferences = if (config.syncProfileAndSettings) remotePayload.preferences else local.preferences,
+        preferences = when {
+            !config.syncProfileAndSettings -> emptyList()
+            readerThemeDeferred -> remotePayload.preferences.withoutReaderTheme()
+            else -> remotePayload.preferences
+        },
         books = chooseBooks(local, remotePayload, remotePayload, config, forLocal = true),
         folders = if (config.syncLibraryOrganization) remotePayload.folders else local.folders,
         bookFolderLinks = if (config.syncLibraryOrganization) remotePayload.bookFolderLinks else local.bookFolderLinks,
@@ -277,26 +339,82 @@ class WebdavPortableStateSync @Inject constructor(
         return target
     }
 
-    private fun assetReferenced(snapshot: PortableSnapshot, assetId: String): Boolean =
-        snapshot.preferences.any { it.value.contains("asset://$assetId") } ||
-            snapshot.books.any { it.coverAssetId == assetId } ||
-            snapshot.folders.any { it.coverPath == "asset://$assetId" }
+    private fun PortableSnapshot.withReferencedAssets(): PortableSnapshot {
+        val ids = referencedAssetIds()
+        return copy(assets = assets.filter { it.id in ids })
+    }
+
+    private fun PortableSnapshot.retainingReaderThemeAssetsFrom(previous: PortableSnapshot): PortableSnapshot =
+        copy(assets = (assets + previous.assets.filter { isReaderThemeAssetKind(it.kind) }).distinctBy { it.id })
+
+    private suspend fun stageReaderThemeAssets(
+        assets: List<PortableAsset>,
+        sources: Map<String, PortableAssetSource>,
+        remoteAssetFiles: MutableSet<Triple<String, String, Long>>,
+        files: MutableMap<String, File>,
+        config: WebdavConfig,
+        password: String,
+        root: String,
+        workDir: File
+    ): PortableStateSyncResult? {
+        val uploads = linkedMapOf<PortableAsset, File>()
+        var downloads = 0
+        for (asset in assets) {
+            val url = WebdavUrl.append(config.serverUrl, root, "assets", asset.fileName)
+            val local = sources[asset.id]
+            if (local != null) {
+                val file = materialize(local, workDir)
+                files[asset.id] = file
+                if (asset.webdavFileKey() !in remoteAssetFiles || client.isFileMissing(url, config.username, password)) {
+                    uploads[asset] = file
+                }
+            } else {
+                val file = File(workDir, asset.fileName)
+                val result = try {
+                    client.downloadToFile(url, file, config.username, password, asset.sizeBytes)
+                } catch (error: WebdavException) {
+                    if (error.statusCode == 404 || error.statusCode == 410) return null
+                    throw error
+                }
+                if (result.sha256 != asset.sha256 || result.bytesWritten != asset.sizeBytes) return null
+                files[asset.id] = file
+                downloads++
+            }
+        }
+        var uploaded = 0
+        for ((asset, file) in uploads.entries.distinctBy { it.key.webdavFileKey() }) {
+            client.uploadStream(
+                WebdavUrl.append(config.serverUrl, root, "assets", asset.fileName),
+                asset.sizeBytes, { file.inputStream().buffered() }, config.username, password
+            )
+            remoteAssetFiles += asset.webdavFileKey()
+            uploaded++
+        }
+        return PortableStateSyncResult(uploaded, downloads)
+    }
 
     private suspend fun cleanupUnreferencedAssets(
         serverUrl: String,
         root: String,
         username: String,
         password: String,
+        previous: PortableSnapshot,
         committed: PortableSnapshot
     ) {
         val referencedNames = committed.assets.mapTo(mutableSetOf()) { it.fileName }
+        val removed = previous.assets.map { it.fileName }.toSet() - referencedNames
+        if (removed.isEmpty()) return
         runCatching {
+            // Leave unlisted uploads alone. Another device may be publishing its state.
+            val current = downloadStateOrNull(serverUrl, root, username, password) ?: return
+            if (stateFingerprint(PortableSnapshot.fromJson(current.data.toString(Charsets.UTF_8))) !=
+                stateFingerprint(committed)) return
             client.listDirectory(WebdavUrl.append(serverUrl, root, "assets"), username, password)
                 .asSequence()
                 .filterNot { it.isCollection }
                 .map { it.href.substringBefore('?').trimEnd('/').substringAfterLast('/') }
                 .filter { it.matches(Regex("[a-f0-9]{64}\\.[a-z0-9]{1,10}")) }
-                .filterNot { it in referencedNames }
+                .filter { it in removed }
                 .forEach { name ->
                     client.delete(
                         WebdavUrl.appendEncoded(WebdavUrl.append(serverUrl, root, "assets"), name),

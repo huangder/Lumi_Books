@@ -50,6 +50,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -110,6 +111,8 @@ import com.huangder.lumibooks.ui.icons.AppIcons
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.KaiTi
+import com.huangder.lumibooks.ui.theme.fangSongFamily
+import com.huangder.lumibooks.ui.reader.engine.readerFileFont
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
@@ -164,7 +167,7 @@ fun HighlightRulesSheet(
     onMoveRule: (String, Int) -> Unit,
     onImportRules: suspend (ByteArray, Boolean) -> HighlightRuleImportResult,
     onExportRules: (Boolean) -> ByteArray,
-    onImportFont: (Uri, String) -> Unit = { _, _ -> },
+    onImportFont: suspend (Uri, String) -> CustomFontPreset? = { _, _ -> null },
     onCancelScan: () -> Unit,
     onRebuild: () -> Unit,
     onDismiss: () -> Unit
@@ -744,7 +747,7 @@ private fun HighlightRuleEditorSheet(
     forceFallback: Boolean = false,
     backdrop: Backdrop? = null,
     customFonts: List<CustomFontPreset> = emptyList(),
-    onImportFont: (Uri, String) -> Unit = { _, _ -> },
+    onImportFont: suspend (Uri, String) -> CustomFontPreset? = { _, _ -> null },
     onDismiss: () -> Unit,
     onSave: (HighlightRule) -> Unit
 ) {
@@ -801,11 +804,13 @@ private fun HighlightRuleEditorSheet(
     val canSave = !requiredError && !colorInvalid && !highlightColorInvalid && regexError == null
     val previewFontFamily = when {
         fontType.isBlank() || fontType == "system" -> null
-        fontType == "serif" -> FontFamily.Serif
+        fontType == "serif" -> rememberReaderSerifFontFamily(draft.fontWeight)
         fontType == "sans_serif" -> FontFamily.SansSerif
         fontType == "monospace" -> FontFamily.Monospace
+        fontType == "kaiti" -> KaiTi
+        fontType == "fangsong" -> fangSongFamily()
         else -> customFonts.firstOrNull { it.fontTypeKey == fontType }
-            ?.let { rememberRuleFontFamily(it.path) }
+            ?.let { rememberRuleFontFamily(it.path, draft.fontWeight) }
     }
     val preview = remember(draft, sample, previewFontFamily) {
         previewText(draft.copy(enabled = true), sample, previewFontFamily)
@@ -1410,15 +1415,19 @@ private fun RuleFontSelector(
     customFonts: List<CustomFontPreset>,
     forceSolidMenu: Boolean,
     onFontChange: (String) -> Unit,
-    onImportFont: (Uri, String) -> Unit
+    onImportFont: suspend (Uri, String) -> CustomFontPreset?
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var expanded by remember { mutableStateOf(false) }
     var anchorBounds by remember { mutableStateOf(Rect.Zero) }
     val menuHost = LocalLiquidGlassMenuHost.current
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
-        onImportFont(uri, importedFontDisplayName(context, uri))
+        scope.launch {
+            val displayName = withContext(Dispatchers.IO) { importedFontDisplayName(context, uri) }
+            onImportFont(uri, displayName)?.let { onFontChange(it.fontTypeKey) }
+        }
     }
     val bodyLabel = stringResource(R.string.highlight_rule_font_body)
     val importLabel = stringResource(R.string.highlight_rule_font_import)
@@ -1560,14 +1569,14 @@ private fun RuleFontSelector(
 }
 
 @Composable
-private fun rememberRuleFontFamily(path: String): FontFamily {
-    return remember(path) {
-        runCatching {
-            val file = java.io.File(path)
-            if (file.isFile) FontFamily(android.graphics.Typeface.createFromFile(file))
-            else FontFamily.Default
-        }.getOrDefault(FontFamily.Default)
+private fun rememberRuleFontFamily(path: String, weight: Int = 400): FontFamily {
+    val family by produceState<FontFamily>(FontFamily.Default, path, weight) {
+        value = withContext(Dispatchers.IO) {
+            readerFileFont(java.io.File(path)).resolve(weight)?.let { FontFamily(it.typeface) }
+                ?: FontFamily.Default
+        }
     }
+    return family
 }
 
 private fun importedFontDisplayName(context: android.content.Context, uri: Uri): String {

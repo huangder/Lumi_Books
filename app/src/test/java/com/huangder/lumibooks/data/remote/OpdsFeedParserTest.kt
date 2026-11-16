@@ -12,6 +12,26 @@ class OpdsFeedParserTest {
     private val base = "https://books.example.com/opds/root.xml".toHttpUrl()
 
     @Test
+    fun `Word acquisitions are supported by MIME type or file name`() {
+        val xml = """
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <title>Word</title>
+              <entry><id>word</id><title>Word sample</title>
+                <link rel="http://opds-spec.org/acquisition/open-access" href="get/1" type="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+                <link rel="http://opds-spec.org/acquisition/open-access" href="get/2.DOC?token=example" type="application/octet-stream" />
+              </entry>
+            </feed>
+        """.trimIndent()
+        val book = OpdsFeedParser.parse(xml.toByteArray(), base, "src").books.single()
+        assertEquals(listOf("docx", "doc"), book.supportedFormats.map { it.extension })
+        assertEquals("Word sample.docx", RemoteBookFiles.resolveDownloadFileName(null, null,
+            book.supportedFormats.first().url, book.title, "docx"))
+        assertEquals("doc", RemoteBookFiles.extensionForMimeType("Application/MSWord; charset=binary"))
+        assertTrue(RemoteFileSniffer.matches(byteArrayOf(0x50, 0x4B, 0x03, 0x04), "docx"))
+        assertFalse(RemoteFileSniffer.matches("<html>Login</html>".toByteArray(), "doc"))
+    }
+
+    @Test
     fun `navigation entries become folders with resolved links`() {
         val page = OpdsFeedParser.parse(NAVIGATION_FEED.toByteArray(), base, "src")
         assertEquals("Example Library", page.title)

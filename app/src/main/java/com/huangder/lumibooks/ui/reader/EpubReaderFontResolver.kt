@@ -23,6 +23,8 @@ internal data class PreparedEpubReaderFont(
     val resolvedPath: String?
 )
 
+internal data class EpubRuleFont(val url: String, val weightDescriptor: String = "400")
+
 /** Static faces must stay regular so Chromium can synthesize a requested bold weight. */
 internal fun epubReaderFontWeightDescriptor(path: String?): String {
     val range = path?.let { readerFileFont(File(it)).weightRange } ?: return "400"
@@ -31,32 +33,36 @@ internal fun epubReaderFontWeightDescriptor(path: String?): String {
 
 /** Rule fonts must also be available when the body keeps the publisher's font. */
 @Composable
-internal fun rememberEpubRuleFontUrls(
+internal fun rememberEpubRuleFonts(
     session: BookRenderSession,
     notes: List<Note>,
     customFonts: List<CustomFontPreset>
-): Map<String, String> {
+): Map<String, EpubRuleFont> {
     val context = LocalContext.current
     val fontTypes = remember(notes) {
         notes.asSequence().filterNot { it.isStale }
             .mapNotNull { RuleStyleJson.decode(it.styleSnapshotJson)?.fontType }
             .filter { it.isNotBlank() }.toSet()
     }
-    val urls by produceState(emptyMap<String, String>(), session, fontTypes, customFonts) {
-        value = prepareEpubRuleFontUrls(context, session, fontTypes, customFonts)
+    val fonts by produceState(emptyMap<String, EpubRuleFont>(), session, fontTypes, customFonts) {
+        value = prepareEpubRuleFonts(context, session, fontTypes, customFonts)
     }
-    return urls
+    return fonts
 }
 
-internal suspend fun prepareEpubRuleFontUrls(
+internal suspend fun prepareEpubRuleFonts(
     context: Context,
     session: BookRenderSession,
     fontTypes: Set<String>,
     customFonts: List<CustomFontPreset>
-): Map<String, String> = fontTypes.mapNotNull { type ->
-    val path = prepareEpubReaderFontPath(context, type, customFonts.firstOrNull { it.fontTypeKey == type }?.path)
-    session.readerFontUrl(path)?.let { type to it }
-}.toMap()
+): Map<String, EpubRuleFont> = withContext(Dispatchers.IO) {
+    fontTypes.mapNotNull { type ->
+        val path = prepareEpubReaderFontPath(context, type, customFonts.firstOrNull { it.fontTypeKey == type }?.path)
+        session.readerFontUrl(path)?.let { url ->
+            type to EpubRuleFont(url, epubReaderFontWeightDescriptor(path))
+        }
+    }.toMap()
+}
 
 internal suspend fun prepareEpubReaderFontPath(
     context: Context,

@@ -165,21 +165,38 @@ async function main() {
     if (target === 'html' && !fixed && !fallback) {
       await evaluate(`(async()=>{LumiReader.configure({flow:'scrolled',publisherPaintOnly:true,
         scrollViewportInsets:{top:55,bottom:75}});await new Promise(r=>setTimeout(r,150));
-        scrollTo(0,3000);await new Promise(r=>setTimeout(r,100));})()`);
+        scrollTo(0,3000);await new Promise(r=>setTimeout(r,100));
+        const rules = [...document.querySelectorAll('p > a')].filter(link => {
+          const rect = link.getBoundingClientRect();
+          return rect.bottom > 0 && rect.top < innerHeight;
+        }).map(link => ({exact:link.textContent, type:'underline', color:'#ff0000', generatedByRule:true,
+          ruleStyle:{highlightMode:2, underlineMode:3}}));
+        LumiReader.setHighlights(rules);
+        const lines = [...document.querySelectorAll('#lumi-underline-layer path')]
+          .map(path => path.getBoundingClientRect());
+        for (const [top, bottom] of [[0,55], [55,innerHeight-75], [innerHeight-75,innerHeight]]) {
+          if (!lines.some(line => line.top > top && line.bottom < bottom)) {
+            throw Error('Fixture must place rule underlines in the body and both margin strips');
+          }
+        }
+      })()`);
       const shot = await call('Page.captureScreenshot',{format:'png'},sessionId);
       writeFileSync(join(directory,'mask.png'),Buffer.from(shot.data,'base64'));
       const {spawnSync} = require('node:child_process');
       const pixels = spawnSync('python',['-c',
-        'from PIL import Image; import sys; im=Image.open(sys.argv[1]).convert("RGB"); w,h=im.size; '+
-        'assert all(im.getpixel((x,y))==(153,204,238) for x in range(10,w-25,20) for y in list(range(1,54,5))+list(range(h-74,h-1,5))), "foreground leaked or publisher paper changed at margins"',
+        'from PIL import Image; import sys; im=Image.open(sys.argv[1]).convert("RGB"); w,h=im.size; px=im.load(); '+
+        'assert any(r>200 and g<90 and b<90 for r,g,b in (px[x,y] for y in range(55,h-75) for x in range(w-25))), "rule underlines missing from body"; '+
+        'assert all(px[x,y]==(153,204,238) for x in range(10,w-25) for y in list(range(1,54))+list(range(h-74,h-1))), "foreground leaked or publisher paper changed at margins"',
         join(directory,'mask.png')],{windowsHide:true,encoding:'utf8'});
       assert.equal(pixels.status,0,pixels.stderr);
-      console.log('PASS fast-scroll screenshot pixels: publisher paper fills both margins');
+      console.log('PASS fast-scroll screenshot pixels: rule underlines stay in the body and publisher paper fills both margins');
       const header = await evaluate(`(async()=>{
+        LumiReader.setHighlights([]);
         const image=document.createElement('img');image.id='authored-header';
         image.setAttribute('data-lumi-bleed','horizontal-top');
         image.src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='180'%3E%3Crect width='600' height='180' fill='%23cc4488'/%3E%3C/svg%3E";
         document.body.insertBefore(image,document.body.firstChild);await image.decode();
+        const originalZIndex=image.style.zIndex;
         LumiReader.configure({flow:'scrolled',publisherPaintOnly:true,scrollViewportInsets:{top:55,bottom:75}});
         scrollTo(0,0);await new Promise(r=>setTimeout(r,200));
         const rect=image.getBoundingClientRect();const hit=document.elementFromPoint(innerWidth/2,20);
@@ -192,7 +209,7 @@ async function main() {
         if(!margin.closest('#lumi-scroll-viewport-masks'))throw Error('body text leaked after header scrolled away');
         LumiReader.configure({flow:'paginated',publisherPaintOnly:true,insets:{top:55,bottom:75}});
         await new Promise(r=>setTimeout(r,150));
-        if(image.style.zIndex==='2147482001')throw Error('header exemption leaked into paginated mode');
+        if(image.style.zIndex!==originalZIndex)throw Error('header exemption leaked into paginated mode');
         return true;})()`);
       assert.ok(header);
       console.log('PASS authored full-bleed header remains visible above margin paper; body stays clipped');

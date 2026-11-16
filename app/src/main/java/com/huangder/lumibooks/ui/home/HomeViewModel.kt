@@ -43,6 +43,7 @@ import com.huangder.lumibooks.util.toSnapshot
 import com.huangder.lumibooks.util.parser.BookParserFactory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -123,6 +124,8 @@ data class HomeUiState(
     val searchQuery: String = "",
     val isSearchActive: Boolean = false,
     val sortBy: SortBy = SortBy.DATE_ADDED,
+    /** Spine shelf rows chosen by dragging (book id → row break); used with the custom sort. */
+    val spineRowBreaks: Map<String, Int> = emptyMap(),
     val isLoading: Boolean = true,
     val bookshelfLayoutMode: Int = 2,
     val bookshelfLayoutModeLoaded: Boolean = false,
@@ -178,6 +181,62 @@ class HomeViewModel @Inject constructor(
     private val importPipeline: BookImportPipeline,
     private val openingSnapshotStore: com.huangder.lumibooks.ui.reader.ReaderOpeningSnapshotStore
 ) : ViewModel() {
+    /** Book ids in the user's dragged order; read on every sort. */
+    @Volatile
+    private var customOrder: List<String> = emptyList()
+
+    /** Live WebDAV sync progress for the bookshelf banner and status sheet. */
+    val webdavSyncStatus: StateFlow<com.huangder.lumibooks.data.sync.WebdavSyncStatus>
+        get() = webdavSyncManager.status
+    val webdavConfig: kotlinx.coroutines.flow.Flow<com.huangder.lumibooks.domain.model.WebdavConfig>
+        get() = dataStoreManager.webdavConfig
+
+    /** finishedAt of the failed sync whose banner the user closed. */
+    private val _dismissedSyncFailureAt = MutableStateFlow(0L)
+    val dismissedSyncFailureAt: StateFlow<Long> = _dismissedSyncFailureAt.asStateFlow()
+
+    fun dismissSyncFailure(finishedAt: Long) {
+        _dismissedSyncFailureAt.value = finishedAt
+    }
+
+    private val _webdavOverview = MutableStateFlow<WebdavOverviewState>(WebdavOverviewState.Idle)
+    val webdavOverview: StateFlow<WebdavOverviewState> = _webdavOverview.asStateFlow()
+    private val _isDownloadingAllCloudBooks = MutableStateFlow(false)
+    val isDownloadingAllCloudBooks: StateFlow<Boolean> = _isDownloadingAllCloudBooks.asStateFlow()
+
+    fun loadWebdavOverview() {
+        _webdavOverview.value = WebdavOverviewState.Loading
+        viewModelScope.launch {
+            _webdavOverview.value = webdavSyncManager.libraryOverview().fold(
+                onSuccess = { WebdavOverviewState.Loaded(it) },
+                onFailure = { WebdavOverviewState.Failed(it.message.orEmpty()) }
+            )
+        }
+    }
+
+    fun resetWebdavOverview() {
+        if (!_isDownloadingAllCloudBooks.value) _webdavOverview.value = WebdavOverviewState.Idle
+    }
+
+    fun downloadAllCloudBooks() {
+        val overview = (_webdavOverview.value as? WebdavOverviewState.Loaded)?.overview ?: return
+        if (_isDownloadingAllCloudBooks.value || overview.remoteOnlyBookIds.isEmpty()) return
+        _isDownloadingAllCloudBooks.value = true
+        viewModelScope.launch {
+            var failure: String? = null
+            try {
+                for (bookId in overview.remoteOnlyBookIds) {
+                    val result = webdavSyncManager.downloadBook(bookId)
+                    if (!result.success && failure == null) failure = result.message
+                }
+            } finally {
+                _isDownloadingAllCloudBooks.value = false
+            }
+            failure?.let { _uiState.value = _uiState.value.copy(error = it) }
+            loadWebdavOverview()
+        }
+    }
+
 
     /**
      * Paper color plus the key of the page this book was closed on, from one preferences read.
@@ -555,13 +614,25 @@ class HomeViewModel @Inject constructor(
 
     private fun loadBookshelfSortMode() {
         viewModelScope.launch {
-            dataStoreManager.bookshelfSortMode.collectLatest { stored ->
+            combine(
+                dataStoreManager.bookshelfSortMode,
+                dataStoreManager.bookshelfCustomOrder
+            ) { stored, order -> stored to order }.collectLatest { (stored, order) ->
                 val sort = runCatching { SortBy.valueOf(stored) }.getOrDefault(SortBy.DATE_ADDED)
+                if (sort == _uiState.value.sortBy && order == customOrder) return@collectLatest
+                customOrder = order
                 _uiState.value = _uiState.value.copy(
                     sortBy = sort,
                     books = sortBooks(_uiState.value.books, sort),
                     hiddenBooks = sortBooks(_uiState.value.hiddenBooks, sort)
                 )
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.spineRowBreaks.collectLatest { breaks ->
+                if (breaks != _uiState.value.spineRowBreaks) {
+                    _uiState.value = _uiState.value.copy(spineRowBreaks = breaks)
+                }
             }
         }
     }
@@ -577,11 +648,11 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    /** Progress and the result are shown by the bookshelf sync banner, not a transient message. */
     fun syncWebdavNow() {
-        _uiState.value = _uiState.value.copy(importMessage = application.getString(R.string.webdav_syncing))
         viewModelScope.launch {
-            val result = webdavSyncManager.fullSync()
-            _uiState.value = _uiState.value.copy(importMessage = result.message)
+            webdavSyncManager.fullSync()
+            if (_webdavOverview.value !is WebdavOverviewState.Idle) loadWebdavOverview()
         }
     }
 
@@ -638,7 +709,57 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun sortBooks(books: List<Book>, sortBy: SortBy): List<Book> =
-        sortBooksForLibrary(books, sortBy)
+        sortBooksForLibrary(books, sortBy, customOrder)
+
+    /**
+     * Commits a drag on the shelf. [orderedIds] is the new order of the books that were shown
+     * (the whole shelf or one folder); it is written into the global custom order and the shelf
+     * switches to the custom sort. From another sort, the order on screen becomes the start.
+     */
+    fun reorderBooks(orderedIds: List<String>) = commitShelfOrder(orderedIds, spineBreaks = null)
+
+    /**
+     * Commits a drag on the spine shelf: [orderedIds] as in [reorderBooks], plus the row breaks
+     * of those books ([breaks]; books left out flow on from their neighbour).
+     */
+    fun arrangeSpineShelf(orderedIds: List<String>, breaks: Map<String, Int>) =
+        commitShelfOrder(orderedIds, spineBreaks = breaks)
+
+    private fun commitShelfOrder(orderedIds: List<String>, spineBreaks: Map<String, Int>?) {
+        if (orderedIds.isEmpty()) return
+        val state = _uiState.value
+        val base = if (state.sortBy == SortBy.CUSTOM) {
+            customOrder
+        } else {
+            (state.books + state.hiddenBooks + state.archivedBooks).map { it.id }
+        }
+        customOrder = mergeCustomOrder(base, orderedIds)
+        val sortedBooks = sortBooks(state.books, SortBy.CUSTOM)
+        // Rows only mean something in the order they were chosen in: from another sort, start
+        // from no rows at all.
+        val previousBreaks = if (state.sortBy == SortBy.CUSTOM) state.spineRowBreaks else emptyMap()
+        val rowBreaks = if (spineBreaks == null) {
+            previousBreaks
+        } else {
+            val shown = orderedIds.toHashSet()
+            previousBreaks.filterKeys { it !in shown } + spineBreaks
+        }
+        _uiState.value = state.copy(
+            spineRowBreaks = rowBreaks,
+            sortBy = SortBy.CUSTOM,
+            books = sortedBooks,
+            hiddenBooks = sortBooks(state.hiddenBooks, SortBy.CUSTOM)
+        )
+        scheduleFolderPreviewInitialization(
+            books = sortedBooks,
+            folders = state.folders,
+            links = state.bookFolderLinks
+        )
+        val order = customOrder
+        viewModelScope.launch {
+            dataStoreManager.saveBookshelfCustomOrderAndSort(order, SortBy.CUSTOM.name, rowBreaks)
+        }
+    }
 
     private class LibrarySplit(
         val books: List<Book>,
@@ -669,7 +790,7 @@ class HomeViewModel @Inject constructor(
         importDocumentsAsync(
             context = context,
             documents = uris.mapNotNull { uri ->
-                val name = FileUtils.getFileNameFromUri(context, uri) ?: return@mapNotNull null
+                val name = FileUtils.getBookImportName(context, uri) ?: return@mapNotNull null
                 BookDocument(
                     uri = uri,
                     name = name,
@@ -1321,7 +1442,8 @@ class HomeViewModel @Inject constructor(
             targetFolderId = targetFolderId,
             groupByAuthorizedSource = groupByAuthorizedSource
         )
-        return ImportResult(imported = result.imported, skipped = result.skipped, failed = result.failed)
+        return ImportResult(imported = result.imported, skipped = result.skipped, failed = result.failed,
+            failureMessage = result.outcomes.firstNotNullOfOrNull { it.failureMessage })
     }
 
     private data class BookDocument(
@@ -1397,11 +1519,12 @@ class HomeViewModel @Inject constructor(
         val skipped: Int = 0,
         val failed: Int = 0,
         val inaccessibleDirectories: Int = 0,
-        val noAuthorizedDirectories: Boolean = false
+        val noAuthorizedDirectories: Boolean = false,
+        val failureMessage: String? = null
     ) {
         fun toMessage(context: Context): String = when {
             noAuthorizedDirectories -> context.getString(R.string.import_no_authorized_directory)
-            failed > 0 -> context.getString(R.string.import_summary_with_failures, imported, failed)
+            failed > 0 -> listOfNotNull(context.getString(R.string.import_summary_with_failures, imported, failed), failureMessage).joinToString("\n")
             imported > 0 -> context.getString(R.string.import_summary, imported)
             inaccessibleDirectories > 0 -> context.getString(R.string.import_directory_permission_lost)
             else -> context.getString(R.string.import_no_new_books)
@@ -2184,6 +2307,35 @@ class HomeViewModel @Inject constructor(
         return failures
     }
 
+    internal suspend fun previewBookMetadataRepairs(bookIds: Set<String>): List<BookMetadataSuggestion> =
+        withContext(Dispatchers.IO) {
+            bookIds.mapNotNull { id ->
+                bookRepository.getBookById(id)?.let { previewBookMetadataRepair(application, it) }
+            }
+        }
+
+    internal suspend fun applyBookMetadataRepairs(suggestions: List<BookMetadataSuggestion>): BookMetadataRepairResult =
+        withContext(Dispatchers.IO) {
+            var updated = 0
+            var skipped = 0
+            var failed = 0
+            suggestions.forEach { suggestion ->
+                try {
+                    if (bookRepository.compareAndSetBookMetadata(suggestion.book, suggestion.title, suggestion.author)) {
+                        updated++
+                    } else {
+                        skipped++
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    android.util.Log.w("BookMetadataRepair", "Unable to apply suggestion", error)
+                    failed++
+                }
+            }
+            BookMetadataRepairResult(updated, skipped, failed)
+        }
+
     fun updateBook(book: Book) {
         viewModelScope.launch {
             try {
@@ -2271,4 +2423,11 @@ class HomeViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(error = null)
     }
 
+}
+
+sealed interface WebdavOverviewState {
+    data object Idle : WebdavOverviewState
+    data object Loading : WebdavOverviewState
+    data class Loaded(val overview: com.huangder.lumibooks.data.sync.WebdavLibraryOverview) : WebdavOverviewState
+    data class Failed(val message: String) : WebdavOverviewState
 }

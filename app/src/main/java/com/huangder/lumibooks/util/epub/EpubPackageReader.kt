@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.util.epub
 
+import com.huangder.lumibooks.util.parser.BookNameMetadata
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.parser.Parser
@@ -13,7 +14,32 @@ import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
 
 object EpubPackageReader {
-    fun read(filePath: String): EpubPackage = ZipFile(filePath).use { zip ->
+    private const val MAX_METADATA_XML_BYTES = 2 * 1024 * 1024
+
+    internal fun readMetadata(filePath: String): BookNameMetadata = ZipFile(filePath).use { zip ->
+        fun readXml(path: String): Document {
+            val entry = zip.getEntry(path)
+                ?: zip.entries().asSequence().firstOrNull { it.name.equals(path, ignoreCase = true) }
+                ?: error("Missing EPUB resource: $path")
+            require(entry.size in 1..MAX_METADATA_XML_BYTES.toLong()) { "EPUB metadata XML is too large" }
+            val bytes = zip.getInputStream(entry).use { input ->
+                val output = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                var count = input.read(buffer)
+                while (count != -1) {
+                    require(output.size() + count <= MAX_METADATA_XML_BYTES) { "EPUB metadata XML is too large" }
+                    output.write(buffer, 0, count)
+                    count = input.read(buffer)
+                }
+                output.toByteArray()
+            }
+            return ByteArrayInputStream(bytes).use(::parseXml)
+        }
+        val opfPath = packagePath(readXml("META-INF/container.xml"))
+        packageMetadata(readXml(opfPath).elements("metadata").firstOrNull())
+    }
+
+    fun read(filePath: String, fallbackTitle: String = defaultTitle(filePath)): EpubPackage = ZipFile(filePath).use { zip ->
         val entries = zip.entries().asSequence().associateBy { it.name.lowercase() }
         fun find(path: String): ZipEntry? = zip.getEntry(path) ?: entries[path.lowercase()]
         fun xml(path: String): Document {
@@ -21,16 +47,11 @@ object EpubPackageReader {
             return zip.getInputStream(entry).use(::parseXml)
         }
 
-        val container = xml("META-INF/container.xml")
-        val opfPath = EpubPathResolver.normalize(
-            container.elements("rootfile").firstOrNull()?.attribute("full-path").orEmpty()
-        ) ?: error("EPUB container does not contain a valid rootfile")
+        val opfPath = packagePath(xml("META-INF/container.xml"))
         val basePath = opfPath.substringBeforeLast('/', "")
         val opf = xml(opfPath)
         val metadata = opf.elements("metadata").firstOrNull()
-        val title = metadata?.descendants("title")?.firstOrNull()?.textContent?.trim().orEmpty()
-            .ifBlank { filePath.substringAfterLast('/').substringAfterLast('\\').substringBeforeLast('.') }
-        val author = metadata?.descendants("creator")?.firstOrNull()?.textContent?.trim().orEmpty()
+        val (title, author) = packageMetadata(metadata)
         val metaProperties = metadata?.descendants("meta").orEmpty().mapNotNull { node ->
             node.attribute("property").takeIf(String::isNotBlank)?.let { it to node.textContent.trim() }
         }.toMap()
@@ -88,8 +109,8 @@ object EpubPackageReader {
             filePath = filePath,
             opfPath = opfPath,
             basePath = basePath,
-            title = title,
-            author = author,
+            title = title ?: fallbackTitle,
+            author = author.orEmpty(),
             manifest = manifest,
             spine = spine,
             navigation = parseNavigation(zip, entries, manifest, spineElement?.attribute("toc")),
@@ -99,6 +120,17 @@ object EpubPackageReader {
             renditionSpread = metaProperties["rendition:spread"],
             renditionFlow = metaProperties["rendition:flow"]
         )
+    }
+
+    private fun packagePath(container: Document): String = EpubPathResolver.normalize(
+        container.elements("rootfile").firstOrNull()?.attribute("full-path").orEmpty()
+    ) ?: error("EPUB container does not contain a valid rootfile")
+
+    private fun packageMetadata(metadata: Node?): BookNameMetadata {
+        fun field(name: String) = metadata?.descendants(name)?.firstNotNullOfOrNull {
+            it.textContent.trim().takeIf(String::isNotEmpty)
+        }
+        return BookNameMetadata(title = field("title"), author = field("creator"))
     }
 
     private fun parseNavigation(
@@ -205,6 +237,9 @@ object EpubPackageReader {
             .firstOrNull()
             ?: resolvedPath
     }
+
+    private fun defaultTitle(filePath: String): String =
+        filePath.substringAfterLast('/').substringAfterLast('\\').substringBeforeLast('.')
 
     private fun parseXml(input: InputStream): Document {
         val factory = DocumentBuilderFactory.newInstance().apply {

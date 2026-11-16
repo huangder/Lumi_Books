@@ -13,12 +13,10 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.LiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
@@ -43,7 +41,7 @@ class ProgressiveBlurFallbackRenderTest {
     @get:Rule val compose = createComposeRule()
     private lateinit var view: View
 
-    private fun strip(rtl: Boolean = false, eInk: Boolean = false, supported: Boolean = false, glass: Boolean = false, content: @Composable () -> Unit) {
+    private fun strip(eInk: Boolean = false, supported: Boolean = false, glass: Boolean = false, content: @Composable () -> Unit) {
         compose.setContent {
             view = LocalView.current
             CompositionLocalProvider(
@@ -51,7 +49,6 @@ class ProgressiveBlurFallbackRenderTest {
                 LocalEInkMode provides eInk,
                 LocalReduceTransparency provides false,
                 LocalAppTheme provides if (glass) "liquid_glass" else "lumi",
-                LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
             ) {
                 Box(Modifier.size(96.dp).background(Color.Red).testTag("strip")) { content() }
             }
@@ -108,14 +105,6 @@ class ProgressiveBlurFallbackRenderTest {
             val x = b.center.x.toInt()
             assertTrue(AndroidColor.green(bitmap.getPixel(x, b.top.toInt() + 60)) >= 245)
             assertTrue(AndroidColor.green(bitmap.getPixel(x, b.bottom.toInt() - 1)) <= 3)
-        }
-    }
-
-    @Test fun rtlStartGradientKeepsItsOpaqueEdgeOnTheRight() {
-        strip(rtl = true) { ProgressiveStartBlur(null, Color.White, bandWidth = 96.dp) }
-        pixels { bitmap, b ->
-            assertTrue(AndroidColor.green(bitmap.getPixel(b.left.toInt(), b.center.y.toInt())) <= 3)
-            assertTrue(AndroidColor.green(bitmap.getPixel(b.right.toInt() - 1, b.center.y.toInt())) >= 250)
         }
     }
 

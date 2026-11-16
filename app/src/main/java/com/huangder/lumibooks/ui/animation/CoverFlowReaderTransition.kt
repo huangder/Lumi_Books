@@ -8,7 +8,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
@@ -40,8 +40,11 @@ internal object CoverFlowReaderMotion {
         )
     }
 
-    fun windowCornerRadius(sourceRadiusDp: Float, progress: Float): Float =
-        sourceRadiusDp * (1f - smooth(progress))
+    /** Grows into the display corner shape; see [BookReaderMotion.SCREEN_CORNER_FIT]. */
+    fun windowCornerRadius(sourceRadiusDp: Float, screenRadiusDp: Float, progress: Float): Float {
+        val target = screenRadiusDp.coerceAtLeast(0f) * BookReaderMotion.SCREEN_CORNER_FIT
+        return sourceRadiusDp + (target - sourceRadiusDp) * smooth(progress)
+    }
 }
 
 @Composable
@@ -56,8 +59,10 @@ internal fun CoverFlowReaderOverlay(transition: BookReaderTransitionState, modif
         val target = androidx.compose.ui.geometry.Rect(0f, 0f, constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat())
         val p = transition.coverFlowProgressSnapshot.value
         val window = readerWindowPixelBounds(CoverFlowReaderMotion.windowBounds(source, target, p))
-        val windowShape = AppRoundedCornerShape(
-            CoverFlowReaderMotion.windowCornerRadius(transition.sourceCornerRadiusDp, p).dp
+        // Circular arcs, like the hardware corners the full-screen window lands on.
+        val windowShape = RoundedCornerShape(
+            CoverFlowReaderMotion.windowCornerRadius(transition.sourceCornerRadiusDp,
+                transition.screenCornerRadiusDp, p).dp
         )
         Box(
             Modifier.offset { IntOffset(window.left.roundToInt(), window.top.roundToInt()) }

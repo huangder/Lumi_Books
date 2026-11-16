@@ -15,7 +15,7 @@ import org.junit.Test
 class EpubRuleHighlightCacheTest {
     @Test
     fun adjacentPreloadAndColdNavigationShareResultsAndWaitForRuleFonts() = runTest {
-        val fonts = CompletableDeferred<Map<String, String>>()
+        val fonts = CompletableDeferred<Map<String, EpubRuleFont>>()
         val requested = mutableListOf<Int>()
         val cache = EpubRuleHighlightCache(this, { fonts.await() }) { chapter ->
             requested.add(chapter)
@@ -30,14 +30,15 @@ class EpubRuleHighlightCacheTest {
         assertNull(cache.notes(4))
         assertFalse(navigation.isCompleted)
 
-        fonts.complete(mapOf("serif" to "https://reader.local/serif.ttf"))
+        val serif = EpubRuleFont("https://reader.local/serif.ttf", "200 900")
+        fonts.complete(mapOf("serif" to serif))
         previous?.await()
         navigation.await()
 
         assertEquals(listOf(2, 4), requested)
         assertEquals(emptyList<Note>(), cache.notes(2))
         assertEquals(listOf(ruleNote(4)), epubNotesWithRules(listOf(ruleNote(2)), cache, 4))
-        assertEquals(mapOf("serif" to "https://reader.local/serif.ttf"), cache.fontUrls)
+        assertEquals(mapOf("serif" to serif), cache.fontsByType)
         assertNull(cache.prepare(2))
         assertNull(cache.prepare(4))
     }

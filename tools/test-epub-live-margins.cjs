@@ -7,8 +7,8 @@ const { pathToFileURL } = require('node:url');
 const { spawnSync } = require('node:child_process');
 const source = readFileSync(join(__dirname,
   '../app/src/main/java/com/huangder/lumibooks/util/epub/EpubDocumentTransformer.kt'), 'utf8');
-const parts = [...source.matchAll(/private const val READER_SCRIPT_PART_(?:1B|[123]) = """([\s\S]*?)"""/g)];
-assert.equal(parts.length, 4);
+const parts = [...source.matchAll(/private const val READER_SCRIPT_PART_\w+ = """([\s\S]*?)"""/g)];
+assert.equal(parts.length, 5);
 const script = parts.map(match => match[1]).join('');
 const css = source.match(/private const val READER_CSS = """([\s\S]*?)"""/)[1];
 
@@ -65,6 +65,64 @@ async function verify(flow, fixed, night) {
     check(getComputedStyle(document.getElementById('copy-0')).lineHeight === '36px', 'Typography changes still apply');
     check(__lumiMessages.some(m => m.type === 'ready' && m.payload.configurationGeneration === 20),
       'Final configuration reports completed geometry');
+    if (flow === 'paginated' && !fixed) {
+      config.transition = 'slide';
+      config.configurationGeneration = 21;
+      reader.configure(config);
+      reader.next();
+      check(document.getElementById('lumi-page-stage')?.dataset.active === 'true', 'Old page animation started');
+      document.getElementById('reading').style.fontSize = '24px';
+      const beforeReflow = __lumiMessages.length;
+      reader.configure({ ...config, textZoom: 133, configurationGeneration: 22 });
+      check(document.getElementById('lumi-page-stage').dataset.active !== 'true',
+        'Font resize releases the previous page animation');
+      await delay(450);
+      const resized = reader.currentPosition();
+      const stable = __lumiMessages.slice(beforeReflow).find(m => m.type === 'layoutStable' &&
+        m.payload.configurationGeneration === 22);
+      check(stable?.payload.pageIndex === resized.pageIndex, 'Stable layout reports the restored page');
+      reader.next();
+      await delay(400);
+      check(reader.currentPosition().pageIndex === resized.pageIndex + 1, 'Next page uses the resized geometry');
+      reader.previous();
+      await delay(400);
+      check(reader.currentPosition().pageIndex === resized.pageIndex, 'Previous page uses the resized geometry');
+
+      // A publisher can animate a graphic without changing its place in the
+      // layout. Alternate its transform just before each readiness frame.
+      const graphic = document.createElement('img');
+      graphic.alt = '';
+      graphic.width = 24;
+      graphic.height = 24;
+      document.getElementById('copy-0').append(graphic);
+      let offset = 0;
+      function moveGraphic() {
+        offset = offset === 0 ? 24 : 0;
+        graphic.style.transform = 'translateY(' + offset + 'px)';
+        requestAnimationFrame(moveGraphic);
+      }
+      // Headless virtual time may jump across timers without delivering frames.
+      // Drive the frame callbacks while Chromium still computes the actual layout.
+      const browserFrame = window.requestAnimationFrame;
+      const frameCallbacks = [];
+      window.requestAnimationFrame = callback => frameCallbacks.push(callback);
+      let target;
+      try {
+        moveGraphic();
+        reader.configure({ ...config, textZoom: 140, configurationGeneration: 23 });
+        target = reader.currentPosition().pageIndex + 1;
+        reader.preparePage(target, 23);
+        for (let i = 0; i < 8; i++) {
+          for (const callback of frameCallbacks.splice(0)) callback(performance.now());
+        }
+      } finally {
+        window.requestAnimationFrame = browserFrame;
+      }
+      check(__lumiMessages.some(m => m.type === 'layoutStable' && m.payload.configurationGeneration === 23),
+        'Publisher graphic motion cannot block layout readiness');
+      check(__lumiMessages.some(m => m.type === 'pagePrepared' && m.payload.requestToken === 23 &&
+        m.payload.pageIndex === target), 'Neighbour preparation completes during publisher graphic motion');
+    }
     document.getElementById('result').textContent = JSON.stringify({ passed: true, checks });
   } catch (error) {
     document.getElementById('result').textContent = JSON.stringify({ passed: false, checks, error: error.message });

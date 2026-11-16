@@ -349,6 +349,41 @@ class WebdavClient @Inject constructor() {
         parsePropfindResponse(xml, url)
     }
 
+    /** Use the collection listing as a fast path. Some servers omit files or reject Depth: 1. */
+    internal suspend fun listBookFileNames(
+        booksUrl: String,
+        username: String,
+        password: String
+    ): Set<String> {
+        val resources = try {
+            listDirectory(booksUrl, username, password)
+        } catch (error: WebdavException) {
+            if (error.statusCode !in setOf(400, 403, 404, 405, 415, 501)) throw error
+            return emptySet()
+        }
+        val origin = WebdavUrl.parse(booksUrl).newBuilder().encodedPath("/").build()
+        return resources.asSequence()
+            .filterNot { it.isCollection }
+            .mapNotNull { origin.resolve(it.href)?.pathSegments?.lastOrNull() }
+            .toSet()
+    }
+
+    internal suspend fun isFileMissing(url: String, username: String, password: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val head = requestFor(url, username, password).head().build()
+            val status = execute(head).use { it.code }
+            val readableStatus = if (status in setOf(400, 403, 405, 501)) {
+                val range = requestFor(url, username, password).header("Range", "bytes=0-0").get().build()
+                execute(range).use { it.code }
+            } else status
+            when (readableStatus) {
+                404, 410 -> true
+                // A valid range can be unsatisfiable for an empty file.
+                in 200..299, 416 -> false
+                else -> throw httpException("Check file", readableStatus)
+            }
+        }
+
     // ── GET (download) ──────────────────────────────────────────────
 
     @Throws(WebdavException::class)

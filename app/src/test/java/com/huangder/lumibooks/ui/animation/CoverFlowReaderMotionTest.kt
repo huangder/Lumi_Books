@@ -19,4 +19,11 @@ class CoverFlowReaderMotionTest {
         assertEquals(1f, CoverFlowReaderMotion.readerAlpha(1f), 0.0001f)
         assertEquals(1f, CoverFlowReaderMotion.readerScale(1f), 0.0001f)
     }
+
+    @Test fun `window corners move from the cover to the display corners`() {
+        val fit = BookReaderMotion.SCREEN_CORNER_FIT
+        assertEquals(12f, CoverFlowReaderMotion.windowCornerRadius(12f, 40f, 0f), 0f)
+        assertEquals(40f * fit, CoverFlowReaderMotion.windowCornerRadius(12f, 40f, 1f), 0.0001f)
+        assertEquals(0f, CoverFlowReaderMotion.windowCornerRadius(12f, 0f, 1f), 0.0001f)
+    }
 }

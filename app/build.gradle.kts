@@ -192,6 +192,7 @@ dependencies {
     // Faithful, sandboxed EPUB HTML/CSS rendering
     implementation("androidx.webkit:webkit:1.16.0")
     implementation("org.jsoup:jsoup:1.22.2")
+    implementation(project(path = ":third_party:word-converters", configuration = "shadow"))
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

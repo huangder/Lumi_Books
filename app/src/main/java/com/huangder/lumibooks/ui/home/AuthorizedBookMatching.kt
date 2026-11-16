@@ -1,9 +1,11 @@
 package com.huangder.lumibooks.ui.home
 
+import android.net.Uri
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.repository.FolderRepository
 import com.huangder.lumibooks.util.AuthorizedFolderDirectorySnapshot
 import com.huangder.lumibooks.util.authorizedSnapshotIdentity
+import java.io.File
 
 /** Stable across different tree-qualified URIs that point at the same SAF document. */
 internal fun authorizedDocumentIdentity(documentKey: String?, uri: String): String =
@@ -64,6 +66,22 @@ internal fun findMatchingAuthorizedBook(
             ?.takeIf(String::isNotBlank)
             ?.let { hash -> available.filter { it.sourceSha256 == hash }.singleOrNull() }
 }
+
+/** Older imports can have a reading path without a saved source URI or document key. */
+internal fun findBookAtExternalLocation(uri: Uri, documentKey: String?, books: List<Book>): Book? {
+    val sourceUri = uri.toString()
+    findMatchingAuthorizedBook(documentKey, sourceUri, sha256 = null, books = books)?.let { return it }
+    books.firstOrNull { !it.isCloudOnly && it.filePath == sourceUri }?.let { return it }
+
+    if (!uri.scheme.equals("file", ignoreCase = true)) return null
+    val sourceFile = uri.path?.let { canonicalBookFile(it) } ?: return null
+    return books.firstOrNull { book ->
+        !book.isCloudOnly && canonicalBookFile(book.filePath) == sourceFile
+    }
+}
+
+private fun canonicalBookFile(path: String): File? =
+    File(path).takeIf(File::isAbsolute)?.let { runCatching { it.canonicalFile }.getOrNull() }
 
 /**
  * A matched SAF document can reuse its stored hash when the provider reports the same reliable

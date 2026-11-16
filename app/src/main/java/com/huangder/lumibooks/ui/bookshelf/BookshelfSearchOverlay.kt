@@ -476,9 +476,12 @@ internal fun BookshelfSearchResultItem(
     coverModifier: Modifier = Modifier,
     selectionScaleEnabled: Boolean = true,
     onToggleHidden: (() -> Unit)? = null,
-    onArchive: (() -> Unit)? = null
+    onArchive: (() -> Unit)? = null,
+    /** Long press then drag reorders; long press then release opens the actions instead. */
+    dragCallbacks: BookDragCallbacks? = null
 ) {
     val haptic = LocalHapticFeedback.current
+    val dragEnabled = dragCallbacks != null && !selectionMode
     val eInkMode = LocalEInkMode.current
     val scale by animateFloatAsState(
         targetValue = when {
@@ -517,15 +520,25 @@ internal fun BookshelfSearchResultItem(
             selected = selected,
             isSynced = isSynced,
             downloadState = downloadState,
-            modifier = Modifier.combinedClickable(
-                indication = null,
-                interactionSource = remember { MutableInteractionSource() },
-                onClick = if (selectionMode) onSelectionToggle else onClick,
-                onLongClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    if (selectionMode) onSelectionToggle() else onExpandedChange()
-                }
-            )
+            modifier = Modifier
+                .then(
+                    if (dragEnabled && dragCallbacks != null) {
+                        Modifier
+                            .longPressDragOrMenu(enabled = true, key = book.id, callbacks = dragCallbacks)
+                            .longPressMenuSemantics(enabled = true, onMenu = onExpandedChange)
+                    } else Modifier
+                )
+                .combinedClickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() },
+                    onClick = if (selectionMode) onSelectionToggle else onClick,
+                    onLongClick = if (dragEnabled) null else {
+                        {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            if (selectionMode) onSelectionToggle() else onExpandedChange()
+                        }
+                    }
+                )
         )
 
         AnimatedVisibility(

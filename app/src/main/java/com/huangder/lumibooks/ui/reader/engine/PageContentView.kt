@@ -388,6 +388,8 @@ class PageContentView(context: Context) : FrameLayout(context) {
         justifiedView.readerJustificationMode = justification
     }
     private var verticalGeometry: VerticalPageGeometry? = null
+    /** User switch: stretch full pages to the bottom margin. */
+    private var bottomAligned = false
     // Vertical placement is defined solely by the configured padding. The page
     // itself may still move during a page-turn animation, but its text layers
     // must not receive a page-specific offset.
@@ -576,6 +578,20 @@ class PageContentView(context: Context) : FrameLayout(context) {
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         configureTextBreaking(adjusted)
+        // Full pages end on the same bottom edge; the chapter's last page keeps
+        // its natural length.
+        if (bottomAligned && !writingMode.isVertical && verticalGeometry == null && endChar < fullText.length) {
+            applyReaderPageBottomAlignment(adjusted, ReaderPageTextMetrics(
+                paint = textView.paint,
+                width = textView.width - textView.paddingLeft - textView.paddingRight,
+                height = textView.height - textView.paddingTop - textView.paddingBottom,
+                lineSpacingExtra = textView.lineSpacingExtra,
+                lineSpacingMultiplier = textView.lineSpacingMultiplier,
+                breakStrategy = textView.breakStrategy,
+                hyphenationFrequency = textView.hyphenationFrequency,
+                justificationMode = textView.justificationMode
+            ))
+        }
         textView.text = adjusted
         textView.scrollTo(0, 0)
         justifiedView.text = adjusted
@@ -814,9 +830,11 @@ class PageContentView(context: Context) : FrameLayout(context) {
         accentColor: Int = 0xFF007AFF.toInt(),
         textAlignment: ReaderTextAlignment = ReaderTextAlignment.NATURAL,
         writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL,
-        boldText: Boolean = false
+        boldText: Boolean = false,
+        bottomAligned: Boolean = false
     ) {
         this.writingMode = writingMode
+        this.bottomAligned = bottomAligned
         configuredTextAlignment = textAlignment
         val spacingRatio = if (fontSizePx > 0) letterSpacingPx / fontSizePx else 0f
 

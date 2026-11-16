@@ -49,7 +49,7 @@ class TtsPlayerPanelTest {
     @get:Rule val compose = createComposeRule()
     private val readerMenu = mutableStateOf(false)
     private val playback = mutableStateOf(TtsPlaybackState.PAUSED)
-    private val followPageTurns = mutableStateOf(false)
+    private val autoPageTurn = mutableStateOf(false)
     private val fromPagePrompt = mutableStateOf(false)
     private var startsFromPage = 0
     private val chapterTitle = mutableStateOf("Chapter one")
@@ -71,7 +71,7 @@ class TtsPlayerPanelTest {
     private fun control(id: Int) = when (id) {
         R.string.tts_return_to_reading_page -> compose.onNodeWithText(label(R.string.tts_return_to_progress))
         R.string.tts_from_this_page, R.string.tts_speech_rate, R.string.tts_pitch_label,
-        R.string.tts_timer_label, R.string.tts_follow_page_turns -> compose.onNodeWithText(label(id))
+        R.string.tts_timer_label, R.string.tts_auto_page_turn -> compose.onNodeWithText(label(id))
         else -> compose.onNodeWithContentDescription(label(id))
     }
     private fun more(id: Int) = control(id).performSemanticsAction(SemanticsActions.OnClick) { it() }
@@ -98,8 +98,8 @@ class TtsPlayerPanelTest {
                                 speechRate = 1f, speechRateMode = TtsProsodyMode.OVERRIDE,
                                 pitch = 1f, pitchMode = TtsProsodyMode.OVERRIDE, usesAndroidTts = androidTts,
                                 sleepTimerRemainingMs = null,
-                                followUserPageTurns = followPageTurns.value,
-                                onFollowUserPageTurnsChange = { followPageTurns.value = it },
+                                autoPageTurn = autoPageTurn.value,
+                                onAutoPageTurnChange = { autoPageTurn.value = it },
                                 showFromCurrentPage = fromPagePrompt.value,
                                 onStartFromCurrentPage = { startsFromPage++; fromPagePrompt.value = false },
                                 onPlayPause = { plays++ }, onStop = { stops++ },
@@ -127,20 +127,20 @@ class TtsPlayerPanelTest {
         }
     }
 
-    @Test fun pageFollowCheckUsesLiveStateAndSurvivesReaderPageChanges() {
+    @Test fun autoPageTurnCheckUsesLiveStateAndSurvivesReaderPageChanges() {
         show()
         more(R.string.tts_expand_controls)
-        control(R.string.tts_follow_page_turns).assertIsNotSelected()
+        control(R.string.tts_auto_page_turn).assertIsNotSelected()
         // The host retains the menu spec while reader/controller state changes.
-        compose.runOnIdle { followPageTurns.value = true }
-        control(R.string.tts_follow_page_turns).assertIsSelected()
+        compose.runOnIdle { autoPageTurn.value = true }
+        control(R.string.tts_auto_page_turn).assertIsSelected()
         compose.runOnIdle { menus.dismiss() }
         compose.runOnIdle { chapterTitle.value = "Chapter two" }
         more(R.string.tts_expand_controls)
-        control(R.string.tts_follow_page_turns).assertIsSelected().performClick()
-        compose.runOnIdle { assertFalse(followPageTurns.value) }
+        control(R.string.tts_auto_page_turn).assertIsSelected().performClick()
+        compose.runOnIdle { assertFalse(autoPageTurn.value) }
         more(R.string.tts_expand_controls)
-        control(R.string.tts_follow_page_turns).assertIsNotSelected()
+        control(R.string.tts_auto_page_turn).assertIsNotSelected()
     }
 
     @Test fun fromPagePromptOpensInwardAndLeavesTheDockedHandleInPlace() {
@@ -332,8 +332,17 @@ class TtsPlayerPanelTest {
         assertEquals(catalogBounds.value.top - 12f, moved.bottom, .01f)
         assertEquals(saved, position.value)
         capture("glass-menu-capsule")
-        more(R.string.tts_expand_controls)
+        compose.mainClock.autoAdvance = false
+        control(R.string.tts_expand_controls).performTouchInput { click() }
+        advance(600)
+        control(R.string.tts_from_this_page).assertIsDisplayed()
+        control(R.string.tts_previous_sentence).assertIsDisplayed()
+        control(R.string.tts_previous_sentence).performTouchInput { click() }
+        compose.runOnIdle { assertEquals(1, previous) }
+        control(R.string.tts_collapse_controls).performTouchInput { click() }
+        advance(600)
         control(R.string.tts_from_this_page).assertDoesNotExist()
+        compose.mainClock.autoAdvance = true
         compose.runOnIdle { readerMenu.value = false }
         control(R.string.tts_expand_controls).assertIsDisplayed()
         control(R.string.tts_from_this_page).assertDoesNotExist()

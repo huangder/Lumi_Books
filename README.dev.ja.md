@@ -2,241 +2,190 @@
 
 <div align="center">
 
-🌐 [中文](README.dev.md) · [English](README.dev.en.md) · **日本語** · [한국어](README.dev.ko.md)
+<img src="docs/readme-icon.png" alt="Lumi" width="96">
 
-[📖 ユーザーガイド](README.ja.md) · ⚙️ **開発者ドキュメント**
+# Lumi 開発者ガイド
+
+Android 向けのローカル電子書籍リーダーの技術説明です。コントリビューターと二次開発者を対象にしています。
+
+[![Version](https://img.shields.io/badge/version-2.3.11-coral)](https://github.com/huangder/Lumi_Books/releases)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+[![Android](https://img.shields.io/badge/Android-8.0%2B-blue)](https://developer.android.com)
+
+[中文](README.dev.md) · [English](README.dev.en.md) · **日本語** · [한국어](README.dev.ko.md)
+
+[ユーザー版](README.ja.md) · **開発者版**
 
 </div>
 
----
+## 技術スタック
 
-# Lumi — 開発者ガイド
-
-> Lumi Android 電子書籍リーダーの技術ドキュメント。コントリビューターおよび開発者向け。
-
-[![Version](https://img.shields.io/badge/version-2.1.9-coral)](https://github.com/huangder/Lumi_Books/releases)
-[![License](https://img.shields.io/badge/license-GPLv3-green)](LICENSE)
-[![Android](https://img.shields.io/badge/Android-8.0%2B-blue)](https://developer.android.com)
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.3.10-purple)](https://kotlinlang.org)
-
----
-
-## 📋 技術スタック
-
-| カテゴリ | 技術 | バージョン |
-|----------|------|-----------|
+| 分類 | 技術 | バージョン |
+|------|------|------|
 | 言語 | Kotlin | 2.3.10 |
-| UI フレームワーク | Jetpack Compose (BOM) | 2026.06.01 |
-| アーキテクチャ | MVVM + Repository | — |
-| DI | Hilt | 2.58 |
+| ビルド | Android Gradle Plugin | 8.13.2 |
+| UI | Jetpack Compose（BOM） | 2026.06.01 |
+| 依存性注入 | Hilt | 2.58 |
 | データベース | Room | 2.8.4 |
-| 設定保存 | DataStore Preferences | 1.1.1 |
+| 設定の保存 | DataStore Preferences | 1.1.1 |
 | ナビゲーション | Navigation Compose | 2.8.9 |
-| 画像読み込み | Coil | 2.7.0 |
-| 非同期処理 | Kotlin Coroutines | 1.9.0 |
-| EPUB レンダリング | Android WebKit | 1.16.0 |
+| コルーチン | kotlinx-coroutines-android | 1.9.0 |
+| バックグラウンド処理 | WorkManager | 2.10.0 |
+| EPUB 出版社レイアウトの描画 | AndroidX WebKit | 1.16.0 |
 | HTML 解析 | Jsoup | 1.22.2 |
 | PDF 解析 | pdfbox-android | 2.0.27.0 |
-| ネットワーク | OkHttp | 4.12.0 |
 | Markdown | CommonMark | 0.24.0 |
-| ブラー効果 | Haze | 1.1.1 |
-| リキッドグラス | Backdrop | 1.0.6 |
-| バックグラウンドタスク | WorkManager | 2.10.0 |
-| 色抽出 | Palette KTX | 1.0.0 |
-| ビルドシステム | AGP | 8.13.2 |
-| アノテーション処理 | KSP | 2.3.10 |
-| 最小 SDK | Android 8.0 (API 26) | — |
-| ターゲット SDK | Android 15 (API 35) | — |
-| コンパイル SDK | Android 16 (API 36) | — |
-| JVM ターゲット | Java 17 | — |
+| ネットワーク | OkHttp | 4.12.0 |
+| 画像読み込み | Coil | 2.7.0 |
+| ぼかしとガラス効果 | Haze 1.1.1、Backdrop（`third_party/backdrop`） | — |
+| SDK | minSdk 26、compileSdk 37、targetSdk 37 | — |
+| JVM | Java 17 | — |
 
----
+## アーキテクチャ
 
-## 🏗 アーキテクチャ概要
-
-Lumi は **MVVM + Repository** アーキテクチャを採用し、Hilt による依存性注入を行っています：
+アプリは MVVM + Repository アーキテクチャを採用し、依存性注入には Hilt を使っています。
 
 ```
-┌─────────────────────────────────────────────┐
-│  UI 層 (Compose 画面 + ViewModel)            │
-│  ui/home/  ui/reader/  ui/settings/  ...     │
-├─────────────────────────────────────────────┤
-│  ドメイン層 (モデル)                          │
-│  domain/model/  Book, Bookmark, Note, ...    │
-├─────────────────────────────────────────────┤
-│  データ層 (Repository + DAO + DataStore)     │
-│  data/local/  data/repository/               │
-│  data/sync/   WebdavSyncManager              │
-├─────────────────────────────────────────────┤
-│  ユーティリティ層 (パーサー, ヘルパー)         │
-│  util/parser/  EPUB, PDF, TXT               │
-│  util/  LocaleHelper, FontManager, ...       │
-└─────────────────────────────────────────────┘
+ui/        Compose の画面と ViewModel：home、reader、settings、statistics、bookshelf など
+domain/    ドメインモデルとリポジトリのインターフェース
+data/      Room、DataStore、リポジトリの実装、WebDAV / OPDS などのリモートデータソース、バックアップと同期
+util/      パーサー（EPUB、PDF、TXT、Markdown、Word、Kindle）、組版とキャッシュのユーティリティ
+tts/       システム音声と外部音声インターフェース
+widget/    ホーム画面ウィジェット
+edition/   公開版と公式版の間の機能インターフェース
 ```
 
-- **Single Activity + Navigation Compose**：`MainActivity` がメインの Compose ナビゲーショングラフをホスト。設定やウェルカム画面はネイティブ遷移アニメーション用に独立した Activity を使用。
-- **Hilt**：`@HiltAndroidApp` → `@HiltViewModel` → `@Inject constructor`。
-- **Room**：`BookDao`、`BookmarkDao`、`ReadingRecordDao`。DB マイグレーションは `fallbackToDestructiveMigration()` を使用。
-- **DataStore**：ユーザー設定（テーマ、読書設定、TTS 設定など）を保存。
-- **リーダーエンジン**：EPUB は2つのモードに対応 — Canvas + StaticLayout（統一タイポグラフィ）と WebView（出版社 CSS レイアウトを忠実に保持）。
+- **画面**：`MainActivity` は Navigation Compose（`ui/navigation/NavGraph.kt`）で主要な画面を管理します。ウェルカム画面、全画面の読み上げ、読み上げ設定などは独立した Activity です。
+- **依存性注入**：`EBookReaderApp` には `@HiltAndroidApp` が付いています。ViewModel は `@HiltViewModel` を使い、モジュールは `di/` にあります。
+- **データベース**：Room の現在のバージョンは 28 です。すべてのマイグレーションは `di/AppModule.kt` で `addMigrations` により登録されています。テーブル構造を変更するときは、バージョン番号とマイグレーションを両方追加してください。破壊的マイグレーションに頼らないでください。
+- **設定と機密情報**：ユーザー設定は DataStore に保存されます。WebDAV、翻訳、音声、MinerU の Token などの認証情報は、Android KeyStore で暗号化して保存されます。
+- **リーダー**：EPUB の出版社レイアウトは WebView で描画され、出版社の CSS とフォントを保持します。リーダーレイアウトは Canvas + StaticLayout で描画され、フォントと組版を統一します。
 
----
-
-## 📁 プロジェクト構造
+## プロジェクト構成
 
 ```
 android_books/
-├── LICENSE                     # GNU GPLv3
-├── NOTICE                      # 著作権 & サードパーティ通知
-├── README.md                   # ユーザー向け README
-├── README.dev.md               # 開発者ガイド（本ファイル）
-├── build.gradle.kts            # ルートビルド設定
-├── settings.gradle.kts         # プロジェクト設定
+├── app/
+│   ├── build.gradle.kts
+│   └── src/
+│       ├── main/            共通のコードとリソース
+│       │   ├── java/com/huangder/lumibooks/
+│       │   ├── assets/      内蔵の HTML、フォント、辞書、更新ログ
+│       │   └── res/         リソース（表示言語 7 種類）
+│       ├── oss/             公開版の機能実装
+│       ├── premium/         公式版の非公開ソース（Git の管理対象外。別リポジトリ。下記参照）
+│       ├── test/            ローカルの単体テスト
+│       ├── androidTest/     計測テスト
+│       └── debug/           デバッグ用のエントリポイント
 │
-├── app/                        # Android アプリケーションモジュール
-│   ├── build.gradle.kts        # アプリビルド設定
-│   └── src/main/
-│       ├── AndroidManifest.xml
-│       ├── assets/             # 内蔵 HTML、フォント、変更履歴
-│       ├── java/com/huangder/lumibooks/
-│       │   ├── EBookReaderApp.kt       # Application クラス
-│       │   ├── MainActivity.kt         # メイン Activity
-│       │   ├── data/                   # データ層
-│       │   │   ├── local/              # Room DAO/Entity、DataStore
-│       │   │   ├── repository/         # Repository 実装
-│       │   │   └── sync/              # WebdavSyncManager
-│       │   ├── domain/model/           # ドメインモデル
-│       │   ├── di/                     # Hilt モジュール
-│       │   ├── ui/                     # プレゼンテーション層
-│       │   │   ├── home/               # ホーム + 本棚
-│       │   │   ├── reader/             # リーダー（コア）
-│       │   │   │   └── engine/         # Canvas レイアウトエンジン
-│       │   │   ├── statistics/         # 読書統計
-│       │   │   ├── settings/           # 設定
-│       │   │   ├── bookshelf/          # 本棚コンポーネント
-│       │   │   ├── components/         # 共有 Compose コンポーネント
-│       │   │   ├── welcome/            # オンボーディング
-│       │   │   └── navigation/         # ナビゲーショングラフ
-│       │   └── util/                   # ユーティリティ
-│       │       ├── parser/             # EPUB/PDF/TXT パーサー
-│       │       ├── LocaleHelper.kt     # 多言語サポート
-│       │       └── ...
-│       └── res/                        # リソース（8ロケールディレクトリ）
-│
-├── devlog/                     # 開発ログ（日付順）
-├── devdocs/                    # プロジェクトドキュメント
-│   ├── requirements.md         # 要件定義
-│   ├── technical-spec.md       # 技術仕様
-│   ├── design-spec.md          # デザイン仕様
-│   ├── ui-design-spec.md       # UI デザイン実装
-│   ├── project-status.md       # プロジェクト状況
-│   ├── development-plan.md     # 開発計画
-│   └── CHANGELOG.md            # 変更履歴（v1.0.01.124）
-│
-├── docs/                       # ウェブサイトソース (GitHub Pages → huangder.top)
-│   ├── index.html              # ホームページ
-│   ├── features.html           # 機能紹介
-│   ├── tech.html               # 技術仕様
-│   ├── privacy.html            # プライバシーポリシー
-│   └── ...
-│
-└── .github/workflows/          # CI（GitHub Pages デプロイ）
+├── benchmark/               起動とスクロールのパフォーマンステスト
+├── third_party/             リポジトリで管理する外部モジュール（Backdrop、字幕ビュー、Word 変換など）
+├── tools/                   EPUB とリーダーのプローブ、テストスクリプト、補助ツール
+├── devdocs/                 開発ドキュメント
+├── docs/                    プロジェクトサイト（GitHub Pages）
+└── .github/                 Pages のデプロイワークフローと Issue テンプレート
 ```
 
-> **注意**：`devdocs/` および `devlog/` 内の詳細な開発ドキュメントは主に中国語です。
+## ビルド
 
----
+### 環境
 
-## 🔨 ビルド
+- Android Studio（最新の安定版）またはコマンドライン
+- JDK 17
+- Android SDK：compileSdk 37 とそれに対応する build-tools
+- コマンドラインでビルドする場合は `ANDROID_HOME` を設定してください。Windows では `gradlew.bat` を使います。
 
-### 前提条件
-- **Android Studio**（最新安定版推奨）
-- **JDK 17**
-- **Android SDK 36**（compileSdk）および 35（targetSdk）ビルドツール
+### 公開版
 
-### 手順
+このリポジトリだけをクローンした場合、ビルド結果は公開版になります。
 
 ```bash
-# 1. リポジトリをクローン
-git clone https://github.com/huangder/Lumi_Books.git
-cd Lumi_Books
-
-# 2. Android Studio で開き、Gradle 同期を待つ
-
-# 3. デバイスを接続またはエミュレータ（API 26+）を起動し、実行
-
-# またはコマンドラインでビルド：
-./gradlew assembleDebug
-# APK 出力先: app/build/outputs/apk/debug/app-debug.apk
-
-# リリースビルド（署名設定が必要）：
-./gradlew assembleRelease
-# APK 出力先: app/build/outputs/apk/release/
+./gradlew :app:assembleDebug
+# APK：app/build/oss/outputs/apk/debug/
 ```
 
-### 署名設定
+よく使うチェックコマンド：
 
-リリースビルドには `app/` に `keystore.properties` を配置するか、`build.gradle.kts` で署名情報を設定する必要があります。デフォルトの release buildType では minify が無効（`isMinifyEnabled = false`）です。
+```bash
+./gradlew :app:compileDebugKotlin                 # Kotlin のコンパイル
+./gradlew :app:testDebugUnitTest                  # ローカルの単体テスト
+./gradlew :app:compileDebugAndroidTestKotlin      # 計測テストのコンパイル確認
+```
 
----
+### 公式版と版の境界
 
-## 🤝 コントリビューション
+公開リポジトリと公式版は、同じコードベースを共有しています。両者の違いは `edition/` のインターフェースで分離されています。公開リポジトリには独立してコンパイルできる実装があり、公式版の非公開実装は `app/src/premium/` に置かれます。このディレクトリは公開リポジトリの管理対象外です。非公開リポジトリへのアクセス権を持つ開発者は、必要に応じて次のようにクローンできます。
+
+```bash
+git clone --branch main https://github.com/huangder/Lumi_Books-premium.git app/src/premium
+```
+
+`app/src/premium/java` が存在すると、デフォルトのビルドは公式版に切り替わり、成果物は `app/build/official/` に出力されます。この環境で公開版を検証するには、`-Plumi.oss=true` を付けます。
+
+```bash
+./gradlew '-Plumi.oss=true' :app:assembleDebug
+```
+
+2 つの版はビルドディレクトリを分けています。KSP と Hilt が生成するコードが混ざらないようにするためです。公共のインターフェース、データ形式、ビルド設定を変更した場合は、公開版と公式版の両方がコンパイルできることを確認してください。詳しい規則は [devdocs/editions.md](devdocs/editions.md) を参照してください。
+
+### 署名とリリース
+
+- release ビルドでは R8 による難読化とリソースの縮小が有効です（`isMinifyEnabled = true`）。
+- リポジトリには署名の設定が含まれていません。リリースする前に、`app/build.gradle.kts` で release 用の `signingConfig` を設定してください。
+- 起動診断などの特別なビルドタイプは、`app/build.gradle.kts` の `buildTypes` を参照してください。
+
+## コントリビューション
 
 Issue と Pull Request を歓迎します。
 
-- **バグ報告**：[GitHub Issues](https://github.com/huangder/Lumi_Books/issues) にデバイスモデル、Android バージョン、再現手順を添えて提出してください。
-- **機能提案**：Issues でディスカッションを開始してください。
-- **コード貢献**：
-  1. リポジトリをフォーク
-  2. 機能ブランチを作成（`feature/xxx` または `fix/xxx`）
-  3. 開発し `./gradlew compileDebugKotlin` で確認
-  4. `main` ブランチに PR を提出
-- **コミット規約**：Conventional Commits に従う — `feat:` / `fix:` / `refactor:` / `docs:` / `chore:` / `perf:`。
-- **コードスタイル**：Kotlin 公式コードスタイルと既存のプロジェクトパターンに従ってください。
+- **バグ報告**：[GitHub Issues](https://github.com/huangder/Lumi_Books/issues) から報告してください。端末の機種、Android のバージョン、再現手順を添えてください。
+- **機能の提案**：Issues で議論を始めてください。
+- **コードの貢献**：
+  1. リポジトリを Fork する
+  2. 機能ブランチを作成する（`feature/xxx` または `fix/xxx`）
+  3. 開発し、`./gradlew :app:compileDebugKotlin` が通ることを確認する
+  4. `main` ブランチに PR を提出する
+- **コミットの規則**：Conventional Commits に従ってください。`feat:`、`fix:`、`refactor:`、`docs:`、`chore:`、`perf:` を使います。
+- **コードスタイル**：Kotlin の公式スタイルに従い、既存のパターンに合わせてください。
 
----
+`devdocs/` の詳しいドキュメントは現在ほぼ中国語です。他の言語への翻訳も歓迎します。
 
-## 📚 ドキュメント索引
+## ドキュメント一覧
 
 | ドキュメント | パス |
-|-------------|------|
-| 変更履歴（v1.0.01） | [devdocs/CHANGELOG.md](devdocs/CHANGELOG.md) |
-| オンライン変更履歴 | [huangder.top/changelog](https://huangder.top/changelog.html) |
+|------|------|
+| アプリ内の更新ログ | [app/src/main/assets/changelog.md](app/src/main/assets/changelog.md) |
+| オンラインの更新ログ | [huangder.top/changelog](https://huangder.top/changelog.html) |
+| バージョンとビルドの境界 | [devdocs/editions.md](devdocs/editions.md) |
 | 要件定義 | [devdocs/requirements.md](devdocs/requirements.md) |
 | 技術仕様 | [devdocs/technical-spec.md](devdocs/technical-spec.md) |
 | デザイン仕様 | [devdocs/design-spec.md](devdocs/design-spec.md) |
-| UI デザイン実装 | [devdocs/ui-design-spec.md](devdocs/ui-design-spec.md) |
-| プロジェクト状況 | [devdocs/project-status.md](devdocs/project-status.md) |
+| 現行の UI とモーションの仕様 | [devdocs/lumi-ui-motion-design-system.md](devdocs/lumi-ui-motion-design-system.md) |
+| プロジェクトの状態 | [devdocs/project-status.md](devdocs/project-status.md) |
 | 開発計画 | [devdocs/development-plan.md](devdocs/development-plan.md) |
-| 開発ログ | [devlog/](devlog/) |
-| アプリ内変更履歴 | [app/src/main/assets/changelog.md](app/src/main/assets/changelog.md) |
 
----
+## ライセンス
 
-## 📜 ライセンス
+Lumi のオリジナルコードは [Apache License 2.0](LICENSE) で公開されています。
 
-Lumi のオリジナルコードは [GNU GPLv3](LICENSE) の下でオープンソース公開されています。
-
-サードパーティ依存ライブラリと改変コードはそれぞれのライセンスに従います：
+サードパーティの依存関係および改変されたコードは、それぞれのライセンスに従います。
 
 | コンポーネント | ライセンス | 備考 |
-|---------------|-----------|------|
-| [Backdrop](https://github.com/Kyant0/AndroidLiquidGlass) | Apache 2.0 | リキッドグラス効果、改変あり |
-| [Haze](https://github.com/chrisbanes/haze) | Apache 2.0 | ブラー効果 |
-| [PDFBox Android](https://github.com/TomRoush/PdfBox-Android) | Apache 2.0 | PDF テキスト抽出 |
-| [CommonMark](https://github.com/commonmark/commonmark-java) | BSD 2-Clause | Markdown 解析 |
-| [Jsoup](https://jsoup.org/) | MIT | HTML 解析 |
-| [Coil](https://coil-kt.github.io/coil/) | Apache 2.0 | 画像読み込み |
+|------|--------|------|
+| [Backdrop](https://github.com/Kyant0/AndroidLiquidGlass) | Apache 2.0 | Liquid Glass 効果。改変あり |
+| [Haze](https://github.com/chrisbanes/haze) | Apache 2.0 | ぼかし効果 |
+| [PDFBox Android](https://github.com/TomRoush/PdfBox-Android) | Apache 2.0 | PDF のテキスト抽出 |
+| [CommonMark](https://github.com/commonmark/commonmark-java) | BSD 2-Clause | Markdown の解析 |
+| [Jsoup](https://jsoup.org/) | MIT | HTML の解析 |
+| [Coil](https://coil-kt.github.io/coil/) | Apache 2.0 | 画像の読み込み |
 | [OkHttp](https://square.github.io/okhttp/) | Apache 2.0 | HTTP クライアント |
 
-完全なサードパーティライセンス文書は [app/src/main/assets/licenses/](app/src/main/assets/licenses/) をご覧ください。
+サードパーティの完全な表記は [NOTICE](NOTICE) を、ライセンス本文は [app/src/main/assets/licenses/](app/src/main/assets/licenses/) を参照してください。
 
 © 2026 Huangder
 
----
+## リンク
 
-## 🔗 リンク
-
-- 🌐 ウェブサイト：[huangder.top](https://huangder.top)
-- 📦 GitHub：[github.com/huangder/Lumi_Books](https://github.com/huangder/Lumi_Books)
-- 📧 メール：huangder0104@126.com
+- 公式サイト：[huangder.top](https://huangder.top)
+- GitHub：[github.com/huangder/Lumi_Books](https://github.com/huangder/Lumi_Books)
+- メール：huangder0104@126.com

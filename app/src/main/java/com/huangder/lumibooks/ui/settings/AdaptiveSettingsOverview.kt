@@ -3,6 +3,7 @@ package com.huangder.lumibooks.ui.settings
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -17,13 +18,15 @@ import com.huangder.lumibooks.R
 internal fun AdaptiveSettingsOverview(
     onBack: () -> Unit,
     overview: @Composable () -> Unit,
-    preferences: @Composable () -> Unit
+    preferences: @Composable () -> Unit,
+    actions: (@Composable RowScope.() -> Unit)? = null
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val twoColumns = maxWidth >= 960.dp && maxHeight >= 480.dp && maxWidth > maxHeight
         CollapsingSettingsScaffold(
             title = stringResource(R.string.settings_title),
             onBack = onBack,
+            actions = actions,
             alignToolbarToContent = twoColumns,
             contentMaxWidth = if (twoColumns) 1200.dp else 840.dp
         ) {

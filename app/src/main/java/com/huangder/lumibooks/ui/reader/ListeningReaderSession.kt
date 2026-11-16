@@ -49,7 +49,7 @@ internal class ListeningReaderSession {
     }
 
     /** null means a fresh open/session and keeps the existing saved-position policy. */
-    fun returnFromBackground(sessionId: Long?, followUserPageTurns: Boolean = false): Boolean? {
+    fun returnFromBackground(sessionId: Long?): Boolean? {
         if (!backgrounded) return null
         backgrounded = false
         val previousSessionId = backgroundSessionId
@@ -61,7 +61,7 @@ internal class ListeningReaderSession {
         // STARTED during the opening transition is not a completed opening check.
         // Interrupted loads/jumps must still apply the saved policy on first RESUME.
         if (!checked || sessionId == null || sessionId != previousSessionId) return null
-        if (wasFollowing || followUserPageTurns) {
+        if (wasFollowing) {
             follow()
         } else if (wasBrowsing) {
             // Keep the manual browse detached until the next viewport gesture settles.

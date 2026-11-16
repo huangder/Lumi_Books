@@ -20,6 +20,7 @@ object BookParserFactory {
             BookFormat.MOBI, BookFormat.AZW, BookFormat.AZW3 -> KindleParser(context)
             BookFormat.CBZ -> CbzParser(context)
             BookFormat.MARKDOWN -> MarkdownParser(context)
+            BookFormat.DOCX, BookFormat.DOC -> WordParser(context, format.name.lowercase())
         }
     }
 }

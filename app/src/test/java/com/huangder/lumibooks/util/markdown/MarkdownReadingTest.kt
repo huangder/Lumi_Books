@@ -158,10 +158,10 @@ class MarkdownReadingTest {
             db.bookDao().insertBook(BookEntity(bookId, "Backup", "", snapshot.path, null, "MARKDOWN", 0, 0f,
                 createdAt = 1, sourceUri = original.path, sourceSha256 = MarkdownSnapshotStore.sha256(snapshot)))
             val preferences = DataStoreManager(context)
-            preferences.initializeMarkdownRenderMode(bookId)
+            preferences.initializeBookLayoutMode(bookId)
             assertEquals(EpubRenderMode.BOOK_LAYOUT, preferences.readerPreferences(bookId).first().renderMode)
             preferences.saveRenderMode(bookId, EpubRenderMode.READER_LAYOUT)
-            preferences.initializeMarkdownRenderMode(bookId)
+            preferences.initializeBookLayoutMode(bookId)
             assertEquals(EpubRenderMode.READER_LAYOUT, preferences.readerPreferences(bookId).first().renderMode)
             val manager = PortableSnapshotManager(context, db, preferences, SyncIdentityStore(db.syncStateDao()),
                 MineruTokenStore(context), ExternalTtsTokenStore(context), TranslationTokenStore(context))

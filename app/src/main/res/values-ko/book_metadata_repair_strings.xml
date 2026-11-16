@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="book_metadata_repair_action">책 정보 채우기</string>
+    <string name="book_metadata_repair_title">제목과 저자 채우기</string>
+    <string name="book_metadata_repair_empty">선택한 책에 채울 수 있는 제목이나 저자가 없습니다.</string>
+    <string name="book_metadata_repair_no_suggestion">%1$d권에는 제안이 없습니다.</string>
+    <string name="book_metadata_repair_preview_error">미리보기를 불러오지 못했습니다.</string>
+    <string name="book_metadata_repair_apply">%1$d권에 적용</string>
+    <string name="book_metadata_repair_updated">%1$d권을 업데이트했습니다.</string>
+    <string name="book_metadata_repair_changed">미리보기 이후 기록이 변경된 %1$d권은 건너뛰었습니다.</string>
+    <string name="book_metadata_repair_failed">%1$d권을 업데이트하지 못했습니다.</string>
+    <string name="book_metadata_repair_field_change">%1$s · %2$s → %3$s</string>
+</resources>

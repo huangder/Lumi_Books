@@ -397,7 +397,15 @@ class PageLayoutEngine {
                 val lineBottom = sl.getLineBottom(pageEndLine)
                 val lineTop = sl.getLineTop(pageEndLine)
                 val lineHeight = (lineBottom - lineTop).toFloat()
-                if (accumulatedHeight + lineHeight > effectiveVh && pageEndLine > pageStartLine) {
+                // StaticLayout puts line spacing below each line. On the last line
+                // of a page that gap is invisible, so the line fits whenever its
+                // glyphs do. Requiring the full line box to fit wastes up to a whole
+                // line at the page bottom when line spacing is large.
+                val inkBottom = accumulatedHeight +
+                    (sl.getLineBaseline(pageEndLine) - lineTop) + sl.getLineDescent(pageEndLine)
+                if (accumulatedHeight + lineHeight > effectiveVh && inkBottom > effectiveVh &&
+                    pageEndLine > pageStartLine
+                ) {
                     break
                 }
                 accumulatedHeight += lineHeight

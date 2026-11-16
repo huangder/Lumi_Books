@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="word_error_invalid">Word 문서가 손상되었거나 읽을 내용이 없습니다.</string>
+    <string name="word_error_encrypted">이 Word 문서는 암호로 보호되어 있습니다.</string>
+    <string name="word_error_unsupported">지원하지 않는 Word 문서 형식입니다.</string>
+    <string name="word_error_limit">Word 문서가 너무 커서 이 기기에서 변환할 수 없습니다.</string>
+    <string name="word_error_io">Word 파일을 읽거나 읽기 캐시를 저장할 수 없습니다.</string>
+    <string name="word_error_conversion">Word 문서를 읽기용으로 변환할 수 없습니다.</string>
+    <string name="word_share_original">원본 파일 공유</string>
+</resources>

@@ -416,8 +416,6 @@ private fun HomeHeader(
     val avatarSize = if (isLiquidGlass) 32.dp else 36.dp
     val isDark = LocalIsDarkTheme.current
     MainTabHeader(eyebrow = eyebrow, title = { MainTabTitle(stringResource(R.string.home_page)) }, trailing = {
-        // 版本会员提示：仅官方版提供，点过一次或进过会员页即消失
-        com.huangder.lumibooks.edition.EditionHomeMembershipPrompt()
         if (onToReadClick != null) {
             Box(Modifier.pagePushToolbarItem()) {
                 LiquidGlassSurface(

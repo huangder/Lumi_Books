@@ -34,4 +34,17 @@ class FloatingSubtitleSettingsTest {
             FloatingSubtitleSettings(backgroundColorHex = "transparent").normalized().backgroundColorHex
         )
     }
+
+    @Test
+    fun lyricsSettingsDefaultAndClamp() {
+        val defaults = FloatingSubtitleSettings()
+        assertEquals(FloatingSubtitleStyle.LYRICS, defaults.style)
+        assertEquals(false, defaults.locked)
+        assertEquals(true, defaults.showNextLine)
+        val result = FloatingSubtitleSettings(fontSizeSp = 100f, highlightColorHex = "nope").normalized()
+        assertEquals(FloatingSubtitleSettings.MAX_FONT_SIZE_SP, result.fontSizeSp)
+        assertEquals(FloatingSubtitleSettings.DEFAULT_HIGHLIGHT_COLOR, result.highlightColorHex)
+        assertEquals(FloatingSubtitleStyle.LYRICS, FloatingSubtitleStyle.fromName(null))
+        assertEquals(FloatingSubtitleStyle.BAR, FloatingSubtitleStyle.fromName("BAR"))
+    }
 }

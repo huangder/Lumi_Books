@@ -23,6 +23,49 @@ class TtsNotificationManager @Inject constructor(
     companion object {
         const val CHANNEL_ID = "tts_playback"
         const val NOTIFICATION_ID = 2207
+        const val FLOATING_LOCKED_NOTIFICATION_ID = 2208
+    }
+
+    /**
+     * A plain notification while the floating subtitles are locked. Some ROMs (HyperOS, One UI)
+     * render the playback notification as their own media card and drop custom actions, so the
+     * unlock control must not depend on the media notification.
+     */
+    fun showFloatingLocked() {
+        createChannel()
+        val unlock = FloatingSubtitleUnlockReceiver.pendingIntent(context)
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(context, CHANNEL_ID)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(context)
+        }
+        val notification = builder
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(context.getString(R.string.floating_subtitle_locked_notification_title))
+            .setContentText(context.getString(R.string.floating_subtitle_locked_notification_text))
+            .setContentIntent(unlock)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setShowWhen(false)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .addAction(
+                Notification.Action.Builder(
+                    Icon.createWithResource(context, android.R.drawable.ic_lock_lock),
+                    context.getString(R.string.floating_subtitle_unlock),
+                    unlock
+                ).build()
+            )
+            .build()
+        runCatching {
+            context.getSystemService(NotificationManager::class.java)
+                .notify(FLOATING_LOCKED_NOTIFICATION_ID, notification)
+        }
+    }
+
+    fun hideFloatingLocked() {
+        context.getSystemService(NotificationManager::class.java)
+            .cancel(FLOATING_LOCKED_NOTIFICATION_ID)
     }
 
     fun createChannel() {
@@ -44,7 +87,8 @@ class TtsNotificationManager @Inject constructor(
         chapterIndex: Int,
         isPlaying: Boolean,
         mediaSessionToken: MediaSession.Token,
-        largeIcon: Bitmap? = null
+        largeIcon: Bitmap? = null,
+        floatingLocked: Boolean = false
     ): Notification {
         val contentIntent = PendingIntent.getActivity(
             context,
@@ -59,6 +103,7 @@ class TtsNotificationManager @Inject constructor(
         val playPauseIntent = serviceAction(TtsForegroundService.ACTION_PLAY_PAUSE, 2)
         val nextIntent = serviceAction(TtsForegroundService.ACTION_NEXT, 3)
         val stopIntent = serviceAction(TtsForegroundService.ACTION_STOP, 4)
+        val unlockIntent = FloatingSubtitleUnlockReceiver.pendingIntent(context)
 
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(context, CHANNEL_ID)
@@ -109,6 +154,16 @@ class TtsNotificationManager @Inject constructor(
                     stopIntent
                 ).build()
             )
+            .apply {
+                // Locked overlays ignore touches, so the notification is the way back to dragging them.
+                if (floatingLocked) addAction(
+                    Notification.Action.Builder(
+                        Icon.createWithResource(context, android.R.drawable.ic_lock_lock),
+                        context.getString(R.string.floating_subtitle_unlock),
+                        unlockIntent
+                    ).build()
+                )
+            }
             .setStyle(
                 Notification.MediaStyle()
                     .setMediaSession(mediaSessionToken)

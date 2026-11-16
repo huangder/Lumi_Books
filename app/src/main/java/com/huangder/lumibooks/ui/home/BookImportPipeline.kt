@@ -11,11 +11,26 @@ import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.domain.repository.FolderRepository
 import com.huangder.lumibooks.util.AuthorizedStorageManager
 import com.huangder.lumibooks.util.FileUtils
+import com.huangder.lumibooks.util.markdown.MarkdownSnapshotStore
+import com.huangder.lumibooks.util.parser.BookFilenameMetadata
+import com.huangder.lumibooks.util.parser.BookNameMetadata
 import com.huangder.lumibooks.util.parser.BookParserFactory
+import com.huangder.lumibooks.util.parser.readEmbeddedBookMetadata
+import com.huangder.lumibooks.util.word.WordEpubCache
+import com.huangder.lumibooks.util.word.WordException
+import com.huangder.lumibooks.util.word.userMessage
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * The one place that turns documents into library books: duplicate detection, copying or
@@ -28,6 +43,7 @@ class BookImportPipeline @Inject constructor(
     private val folderRepository: FolderRepository,
     private val authorizedStorageManager: AuthorizedStorageManager
 ) {
+    private val importMutex = Mutex()
     data class Document(
         val uri: Uri,
         val name: String,
@@ -46,12 +62,14 @@ class BookImportPipeline @Inject constructor(
         val titleOverride: String? = null,
         val authorOverride: String? = null,
         /** App-private cover snapshot used when the file itself has no extractable cover. */
-        val fallbackCoverPath: String? = null
+        val fallbackCoverPath: String? = null,
+        /** The original download name when a destination adds a collision suffix. */
+        val metadataFileName: String = name
     )
 
     enum class Status { IMPORTED, DUPLICATE, UNSUPPORTED, FAILED }
 
-    data class Outcome(val document: Document, val status: Status, val bookId: String? = null)
+    data class Outcome(val document: Document, val status: Status, val bookId: String? = null, val failureMessage: String? = null)
 
     data class Result(val outcomes: List<Outcome>) {
         val imported: Int get() = outcomes.count { it.status == Status.IMPORTED }
@@ -64,14 +82,17 @@ class BookImportPipeline @Inject constructor(
         documents: List<Document>,
         copyIntoApp: Boolean,
         targetFolderId: String?,
-        groupByAuthorizedSource: Boolean
-    ): Result {
+        groupByAuthorizedSource: Boolean,
+        inheritHighlightSwitches: Boolean = false
+    ): Result = importMutex.withLock {
         val outcomes = mutableListOf<Outcome>()
         var knownBooks = bookRepository.getAllBooks().first()
         var missingHashesChecked = false
         documents.forEach { document ->
+            currentCoroutineContext().ensureActive()
             val extension = FileUtils.getFileExtension(document.name)
-            if (extension !in SUPPORTED_BOOK_EXTENSIONS) {
+            val format = BookFormat.fromExtension(extension)?.takeIf { extension in BookFormat.importExtensions }
+            if (format == null) {
                 outcomes += Outcome(document, Status.UNSUPPORTED)
                 return@forEach
             }
@@ -79,15 +100,26 @@ class BookImportPipeline @Inject constructor(
                 ?: authorizedStorageManager.documentKey(document.uri)
             val incomingUri = document.uri.toString()
             val readableLocation = document.localFile?.absolutePath ?: incomingUri
-            val incomingHash = runCatching {
-                authorizedStorageManager.sha256(context, readableLocation)
-            }.getOrNull()
             val directDuplicate = findMatchingAuthorizedBook(
                 documentKey = incomingKey,
                 uri = incomingUri,
                 sha256 = null,
                 books = knownBooks
             )
+            if (format.isWord && directDuplicate != null && !directDuplicate.isCloudOnly) {
+                outcomes += Outcome(document, Status.DUPLICATE, directDuplicate.id)
+                return@forEach
+            }
+            val incomingHash = if (format.isWord) {
+                try {
+                    runInterruptible { WordEpubCache.sourceHash(context, readableLocation) }
+                } catch (error: WordException) {
+                    outcomes += Outcome(document, Status.FAILED, failureMessage = error.userMessage(context))
+                    return@forEach
+                }
+            } else {
+                runCatching { authorizedStorageManager.sha256(context, readableLocation) }.getOrNull()
+            }
             if (directDuplicate == null && incomingHash != null && !missingHashesChecked) {
                 knownBooks = repairMissingSourceHashes(context, knownBooks)
                 missingHashesChecked = true
@@ -99,7 +131,7 @@ class BookImportPipeline @Inject constructor(
                 books = knownBooks
             )
             val cloudBook = if (duplicate == null || duplicate.isCloudOnly) {
-                findCloudBookForImport(incomingHash, extension.toBookFormat(), knownBooks)
+                findCloudBookForImport(incomingHash, format, knownBooks)
                     ?.takeIf { duplicate == null || it.id == duplicate.id }
             } else null
             if (duplicate != null && cloudBook == null) {
@@ -111,22 +143,34 @@ class BookImportPipeline @Inject constructor(
             var insertedBook: Book? = null
             runCatching {
                 val bookId = cloudBook?.id ?: FileUtils.generateBookId()
-                val format = extension.toBookFormat()
                 if (format == BookFormat.MARKDOWN && document.localFile == null) {
                     runCatching { context.contentResolver.takePersistableUriPermission(document.uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                 }
-                val location = if (format == BookFormat.MARKDOWN) {
-                    com.huangder.lumibooks.util.markdown.MarkdownSnapshotStore.create(context, bookId, readableLocation, document.sourceDirectoryDocumentUri).absolutePath
-                } else if (copyIntoApp && document.localFile != null) {
-                    FileUtils.moveFileToInternal(context, document.localFile, document.name)?.absolutePath
+                val markdownSnapshot = if (format == BookFormat.MARKDOWN) {
+                    MarkdownSnapshotStore.createWithMetadata(context, bookId, readableLocation, document.sourceDirectoryDocumentUri)
+                } else null
+                val location = when {
+                    markdownSnapshot != null -> markdownSnapshot.file.absolutePath
+                    copyIntoApp && document.localFile != null ->
+                        FileUtils.moveFileToInternal(context, document.localFile, document.name)?.absolutePath
                         ?: error("Unable to move ${document.name}")
-                } else if (copyIntoApp) {
-                    FileUtils.copyFileToInternal(context, document.uri, document.name)?.absolutePath
+                    copyIntoApp -> FileUtils.copyFileToInternal(context, document.uri, document.name)?.absolutePath
                         ?: error("Unable to copy ${document.name}")
-                } else {
-                    document.uri.toString()
+                    else -> incomingUri
                 }
                 importedLocation = location
+                val embeddedMetadata = when {
+                    markdownSnapshot != null -> markdownSnapshot.metadata
+                    format.isWord -> runInterruptible {
+                        val word = WordEpubCache.metadata(context, location, extension, checkNotNull(incomingHash))
+                        BookNameMetadata(word.title, word.author)
+                    }
+                    format == BookFormat.TXT -> BookNameMetadata()
+                    else -> readEmbeddedBookMetadata(context, location, format) ?: BookNameMetadata()
+                }
+                val metadata = embeddedMetadata
+                    .withFallback(BookNameMetadata(document.titleOverride, document.authorOverride))
+                    .withFallback(BookFilenameMetadata.read(document.metadataFileName))
                 val parser = BookParserFactory.createParser(format, context)
                 val coverPath = try {
                     parser.extractCoverPath(location)
@@ -137,15 +181,11 @@ class BookImportPipeline @Inject constructor(
                 } ?: document.fallbackCoverPath?.let { snapshotCover(context, it) }
                 extractedCoverPath = coverPath
                 val now = System.currentTimeMillis()
-                val markdownMetadata = if (format == BookFormat.MARKDOWN) com.huangder.lumibooks.util.markdown.MarkdownSnapshotStore.manifest(File(location)) else null
+                val markdownMetadata = markdownSnapshot?.file?.let(MarkdownSnapshotStore::manifest)
                 val importedBook = Book(
                         id = bookId,
-                        title = markdownMetadata?.optString("title")?.takeIf { it.isNotBlank() }
-                            ?: document.titleOverride?.takeIf { it.isNotBlank() }
-                            ?: document.name.substringBeforeLast('.'),
-                        author = markdownMetadata?.optString("author")?.takeIf { it.isNotBlank() }
-                            ?: document.authorOverride?.takeIf { it.isNotBlank() }
-                            ?: context.getString(R.string.book_author_unknown),
+                        title = metadata.title ?: BookFilenameMetadata.stem(document.name),
+                        author = metadata.author ?: context.getString(R.string.book_author_unknown),
                         filePath = location,
                         coverPath = coverPath,
                         format = format,
@@ -161,8 +201,12 @@ class BookImportPipeline @Inject constructor(
                         isMissing = false
                     )
                 val book = cloudBook?.let { attachImportedCloudBook(it, importedBook) } ?: importedBook
-                if (cloudBook != null) bookRepository.updateBook(book) else bookRepository.insertBook(book)
                 insertedBook = book
+                when {
+                    cloudBook != null -> bookRepository.updateBook(book)
+                    inheritHighlightSwitches -> bookRepository.insertExternalBook(book)
+                    else -> bookRepository.insertBook(book)
+                }
                 val destinationFolderId = if (cloudBook != null) {
                     null // Keep existing cloud organization when attaching its local body.
                 } else if (groupByAuthorizedSource) {
@@ -186,18 +230,21 @@ class BookImportPipeline @Inject constructor(
             }.onSuccess {
                 outcomes += Outcome(document, Status.IMPORTED, insertedBook?.id)
                 insertedBook?.let { updated -> knownBooks = knownBooks.filterNot { it.id == updated.id } + updated }
-            }.onFailure {
-                outcomes += Outcome(document, Status.FAILED)
-                insertedBook?.let { book -> runCatching {
-                    if (cloudBook != null) bookRepository.updateBook(cloudBook) else bookRepository.deleteBook(book)
-                } }
-                if (copyIntoApp || extension in setOf("md", "markdown")) {
-                    importedLocation?.let { FileUtils.deleteAppManagedBookFile(context, it) }
+            }.onFailure { error ->
+                withContext(NonCancellable) {
+                    insertedBook?.let { book -> runCatching {
+                        if (cloudBook != null) bookRepository.updateBook(cloudBook) else bookRepository.deleteBook(book)
+                    } }
+                    if (copyIntoApp || format == BookFormat.MARKDOWN) {
+                        importedLocation?.let { FileUtils.deleteAppManagedBookFile(context, it) }
+                    }
+                    FileUtils.deleteAppOwnedFile(context, extractedCoverPath)
                 }
-                FileUtils.deleteAppOwnedFile(context, extractedCoverPath)
+                if (error is CancellationException) throw error
+                outcomes += Outcome(document, Status.FAILED, failureMessage = (error as? WordException)?.userMessage(context))
             }
         }
-        return Result(outcomes)
+        Result(outcomes)
     }
 
     /**
@@ -239,18 +286,6 @@ class BookImportPipeline @Inject constructor(
     }.getOrNull()
 
     companion object {
-        val SUPPORTED_BOOK_EXTENSIONS = setOf("epub", "pdf", "txt", "mobi", "azw", "azw3", "cbz", "md", "markdown")
         private const val NO_URI = "lumibooks:no-uri"
-
-        fun String.toBookFormat(): BookFormat = when (lowercase()) {
-            "epub" -> BookFormat.EPUB
-            "pdf" -> BookFormat.PDF
-            "mobi" -> BookFormat.MOBI
-            "azw" -> BookFormat.AZW
-            "azw3" -> BookFormat.AZW3
-            "cbz" -> BookFormat.CBZ
-            "md", "markdown", "mdpack" -> BookFormat.MARKDOWN
-            else -> BookFormat.TXT
-        }
     }
 }

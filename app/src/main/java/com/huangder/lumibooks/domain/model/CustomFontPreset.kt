@@ -5,7 +5,7 @@ import org.json.JSONObject
 
 /**
  * 用户导入的自定义字体条目。
- * @param id    UUID，同时作为文件名区分（custom_{id}.ttf）
+ * @param id    字体 ID，同时用于区分文件名
  * @param path  字体文件的绝对路径
  */
 data class CustomFontPreset(

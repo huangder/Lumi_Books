@@ -4,10 +4,8 @@ import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -19,10 +17,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
@@ -163,20 +159,6 @@ fun ProgressiveBottomScrim(
 ) {
     ProgressiveSurface(null, 1f, modifier.fillMaxWidth().height(bandHeight),
         0.dp, tint, ProgressiveBlurDirection.Bottom)
-}
-
-@Composable
-internal fun ProgressiveStartBlur(
-    backdrop: Backdrop?,
-    tint: Color,
-    modifier: Modifier = Modifier,
-    bandWidth: Dp = 40.dp,
-    maxBlurRadius: Dp = 18.dp
-) {
-    val direction = if (LocalLayoutDirection.current == LayoutDirection.Rtl)
-        ProgressiveBlurDirection.Right else ProgressiveBlurDirection.Left
-    ProgressiveSurface(backdrop, 1f, modifier.fillMaxHeight().width(bandWidth),
-        maxBlurRadius, tint, direction)
 }
 
 /** Shared Miuix full-resolution composite and blur-free, opaque-edge fallback. */

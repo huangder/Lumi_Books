@@ -12,9 +12,11 @@ import com.huangder.lumibooks.domain.model.ActivityDuration
 import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.content.Context
+import android.content.ClipData
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
+import androidx.core.content.FileProvider
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.widget.Toast
@@ -475,7 +477,32 @@ fun BookDetailsScreen(
             DetailRow(stringResource(R.string.book_detail_imported), dateText(book.createdAt), false)
             DetailRow(stringResource(R.string.book_detail_last_read), dateText(book.lastReadTime), false)
             LocationDetailRow(book.filePath)
+            if (book.format.isWord && !book.isCloudOnly && !book.isMissing && book.filePath.isNotBlank()) {
+                DetailRow(stringResource(R.string.word_share_original), book.format.name, true) {
+                    shareWordOriginal(context, book)
+                }
+            }
         }
+    }
+}
+
+private fun shareWordOriginal(context: Context, book: Book) {
+    val location = book.filePath
+    val mime = if (book.format == com.huangder.lumibooks.domain.model.BookFormat.DOCX) {
+        com.huangder.lumibooks.domain.model.BookFormat.DOCX_MIME
+    } else com.huangder.lumibooks.domain.model.BookFormat.DOC_MIME
+    runCatching {
+        val uri = if (com.huangder.lumibooks.util.BookFileAccess.isContentUri(location)) Uri.parse(location)
+        else FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", File(location))
+        val share = Intent(Intent.ACTION_SEND).apply {
+            type = mime
+            putExtra(Intent.EXTRA_STREAM, uri)
+            clipData = ClipData.newUri(context.contentResolver, book.sourceDisplayName ?: book.title, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(share, context.getString(R.string.word_share_original)))
+    }.onFailure {
+        Toast.makeText(context, R.string.word_error_io, Toast.LENGTH_SHORT).show()
     }
 }
 

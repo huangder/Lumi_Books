@@ -12,7 +12,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.TextButton
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.MotionPreference
 import org.junit.Assert.assertTrue
@@ -30,10 +33,16 @@ class AdaptiveSettingsOverviewTest {
     @Test fun tabletUsesColumnsAndWindowResizeRestoresStackedContent() {
         var width by mutableStateOf(1280.dp)
         var height by mutableStateOf(800.dp)
+        var notificationClicks = 0
         compose.setContent {
             EBookReaderTheme(appTheme = "lumi", motionPreference = MotionPreference.REDUCED) {
                 Box(Modifier.width(width).height(height)) {
-                    AdaptiveSettingsOverview({}, { Text("Profile") }, { Text("Preferences") })
+                    AdaptiveSettingsOverview(
+                        onBack = {},
+                        overview = { Text("Profile") },
+                        preferences = { Text("Preferences") },
+                        actions = { TextButton(onClick = { notificationClicks++ }) { Text("Notifications") } }
+                    )
                 }
             }
         }
@@ -44,6 +53,7 @@ class AdaptiveSettingsOverviewTest {
         assertTrue("Columns must align at the top", left.top == right.top)
         val toolbar = compose.onNodeWithTag("settings-toolbar").fetchSemanticsNode().boundsInRoot
         assertTrue("Toolbar should align with centered content", toolbar.left == left.left)
+        compose.onNodeWithText("Notifications").assertIsDisplayed().performClick()
 
         compose.runOnIdle { width = 600.dp }
         compose.onNodeWithTag("settings-single-column").assertIsDisplayed()
@@ -51,6 +61,8 @@ class AdaptiveSettingsOverviewTest {
         val top = compose.onNodeWithTag("settings-overview").fetchSemanticsNode().boundsInRoot
         val bottom = compose.onNodeWithTag("settings-preferences").fetchSemanticsNode().boundsInRoot
         assertTrue("Compact content must stack without overlap", top.bottom <= bottom.top)
+        compose.onNodeWithText("Notifications").assertIsDisplayed().performClick()
+        compose.runOnIdle { assertTrue(notificationClicks == 2) }
 
         // A wide but short phone window must retain a readable single column.
         compose.runOnIdle { width = 1000.dp; height = 400.dp }

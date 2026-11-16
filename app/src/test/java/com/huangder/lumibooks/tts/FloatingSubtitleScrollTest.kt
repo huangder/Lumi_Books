@@ -48,4 +48,33 @@ class FloatingSubtitleScrollTest {
         assertEquals(0L, subtitleScrollDurationMs(distancePx = 300, speedPxPerSecond = 0f, minDurationMs = 900L))
         assertEquals(0L, subtitleScrollDurationMs(distancePx = -5, speedPxPerSecond = 60f, minDurationMs = 900L))
     }
+
+    @Test
+    fun spokenPositionIgnoresWholeSentenceAndForeignRanges() {
+        val sentence = TtsTextSegment("abcdefghij", 100, 110)
+        assertEquals(null, subtitleSpokenPosition(sentence, sentence))
+        assertEquals(null, subtitleSpokenPosition(sentence, TtsTextSegment("xy", 90, 92)))
+        assertEquals(null, subtitleSpokenPosition(sentence, null))
+        // An estimated clause pages to where it starts, never ahead to its end.
+        assertEquals(0, subtitleSpokenPosition(sentence, TtsTextSegment("abcde", 100, 105)))
+        assertEquals(3, subtitleSpokenPosition(sentence, TtsTextSegment("de", 103, 105)))
+        assertEquals(9, subtitleSpokenPosition(sentence, TtsTextSegment("j", 109, 110)))
+    }
+
+    @Test
+    fun estimatedDurationFollowsScriptAndSpeechRate() {
+        val chinese = "\u4e00".repeat(9)
+        assertEquals(2_000L, subtitleEstimatedDurationMs(chinese, 1f))
+        assertEquals(1_000L, subtitleEstimatedDurationMs(chinese, 2f))
+        assertEquals(1_000L, subtitleEstimatedDurationMs("a".repeat(14), 1f))
+        assertEquals(0L, subtitleEstimatedDurationMs("   ", 1f))
+    }
+
+    @Test
+    fun lyricsKeepTheSpokenLineVisible() {
+        assertEquals(0, lyricsTopLine(1, 2, 2))
+        assertEquals(0, lyricsTopLine(0, 4, 2))
+        assertEquals(2, lyricsTopLine(2, 4, 2))
+        assertEquals(2, lyricsTopLine(3, 4, 2))
+    }
 }

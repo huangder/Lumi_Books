@@ -36,6 +36,14 @@
 # PDFBox can use this optional JPEG2000 decoder when an app supplies it.
 -dontwarn com.gemalto.jp2.JP2Decoder
 
+# The Word converter uses HWPF's HTML output. POI's desktop drawing and Log4j's
+# optional OSGi integration are not used on Android.
+-dontwarn org.apache.poi.java.awt.**
+-dontwarn org.apache.poi.javax.imageio.**
+-dontwarn aQute.bnd.annotation.spi.**
+-dontwarn org.osgi.framework.**
+-dontwarn org.jspecify.annotations.NullMarked
+
 # Keep data classes
 -keep class com.huangder.lumibooks.data.** { *; }
 -keep class com.huangder.lumibooks.domain.** { *; }

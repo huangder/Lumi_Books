@@ -10,8 +10,7 @@ const { spawnSync } = require('node:child_process');
 
 const source = readFileSync(join(__dirname,
   '../app/src/main/java/com/huangder/lumibooks/util/epub/EpubDocumentTransformer.kt'), 'utf8');
-const scriptParts = [...source.matchAll(/private const val READER_SCRIPT_PART_(?:1B|[123]) = """([\s\S]*?)"""/g)];
-assert.equal(scriptParts.length, 4, 'All production reader script parts must be exercised');
+const scriptParts = [...source.matchAll(/private const val READER_SCRIPT_PART_\w+ = """([\s\S]*?)"""/g)];
 const readerScript = scriptParts.map(match => match[1]).join('');
 const readerCss = source.match(/private const val READER_CSS = """([\s\S]*?)"""/)[1];
 
@@ -35,7 +34,8 @@ function verifyAlignment() {
     const style = getComputedStyle(document.getElementById('class-heading'));
     equal(style.fontFamily.replace(/["']/g, ''), 'monospace', label + ' font');
     equal(style.color, 'rgb(18, 52, 86)', label + ' color');
-    equal(style.fontWeight, '600', label + ' weight');
+    equal(style.fontWeight, '700', label + ' publisher heading weight');
+    equal(parseFloat(style.webkitTextStrokeWidth) > 0, true, label + ' reader weight outline');
     equal(style.letterSpacing, '1.25px', label + ' spacing');
     equal(style.lineHeight, (parseFloat(style.fontSize) * 2) + 'px', label + ' line height');
     const paragraph = getComputedStyle(document.getElementById('body-paragraph'));

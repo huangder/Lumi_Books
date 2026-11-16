@@ -2,241 +2,190 @@
 
 <div align="center">
 
-🌐 [中文](README.dev.md) · [English](README.dev.en.md) · [日本語](README.dev.ja.md) · **한국어**
+<img src="docs/readme-icon.png" alt="Lumi" width="96">
 
-[📖 사용자 가이드](README.ko.md) · ⚙️ **개발자 문서**
+# Lumi 개발자 안내
+
+Android용 로컬 전자책 리더의 기술 문서입니다. 기여자와 2차 개발자를 대상으로 합니다.
+
+[![Version](https://img.shields.io/badge/version-2.3.11-coral)](https://github.com/huangder/Lumi_Books/releases)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+[![Android](https://img.shields.io/badge/Android-8.0%2B-blue)](https://developer.android.com)
+
+[中文](README.dev.md) · [English](README.dev.en.md) · [日本語](README.dev.ja.md) · **한국어**
+
+[사용자 버전](README.ko.md) · **개발자 버전**
 
 </div>
 
----
-
-# Lumi — 개발자 가이드
-
-> Lumi Android 전자책 리더의 기술 문서. 기여자 및 개발자 대상.
-
-[![Version](https://img.shields.io/badge/version-2.1.9-coral)](https://github.com/huangder/Lumi_Books/releases)
-[![License](https://img.shields.io/badge/license-GPLv3-green)](LICENSE)
-[![Android](https://img.shields.io/badge/Android-8.0%2B-blue)](https://developer.android.com)
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.3.10-purple)](https://kotlinlang.org)
-
----
-
-## 📋 기술 스택
+## 기술 스택
 
 | 분류 | 기술 | 버전 |
 |------|------|------|
 | 언어 | Kotlin | 2.3.10 |
-| UI 프레임워크 | Jetpack Compose (BOM) | 2026.06.01 |
-| 아키텍처 | MVVM + Repository | — |
-| DI | Hilt | 2.58 |
+| 빌드 | Android Gradle Plugin | 8.13.2 |
+| UI | Jetpack Compose(BOM) | 2026.06.01 |
+| 의존성 주입 | Hilt | 2.58 |
 | 데이터베이스 | Room | 2.8.4 |
-| 설정 저장 | DataStore Preferences | 1.1.1 |
-| 네비게이션 | Navigation Compose | 2.8.9 |
-| 이미지 로딩 | Coil | 2.7.0 |
-| 비동기 처리 | Kotlin Coroutines | 1.9.0 |
-| EPUB 렌더링 | Android WebKit | 1.16.0 |
+| 환경설정 저장 | DataStore Preferences | 1.1.1 |
+| 내비게이션 | Navigation Compose | 2.8.9 |
+| 코루틴 | kotlinx-coroutines-android | 1.9.0 |
+| 백그라운드 작업 | WorkManager | 2.10.0 |
+| EPUB 출판사 레이아웃 렌더링 | AndroidX WebKit | 1.16.0 |
 | HTML 파싱 | Jsoup | 1.22.2 |
 | PDF 파싱 | pdfbox-android | 2.0.27.0 |
-| 네트워킹 | OkHttp | 4.12.0 |
 | Markdown | CommonMark | 0.24.0 |
-| 블러 효과 | Haze | 1.1.1 |
-| 리퀴드 글래스 | Backdrop | 1.0.6 |
-| 백그라운드 작업 | WorkManager | 2.10.0 |
-| 색상 추출 | Palette KTX | 1.0.0 |
-| 빌드 시스템 | AGP | 8.13.2 |
-| 어노테이션 처리 | KSP | 2.3.10 |
-| 최소 SDK | Android 8.0 (API 26) | — |
-| 타겟 SDK | Android 15 (API 35) | — |
-| 컴파일 SDK | Android 16 (API 36) | — |
-| JVM 타겟 | Java 17 | — |
+| 네트워크 | OkHttp | 4.12.0 |
+| 이미지 로딩 | Coil | 2.7.0 |
+| 흐림 및 유리 효과 | Haze 1.1.1, Backdrop(`third_party/backdrop`) | — |
+| SDK | minSdk 26, compileSdk 37, targetSdk 37 | — |
+| JVM | Java 17 | — |
 
----
+## 아키텍처
 
-## 🏗 아키텍처 개요
-
-Lumi는 **MVVM + Repository** 아키텍처와 Hilt 의존성 주입을 채택하고 있습니다：
+앱은 MVVM + Repository 아키텍처를 사용하며, 의존성 주입에는 Hilt를 씁니다.
 
 ```
-┌─────────────────────────────────────────────┐
-│  UI 계층 (Compose 화면 + ViewModel)          │
-│  ui/home/  ui/reader/  ui/settings/  ...     │
-├─────────────────────────────────────────────┤
-│  도메인 계층 (모델)                           │
-│  domain/model/  Book, Bookmark, Note, ...    │
-├─────────────────────────────────────────────┤
-│  데이터 계층 (Repository + DAO + DataStore)  │
-│  data/local/  data/repository/               │
-│  data/sync/   WebdavSyncManager              │
-├─────────────────────────────────────────────┤
-│  유틸리티 계층 (파서, 헬퍼)                   │
-│  util/parser/  EPUB, PDF, TXT               │
-│  util/  LocaleHelper, FontManager, ...       │
-└─────────────────────────────────────────────┘
+ui/        Compose 화면과 ViewModel: home, reader, settings, statistics, bookshelf 등
+domain/    도메인 모델과 리포지토리 인터페이스
+data/      Room, DataStore, 리포지토리 구현, WebDAV / OPDS 등 원격 데이터 소스, 백업과 동기화
+util/      파서(EPUB, PDF, TXT, Markdown, Word, Kindle), 조판과 캐시 유틸리티
+tts/       시스템 음성과 외부 음성 인터페이스
+widget/    홈 화면 위젯
+edition/   공개 버전과 공식 버전 사이의 기능 인터페이스
 ```
 
-- **Single Activity + Navigation Compose**：`MainActivity`가 주요 Compose 네비게이션 그래프를 호스팅. 설정, 환영 화면 등은 네이티브 전환 애니메이션을 위해 별도 Activity 사용.
-- **Hilt**：`@HiltAndroidApp` → `@HiltViewModel` → `@Inject constructor`.
-- **Room**：`BookDao`, `BookmarkDao`, `ReadingRecordDao`. DB 마이그레이션은 `fallbackToDestructiveMigration()` 사용.
-- **DataStore**：사용자 설정（테마, 읽기 설정, TTS 설정 등）저장.
-- **리더 엔진**：EPUB은 두 가지 모드 지원 — Canvas + StaticLayout（통일 타이포그래피）및 WebView（출판사 CSS 레이아웃 충실히 유지）.
+- **화면**: `MainActivity`는 Navigation Compose(`ui/navigation/NavGraph.kt`)로 주요 화면을 관리합니다. 환영 화면, 전체 화면 듣기, 듣기 설정 등은 별도의 Activity입니다.
+- **의존성 주입**: `EBookReaderApp`에는 `@HiltAndroidApp`이 붙어 있습니다. ViewModel은 `@HiltViewModel`을 쓰며, 모듈은 `di/`에 있습니다.
+- **데이터베이스**: Room의 현재 버전은 28입니다. 모든 마이그레이션은 `di/AppModule.kt`에서 `addMigrations`로 등록합니다. 테이블 구조를 바꿀 때는 버전 번호와 마이그레이션을 함께 추가하세요. 파괴적 마이그레이션에 의존하지 마세요.
+- **설정과 비밀 정보**: 사용자 설정은 DataStore에 저장합니다. WebDAV, 번역, 음성, MinerU Token 같은 자격 증명은 Android KeyStore로 암호화해 저장합니다.
+- **리더**: EPUB 출판사 레이아웃은 WebView로 렌더링하며, 출판사의 CSS와 글꼴을 그대로 유지합니다. 리더 레이아웃은 Canvas + StaticLayout으로 렌더링하며, 글꼴과 조판을 통일합니다.
 
----
-
-## 📁 프로젝트 구조
+## 프로젝트 구조
 
 ```
 android_books/
-├── LICENSE                     # GNU GPLv3
-├── NOTICE                      # 저작권 & 서드파티 고지
-├── README.md                   # 사용자용 README
-├── README.dev.md               # 개발자 가이드（본 파일）
-├── build.gradle.kts            # 루트 빌드 설정
-├── settings.gradle.kts         # 프로젝트 설정
+├── app/
+│   ├── build.gradle.kts
+│   └── src/
+│       ├── main/            공통 코드와 리소스
+│       │   ├── java/com/huangder/lumibooks/
+│       │   ├── assets/      내장 HTML, 글꼴, 사전, 업데이트 로그
+│       │   └── res/         리소스(표시 언어 7종)
+│       ├── oss/             공개 버전의 기능 구현
+│       ├── premium/         공식 버전의 비공개 소스(Git 추적 제외, 별도 리포지토리, 아래 참고)
+│       ├── test/            로컬 단위 테스트
+│       ├── androidTest/     계측 테스트
+│       └── debug/           디버그용 진입점
 │
-├── app/                        # Android 애플리케이션 모듈
-│   ├── build.gradle.kts        # 앱 빌드 설정
-│   └── src/main/
-│       ├── AndroidManifest.xml
-│       ├── assets/             # 내장 HTML, 글꼴, 변경 이력
-│       ├── java/com/huangder/lumibooks/
-│       │   ├── EBookReaderApp.kt       # Application 클래스
-│       │   ├── MainActivity.kt         # 메인 Activity
-│       │   ├── data/                   # 데이터 계층
-│       │   │   ├── local/              # Room DAO/Entity, DataStore
-│       │   │   ├── repository/         # Repository 구현
-│       │   │   └── sync/              # WebdavSyncManager
-│       │   ├── domain/model/           # 도메인 모델
-│       │   ├── di/                     # Hilt 모듈
-│       │   ├── ui/                     # 프레젠테이션 계층
-│       │   │   ├── home/               # 홈 + 책장
-│       │   │   ├── reader/             # 리더（코어）
-│       │   │   │   └── engine/         # Canvas 레이아웃 엔진
-│       │   │   ├── statistics/         # 독서 통계
-│       │   │   ├── settings/           # 설정
-│       │   │   ├── bookshelf/          # 책장 컴포넌트
-│       │   │   ├── components/         # 공유 Compose 컴포넌트
-│       │   │   ├── welcome/            # 온보딩
-│       │   │   └── navigation/         # 네비게이션 그래프
-│       │   └── util/                   # 유틸리티
-│       │       ├── parser/             # EPUB/PDF/TXT 파서
-│       │       ├── LocaleHelper.kt     # 다국어 지원
-│       │       └── ...
-│       └── res/                        # 리소스（8개 로케일 디렉터리）
-│
-├── devlog/                     # 개발 로그（날짜순）
-├── devdocs/                    # 프로젝트 문서
-│   ├── requirements.md         # 요구사항
-│   ├── technical-spec.md       # 기술 명세
-│   ├── design-spec.md          # 디자인 명세
-│   ├── ui-design-spec.md       # UI 디자인 구현
-│   ├── project-status.md       # 프로젝트 현황
-│   ├── development-plan.md     # 개발 계획
-│   └── CHANGELOG.md            # 변경 이력（v1.0.01.124）
-│
-├── docs/                       # 웹사이트 소스 (GitHub Pages → huangder.top)
-│   ├── index.html              # 홈페이지
-│   ├── features.html           # 기능 소개
-│   ├── tech.html               # 기술 명세
-│   ├── privacy.html            # 개인정보 처리방침
-│   └── ...
-│
-└── .github/workflows/          # CI（GitHub Pages 배포）
+├── benchmark/               시작과 스크롤 성능 테스트
+├── third_party/             저장소에서 관리하는 서드파티 모듈(Backdrop, 자막 뷰, Word 변환 등)
+├── tools/                   EPUB와 리더 프로브, 테스트 스크립트, 보조 도구
+├── devdocs/                 개발 문서
+├── docs/                    프로젝트 사이트(GitHub Pages)
+└── .github/                 Pages 배포 워크플로와 Issue 템플릿
 ```
 
-> **참고**：`devdocs/` 및 `devlog/`의 상세 개발 문서는 주로 중국어로 작성되어 있습니다.
+## 빌드
 
----
+### 준비 사항
 
-## 🔨 빌드
+- Android Studio(최신 안정 버전) 또는 명령줄
+- JDK 17
+- Android SDK: compileSdk 37과 해당 build-tools
+- 명령줄로 빌드할 때는 `ANDROID_HOME`을 설정하세요. Windows에서는 `gradlew.bat`을 사용합니다.
 
-### 사전 요구사항
-- **Android Studio**（최신 안정판 권장）
-- **JDK 17**
-- **Android SDK 36**（compileSdk）및 35（targetSdk）빌드 도구
+### 공개 버전
 
-### 절차
+이 저장소만 클론했다면 빌드 결과는 공개 버전입니다.
 
 ```bash
-# 1. 저장소 클론
-git clone https://github.com/huangder/Lumi_Books.git
-cd Lumi_Books
-
-# 2. Android Studio에서 열고 Gradle 동기화 대기
-
-# 3. 기기 연결 또는 에뮬레이터（API 26+）실행 후 실행
-
-# 또는 명령줄에서 빌드：
-./gradlew assembleDebug
-# APK 출력: app/build/outputs/apk/debug/app-debug.apk
-
-# 릴리스 빌드（서명 설정 필요）：
-./gradlew assembleRelease
-# APK 출력: app/build/outputs/apk/release/
+./gradlew :app:assembleDebug
+# APK: app/build/oss/outputs/apk/debug/
 ```
 
-### 서명 설정
+자주 쓰는 확인 명령:
 
-릴리스 빌드에는 `app/`에 `keystore.properties`를 배치하거나 `build.gradle.kts`에서 서명 정보를 구성해야 합니다. 기본 release buildType은 minify가 비활성화（`isMinifyEnabled = false`）되어 있습니다.
+```bash
+./gradlew :app:compileDebugKotlin                 # Kotlin 컴파일
+./gradlew :app:testDebugUnitTest                  # 로컬 단위 테스트
+./gradlew :app:compileDebugAndroidTestKotlin      # 계측 테스트 컴파일 확인
+```
 
----
+### 공식 버전과 버전 경계
 
-## 🤝 기여
+공개 저장소와 공식 버전은 같은 코드를 공유합니다. 두 버전의 차이는 `edition/`의 인터페이스로 분리되어 있습니다. 공개 저장소에는 단독으로 컴파일되는 구현이 있고, 공식 버전의 비공개 구현은 `app/src/premium/`에 둡니다. 이 디렉터리는 공개 저장소에서 추적하지 않습니다. 비공개 저장소에 접근 권한이 있는 개발자는 필요할 때 아래처럼 클론할 수 있습니다.
+
+```bash
+git clone --branch main https://github.com/huangder/Lumi_Books-premium.git app/src/premium
+```
+
+`app/src/premium/java`가 있으면 기본 빌드는 공식 버전으로 바뀌고, 결과물은 `app/build/official/`에 생성됩니다. 이런 환경에서 공개 버전을 검증하려면 `-Plumi.oss=true`를 붙이세요.
+
+```bash
+./gradlew '-Plumi.oss=true' :app:assembleDebug
+```
+
+두 버전은 빌드 디렉터리를 분리해 둡니다. KSP와 Hilt가 생성하는 코드가 섞이지 않도록 하기 위해서입니다. 공용 인터페이스, 데이터 형식, 빌드 설정을 바꿀 때는 공개 버전과 공식 버전이 모두 컴파일되는지 확인하세요. 자세한 규칙은 [devdocs/editions.md](devdocs/editions.md)를 참고하세요.
+
+### 서명과 릴리스
+
+- release 빌드는 R8 난독화와 리소스 축소를 켭니다(`isMinifyEnabled = true`).
+- 저장소에는 서명 설정이 들어 있지 않습니다. 배포 전에 `app/build.gradle.kts`에서 release용 `signingConfig`를 직접 설정하세요.
+- 실행 진단 등 특수 빌드 타입은 `app/build.gradle.kts`의 `buildTypes`를 참고하세요.
+
+## 기여
 
 Issue와 Pull Request를 환영합니다.
 
-- **버그 보고**：[GitHub Issues](https://github.com/huangder/Lumi_Books/issues)에 기기 모델, Android 버전, 재현 절차를 포함하여 제출해 주세요.
-- **기능 제안**：Issues에서 논의를 시작해 주세요.
-- **코드 기여**：
-  1. 저장소 포크
-  2. 기능 브랜치 생성（`feature/xxx` 또는 `fix/xxx`）
-  3. 개발 후 `./gradlew compileDebugKotlin`으로 확인
-  4. `main` 브랜치로 PR 제출
-- **커밋 규칙**：Conventional Commits 준수 — `feat:` / `fix:` / `refactor:` / `docs:` / `chore:` / `perf:`.
-- **코드 스타일**：Kotlin 공식 코드 스타일과 기존 프로젝트 패턴을 따라 주세요.
+- **버그 신고**: [GitHub Issues](https://github.com/huangder/Lumi_Books/issues)에 제출해 주세요. 기기 모델, Android 버전, 재현 절차를 함께 적어 주세요.
+- **기능 제안**: Issues에서 논의를 시작해 주세요.
+- **코드 기여**:
+  1. 저장소를 Fork합니다.
+  2. 기능 브랜치를 만듭니다(`feature/xxx` 또는 `fix/xxx`).
+  3. 개발한 뒤 `./gradlew :app:compileDebugKotlin`이 통과하는지 확인합니다.
+  4. `main` 브랜치로 PR을 제출합니다.
+- **커밋 규칙**: Conventional Commits를 따릅니다. `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `perf:`를 씁니다.
+- **코드 스타일**: Kotlin 공식 스타일을 따르고, 기존 프로젝트의 패턴을 맞추세요.
 
----
+`devdocs/`의 자세한 문서는 현재 대부분 중국어입니다. 다른 언어로의 번역도 환영합니다.
 
-## 📚 문서 색인
+## 문서 색인
 
 | 문서 | 경로 |
 |------|------|
-| 변경 이력（v1.0.01） | [devdocs/CHANGELOG.md](devdocs/CHANGELOG.md) |
-| 온라인 변경 이력 | [huangder.top/changelog](https://huangder.top/changelog.html) |
-| 요구사항 | [devdocs/requirements.md](devdocs/requirements.md) |
+| 앱 내 업데이트 로그 | [app/src/main/assets/changelog.md](app/src/main/assets/changelog.md) |
+| 온라인 업데이트 로그 | [huangder.top/changelog](https://huangder.top/changelog.html) |
+| 버전과 빌드 경계 | [devdocs/editions.md](devdocs/editions.md) |
+| 요구사항 문서 | [devdocs/requirements.md](devdocs/requirements.md) |
 | 기술 명세 | [devdocs/technical-spec.md](devdocs/technical-spec.md) |
 | 디자인 명세 | [devdocs/design-spec.md](devdocs/design-spec.md) |
-| UI 디자인 구현 | [devdocs/ui-design-spec.md](devdocs/ui-design-spec.md) |
-| 프로젝트 현황 | [devdocs/project-status.md](devdocs/project-status.md) |
+| 현행 UI 및 모션 규격 | [devdocs/lumi-ui-motion-design-system.md](devdocs/lumi-ui-motion-design-system.md) |
+| 프로젝트 상태 | [devdocs/project-status.md](devdocs/project-status.md) |
 | 개발 계획 | [devdocs/development-plan.md](devdocs/development-plan.md) |
-| 개발 로그 | [devlog/](devlog/) |
-| 앱 내 변경 이력 | [app/src/main/assets/changelog.md](app/src/main/assets/changelog.md) |
 
----
+## 라이선스
 
-## 📜 라이선스
+Lumi의 원본 코드는 [Apache License 2.0](LICENSE)으로 공개됩니다.
 
-Lumi의 오리지널 코드는 [GNU GPLv3](LICENSE)에 따라 오픈소스로 공개됩니다.
-
-서드파티 종속성 및 개작 코드는 각각의 라이선스를 따릅니다：
+서드파티 의존성과 개작된 코드는 각자의 라이선스를 따릅니다.
 
 | 구성 요소 | 라이선스 | 비고 |
-|-----------|---------|------|
-| [Backdrop](https://github.com/Kyant0/AndroidLiquidGlass) | Apache 2.0 | 리퀴드 글래스 효과, 개작됨 |
-| [Haze](https://github.com/chrisbanes/haze) | Apache 2.0 | 블러 효과 |
+|------|--------|------|
+| [Backdrop](https://github.com/Kyant0/AndroidLiquidGlass) | Apache 2.0 | Liquid Glass 효과, 개작 포함 |
+| [Haze](https://github.com/chrisbanes/haze) | Apache 2.0 | 흐림 효과 |
 | [PDFBox Android](https://github.com/TomRoush/PdfBox-Android) | Apache 2.0 | PDF 텍스트 추출 |
 | [CommonMark](https://github.com/commonmark/commonmark-java) | BSD 2-Clause | Markdown 파싱 |
 | [Jsoup](https://jsoup.org/) | MIT | HTML 파싱 |
 | [Coil](https://coil-kt.github.io/coil/) | Apache 2.0 | 이미지 로딩 |
 | [OkHttp](https://square.github.io/okhttp/) | Apache 2.0 | HTTP 클라이언트 |
 
-전체 서드파티 라이선스 전문은 [app/src/main/assets/licenses/](app/src/main/assets/licenses/)에서 확인할 수 있습니다.
+서드파티 전체 고지 내용은 [NOTICE](NOTICE)에서, 라이선스 원문은 [app/src/main/assets/licenses/](app/src/main/assets/licenses/)에서 확인할 수 있습니다.
 
 © 2026 Huangder
 
----
+## 링크
 
-## 🔗 링크
-
-- 🌐 웹사이트：[huangder.top](https://huangder.top)
-- 📦 GitHub：[github.com/huangder/Lumi_Books](https://github.com/huangder/Lumi_Books)
-- 📧 이메일：huangder0104@126.com
+- 공식 사이트: [huangder.top](https://huangder.top)
+- GitHub: [github.com/huangder/Lumi_Books](https://github.com/huangder/Lumi_Books)
+- 이메일: huangder0104@126.com

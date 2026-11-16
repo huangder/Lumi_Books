@@ -16,6 +16,56 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
 class ReaderSlideVisibilityTest {
+    @Test fun pressDuringFadeDoesNotReachOverlappingPageText() {
+        val reader = ReadView(RuntimeEnvironment.getApplication())
+        reader.slotManager.backgroundPreparationEnabled = false
+        val bitmap = Bitmap.createBitmap(400, 800, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val currentActions = mutableListOf<Int>()
+        val nextActions = mutableListOf<Int>()
+        val width = View.MeasureSpec.makeMeasureSpec(400, View.MeasureSpec.EXACTLY)
+        val height = View.MeasureSpec.makeMeasureSpec(800, View.MeasureSpec.EXACTLY)
+        try {
+            reader.curPageView.setPageContent("Current page", 0, 12)
+            reader.nextPageView.setPageContent("Next page", 0, 9)
+            reader.curPageView.textView.setOnTouchListener { _, event ->
+                currentActions += event.actionMasked
+                true
+            }
+            reader.nextPageView.textView.setOnTouchListener { _, event ->
+                nextActions += event.actionMasked
+                true
+            }
+            reader.measure(width, height)
+            reader.layout(0, 0, 400, 800)
+            reader.setPageTransition("fade")
+            val fade = reader.animationController as FadePageAnim
+            fade.startFromTap(PageAnimationController.Direction.NEXT)
+            reader.draw(canvas)
+            assertEquals(0f, (reader.nextPageView.parent as View).translationX, 0f)
+
+            fun touch(action: Int, down: Long, elapsed: Long) {
+                val event = MotionEvent.obtain(down, down + elapsed, action, 200f, 400f, 0)
+                try { assertTrue(reader.dispatchTouchEvent(event)) } finally { event.recycle() }
+            }
+            touch(MotionEvent.ACTION_DOWN, 100L, 0L)
+            fade.abortAnim()
+            reader.draw(canvas)
+            touch(MotionEvent.ACTION_UP, 100L, 600L)
+            assertTrue(nextActions.isEmpty())
+            assertTrue(currentActions.isEmpty())
+
+            touch(MotionEvent.ACTION_DOWN, 800L, 0L)
+            touch(MotionEvent.ACTION_UP, 800L, 600L)
+            assertEquals(listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP), currentActions)
+            assertTrue(nextActions.isEmpty())
+        } finally {
+            reader.animationController.abortAnim()
+            reader.slotManager.destroy()
+            bitmap.recycle()
+        }
+    }
+
     @Test fun switchingFromInstantToSlideRestoresAdjacentSpreadsForEveryDrag() {
         val reader = ReadView(RuntimeEnvironment.getApplication())
         reader.slotManager.backgroundPreparationEnabled = false

@@ -11,32 +11,32 @@ import org.junit.Test
 class ListeningReaderSessionTest {
     private val target = TtsListeningPosition("book", 2, 3, 450, 123L)
 
-    @Test fun explicitPageFollowResumesAfterRepeatedFullscreenLifecycleCallbacks() {
+    @Test fun pageFollowResumesAfterRepeatedFullscreenLifecycleCallbacks() {
         val session = ListeningReaderSession()
         session.follow()
         repeat(3) {
             repeat(4) { session.suspendForBackground(42) }
             assertFalse(session.followEnabled.value)
-            assertEquals(true, session.returnFromBackground(42, followUserPageTurns = true))
+            assertEquals(true, session.returnFromBackground(42))
             assertTrue(session.followEnabled.value)
             assertNull(session.beginCheck())
             assertNull(session.prompt.value)
-            assertNull(session.returnFromBackground(42, followUserPageTurns = true))
+            assertNull(session.returnFromBackground(42))
         }
     }
 
-    @Test fun explicitPageFollowDoesNotBypassOpeningChoiceOrResumeADifferentSession() {
+    @Test fun backgroundReturnDoesNotBypassOpeningChoiceOrResumeADifferentSession() {
         for (nextSession in listOf(42L, 43L, null)) {
             val opening = ListeningReaderSession()
             opening.suspendForBackground(42)
-            assertNull(opening.returnFromBackground(nextSession, followUserPageTurns = true))
+            assertNull(opening.returnFromBackground(nextSession))
             assertFalse(opening.followEnabled.value)
             assertNotNull(opening.beginCheck())
         }
         val session = ListeningReaderSession()
         session.follow()
         session.suspendForBackground(42)
-        assertNull(session.returnFromBackground(43, followUserPageTurns = true))
+        assertNull(session.returnFromBackground(43))
         assertFalse(session.followEnabled.value)
     }
 

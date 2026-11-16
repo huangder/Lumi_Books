@@ -9,7 +9,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -96,6 +97,12 @@ internal fun CoverFlowActionBar(
         val openInteraction = remember { MutableInteractionSource() }
         Row(Modifier.height(40.dp).lumiPressable(openInteraction, pressedScale = 0.95f)
             .clip(AppRoundedCornerShape(AppRadius.full)).background(AppColors.Accent)
+            // A soft top light gives the capsule a gently raised, pressable face.
+            .drawWithCache {
+                val lift = Brush.verticalGradient(0f to Color.White.copy(alpha = 0.24f), 0.55f to Color.Transparent,
+                    1f to Color.Black.copy(alpha = 0.06f))
+                onDrawBehind { drawRect(lift) }
+            }
             .clickable(interactionSource = openInteraction, indication = null, onClick = onOpen)
             .padding(start = 14.dp, end = 18.dp),
             verticalAlignment = Alignment.CenterVertically) {
@@ -199,10 +206,14 @@ internal fun CoverFlowFolderNavigation(
             },
             contentPadding = PaddingValues(start = 12.dp + 8.dp, end = 12.dp + bleedEnd),
             horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally)) {
-            items(folders, key = { it.id }) { folder ->
+            itemsIndexed(folders, key = { _, folder -> folder.id }) { index, folder ->
                 var bounds by remember { mutableStateOf(Rect.Zero) }
                 val interaction = remember { MutableInteractionSource() }
-                Row(Modifier.coverFlowEntranceItem(3 + folders.indexOf(folder).coerceAtMost(3))
+                // Catalogue rhythm: serif names separated by quiet middle dots.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                if (index > 0) Text("·", color = AppColors.TextSecondary.copy(alpha = 0.45f),
+                    fontSize = AppType.Footnote, modifier = Modifier.padding(horizontal = 2.dp))
+                Row(Modifier.coverFlowEntranceItem(3 + index.coerceAtMost(3))
                     .heightIn(min = 40.dp)
                     .onGloballyPositioned { bounds = it.boundsInRoot() }
                     .lumiPressable(interaction, pressedScale = 0.95f)
@@ -222,16 +233,18 @@ internal fun CoverFlowFolderNavigation(
                         })
                     .padding(horizontal = 10.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    ControlIcon(AppIcons.Folder, null, tint = AppColors.TextSecondary, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(5.dp))
-                    Text(folder.name, color = AppColors.TextPrimary, fontSize = AppType.Footnote,
+                    Text(folder.name, color = AppColors.TextPrimary, fontSize = AppType.Subhead,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Serif,
                         fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.widthIn(max = 130.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("${counts[folder.id] ?: 0}", color = AppColors.TextSecondary.copy(alpha = 0.7f),
-                        fontSize = AppType.Caption2)
+                    Spacer(Modifier.width(3.dp))
+                    // Superscript count, like a footnote mark in a table of contents.
+                    Text("${counts[folder.id] ?: 0}", color = AppColors.TextSecondary.copy(alpha = 0.75f),
+                        fontSize = AppType.Caption2, fontFamily = androidx.compose.ui.text.font.FontFamily.Serif,
+                        modifier = Modifier.offset(y = (-5).dp))
                     if (folder.storageMissing) ControlIcon(AppIcons.Link, stringResource(R.string.book_file_unavailable),
                         tint = AppColors.Destructive, modifier = Modifier.padding(start = 4.dp).size(14.dp))
+                }
                 }
             }
         }

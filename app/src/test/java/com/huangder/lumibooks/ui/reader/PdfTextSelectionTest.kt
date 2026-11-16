@@ -161,9 +161,15 @@ class PdfTextSelectionTest {
                     onCopy = { copies++ }, onViewNote = {})
             }
         }
-        compose.onNodeWithText(context.getString(R.string.menu_copy)).performScrollTo().performClick()
+        // Actions that do not fit the bar live in the menu behind the trailing ">".
+        val more = compose.onAllNodesWithContentDescription(context.getString(R.string.more_options))
+        if (more.fetchSemanticsNodes().isNotEmpty()) {
+            more.onFirst().performClick()
+            compose.waitForIdle()
+        }
+        compose.onAllNodesWithText(context.getString(R.string.excerpt_title)).onFirst().assertExists()
+        compose.onAllNodesWithText(context.getString(R.string.menu_copy)).onLast().performClick()
         compose.runOnIdle { assertEquals(1, copies) }
-        compose.onNodeWithText(context.getString(R.string.excerpt_title)).assertExists()
         assertTrue(PdfSelectionSupportedActions.containsAll(setOf(SelectionMenuAction.SEARCH,
             SelectionMenuAction.WEB_SEARCH, SelectionMenuAction.DICTIONARY)))
         assertFalse(SelectionMenuAction.REPLACE in PdfSelectionSupportedActions)

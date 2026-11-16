@@ -12,6 +12,8 @@ import com.huangder.lumibooks.data.local.dao.SyncStateDao
 import com.huangder.lumibooks.data.local.entity.SyncTombstoneEntity
 import com.huangder.lumibooks.data.sync.SyncIdentityStore
 
+private val highlightRuleFormats = BookFormat.entries.filter(BookFormat::supportsHighlightRules).map(BookFormat::name)
+
 class BookRepositoryImpl @Inject constructor(
     private val bookDao: BookDao,
     private val syncStateDao: SyncStateDao,
@@ -47,6 +49,14 @@ class BookRepositoryImpl @Inject constructor(
         bookDao.insertBook(book.toEntity())
     }
 
+    override suspend fun insertExternalBook(book: Book) {
+        if (book.format.supportsHighlightRules) {
+            bookDao.insertBookWithInheritedHighlightSwitches(book.toEntity(), highlightRuleFormats)
+        } else {
+            insertBook(book)
+        }
+    }
+
     override suspend fun updateBook(book: Book) {
         bookDao.updateBook(book.toEntity())
     }
@@ -58,6 +68,28 @@ class BookRepositoryImpl @Inject constructor(
     override suspend fun updateBookMetadata(book: Book) {
         bookDao.updateBook(book.copy(metadataUpdatedAt = System.currentTimeMillis()).toEntity())
     }
+
+    override suspend fun compareAndSetBookMetadata(
+        expected: Book,
+        title: String,
+        author: String,
+        newCoverPath: String?
+    ): Boolean = bookDao.compareAndSetBookMetadata(
+        id = expected.id,
+        expectedTitle = expected.title,
+        expectedAuthor = expected.author,
+        expectedUpdatedAt = expected.metadataUpdatedAt,
+        expectedFilePath = expected.filePath,
+        expectedSourceUri = expected.sourceUri,
+        expectedSourceName = expected.sourceDisplayName,
+        expectedSourceHash = expected.sourceSha256,
+        expectedSourceModified = expected.sourceLastModified,
+        expectedCoverPath = expected.coverPath,
+        title = title,
+        author = author,
+        newCoverPath = newCoverPath,
+        updatedAt = System.currentTimeMillis()
+    ) == 1
 
     override suspend fun setBooksHidden(bookIds: Collection<String>, hidden: Boolean) {
         if (bookIds.isEmpty()) return

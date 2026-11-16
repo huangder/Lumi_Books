@@ -1,11 +1,32 @@
 package com.huangder.lumibooks.util
 
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UpdateCheckerTest {
+
+    @Test
+    fun `reads optional photo alongside notice text`() {
+        val notice = UpdateChecker.parseNotice(noticeJson().put("image_url", " https://example.com/photo.jpg "))!!
+
+        assertEquals("通知正文", notice.message)
+        assertEquals("https://example.com/photo.jpg", notice.imageUrl)
+    }
+
+    @Test
+    fun `missing or invalid photo preserves text-only notice`() {
+        val textOnly = UpdateChecker.parseNotice(noticeJson())!!
+        assertNull(textOnly.imageUrl)
+        assertEquals("通知正文", textOnly.message)
+
+        for (invalid in listOf(JSONObject.NULL, 123, "", "https:photo.jpg", "file:///photo.jpg", "http://example.com/photo.jpg")) {
+            assertEquals(textOnly, UpdateChecker.parseNotice(noticeJson().put("image_url", invalid)))
+        }
+    }
 
     @Test
     fun `does not report a remote older version as an update`() {
@@ -87,6 +108,36 @@ class UpdateCheckerTest {
         assertTrue(termsOnly.hasTermsUpdate)
         assertFalse(termsOnly.hasPrivacyUpdate)
     }
+
+    @Test
+    fun `pending app update still returns an eligible notice for archiving`() {
+        val notice = UpdateChecker.parseNotice(noticeJson()
+            .put("min_version_code", 17)
+            .put("max_version_code", 17))!!
+        val config = UpdateChecker.UpdateConfig(
+            latestVersion = "2.3.12",
+            latestVersionCode = 18,
+            releaseUrl = "",
+            updateTitle = "",
+            updateMessage = "",
+            changelog = "",
+            forceUpdateBelowVersionCode = 18,
+            termsVersion = 0,
+            privacyVersion = 0,
+            notice = notice
+        )
+        val result = UpdateChecker.evaluate(config, "2.3.11", 17, 0, 0)
+        assertTrue(result.isForceUpdate)
+        assertEquals(notice, result.notice)
+        assertNull(UpdateChecker.evaluate(config, "2.3.10", 16, 0, 0).notice)
+        assertNull(UpdateChecker.evaluate(config.copy(notice = notice.copy(enabled = false)), "2.3.11", 17, 0, 0).notice)
+    }
+
+    private fun noticeJson() = JSONObject()
+        .put("id", "notice-test")
+        .put("enabled", true)
+        .put("title", "通知")
+        .put("message", "通知正文")
 
     private fun evaluatePolicies(acceptedTerms: Int, acceptedPrivacy: Int): UpdateChecker.CheckResult {
         return UpdateChecker.evaluate(

@@ -772,7 +772,7 @@ class EpubDocumentTransformerTest {
         assertTrue(output.contains("document.body.style.setProperty('background-image', 'none', 'important')"))
         assertTrue(output.contains("if (!source) return"))
         assertTrue(output.contains("var liveLocator = state.ready && geometryChanged ? currentLocator() : null"))
-        assertTrue(output.contains("if (liveLocator) restore(liveLocator)"))
+        assertTrue(output.contains("if (liveLocator) state.pendingLocator = liveLocator"))
         assertFalse(output.contains("caretRangeFromPoint(2, 2)"))
         assertTrue(output.contains("logicalPage !== state.page"))
         assertTrue(output.contains("Math.floor(restoreProgression * state.total + 0.000001)"))

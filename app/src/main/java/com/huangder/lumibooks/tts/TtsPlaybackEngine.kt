@@ -24,6 +24,9 @@ interface TtsPlaybackEngine {
     /** Native playback can accept one following utterance before audible completion. */
     val supportsQueuedPlayback: Boolean get() = false
 
+    /** How many following utterances [queueNext] accepts ahead of the audible one. */
+    val maxQueuedUtterances: Int get() = 1
+
     /** Queue without publishing playback state. speak() with this ID later adopts the request. */
     suspend fun queueNext(text: String, utteranceId: String): Result<Unit> =
         Result.failure(UnsupportedOperationException("Queued playback is unavailable"))

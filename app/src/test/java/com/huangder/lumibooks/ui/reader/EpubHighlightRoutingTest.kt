@@ -24,10 +24,12 @@ class EpubHighlightRoutingTest {
         fonts.forEach { (type, family) ->
             val styled = note().copy(styleSnapshotJson = """{"fontType":"$type"}""")
             val url = "https://reader.local/$type.ttf"
-            val style = highlightsJson(listOf(styled), mapOf(type to url))
+            val descriptor = if (type == "kaiti" || type == "fangsong") "400" else "200 900"
+            val style = highlightsJson(listOf(styled), mapOf(type to EpubRuleFont(url, descriptor)))
                 .getJSONObject(0).getJSONObject("ruleStyle")
             assertEquals(family, style.getString("fontFamily"))
             assertEquals(url, style.getString("fontUrl"))
+            assertEquals(descriptor, style.getString("fontWeightDescriptor"))
         }
     }
 

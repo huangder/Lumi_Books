@@ -22,6 +22,21 @@ class ReaderVolumeKeyActionsTest {
     }
 
     @Test
+    fun listeningActionsWorkForTextAndPdfAndFallBackForComics() {
+        for (action in listOf(
+            ReaderVolumeKeyAction.TOGGLE_TTS_SESSION,
+            ReaderVolumeKeyAction.TOGGLE_TTS_PLAY_PAUSE
+        )) {
+            assertEquals(action, resolveReaderVolumeKeyAction(action, supportsFontSize = true))
+            assertEquals(action, resolveReaderVolumeKeyAction(action, supportsFontSize = false))
+            assertEquals(
+                ReaderVolumeKeyAction.SYSTEM_VOLUME,
+                resolveReaderVolumeKeyAction(action, supportsFontSize = false, supportsListening = false)
+            )
+        }
+    }
+
+    @Test
     fun brightnessStartsFromDefaultAndClampsToBounds() {
         assertEquals(0.85f, adjustReaderBrightness(-1f, increase = true), 0.0001f)
         assertEquals(0f, adjustReaderBrightness(0f, increase = false), 0.0001f)

@@ -41,6 +41,44 @@ class BookSortingTest {
         assertEquals(listOf("old", "middle", "new"), sortBooksForLibrary(books, SortBy.DATE_ADDED).map { it.id })
     }
 
+    @Test
+    fun customSortKeepsPinnedFirstAndPutsUnplacedBooksInFrontNewestFirst() {
+        val books = listOf(
+            book("a", "A", "x", createdAt = 1),
+            book("b", "B", "x", createdAt = 2),
+            book("c", "C", "x", createdAt = 3),
+            book("p", "P", "x", createdAt = 4, pinned = true),
+            book("new1", "N1", "x", createdAt = 50),
+            book("new2", "N2", "x", createdAt = 60)
+        )
+        val order = listOf("gone", "c", "a", "p", "b")
+
+        assertEquals(
+            listOf("p", "new2", "new1", "c", "a", "b"),
+            sortBooksForLibrary(books, SortBy.CUSTOM, order).map { it.id }
+        )
+    }
+
+    @Test
+    fun mergeCustomOrderRefillsTheSlotsOfTheReorderedSubset() {
+        val global = listOf("a", "b", "c", "d", "e")
+
+        // A folder holding b and d: they swap, everything else stays where it was.
+        assertEquals(listOf("a", "d", "c", "b", "e"), mergeCustomOrder(global, listOf("d", "b")))
+        // The whole shelf.
+        assertEquals(listOf("e", "a", "b", "c", "d"), mergeCustomOrder(global, listOf("e", "a", "b", "c", "d")))
+    }
+
+    @Test
+    fun mergeCustomOrderPlacesUnknownIdsInFrontInTheirShownOrder() {
+        assertEquals(
+            listOf("x", "b", "a", "c"),
+            mergeCustomOrder(listOf("a", "b", "c"), listOf("x", "b", "a"))
+        )
+        assertEquals(listOf("b", "a"), mergeCustomOrder(emptyList(), listOf("b", "a")))
+        assertEquals(listOf("a", "b"), mergeCustomOrder(listOf("a", "b"), emptyList()))
+    }
+
     private fun book(
         id: String,
         title: String,

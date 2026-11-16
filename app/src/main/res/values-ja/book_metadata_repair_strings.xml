@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="book_metadata_repair_action">書籍情報を補完</string>
+    <string name="book_metadata_repair_title">書名と著者を補完</string>
+    <string name="book_metadata_repair_empty">選んだ本に補完できる書名や著者はありません。</string>
+    <string name="book_metadata_repair_no_suggestion">%1$d 冊は補完候補がありません。</string>
+    <string name="book_metadata_repair_preview_error">プレビューを読み込めませんでした。</string>
+    <string name="book_metadata_repair_apply">%1$d 冊に適用</string>
+    <string name="book_metadata_repair_updated">%1$d 冊を更新しました。</string>
+    <string name="book_metadata_repair_changed">プレビュー後に記録が変更された %1$d 冊をスキップしました。</string>
+    <string name="book_metadata_repair_failed">%1$d 冊を更新できませんでした。</string>
+    <string name="book_metadata_repair_field_change">%1$s　%2$s → %3$s</string>
+</resources>

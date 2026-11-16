@@ -24,4 +24,10 @@
     <string name="welcome_story_art_stats_duration">%1$d h %2$d min</string>
     <string name="welcome_story_art_stats_heatmap">Last 3 months</string>
     <string name="welcome_story_art_stats_compare" formatted="false">18% more than last week</string>
+    <string name="welcome_story_appearance_eyebrow">Appearance</string>
+    <string name="welcome_story_appearance_title_pick">Choose a look</string>
+    <string name="welcome_story_appearance_subtitle_pick">Pick the one you like. You can change it later in Settings.</string>
+    <string name="welcome_theme_desc_liquid_glass">Clear, refractive glass that flows with your touch.</string>
+    <string name="welcome_theme_desc_flat">Clean and simple, so the content leads.</string>
+    <string name="welcome_theme_desc_material3">Colors from your wallpaper, with a native system feel.</string>
 </resources>

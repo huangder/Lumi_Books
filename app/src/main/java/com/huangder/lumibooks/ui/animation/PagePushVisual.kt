@@ -338,9 +338,7 @@ internal fun resolvedPageRadius(reported: Float?, inherited: Float?, fallback: F
 private fun displayCorners(view: android.view.View, density: Density, inherited: PageCorners?): PageCorners {
     val fallback = with(density) { 32.dp.toPx() }
     fun radius(position: Int, previous: Float?): Float {
-        val reported = if (Build.VERSION.SDK_INT >= 31) {
-            view.rootView.rootWindowInsets?.getRoundedCorner(position)?.radius?.toFloat()
-        } else null
+        val reported = reportedScreenCornerPx(view, position)
         // Some OEMs return a zero-radius corner for secondary translucent windows.
         return resolvedPageRadius(reported, previous, fallback)
     }

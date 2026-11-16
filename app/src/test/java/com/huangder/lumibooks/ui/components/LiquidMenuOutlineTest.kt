@@ -68,7 +68,7 @@ class LiquidMenuOutlineTest {
     }
 
     @Test fun neckedOutlineStaysWithinTheSubpixelToleranceInEveryOrientation() {
-        for (x in listOf(-1f, 1f)) for (y in listOf(-1f, 1f)) for (phase in listOf(0.1f, 0.2f, 0.35f, 0.5f)) {
+        for (x in listOf(-1f, 1f)) for (y in listOf(-1f, 1f)) for (phase in listOf(0.2f, 0.3f, 0.4f, 0.5f)) {
             val f = frame(phase, x, y)
             assertTrue(f.neck > 0f)
             val points = f.outlinePoints(continuous = true)
@@ -78,7 +78,9 @@ class LiquidMenuOutlineTest {
     }
 
     @Test fun neckedOutlineAddsVerticesOnlyWhereTheWarpBendsTheEdges() {
-        val f = frame(0.35f)
+        // The staged droplet is round here; the (shared) warp sampling is measured on the
+        // straight-sided legacy panel morph.
+        val f = LiquidMenuGeometry.legacyFrame(source, target, 0.35f, 22f, 24f)
         val base = restingSamples(f).size - 1
         val points = f.outlinePoints(continuous = true)
         assertTrue("The warp needs extra vertices along the stretched sides", points.size > base)

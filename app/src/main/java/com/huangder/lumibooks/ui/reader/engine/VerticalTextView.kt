@@ -525,11 +525,7 @@ internal class VerticalTextView(context: Context) : View(context) {
                         paint.textSkewX = -0.25f
                     }
                 }
-                is ReaderRuleTypefaceSpan -> {
-                    paint.typeface = span.typeface
-                    if (span.bold) paint.isFakeBoldText = true
-                    if (span.italic) paint.textSkewX = -0.25f
-                }
+                is ReaderRuleTypefaceSpan -> span.updateDrawState(paint)
                 is ForegroundColorSpan -> paint.color = span.foregroundColor
                 is URLSpan -> {
                     paint.color = paint.linkColor

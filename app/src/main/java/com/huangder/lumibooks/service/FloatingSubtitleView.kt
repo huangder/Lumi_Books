@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.vector.VectorPath
 import androidx.core.graphics.ColorUtils
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.tts.FloatingSubtitleSettings
+import com.huangder.lumibooks.tts.FloatingSubtitleStyle
 import com.huangder.lumibooks.ui.icons.AppIcons
 import kotlin.math.max
 
@@ -51,30 +52,53 @@ internal class FloatingSubtitleView(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onClose: () -> Unit,
-    onReturn: () -> Unit
+    onReturn: () -> Unit,
+    onLock: () -> Unit = {}
 ) : FrameLayout(context) {
     private val density = resources.displayMetrics.density
     private fun dp(value: Int) = (value * density).toInt()
     private fun dp(value: Float) = (value * density).toInt()
+    private var style = FloatingSubtitleStyle.LYRICS
+
+    /** The spoken sentence: one scrolling line in [FloatingSubtitleStyle.BAR], a two-line window in lyrics. */
     val subtitle = object : TextView(context) {
         override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-            // Horizontally scrolling TextView uses a very wide layout; centering that layout hides short text.
-            val available = MeasureSpec.getSize(widthMeasureSpec) - paddingLeft - paddingRight
-            val overflowing = paint.measureText(text.toString()) > available
-            setHorizontallyScrolling(overflowing)
-            gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            if (style == FloatingSubtitleStyle.BAR) {
+                // Horizontally scrolling TextView uses a very wide layout; centering that layout hides short text.
+                val available = MeasureSpec.getSize(widthMeasureSpec) - paddingLeft - paddingRight
+                val overflowing = paint.measureText(text.toString()) > available
+                setHorizontallyScrolling(overflowing)
+            }
             super.onMeasure(widthMeasureSpec, heightMeasureSpec)
         }
     }.apply {
         gravity = Gravity.CENTER_VERTICAL or Gravity.START
         includeFontPadding = false
         setSingleLine(true)
-        textSize = 15f
+        textSize = FloatingSubtitleSettings.DEFAULT_FONT_SIZE_SP
+        isVerticalScrollBarEnabled = false
+        isHorizontalScrollBarEnabled = false
         setPadding(dp(12), 0, dp(8), 0)
         setOnTouchListener { _, event -> onTouch(event) }
         setOnClickListener { onSubtitleClick() }
         contentDescription = context.getString(R.string.tts_expand_controls)
     }
+    /** Dimmed preview of the sentence that follows, shown under the lyrics. */
+    val nextLine = TextView(context).apply {
+        includeFontPadding = false
+        setSingleLine(true)
+        ellipsize = TextUtils.TruncateAt.END
+        setPadding(dp(12), 0, dp(8), 0)
+        setOnTouchListener { _, event -> onTouch(event) }
+        setOnClickListener { onSubtitleClick() }
+        importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+    private val lyrics = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_VERTICAL
+    }
+    private var showNext = true
+    private var locked = false
     private val card = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
     private val bar = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
     private val cover = ImageView(context).apply {
@@ -101,6 +125,7 @@ internal class FloatingSubtitleView(
     private val controlButtons = listOf(
         button(AppIcons.SkipBack, R.string.tts_previous_sentence, onPrevious),
         button(AppIcons.SkipForward, R.string.tts_next_sentence, onNext),
+        button(AppIcons.Lock, R.string.floating_subtitle_lock, onLock),
         button(AppIcons.CornersOut, R.string.tts_return_to_book, onReturn),
         button(AppIcons.X, R.string.tts_stop, onClose)
     )
@@ -121,7 +146,9 @@ internal class FloatingSubtitleView(
         addView(card, LayoutParams(-1, -1))
         card.addView(bar, LinearLayout.LayoutParams(-1, dp(56)))
         bar.addView(cover)
-        bar.addView(subtitle, LinearLayout.LayoutParams(0, -1, 1f))
+        lyrics.addView(subtitle, LinearLayout.LayoutParams(-1, -1))
+        lyrics.addView(nextLine, LinearLayout.LayoutParams(-1, -2))
+        bar.addView(lyrics, LinearLayout.LayoutParams(0, -1, 1f))
         bar.addView(play)
         card.addView(details, LinearLayout.LayoutParams(-1, dp(DETAILS_HEIGHT_DP)))
         details.addView(meta, LinearLayout.LayoutParams(-1, dp(18)).apply {
@@ -182,6 +209,53 @@ internal class FloatingSubtitleView(
         dock.playing = playing
     }
 
+    /** Replaces the spoken sentence and its successor. */
+    fun setLines(current: CharSequence, next: CharSequence?) {
+        if (subtitle.text?.toString() != current.toString()) {
+            subtitle.text = current
+            subtitle.scrollTo(0, 0)
+        }
+        val nextText = next?.toString()?.trim().orEmpty()
+        if (nextLine.text?.toString() != nextText) nextLine.text = nextText
+        updateNextVisibility()
+    }
+
+    fun setLocked(locked: Boolean) {
+        if (this.locked == locked) return
+        this.locked = locked
+        play.visibility = if (locked) GONE else VISIBLE
+    }
+
+    val currentStyle: FloatingSubtitleStyle get() = style
+
+    /** Height of the subtitle bar; lyrics size themselves from the text, not [FloatingSubtitleSettings.heightDp]. */
+    fun barHeightPx(settings: FloatingSubtitleSettings): Int {
+        if (settings.style == FloatingSubtitleStyle.BAR) return dp(settings.heightDp)
+        val current = lineHeightPx(settings.fontSizeSp)
+        val next = if (settings.showNextLine) {
+            lineHeightPx(settings.fontSizeSp * NEXT_LINE_SCALE) + dp(LYRICS_LINE_GAP_DP)
+        } else 0
+        return maxOf(dp(48), current * LYRICS_VISIBLE_LINES + next + dp(LYRICS_VERTICAL_PADDING_DP) * 2)
+    }
+
+    private fun lineHeightPx(sizeSp: Float): Int {
+        val paint = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = android.util.TypedValue.applyDimension(
+                android.util.TypedValue.COMPLEX_UNIT_SP, sizeSp, resources.displayMetrics)
+        }
+        val metrics = paint.fontMetricsInt
+        return metrics.descent - metrics.ascent
+    }
+
+    private fun updateNextVisibility() {
+        val lyricsWithNext = style == FloatingSubtitleStyle.LYRICS && showNext
+        nextLine.visibility = when {
+            !lyricsWithNext -> GONE
+            nextLine.text.isNullOrEmpty() -> INVISIBLE
+            else -> VISIBLE
+        }
+    }
+
     fun appearance(settings: FloatingSubtitleSettings) {
         val base = Color.parseColor(settings.backgroundColorHex)
         ink = if (ColorUtils.calculateLuminance(base) < .46) Color.WHITE else Color.BLACK
@@ -191,13 +265,19 @@ internal class FloatingSubtitleView(
         card.background = rounded(color, settings.cornerRadiusDp * density).apply {
             setStroke(max(1, dp(.5f)), hairline)
         }
-        subtitle.setTextColor(ink)
+        // Lyrics colour the whole sentence being spoken. Engines rarely report reliable word
+        // timing (online voices report none), so partial colouring would run ahead or lag.
+        subtitle.setTextColor(if (settings.style == FloatingSubtitleStyle.LYRICS) {
+            Color.parseColor(settings.highlightColorHex)
+        } else ink)
+        nextLine.setTextColor(ColorUtils.setAlphaComponent(ink, 0x8C))
+        applyStyle(settings)
         meta.setTextColor(ColorUtils.setAlphaComponent(ink, 0xB3))
         play.setColorFilter(ink)
         controlButtons.forEach { it.setColorFilter(ink) }
         progressBar.ink = ink
         dock.apply(ink, mode == FloatingSubtitleMode.LEFT)
-        val height = dp(settings.heightDp)
+        val height = barHeightPx(settings)
         bar.layoutParams = LinearLayout.LayoutParams(-1, height)
         // The cover is inset evenly from the bar's top, bottom and start, so it follows the bar height.
         val coverSize = (height - dp(16)).coerceIn(dp(24), dp(40))
@@ -210,6 +290,37 @@ internal class FloatingSubtitleView(
         }
         play.setPadding(dp(10), dp(10), dp(10), dp(10))
         updateCover()
+    }
+
+    private fun applyStyle(settings: FloatingSubtitleSettings) {
+        val styleChanged = style != settings.style
+        style = settings.style
+        showNext = settings.showNextLine
+        subtitle.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, settings.fontSizeSp)
+        nextLine.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, settings.fontSizeSp * NEXT_LINE_SCALE)
+        if (style == FloatingSubtitleStyle.BAR) {
+            if (styleChanged) {
+                subtitle.setSingleLine(true)
+                subtitle.gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            }
+            subtitle.layoutParams = LinearLayout.LayoutParams(-1, -1)
+            lyrics.setPadding(0, 0, 0, 0)
+        } else {
+            if (styleChanged || subtitle.maxLines == 1) {
+                // A tall layout scrolled line by line: every wrapped line stays reachable while
+                // the fixed window keeps the overlay from resizing between sentences.
+                subtitle.setSingleLine(false)
+                subtitle.setHorizontallyScrolling(false)
+                subtitle.maxLines = Int.MAX_VALUE
+                subtitle.ellipsize = null
+                subtitle.gravity = Gravity.TOP or Gravity.START
+            }
+            subtitle.layoutParams = LinearLayout.LayoutParams(-1, lineHeightPx(settings.fontSizeSp) * LYRICS_VISIBLE_LINES)
+            nextLine.layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(LYRICS_LINE_GAP_DP) }
+            lyrics.setPadding(0, dp(LYRICS_VERTICAL_PADDING_DP), 0, dp(LYRICS_VERTICAL_PADDING_DP))
+        }
+        if (styleChanged) subtitle.scrollTo(0, 0)
+        updateNextVisibility()
     }
 
     fun showMode(target: FloatingSubtitleMode, animate: Boolean) {
@@ -270,6 +381,10 @@ internal class FloatingSubtitleView(
         const val CARD_MIN_WIDTH_DP = 280f
         const val DOCK_WIDTH_DP = 60f
         const val DOCK_HEIGHT_DP = 64f
+        const val LYRICS_VISIBLE_LINES = 2
+        private const val LYRICS_VERTICAL_PADDING_DP = 8f
+        private const val LYRICS_LINE_GAP_DP = 4f
+        private const val NEXT_LINE_SCALE = 0.85f
     }
 }
 

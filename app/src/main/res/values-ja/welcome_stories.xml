@@ -24,4 +24,10 @@
     <string name="welcome_story_art_stats_duration">%1$d 時間 %2$d 分</string>
     <string name="welcome_story_art_stats_heatmap">過去 3 か月</string>
     <string name="welcome_story_art_stats_compare" formatted="false">先週より 18% 増</string>
+    <string name="welcome_story_appearance_eyebrow">外観</string>
+    <string name="welcome_story_appearance_title_pick">外観を選ぶ</string>
+    <string name="welcome_story_appearance_subtitle_pick">好きなスタイルを選んでください。あとで設定から変更できます。</string>
+    <string name="welcome_theme_desc_liquid_glass">透きとおる屈折が、指の動きに合わせて流れます。</string>
+    <string name="welcome_theme_desc_flat">シンプルですっきり、内容に集中できます。</string>
+    <string name="welcome_theme_desc_material3">壁紙から色を取り込む、システムらしい質感。</string>
 </resources>

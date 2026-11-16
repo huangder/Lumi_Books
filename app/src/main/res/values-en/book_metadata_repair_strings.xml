@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="book_metadata_repair_action">Fill book info</string>
+    <string name="book_metadata_repair_title">Fill in titles and authors</string>
+    <string name="book_metadata_repair_empty">The selected books have no titles or authors to fill in.</string>
+    <string name="book_metadata_repair_no_suggestion">No suggestions for %1$d of the selected books.</string>
+    <string name="book_metadata_repair_preview_error">Couldn’t load the preview.</string>
+    <string name="book_metadata_repair_apply">Apply to %1$d</string>
+    <string name="book_metadata_repair_updated">Updated %1$d</string>
+    <string name="book_metadata_repair_changed">Skipped %1$d because their records changed after the preview.</string>
+    <string name="book_metadata_repair_failed">Couldn’t update %1$d</string>
+    <string name="book_metadata_repair_field_change">%1$s · %2$s → %3$s</string>
+</resources>

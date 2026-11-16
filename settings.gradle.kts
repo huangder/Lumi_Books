@@ -22,3 +22,4 @@ include(":benchmark")
 include(":third_party:subsampling-scale-image-view")
 
 include(":third_party:backdrop")
+include(":third_party:word-converters")

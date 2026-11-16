@@ -55,14 +55,34 @@ data class Book(
 }
 
 enum class BookFormat {
-    EPUB, PDF, TXT, MOBI, CBZ, MARKDOWN, AZW, AZW3;
+    EPUB, PDF, TXT, MOBI, CBZ, MARKDOWN, AZW, AZW3, DOCX, DOC;
 
     val isKindle: Boolean get() = this == MOBI || this == AZW || this == AZW3
-    val supportsEpubFeatures: Boolean get() = this == EPUB || isKindle
+    val isWord: Boolean get() = this == DOCX || this == DOC
+    val supportsEpubFeatures: Boolean get() = this == EPUB || isKindle || isWord
+    val supportsHighlightRules: Boolean get() = this == TXT || supportsEpubFeatures
     val supportsBookLayout: Boolean get() = supportsEpubFeatures || this == MARKDOWN
     val supportsTextReading: Boolean get() = !isRasterPageFormat
     val supportsAnnotations: Boolean get() = this != CBZ
 
     /** Bitmap page sources (PDF/CBZ) are rendered by the raster reader instead of the text engines. */
     val isRasterPageFormat: Boolean get() = this == PDF || this == CBZ
+
+    companion object {
+        const val DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        const val DOC_MIME = "application/msword"
+        private val extensions = entries.associateBy { it.name.lowercase() } + ("md" to MARKDOWN)
+        val importExtensions: Set<String> get() = extensions.keys
+
+        fun fromExtension(extension: String): BookFormat? = when (val key = extension.lowercase()) {
+            "mdpack" -> MARKDOWN
+            else -> extensions[key]
+        }
+
+        fun wordExtensionForMimeType(mimeType: String?): String? = when (mimeType?.substringBefore(';')?.trim()?.lowercase()) {
+            DOCX_MIME -> "docx"
+            DOC_MIME -> "doc"
+            else -> null
+        }
+    }
 }

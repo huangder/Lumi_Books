@@ -1,5 +1,7 @@
 package com.huangder.lumibooks.ui.reader
 
+import androidx.compose.runtime.key
+
 import com.huangder.lumibooks.ui.icons.ControlIcon
 
 import com.huangder.lumibooks.domain.model.BookFormat
@@ -116,6 +118,9 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.unit.Constraints
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import com.huangder.lumibooks.ui.animation.VisualMotion
 import com.huangder.lumibooks.ui.theme.drawAppShape
@@ -264,6 +269,10 @@ import com.huangder.lumibooks.ui.components.LiquidGlassMenuItem
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuSpec
 import com.huangder.lumibooks.ui.components.LocalLiquidGlassMenuHost
 import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
+import com.huangder.lumibooks.ui.components.LiquidGlassMenuHost
+import com.huangder.lumibooks.ui.components.LiquidMenuCloseStyle
+import com.huangder.lumibooks.ui.components.icon
+import com.huangder.lumibooks.ui.icons.directionalIcon
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
 import com.huangder.lumibooks.ui.reader.finish.BookFinishActions
 import com.huangder.lumibooks.ui.reader.finish.BookFinishColors
@@ -1289,6 +1298,7 @@ private fun ReaderScreenContent(
     val listeningResumeJumpRequest by viewModel.listeningResumeJumpRequest.collectAsState()
     val ttsStartPrompt by viewModel.ttsStartPrompt.collectAsState()
     val ttsReaderFollowEnabled by viewModel.ttsReaderFollowEnabled.collectAsState()
+    val ttsAutoFollowEnabled = ttsReaderFollowEnabled && ttsState.autoPageTurn
     val manualListeningBrowse by viewModel.manualListeningBrowse.collectAsState()
     val ttsManualResumeSentence by viewModel.ttsManualResumeSentence.collectAsState()
     val eInkMode = rawUiState.eInkModeEnabled
@@ -1334,6 +1344,9 @@ private fun ReaderScreenContent(
         hasImageBackground = selectedReaderBackgroundForTheme?.type == ReaderBackgroundType.IMAGE
     )
     val storedNotes by viewModel.notes.collectAsState()
+    val replacementRules by viewModel.replacementRules.collectAsState()
+    val replacementBookLayoutNotes by viewModel.replacementBookLayoutNotes.collectAsState()
+    val hasReplacementRules = replacementRules.enabled && replacementRules.rules.any { it.enabled }
     val notes = remember(storedNotes) { storedNotes.filterNot { isEpubComicInk(it.type) } }
     val readerNotes by viewModel.readerNotes.collectAsState()
     val highlightRules by viewModel.highlightRules.collectAsState()
@@ -1362,8 +1375,11 @@ private fun ReaderScreenContent(
                 .map { note -> note.copy(color = resolveReaderHighlightColor(note.color)) }
         }
     }
-    val savedEpubNotes = remember(renderedNotes, knownHighlightRuleIds) {
-        renderedNotes.filterNot { note ->
+    val savedEpubNotes = remember(renderedNotes, knownHighlightRuleIds, hasReplacementRules, replacementBookLayoutNotes) {
+        val currentNotes = if (hasReplacementRules) replacementBookLayoutNotes.map {
+            it.copy(color = resolveReaderHighlightColor(it.color))
+        } else renderedNotes
+        currentNotes.filterNot { note ->
             note.isGeneratedByHighlightRule && note.sourceRuleId in knownHighlightRuleIds
         }
     }
@@ -1759,8 +1775,8 @@ private fun ReaderScreenContent(
             epubManualNavigationPending = true
             epubBrowseFromPage = originalSpreadState?.first?.target?.let { it.chapterIndex to it.pageIndex }
                 ?: (uiState.currentChapterIndex to uiState.currentPageIndex)
-            // A page gesture can still be cancelled. With page-follow off, detach on commit.
-            if (viewModel.isListeningToThisBook() && !ttsState.followUserPageTurns) {
+            // A page gesture can still be cancelled. Detach on commit.
+            if (viewModel.isListeningToThisBook()) {
                 viewModel.onReadingInteraction()
                 return
             }
@@ -2324,6 +2340,7 @@ private fun ReaderScreenContent(
     var showToc by remember { mutableStateOf(false) }
     var showThemeSheet by remember { mutableStateOf(false) }
     var showHighlightRules by remember { mutableStateOf(false) }
+    var showReplacementRules by remember { mutableStateOf(false) }
     var showAdvancedSheet by remember { mutableStateOf(false) }
     var openAdvancedAfterThemeClose by remember { mutableStateOf(false) }
     var showTxtEncodingDialog by remember(bookId) { mutableStateOf(false) }
@@ -2343,7 +2360,7 @@ private fun ReaderScreenContent(
     var requestCloseSearch by remember { mutableStateOf(false) }
 
     // 处理返回键：触发退出动画，而不是直接关闭
-    val isAnySheetOpen = excerptRequest != null || localDictionaryQuery != null || annotationTagState.editingTarget != null || showNotesList || showNoteInput || pendingBookmarkRemarkId != null || showToc || showThemeSheet || showHighlightRules ||
+    val isAnySheetOpen = excerptRequest != null || localDictionaryQuery != null || annotationTagState.editingTarget != null || showNotesList || showNoteInput || pendingBookmarkRemarkId != null || showToc || showThemeSheet || showHighlightRules || showReplacementRules ||
         showAdvancedSheet || showSearch || showWebSearch || showTxtEncodingDialog || showTxtTocDialog || showReplaceInput
     val canShowListeningBrowsePrompt = readerActive && !isAnySheetOpen && !uiState.isMenuVisible
     val spokenTextVisible = if (manualListeningBrowse != null) ttsCurrentSentence?.let { sentence ->
@@ -2559,7 +2576,8 @@ private fun ReaderScreenContent(
         }
     }
 
-    val shouldHandleVolumeKeys =
+    val latestRequestTtsStart by rememberUpdatedState(requestTtsStart)
+    val shouldHandleVolumeKeys = readerActive &&
         (uiState.volumeKeyUpAction != ReaderVolumeKeyAction.SYSTEM_VOLUME ||
             uiState.volumeKeyDownAction != ReaderVolumeKeyAction.SYSTEM_VOLUME) &&
         !uiState.isMenuVisible &&
@@ -2619,6 +2637,8 @@ private fun ReaderScreenContent(
                             )
                         }
                         ReaderVolumeKeyAction.TOGGLE_BOOKMARK -> toggleBookmarkForCurrentPage(false)
+                        ReaderVolumeKeyAction.TOGGLE_TTS_SESSION -> viewModel.toggleTtsSession(latestRequestTtsStart)
+                        ReaderVolumeKeyAction.TOGGLE_TTS_PLAY_PAUSE -> viewModel.toggleTtsPlayPause()
                         ReaderVolumeKeyAction.SYSTEM_VOLUME -> Unit
                     }
                 }
@@ -2746,6 +2766,16 @@ private fun ReaderScreenContent(
                     searchJob = null
                 }
             }
+        }
+    }
+    LaunchedEffect(uiState.replacementRevision) {
+        if (uiState.replacementRevision > 0L) {
+            cancelActiveSearch()
+            searchResults = emptyList()
+            searchResultQuery = ""
+            hasSearched = false
+            continuousSearchHighlight = null
+            epubSearchRequest = null
         }
     }
     DisposableEffect(bookId) {
@@ -2946,7 +2976,7 @@ private fun ReaderScreenContent(
             extractCoverEdgeColor(uiState.book?.coverPath)
         }
     }
-    val epubSessionState = produceState<com.huangder.lumibooks.util.epub.BookRenderSession?>(
+    val epubSessionState = key(uiState.replacementRevision) { produceState<com.huangder.lumibooks.util.epub.BookRenderSession?>(
         initialValue = null,
         bookId,
         supportsBookLayout
@@ -2956,7 +2986,7 @@ private fun ReaderScreenContent(
         } else {
             null
         }
-    }
+    } }
     val epubSession = epubSessionState.value
     var capturedListeningJump by remember(bookId) { mutableStateOf<com.huangder.lumibooks.tts.TtsListeningPosition?>(null) }
     // Explicit and remembered choices share the same one-shot visual navigation.
@@ -3212,7 +3242,7 @@ private fun ReaderScreenContent(
                     onManualNavigation = ::beginManualReaderBrowsing,
                     onManualScrollSettled = { viewModel.onListeningReaderBrowseSettled() },
                     onVisibleCharacters = { continuousVisibleCharacters.value = it },
-                    ttsFollowEnabled = ttsReaderFollowEnabled && ttsCurrentSentence != ttsManualResumeSentence,
+                    ttsFollowEnabled = ttsAutoFollowEnabled && ttsCurrentSentence != ttsManualResumeSentence,
                     onSelection = { selection ->
                         val overlapping = findOverlappingNotes(readerNotes, 0, selection.startPosition, selection.endPosition, "highlight")
                         selectionState = SelectionState(
@@ -3336,7 +3366,7 @@ private fun ReaderScreenContent(
                     ttsHighlightColor = TtsSentenceHighlightSpan.computeHighlightColor(
                         readerBackgroundColorInt
                     ),
-                    ttsFollowEnabled = ttsReaderFollowEnabled,
+                    ttsFollowEnabled = ttsAutoFollowEnabled,
                     ttsManualResumeSentence = ttsManualResumeSentence,
                     ttsViewportGeneration = manualListeningBrowse?.generation,
                     onTtsVisibility = { generation, sentence, visible ->
@@ -3400,7 +3430,7 @@ private fun ReaderScreenContent(
                         val userPageTurn = browseFrom != null && browseFrom != committedPage &&
                             (epubNavigationRequest == null || epubNavigationRequest?.origin == EpubNavigationOrigin.PAGE_TURN) &&
                             viewModel.ttsPageChangeOriginFor(chapterIndex, pageIndex) == TtsPageChangeOrigin.USER
-                        if (userPageTurn && !ttsState.followUserPageTurns) {
+                        if (userPageTurn) {
                             viewModel.onListeningReaderBrowseStarted(recordUse = false)
                         }
                         if (manualNavigation &&
@@ -3779,7 +3809,6 @@ private fun ReaderScreenContent(
                         if (origin == TtsPageChangeOrigin.USER) {
                             // The gesture already recorded its source. A late scroll callback
                             // must not supersede a newer listening command.
-                            if (ttsState.followUserPageTurns) viewModel.onListeningReaderPageTurn(recordUse = false)
                             rememberTtsReturnLocation(chapterIndex, visiblePage, chapterFraction = chapterFraction)
                         } else {
                             lastVisibleReaderLocation = captureReaderLocation(chapterIndex, visiblePage,
@@ -3808,10 +3837,9 @@ private fun ReaderScreenContent(
                     longPressSelectionRange = uiState.longPressSelectionRange,
                     annotationStyle = uiState.annotationStyle,
                     comicModeEnabled = uiState.comicModeEnabled,
-                    ttsFollowEnabled = ttsReaderFollowEnabled,
+                    ttsFollowEnabled = ttsAutoFollowEnabled,
                     ttsManualResumeSentence = ttsManualResumeSentence,
                     onManualScrollStarted = ::beginManualReaderBrowsing,
-                    ttsFollowUserPageTurns = ttsState.followUserPageTurns,
                     imageAdjustments = uiState.imageAdjustments.forDisplay(eInkMode),
                     bodyFontWeight = uiState.bodyFontWeight
                 )
@@ -4117,7 +4145,8 @@ private fun ReaderScreenContent(
                                 bionicReadingEnabled = effectiveBionicReadingEnabled,
                                 useDisplayDensityForSpans = uiState.book?.format?.name == "TXT",
                                 writingMode = uiState.readerWritingMode,
-                                twoPageSpread = twoPageSpreadEligible
+                                twoPageSpread = twoPageSpreadEligible,
+                                pageBottomAligned = uiState.pageBottomAligned
                             ),
                             background = ReaderBackgroundConfig(
                                 color = readerBackgroundColorInt,
@@ -4240,14 +4269,16 @@ private fun ReaderScreenContent(
                 Toast.makeText(context, R.string.markdown_original_changed, Toast.LENGTH_SHORT).show()
                 return@bookmarkClick
             }
-            beginManualReaderNavigation()
+            scope.launch {
+                val displayed = viewModel.displayedBookmark(bm)
+                beginManualReaderNavigation()
             if (isBookLayout) {
                 val chapterHref = epubSession?.chapterHref(bm.chapterIndex).orEmpty()
-                val locatorJson = bm.locatorJson?.let { json ->
+                val locatorJson = displayed.locatorJson?.let { json ->
                     if (comicPositionFromLocator(json) != null) JSONObject(json).put("href", chapterHref).toString() else json
                 }
                     ?.takeIf { isEpubLocatorForChapter(it, chapterHref) }
-                    ?: bm.characterOffset?.let { characterOffset ->
+                    ?: displayed.characterOffset?.let { characterOffset ->
                         createEpubFallbackLocator(
                             href = chapterHref,
                             charOffset = characterOffset,
@@ -4267,13 +4298,19 @@ private fun ReaderScreenContent(
                     true
                 )
             } else if (isContinuousScrollMode) {
-                jumpToContinuousChapter(bm.chapterIndex)
+                if (displayed.characterOffset == null) jumpToContinuousChapter(bm.chapterIndex)
+                else {
+                    viewModel.setChapter(bm.chapterIndex)
+                    continuousScrollRequests.tryEmit(ContinuousScrollRequest(bm.chapterIndex,
+                        characterOffset = displayed.characterOffset))
+                }
             } else {
-                bm.characterOffset?.let { readViewRef.value?.jumpToCharacter(bm.chapterIndex, it) }
+                displayed.characterOffset?.let { readViewRef.value?.jumpToCharacter(bm.chapterIndex, it) }
                     ?: readViewRef.value?.jumpToChapter(bm.chapterIndex, bm.position.toInt())
             }
             showToc = false
             requestCloseToc = false
+        }
         },
         onShareBookmark = { bm -> showExcerpt(bm.title, bm.remark, bm.chapterIndex) },
         onDeleteBookmark = { bm -> viewModel.deleteBookmark(bm) },
@@ -4405,9 +4442,7 @@ private fun ReaderScreenContent(
         onMoveRule = viewModel::moveHighlightRule,
         onImportRules = viewModel::importHighlightRules,
         onExportRules = viewModel::exportHighlightRules,
-        onImportFont = { uri, displayName ->
-            scope.launch { viewModel.importFont(context, uri, displayName) }
-        },
+        onImportFont = { uri, displayName -> viewModel.importFont(context, uri, displayName) },
         onCancelScan = viewModel::cancelHighlightRuleScan,
         onRebuild = viewModel::rebuildHighlightRuleNotes,
         onDismiss = {
@@ -4628,6 +4663,7 @@ private fun ReaderScreenContent(
         volumeKeyDownAction = uiState.volumeKeyDownAction,
         bookmarkRemarkPromptEnabled = uiState.bookmarkRemarkPromptEnabled,
         bionicReadingEnabled = uiState.bionicReadingEnabled,
+        pageBottomAligned = uiState.pageBottomAligned,
         comicModeEnabled = uiState.comicModeEnabled,
         screenSleepTimeoutSeconds = uiState.screenSleepTimeoutSeconds,
         readerEdgeTapMode = uiState.readerEdgeTapMode,
@@ -4635,6 +4671,7 @@ private fun ReaderScreenContent(
         onVolumeKeyActionsChange = { up, down -> viewModel.saveVolumeKeyActions(up, down) },
         onBookmarkRemarkPromptEnabledChange = viewModel::saveBookmarkRemarkPromptEnabled,
         onBionicReadingEnabledChange = viewModel::saveBionicReadingEnabled,
+        onPageBottomAlignedChange = viewModel::savePageBottomAligned,
         onComicModeChange = viewModel::saveComicMode,
         onScreenSleepTimeoutChange = { seconds ->
             viewModel.saveScreenSleepTimeoutSeconds(seconds)
@@ -4954,7 +4991,7 @@ private fun ReaderScreenContent(
             ) {
                 val bookTitle = uiState.book?.title ?: ""
                 val isTxtBook = uiState.book?.format?.name == "TXT"
-                val supportsHighlightRules = (uiState.book?.format?.let { it == BookFormat.TXT || it.supportsEpubFeatures } == true)
+                val supportsHighlightRules = uiState.book?.format?.supportsHighlightRules == true
                 ReaderTopBar(
                     title = bookTitle,
                     onBack = exitReader,
@@ -4974,6 +5011,12 @@ private fun ReaderScreenContent(
                         viewModel.hideMenu()
                         showHighlightRules = true
                     },
+                    onReplacementRulesClick = if (uiState.book?.format.supportsReplacementRules() && !uiState.epubComicReader) {
+                        {
+                            viewModel.hideMenu()
+                            showReplacementRules = true
+                        }
+                    } else null,
                     isTxtBook = isTxtBook,
                     bookFormat = uiState.book?.format?.name.orEmpty(),
                     lineGuideAvailable = lineGuideAvailable,
@@ -5411,7 +5454,7 @@ private fun ReaderScreenContent(
                     usesAndroidTts = ttsState.usesAndroidTts,
                     sleepTimerRemainingMs = ttsState.sleepTimerRemainingMs,
                     sleepTimerDurationMs = ttsState.sleepTimerDurationMs,
-                    followUserPageTurns = ttsState.followUserPageTurns,
+                    autoPageTurn = ttsState.autoPageTurn,
                     onPlayPause = viewModel::toggleTtsPlayPause,
                     onStop = viewModel::stopTts,
                     onOpenFullscreen = { viewModel.openFullScreenTts(context) },
@@ -5423,7 +5466,7 @@ private fun ReaderScreenContent(
                     onPitchModeChange = viewModel::setTtsPitchMode,
                     onSetSleepTimer = viewModel::setSleepTimer,
                     onCancelSleepTimer = viewModel::cancelSleepTimer,
-                    onFollowUserPageTurnsChange = viewModel::setTtsFollowUserPageTurns,
+                    onAutoPageTurnChange = viewModel::setTtsAutoPageTurn,
                     onReturnToProgress = returnToTtsProgress,
                     onStartFromCurrentPage = {
                         viewModel.dismissManualListeningBrowsePrompt()
@@ -5432,7 +5475,7 @@ private fun ReaderScreenContent(
                     showFromCurrentPage = canShowListeningBrowsePrompt && manualListeningBrowse?.showPrompt == true,
                     canReturnToProgress = when {
                         spokenTextVisible != null -> !spokenTextVisible
-                        ttsReaderFollowEnabled && (isContinuousScrollMode || isBookLayoutContinuousScroll) -> false
+                        ttsAutoFollowEnabled && (isContinuousScrollMode || isBookLayoutContinuousScroll) -> false
                         else -> ttsCurrentPage?.location?.let { location ->
                             val left = location.chapterIndex == uiState.currentChapterIndex &&
                                 location.pageIndex == uiState.currentPageIndex
@@ -5460,6 +5503,9 @@ private fun ReaderScreenContent(
             readerCatalogSheet()
             readerThemeSheet()
             readerHighlightRulesSheet()
+            if (showReplacementRules) {
+                ReplacementRulesSheet(viewModel, uiState.currentChapterIndex) { showReplacementRules = false }
+            }
             readerSearchSheets()
             readerAdvancedSheet()
 
@@ -5570,15 +5616,17 @@ private fun ReaderScreenContent(
             }
             beginManualReaderNavigation()
             if (isBookLayout) {
+                scope.launch {
+                val displayed = viewModel.displayedEpubNote(note) ?: return@launch
                 val chapterTextLength = viewModel.getChapterTextLength(note.chapterIndex).coerceAtLeast(1)
                 val chapterHref = epubSession?.chapterHref(note.chapterIndex).orEmpty()
-                val locatorJson = note.startLocatorJson
+                val locatorJson = displayed.startLocatorJson
                     ?.takeIf { isEpubLocatorForChapter(it, chapterHref) }
                     ?: createEpubFallbackLocator(
                         href = chapterHref,
-                        charOffset = note.startPosition,
+                        charOffset = displayed.startPosition,
                         chapterTextLength = chapterTextLength,
-                        exact = note.selectedText,
+                        exact = displayed.selectedText,
                         chapterText = viewModel.getChapterText(note.chapterIndex)
                     )
                 epubSearchRequest = null
@@ -5591,6 +5639,7 @@ private fun ReaderScreenContent(
                         ?: EpubNavigationDestination.ChapterStart,
                     true
                 )
+                }
             } else if (isContinuousScrollMode) {
                 scope.launch {
                     val resolved = viewModel.resolveReaderNoteForNavigation(note) ?: return@launch
@@ -6906,6 +6955,7 @@ internal fun ReaderTopBar(
     onBookmarkToggle: () -> Unit = {},
     supportsHighlightRules: Boolean = false,
     onHighlightRulesClick: () -> Unit = {},
+    onReplacementRulesClick: (() -> Unit)? = null,
     isTxtBook: Boolean = false,
     bookFormat: String = "",
     lineGuideAvailable: Boolean = false,
@@ -6945,6 +6995,9 @@ internal fun ReaderTopBar(
     var moreAnchorBounds by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
     val moreMenuItems = buildList {
         if (supportsHighlightRules) add(LiquidGlassMenuItem(stringResource(R.string.highlight_rules_title), AppIcons.Code) { onHighlightRulesClick() })
+        if (onReplacementRulesClick != null) add(LiquidGlassMenuItem(
+            stringResource(R.string.replacement_title), AppIcons.ArrowsLeftRight, onClick = onReplacementRulesClick
+        ))
         if (lineGuideAvailable) add(LiquidGlassMenuItem(stringResource(R.string.line_guide), AppIcons.Rows,
             selectedState = { currentLineGuideEnabled }) { currentOnLineGuideToggle() })
         if (autoReadingAvailable) add(LiquidGlassMenuItem(stringResource(R.string.auto_reading), AppIcons.Speedometer,
@@ -6953,7 +7006,7 @@ internal fun ReaderTopBar(
             add(LiquidGlassMenuItem(stringResource(R.string.comic_mode), AppIcons.Image,
                 selectedState = { currentComicModeEnabled }) { currentOnComicModeToggle() })
         }
-        if (readerFormatSupportsEpubFeatures(bookFormat)) {
+        if (readerFormatSupportsEpubFeatures(bookFormat) && BookFormat.fromExtension(bookFormat.orEmpty())?.isWord != true) {
             add(LiquidGlassMenuItem(stringResource(R.string.epub_comic_switch), AppIcons.Image) { onSwitchComicReader() })
         }
         if (readerFormatSupportsText(bookFormat)) {
@@ -7209,7 +7262,7 @@ private fun ReaderLineGuideControl(
                         width = 180.dp,
                         alignEnd = false,
                         preferAbove = true,
-                        anchorCornerRadius = 22.dp,
+                        anchorCornerRadius = SELECTION_MENU_MIN_ROW_HEIGHT_DP.dp / 2,
                         items = dimLabels.mapIndexed { index, label ->
                             LiquidGlassMenuItem(label, selected = level == index,
                                 groupTitle = if (index == 0) dimTitle else null) {
@@ -8174,7 +8227,6 @@ internal fun ContinuousScrollReaderContent(
     finishPage: (@Composable (visible: Boolean) -> Unit)? = null,
     ttsFollowEnabled: Boolean = true,
     ttsManualResumeSentence: TtsSentencePosition? = null,
-    ttsFollowUserPageTurns: Boolean = false,
     onManualScrollStarted: () -> Unit = {},
     listState: androidx.compose.foundation.lazy.LazyListState =
         rememberLazyListState(
@@ -8284,9 +8336,6 @@ internal fun ContinuousScrollReaderContent(
     val chapterTextComplete = remember(chapterCount) {
         mutableStateMapOf<Int, Boolean>()
     }
-    val pendingFullChapterUpgrades = remember(chapterCount) {
-        mutableStateMapOf<Int, Pair<CharSequence, CharSequence>>()
-    }
     fun publishFullChapter(index: Int, source: CharSequence, prepared: CharSequence, layoutKey: ContinuousLayoutKey) {
         rawChapterTextCache[index] = source
         preparedChapterTextCache[index] = prepared
@@ -8298,6 +8347,10 @@ internal fun ContinuousScrollReaderContent(
         textAlignment, readerTypeface, chineseMode, bionicReadingEnabled, marginTop, marginBottom,
         readerDensity, (LocalAppBaseDensity.current ?: LocalDensity.current).fontScale)
     val currentChapterLayoutKey by rememberUpdatedState(chapterLayoutKey)
+    // A decoded chapter waiting for scrolling to stop belongs to the layout that requested it.
+    val pendingFullChapterUpgrades = remember(chapterCount, chapterLayoutKey) {
+        mutableStateMapOf<Int, Pair<CharSequence, CharSequence>>()
+    }
     // Keep the viewport mode stable while the visible chapter is being re-decoded after a
     // setting change. Deriving this directly from a cache that is being rebuilt briefly adds
     // margins, changes the viewport height, and leaves a blank strip until the next scroll.
@@ -8547,27 +8600,12 @@ internal fun ContinuousScrollReaderContent(
     var userScrollGeneration by remember { mutableIntStateOf(0) }
     var userDragging by remember { mutableStateOf(false) }
     var manualScrollBlocksTts by remember { mutableStateOf(false) }
-    var awaitingManualTtsPosition by remember { mutableStateOf(false) }
-    var manualTtsPositionBeforeCommit by remember { mutableStateOf<TtsSentencePosition?>(null) }
     val latestManualScrollStarted by rememberUpdatedState(onManualScrollStarted)
     val latestTtsFollowEnabled by rememberUpdatedState(ttsFollowEnabled)
-    val latestTtsFollowUserPageTurns by rememberUpdatedState(ttsFollowUserPageTurns)
-    val latestTtsSentence by rememberUpdatedState(ttsCurrentSentence)
     LaunchedEffect(ttsFollowEnabled) {
         if (ttsFollowEnabled) manualScrollBlocksTts = false
     }
-    // Wait for audio to adopt the manual destination before following it again; clearing the
-    // block at finger-up would briefly scroll back to the sentence from the previous page.
-    LaunchedEffect(ttsCurrentSentence, ttsFollowUserPageTurns, awaitingManualTtsPosition) {
-        if (latestTtsFollowUserPageTurns && awaitingManualTtsPosition &&
-            ttsCurrentSentence != manualTtsPositionBeforeCommit
-        ) {
-            awaitingManualTtsPosition = false
-            manualScrollBlocksTts = false
-        }
-    }
     fun beginManualScroll() {
-        awaitingManualTtsPosition = false
         manualScrollBlocksTts = true
         latestManualScrollStarted()
         userScrollPending = true
@@ -9026,10 +9064,6 @@ internal fun ContinuousScrollReaderContent(
             }
             userScrollPending = false
             val fraction = (-stableOffset).toFloat().div(stableSize).coerceIn(0f, 0.9999f)
-            if (latestTtsFollowUserPageTurns) {
-                manualTtsPositionBeforeCommit = latestTtsSentence
-                awaitingManualTtsPosition = true
-            }
             onChapterVisible(stableIndex, fraction, TtsPageChangeOrigin.USER)
         }
     }
@@ -11649,10 +11683,10 @@ internal fun SelectionMenuOverlay(
         }
         label to onClick
     }
-    val actionChipHorizontalPadding = if (isLiquidGlass) 10.dp else 16.dp
+    val actionChipHorizontalPadding = if (isLiquidGlass) 14.dp else 16.dp
     // chip 实际渲染样式（MenuChip 用 fontSize + 继承的 LocalTextStyle），测量时保持一致
     val menuChipTextStyle = LocalTextStyle.current.merge(
-        TextStyle(fontSize = SELECTION_MENU_CHIP_FONT_SIZE_SP.sp)
+        TextStyle(fontSize = SELECTION_MENU_CHIP_FONT_SIZE_SP.sp, fontWeight = FontWeight.Medium)
     )
     fun measuredLabelWidth(label: String): Dp = with(density) {
         textMeasurer.measure(
@@ -11668,16 +11702,68 @@ internal fun SelectionMenuOverlay(
             maxLines = 1
         ).size.height.toDp()
     }
-    val measuredActionLabelsWidth = actionLabels.fold(0.dp) { width, label ->
-        width + measuredLabelWidth(label) + actionChipHorizontalPadding * 2
+    // 普通菜单：按屏宽放下尽量多的文字 chip，放不下的收进末尾「>」展开的竖向菜单。
+    // 上方带标注菜单时行尾追加齿轮入口；需要「>」时齿轮改放进展开菜单。
+    val hasAnnotationGear = !showAnnotationActionsOnly && (state.hasHighlight || state.hasUnderline)
+    // 横条最长 300dp：按实测宽度在布局时决定放几个，胶囊再收窄到实际内容。
+    val maxBarWidth = minOf(maxMenuWidth, SELECTION_MENU_MAX_BAR_WIDTH_DP.dp)
+    val normalPillWidth = maxBarWidth
+    // 「>」展开的竖向菜单：整条胶囊变形成菜单，列出全部可见操作（带图标），
+    // 按 标注 / 查找 / 编辑 分组，组内保持用户排序。点外面缩成水滴消失，返回键缩回胶囊。
+    val moreMenuId = remember { Any() }
+    var vanished by remember(reappearKey) { mutableStateOf(false) }
+    val settingsLabel = stringResource(R.string.selection_menu_settings)
+    // 是否真的溢出由横条按实测宽度在布局时决定，因此只要有操作就备好展开菜单。
+    val moreMenuSpec = if (visibleMenuActions.isEmpty()) null else {
+        val groupOf = { action: SelectionMenuAction ->
+            when (action) {
+                SelectionMenuAction.HIGHLIGHT, SelectionMenuAction.UNDERLINE,
+                SelectionMenuAction.NOTE, SelectionMenuAction.EXCERPT -> 0
+                SelectionMenuAction.DICTIONARY, SelectionMenuAction.SEARCH,
+                SelectionMenuAction.WEB_SEARCH, SelectionMenuAction.COPY -> 1
+                SelectionMenuAction.REPLACE -> 2
+            }
+        }
+        val items = buildList {
+            var lastGroup = -1
+            visibleMenuActions.indices.sortedBy { groupOf(visibleMenuActions[it]) }.forEach { index ->
+                val action = visibleMenuActions[index]
+                val group = groupOf(action)
+                add(LiquidGlassMenuItem(
+                    label = actionLabels[index],
+                    icon = action.icon(),
+                    dividerBefore = lastGroup >= 0 && group != lastGroup,
+                    onClick = actionItems[index].second
+                ))
+                lastGroup = group
+            }
+            if (hasAnnotationGear) {
+                add(LiquidGlassMenuItem(
+                    label = settingsLabel,
+                    icon = AppIcons.Gear,
+                    dividerBefore = lastGroup in 0..1,
+                    onClick = onMenuSettings
+                ))
+            }
+        }
+        LiquidGlassMenuSpec(
+            anchorBounds = Rect.Zero,
+            width = 176.dp,
+            items = items,
+            alignEnd = true,
+            maxVisibleItems = 10,
+            anchorCornerRadius = 22.dp,
+            sourceId = moreMenuId,
+            surfaceColor = menuBg,
+            contentColor = menuText,
+            forceSolid = forceSolidSurface,
+            outsideDismissStyle = LiquidMenuCloseStyle.Vanish,
+            onVanished = {
+                vanished = true
+                onDismiss()
+            }
+        )
     }
-    // 普通菜单：文字 chip + 分隔线 + 行内边距；上方带标注菜单时行尾追加齿轮入口
-    val normalPillWidth = (
-        measuredActionLabelsWidth +
-            0.5.dp * (actionLabels.size - 1).coerceAtLeast(0) +
-            20.dp +
-            if (!showAnnotationActionsOnly && (state.hasHighlight || state.hasUnderline)) 32.5.dp else 0.dp
-        ).coerceIn(180.dp, maxMenuWidth)
     // 标注菜单：划线额外包含直线/波浪线选择，再放颜色点和移除按钮。
     val annotationRemoveLabels = buildList {
         if (state.hasHighlight) add(stringResource(R.string.menu_remove_highlight))
@@ -11768,6 +11854,9 @@ internal fun SelectionMenuOverlay(
         else -> belowY.coerceIn(screenEdgePx, maxMenuY)
     }
 
+    // 选择菜单在阅读器自身的菜单宿主之外，自带一个宿主承载「>」展开的液态菜单。
+    // 宿主平时不拦截触摸；只有展开菜单时才铺一层点外面关闭的触摸层。
+    LiquidGlassMenuHost(Modifier.fillMaxSize(), backdrop = glassBackdrop) {
     Box(Modifier.fillMaxSize()) {
         if (dismissOnBackgroundTap) {
             Box(
@@ -11949,6 +12038,7 @@ internal fun SelectionMenuOverlay(
                             pillIndex++
                         }
                         if (!showAnnotationActionsOnly) {
+                            val menuHost = LocalLiquidGlassMenuHost.current
                             SelectionMenuPill(
                                 width = normalPillWidth,
                                 height = menuRowHeight,
@@ -11956,31 +12046,34 @@ internal fun SelectionMenuOverlay(
                                 enterDelayMillis = pillIndex * SELECTION_PILL_STAGGER_MILLIS,
                                 menuBg = menuBg,
                                 glassBackdrop = glassBackdrop,
-                                forceSolidSurface = forceSolidSurface
+                                forceSolidSurface = forceSolidSurface,
+                                hidden = vanished,
+                                // 胶囊宽度跟随实际排下的内容，不再用估算宽度留空或挤压
+                                wrapWidth = true,
+                                // 整条胶囊都是展开菜单的锚点：展开时整条一起变形，而不只是「>」
+                                modifier = if (moreMenuSpec != null) {
+                                    Modifier.liquidGlassMenuAnchor(moreMenuId, cornerRadius = SELECTION_MENU_MIN_ROW_HEIGHT_DP.dp / 2)
+                                } else Modifier
                             ) {
-                                Row(
-                                    modifier = Modifier
-                                        .horizontalScroll(rememberScrollState())
-                                        .padding(horizontal = 10.dp, vertical = SELECTION_MENU_ROW_VERTICAL_PADDING_DP.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    actionItems.forEachIndexed { index, (label, action) ->
-                                        if (index > 0) MenuDivider(dividerColor)
-                                        MenuChip(label, menuText, action)
-                                    }
-                                    if (state.hasHighlight || state.hasUnderline) {
-                                        Spacer(Modifier.width(6.dp))
-                                        MenuDivider(dividerColor)
-                                        Spacer(Modifier.width(4.dp))
-                                        SelectionMenuSettingsButton(menuText = menuText, onClick = onMenuSettings)
-                                    }
-                                }
+                                SelectionMenuInlineRow(
+                                    items = actionItems,
+                                    menuText = menuText,
+                                    dividerColor = dividerColor,
+                                    showGear = hasAnnotationGear,
+                                    onMenuSettings = onMenuSettings,
+                                    onMore = { moreMenuSpec?.let { menuHost?.toggle(it) } },
+                                    modifier = Modifier.padding(
+                                        horizontal = 6.dp,
+                                        vertical = SELECTION_MENU_ROW_VERTICAL_PADDING_DP.dp
+                                    )
+                                )
                             }
                         }
                     }
                 }
             }
         }
+    }
     }
 }
 
@@ -12257,11 +12350,12 @@ private fun MenuDivider(color: Color) {
 
 @Composable
 private fun MenuChip(label: String, textColor: Color, onClick: () -> Unit) {
-    val horizontalPadding = if (LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current) 10.dp else 16.dp
+    val horizontalPadding = if (LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current) 14.dp else 16.dp
     // 字号与 SelectionMenuMetrics 的行高推算共用同一常量，避免菜单高度与文字脱节
     Text(
         text = label,
         fontSize = SELECTION_MENU_CHIP_FONT_SIZE_SP.sp,
+        fontWeight = FontWeight.Medium,
         color = textColor,
         modifier = Modifier
             .clip(AppRoundedCornerShape(16.dp))
@@ -12280,42 +12374,162 @@ private fun SelectionMenuPill(
     glassBackdrop: Backdrop?,
     forceSolidSurface: Boolean,
     enterDelayMillis: Long = 0L,
+    /** Hidden after the expanded menu vanished, until the menu is shown again. */
+    hidden: Boolean = false,
+    /** Applied first, so a liquid menu anchor hands off the whole visible capsule. */
+    modifier: Modifier = Modifier,
+    /** Shrink to the content, using [width] only as the upper bound. */
+    wrapWidth: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    // Entry animation for initial display and after handle dragging ends.
-    val enterAlpha = remember(reappearKey) { Animatable(0f) }
-    val enterScale = remember(reappearKey) { Animatable(0.75f) }
-    // Float upward from 12dp below the final position.
-    val enterTranslateY = remember(reappearKey) { Animatable(12f) }
-    val pillShape = AppRoundedCornerShape(22.dp)
+    // Entry: the glass condenses in place, fading in and sharpening from a blur while it
+    // swells from 0.82 with a slight overshoot and drifts down a few dp into position.
+    val motionEnabled = LocalMotionEnabled.current
+    val blurEntry = !LocalReduceTransparency.current && android.os.Build.VERSION.SDK_INT >= 31
+    val enterAlpha = remember(reappearKey) { Animatable(if (motionEnabled) 0f else 1f) }
+    val enterScale = remember(reappearKey) { Animatable(if (motionEnabled) 0.82f else 1f) }
+    val enterTranslateY = remember(reappearKey) { Animatable(if (motionEnabled) -6f else 0f) }
+    val enterBlur = remember(reappearKey) { Animatable(if (motionEnabled && blurEntry) 8f else 0f) }
+    val pillShape = AppRoundedCornerShape(height / 2)
     LaunchedEffect(reappearKey) {
+        if (!motionEnabled) return@LaunchedEffect
         if (enterDelayMillis > 0) delay(delayMillis(enterDelayMillis))
-        launch { enterAlpha.animateTo(1f, tween(250)) }
-        launch { enterScale.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = 320f)) }
-        launch { enterTranslateY.animateTo(0f, tween(220, easing = FastOutSlowInEasing)) }
+        launch { enterAlpha.animateTo(1f, tween(140)) }
+        launch { enterScale.animateTo(1f, spring(dampingRatio = 0.62f, stiffness = 520f)) }
+        launch { enterTranslateY.animateTo(0f, tween(200, easing = FastOutSlowInEasing)) }
+        launch { enterBlur.animateTo(0f, tween(180, easing = FastOutSlowInEasing)) }
     }
+    // A frosted veil (white on light pages, black on dark ones) keeps the page text behind
+    // the capsule from competing with the menu labels.
+    val veilAlpha = if (menuBg.luminance() < 0.5f) 0.5f else 0.6f
     LiquidGlassSurface(
         shape = pillShape,
         fallbackColor = menuBg,
         backdrop = glassBackdrop,
-        contentScrimColor = menuBg.copy(alpha = 0.18f),
+        contentScrimColor = menuBg.copy(alpha = veilAlpha),
         forceFallback = forceSolidSurface,
-        modifier = Modifier
-            .width(width)
+        modifier = modifier
+            .then(if (wrapWidth) Modifier.widthIn(max = width) else Modifier.width(width))
             // 行高按系统字体缩放推导，避免大字体下 chip 文字被固定高度裁掉
             .heightIn(min = height)
             .graphicsLayer {
                 scaleX = enterScale.value
                 scaleY = enterScale.value
-                translationY = enterTranslateY.value
-                alpha = enterAlpha.value
+                translationY = enterTranslateY.value.dp.toPx()
+                alpha = if (hidden) 0f else enterAlpha.value
                 shape = pillShape
                 clip = false
-                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
+                val blurPx = enterBlur.value.dp.toPx()
+                renderEffect = if (blurPx > 0.5f) {
+                    androidx.compose.ui.graphics.BlurEffect(blurPx, blurPx, androidx.compose.ui.graphics.TileMode.Decal)
+                } else null
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin.Center
             },
         contentAlignment = Alignment.Center
     ) {
         content()
+    }
+}
+
+/**
+ * 折叠横条：按 chip 的实测宽度决定放几个操作。全部放得下时不显示「>」（有标注时行尾放齿轮）；
+ * 放不下时按用户顺序尽量多放，末尾放「>」，且至少保留一个操作。
+ * 判断在布局阶段用真实测量完成，避免字体、字重或字形差异让最后一项被挤成竖排。
+ */
+@Composable
+private fun SelectionMenuInlineRow(
+    items: List<Pair<String, () -> Unit>>,
+    menuText: Color,
+    dividerColor: Color,
+    showGear: Boolean,
+    onMenuSettings: () -> Unit,
+    onMore: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Layout(
+        modifier = modifier,
+        content = {
+            items.forEach { (label, action) -> MenuChip(label, menuText, action) }
+            repeat((items.size - 1).coerceAtLeast(0)) { MenuDivider(dividerColor) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.width(SELECTION_MENU_MORE_GAP_DP.dp))
+                SelectionMenuMoreButton(menuText = menuText, onClick = onMore)
+            }
+            if (showGear) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(Modifier.width(6.dp))
+                    MenuDivider(dividerColor)
+                    Spacer(Modifier.width(4.dp))
+                    SelectionMenuSettingsButton(menuText = menuText, onClick = onMenuSettings)
+                }
+            }
+        }
+    ) { measurables, constraints ->
+        val loose = Constraints(maxHeight = constraints.maxHeight)
+        val chips = measurables.subList(0, items.size).map { it.measure(loose) }
+        val dividers = measurables.subList(items.size, items.size + (items.size - 1).coerceAtLeast(0))
+            .map { it.measure(loose) }
+        val more = measurables[items.size + dividers.size].measure(loose)
+        val gear = if (showGear) measurables[items.size + dividers.size + 1].measure(loose) else null
+        val available = if (constraints.hasBoundedWidth) constraints.maxWidth.toFloat() else Float.MAX_VALUE
+        val chipWidths = chips.map { it.width.toFloat() }
+        val dividerWidth = dividers.firstOrNull()?.width?.toFloat() ?: 0f
+        val withGear = selectionMenuInlineLayout(
+            chipWidths, dividerWidth, available,
+            trailingDp = gear?.width?.toFloat() ?: 0f,
+            moreButtonDp = more.width.toFloat(), moreGapDp = 0f
+        )
+        // 需要「>」时齿轮改放进展开菜单，横条腾出位置给操作。
+        val fit = if (withGear.showsMore && gear != null) {
+            selectionMenuInlineLayout(chipWidths, dividerWidth, available, moreButtonDp = more.width.toFloat(), moreGapDp = 0f)
+        } else withGear
+        val trailing = when {
+            fit.showsMore -> more
+            else -> gear
+        }
+        val shown = chips.take(fit.inlineCount)
+        val height = (shown.map { it.height } + listOfNotNull(trailing?.height) + dividers.take(fit.inlineCount - 1).map { it.height })
+            .maxOrNull() ?: 0
+        val width = kotlin.math.ceil(fit.contentWidthDp).toInt().coerceIn(constraints.minWidth, constraints.maxWidth)
+        layout(width, height.coerceIn(constraints.minHeight, constraints.maxHeight)) {
+            var x = 0
+            shown.forEachIndexed { index, chip ->
+                if (index > 0) {
+                    val divider = dividers[index - 1]
+                    divider.placeRelative(x, (height - divider.height) / 2)
+                    x += divider.width
+                }
+                chip.placeRelative(x, (height - chip.height) / 2)
+                x += chip.width
+            }
+            trailing?.placeRelative(x, (height - trailing.height) / 2)
+        }
+    }
+}
+
+/** 折叠横条末尾的「>」：点开后整条胶囊变形成竖向菜单 */
+@Composable
+private fun SelectionMenuMoreButton(
+    menuText: Color,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(SELECTION_MENU_MORE_BUTTON_DP.dp)
+            .clip(CircleShape)
+            .background(menuText.copy(alpha = 0.08f))
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        ControlIcon(
+            directionalIcon(AppIcons.CaretRight, AppIcons.CaretLeft),
+            contentDescription = stringResource(R.string.more_options),
+            tint = menuText.copy(alpha = 0.85f),
+            modifier = Modifier.size(16.dp)
+        )
     }
 }
 

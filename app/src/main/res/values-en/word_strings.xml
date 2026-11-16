@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="word_error_invalid">This Word document is damaged or has no readable content.</string>
+    <string name="word_error_encrypted">This Word document is password-protected.</string>
+    <string name="word_error_unsupported">This Word document format is unsupported.</string>
+    <string name="word_error_limit">This Word document is too large to convert on this device.</string>
+    <string name="word_error_io">Could not read the Word file or save the reading cache.</string>
+    <string name="word_error_conversion">Could not prepare the Word document for reading.</string>
+    <string name="word_share_original">Share original file</string>
+</resources>

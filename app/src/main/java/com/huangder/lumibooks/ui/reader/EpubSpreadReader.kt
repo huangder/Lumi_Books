@@ -110,6 +110,7 @@ internal class EpubSpreadTurnHost(
         var page: EpubSpreadPage? = null
         var retryCount = 0
         var fence = 0L
+        var snapshotPaintPending = false
         var timeout: Runnable? = null
         var ready: (() -> Unit)? = null
     }
@@ -184,6 +185,7 @@ internal class EpubSpreadTurnHost(
     private var pageBackgroundColor = Color.WHITE
     private val spreadBackground = ReaderSpreadBackground(context) {
         listOf(previous, current, next).forEach { it.invalidateSnapshot(); it.invalidate() }
+        scheduleCurlSnapshots()
         invalidate()
     }
 
@@ -214,9 +216,13 @@ internal class EpubSpreadTurnHost(
         set(value) {
             if (field == value) return
             field = value
-            if (value) post { drainPreloads() }
-            else {
+            if (value) {
+                enqueueAdjacentPreloads()
+                post { drainPreloads() }
+            } else {
                 // A retained alternate direction owns just its current spread.
+                removeCallbacks(warmCurlSnapshot)
+                current.invalidateSnapshot()
                 cancelPreparation(replaced = false)
                 abortAnimation()
                 listOf(previous, next).forEach { clearSlot(it); it.releaseLeaves() }
@@ -226,6 +232,15 @@ internal class EpubSpreadTurnHost(
     private var animationCommit: (() -> Unit)? = null
     private var fade: ValueAnimator? = null
     private var leafCapture: Bitmap? = null
+    private val warmCurlSnapshot = Runnable {
+        if (!canWarmCurlSnapshots()) return@Runnable
+        val slot = listOf(current, next, previous).firstOrNull { candidate ->
+            candidate.snapshot == null && candidate.isReady() &&
+                candidate.target?.pages?.indices?.none { candidate.leaves[it].snapshotPaintPending } == true
+        } ?: return@Runnable
+        // Give input and drawing a frame between spread captures.
+        if (captureSlot(slot)) scheduleCurlSnapshots()
+    }
     private val bookmarkPull = BookmarkPullGestureTracker()
     private var pullingBookmark = false
     private var footnoteTouchStream = false
@@ -276,9 +291,10 @@ internal class EpubSpreadTurnHost(
         val sessionChanged = this.session !== session
         val layoutChanged = sessionChanged || this.configurationIdentity != configurationIdentity || requestedReverseAxis != reverseAxis
         val pendingRequest = preparation?.request
-        val restartingRequest = if (layoutChanged && (state == null || pendingRequest != null)) {
-            request ?: pendingRequest
+        val restartingRequest = if (layoutChanged) {
+            request?.takeIf { state == null || it.operationId != lastOperationId } ?: pendingRequest
         } else null
+        val transitionChanged = this.transition != transition
         this.transition = transition
         this.durationMillis = durationMillis.coerceIn(1, 1000)
         this.edgeTapMode = edgeTapMode
@@ -306,7 +322,9 @@ internal class EpubSpreadTurnHost(
             lastOperationId = request.operationId
             jump(request)
         } else if (restartingRequest != null) {
+            val queuedTurn = pendingTurn
             jump(restartingRequest)
+            pendingTurn = queuedTurn
         } else if (layoutChanged && session.chapterCount > 0) {
             val focused = state?.focused
             jump(EpubNavigationRequest(
@@ -318,6 +336,13 @@ internal class EpubSpreadTurnHost(
                     ?: EpubNavigationDestination.Page(focused?.target?.pageIndex ?: 0),
                 showLoadingPage = false
             ))
+        }
+        if (transitionChanged) {
+            if (transition == "curl") scheduleCurlSnapshots()
+            else {
+                removeCallbacks(warmCurlSnapshot)
+                listOf(previous, current, next).forEach { it.invalidateSnapshot() }
+            }
         }
         invalidate()
     }
@@ -358,6 +383,10 @@ internal class EpubSpreadTurnHost(
         val spread = state
         if (released || direction == 0 || spread == null || selectionMenuVisible) return false
         val sign = if (direction > 0) 1 else -1
+        if (isRebuildingCurrentSpread()) {
+            pendingTurn = sign
+            return true
+        }
         val last = spread.second ?: spread.first
         if (sign < 0 && spread.first.target == EpubPageTarget(0, 0) ||
             sign > 0 && last.target.chapterIndex == (session?.chapterCount ?: 0) - 1 && last.target.pageIndex + 1 >= last.pageCount) {
@@ -366,6 +395,7 @@ internal class EpubSpreadTurnHost(
         }
         if (animationCommit != null) { pendingTurn = sign; return true }
         val slot = if (sign > 0) next else previous
+        trace("turn_input", "direction=$sign ready=${slot.isReady()}")
         if (slot.isReady()) {
             cancelPreparation(replaced = false)
             animateCommit(slot, sign, null)
@@ -472,15 +502,16 @@ internal class EpubSpreadTurnHost(
         if (old.focused != page) onFocusedPageChanged(page)
         onNavigationResult(EpubNavigationResult.Committed(request.operationId,
             page.target.chapterIndex, page.target.pageIndex, page.pageCount, page.locatorJson))
-        preloadDirections.clear()
-        preloadDirections.add(-1)
-        preloadDirections.add(1)
+        enqueueAdjacentPreloads()
         drainPreloads()
     }
 
     private fun currentConfigurationValid(): Boolean = current.target?.pages?.indices?.all {
         current.leaves[it].configurationIdentity == configurationIdentity
     } == true
+
+    private fun isRebuildingCurrentSpread(): Boolean =
+        preparation?.direction == 0 && !currentConfigurationValid()
 
     private fun prepareProbe(
         slot: SpreadSlot, target: EpubPageTarget, destination: EpubNavigationDestination,
@@ -620,7 +651,11 @@ internal class EpubSpreadTurnHost(
     private fun attach(leaf: Leaf) {
         val view = leaf.view
         configureEpubWebViewSettings(view)
-        view.onAppearanceChanged = { slotOf(view)?.invalidateSnapshot() }
+        view.onAppearanceChanged = {
+            slotOf(view)?.invalidateSnapshot()
+            if (transition == "curl") fenceSnapshotAppearance(leaf, view)
+            else leaf.snapshotPaintPending = false
+        }
         view.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
             if (!leaf.configured && leaf.documentReady && leaf.view === view) view.post { configure(leaf) }
         }
@@ -646,6 +681,7 @@ internal class EpubSpreadTurnHost(
                 leaf.view.documentLifecycle.beginDocument()
                 leaf.configured = false
                 leaf.documentReady = false
+                leaf.snapshotPaintPending = false
             }
             override fun onPageFinished(view: WebView, url: String?) {
                 if (released || leaf.view !== view || !epubDocumentMessageMatches(url, leaf.documentUrl ?: return)) return
@@ -694,6 +730,7 @@ internal class EpubSpreadTurnHost(
         parent?.removeView(dead)
         leaf.view = EpubContentWebView(context)
         leaf.documentReady = false
+        leaf.snapshotPaintPending = false
         leaf.documentUrl = null
         leaf.configured = false
         leaf.configurationIdentity = null
@@ -795,15 +832,14 @@ internal class EpubSpreadTurnHost(
                                         cancelPreparation(replaced = false)
                                         clearSlot(previous)
                                         clearSlot(next)
-                                        preloadDirections.clear()
-                                        preloadDirections.add(-1)
-                                        preloadDirections.add(1)
+                                        enqueueAdjacentPreloads()
                                         post { drainPreloads() }
                                     }
                                     onSpreadChanged(refreshed)
                                 }
                             }
                         }
+                        scheduleCurlSnapshots()
                     }
                     leaf.view.invalidate()
                 }
@@ -863,11 +899,10 @@ internal class EpubSpreadTurnHost(
             onSpreadChanged(state!!)
             request?.let { onNavigationResult(EpubNavigationResult.Committed(it.operationId,
                 focusPage.target.chapterIndex, focusPage.target.pageIndex, focusPage.pageCount, focusPage.locatorJson)) }
-            preloadDirections.clear()
-            preloadDirections.add(-1)
-            preloadDirections.add(1)
+            enqueueAdjacentPreloads()
             val queued = pendingTurn
             pendingTurn = 0
+            scheduleCurlSnapshots()
             if (queued != 0) post { turn(queued) } else post { drainPreloads() }
     }
 
@@ -890,8 +925,14 @@ internal class EpubSpreadTurnHost(
             }
             return
         }
-        if (transition == "curl" || transition == "wave") {
-            if (!captureSlot(current) || !captureSlot(slot)) { commit(); return }
+        if (transition == "curl") {
+            val cachedCurrent = current.snapshot != null
+            val cachedTarget = slot.snapshot != null
+            if (!ensureTurnSnapshot(current) || !ensureTurnSnapshot(slot)) { commit(); return }
+            trace("turn_start", "direction=$direction cachedCurrent=$cachedCurrent cachedTarget=$cachedTarget")
+        } else if (transition == "wave" && (!captureSlot(current) || !captureSlot(slot))) {
+            commit()
+            return
         }
         controller = createAnimation().also { animation ->
             animation.onCanFlip = { slot.isReady() }
@@ -970,6 +1011,12 @@ internal class EpubSpreadTurnHost(
         resetSlots()
     }
 
+    private fun enqueueAdjacentPreloads() {
+        preloadDirections.clear()
+        preloadDirections.add(-1)
+        preloadDirections.add(1)
+    }
+
     private fun drainPreloads() {
         if (!backgroundPreparationEnabled) {
             // Hidden locator updates can commit another chapter without changing
@@ -980,6 +1027,7 @@ internal class EpubSpreadTurnHost(
             return
         }
         if (released || preparation != null || animationCommit != null || gestureClaimed || state == null) return
+        scheduleCurlSnapshots()
         while (preloadDirections.isNotEmpty()) {
             val direction = preloadDirections.removeFirst()
             val slot = if (direction > 0) next else previous
@@ -1231,14 +1279,13 @@ internal class EpubSpreadTurnHost(
         val slot = if (direction > 0) next else previous
         if (!slot.isReady()) return false
         if (transition == "curl" || transition == "wave") {
-            if (current.snapshot == null && !captureSlot(current)) return false
-            if (slot.snapshot == null && !captureSlot(slot)) return false
+            if (!ensureTurnSnapshot(current) || !ensureTurnSnapshot(slot)) return false
         }
         return true
     }
 
     private fun followGesture(event: MotionEvent, finishing: Boolean = false) {
-        if (transition == "none") return
+        if (transition == "none" || isRebuildingCurrentSpread()) return
         val direction = gestureDirection(event)
         if (direction != 0 && !dragSlotReady(direction)) {
             clearWaitingGesture()
@@ -1290,13 +1337,44 @@ internal class EpubSpreadTurnHost(
         listOf(previous, current, next).forEach { slot -> slot.target?.let(slot::arrange); slot.invalidateSnapshot() }
         onViewportChanged(w, h)
         listOf(previous, current, next).flatMap { it.existingLeaves }.forEach { leaf -> if (!leaf.configured) leaf.view.post { configure(leaf) } }
+        scheduleCurlSnapshots()
     }
 
+    private fun canWarmCurlSnapshots(): Boolean = !released && backgroundPreparationEnabled &&
+        transition == "curl" && isAttachedToWindow && state != null &&
+        controller == null && animationCommit == null && !gestureClaimed
+
+    private fun scheduleCurlSnapshots() {
+        if (!canWarmCurlSnapshots()) return
+        removeCallbacks(warmCurlSnapshot)
+        postOnAnimation(warmCurlSnapshot)
+    }
+
+    private fun fenceSnapshotAppearance(leaf: Leaf, view: EpubContentWebView) {
+        val version = view.appearanceVersion
+        leaf.snapshotPaintPending = true
+        view.postVisualStateCallback(version, object : WebView.VisualStateCallback() {
+            override fun onComplete(requestId: Long) {
+                if (leaf.view !== view || view.appearanceVersion != requestId) return
+                view.runAfterNextDraw {
+                    if (leaf.view !== view || view.appearanceVersion != requestId) return@runAfterNextDraw
+                    leaf.snapshotPaintPending = false
+                    slotOf(view)?.invalidateSnapshot()
+                    scheduleCurlSnapshots()
+                }
+            }
+        })
+    }
+
+    private fun ensureTurnSnapshot(slot: SpreadSlot): Boolean = slot.snapshot != null || captureSlot(slot)
+
     private fun captureSlot(slot: SpreadSlot): Boolean {
+        val started = android.os.SystemClock.uptimeMillis()
         val old = slot.snapshot
         val snapshot = captureSpread(slot, old?.takeIf(bitmapPool::canReuse), androidx.compose.ui.unit.IntSize(width, height)) ?: return false
         if (snapshot !== old) bitmapPool.retire(old)
         slot.snapshot = bitmapPool.track(snapshot)
+        trace("snapshot_ready", "target=${slot.target?.first.traceLabel()} ms=${android.os.SystemClock.uptimeMillis() - started}")
         return true
     }
 
@@ -1369,6 +1447,7 @@ internal class EpubSpreadTurnHost(
         val views = allWebViews()
         val window = rootView
         released = true
+        removeCallbacks(warmCurlSnapshot)
         spreadBackground.release()
         cancelPreparation(replaced = false)
         abortAnimation()

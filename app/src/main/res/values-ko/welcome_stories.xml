@@ -24,4 +24,10 @@
     <string name="welcome_story_art_stats_duration">%1$d시간 %2$d분</string>
     <string name="welcome_story_art_stats_heatmap">최근 3개월</string>
     <string name="welcome_story_art_stats_compare" formatted="false">지난주보다 18% 증가</string>
+    <string name="welcome_story_appearance_eyebrow">외관</string>
+    <string name="welcome_story_appearance_title_pick">외관 선택</string>
+    <string name="welcome_story_appearance_subtitle_pick">마음에 드는 스타일을 고르세요. 나중에 설정에서 바꿀 수 있습니다.</string>
+    <string name="welcome_theme_desc_liquid_glass">투명한 굴절이 손짓을 따라 흐릅니다.</string>
+    <string name="welcome_theme_desc_flat">깔끔하고 단순하게, 콘텐츠에 집중합니다.</string>
+    <string name="welcome_theme_desc_material3">배경화면에서 색을 가져오는 시스템 본연의 질감.</string>
 </resources>

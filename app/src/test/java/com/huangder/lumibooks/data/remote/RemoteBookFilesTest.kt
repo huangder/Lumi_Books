@@ -45,6 +45,19 @@ class RemoteBookFilesTest {
     }
 
     @Test
+    fun `download names preserve the author marker for metadata`() {
+        val names = RemoteBookFiles.resolveDownloadFileNames(
+            contentDisposition = "attachment; filename=\"三体 作者: 刘慈欣.txt\"",
+            responseMimeType = "text/plain",
+            url = "https://example.com/download",
+            title = "Catalog title",
+            expectedExtension = "txt"
+        )
+        assertEquals("三体 作者_ 刘慈欣.txt", names.storageName)
+        assertEquals("三体 作者: 刘慈欣.txt", names.metadataName)
+    }
+
+    @Test
     fun `sanitize removes separators and keeps the extension when truncating`() {
         assertEquals("a_b_c.epub", RemoteBookFiles.sanitizeFileName("a/b\\c.epub"))
         assertNull(RemoteBookFiles.sanitizeFileName(".."))

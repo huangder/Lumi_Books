@@ -21,7 +21,12 @@ internal data class SpineTraits(
     val dropTilt: Float
 )
 
-internal data class SpineEntry(val id: String, val isFolder: Boolean = false)
+/**
+ * One item to shelve. [breakBefore] > 0 starts the item on a shelf row of its own choosing:
+ * 1 puts it at the start of the next row (the current one if that is still empty), each more
+ * leaves one more row empty before it. 0 lets it flow on from the previous item.
+ */
+internal data class SpineEntry(val id: String, val isFolder: Boolean = false, val breakBefore: Int = 0)
 
 /**
  * One item in row coordinates, in dp. The box is unrotated: [x] is its left edge from the shelf
@@ -43,7 +48,8 @@ internal data class PlacedSpine(
     val traits: SpineTraits
 )
 
-internal data class SpineRow(val items: List<PlacedSpine>)
+/** One shelf row; [explicit] when it was started by a [SpineEntry.breakBefore] (or left empty by one). */
+internal data class SpineRow(val items: List<PlacedSpine>, val explicit: Boolean = false)
 
 internal data class SpinePage(val rows: List<SpineRow>)
 
@@ -130,10 +136,12 @@ internal object SpineLayout {
         var stackX = 0f
         var stackWidth = 0f
         var stackHeight = 0f
+        var rowExplicit = false
 
         fun closeRow(justify: Boolean = true) {
-            pageRows += SpineRow(if (justify) justified(row, shelfWidth) else row.toList())
+            pageRows += SpineRow(if (justify) justified(row, shelfWidth) else row.toList(), rowExplicit)
             row.clear()
+            rowExplicit = false
             cursor = 0f
             stackSize = 0
             if (pageRows.size == rows) {
@@ -144,6 +152,17 @@ internal object SpineLayout {
         }
 
         for (entry in entries) {
+            if (entry.breakBefore > 0) {
+                // A row the user chose ends ragged, like the last one; it is not spread out.
+                var skips = entry.breakBefore
+                if (row.isNotEmpty()) closeRow(justify = false)
+                skips--
+                while (skips-- > 0) {
+                    rowExplicit = true
+                    closeRow(justify = false)
+                }
+                rowExplicit = true
+            }
             val traits = traits(entry.id, seed, entry.isFolder)
             var height = maxBookHeight * traits.heightFraction
             val width = traits.thickness
@@ -222,6 +241,7 @@ internal object SpineLayout {
 
         // The last row of the library is left ragged, like the end of a real shelf.
         if (row.isNotEmpty()) closeRow(justify = false)
+        rowExplicit = false
         if (pageRows.isNotEmpty() || pages.isEmpty()) {
             while (pageRows.size < rows) pageRows += SpineRow(emptyList())
             pages += SpinePage(pageRows.toList())

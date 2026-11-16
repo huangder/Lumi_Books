@@ -2,6 +2,9 @@ package com.huangder.lumibooks.util.epub
 
 import android.webkit.WebResourceResponse
 import androidx.webkit.WebViewAssetLoader
+import com.huangder.lumibooks.replacement.ReplacementProgram
+import com.huangder.lumibooks.replacement.ReplacementResult
+import com.huangder.lumibooks.replacement.applyReplacementRules
 import com.huangder.lumibooks.util.parser.MobiParser
 import org.jsoup.nodes.Document
 import java.io.ByteArrayInputStream
@@ -20,7 +23,8 @@ import java.util.UUID
  */
 class MobiRenderSession internal constructor(
     private val parser: MobiParser,
-    private val mobiFile: MobiFile
+    private val mobiFile: MobiFile,
+    private val replacementProgram: ReplacementProgram = ReplacementProgram.Empty
 ) : BookRenderSession {
 
     val sessionToken: String = UUID.randomUUID().toString()
@@ -29,6 +33,7 @@ class MobiRenderSession internal constructor(
         get() = parser.sessionChapterRanges.size
 
     private val documentCache = mutableMapOf<Int, Document>()
+    private val replacementCache = android.util.LruCache<Int, ReplacementResult>(6)
     private val readerFontFiles = mutableMapOf<String, File>()
     private val readerFontKeysByPath = mutableMapOf<String, String>()
     private val readerBackgroundFiles = mutableMapOf<String, File>()
@@ -227,6 +232,7 @@ class MobiRenderSession internal constructor(
         EpubPageProgressionDirection.LTR
 
     override fun searchText(chapterIndex: Int): String = synchronized(documentLock) {
+        if (replacementProgram.active) return@synchronized replacementResult(chapterIndex).display
         EpubDocumentTransformer.extractSearchText(chapterDocument(chapterIndex))
     }
 
@@ -237,9 +243,9 @@ class MobiRenderSession internal constructor(
     @Synchronized
     override fun close() {
         documentCache.clear()
+        replacementCache.evictAll()
         readerFontFiles.clear()
         readerFontKeysByPath.clear()
-        mobiFile.close()
         parser.onSessionClosed(this)
     }
 
@@ -255,18 +261,34 @@ class MobiRenderSession internal constructor(
         )
     }
 
+    private fun sourceDocument(chapterIndex: Int): Document {
+        val fragment = chapterFragment(chapterIndex)
+        val fullHtml = "<!DOCTYPE html><html xmlns=\"http://www.w3.org/1999/xhtml\">" +
+            "<head><meta charset=\"utf-8\"/></head><body>$fragment</body></html>"
+        return EpubDocumentTransformer.parseAndSanitize(
+            fullHtml.toByteArray(Charsets.UTF_8), chapterHref(chapterIndex), useXmlParser = false
+        )
+    }
+
+    internal fun replacementResult(
+        chapterIndex: Int,
+        program: ReplacementProgram = replacementProgram,
+        previewRule: String? = null
+    ): ReplacementResult = synchronized(documentLock) {
+        val cacheable = program === replacementProgram && previewRule == null
+        if (cacheable) replacementCache.get(chapterIndex)?.let { return@synchronized it }
+        sourceDocument(chapterIndex).applyReplacementRules(program, previewRule).also {
+            if (cacheable) replacementCache.put(chapterIndex, it)
+        }
+    }
+
     private fun chapterDocument(chapterIndex: Int): Document = synchronized(documentLock) {
         documentCache[chapterIndex]?.let { return it }
         try {
-            val fragment = chapterFragment(chapterIndex)
-            val fullHtml =
-                "<!DOCTYPE html><html xmlns=\"http://www.w3.org/1999/xhtml\">" +
-                    "<head><meta charset=\"utf-8\"/></head><body>$fragment</body></html>"
-            val document = EpubDocumentTransformer.parseAndSanitize(
-                fullHtml.toByteArray(Charsets.UTF_8),
-                parser.chapterHrefName(chapterIndex),
-                useXmlParser = false
-            )
+            val document = sourceDocument(chapterIndex)
+            if (replacementProgram.active) {
+                replacementCache.put(chapterIndex, document.applyReplacementRules(replacementProgram))
+            }
             EpubDocumentTransformer.transform(document, EpubRenditionLayout.REFLOWABLE)
             documentCache[chapterIndex] = document
             runCatching {

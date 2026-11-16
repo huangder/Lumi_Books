@@ -56,11 +56,16 @@ class MenuMotionPreviewActivity : ComponentActivity() {
                     LocalDensity provides Density(density.density, intent.getFloatExtra("fontScale", 1f))
                 ) {
                     if (intent.getBooleanExtra("surfaces", false)) SurfaceSamples()
+                    else if (intent.getBooleanExtra("selection", false)) SelectionMenuPreview(
+                        dark = intent.getBooleanExtra("dark", false)
+                    )
                     else PreviewMenus(
                         intent.getBooleanExtra("solid", false),
                         intent.getBooleanExtra("transparentBackdrop", false),
                         intent.getBooleanExtra("demo", false),
-                        intent.getBooleanExtra("open", false)
+                        intent.getBooleanExtra("open", false),
+                        wide = intent.getBooleanExtra("wide", false),
+                        loop = intent.getBooleanExtra("loop", false)
                     )
                 }
             }
@@ -86,8 +91,70 @@ private fun SurfaceSamples() {
     }
 }
 
+/** Reader page with a selection and the selection bar, for recording the bar and its menu. */
 @Composable
-private fun PreviewMenus(solid: Boolean, transparentBackdrop: Boolean, demo: Boolean, open: Boolean) {
+private fun SelectionMenuPreview(dark: Boolean) {
+    val backdrop = rememberLayerBackdrop()
+    val density = LocalDensity.current
+    val paper = if (dark) Color(0xFF1E1E1E) else Color(0xFFEFE0C4)
+    val ink = if (dark) Color(0xFFD6D6D6) else Color(0xFF3B3226)
+    var reappear by remember { mutableIntStateOf(0) }
+    var log by remember { mutableStateOf("") }
+    val paragraph = "视历史经验的倾向。归根到底，书本知识只是一种间接的知识，来源于千千万万劳动群众实践经验的积累总结。" +
+        "瞧不起历史经验，就是瞧不起群众。脱离群众，孤家寡人，你就一事无成。从发展的观点看，人的知识也有一个不断充实的过程。"
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.fillMaxSize().layerBackdrop(backdrop).background(paper)
+                .statusBarsPadding().padding(horizontal = 20.dp, vertical = 24.dp)
+        ) {
+            repeat(4) { Text(paragraph, color = ink, fontSize = androidx.compose.ui.unit.TextUnit(21f, androidx.compose.ui.unit.TextUnitType.Sp), lineHeight = androidx.compose.ui.unit.TextUnit(36f, androidx.compose.ui.unit.TextUnitType.Sp)) }
+            Text(log, color = Color.Red)
+        }
+        val top = with(density) { 150.dp.toPx() }
+        val state = com.huangder.lumibooks.ui.reader.SelectionState(
+            0, 0, 0, 2, "间接", 0f, 0f,
+            selTopY = top, selBottomY = top + with(density) { 30.dp.toPx() },
+            selStartX = with(density) { 150.dp.toPx() }, selEndX = with(density) { 200.dp.toPx() }
+        )
+        com.huangder.lumibooks.ui.reader.SelectionMenuOverlay(
+            state = state, readerTheme = if (dark) "night" else "sepia", glassBackdrop = backdrop,
+            isDragging = false, reappearKey = reappear,
+            onDismiss = { log = "dismissed"; reappear++ },
+            onHighlight = { log = "highlight" }, onNote = { log = "note" }, onExcerpt = { log = "excerpt" },
+            onSearch = { log = "search" }, onWebSearch = { log = "web" }, onDictionary = { log = "dictionary" },
+            onDictionaryAppSelected = {}, onCopy = { log = "copy" }, onViewNote = {}
+        )
+    }
+}
+
+/** A wide 158x36 selector capsule, like the reader settings pickers. */
+@Composable
+private fun WideCapsuleTrigger(sourceId: Any, backdrop: com.kyant.backdrop.Backdrop, onClick: () -> Unit, modifier: Modifier) {
+    LiquidGlassSurface(
+        shape = AppRoundedCornerShape(18.dp),
+        fallbackColor = AppColors.CardBg,
+        backdrop = backdrop,
+        contentScrimColor = AppColors.CardBg.copy(alpha = 0.4f),
+        onClick = onClick,
+        modifier = modifier.liquidGlassMenuAnchor(sourceId, cornerRadius = 18.dp).size(158.dp, 36.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Theme", color = AppColors.TextPrimary)
+            Spacer(Modifier.width(8.dp))
+            Text("Paper  ▾", color = AppColors.TextSecondary)
+        }
+    }
+}
+
+@Composable
+private fun PreviewMenus(
+    solid: Boolean,
+    transparentBackdrop: Boolean,
+    demo: Boolean,
+    open: Boolean,
+    wide: Boolean = false,
+    loop: Boolean = false
+) {
     val backdrop = rememberLayerBackdrop()
     var selected by remember { mutableStateOf("Ready") }
     var actions by remember { mutableIntStateOf(0) }
@@ -149,7 +216,25 @@ private fun PreviewMenus(solid: Boolean, transparentBackdrop: Boolean, demo: Boo
                 host.show(menu)
             }
         }
-        LiquidGlassIconButton(
+        LaunchedEffect(loop) {
+            // Recording loop: open, return into the trigger, open, vanish.
+            while (loop) {
+                delay(900)
+                host.show(menu)
+                delay(1300)
+                host.dismiss(LiquidMenuCloseStyle.ReturnToSource)
+                delay(900)
+                host.show(menu)
+                delay(1300)
+                host.dismiss(LiquidMenuCloseStyle.Vanish)
+            }
+        }
+        if (wide) {
+            WideCapsuleTrigger(
+                sourceId = sourceId, backdrop = backdrop, onClick = { host.toggle(menu) },
+                modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(24.dp)
+            )
+        } else LiquidGlassIconButton(
             imageVector = AppIcons.DotsThreeVertical,
             contentDescription = "Open menu",
             size = 44.dp,

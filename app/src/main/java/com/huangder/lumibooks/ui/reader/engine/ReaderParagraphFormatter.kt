@@ -14,11 +14,20 @@ object ReaderParagraphFormatter {
         textSizePx: Float,
         paragraphSpacingPx: Float,
         skipFirstNonEmptyParagraph: Boolean
+    ): CharSequence = format(text, indentCharacters, textSizePx, paragraphSpacingPx, skipFirstNonEmptyParagraph, null)
+
+    internal fun format(
+        text: CharSequence,
+        indentCharacters: Float,
+        textSizePx: Float,
+        paragraphSpacingPx: Float,
+        skipFirstNonEmptyParagraph: Boolean,
+        onEdit: ((Int, String, String) -> Unit)?
     ): CharSequence {
         val result = SpannableStringBuilder(text)
         if (result.isEmpty()) return result
 
-        applyParagraphSpacing(result, paragraphSpacingPx.roundToInt().coerceAtLeast(0))
+        applyParagraphSpacing(result, paragraphSpacingPx.roundToInt().coerceAtLeast(0), onEdit)
 
         result.getSpans(0, result.length, LeadingMarginSpan.Standard::class.java)
             .forEach(result::removeSpan)
@@ -52,7 +61,7 @@ object ReaderParagraphFormatter {
 
             // 删除已有的行首缩进字符（全角空格/半角空格/\t）
             val wsLen = para.firstContent - para.start
-            if (wsLen > 0) result.delete(para.start, para.firstContent)
+            if (wsLen > 0) result.edit(para.start, para.firstContent, "", onEdit)
 
             // 直接用 LeadingMarginSpan 打上精确的缩进，不依赖字符测量
             val newEnd = para.end - wsLen
@@ -66,7 +75,11 @@ object ReaderParagraphFormatter {
         return result
     }
 
-    private fun applyParagraphSpacing(result: SpannableStringBuilder, spacingPx: Int) {
+    private fun applyParagraphSpacing(
+        result: SpannableStringBuilder,
+        spacingPx: Int,
+        onEdit: ((Int, String, String) -> Unit)?
+    ) {
         result.getSpans(0, result.length, EpubParser.ParagraphLineHeightSpan::class.java)
             .forEach(result::removeSpan)
 
@@ -75,12 +88,12 @@ object ReaderParagraphFormatter {
         var index = result.length - 1
         while (index > 0) {
             if (result[index] == '\n' && result[index - 1] == '\n') {
-                result.delete(index, index + 1)
+                result.edit(index, index + 1, "", onEdit)
             } else if (
                 result[index] == '\n' && index > 1 &&
                 result[index - 1] == '\r' && result[index - 2] == '\n'
             ) {
-                result.delete(index - 1, index + 1)
+                result.edit(index - 1, index + 1, "", onEdit)
             }
             index--
         }
@@ -93,7 +106,7 @@ object ReaderParagraphFormatter {
             }
         }
         for (lineBreak in paragraphBreaks.asReversed()) {
-            result.insert(lineBreak + 1, "\n")
+            result.edit(lineBreak + 1, lineBreak + 1, "\n", onEdit)
             result.setSpan(
                 EpubParser.ParagraphLineHeightSpan(spacingPx),
                 lineBreak + 1,
@@ -101,6 +114,13 @@ object ReaderParagraphFormatter {
                 Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
             )
         }
+    }
+
+    private fun SpannableStringBuilder.edit(
+        start: Int, end: Int, value: String, onEdit: ((Int, String, String) -> Unit)?
+    ) {
+        onEdit?.invoke(start, substring(start, end), value)
+        replace(start, end, value)
     }
 
     private fun Char.isHorizontalIndent(): Boolean {

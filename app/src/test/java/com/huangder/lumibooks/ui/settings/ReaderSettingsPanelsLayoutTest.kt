@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.*
@@ -22,6 +23,7 @@ import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.MotionPreference
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -38,9 +40,12 @@ class ReaderSettingsPanelsLayoutTest {
     private lateinit var view: View
     private val context get() = RuntimeEnvironment.getApplication()
 
-    private fun setPanel(content: @androidx.compose.runtime.Composable () -> Unit) {
+    private fun setPanel(
+        motionPreference: MotionPreference = MotionPreference.REDUCED,
+        content: @androidx.compose.runtime.Composable () -> Unit
+    ) {
         compose.setContent {
-            EBookReaderTheme(appTheme = "lumi", motionPreference = MotionPreference.REDUCED) {
+            EBookReaderTheme(appTheme = "lumi", motionPreference = motionPreference) {
                 view = LocalView.current
                 Box(Modifier.width(360.dp).height(800.dp).background(Color(0xFFFBFBFC))) { content() }
             }
@@ -135,7 +140,7 @@ class ReaderSettingsPanelsLayoutTest {
         setPanel {
             ThemeSuiteRow(
                 suite = suite, backgrounds = emptyList(), active = active.value,
-                onEdit = {}, onActivate = { activated++ }, onRename = {}, onDelete = {}, onMove = {}
+                onEdit = {}, onActivate = { activated++ }, onRename = {}, onDelete = {}
             )
         }
         // The row merges its children for TalkBack, so look at the unmerged tree.
@@ -144,6 +149,70 @@ class ReaderSettingsPanelsLayoutTest {
         compose.runOnIdle { assertEquals(1, activated); active.value = true }
         compose.onNodeWithTag("theme_suite_active_check", useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithTag("theme_suite_set_current", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test fun themeSuitesFollowTheFingerAndCommitTheNewOrderOnRelease() {
+        val state = mutableStateOf(ReaderSettingsPreviewUiState())
+        val (first, second) = state.value.suites
+        val moves = mutableListOf<Pair<String, Int>>()
+        setPanel(motionPreference = MotionPreference.STANDARD) {
+            ThemeSuiteListScreen(
+                state = state.value,
+                onClose = {}, onEdit = {}, onCreate = {}, onActivate = {}, onRename = { _, _ -> }, onDelete = {},
+                onMove = { id, delta ->
+                    moves += id to delta
+                    val suites = state.value.suites.toMutableList()
+                    val from = suites.indexOfFirst { it.id == id }
+                    suites.add(from + delta, suites.removeAt(from))
+                    state.value = state.value.copy(suites = suites)
+                },
+                onImportBundle = {}, onExportBundle = {}
+            )
+        }
+        val firstTag = "theme_suite_row_${first.id}"
+        val firstRow = compose.onNodeWithTag(firstTag, useUnmergedTree = true)
+        val secondRow = compose.onNodeWithTag("theme_suite_row_${second.id}", useUnmergedTree = true)
+        val firstBounds = firstRow.getUnclippedBoundsInRoot()
+        val secondBounds = secondRow.getUnclippedBoundsInRoot()
+        assertEquals(12f, (secondBounds.top - firstBounds.bottom).value, 1f)
+        fun displacement(): Float {
+            val bounds = firstRow.getUnclippedBoundsInRoot()
+            return (bounds.top + bounds.bottom - firstBounds.top - firstBounds.bottom).value / 2f
+        }
+
+        val handle = compose.onNode(
+            hasContentDescription(context.getString(R.string.theme_suite_drag_to_reorder)) and
+                hasAnyAncestor(hasTestTag(firstTag)),
+            useUnmergedTree = true
+        )
+        compose.mainClock.autoAdvance = false
+        handle.performTouchInput {
+            down(center)
+            advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100)
+        }
+        compose.mainClock.advanceTimeBy(700)
+        compose.onRoot().performTouchInput { moveBy(Offset(0f, 24.dp.toPx())) }
+        compose.mainClock.advanceTimeBy(32)
+        assertEquals(24f, displacement(), 2f)
+        assertEquals(secondBounds.top, secondRow.getUnclippedBoundsInRoot().top)
+
+        compose.onRoot().performTouchInput { moveBy(Offset(0f, 65.dp.toPx())) }
+        compose.mainClock.advanceTimeBy(64)
+        val shiftingTop = secondRow.getUnclippedBoundsInRoot().top
+        assertTrue("The next card should be moving into the vacated slot",
+            shiftingTop > firstBounds.top && shiftingTop < secondBounds.top)
+        compose.mainClock.advanceTimeBy(336)
+        assertEquals(89f, displacement(), 3f)
+        assertEquals(firstBounds.top.value, secondRow.getUnclippedBoundsInRoot().top.value, 2f)
+        compose.runOnUiThread { assertTrue(moves.isEmpty()) }
+
+        compose.onRoot().performTouchInput { up() }
+        compose.mainClock.autoAdvance = true
+        compose.runOnIdle {
+            assertEquals(listOf(first.id to 1), moves)
+            assertEquals(listOf(second.id, first.id), state.value.suites.take(2).map { it.id })
+        }
+        assertEquals(secondBounds.top, firstRow.getUnclippedBoundsInRoot().top)
     }
 
     private fun saveScreenshot(name: String) {

@@ -81,6 +81,12 @@ class KindleParser(private val context: Context) : BookParser, BookRenderSource,
     override fun resolveFootnoteText(sourceChapterIndex: Int, href: String): String? = delegate?.resolveFootnoteText(sourceChapterIndex, href)
     override fun clearHtmlCache() { delegate?.clearHtmlCache() }
     override fun openRenderSession(): BookRenderSession = (delegate as BookRenderSource).openRenderSession()
+    internal fun openRenderSession(program: com.huangder.lumibooks.replacement.ReplacementProgram): BookRenderSession =
+        when (val active = delegate) {
+            is EpubParser -> active.openRenderSession(program)
+            is MobiParser -> active.openRenderSession(program)
+            else -> error("Kindle book has not been parsed yet")
+        }
     override suspend fun searchBook(query: String, maxResults: Int): List<EpubSearchMatch> =
         (delegate as? BookSearchSource)?.searchBook(query, maxResults).orEmpty()
 
@@ -111,5 +117,6 @@ internal val BookParser?.epubParserOrNull: EpubParser?
     get() = when (this) {
         is EpubParser -> this
         is KindleParser -> epubParser
+        is WordParser -> epubParser
         else -> null
     }

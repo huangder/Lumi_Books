@@ -1,8 +1,13 @@
 package com.huangder.lumibooks.util.epub
 
+import com.huangder.lumibooks.replacement.ReplacementProgram
+import com.huangder.lumibooks.replacement.ReplacementResult
+import com.huangder.lumibooks.replacement.applyReplacementRules
+
 import android.net.Uri
 import android.webkit.WebResourceResponse
 import androidx.webkit.WebViewAssetLoader
+import com.huangder.lumibooks.util.ReaderFontFileFormat
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.parser.Parser
@@ -15,7 +20,8 @@ import java.util.zip.ZipFile
 
 class EpubRenderSession private constructor(
     override val epubPackage: EpubPackage,
-    private val zipFile: ZipFile
+    private val zipFile: ZipFile,
+    private val replacementProgram: ReplacementProgram
 ) : EpubResourceProvider, BookRenderSession {
     val sessionToken: String = UUID.randomUUID().toString()
     private data class LogicalChapter(
@@ -51,6 +57,7 @@ class EpubRenderSession private constructor(
     private val readerBackgroundKeysByPath = mutableMapOf<String, String>()
     private val cssIndexByChapterPath = mutableMapOf<String, EpubCssIndex>()
     private val mediaOnlyByChapter = java.util.concurrent.ConcurrentHashMap<Int, Boolean>()
+    private val replacementCache = android.util.LruCache<Int, ReplacementResult>(6)
     private val presentationByChapter = mutableMapOf<Int, EpubPagePresentation>()
     private data class CoverReference(val path: String, val fragment: String?)
     private data class CoverMetadata(
@@ -106,9 +113,11 @@ class EpubRenderSession private constructor(
         val file = filePath?.takeIf(String::isNotBlank)?.let(::File) ?: return null
         val canonical = runCatching { file.canonicalFile }.getOrNull() ?: return null
         if (!canonical.isFile || canonical.length() <= 0L || canonical.length() > MAX_READER_FONT_BYTES) return null
-        val extension = canonical.extension.lowercase().takeIf { it in READER_FONT_EXTENSIONS } ?: "ttf"
         val canonicalPath = canonical.path
-        val key = readerFontKeysByPath.getOrPut(canonicalPath) { UUID.randomUUID().toString() + "." + extension }
+        val key = readerFontKeysByPath.getOrPut(canonicalPath) {
+            val extension = ReaderFontFileFormat.detect(canonical)?.extension ?: "ttf"
+            UUID.randomUUID().toString() + "." + extension
+        }
         readerFontFiles[key] = canonical
         return "https://$ASSET_DOMAIN/reader-font/$sessionToken/$key"
     }
@@ -153,13 +162,7 @@ class EpubRenderSession private constructor(
         if (canonical != file || !canonical.isFile || canonical.length() <= 0L || canonical.length() > MAX_READER_FONT_BYTES) {
             return null
         }
-        val mimeType = when (canonical.extension.lowercase()) {
-            "otf" -> "font/otf"
-            "ttc" -> "font/collection"
-            "woff" -> "font/woff"
-            "woff2" -> "font/woff2"
-            else -> "font/ttf"
-        }
+        val mimeType = ReaderFontFileFormat.mimeTypeForExtension(requestedPath.substringAfterLast('.'))
         return WebResourceResponse(mimeType, null, FileInputStream(canonical)).apply {
             responseHeaders = mapOf(
                 "Cache-Control" to "private, max-age=3600",
@@ -295,12 +298,13 @@ class EpubRenderSession private constructor(
         epubPackage.pageProgressionDirection
 
     override fun searchText(chapterIndex: Int): String {
+        if (replacementProgram.active) replacementResult(chapterIndex)?.let { return it.display }
         val resource = readLogicalSource(chapterIndex) ?: return ""
         return EpubDocumentTransformer.extractSearchText(resource)
     }
 
     override fun imageTextOffsets(chapterIndex: Int): List<Int> =
-        readLogicalSource(chapterIndex)?.let(EpubDocumentTransformer::imageTextOffsets).orEmpty()
+        readLogicalSource(chapterIndex)?.let { EpubDocumentTransformer.imageTextOffsets(replaceBody(chapterIndex, it)) }.orEmpty()
 
     override fun chapterIndexForUrl(url: String): Int? {
         val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return null
@@ -492,7 +496,7 @@ class EpubRenderSession private constructor(
     internal fun nativeChapterSource(chapterIndex: Int): NativeEpubSource? = synchronized(documentPreparationLock) {
         if (closed) return@synchronized null
         val chapter = logicalChapters.getOrNull(chapterIndex) ?: return@synchronized null
-        val resource = readLogicalSource(chapterIndex) ?: return@synchronized null
+        val resource = readLogicalSource(chapterIndex)?.let { replaceBody(chapterIndex, it) } ?: return@synchronized null
         val dom = org.jsoup.Jsoup.parse(resource.bytes.toString(Charsets.UTF_8))
         val sheets = mutableListOf<Pair<String, String>>()
         var failure: String? = null
@@ -546,14 +550,42 @@ class EpubRenderSession private constructor(
         )
     }
 
+    internal fun replacementResult(
+        chapterIndex: Int,
+        program: ReplacementProgram = replacementProgram,
+        previewRule: String? = null
+    ): ReplacementResult? {
+        if (renditionLayout(chapterIndex) != EpubRenditionLayout.REFLOWABLE) return null
+        val cacheable = program === replacementProgram && previewRule == null
+        if (cacheable) replacementCache.get(chapterIndex)?.let { return it }
+        val source = readLogicalSource(chapterIndex) ?: return null
+        return replacementDocument(source).applyReplacementRules(program, previewRule).also {
+            if (cacheable) replacementCache.put(chapterIndex, it)
+        }
+    }
+
+    private fun replacementDocument(source: EpubResource) =
+        EpubDocumentTransformer.parseAndSanitize(source.bytes, source.path)
+
+    private fun replaceBody(chapterIndex: Int, source: EpubResource): EpubResource {
+        if (!replacementProgram.active || renditionLayout(chapterIndex) != EpubRenditionLayout.REFLOWABLE) return source
+        val document = replacementDocument(source)
+        val result = document.applyReplacementRules(replacementProgram)
+        replacementCache.put(chapterIndex, result)
+        if (!result.offsets.changed) return source
+        document.body().attr("data-lumi-replacement", "")
+        return source.copy(bytes = document.outerHtml().toByteArray(Charsets.UTF_8))
+    }
+
     private fun readLogicalChapter(chapterIndex: Int): EpubResource? = synchronized(documentPreparationLock) {
         if (closed) return@synchronized null
         val cacheKey = "logical:$chapterIndex"
         documentCache[cacheKey]?.let { return@synchronized it }
         val chapter = logicalChapters.getOrNull(chapterIndex) ?: return@synchronized null
         val spineItem = epubPackage.spine.getOrNull(chapter.spineIndex) ?: return@synchronized null
-        val source = readLogicalSource(chapterIndex) ?: return@synchronized null
-        val mediaOnly = EpubDocumentTransformer.isMediaOnlyPage(source)
+        val original = readLogicalSource(chapterIndex) ?: return@synchronized null
+        val source = replaceBody(chapterIndex, original)
+        val mediaOnly = EpubDocumentTransformer.isMediaOnlyPage(original)
         val cssIndex = cssIndexFor(chapter.path, source.bytes)
         val transformed = EpubDocumentTransformer.transform(
             resource = source,
@@ -665,6 +697,7 @@ class EpubRenderSession private constructor(
         if (closed) return
         closed = true
         documentCache.clear()
+        replacementCache.evictAll()
         resourceCache.clear()
         mediaOnlyByChapter.clear()
         presentationByChapter.clear()
@@ -686,15 +719,18 @@ class EpubRenderSession private constructor(
         private const val MAX_READER_FONT_BYTES = 64L * 1024L * 1024L
         private val LINK_TAG_REGEX = Regex("""<link\b[^>]*>""", RegexOption.IGNORE_CASE)
         private val HREF_REGEX = Regex("""href\s*=\s*["']([^"']+)["']""", RegexOption.IGNORE_CASE)
-        private val READER_FONT_EXTENSIONS = setOf("ttf", "otf", "ttc", "woff", "woff2")
         private const val CONTENT_SECURITY_POLICY =
             "default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; " +
                 "img-src 'self' data: blob:; media-src 'self' data: blob:; " +
                 "script-src 'unsafe-inline'; connect-src 'self'; frame-src 'none'; object-src 'none'"
 
         fun open(filePath: String, parsedPackage: EpubPackage? = null): EpubRenderSession {
+            return open(filePath, parsedPackage, ReplacementProgram.Empty)
+        }
+
+        internal fun open(filePath: String, parsedPackage: EpubPackage?, program: ReplacementProgram): EpubRenderSession {
             val epubPackage = parsedPackage ?: EpubPackageReader.read(filePath)
-            return EpubRenderSession(epubPackage, ZipFile(filePath))
+            return EpubRenderSession(epubPackage, ZipFile(filePath), program)
         }
     }
 }

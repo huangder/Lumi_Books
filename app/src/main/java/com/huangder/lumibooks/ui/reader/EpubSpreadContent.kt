@@ -139,7 +139,7 @@ internal fun EpubSpreadContent(
         appearance.fontPath?.let { java.io.File(it).let { file -> file.length() to file.lastModified() } }
     ).joinToString("|")
     val latestSignature = rememberUpdatedState(signature)
-    val ruleFonts = rememberEpubRuleFontUrls(session, notes, appearance.customFonts)
+    val ruleFonts = rememberEpubRuleFonts(session, notes, appearance.customFonts)
     val latestRuleFonts = rememberUpdatedState(ruleFonts)
     val initial = remember(session) {
         EpubNavigationRequest(Long.MIN_VALUE, EpubNavigationOrigin.RETURN_TO_SOURCE,
@@ -164,7 +164,7 @@ internal fun EpubSpreadContent(
     val latestSearch = rememberUpdatedState(searchRequest)
 
     fun notesForChapter(chapter: Int) = epubNotesWithRules(latestNotes.value, latestRuleHighlights.value, chapter)
-    fun fontsForHighlights() = latestRuleFonts.value + latestRuleHighlights.value?.fontUrls.orEmpty()
+    fun fontsForHighlights() = latestRuleFonts.value + latestRuleHighlights.value?.fontsByType.orEmpty()
 
     fun decorate(view: EpubContentWebView, chapter: Int) {
         val rules = latestRuleHighlights.value
@@ -185,8 +185,7 @@ internal fun EpubSpreadContent(
                 configureReader = { view, request ->
                     val a = latestAppearance.value
                     val chapter = request.target.chapterIndex
-                    view.settings.textZoom = if (session.renditionLayout(chapter) == EpubRenditionLayout.PRE_PAGINATED) 100
-                        else ((a.fontSize / 16f) * 100f).toInt().coerceIn(50, 300)
+                    view.settings.textZoom = epubTextZoom(a.fontSize, session.renditionLayout(chapter))
                     val destination = request.destination
                     com.huangder.lumibooks.ui.reader.configureReader(
                         view = view, paginationSignature = latestSignature.value,
@@ -210,7 +209,7 @@ internal fun EpubSpreadContent(
                         edgeTapMode = edgeTapMode, longPressSelectionRange = a.selectionRange,
                         marginTopDp = a.top, marginRightDp = a.right,
                         marginBottomDp = a.bottom, marginLeftDp = a.left,
-                        notes = notesForChapter(chapter), ruleFontUrls = fontsForHighlights(),
+                        notes = notesForChapter(chapter), ruleFonts = fontsForHighlights(),
                         annotationStyle = latestAnnotationStyle.value,
                         locatorRequest = (destination as? EpubNavigationDestination.Locator)?.let {
                             EpubLocatorRequest(request.documentGeneration, chapter, it.json)

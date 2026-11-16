@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.text.TextPaint
 import com.huangder.lumibooks.R
 import org.junit.Assert.*
 import org.junit.Test
@@ -86,6 +87,22 @@ class ReaderCustomFontTest {
         assertSame(Typeface.DEFAULT, resolve(file).typeface)
         copyFont(R.font.lxgw_wenkai, file)
         assertDifferentInk(Typeface.DEFAULT, resolve(file).typeface)
+    }
+
+    @Test fun ruleSpanKeepsTheResolvedVariableFaceWhenMeasuringAndDrawing() = withFont { file ->
+        copyFont(R.font.source_serif4_regular, file)
+        val font = resolve(file, 825)
+        val span = ReaderRuleTypefaceSpan(font, italic = true)
+        val measured = TextPaint().apply { isFakeBoldText = true }
+        val drawn = TextPaint()
+        span.updateMeasureState(measured)
+        span.updateDrawState(drawn)
+        for (paint in listOf(measured, drawn)) {
+            assertSame(font.typeface, paint.typeface)
+            assertEquals(825, paint.typeface.weight)
+            assertFalse(paint.isFakeBoldText)
+            assertEquals(-0.25f, paint.textSkewX, 0f)
+        }
     }
 
     private fun resolve(file: File, weight: Int = 400) =

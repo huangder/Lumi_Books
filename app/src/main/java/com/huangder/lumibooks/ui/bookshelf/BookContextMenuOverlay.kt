@@ -2,6 +2,14 @@ package com.huangder.lumibooks.ui.bookshelf
 import com.huangder.lumibooks.ui.icons.AppIcons
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.layout.onSizeChanged
+import com.huangder.lumibooks.ui.components.scrollEdgeFade
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -24,7 +32,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -515,24 +522,48 @@ private fun MenuActionsPanel(
         },
         contentAlignment = Alignment.TopStart
         ) {
+        val listPadding = if (compact) 8.dp else 12.dp
+        val itemSpacing = 2.dp
+        val density = LocalDensity.current
+        val listState = rememberLazyListState()
+        // Measured once so the cap follows font scale. When the actions overflow, the
+        // viewport stops halfway through a row: the peeking row plus the edge fade imply
+        // there is more below without any explicit hint.
+        var rowHeightPx by remember { mutableIntStateOf(0) }
+        val maxListHeight = if (rowHeightPx > 0) {
+            val row = with(density) { rowHeightPx.toDp() }
+            val rowWithGap = row + itemSpacing
+            val fullHeight = rowWithGap * menuItems.size - itemSpacing + listPadding * 2
+            if (fullHeight <= ActionsListMaxHeight) fullHeight
+            else {
+                // Top padding, whole rows, then half of the next row.
+                val fullRows = ((ActionsListMaxHeight - listPadding - row * 0.5f) / rowWithGap).toInt().coerceAtLeast(1)
+                listPadding + rowWithGap * fullRows + row * 0.5f
+            }
+        } else ActionsListMaxHeight
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 48.dp, max = 360.dp)
-                .padding(if (compact) 8.dp else 12.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
+                .heightIn(min = 48.dp, max = maxListHeight)
+                .scrollEdgeFade(listState),
+            contentPadding = PaddingValues(listPadding),
+            verticalArrangement = Arrangement.spacedBy(itemSpacing)
         ) {
-        items(menuItems, key = { it.label }) { item ->
+        itemsIndexed(menuItems, key = { _, item -> item.label }) { index, item ->
             MenuActionItem(
                 label = item.label,
                 icon = item.icon,
                 compact = compact,
+                modifier = if (index == 0) Modifier.onSizeChanged { rowHeightPx = it.height } else Modifier,
                 onClick = { onAction(item.action) }
             )
         }
     }
     }
 }
+
+private val ActionsListMaxHeight = 360.dp
 
 // ─── 单个菜单项（支持错开淡入） ─────────────────────────────────
 
@@ -542,11 +573,12 @@ private fun MenuActionItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     alpha: Float = 1f,
     compact: Boolean = false,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .graphicsLayer { this.alpha = alpha }
             .clip(AppRoundedCornerShape(AppRadius.sm))

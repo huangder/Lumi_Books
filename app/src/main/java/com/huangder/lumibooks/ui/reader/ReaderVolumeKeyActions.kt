@@ -5,16 +5,17 @@ import com.huangder.lumibooks.domain.model.ReaderVolumeKeyAction
 
 internal fun resolveReaderVolumeKeyAction(
     action: ReaderVolumeKeyAction,
-    supportsFontSize: Boolean
-): ReaderVolumeKeyAction = if (
-    !supportsFontSize && action in setOf(
+    supportsFontSize: Boolean,
+    supportsListening: Boolean = true
+): ReaderVolumeKeyAction {
+    val supported = when (action) {
         ReaderVolumeKeyAction.FONT_SIZE_DOWN,
-        ReaderVolumeKeyAction.FONT_SIZE_UP
-    )
-) {
-    ReaderVolumeKeyAction.SYSTEM_VOLUME
-} else {
-    action
+        ReaderVolumeKeyAction.FONT_SIZE_UP -> supportsFontSize
+        ReaderVolumeKeyAction.TOGGLE_TTS_SESSION,
+        ReaderVolumeKeyAction.TOGGLE_TTS_PLAY_PAUSE -> supportsListening
+        else -> true
+    }
+    return if (supported) action else ReaderVolumeKeyAction.SYSTEM_VOLUME
 }
 
 internal fun adjustReaderBrightness(current: Float, increase: Boolean): Float {

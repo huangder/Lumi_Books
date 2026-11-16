@@ -1,11 +1,12 @@
 package com.huangder.lumibooks.data.remote
 
+import com.huangder.lumibooks.domain.model.BookFormat
 import java.net.URLDecoder
 
 /** Pure helpers shared by the WebDAV and OPDS sources: formats, file names and identities. */
 object RemoteBookFiles {
     /** Extensions the existing import pipeline can read, in download preference order. */
-    val SUPPORTED_EXTENSIONS = listOf("epub", "pdf", "mobi", "azw", "azw3", "cbz", "md", "markdown", "txt")
+    val SUPPORTED_EXTENSIONS = listOf("epub", "pdf", "mobi", "azw", "azw3", "cbz", "md", "markdown", "txt", "docx", "doc")
 
     private val MIME_EXTENSIONS = mapOf(
         "application/epub+zip" to "epub",
@@ -18,7 +19,9 @@ object RemoteBookFiles {
         "application/x-cbz" to "cbz",
         "text/markdown" to "md",
         "text/x-markdown" to "md",
-        "text/plain" to "txt"
+        "text/plain" to "txt",
+        BookFormat.DOCX_MIME to "docx",
+        BookFormat.DOC_MIME to "doc"
     )
 
     /** Labels for formats a catalog may offer but the importer cannot read. */
@@ -31,7 +34,6 @@ object RemoteBookFiles {
         "application/rtf" to "RTF",
         "application/x-djvu" to "DJVU",
         "image/vnd.djvu" to "DJVU",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" to "DOCX",
         "application/x-cb7" to "CB7"
     )
 
@@ -69,6 +71,8 @@ object RemoteBookFiles {
         "azw3" -> "application/x-mobi8-ebook"
         "cbz" -> "application/vnd.comicbook+zip"
         "md", "markdown" -> "text/markdown"
+        "docx" -> BookFormat.DOCX_MIME
+        "doc" -> BookFormat.DOC_MIME
         else -> "text/plain"
     }
 
@@ -147,7 +151,17 @@ object RemoteBookFiles {
         url: String,
         title: String?,
         expectedExtension: String?
-    ): String {
+    ): String = resolveDownloadFileNames(contentDisposition, responseMimeType, url, title, expectedExtension).storageName
+
+    internal data class DownloadFileNames(val storageName: String, val metadataName: String)
+
+    internal fun resolveDownloadFileNames(
+        contentDisposition: String?,
+        responseMimeType: String?,
+        url: String?,
+        title: String?,
+        expectedExtension: String?
+    ): DownloadFileNames {
         val serverName = fileNameFromContentDisposition(contentDisposition)
             ?.substringAfterLast('/')
             ?.substringAfterLast('\\')
@@ -164,7 +178,9 @@ object RemoteBookFiles {
             else -> serverName?.substringBeforeLast('.') ?: urlName?.substringBeforeLast('.')
         }
         val sanitizedBase = sanitizeFileName(baseName)?.takeIf { it.isNotBlank() } ?: "book"
-        return sanitizeFileName("$sanitizedBase.$extension") ?: "book.$extension"
+        val storageName = sanitizeFileName("$sanitizedBase.$extension") ?: "book.$extension"
+        val metadataName = named ?: title?.takeIf { extensionFromName(it) == extension } ?: storageName
+        return DownloadFileNames(storageName, metadataName)
     }
 
     /** Remote identity that never stores credentials or query strings with tokens in plain text. */

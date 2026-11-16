@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="word_error_invalid">此 Word 文档已损坏或没有可阅读的内容。</string>
+    <string name="word_error_encrypted">此 Word 文档受密码保护。</string>
+    <string name="word_error_unsupported">不支持此 Word 文档格式。</string>
+    <string name="word_error_limit">此 Word 文档过大，无法在本机转换。</string>
+    <string name="word_error_io">无法读取 Word 文件或保存阅读缓存。</string>
+    <string name="word_error_conversion">无法转换此 Word 文档以供阅读。</string>
+    <string name="word_share_original">分享原文件</string>
+</resources>

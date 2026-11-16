@@ -61,6 +61,22 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
 import kotlin.math.floor
 import com.huangder.lumibooks.ui.components.EmptyState
+import com.huangder.lumibooks.ui.components.AmbientGlow
+import com.huangder.lumibooks.ui.components.shiftHue
+import com.huangder.lumibooks.ui.components.rememberCoverColors
+import com.huangder.lumibooks.ui.components.FinishedReadingIndicator
+import com.huangder.lumibooks.ui.components.formatReadingProgressPercent
+import com.huangder.lumibooks.ui.theme.AppRadius
+import com.huangder.lumibooks.ui.theme.KaiTi
+import com.huangder.lumibooks.ui.theme.LocalCoverReadingProgressEnabled
+import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
+import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 
 @Composable
 internal fun CoverFlowBookshelf(
@@ -90,7 +106,9 @@ internal fun CoverFlowBookshelf(
     onFolderRemoveCover: (LibraryFolder) -> Unit,
     onFolderMove: (LibraryFolder) -> Unit,
     modifier: Modifier = Modifier,
-    pickerMode: Boolean = false
+    pickerMode: Boolean = false,
+    /** Commits a drag on the stage with the new order of [books]' ids; null turns dragging off. */
+    onReorder: ((List<String>) -> Unit)? = null
 ) {
     val state = rememberSaveable(saver = CoverFlowState.Saver) { CoverFlowState() }
     val motionEnabled = LocalMotionEnabled.current && !LocalEInkMode.current
@@ -112,6 +130,22 @@ internal fun CoverFlowBookshelf(
     val currentMenuCallback by rememberUpdatedState(onMenuVisibleChange)
     val currentEditing by rememberUpdatedState(isEditing)
     val density = LocalDensity.current
+
+    // Light-field colours follow the focused cover, but only once the flow settles: a fast fling
+    // across a large library never decodes a palette per book it passes.
+    val eInk = LocalEInkMode.current
+    var lightCoverPath by remember { mutableStateOf(books.getOrNull(state.focusedIndex)?.coverPath) }
+    val currentBooks by rememberUpdatedState(books)
+    LaunchedEffect(state, eInk) {
+        if (eInk) return@LaunchedEffect
+        snapshotFlow { if (state.isMoving) null else currentBooks.getOrNull(state.focusedIndex)?.let { it.id to it.coverPath } }
+            .collect { settled -> if (settled != null) lightCoverPath = settled.second }
+    }
+    // rememberCoverColors maps a fresh list on each call; keep one instance per distinct palette
+    // so the stage and its atmosphere skip recomposition unless the colours really change.
+    val pickedColors = rememberCoverColors(lightCoverPath)
+    val lightColors = remember(pickedColors) { pickedColors }
+    val ribbonLight = androidx.compose.animation.animateColorAsState(lightColors.first(), tween(700), label = "coverFlowRibbon")
 
     LaunchedEffect(bookIds) { state.updateBooks(bookIds) }
     LaunchedEffect(closingBookId, bookIds, topPadding, bottomPadding) {
@@ -194,9 +228,17 @@ internal fun CoverFlowBookshelf(
     ProvideLiquidGlassBackdrop(controlsBackdrop.takeIf { isLiquidGlass }) {
     Box(modifier.fillMaxSize().testTag("cover_flow_bookshelf")
         .onGloballyPositioned { rootCoordinates[0] = it }) {
-        Box(Modifier.matchParentSize()
-            .then(if (isLiquidGlass) Modifier.layerBackdrop(controlsBackdrop) else Modifier)
-            .background(AppColors.PageBg))
+        if (isLiquidGlass) {
+            Box(Modifier.matchParentSize()
+                .layerBackdrop(controlsBackdrop)
+                .background(AppColors.PageBg)) {
+                val accent = AppColors.Accent
+                AmbientGlow(
+                    remember(accent) { listOf(accent, accent.shiftHue(32f), accent.shiftHue(-28f)) },
+                    intensity = .55f, height = 360.dp
+                )
+            }
+        }
         Column(Modifier.fillMaxSize().padding(top = topPadding, bottom = bottomPadding)) {
             CoverFlowFolderNavigation(
                 folders, folderBookCounts, onFolderClick, onFolderRename, onFolderDelete,
@@ -225,7 +267,9 @@ internal fun CoverFlowBookshelf(
                             onHaptic = onHaptic,
                             menusEnabled = !pickerMode,
                             modifier = stageModifier,
-                            sceneAlpha = { 1f - progress.value }
+                            sceneAlpha = { 1f - progress.value },
+                            lightColors = lightColors,
+                            onReorder = onReorder.takeIf { !pickerMode }
                         )
                         }
                     }
@@ -238,15 +282,16 @@ internal fun CoverFlowBookshelf(
                             alpha = (1f - progress.value) * (1f - departure)
                         },
                             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                            CoverFlowMetadata(books, state, syncedBookIds, downloadStates,
-                                Modifier.fillMaxWidth().height((100f * density.fontScale.coerceIn(1f, 1.6f)).dp))
+                            CoverFlowPaperLabel(books, state, syncedBookIds, downloadStates, { ribbonLight.value },
+                                Modifier.fillMaxWidth().height((112f * density.fontScale.coerceIn(1f, 1.6f)).dp))
                             Box(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 12.dp), contentAlignment = Alignment.TopCenter) {
                                 CoverFlowScrollbar(
                                     state = state,
                                     bookCount = books.size,
                                     enabled = enabled && libraryReady && !isEditing && !transferring,
                                     motionEnabled = motionEnabled,
-                                    modifier = Modifier.widthIn(max = 360.dp).fillMaxWidth().padding(horizontal = 20.dp)
+                                    modifier = Modifier.widthIn(max = 360.dp).fillMaxWidth().padding(horizontal = 20.dp),
+                                    thumbColor = { ribbonLight.value }.takeIf { !eInk }
                                 )
                                 val menuBook = books.firstOrNull { it.id == state.menuBookId }
                                 androidx.compose.animation.AnimatedVisibility(!pickerMode && menuBook != null && !isEditing && enabled,
@@ -341,44 +386,126 @@ internal fun CoverFlowBookshelf(
     }
 }
 
+/**
+ * A paper label for the centred book. The card itself stays put; only its text crossfades
+ * between neighbours (layer alpha), and the ribbon/progress colours are read in draw.
+ */
 @Composable
-private fun CoverFlowMetadata(
+private fun CoverFlowPaperLabel(
     books: List<Book>,
     state: CoverFlowState,
     syncedIds: Set<String>,
     downloadStates: Map<String, BookDownloadState>,
+    light: () -> Color,
     modifier: Modifier
 ) {
     val first by remember(state) { derivedStateOf { floor(state.position).toInt() } }
-    Box(modifier.clearAndSetSemantics { }, contentAlignment = Alignment.TopCenter) {
-        (first..first + 1).forEach { index ->
-            val book = books.getOrNull(index) ?: return@forEach
-            key(book.id) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)
-                    .graphicsLayer { alpha = (1f - abs(index - state.position)).coerceIn(0f, 1f) },
-                    horizontalAlignment = Alignment.CenterHorizontally) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                        Text(book.title, color = AppColors.TextPrimary, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Serif,
-                            fontSize = 18.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
-                            modifier = Modifier.weight(1f, fill = false))
-                        if (book.isFavorite) Icon(AppIcons.Heart.filled, null, tint = AppColors.Accent,
-                            modifier = Modifier.padding(start = 5.dp).size(13.dp))
-                        if (book.id in syncedIds) Icon(AppIcons.CloudFilled, null, tint = AppColors.TextSecondary,
-                            modifier = Modifier.padding(start = 5.dp).size(13.dp))
+    val dark = LocalIsDarkTheme.current
+    val eInk = LocalEInkMode.current
+    val shape = com.huangder.lumibooks.ui.theme.AppRoundedCornerShape(AppRadius.md)
+    val paper = if (eInk) Color.White else coverFlowPaperColor(AppColors.CardBg, dark)
+    val accent = AppColors.Accent
+    val titleFont = resolveAppFontFamily(KaiTi)
+    Box(modifier.clearAndSetSemantics { }.padding(top = 6.dp, bottom = 4.dp), contentAlignment = Alignment.TopCenter) {
+        Box(Modifier.widthIn(max = 340.dp).fillMaxWidth().fillMaxHeight().padding(horizontal = 28.dp)) {
+            Box(Modifier.matchParentSize()
+                .then(if (eInk) Modifier.border(1.dp, Color.Black, shape)
+                    else Modifier.shadow(6.dp, shape, clip = false,
+                        ambientColor = Color.Black.copy(alpha = if (dark) 0.30f else 0.06f),
+                        spotColor = Color.Black.copy(alpha = if (dark) 0.40f else 0.10f)))
+                .clip(shape).background(paper)
+                .then(if (eInk) Modifier else Modifier.coverFlowPaperSheen(dark)
+                    .border(0.5.dp, AppColors.Divider.copy(alpha = if (dark) 0.5f else 0.7f), shape)))
+            (first..first + 1).forEach { index ->
+                val book = books.getOrNull(index) ?: return@forEach
+                key(book.id) {
+                    Box(Modifier.matchParentSize()
+                        .graphicsLayer { alpha = (1f - abs(index - state.position)).coerceIn(0f, 1f) }) {
+                        CoverFlowLabelContent(book, book.id in syncedIds, downloadStates[book.id], light, titleFont)
+                        // The bookmark ribbon hangs over the label's top edge.
+                        val favorite = book.isFavorite
+                        Box(Modifier.align(Alignment.TopEnd).padding(end = 18.dp).offset(y = (-4).dp)
+                            .size(11.dp, 26.dp)
+                            .drawWithCache {
+                                val path = ribbonPath(size.width, size.height)
+                                val fold = Color.Black.copy(alpha = 0.18f)
+                                onDrawBehind {
+                                    val c = if (eInk) Color.Black else if (favorite) accent else light()
+                                    drawPath(path, c)
+                                    drawLine(fold, Offset(0f, 4.dp.toPx()), Offset(size.width, 4.dp.toPx()), 1f)
+                                }
+                            }, contentAlignment = Alignment.TopCenter) {
+                            if (favorite) Icon(AppIcons.Heart.filled, null, tint = Color.White.copy(alpha = 0.92f),
+                                modifier = Modifier.padding(top = 7.dp).size(7.dp))
+                        }
                     }
-                    Text(book.author, color = AppColors.TextSecondary, fontSize = AppType.BodySmall,
-                        fontFamily = FontFamily.Serif, fontWeight = FontWeight.Bold,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-                    BookProgressStatus(
-                        book = book,
-                        downloadState = downloadStates[book.id],
-                        compact = true,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                    if (book.isMissing) Text(stringResource(R.string.book_file_unavailable),
-                        color = AppColors.Destructive, fontSize = AppType.Caption, maxLines = 1)
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CoverFlowLabelContent(
+    book: Book,
+    synced: Boolean,
+    downloadState: BookDownloadState?,
+    light: () -> Color,
+    titleFont: FontFamily
+) {
+    val secondary = AppColors.TextSecondary
+    Column(Modifier.fillMaxSize().padding(horizontal = 36.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Text(book.title, color = AppColors.TextPrimary, fontFamily = titleFont, fontWeight = FontWeight.Normal,
+            fontSize = AppType.Headline, lineHeight = 22.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center)
+        Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(12.dp, 1.dp).background(secondary.copy(alpha = 0.35f)))
+            Text(book.author, color = secondary, fontSize = AppType.Caption, letterSpacing = 0.8.sp,
+                fontFamily = FontFamily.Serif, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 6.dp).weight(1f, fill = false))
+            Box(Modifier.size(12.dp, 1.dp).background(secondary.copy(alpha = 0.35f)))
+            if (synced) Icon(AppIcons.CloudFilled, null, tint = secondary.copy(alpha = 0.7f),
+                modifier = Modifier.padding(start = 6.dp).size(11.dp))
+        }
+        val downloading = downloadState is BookDownloadState.Downloading
+        val ribbon = !LocalCoverReadingProgressEnabled.current && !book.isCloudOnly && !downloading
+        if (ribbon) {
+            CoverFlowProgressRibbon(book, light, Modifier.padding(top = 9.dp).widthIn(max = 200.dp))
+        } else {
+            BookProgressStatus(book = book, downloadState = downloadState, compact = true,
+                modifier = Modifier.padding(top = 6.dp))
+        }
+        if (book.isMissing) Text(stringResource(R.string.book_file_unavailable),
+            color = AppColors.Destructive, fontSize = AppType.Caption, maxLines = 1,
+            modifier = Modifier.padding(top = 2.dp))
+    }
+}
+
+/** A silk-thread progress line; finished books show the shared finished mark instead of a percentage. */
+@Composable
+private fun CoverFlowProgressRibbon(book: Book, light: () -> Color, modifier: Modifier) {
+    val track = AppColors.Divider
+    val eInk = LocalEInkMode.current
+    val fraction = if (book.isReadingFinished) 1f
+        else book.readingProgress.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 0f
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f).height(2.dp).drawWithCache {
+            val h = size.height
+            val rtl = layoutDirection == androidx.compose.ui.unit.LayoutDirection.Rtl
+            onDrawBehind {
+                drawLine(track, Offset(h / 2f, h / 2f), Offset(size.width - h / 2f, h / 2f), h, StrokeCap.Round)
+                if (fraction > 0f) {
+                    val end = (size.width - h) * fraction + h / 2f
+                    val color = if (eInk) Color.Black else light()
+                    if (rtl) drawLine(color, Offset(size.width - h / 2f, h / 2f), Offset(size.width - end, h / 2f), h, StrokeCap.Round)
+                    else drawLine(color, Offset(h / 2f, h / 2f), Offset(end, h / 2f), h, StrokeCap.Round)
+                }
+            }
+        })
+        Spacer(Modifier.width(8.dp))
+        if (book.isReadingFinished) FinishedReadingIndicator(compact = true, tint = AppColors.TextSecondary)
+        else Text(formatReadingProgressPercent(book.readingProgress), color = AppColors.TextSecondary,
+            fontSize = AppType.Caption2, maxLines = 1)
     }
 }

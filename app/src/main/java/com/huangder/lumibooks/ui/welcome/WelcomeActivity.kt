@@ -188,7 +188,19 @@ class WelcomeActivity : ComponentActivity() {
                                     }
                                 },
                                 startOnIntroduction = isDebugPolicyPreview,
-                                startOnSupport = isDebugSupportPreview
+                                startOnSupport = isDebugSupportPreview,
+                                // Same availability rule as the theme setting in Display settings.
+                                appThemeOptions = if (eInkModeEnabled) emptyList() else buildList {
+                                    if (liquidGlassCapability.supported) add("liquid_glass")
+                                    add("lumi")
+                                    add("material3")
+                                },
+                                onSelectAppTheme = { theme ->
+                                    // Applied live: the theme flow above re-renders the welcome in it.
+                                    if (!isDebugWelcomePreview) {
+                                        lifecycleScope.launch { dataStoreManager.saveAppTheme(theme) }
+                                    }
+                                }
                             )
                         }
                     }

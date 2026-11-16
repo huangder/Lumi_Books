@@ -140,6 +140,7 @@ import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.huangder.lumibooks.tts.ExternalTtsConfig
 import com.huangder.lumibooks.tts.FloatingSubtitleSettings
+import com.huangder.lumibooks.tts.FloatingSubtitleStyle
 import com.huangder.lumibooks.tts.TtsProviderSelection
 import com.huangder.lumibooks.tts.TtsStartChoice
 import com.huangder.lumibooks.ui.components.LiquidGlassSwitch
@@ -513,6 +514,7 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
     var hasOverlayPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
     var showPermissionDialog by rememberSaveable { mutableStateOf(!Settings.canDrawOverlays(context)) }
     var showColorDialog by rememberSaveable { mutableStateOf(false) }
+    var showHighlightColorDialog by rememberSaveable { mutableStateOf(false) }
     var valueEditor by remember { mutableStateOf<FloatingSubtitleValueEditor?>(null) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -587,10 +589,73 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
                 DisclosureChevron()
             }
         }
+        SettingsDivider()
+        SettingsSwitchRow(
+            label = stringResource(R.string.floating_subtitle_locked),
+            supportingText = stringResource(R.string.floating_subtitle_locked_desc),
+            checked = settings.locked,
+            onCheckedChange = { viewModel.saveFloatingSubtitleSettings(settings.copy(locked = it)) }
+        )
+    }
+
+    val lyricsStyle = settings.style == FloatingSubtitleStyle.LYRICS
+    FloatingSubtitleSectionTitle(stringResource(R.string.floating_subtitle_style_section))
+    DetailCard {
+        SettingsSwitchRow(
+            label = stringResource(R.string.floating_subtitle_lyrics_style),
+            supportingText = stringResource(R.string.floating_subtitle_lyrics_style_desc),
+            checked = lyricsStyle,
+            onCheckedChange = { enabled ->
+                viewModel.saveFloatingSubtitleSettings(settings.copy(
+                    style = if (enabled) FloatingSubtitleStyle.LYRICS else FloatingSubtitleStyle.BAR))
+            }
+        )
+        com.huangder.lumibooks.ui.components.LumiReveal(lyricsStyle) {
+            SettingsDivider()
+            SettingsSwitchRow(
+                label = stringResource(R.string.floating_subtitle_show_next_line),
+                checked = settings.showNextLine,
+                onCheckedChange = { viewModel.saveFloatingSubtitleSettings(settings.copy(showNextLine = it)) }
+            )
+            SettingsDivider()
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { showHighlightColorDialog = true }.padding(AppSpace.md),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(stringResource(R.string.floating_subtitle_highlight_color), fontSize = AppType.Body, color = AppColors.TextPrimary, modifier = Modifier.weight(1f))
+                Box(
+                    Modifier.size(28.dp)
+                        .clip(AppRoundedCornerShape(6.dp))
+                        .background(Color(parseAppAccentArgb(settings.highlightColorHex)))
+                        .border(1.dp, AppColors.Divider, AppRoundedCornerShape(6.dp))
+                )
+                Spacer(Modifier.width(AppSpace.sm))
+                DisclosureChevron()
+            }
+        }
+        SettingsDivider()
+        SettingsSliderItem(
+            label = stringResource(R.string.floating_subtitle_font_size),
+            value = settings.fontSizeSp,
+            range = FloatingSubtitleSettings.MIN_FONT_SIZE_SP..FloatingSubtitleSettings.MAX_FONT_SIZE_SP,
+            valueText = stringResource(R.string.floating_subtitle_sp_value, settings.fontSizeSp.roundToInt()),
+            step = 1f,
+            verticalPadding = 12.dp,
+            onValueClick = {
+                valueEditor = FloatingSubtitleValueEditor(
+                    field = FloatingSubtitleValueField.FONT_SIZE,
+                    title = context.getString(R.string.floating_subtitle_font_size),
+                    value = settings.fontSizeSp,
+                    range = FloatingSubtitleSettings.MIN_FONT_SIZE_SP..FloatingSubtitleSettings.MAX_FONT_SIZE_SP,
+                    unit = "sp"
+                )
+            },
+            onDragChange = { viewModel.previewFloatingSubtitleSettings(settings.copy(fontSizeSp = it)) }
+        ) { viewModel.saveFloatingSubtitleSettings(settings.copy(fontSizeSp = it)) }
     }
 
     FloatingSubtitleSectionTitle(stringResource(R.string.floating_subtitle_position_section))
-    DetailCard(horizontalPadding = 12.dp) {
+    DetailCard {
         SettingsSliderItem(
             label = stringResource(R.string.floating_subtitle_x_position),
             value = settings.xFraction * 100f,
@@ -631,7 +696,7 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
     }
 
     FloatingSubtitleSectionTitle(stringResource(R.string.floating_subtitle_background_section))
-    DetailCard(horizontalPadding = 12.dp) {
+    DetailCard {
         Row(
             modifier = Modifier.fillMaxWidth().clickable { showColorDialog = true }.padding(AppSpace.md),
             verticalAlignment = Alignment.CenterVertically
@@ -693,7 +758,7 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
     val visibleWidthDp = settings.widthDp.coerceIn(FloatingSubtitleSettings.MIN_WIDTH_DP, maxWidthDp)
 
     FloatingSubtitleSectionTitle(stringResource(R.string.floating_subtitle_size_section))
-    DetailCard(horizontalPadding = 12.dp) {
+    DetailCard {
         SettingsSliderItem(
             label = stringResource(R.string.floating_subtitle_width),
             value = visibleWidthDp,
@@ -712,6 +777,8 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
             },
             onDragChange = { viewModel.previewFloatingSubtitleSettings(settings.copy(widthDp = it)) }
         ) { viewModel.saveFloatingSubtitleSettings(settings.copy(widthDp = it)) }
+        com.huangder.lumibooks.ui.components.LumiReveal(!lyricsStyle) {
+        Column {
         SettingsDivider()
         SettingsSliderItem(
             label = stringResource(R.string.floating_subtitle_height),
@@ -731,18 +798,34 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
             },
             onDragChange = { viewModel.previewFloatingSubtitleSettings(settings.copy(heightDp = it)) }
         ) { viewModel.saveFloatingSubtitleSettings(settings.copy(heightDp = it)) }
+        }
+        }
     }
 
     if (showColorDialog) {
         ThemeColorDialog(
             initialColorHex = settings.backgroundColorHex,
             dialogTitle = stringResource(R.string.floating_subtitle_background_color),
-            resetText = stringResource(R.string.app_accent_color_reset),
+            resetText = stringResource(R.string.floating_subtitle_color_reset),
             resetColorHex = FloatingSubtitleSettings.DEFAULT_BACKGROUND_COLOR,
             onDismiss = { showColorDialog = false },
             onConfirm = {
                 showColorDialog = false
                 viewModel.saveFloatingSubtitleSettings(settings.copy(backgroundColorHex = it))
+            }
+        )
+    }
+
+    if (showHighlightColorDialog) {
+        ThemeColorDialog(
+            initialColorHex = settings.highlightColorHex,
+            dialogTitle = stringResource(R.string.floating_subtitle_highlight_color),
+            resetText = stringResource(R.string.floating_subtitle_color_reset),
+            resetColorHex = FloatingSubtitleSettings.DEFAULT_HIGHLIGHT_COLOR,
+            onDismiss = { showHighlightColorDialog = false },
+            onConfirm = {
+                showHighlightColorDialog = false
+                viewModel.saveFloatingSubtitleSettings(settings.copy(highlightColorHex = it))
             }
         )
     }
@@ -768,6 +851,7 @@ fun FloatingSubtitleSettingsDetail(viewModel: SettingsViewModel) {
                     FloatingSubtitleValueField.CORNER_RADIUS -> settings.copy(cornerRadiusDp = value)
                     FloatingSubtitleValueField.WIDTH -> settings.copy(widthDp = value)
                     FloatingSubtitleValueField.HEIGHT -> settings.copy(heightDp = value)
+                    FloatingSubtitleValueField.FONT_SIZE -> settings.copy(fontSizeSp = value)
                 }
                 viewModel.saveFloatingSubtitleSettings(updated)
                 valueEditor = null
@@ -983,7 +1067,8 @@ private enum class FloatingSubtitleValueField {
     BACKGROUND_OPACITY,
     CORNER_RADIUS,
     WIDTH,
-    HEIGHT
+    HEIGHT,
+    FONT_SIZE
 }
 
 private data class FloatingSubtitleValueEditor(

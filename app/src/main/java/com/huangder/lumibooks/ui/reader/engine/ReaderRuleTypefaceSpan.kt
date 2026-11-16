@@ -6,29 +6,17 @@ import android.text.style.MetricAffectingSpan
 
 /** Applies a rule-local typeface while preserving the surrounding reader typeface. */
 internal class ReaderRuleTypefaceSpan(
-    val typeface: Typeface,
-    internal val bold: Boolean,
-    internal val italic: Boolean
+    private val font: ResolvedReaderTypeface,
+    private val italic: Boolean
 ) : MetricAffectingSpan() {
-    private val style: Int
-        get() = when {
-            bold && italic -> Typeface.BOLD_ITALIC
-            bold -> Typeface.BOLD
-            italic -> Typeface.ITALIC
-            else -> Typeface.NORMAL
-        }
-
     override fun updateDrawState(textPaint: TextPaint) = apply(textPaint)
 
     override fun updateMeasureState(textPaint: TextPaint) = apply(textPaint)
 
     private fun apply(textPaint: TextPaint) {
-        val resolved = Typeface.create(typeface, style)
-        textPaint.typeface = resolved
-        // Some imported fonts do not expose a bold face. Keep the requested rule
-        // weight visible without replacing the selected family.
-        textPaint.isFakeBoldText = bold && (resolved.style and Typeface.BOLD) == 0
-        if (italic && (resolved.style and Typeface.ITALIC) == 0) {
+        textPaint.typeface = font.typeface
+        textPaint.isFakeBoldText = font.fakeBold && !font.typeface.isBold
+        if (italic && (font.typeface.style and Typeface.ITALIC) == 0) {
             textPaint.textSkewX = -0.25f
         }
     }

@@ -8,7 +8,9 @@ enum class ReaderVolumeKeyAction(val storageValue: String) {
     BRIGHTNESS_UP("brightness_up"),
     FONT_SIZE_DOWN("font_size_down"),
     FONT_SIZE_UP("font_size_up"),
-    TOGGLE_BOOKMARK("toggle_bookmark");
+    TOGGLE_BOOKMARK("toggle_bookmark"),
+    TOGGLE_TTS_SESSION("toggle_tts_session"),
+    TOGGLE_TTS_PLAY_PAUSE("toggle_tts_play_pause");
 
     companion object {
         fun fromStorage(value: String?): ReaderVolumeKeyAction =

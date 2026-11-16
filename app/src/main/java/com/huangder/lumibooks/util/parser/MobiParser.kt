@@ -235,8 +235,12 @@ class MobiParser(private val context: Context? = null) : BookParser, BookRenderS
     }
 
     override fun openRenderSession(): MobiRenderSession {
+        return openRenderSession(com.huangder.lumibooks.replacement.ReplacementProgram.Empty)
+    }
+
+    internal fun openRenderSession(program: com.huangder.lumibooks.replacement.ReplacementProgram): MobiRenderSession {
         val file = mobiFile ?: error("MOBI has not been parsed yet")
-        return MobiRenderSession(this, file).also { activeSession = it }
+        return MobiRenderSession(this, file, program).also { activeSession = it }
     }
 
     override suspend fun searchBook(query: String, maxResults: Int): List<EpubSearchMatch> =

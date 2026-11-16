@@ -77,6 +77,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
@@ -88,11 +89,13 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -135,10 +138,10 @@ import com.huangder.lumibooks.ui.components.LumiActionRow
 import com.huangder.lumibooks.ui.components.LumiRowMinHeight
 import com.huangder.lumibooks.ui.components.LumiSegmentedControl
 import com.huangder.lumibooks.ui.components.lumiRowClickable
-import androidx.compose.animation.animateContentSize
+import com.huangder.lumibooks.ui.components.rememberLazyListReorderState
+import com.huangder.lumibooks.ui.components.reorderableItemMotion
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -173,7 +176,6 @@ import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
-import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
 import com.huangder.lumibooks.ui.theme.MotionPreference
 import com.huangder.lumibooks.ui.theme.effectiveAppTheme
 import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
@@ -185,7 +187,6 @@ import androidx.core.graphics.ColorUtils
 import dagger.hilt.android.AndroidEntryPoint
 import java.io.File
 import javax.inject.Inject
-import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import com.huangder.lumibooks.ui.animation.finishWithPush
@@ -491,7 +492,7 @@ private fun ReaderSettingsPreviewContent(
 }
 
 @Composable
-private fun ThemeSuiteListScreen(
+internal fun ThemeSuiteListScreen(
     state: ReaderSettingsPreviewUiState,
     onClose: () -> Unit,
     onEdit: (String) -> Unit,
@@ -507,8 +508,15 @@ private fun ThemeSuiteListScreen(
     var renameSuite by remember { mutableStateOf<ReaderThemeSuite?>(null) }
     var deleteSuite by remember { mutableStateOf<ReaderThemeSuite?>(null) }
     var exportSuite by remember { mutableStateOf<ReaderThemeSuite?>(null) }
-    val motionEnabled = LocalMotionEnabled.current
+    val motionEnabled = LocalMotionEnabled.current && !LocalEInkMode.current
+    val haptics = LocalHapticFeedback.current
     val listState = rememberLazyListState()
+    val reorder = rememberLazyListReorderState(listState, ::themeSuiteItemKey)
+    val suitesById = remember(state.suites) { state.suites.associateBy(ReaderThemeSuite::id) }
+    val savedOrder = remember(state.suites) { state.suites.map(ReaderThemeSuite::id) }
+    val currentOrder by rememberUpdatedState(savedOrder)
+    val currentOnMove by rememberUpdatedState(onMove)
+    val displayOrder = reorder.draftOrder ?: savedOrder
     CollapsingPageScaffold(
         title = stringResource(R.string.reader_theme_suites),
         onBack = onClose,
@@ -516,7 +524,6 @@ private fun ThemeSuiteListScreen(
             LiquidGlassIconButton(AppIcons.Plus, stringResource(R.string.add_theme_suite), { createDialog = true })
         }
     ) {
-        // 与设置页一致的分组列表：套装放在同一张卡片里，导入导出单独成组。
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -528,30 +535,43 @@ private fun ThemeSuiteListScreen(
             item(key = "suites_title") {
                 GroupedSectionTitle(stringResource(R.string.reader_theme_suites_section))
             }
-            item(key = "suites_card") {
-                GroupedCard {
-                    state.suites.forEachIndexed { index, suite ->
-                        key(suite.id) {
-                            if (index > 0) GroupedRowDivider(startInset = ThemeSuiteRowTextInset)
-                            ThemeSuiteRow(
-                                suite = suite,
-                                backgrounds = state.backgrounds,
-                                active = suite.id == state.activeSuiteId,
-                                modifier = Modifier.then(
-                                    if (motionEnabled) {
-                                        Modifier.animateContentSize(
-                                            tween(LumiMotion.MenuEnterMillis, easing = AppEasing.Smooth)
-                                        )
-                                    } else Modifier
-                                ),
-                                onEdit = { onEdit(suite.id) },
-                                onActivate = { onActivate(suite.id) },
-                                onRename = { renameSuite = suite },
-                                onDelete = { deleteSuite = suite },
-                                onMove = { delta -> onMove(suite.id, delta) }
-                            )
+            items(displayOrder, key = ::themeSuiteItemKey) { id ->
+                val suite = suitesById[id] ?: return@items
+                GroupedCard(
+                    modifier = reorderableItemMotion(id, reorder, motionEnabled)
+                        .padding(bottom = 12.dp)
+                ) {
+                    ThemeSuiteRow(
+                        suite = suite,
+                        backgrounds = state.backgrounds,
+                        active = id == state.activeSuiteId,
+                        onEdit = { onEdit(id) },
+                        onActivate = { onActivate(id) },
+                        onRename = { renameSuite = suite },
+                        onDelete = { deleteSuite = suite },
+                        dragHandleModifier = Modifier.pointerInput(id, reorder, motionEnabled) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    if (reorder.start(id, currentOrder)) {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    }
+                                },
+                                onDragEnd = {
+                                    if (reorder.draggedItem == id) {
+                                        val from = currentOrder.indexOf(id)
+                                        val to = reorder.finish(animateDrop = motionEnabled)?.indexOf(id) ?: -1
+                                        if (from >= 0 && to >= 0 && from != to) currentOnMove(id, to - from)
+                                    }
+                                },
+                                onDragCancel = { if (reorder.draggedItem == id) reorder.cancel() }
+                            ) { change, drag ->
+                                if (reorder.draggedItem == id) {
+                                    change.consume()
+                                    reorder.dragBy(drag.y)
+                                }
+                            }
                         }
-                    }
+                    )
                 }
             }
             item(key = "suites_footer") {
@@ -651,6 +671,8 @@ private fun ThemeSuiteListScreen(
     }
 }
 
+private fun themeSuiteItemKey(id: String): String = "theme_suite:$id"
+
 @Composable
 internal fun ThemeSuiteRow(
     suite: ReaderThemeSuite,
@@ -661,10 +683,8 @@ internal fun ThemeSuiteRow(
     onActivate: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
-    onMove: (Int) -> Unit
+    dragHandleModifier: Modifier = Modifier
 ) {
-    val threshold = with(LocalDensity.current) { 54.dp.toPx() }
-    var dragDistance by remember { mutableFloatStateOf(0f) }
     val previewShape = AppRoundedCornerShape(AppRadius.sm)
     val density = LocalDensity.current
     val revealPx = with(density) { 112.dp.toPx() }
@@ -804,29 +824,15 @@ internal fun ThemeSuiteRow(
                 contentDescription = stringResource(R.string.theme_suite_drag_to_reorder),
                 tint = AppColors.TextSecondary.copy(alpha = 0.7f),
                 modifier = Modifier
-                    .size(40.dp)
-                    .padding(10.dp)
-                    .pointerInput(suite.id) {
-                        detectDragGesturesAfterLongPress(
-                            onDragEnd = { dragDistance = 0f },
-                            onDragCancel = { dragDistance = 0f }
-                        ) { change, drag ->
-                            change.consume()
-                            dragDistance += drag.y
-                            if (abs(dragDistance) >= threshold) {
-                                onMove(if (dragDistance > 0f) 1 else -1)
-                                dragDistance = 0f
-                            }
-                        }
-                    }
+                    .size(44.dp)
+                    .then(dragHandleModifier)
+                    .padding(12.dp)
             )
         }
     }
 }
 
-/** 缩略图与文字的间距；行间分隔线从文字处开始（与设置页一致）。 */
 private val ThemeSuiteThumbnailGap = 14.dp
-private val ThemeSuiteRowTextInset = AppSpace.md + 44.dp + ThemeSuiteThumbnailGap
 
 @Composable
 private fun ThemeSuiteThumbnail(

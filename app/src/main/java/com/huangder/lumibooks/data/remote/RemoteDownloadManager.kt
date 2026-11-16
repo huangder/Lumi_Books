@@ -44,7 +44,7 @@ sealed interface RemoteDownloadState {
     }
     data object Importing : RemoteDownloadState
     data class Completed(val bookId: String, val alreadyInLibrary: Boolean) : RemoteDownloadState
-    data class Failed(val kind: RemoteErrorKind) : RemoteDownloadState
+    data class Failed(val kind: RemoteErrorKind, val detail: String? = null) : RemoteDownloadState
 }
 
 /**
@@ -188,14 +188,14 @@ class RemoteDownloadManager @Inject constructor(
         val batch = File(stagingRoot, UUID.randomUUID().toString()).apply { mkdirs() }
         try {
             val staged: File
-            val fileName: String
+            val fileNames: RemoteBookFiles.DownloadFileNames
             if (prefetched != null && prefetched.isFile) {
                 staged = File(batch, "download.part")
                 if (!prefetched.renameTo(staged)) {
                     prefetched.copyTo(staged, overwrite = true)
                     prefetched.delete()
                 }
-                fileName = RemoteBookFiles.resolveDownloadFileName(
+                fileNames = RemoteBookFiles.resolveDownloadFileNames(
                     contentDisposition = null,
                     responseMimeType = format.mimeType,
                     url = format.url,
@@ -222,7 +222,7 @@ class RemoteDownloadManager @Inject constructor(
                 ) {
                     throw RemoteException(RemoteErrorKind.INVALID_FILE, message = "Size mismatch")
                 }
-                fileName = RemoteBookFiles.resolveDownloadFileName(
+                fileNames = RemoteBookFiles.resolveDownloadFileNames(
                     contentDisposition = downloaded.contentDisposition,
                     responseMimeType = downloaded.contentType,
                     url = downloaded.finalUrl,
@@ -230,6 +230,7 @@ class RemoteDownloadManager @Inject constructor(
                     expectedExtension = format.extension
                 )
             }
+            val fileName = fileNames.storageName
             if (staged.length() <= 0L) throw RemoteException(RemoteErrorKind.INVALID_FILE)
             val extension = RemoteBookFiles.extensionFromName(fileName)
                 ?: throw RemoteException(RemoteErrorKind.UNSUPPORTED_FORMAT)
@@ -251,9 +252,10 @@ class RemoteDownloadManager @Inject constructor(
             // pipeline still prefers the cover inside the file and snapshots this one otherwise.
             val catalogCover = fetchCatalogCover(source, item, batch)
             val outcome = when (destination) {
-                is RemoteDestination.AppStorage -> importIntoApp(item, bookFile, documentKey, destination, catalogCover)
+                is RemoteDestination.AppStorage ->
+                    importIntoApp(item, bookFile, fileNames.metadataName, documentKey, destination, catalogCover)
                 is RemoteDestination.AuthorizedFolder ->
-                    importIntoFolder(item, bookFile, documentKey, destination, catalogCover)
+                    importIntoFolder(item, bookFile, fileNames.metadataName, documentKey, destination, catalogCover)
             }
             val bookId = outcome.bookId
             return when {
@@ -267,7 +269,7 @@ class RemoteDownloadManager @Inject constructor(
                 }
                 outcome.status == BookImportPipeline.Status.UNSUPPORTED ->
                     RemoteDownloadState.Failed(RemoteErrorKind.UNSUPPORTED_FORMAT)
-                else -> RemoteDownloadState.Failed(RemoteErrorKind.INVALID_FILE)
+                else -> RemoteDownloadState.Failed(RemoteErrorKind.INVALID_FILE, outcome.failureMessage)
             }
         } finally {
             batch.deleteRecursively()
@@ -287,6 +289,7 @@ class RemoteDownloadManager @Inject constructor(
     private suspend fun importIntoApp(
         item: RemoteBookItem,
         bookFile: File,
+        metadataFileName: String,
         documentKey: String,
         destination: RemoteDestination.AppStorage,
         catalogCover: String?
@@ -301,7 +304,8 @@ class RemoteDownloadManager @Inject constructor(
             persistSourceUri = false,
             titleOverride = item.title.takeIf { item.fileName == null },
             authorOverride = item.authorLabel.takeIf(String::isNotBlank),
-            fallbackCoverPath = catalogCover
+            fallbackCoverPath = catalogCover,
+            metadataFileName = metadataFileName
         )
         return pipeline.import(
             context = context,
@@ -319,6 +323,7 @@ class RemoteDownloadManager @Inject constructor(
     private suspend fun importIntoFolder(
         item: RemoteBookItem,
         bookFile: File,
+        metadataFileName: String,
         documentKey: String,
         destination: RemoteDestination.AuthorizedFolder,
         catalogCover: String?
@@ -349,36 +354,40 @@ class RemoteDownloadManager @Inject constructor(
             documentUri = rootUri.toString(),
             parentUri = null
         )
-        val outcome = pipeline.import(
-            context = context,
-            documents = listOf(
-                BookImportPipeline.Document(
-                    uri = documentUri,
-                    name = actualName,
-                    sourceDirectoryUri = destination.treeUri,
-                    sourceDirectoryName = destination.name,
-                    sourceRelativeDirectory = null,
-                    sourceDirectoryDocumentUri = rootUri.toString(),
-                    sourceDocumentKey = authorizedStorageManager.documentKey(documentUri),
-                    sourceLastModified = authorizedStorageManager.queryLastModified(context, documentUri),
-                    sourceSize = bookFile.length(),
-                    sourceDirectoryBindings = listOf(rootBinding),
-                    titleOverride = item.title.takeIf { item.fileName == null },
-                    authorOverride = item.authorLabel.takeIf(String::isNotBlank),
-                    fallbackCoverPath = catalogCover
-                )
-            ),
-            copyIntoApp = false,
-            targetFolderId = null,
-            groupByAuthorizedSource = true
-        ).outcomes.single()
-        if (outcome.status == BookImportPipeline.Status.IMPORTED && outcome.bookId != null) {
-            store.recordImported(documentKey, outcome.bookId)
-        } else {
-            // Do not leave an orphan copy behind when the import itself failed.
-            runCatching { DocumentsContract.deleteDocument(context.contentResolver, documentUri) }
+        var keepDestination = false
+        try {
+            val outcome = pipeline.import(
+                context = context,
+                documents = listOf(
+                    BookImportPipeline.Document(
+                        uri = documentUri,
+                        name = actualName,
+                        sourceDirectoryUri = destination.treeUri,
+                        sourceDirectoryName = destination.name,
+                        sourceRelativeDirectory = null,
+                        sourceDirectoryDocumentUri = rootUri.toString(),
+                        sourceDocumentKey = authorizedStorageManager.documentKey(documentUri),
+                        sourceLastModified = authorizedStorageManager.queryLastModified(context, documentUri),
+                        sourceSize = bookFile.length(),
+                        sourceDirectoryBindings = listOf(rootBinding),
+                        titleOverride = item.title.takeIf { item.fileName == null },
+                        authorOverride = item.authorLabel.takeIf(String::isNotBlank),
+                        fallbackCoverPath = catalogCover,
+                        metadataFileName = metadataFileName
+                    )
+                ),
+                copyIntoApp = false,
+                targetFolderId = null,
+                groupByAuthorizedSource = true
+            ).outcomes.single()
+            if (outcome.status == BookImportPipeline.Status.IMPORTED && outcome.bookId != null) {
+                keepDestination = true
+                store.recordImported(documentKey, outcome.bookId)
+            }
+            return outcome
+        } finally {
+            if (!keepDestination) runCatching { DocumentsContract.deleteDocument(context.contentResolver, documentUri) }
         }
-        return outcome
     }
 
     private fun uniqueChildName(treeUri: Uri, parentUri: Uri, requested: String): String {

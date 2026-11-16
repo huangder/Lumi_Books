@@ -11,7 +11,7 @@ import kotlinx.coroutines.async
 /** One cache per book, content revision and set of rules, accessed on the reader's UI thread. */
 internal class EpubRuleHighlightCache(
     private val scope: CoroutineScope,
-    loadFonts: suspend () -> Map<String, String>,
+    loadFonts: suspend () -> Map<String, EpubRuleFont>,
     private val loadNotes: suspend (Int) -> List<Note>
 ) {
     private val chapters = mutableStateMapOf<Int, List<Note>>()
@@ -19,7 +19,7 @@ internal class EpubRuleHighlightCache(
     private val pending = mutableMapOf<Int, Deferred<Unit>>()
     private val fonts = scope.async(start = CoroutineStart.LAZY) { loadFonts() }
 
-    var fontUrls: Map<String, String> = emptyMap()
+    var fontsByType: Map<String, EpubRuleFont> = emptyMap()
         private set
 
     fun notes(chapter: Int): List<Note>? = chapters[chapter]
@@ -36,7 +36,7 @@ internal class EpubRuleHighlightCache(
                 try {
                     fonts.start()
                     val notes = loadNotes(chapter)
-                    fontUrls = fonts.await()
+                    fontsByType = fonts.await()
                     chapters[chapter] = notes
                     completedOrder.add(chapter)
                     if (completedOrder.size > 12) {

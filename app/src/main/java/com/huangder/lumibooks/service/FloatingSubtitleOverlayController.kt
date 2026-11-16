@@ -24,21 +24,24 @@ import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.widget.decodeWidgetCover
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.tts.FloatingSubtitleSettings
-import com.huangder.lumibooks.tts.SUBTITLE_SCROLL_MIN_DURATION_MS
-import com.huangder.lumibooks.tts.SUBTITLE_SCROLL_SPEED_DP_PER_SECOND
-import com.huangder.lumibooks.tts.SUBTITLE_SCROLL_START_DELAY_MS
+import com.huangder.lumibooks.tts.FloatingSubtitleStyle
 import com.huangder.lumibooks.tts.TtsController
 import com.huangder.lumibooks.tts.TtsListeningFrame
 import com.huangder.lumibooks.tts.TtsPlaybackState
 import com.huangder.lumibooks.tts.TtsTextSegment
+import com.huangder.lumibooks.tts.lyricsTopLine
+import com.huangder.lumibooks.tts.subtitleEstimatedDurationMs
 import com.huangder.lumibooks.tts.subtitleScrollDistancePx
-import com.huangder.lumibooks.tts.subtitleScrollDurationMs
+import com.huangder.lumibooks.tts.subtitleSpokenPosition
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.collectLatest
@@ -51,7 +54,8 @@ class FloatingSubtitleOverlayController @Inject constructor(
     @ApplicationContext private val context: Context,
     private val dataStoreManager: DataStoreManager,
     private val ttsController: TtsController,
-    private val bookRepository: BookRepository
+    private val bookRepository: BookRepository,
+    private val notificationManager: TtsNotificationManager
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val windowManager = context.getSystemService(WindowManager::class.java)
@@ -65,9 +69,21 @@ class FloatingSubtitleOverlayController @Inject constructor(
     private var playbackState = TtsPlaybackState.IDLE
     private var subtitleSegment: TtsTextSegment? = null
     private var subtitleText: String? = null
+    private var upcomingText: String? = null
+    private var spokenRange: TtsTextSegment? = null
+    private var speechRate = 1f
     private var motionReduced = false
     private var scrollRestartPending = false
+    /** Advances the visible part of the sentence at an estimated pace until the engine reports ranges. */
+    private var estimateAnimator: ValueAnimator? = null
     private var scrollAnimator: ValueAnimator? = null
+    private var scrollTarget = -1
+    /** True once the engine reported a range inside the displayed sentence. */
+    private var progressDriven = false
+
+    private val _overlayLocked = MutableStateFlow(false)
+    /** True while a locked (touch-through) overlay is on screen; the notification offers to unlock it. */
+    val overlayLocked: StateFlow<Boolean> = _overlayLocked.asStateFlow()
 
     private var subtitleView: TextView? = null
     private var overlayView: FloatingSubtitleView? = null
@@ -114,16 +130,20 @@ class FloatingSubtitleOverlayController @Inject constructor(
             }
         }
         scope.launch {
+            // Whole sentences follow the engine's start callback, so the text can no longer lag
+            // behind or skip the way word-range driven clauses did with coarse engine callbacks.
             combine(
                 dataStoreManager.floatingSubtitleSettings,
                 ttsController.playbackState,
-                ttsController.currentClause,
+                ttsController.currentUtterance,
+                ttsController.upcomingUtterance,
                 dataStoreManager.motionPreference
-            ) { settings, state, utterance, motionPreference ->
+            ) { settings, state, utterance, upcoming, motionPreference ->
                 OverlaySnapshot(
                     settings = settings,
                     playbackState = state,
                     utterance = utterance,
+                    upcoming = upcoming,
                     motionReduced = motionPreference == REDUCED_MOTION_VALUE
                 )
             }
@@ -131,14 +151,33 @@ class FloatingSubtitleOverlayController @Inject constructor(
                 .collect { snapshot ->
                     val textChanged = snapshot.utterance != subtitleSegment
                     val motionChanged = snapshot.motionReduced != motionReduced
+                    val stateChanged = snapshot.playbackState != playbackState
                     persistedSettings = snapshot.settings
                     playbackState = snapshot.playbackState
                     subtitleSegment = snapshot.utterance
                     subtitleText = snapshot.utterance?.text
+                    upcomingText = snapshot.upcoming?.text
                     motionReduced = snapshot.motionReduced
+                    if (textChanged) progressDriven = false
                     if (textChanged || motionChanged) scrollRestartPending = true
-                    reconcile()
+                    reconcile(animateText = textChanged)
+                    if (stateChanged && !scrollRestartPending) syncEstimateWithPlayback()
                 }
+        }
+        scope.launch {
+            ttsController.currentSentence.collect { range ->
+                spokenRange = range
+                applySpokenProgress()
+            }
+        }
+        scope.launch {
+            ttsController.speechRate.collect { speechRate = it }
+        }
+        scope.launch {
+            // Locked overlays ignore every touch; keep a way back out in the notification shade.
+            _overlayLocked.collect { locked ->
+                if (locked) notificationManager.showFloatingLocked() else notificationManager.hideFloatingLocked()
+            }
         }
     }
 
@@ -146,17 +185,23 @@ class FloatingSubtitleOverlayController @Inject constructor(
         val settings: FloatingSubtitleSettings,
         val playbackState: TtsPlaybackState,
         val utterance: TtsTextSegment?,
+        val upcoming: TtsTextSegment?,
         val motionReduced: Boolean
     )
+
+    /** Locks or unlocks the overlay; locked overlays pass every touch through to the screen below. */
+    fun setLocked(locked: Boolean) {
+        if (effectiveSettings().locked == locked) return
+        persistedSettings = persistedSettings.copy(locked = locked)
+        previewSettings = previewSettings?.copy(locked = locked)
+        if (locked && mode == FloatingSubtitleMode.CONTROLS) transitionTo(FloatingSubtitleMode.SUBTITLE)
+        reconcile()
+        scope.launch { dataStoreManager.saveFloatingSubtitleLocked(locked) }
+    }
 
     fun setAppInForeground(inForeground: Boolean) {
         if (appInForeground == inForeground) return
         appInForeground = inForeground
-        if (inForeground) {
-            scrollRestartPending = true
-        } else {
-            cancelSubtitleScroll(reset = false)
-        }
         reconcile()
     }
 
@@ -188,7 +233,7 @@ class FloatingSubtitleOverlayController @Inject constructor(
         reconcile()
     }
 
-    private fun reconcile() {
+    private fun reconcile(animateText: Boolean = false) {
         val settings = effectiveSettings()
         val canDraw = Settings.canDrawOverlays(context)
         val shouldShowForPlayback = (!appInForeground || !readerVisible) &&
@@ -206,14 +251,16 @@ class FloatingSubtitleOverlayController @Inject constructor(
             scrollRestartPending = true
         }
         val params = layoutParams ?: createLayoutParams(settings).also { layoutParams = it }
-        updateView(view.subtitle)
         view.appearance(settings)
+        updateView(view, animateText && overlayRegistered)
         view.setPlaying(playbackState == TtsPlaybackState.PLAYING)
+        view.setLocked(settings.locked)
         updateInfo()
         if (appliedSettings != settings && geometryAnimator == null && !dragging) {
             updateLayoutParams(params, settings)
             appliedSettings = settings
         }
+        applyTouchMode(params, settings.locked)
 
         if (!overlayRegistered) {
             val registered = runCatching {
@@ -231,11 +278,31 @@ class FloatingSubtitleOverlayController @Inject constructor(
                 return
             }
         }
+        _overlayLocked.value = settings.locked
+        // Controls cannot be used through a touch-through window, so a lock always collapses them.
+        if (settings.locked && mode == FloatingSubtitleMode.CONTROLS && geometryAnimator == null) {
+            transitionTo(FloatingSubtitleMode.SUBTITLE)
+        }
         if (scrollRestartPending) {
             scrollRestartPending = false
             restartSubtitleScroll(view.subtitle)
         }
     }
+
+    private fun applyTouchMode(params: WindowManager.LayoutParams, locked: Boolean) {
+        params.flags = if (locked) params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            else params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        // Android 12+ blocks touches that pass through an overlay more opaque than this limit.
+        params.alpha = if (locked) maxPassThroughAlpha() else 1f
+    }
+
+    private fun maxPassThroughAlpha(): Float =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            runCatching {
+                context.getSystemService(android.hardware.input.InputManager::class.java)
+                    .maximumObscuringOpacityForTouch
+            }.getOrDefault(LOCKED_ALPHA).coerceIn(0.2f, LOCKED_ALPHA)
+        } else LOCKED_ALPHA
 
     private fun updateInfo() {
         val view = overlayView ?: return
@@ -266,6 +333,11 @@ class FloatingSubtitleOverlayController @Inject constructor(
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                     .putExtra(MainActivity.EXTRA_OPEN_BOOK_ID, bookId))
             }
+        },
+        onLock = {
+            setLocked(true)
+            android.widget.Toast.makeText(context, R.string.floating_subtitle_locked_toast,
+                android.widget.Toast.LENGTH_SHORT).show()
         }
     ).also {
         mode = FloatingSubtitleMode.SUBTITLE
@@ -291,18 +363,27 @@ class FloatingSubtitleOverlayController @Inject constructor(
         }
     }
 
-    private fun updateView(view: TextView) {
-        val resolvedText = subtitleText?.takeIf(String::isNotBlank)
-            ?: context.getString(
-                if (previewActive) R.string.floating_subtitle_preview_text
-                else R.string.tts_floating_loading
-            )
-        // 只在文本真正变化时赋值：重复 setText 会触发一次重新测量，看起来像闪一下。
-        if (view.text?.toString() != resolvedText) {
-            view.text = resolvedText
+    private fun updateView(view: FloatingSubtitleView, animate: Boolean) {
+        val spoken = subtitleText?.takeIf(String::isNotBlank)
+        val resolvedText = spoken ?: context.getString(
+            if (previewActive) R.string.floating_subtitle_preview_text
+            else R.string.tts_floating_loading
+        )
+        val next = if (spoken != null) upcomingText
+            else if (previewActive) context.getString(R.string.floating_subtitle_preview_next_text) else null
+        val changed = view.subtitle.text?.toString() != resolvedText
+        // setLines 只在文本真正变化时赋值：重复 setText 会触发一次重新测量，看起来像闪一下。
+        view.setLines(resolvedText, next)
+        if (changed && animate && !motionReduced && view.currentStyle == FloatingSubtitleStyle.LYRICS) {
+            view.subtitle.alpha = 0f
+            view.subtitle.translationY = dp(6f).toFloat()
+            view.subtitle.animate().alpha(1f).translationY(0f).setDuration(180)
+                .setInterpolator(DecelerateInterpolator()).start()
         }
-        // 关闭动态效果时退回省略号显示，否则由水平滚动展示完整句子。
-        view.ellipsize = if (motionReduced) TextUtils.TruncateAt.END else null
+        // 关闭动态效果时条形样式退回省略号显示，否则跟随朗读位置滚动展示完整句子。
+        view.subtitle.ellipsize = if (motionReduced && view.currentStyle == FloatingSubtitleStyle.BAR) {
+            TextUtils.TruncateAt.END
+        } else null
     }
 
     private fun updateLayoutParams(
@@ -311,7 +392,7 @@ class FloatingSubtitleOverlayController @Inject constructor(
     ) {
         val safeBounds = safeDisplayBounds()
         val (width, height) = dimensions(settings)
-        if (width != params.width) scrollRestartPending = true
+        if (width != params.width || height != params.height) scrollRestartPending = true
         params.width = width
         params.height = height
         val travelX = (safeBounds.width() - width).coerceAtLeast(0)
@@ -384,7 +465,8 @@ class FloatingSubtitleOverlayController @Inject constructor(
         val docked = mode == FloatingSubtitleMode.LEFT || mode == FloatingSubtitleMode.RIGHT
         val width = if (docked) dp(FloatingSubtitleView.DOCK_WIDTH_DP) else dp(if (mode == FloatingSubtitleMode.CONTROLS)
             maxOf(FloatingSubtitleView.CARD_MIN_WIDTH_DP, settings.widthDp) else settings.widthDp)
-        val height = if (docked) dp(FloatingSubtitleView.DOCK_HEIGHT_DP) else dp(settings.heightDp) +
+        val barHeight = overlayView?.barHeightPx(settings) ?: dp(settings.heightDp)
+        val height = if (docked) dp(FloatingSubtitleView.DOCK_HEIGHT_DP) else barHeight +
             if (mode == FloatingSubtitleMode.CONTROLS) dp(FloatingSubtitleView.DETAILS_HEIGHT_DP) else 0
         return width.coerceIn(1, bounds.width()) to height.coerceIn(1, bounds.height())
     }
@@ -497,6 +579,7 @@ class FloatingSubtitleOverlayController @Inject constructor(
             }
         }
         overlayRegistered = false
+        _overlayLocked.value = false
         subtitleView = null
         overlayView = null
         layoutParams = null
@@ -504,50 +587,121 @@ class FloatingSubtitleOverlayController @Inject constructor(
         dragging = false
     }
 
-    /** 重新从句子开头滚一次（只在文本变化、尺寸变化或拖动结束后触发）。 */
+    /** 新句子、尺寸变化或拖动结束后，从句首重新开始跟随朗读位置。 */
     private fun restartSubtitleScroll(view: TextView) {
         cancelSubtitleScroll(reset = true)
-        if (motionReduced) return
         view.doOnLayout { laidOutView ->
             if (overlayRegistered && subtitleView === laidOutView) {
-                startSubtitleScrollIfNeeded(laidOutView)
+                if (progressDriven) applySpokenProgress() else startEstimate(laidOutView as TextView)
             }
         }
     }
 
-    private fun startSubtitleScrollIfNeeded(view: TextView) {
-        if (!appInForeground || motionReduced || subtitleView !== view) return
-        scrollAnimator?.cancel()
-        scrollAnimator = null
-        view.scrollX = 0
-        val textLayout = view.layout ?: return
-        if (textLayout.lineCount <= 0 || view.width <= 0) return
-        val distance = subtitleScrollDistancePx(
+    /** Keeps the position the engine reports in view (line paging in lyrics, sideways in the bar). */
+    private fun applySpokenProgress() {
+        val view = overlayView ?: return
+        val position = subtitleSpokenPosition(subtitleSegment, spokenRange) ?: return
+        if (!progressDriven) {
+            progressDriven = true
+            estimateAnimator?.cancel()
+            estimateAnimator = null
+        }
+        followPosition(view.subtitle, position, animate = true)
+    }
+
+    /**
+     * Engines without range callbacks still need long sentences to advance. Move through the text
+     * at the speech rate's estimated pace; real ranges take over as soon as they arrive.
+     */
+    private fun startEstimate(view: TextView) {
+        estimateAnimator?.cancel()
+        estimateAnimator = null
+        if (progressDriven || subtitleSegment == null || playbackState == TtsPlaybackState.IDLE) return
+        val overlay = overlayView ?: return
+        if (motionReduced && overlay.currentStyle == FloatingSubtitleStyle.BAR) return
+        val length = view.text?.length ?: 0
+        val duration = subtitleEstimatedDurationMs(view.text?.toString().orEmpty(), speechRate)
+        if (length <= 0 || duration <= 0L || !needsFollowing(view)) return
+        estimateAnimator = ValueAnimator.ofInt(0, length).apply {
+            this.duration = duration
+            interpolator = LinearInterpolator()
+            addUpdateListener { animator ->
+                if (subtitleView === view) {
+                    followPosition(view, animator.animatedValue as Int,
+                        animate = overlay.currentStyle == FloatingSubtitleStyle.LYRICS)
+                }
+            }
+            start()
+            if (playbackState != TtsPlaybackState.PLAYING) pause()
+        }
+    }
+
+    private fun syncEstimateWithPlayback() {
+        val animator = estimateAnimator ?: return
+        when (playbackState) {
+            TtsPlaybackState.PLAYING -> if (animator.isPaused) animator.resume()
+            TtsPlaybackState.IDLE -> { animator.cancel(); estimateAnimator = null }
+            else -> if (!animator.isPaused) animator.pause()
+        }
+    }
+
+    private fun needsFollowing(view: TextView): Boolean {
+        val textLayout = view.layout ?: return false
+        return if (overlayView?.currentStyle == FloatingSubtitleStyle.LYRICS) {
+            textLayout.lineCount > FloatingSubtitleView.LYRICS_VISIBLE_LINES
+        } else textLayout.lineCount > 0 && subtitleScrollDistancePx(
             textWidthPx = kotlin.math.ceil(textLayout.getLineWidth(0).toDouble()).toInt(),
             viewWidthPx = view.width,
             horizontalPaddingPx = view.paddingLeft + view.paddingRight
-        )
-        if (distance <= 0) return
-        val duration = subtitleScrollDurationMs(
-            distancePx = distance,
-            speedPxPerSecond = SUBTITLE_SCROLL_SPEED_DP_PER_SECOND *
-                context.resources.displayMetrics.density,
-            minDurationMs = SUBTITLE_SCROLL_MIN_DURATION_MS
-        )
-        if (duration <= 0L) return
-        scrollAnimator = ValueAnimator.ofInt(0, distance).apply {
-            startDelay = com.huangder.lumibooks.ui.animation.VisualMotion.delayMillis(SUBTITLE_SCROLL_START_DELAY_MS)
-            this.duration = com.huangder.lumibooks.ui.animation.VisualMotion.durationMillis(duration)
-            interpolator = LinearInterpolator()
-            addUpdateListener { animator -> view.scrollX = animator.animatedValue as Int }
+        ) > 0
+    }
+
+    /** Scrolls so the character at [position] is visible: by line in lyrics, sideways in the bar. */
+    private fun followPosition(view: TextView, position: Int, animate: Boolean) {
+        val textLayout = view.layout ?: return
+        if (textLayout.lineCount <= 0 || view.width <= 0) return
+        val lyrics = overlayView?.currentStyle == FloatingSubtitleStyle.LYRICS
+        val target = if (lyrics) {
+            val line = textLayout.getLineForOffset(position.coerceIn(0, view.text.length))
+            textLayout.getLineTop(lyricsTopLine(line, textLayout.lineCount, FloatingSubtitleView.LYRICS_VISIBLE_LINES))
+        } else {
+            if (motionReduced) return
+            val maxScroll = subtitleScrollDistancePx(
+                textWidthPx = kotlin.math.ceil(textLayout.getLineWidth(0).toDouble()).toInt(),
+                viewWidthPx = view.width,
+                horizontalPaddingPx = view.paddingLeft + view.paddingRight
+            )
+            if (maxScroll <= 0) return
+            val visible = view.width - view.paddingLeft - view.paddingRight
+            val x = textLayout.getPrimaryHorizontal(position.coerceIn(0, view.text.length))
+            (x - visible * FOLLOW_ANCHOR).toInt().coerceIn(0, maxScroll)
+        }
+        val current = if (lyrics) view.scrollY else view.scrollX
+        if (target == scrollTarget && scrollAnimator?.isRunning == true) return
+        if (target == current) return
+        scrollAnimator?.cancel()
+        scrollAnimator = null
+        scrollTarget = target
+        fun apply(value: Int) = if (lyrics) view.scrollTo(0, value) else view.scrollTo(value, 0)
+        if (!animate || motionReduced) {
+            apply(target)
+            return
+        }
+        scrollAnimator = ValueAnimator.ofInt(current, target).apply {
+            duration = com.huangder.lumibooks.ui.animation.VisualMotion.durationMillis(FOLLOW_ANIMATION_MS)
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { animator -> if (subtitleView === view) apply(animator.animatedValue as Int) }
             start()
         }
     }
 
     private fun cancelSubtitleScroll(reset: Boolean) {
+        estimateAnimator?.cancel()
+        estimateAnimator = null
         scrollAnimator?.cancel()
         scrollAnimator = null
-        if (reset) subtitleView?.scrollX = 0
+        scrollTarget = -1
+        if (reset) subtitleView?.scrollTo(0, 0)
     }
 
     private fun dp(value: Float): Int =
@@ -555,6 +709,11 @@ class FloatingSubtitleOverlayController @Inject constructor(
 
     private companion object {
         const val REDUCED_MOTION_VALUE = "reduced"
+        /** Keep the spoken position this far into the visible width so upcoming words show. */
+        const val FOLLOW_ANCHOR = 0.6f
+        const val FOLLOW_ANIMATION_MS = 220L
+        /** Below Android 12's default maximum obscuring opacity, so touches pass through. */
+        const val LOCKED_ALPHA = 0.8f
     }
 }
 

@@ -290,7 +290,7 @@ private fun DownloadBar(
                 }
             )
             download is RemoteDownloadState.Failed -> {
-                RemoteInlineNotice(stringResource(download.kind.messageRes()), isError = true)
+                RemoteInlineNotice(download.detail ?: stringResource(download.kind.messageRes()), isError = true)
                 RemotePrimaryButton(stringResource(R.string.retry), enabled = true, floating = false, onClick = onRetry)
             }
             state.importedBookId != null -> {

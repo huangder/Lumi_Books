@@ -162,8 +162,7 @@ internal fun welcomePages(
 ): List<WelcomePage> = buildList {
     if (shouldShowLanguageSetup) add(WelcomePage.LANGUAGE_SETUP)
     add(WelcomePage.INTRODUCTION)
-    // The release's three headline updates, for everyone. New installs already start on Liquid
-    // Glass, so there is no theme step any more.
+    // The release's three headline updates, then the appearance choice, for everyone.
     add(WelcomePage.FEATURES)
     add(WelcomePage.SUPPORT)
 }
@@ -213,9 +212,14 @@ fun WelcomeScreen(
     onLanguageSetupComplete: (language: String, eInkEnabled: Boolean) -> Unit,
     startOnIntroduction: Boolean = false,
     startOnFeatures: Boolean = false,
-    startOnSupport: Boolean = false
+    startOnSupport: Boolean = false,
+    /** App themes offered on the appearance story; empty (e-ink) skips the story. */
+    appThemeOptions: List<String> = emptyList(),
+    onSelectAppTheme: (String) -> Unit = {}
 ) {
     val motionEnabled = LocalMotionEnabled.current
+    // Only an explicit tap counts: new installs already default to Liquid Glass.
+    var pickedTheme by rememberSaveable { mutableStateOf<String?>(null) }
     val pages = remember(shouldShowLanguageSetup, isNewInstallation, isEInkMode) {
         welcomePages(shouldShowLanguageSetup, isNewInstallation, isEInkMode)
     }
@@ -311,7 +315,13 @@ fun WelcomeScreen(
 
             WelcomePage.FEATURES -> WelcomeFeatureStoriesPage(
                 hasReadingJournal = com.huangder.lumibooks.edition.editionHasReadingJournal,
-                onContinue = { currentPage = pages[(pages.indexOf(page) + 1).coerceAtMost(pages.lastIndex)] }
+                onContinue = { currentPage = pages[(pages.indexOf(page) + 1).coerceAtMost(pages.lastIndex)] },
+                themeOptions = if (isEInkMode) emptyList() else appThemeOptions,
+                selectedTheme = pickedTheme?.takeIf { it in appThemeOptions },
+                onSelectTheme = { theme ->
+                    pickedTheme = theme
+                    onSelectAppTheme(theme)
+                }
             )
 
             // 官方版替换为会员试用引导；OSS 保留原赞助页。

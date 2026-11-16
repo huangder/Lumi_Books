@@ -2,6 +2,7 @@ package com.huangder.lumibooks.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -26,10 +27,14 @@ internal fun AppDropdownMenu(
     properties: PopupProperties = PopupProperties(focusable = true),
     content: @Composable ColumnScope.() -> Unit
 ) {
+    // Material applies [modifier] to the menu viewport ahead of its own verticalScroll, so the
+    // edge fade sits on the viewport and hints at rows below without an explicit indicator.
+    val scrollState = rememberScrollState()
     DropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismissRequest,
-        modifier = modifier,
+        modifier = modifier.scrollEdgeFade(scrollState),
+        scrollState = scrollState,
         offset = offset,
         properties = properties,
         shape = AppRoundedCornerShape(AppRadius.lg),

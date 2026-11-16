@@ -1,6 +1,9 @@
 package com.huangder.lumibooks.ui.reader
 
 import android.app.Application
+import android.net.Uri
+import com.huangder.lumibooks.domain.model.CustomFontPreset
+import com.huangder.lumibooks.util.epub.EpubRenderSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -42,5 +45,21 @@ class EpubReaderFontResolverTest {
         assertTrue(latin.isFile && latin.length() > 0L)
         assertEquals("200.0 900.0", epubReaderFontWeightDescriptor(latin.path))
         assertTrue(File(latin.parentFile, "source_serif4_italic_v1.ttf").isFile)
+    }
+
+    @Test fun legacyImportUsesTheFontSignatureForItsEpubResponse() = runBlocking {
+        val context = RuntimeEnvironment.getApplication()
+        // The response only needs the container signature to classify the file.
+        val font = File(context.cacheDir, "legacy-import.ttf").apply { writeBytes("ttcf".toByteArray()) }
+        val tutorial = File("src/main/assets/builtin/lumi/guide_zh-CN.epub")
+        EpubRenderSession.open(tutorial.absolutePath).use { session ->
+            val preset = CustomFontPreset("legacy", font.absolutePath)
+            val prepared = prepareEpubRuleFonts(context, session, setOf(preset.fontTypeKey), listOf(preset))
+                .getValue(preset.fontTypeKey)
+            assertTrue(prepared.url.endsWith(".ttc"))
+            val response = requireNotNull(session.assetLoader.shouldInterceptRequest(Uri.parse(prepared.url)))
+            assertEquals("font/collection", response.mimeType)
+            assertEquals("ttcf", response.data.bufferedReader().use { it.readText() })
+        }
     }
 }

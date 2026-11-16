@@ -24,4 +24,10 @@
     <string name="welcome_story_art_stats_duration">%1$d 小时 %2$d 分</string>
     <string name="welcome_story_art_stats_heatmap">近三个月</string>
     <string name="welcome_story_art_stats_compare" formatted="false">比上周多 18%</string>
+    <string name="welcome_story_appearance_eyebrow">外观</string>
+    <string name="welcome_story_appearance_title_pick">选择外观</string>
+    <string name="welcome_story_appearance_subtitle_pick">挑一个喜欢的样子，之后也能在设置里更换。</string>
+    <string name="welcome_theme_desc_liquid_glass">通透折射，随手势流动。</string>
+    <string name="welcome_theme_desc_flat">简洁干净，专注于内容。</string>
+    <string name="welcome_theme_desc_material3">跟随壁纸取色，系统原生质感。</string>
 </resources>
