@@ -9,7 +9,7 @@ if(toggle&&menu){
   menu.querySelectorAll('a').forEach(function(a){a.addEventListener('click',function(){setMenu(false);});});
 }
 if(nav){var ticking=false;window.addEventListener('scroll',function(){if(!ticking){requestAnimationFrame(function(){nav.classList.toggle('scrolled',window.scrollY>8);ticking=false;});ticking=true;}},{passive:true});}
-/* Download chooser: the nav "获取 Lumi" button opens a dialog; its href stays as the no-JS fallback. */
+/* Download chooser links keep their href as the no-JS fallback. */
 var DL=[
   {href:'https://github.com/huangder/Lumi_Books/releases',name:'GitHub Releases',note:'官方发布页 · 版本最新，推荐',primary:true},
   {href:'https://pan.baidu.com/s/1vDdFsoqQuuZlntUTUjssZw?pwd=lumi',name:'百度网盘',note:'提取码 lumi'},
@@ -37,7 +37,7 @@ function openDialog(e){
   var first=dlg.querySelector('.dl-item');if(first)first.focus();
 }
 function closeDialog(){if(dlg&&dlg.open)dlg.close();}
-document.querySelectorAll('.btn-nav-download').forEach(function(b){b.addEventListener('click',openDialog);});
+document.querySelectorAll('.btn-nav-download,[data-download-chooser]').forEach(function(link){link.addEventListener('click',openDialog);});
 /* Small screens hide the nav button, so offer the same chooser from the menu. */
 if(menu&&!menu.querySelector('.menu-download')){var md=document.createElement('a');md.className='menu-download';md.href='https://github.com/huangder/Lumi_Books/releases';md.textContent='获取 Lumi';md.addEventListener('click',openDialog);menu.appendChild(md);}
 
