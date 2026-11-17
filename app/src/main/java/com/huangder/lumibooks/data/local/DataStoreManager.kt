@@ -3364,6 +3364,22 @@ class DataStoreManager @Inject constructor(
         preferences[ACCEPTED_PRIVACY_VERSION] ?: 0
     }
 
+    internal val hasAcceptedBundledPolicies: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        (preferences[ACCEPTED_TERMS_VERSION] ?: 0) >= com.huangder.lumibooks.ui.settings.BundledPolicy.TERMS.version &&
+            (preferences[ACCEPTED_PRIVACY_VERSION] ?: 0) >= com.huangder.lumibooks.ui.settings.BundledPolicy.PRIVACY.version
+    }
+
+    internal suspend fun acceptPolicyVersions(terms: Int? = null, privacy: Int? = null) {
+        context.dataStore.edit { preferences ->
+            if (terms != null) {
+                preferences[ACCEPTED_TERMS_VERSION] = maxOf(terms, preferences[ACCEPTED_TERMS_VERSION] ?: 0)
+            }
+            if (privacy != null) {
+                preferences[ACCEPTED_PRIVACY_VERSION] = maxOf(privacy, preferences[ACCEPTED_PRIVACY_VERSION] ?: 0)
+            }
+        }
+    }
+
     /** 首次启动后标记已触发过启动检查（避免重复弹窗） */
     val hasCheckedUpdateOnStart: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[HAS_CHECKED_UPDATE_ON_START] ?: false

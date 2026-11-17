@@ -2584,8 +2584,8 @@ fun AboutDetail(viewModel: SettingsViewModel) {
             onDecline = {
                 (context as? android.app.Activity)?.finishAffinity()
             },
-            onViewTerms = { openDoc(context.getString(R.string.terms_of_service), "terms.html") },
-            onViewPrivacy = { openDoc(context.getString(R.string.privacy_policy), "privacy.html") }
+            onViewTerms = { BundledPolicy.TERMS.open(context, update.termsVersion) },
+            onViewPrivacy = { BundledPolicy.PRIVACY.open(context, update.privacyVersion) }
         )
     }
 

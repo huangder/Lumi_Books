@@ -167,6 +167,10 @@ class WelcomeActivity : ComponentActivity() {
                                         startMainActivity(splashEnabled)
                                     } else {
                                         lifecycleScope.launch {
+                                            dataStoreManager.acceptPolicyVersions(
+                                                terms = com.huangder.lumibooks.ui.settings.BundledPolicy.TERMS.version,
+                                                privacy = com.huangder.lumibooks.ui.settings.BundledPolicy.PRIVACY.version
+                                            )
                                             dataStoreManager.completeWelcomeFlow(installState.installMarker)
                                             startMainActivity(splashEnabled)
                                         }

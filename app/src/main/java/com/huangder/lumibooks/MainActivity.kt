@@ -74,6 +74,7 @@ import com.huangder.lumibooks.domain.model.EARLY_DONOR_NOTICE_ID
 import com.huangder.lumibooks.domain.model.ReceivedNotice
 import com.huangder.lumibooks.ui.components.WebdavSyncUpgradeDialog
 import com.huangder.lumibooks.ui.settings.DetailActivity
+import com.huangder.lumibooks.ui.settings.BundledPolicy
 import com.huangder.lumibooks.ui.welcome.WelcomeActivity
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.MotionPreference
@@ -111,9 +112,6 @@ private data class PendingPolicyUpdate(
     val hasPrivacyUpdate: Boolean,
     val privacyVersion: Int
 )
-
-private const val REMOTE_TERMS_URL = "https://huangder.top/terms.html"
-private const val REMOTE_PRIVACY_URL = "https://huangder.top/privacy.html"
 
 /** 外部打开/分享导入支持的书籍扩展名。 */
 
@@ -1075,22 +1073,16 @@ class MainActivity : ComponentActivity() {
                                     privacyVersion = update.privacyVersion,
                                     onAccept = {
                                         lifecycleScope.launch {
-                                            if (update.hasTermsUpdate) {
-                                                dataStoreManager.saveAcceptedTermsVersion(update.termsVersion)
-                                            }
-                                            if (update.hasPrivacyUpdate) {
-                                                dataStoreManager.saveAcceptedPrivacyVersion(update.privacyVersion)
-                                            }
+                                            dataStoreManager.acceptPolicyVersions(
+                                                terms = update.termsVersion.takeIf { update.hasTermsUpdate },
+                                                privacy = update.privacyVersion.takeIf { update.hasPrivacyUpdate }
+                                            )
+                                            policyDialog = null
                                         }
-                                        policyDialog = null
                                     },
                                     onDecline = { finishAffinity() },
-                                    onViewTerms = {
-                                        openRemoteUrl(REMOTE_TERMS_URL)
-                                    },
-                                    onViewPrivacy = {
-                                        openRemoteUrl(REMOTE_PRIVACY_URL)
-                                    }
+                                    onViewTerms = { BundledPolicy.TERMS.open(this@MainActivity, update.termsVersion) },
+                                    onViewPrivacy = { BundledPolicy.PRIVACY.open(this@MainActivity, update.privacyVersion) }
                                 )
                             }
                         }
@@ -1160,17 +1152,6 @@ class MainActivity : ComponentActivity() {
         return (uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
     }
 
-    private fun openRemoteUrl(url: String) {
-        if (url.isBlank()) return
-        runCatching {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-        }.onFailure { error ->
-            Log.w("MainActivity", "Failed to open remote URL", error)
-            Toast.makeText(this, R.string.network_error, Toast.LENGTH_LONG).show()
-        }
-    }
-
-
     private fun acknowledgeStartupNotice(id: String) {
         if (id == EARLY_DONOR_NOTICE_ID) {
             pendingEarlyDonorNotice = false
@@ -1199,6 +1180,16 @@ class MainActivity : ComponentActivity() {
     private fun performStartupUpdateCheck() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
+                val terms = BundledPolicy.TERMS.version
+                val privacy = BundledPolicy.PRIVACY.version
+                val needsTerms = dataStoreManager.acceptedTermsVersion.first() < terms
+                val needsPrivacy = dataStoreManager.acceptedPrivacyVersion.first() < privacy
+                if (needsTerms || needsPrivacy) {
+                    withContext(Dispatchers.Main) {
+                        pendingPolicyUpdate = PendingPolicyUpdate(needsTerms, terms, needsPrivacy, privacy)
+                    }
+                    dataStoreManager.hasAcceptedBundledPolicies.first { it }
+                }
                 val acknowledgedNoticeIds = dataStoreManager.acknowledgedNoticeIds.first()
                 // The bundled announcement can be recovered even if it was confirmed before history existed.
                 archiveStartupNotice(

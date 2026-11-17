@@ -33,14 +33,14 @@ a { color:var(--accent); }
 </head>
 <body>
 <h1>隐私政策</h1>
-<p class="meta">政策版本：4 · 生效日期：2026年6月29日 · 最近更新：2026年11月3日</p>
+<p class="meta">政策版本：5 · 本版随发布生效 · 修订日期：2026年11月17日</p>
 
 <h2>一、引言</h2>
-<p>Lumi（以下简称“本应用”）是一款开源、本地优先的电子书阅读器。我们深知隐私对您的重要性，本隐私政策说明本应用如何处理数据，以及哪些可选功能会把数据发送到您选择或确认的网络服务。</p>
-<p>本应用不提供任何书籍内容，也不提供、内置、导入或分享在线书源与订阅源，不进行在线搜索或内容下载。TXT 目录规则（包括可选的第三方兼容规则）仅用于解析您本地或已授权的 TXT 文件，规则中可能携带的脚本净化代码不会被执行。</p>
+<p>Lumi（以下简称“本应用”）是一款本地优先的电子书阅读器，提供开源版和含可选 Premium 的官方版。我们深知隐私对您的重要性，本隐私政策说明本应用如何处理数据，以及哪些可选功能会把数据发送到您选择或确认的网络服务。</p>
+<p>Lumi 不运营公共书源或云端书库。您可以自行添加 OPDS 目录或 WebDAV 书库，在支持搜索的目录中搜索并下载书籍。TXT 目录规则（包括可选的第三方兼容规则）仅用于解析您本地或已授权的 TXT 文件，规则中可能携带的脚本净化代码不会被执行。</p>
 <p><strong>核心原则：阅读、书架、进度、笔记和大多数设置默认保存在本机。只有在您主动配置或启用 WebDAV 同步、MinerU 云端解析、第三方 TTS、AI 翻译等网络功能时，相应的书籍文件、阅读数据或选中文本才会发送到对应服务。按需下载的本地词典安装后离线查询；查询词、书籍正文和过滤命中记录不会上传。</strong></p>
 <p>本地词典正文不内置在 APK 中。您可以在设置中查看目录后主动确认下载；下载包会校验版本和 SHA-256，安装后保存在应用专用目录中，不进入系统备份或 WebDAV 同步。</p>
-<p><strong>开源透明：</strong>Lumi 原创代码以 Apache License 2.0 许可证发布，第三方组件遵循各自许可证，完整源代码公开可审查。</p>
+<p><strong>开源透明：</strong>Lumi 公开仓库中的原创代码以 Apache License 2.0 许可证发布。官方版含未公开的 Premium 模块，第三方组件遵循各自许可证。</p>
 
 <h2>二、权限说明</h2>
 <p>本应用仅申请实现阅读和可选功能所需的 Android 系统权限：</p>
@@ -49,13 +49,14 @@ a { color:var(--accent); }
 <tr><td>READ_EXTERNAL_STORAGE（Android 12 及以下）</td><td>读取您选择的 EPUB、TXT、PDF 等电子书文件</td><td>基础阅读需要</td></tr>
 <tr><td>READ_MEDIA_IMAGES（Android 13 及以上）</td><td>读取电子书封面、导出图片或您选择的图片资源</td><td>按系统版本需要</td></tr>
 <tr><td>INTERNET</td><td>检查更新、公告和条款/政策版本；按需下载本地词典和远程字体；连接您配置的 WebDAV 服务器；连接 MinerU、第三方 TTS、AI 翻译服务；加载您主动使用的封面搜索和外部链接页面</td><td>网络功能需要</td></tr>
-<tr><td>ACCESS_LOCAL_NETWORK</td><td>仅在您配置的 WebDAV 地址指向 NAS、路由器或其他局域网服务器时，用于连接该服务器；公网 WebDAV 不需要此权限</td><td>Android 17 及以上按需申请</td></tr>
+<tr><td>ACCESS_LOCAL_NETWORK</td><td>当您访问配置在 NAS 或其他局域网服务器上的同步端点或远程书源时，用于连接该服务器；公网服务不需要此权限</td><td>Android 17 及以上按需申请</td></tr>
 <tr><td>ACCESS_NETWORK_STATE</td><td>判断网络状态，以便执行更新检查、同步、云解析、第三方 TTS 或 AI 翻译请求</td><td>网络功能需要</td></tr>
 <tr><td>WRITE_SETTINGS</td><td>当您启用自定义亮屏时间时，修改系统屏幕关闭时间</td><td>仅启用时需要</td></tr>
 <tr><td>FOREGROUND_SERVICE / FOREGROUND_SERVICE_MEDIA_PLAYBACK</td><td>支持 TTS 后台播放和播放状态通知</td><td>听书功能需要</td></tr>
 <tr><td>FOREGROUND_SERVICE_DATA_SYNC</td><td>显示 PDF/MinerU 解析或 WebDAV 同步等长任务进度</td><td>对应任务需要</td></tr>
 <tr><td>POST_NOTIFICATIONS（Android 13 及以上）</td><td>显示朗读播放、解析和同步进度通知</td><td>用户授权后使用</td></tr>
 <tr><td>WAKE_LOCK</td><td>在 TTS 后台播放期间保持设备唤醒，避免播放意外中断</td><td>听书功能需要</td></tr>
+<tr><td>USE_BIOMETRIC</td><td>由 Android 在您主动开启的隐藏书库验证流程中完成身份核验。Lumi 仅接收验证结果</td><td>仅使用系统生物识别时需要</td></tr>
 <tr><td>SYSTEM_ALERT_WINDOW</td><td>在您启用悬浮窗字幕时显示跨应用悬浮字幕窗口</td><td>仅启用悬浮窗时需要</td></tr>
 </table>
 <p><strong>本应用不申请以下权限：</strong></p>
@@ -89,6 +90,9 @@ a { color:var(--accent); }
 <ul>
 <li>更新、公告、条款/政策版本检查：应用可能访问项目发布页或文档地址，并在您选择仿宋字体时从 GitHub Raw 或 jsDelivr 按需下载字体文件。</li>
 <li>WebDAV 同步：当您配置并手动或自动同步时，应用会连接您填写的 WebDAV 服务器，上传/下载书籍文件、书籍清单（如文件名、哈希、大小、修改时间）以及阅读进度、书签、笔记和笔记对应的选中文本。</li>
+<li>远程书库：浏览、搜索或下载时，应用向您配置的 OPDS 或 WebDAV 服务及其提供的资源地址发送目录和文件请求。支持在线搜索的 OPDS 目录会收到搜索词。需要登录时，认证信息只发往配置的源站，密码加密保存在本机并从系统备份和设备迁移中排除。服务端可收到 IP 和请求时间。若使用 HTTP，认证信息和传输内容可能未加密。</li>
+<li>官方版 Premium：5 天试用和累计阅读或听书免费解锁在本机处理。在线激活、复验和设备管理会向 Lumi 的 Cloudflare 授权服务发送激活码、设备公钥和签名验证数据。添加或重命名设备时也会提交您输入的设备名称。服务保存激活码摘要、会员编号、授权状态、设备公钥及绑定和最近验证时间，用于核验授权、管理设备和防止滥用。设备私钥留在 Android Keystore。服务处理请求 IP 用于限流。</li>
+<li>购买与售后：爱发电、微信或 PayPal 按各自政策处理平台上的交易。通过微信或 PayPal 付款后，您提供的邮箱、付款凭证和必要订单信息由开发者用于核对付款、发放激活码和处理售后。参加早期捐赠者领取活动时，您主动填写的核验资料会经 WPS 表单提交给开发者，用于确认领取资格和发放权益。请勿提交与核验无关的信息。</li>
 <li>MinerU 云端解析：当您主动选择云端解析 PDF 时，所选 PDF、随机化文件名、网络 IP、解析参数、任务标识以及精准解析所需的个人 Token 会发送至 MinerU/OpenDataLab 相关服务，并下载解析结果。</li>
 <li>第三方 TTS：当您选择 OpenAI TTS、Xiaomi MiMo 或自定义兼容服务时，当前朗读文本段、模型/音色、风格提示和必要鉴权信息会发送至您配置的第三方服务，服务端如何处理数据取决于该服务的条款和政策。若您开启 HTTP 连接，API Key 和朗读文本可能未经加密传输并被窃听。</li>
 <li>AI 翻译：当您启用或手动触发 AI 翻译时，当前选中的文本、目标语言、模型参数和必要鉴权信息会发送至您选择的 Xiaomi MiMo、DeepSeek、OpenAI 或自定义兼容服务。若您主动允许 HTTP 连接，API Key 和选中文本可能未经加密传输并被窃听。</li>
@@ -101,7 +105,7 @@ a { color:var(--accent); }
 
 <h3>3.3 本应用不处理的数据</h3>
 <ul>
-<li>不收集您的姓名、手机号、通讯录、精确位置等个人身份信息。</li>
+<li>基础阅读不要求提供姓名、手机号或邮箱。本应用不读取通讯录或精确位置。您主动提交的订单、领取或售后资料可能含有您提供的身份和联系方式。</li>
 <li>不收集 IMEI、Android ID、MAC 地址等设备标识用于追踪。</li>
 <li>不集成第三方分析、广告、用户画像、第三方推送或崩溃上报 SDK。</li>
 <li>不提供 Lumi 账号系统或开发者运营的云端书库；WebDAV 是您自选服务器，数据由您自行控制。</li>
@@ -114,13 +118,17 @@ a { color:var(--accent); }
 <li>MinerU Token、WebDAV 密码、第三方 TTS 和 AI 翻译 API Key 使用 Android Keystore 加密保存，并已从系统备份/设备迁移规则中排除。</li>
 <li>EPUB 阅读 WebView 会阻止外部网络资源加载，出版方 CSS 仅用于本地排版展示。</li>
 <li>临时上传、下载和解析缓存会在任务结束或缓存清理时删除；第三方 TTS 音频缓存可自动淘汰。</li>
+<li>如果设备启用了 Android 系统备份或设备迁移，符合系统备份规则的应用数据可能随系统服务备份或迁移。卸载不删除备份、已导出文件、服务器副本或已提交的交易与售后记录。</li>
+<li>授权记录按维持授权、处理售后及防止滥用所需期限保存。您可以在设备管理页解除绑定。交易、领取和售后资料按核验、交付、争议处理及法定留存义务所需期限保存。</li>
 <li>您可以在应用内清除阅读历史、书签、缓存和相关配置；卸载应用会删除应用私有数据，但不会自动删除您设备上自行管理的原始电子书文件。</li>
 </ul>
 
 <h2>五、第三方服务与用户自选服务</h2>
-<p>本应用不集成分析、广告、第三方推送或崩溃报告服务。以下网络能力均为可选或由用户触发：</p>
+<p>本应用不集成分析、广告、第三方推送或崩溃报告服务。下列服务在对应功能运行时参与处理。启动检查会向 GitHub 请求应用配置和公告，官方版也会读取其中的价格配置。</p>
 <ul>
 <li><strong>OpenDataLab / MinerU：</strong>用于云端 PDF 解析，独立于 Lumi 运营，使用前请阅读其<a href="https://webpub.shlab.tech/dps/opendatalab-web/odl_v5.1690/service.html">服务协议</a>和<a href="https://webpub.shlab.tech/dps/opendatalab-web/odl_v5.1690/privacy.html">个人信息保护政策</a>。</li>
+<li><strong>Cloudflare：</strong>承载官方版在线授权服务。您可以通过下方联系方式咨询授权数据的保存、跨境处理或删除方式。</li>
+<li><strong>支付、邮件与表单服务：</strong>爱发电、微信、PayPal、邮件服务和 WPS 表单会按您所选渠道参与交易、发码、领取或售后。</li>
 <li><strong>WebDAV 服务商或自建服务器：</strong>用于同步书籍和阅读数据。服务器地址、可用性、安全性、数据保存和删除由您选择的服务方或自建环境决定。</li>
 <li><strong>第三方 TTS 服务：</strong>包括 OpenAI TTS、Xiaomi MiMo 或您配置的兼容接口。朗读文本、风格提示、API Key 使用和费用规则受对应服务条款约束。</li>
 <li><strong>AI 翻译服务：</strong>包括 Xiaomi MiMo、DeepSeek、OpenAI 或您配置的兼容接口。选中文本、目标语言、模型参数、API Key 使用和费用规则受对应服务条款约束。</li>
@@ -141,6 +149,7 @@ a { color:var(--accent); }
 <h2>八、联系我们</h2>
 <p>如果您对本隐私政策或数据处理有任何疑问、意见或建议，请通过以下方式联系我们：</p>
 <ul>
+<li>如需查阅、复制、更正或删除开发者持有的个人信息，或撤回基于同意的处理，请通过下方邮箱提交请求。请描述相关功能及所需处理事项，我们在必要范围内核验身份后依法处理。</li>
 <li>开发者：huangder</li>
 <li>邮箱：<a href="mailto:huangder0104@126.com">huangder0104@126.com</a></li>
 <li>GitHub Issues：欢迎提交一般问题反馈；涉及未成年人权益投诉或个人信息请求，请发送至上述邮箱，不要在公开 Issues 上传儿童个人信息</li>
@@ -148,7 +157,7 @@ a { color:var(--accent); }
 
 <h2>九、适用范围</h2>
 <p>本隐私政策仅适用于 Lumi 应用（com.huangder.lumibooks）在 Android 平台上的功能，不适用于第三方服务自身的数据处理活动。</p>
-<p style="font-size:13px; color:var(--text2); margin-top:28px;">本隐私政策最后更新于 2026年11月3日。</p>
+<p style="font-size:13px; color:var(--text2); margin-top:28px;">本隐私政策修订于 2026年11月17日。</p>
 <p class="note">本页面为应用内参考版本，完整隐私政策请访问 <a href="https://huangder.top/privacy.html">huangder.top/privacy.html</a></p>
 </body>
 </html>

@@ -21,6 +21,7 @@ import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import com.huangder.lumibooks.data.sync.WebdavAutoSyncScheduler
 import com.huangder.lumibooks.util.diagnostics.DiagnosticLevel
 import com.huangder.lumibooks.util.diagnostics.DiagnosticLogger
@@ -146,8 +147,9 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
                 applicationScope.launch {
                     PDFBoxResourceLoader.init(this@EBookReaderApp)
                     widgetRefreshCoordinator.start()
-                    editionAccess.get().start()
                     readingJournalRecorder.get().start()
+                    dataStoreManager.hasAcceptedBundledPolicies.first { it }
+                    editionAccess.get().start()
                 }
             }
         }

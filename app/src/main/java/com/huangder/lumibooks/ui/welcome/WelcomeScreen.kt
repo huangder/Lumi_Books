@@ -103,6 +103,8 @@ import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.components.ConfigurableBackHandler
 import com.huangder.lumibooks.ui.components.ConfigurableBottomSheetBackHandler
+import com.huangder.lumibooks.ui.settings.BundledPolicy
+import com.huangder.lumibooks.ui.settings.BundledDocumentView
 import com.huangder.lumibooks.ui.components.LiquidGlassButton
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
@@ -672,7 +674,7 @@ private fun WelcomeIntroductionPage(
         ) {
             PolicyBottomSheet(
                 title = stringResource(R.string.welcome_privacy_title),
-                content = getPrivacyPolicyContent(),
+                file = BundledPolicy.PRIVACY.file,
                 isDark = isDark,
                 visible = showPrivacyPolicy,
                 onDismiss = { showPrivacyPolicy = false }
@@ -686,7 +688,7 @@ private fun WelcomeIntroductionPage(
         ) {
             PolicyBottomSheet(
                 title = stringResource(R.string.welcome_terms_title),
-                content = getTermsOfServiceContent(),
+                file = BundledPolicy.TERMS.file,
                 isDark = isDark,
                 visible = showTermsOfService,
                 onDismiss = { showTermsOfService = false }
@@ -888,13 +890,12 @@ internal fun SupportWelcomeButton(
 @Composable
 private fun PolicyBottomSheet(
     title: String,
-    content: String,
+    file: String,
     isDark: Boolean,
     visible: Boolean,
     onDismiss: () -> Unit
 ) {
     val textPrimary = AppColors.TextPrimary
-    val textSecondary = AppColors.TextSecondary
     val bgGray = AppColors.BgGray
     val cardBg = AppColors.CardBg
 
@@ -972,267 +973,11 @@ private fun PolicyBottomSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 内容（带格式化标题）
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState())
-                    .navigationBarsPadding()
-                    .padding(bottom = 24.dp)
-            ) {
-                FormattedPolicyContent(
-                    content = content,
-                    textColor = textPrimary,
-                    secondaryColor = textSecondary
-                )
-            }
+            BundledDocumentView(
+                assetFile = file,
+                isDark = isDark,
+                modifier = Modifier.weight(1f).fillMaxWidth().navigationBarsPadding()
+            )
         }
     }
 }
-
-@Composable
-private fun FormattedPolicyContent(
-    content: String,
-    textColor: Color,
-    secondaryColor: Color
-) {
-    val lines = remember(content) {
-        content
-            .replace("\r\n", "\n")
-            .replace('\r', '\n')
-            .split('\n')
-    }
-    val firstNonBlankLine = lines.indexOfFirst { it.trim().isNotEmpty() }
-    val hasContentAfterDocumentTitle = firstNonBlankLine >= 0 &&
-        lines.drop(firstNonBlankLine + 1).any { it.trim().isNotEmpty() }
-    var index = 0
-
-    while (index < lines.size) {
-        val line = lines[index].trim()
-
-        when {
-            // The sheet header already presents the document title. Only omit it when
-            // there is a real document body; a collapsed resource must never become blank.
-            index == firstNonBlankLine && hasContentAfterDocumentTitle -> {
-                index++
-                continue
-            }
-
-            line.isEmpty() -> {
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-
-            isPolicyMetadataLine(line) -> {
-                val metadataLines = buildList {
-                    while (index < lines.size && isPolicyMetadataLine(lines[index].trim())) {
-                        add(lines[index].trim())
-                        index++
-                    }
-                }
-                PolicyMetadataBlock(
-                    lines = metadataLines,
-                    textColor = textColor,
-                    secondaryColor = secondaryColor
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-                continue
-            }
-
-            isPolicyPrimaryHeading(line) -> {
-                PolicySectionHeading(text = line, textColor = textColor)
-            }
-
-            isPolicySecondaryHeading(line) -> {
-                Text(
-                    text = line,
-                    fontSize = AppType.Subhead,
-                    lineHeight = 22.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = textColor,
-                    modifier = Modifier.padding(top = 12.dp, bottom = 5.dp)
-                )
-            }
-
-            isPolicyNotice(line) -> {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(AppRoundedCornerShape(14.dp))
-                        .background(AccentColor.copy(alpha = 0.11f))
-                        .padding(horizontal = 14.dp, vertical = 12.dp)
-                ) {
-                    Text(
-                        text = line,
-                        fontSize = AppType.BodySmall,
-                        lineHeight = 22.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = textColor
-                    )
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-            }
-
-            isPolicyBullet(line) -> {
-                PolicyBulletItem(
-                    text = line,
-                    textColor = textColor,
-                    secondaryColor = secondaryColor
-                )
-            }
-
-            else -> {
-                Text(
-                    text = line,
-                    fontSize = AppType.BodySmall,
-                    lineHeight = 22.sp,
-                    color = textColor,
-                    modifier = Modifier.padding(bottom = 5.dp)
-                )
-            }
-        }
-        index++
-    }
-}
-
-@Composable
-private fun PolicyMetadataBlock(
-    lines: List<String>,
-    textColor: Color,
-    secondaryColor: Color
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(AppRoundedCornerShape(16.dp))
-            .background(secondaryColor.copy(alpha = 0.10f))
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp)
-    ) {
-        lines.forEach { line ->
-            val separator = line.indexOfFirst { it == '：' || it == ':' }
-            if (separator > 0) {
-                val label = line.substring(0, separator + 1)
-                val value = line.substring(separator + 1).trimStart()
-                Text(
-                    text = buildAnnotatedString {
-                        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = textColor)) {
-                            append(label)
-                        }
-                        withStyle(SpanStyle(color = secondaryColor)) {
-                            append("  ")
-                            append(value)
-                        }
-                    },
-                    fontSize = AppType.Caption,
-                    lineHeight = 18.sp
-                )
-            } else {
-                Text(
-                    text = line,
-                    fontSize = AppType.Caption,
-                    lineHeight = 18.sp,
-                    color = secondaryColor
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun PolicySectionHeading(
-    text: String,
-    textColor: Color
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 20.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .width(4.dp)
-                .height(22.dp)
-                .clip(CircleShape)
-                .background(AccentColor)
-        )
-        Spacer(modifier = Modifier.width(10.dp))
-        Text(
-            text = text,
-            fontSize = AppType.Headline,
-            lineHeight = 23.sp,
-            fontWeight = FontWeight.Bold,
-            color = textColor
-        )
-    }
-}
-
-@Composable
-private fun PolicyBulletItem(
-    text: String,
-    textColor: Color,
-    secondaryColor: Color
-) {
-    val (marker, body) = when {
-        text.startsWith("❌") -> "✕" to text.removePrefix("❌").trimStart()
-        text.startsWith("✓") || text.startsWith("✔") -> "✓" to text.drop(1).trimStart()
-        text.startsWith("•") -> "•" to text.removePrefix("•").trimStart()
-        text.startsWith("-") -> "•" to text.removePrefix("-").trimStart()
-        else -> "•" to text
-    }
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 4.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.Top
-    ) {
-        Text(
-            text = marker,
-            fontSize = AppType.Body,
-            lineHeight = 22.sp,
-            fontWeight = FontWeight.Bold,
-            color = AccentColor
-        )
-        Spacer(modifier = Modifier.width(9.dp))
-        Text(
-            text = body,
-            modifier = Modifier.weight(1f),
-            fontSize = AppType.BodySmall,
-            lineHeight = 22.sp,
-            color = textColor
-        )
-    }
-}
-
-private fun isPolicyPrimaryHeading(line: String): Boolean {
-    return line.matches(Regex("^[一二三四五六七八九十]+、\\s*.+")) ||
-        (line.matches(Regex("^\\d+\\.\\s*[^\\d].*")) && !isPolicySecondaryHeading(line))
-}
-
-private fun isPolicySecondaryHeading(line: String): Boolean =
-    line.matches(Regex("^\\d+\\.\\d+\\s*.+"))
-
-private fun isPolicyBullet(line: String): Boolean =
-    line.startsWith("•") || line.startsWith("-") || line.startsWith("❌") ||
-        line.startsWith("✓") || line.startsWith("✔")
-
-private fun isPolicyNotice(line: String): Boolean = listOf(
-    "核心原则", "核心原則", "Core principle", "Core Principle",
-    "基本方針", "基本原則", "핵심 원칙", "핵심 원칙：",
-    "重要提示", "Important notice", "重要なお知らせ", "중요 안내"
-).any(line::startsWith)
-
-private fun isPolicyMetadataLine(line: String): Boolean = listOf(
-    "生效日期", "最近更新", "应用名称", "包名", "开发者", "联系邮箱",
-    "最後更新", "最后更新", "應用名稱", "應用程式名稱", "套件名稱", "開發者", "聯絡電郵", "聯絡電子郵件",
-    "Effective date", "Last updated", "Application name", "App name", "Package name", "Developer", "Contact email", "Contact",
-    "施行日", "最終更新日", "アプリ名", "パッケージ名", "開発者", "連絡先",
-    "시행일", "최종 업데이트", "앱 이름", "패키지명", "패키지 이름", "개발자", "연락처"
-).any(line::startsWith)
-@Composable
-private fun getPrivacyPolicyContent(): String = stringResource(R.string.welcome_privacy_content)
-
-@Composable
-private fun getTermsOfServiceContent(): String = stringResource(R.string.welcome_terms_content)
