@@ -59,6 +59,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
@@ -299,6 +300,9 @@ import com.huangder.lumibooks.ui.components.materialBottomSheetMotion
 import com.huangder.lumibooks.ui.components.adaptiveSheetFrame
 import com.huangder.lumibooks.ui.components.ReaderSystemBarStyle
 import com.huangder.lumibooks.ui.reader.engine.ReadView
+import com.huangder.lumibooks.ui.reader.engine.ReaderNoteMarkerSpan
+import com.huangder.lumibooks.ui.reader.engine.hasReaderNoteMarker
+import com.huangder.lumibooks.ui.reader.engine.readerNoteMarkerEnd
 import com.huangder.lumibooks.ui.bookshelf.CoverSearchEngine
 import com.huangder.lumibooks.ui.reader.engine.ReadViewCallbacks
 import com.huangder.lumibooks.ui.reader.engine.BookmarkPullGestureTracker
@@ -629,6 +633,8 @@ internal class ContinuousSelectableTextView(context: Context) : RoundedHighlight
     var onReaderTap: (() -> Unit)? = null
     var savedAnnotations: List<com.huangder.lumibooks.domain.model.Note> = emptyList()
     var onLinkTap: ((String, Float, Float) -> Unit)? = null
+    /** 点击笔记句末消息图标：笔记文本 + View 内坐标。 */
+    var onNoteMarkerTap: ((String, Float, Float) -> Unit)? = null
     /** 听书进行中双击正文：回调章节级字符偏移，交由上层跳转朗读。 */
     var onSentenceDoubleTap: ((Int) -> Unit)? = null
     /** 听书进行中为区分双击，单击动作需延后一个双击超时。 */
@@ -916,6 +922,15 @@ internal class ContinuousSelectableTextView(context: Context) : RoundedHighlight
 
     /** Linked images retain navigation; ordinary images use the reader menu. */
     private fun performReaderTap(x: Float, y: Float) {
+        readerNoteMarkerAt(x, y)?.text?.takeIf { it.isNotEmpty() }?.let { noteText ->
+            onNoteMarkerTap?.invoke(noteText, x, y)
+            return
+        }
+        // 右侧为图标预留的边距区不属于正文，不命中句末的高亮或链接。
+        if (!readerImageBleed && x > width - paddingRight) {
+            onReaderTap?.invoke()
+            return
+        }
         val annotation = annotationAt(x, y)
         if (annotation != null) {
             annotationTapHandled = true
@@ -3181,6 +3196,12 @@ private fun ReaderScreenContent(
         LaunchedEffect(uiState.currentChapterIndex, uiState.renderMode, renderedContinuousScrollMode) {
             footnoteBubble = null
         }
+        // 原排版点按/长按都要用整章文本匹配笔记；提前在后台解码，避免点按时卡住主线程。
+        LaunchedEffect(uiState.currentChapterIndex, uiState.renderMode, uiState.contentRevision) {
+            if (uiState.renderMode == EpubRenderMode.BOOK_LAYOUT) {
+                viewModel.prewarmSelectionChapterText(uiState.currentChapterIndex)
+            }
+        }
         val modeTransitionActive = readerModeTransitionProgress.value < 0.999f
         val imagePreviewBlurActive = !eInkMode && !LocalReduceTransparency.current && readerImagePreviewProgress.value > 0.001f
         Box(
@@ -3256,6 +3277,13 @@ private fun ReaderScreenContent(
                             selStartX = selection.left, selEndX = selection.right,
                             startLocatorJson = selection.startLocatorJson, endLocatorJson = selection.endLocatorJson)
                         isSelectionDragging = false
+                    },
+                    onNoteMarker = { noteText, anchorWindowX, anchorWindowY ->
+                        footnoteBubble = ReaderFootnoteBubble(
+                            text = noteText,
+                            anchorWindowX = anchorWindowX,
+                            anchorWindowY = anchorWindowY
+                        )
                     },
                     onLink = { href ->
                         if (isExternalBookLink(href)) pendingExternalLink = href
@@ -3712,6 +3740,13 @@ private fun ReaderScreenContent(
                             toggleReaderMenu = viewModel::toggleMenu
                         )
                     },
+                    onNoteMarkerClick = { noteText, anchorWindowX, anchorWindowY ->
+                        footnoteBubble = ReaderFootnoteBubble(
+                            text = noteText,
+                            anchorWindowX = anchorWindowX,
+                            anchorWindowY = anchorWindowY
+                        )
+                    },
                     onLinkClick = { sourceChapterIndex, href, anchorWindowX, anchorWindowY ->
                         if (isExternalBookLink(href)) {
                             pendingExternalLink = href
@@ -3928,6 +3963,17 @@ private fun ReaderScreenContent(
 
                             override fun onBookmarkPullFinished(commit: Boolean) {
                                 latestBookmarkPullFinished.value(commit)
+                            }
+
+                            override fun onNoteMarkerClick(noteText: String, x: Float, y: Float) {
+                                val view = readViewRef.value ?: return
+                                val location = IntArray(2)
+                                view.getLocationInWindow(location)
+                                footnoteBubble = ReaderFootnoteBubble(
+                                    text = noteText,
+                                    anchorWindowX = location[0] + x,
+                                    anchorWindowY = location[1] + y
+                                )
                             }
 
                             override fun onLinkClick(href: String, tapX: Float, tapY: Float) {
@@ -8195,6 +8241,7 @@ internal fun ContinuousScrollReaderContent(
     onSearchHighlightFinished: () -> Unit,
     onMenuToggle: () -> Unit,
     onLinkClick: (chapterIndex: Int, href: String, anchorWindowX: Float, anchorWindowY: Float) -> Unit,
+    onNoteMarkerClick: (noteText: String, anchorWindowX: Float, anchorWindowY: Float) -> Unit = { _, _, _ -> },
     onImageLongPress: (chapterIndex: Int, image: ReaderImageHit) -> Unit,
     selectionController: ContinuousSelectionController,
     onSelectionChanging: () -> Unit,
@@ -8303,6 +8350,9 @@ internal fun ContinuousScrollReaderContent(
     var viewportHeightPx by remember { mutableIntStateOf(0) }
     val selectionViewportBounds = remember { android.graphics.Rect() }
     val readerDensity = LocalDensity.current.density
+    // 笔记消息图标可伸入右边距的宽度（不超过页边距本身）。
+    val noteMarkerReservePx = (minOf(marginRight, fontSize * 1.4f) * readerDensity)
+        .roundToInt().coerceAtLeast(0)
     val contentWidthPx = if (viewportWidthPx <= 0) {
         0
     } else {
@@ -9292,7 +9342,9 @@ internal fun ContinuousScrollReaderContent(
                         textView.onReaderContentDrawn = if (chapterIndex == restoreTarget) onFirstContentDrawn else null
                         textView.readerImageBleed = mixedComicChapter
                         val textLeft = if (mixedComicChapter) (marginLeft * readerDensity).roundToInt() else 0
-                        val textRight = if (mixedComicChapter) (marginRight * readerDensity).roundToInt() else 0
+                        // 普通章节把右边距让给 View 的 paddingRight（排版宽度不变），
+                        // 笔记消息图标才能画进右边距而不被 View 边界裁掉。
+                        val textRight = if (mixedComicChapter) (marginRight * readerDensity).roundToInt() else noteMarkerReservePx
                         if (textView.paddingLeft != textLeft || textView.paddingRight != textRight) {
                             textView.setPadding(textLeft, 0, textRight, 0)
                         }
@@ -9309,6 +9361,11 @@ internal fun ContinuousScrollReaderContent(
                             val location = IntArray(2)
                             textView.getLocationInWindow(location)
                             onLinkClick(chapterIndex, href, location[0] + tapX, location[1] + tapY)
+                        }
+                        textView.onNoteMarkerTap = { noteText, tapX, tapY ->
+                            val location = IntArray(2)
+                            textView.getLocationInWindow(location)
+                            onNoteMarkerClick(noteText, location[0] + tapX, location[1] + tapY)
                         }
                         textView.onImageLongPress = { image -> onImageLongPress(chapterIndex, image) }
                         textView.onSelectionChanging = onSelectionChanging
@@ -9396,9 +9453,6 @@ internal fun ContinuousScrollReaderContent(
                             textView.hyphenationFrequency = hyphenation
                         }
                         val justification = textAlignment.readerJustificationForText(selectableText)
-                        if (textView.justificationMode != justification) {
-                            textView.justificationMode = justification
-                        }
                         textView.readerJustificationMode = justification
                         textView.setReaderText(selectableText)
                         val chapterNotes = notes.filter { it.chapterIndex == chapterIndex }
@@ -9410,9 +9464,24 @@ internal fun ContinuousScrollReaderContent(
                         }
                         updateReaderImages(textView.text, imageAdjustments, chapterLoadScope) { textView.invalidate() }
                     },
-                    modifier = Modifier.fillMaxWidth().onGloballyPositioned {
-                        chapterTextViews[chapterIndex]?.get()?.updateReaderDrawingViewport()
-                    }
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .layout { measurable, constraints ->
+                            // 向右伸入页边距 noteMarkerReservePx，与 paddingRight 抵消。
+                            val extra = if (mixedComicChapter || !constraints.hasBoundedWidth) 0 else noteMarkerReservePx
+                            val placeable = measurable.measure(
+                                constraints.copy(
+                                    minWidth = constraints.minWidth + extra,
+                                    maxWidth = constraints.maxWidth + extra
+                                )
+                            )
+                            layout(placeable.width - extra, placeable.height) {
+                                placeable.place(0, 0)
+                            }
+                        }
+                        .onGloballyPositioned {
+                            chapterTextViews[chapterIndex]?.get()?.updateReaderDrawingViewport()
+                        }
                 )
                 }
             }
@@ -9556,9 +9625,15 @@ internal fun updateContinuousAnnotations(
         .filter { it.fromSavedAnnotation }.forEach(content::removeSpan)
     content.getSpans(0, content.length, ReaderSearchHighlightSpan::class.java).forEach(content::removeSpan)
     content.getSpans(0, content.length, TtsSentenceHighlightSpan::class.java).forEach(content::removeSpan)
+    content.getSpans(0, content.length, ReaderNoteMarkerSpan::class.java).forEach(content::removeSpan)
     notes.forEach { note ->
         val start = note.startPosition.coerceIn(0, content.length)
         val end = note.endPosition.coerceIn(0, content.length)
+        if (start < end && note.hasReaderNoteMarker()) {
+            val markerEnd = readerNoteMarkerEnd(content, start, end)
+            content.setSpan(ReaderNoteMarkerSpan(note.note, note.endPosition), markerEnd - 1, markerEnd,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
         if (start < end) {
             if (note.type == "underline") {
                 // Rule spans belong to the chapter content; refresh only the saved manual layer.
@@ -11439,7 +11514,10 @@ internal fun updateUnderlineStyle(
         italic = false
     )).copy(
         textColor = null,
-        underlineMode = mode
+        underlineMode = mode,
+        highlightMode = if (target.isGeneratedByHighlightRule) {
+            current?.highlightMode ?: HighlightRule.HIGHLIGHT_FILLED
+        } else HighlightRule.HIGHLIGHT_NONE
     )
     viewModel.updateNote(
         target.copy(
@@ -11883,7 +11961,7 @@ internal fun SelectionMenuOverlay(
                             targetScale = 0.92f,
                             animationSpec = tween(durationMillis = 160, easing = FastOutSlowInEasing)
                         )
-                )
+                ).using(SizeTransform(clip = false))
             },
             modifier = Modifier
                 .offset { IntOffset(menuX.toInt(), menuY.toInt()) }
@@ -12408,6 +12486,14 @@ private fun SelectionMenuPill(
         backdrop = glassBackdrop,
         contentScrimColor = menuBg.copy(alpha = veilAlpha),
         forceFallback = forceSolidSurface,
+        // Blur the capsule separately: blurring the already hollow shadow with it
+        // would spread shadow pixels back into the translucent glass during entry.
+        decorationModifier = Modifier.graphicsLayer {
+            val blurPx = enterBlur.value.dp.toPx()
+            renderEffect = if (blurPx > 0.5f) {
+                androidx.compose.ui.graphics.BlurEffect(blurPx, blurPx, androidx.compose.ui.graphics.TileMode.Decal)
+            } else null
+        },
         modifier = modifier
             .then(if (wrapWidth) Modifier.widthIn(max = width) else Modifier.width(width))
             // 行高按系统字体缩放推导，避免大字体下 chip 文字被固定高度裁掉
@@ -12419,12 +12505,9 @@ private fun SelectionMenuPill(
                 alpha = if (hidden) 0f else enterAlpha.value
                 shape = pillShape
                 clip = false
-                val blurPx = enterBlur.value.dp.toPx()
-                renderEffect = if (blurPx > 0.5f) {
-                    androidx.compose.ui.graphics.BlurEffect(blurPx, blurPx, androidx.compose.ui.graphics.TileMode.Decal)
-                } else null
                 transformOrigin = androidx.compose.ui.graphics.TransformOrigin.Center
-            },
+            }
+            .selectionMenuOuterShadow(pillShape, dark = menuBg.luminance() < 0.5f),
         contentAlignment = Alignment.Center
     ) {
         content()
@@ -13367,7 +13450,7 @@ private fun ReaderFootnoteBubbleOverlay(
     var bubbleSize by remember { mutableStateOf(IntSize(320, 180)) }
     val gapPx = with(density) { 14.dp.toPx() }
     val edgePx = with(density) { 10.dp.toPx() }
-    val maxWidthPx = minOf((rootSize.width * 0.84f).toInt(), with(density) { 420.dp.roundToPx() })
+    val maxWidthPx = minOf((rootSize.width * 0.84f).toInt(), with(density) { 300.dp.roundToPx() })
         .coerceAtLeast(200)
     val maxHeightPx = (rootSize.height * 0.4f).toInt().coerceAtLeast(200)
     val maxWidthDp = with(density) { maxWidthPx.toDp() }
@@ -13460,14 +13543,16 @@ private fun FootnoteBubbleText(
     contentColor: Color,
     fontSizeSp: Float
 ) {
+    // Keep notes readable even when the book uses a small reading font.
+    val noteFontSize = (fontSizeSp * 0.92f).coerceAtLeast(16f)
     Text(
         text = footnote.text,
         color = contentColor,
-        fontSize = (fontSizeSp * 0.92f).sp,
-        lineHeight = (fontSizeSp * 0.92f * 1.6f).sp,
+        fontSize = noteFontSize.sp,
+        lineHeight = (noteFontSize * 1.7f).sp,
         modifier = Modifier
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .padding(horizontal = 18.dp, vertical = 16.dp)
     )
 }
 

@@ -24,7 +24,8 @@ import javax.inject.Singleton
 data class PortableStateSyncResult(
     val uploadedAssets: Int,
     val downloadedAssets: Int,
-    val readerThemeDeferred: Boolean = false
+    val readerThemeDeferred: Boolean = false,
+    val remoteStateFingerprint: String? = null
 )
 
 @Singleton
@@ -33,6 +34,14 @@ class WebdavPortableStateSync @Inject constructor(
     private val client: WebdavClient,
     private val snapshotManager: PortableSnapshotManager
 ) {
+    suspend fun localFingerprint(config: WebdavConfig): String {
+        val local = snapshotManager.capture(
+            includeBookFiles = false,
+            includePreferences = config.syncProfileAndSettings
+        ).forWebdav(config).snapshot
+        return webdavStateFingerprint(selectForRemote(local, emptySnapshot(local.sourceDeviceId), local, config))
+    }
+
     suspend fun sync(
         config: WebdavConfig,
         password: String,
@@ -117,8 +126,8 @@ class WebdavPortableStateSync @Inject constructor(
                 val changedPreferences = physicalPayload.preferences.filter {
                     it != localByKey[it.key] || it.key in danglingThemeKeys
                 }
-                val shouldApply = changedPreferences.isNotEmpty() || stateFingerprint(physicalPayload.withReferencedAssets()) !=
-                    stateFingerprint(physicalBaseline.withReferencedAssets())
+                val shouldApply = changedPreferences.isNotEmpty() || webdavStateFingerprint(physicalPayload.withReferencedAssets()) !=
+                    webdavStateFingerprint(physicalBaseline.withReferencedAssets())
                 val applyPayload = physicalPayload.copy(preferences = changedPreferences).withReferencedAssets()
                 val requiredLocally = if (shouldApply) applyPayload.referencedAssetIds() else emptySet()
                 val remoteIds = remotePayload.assets.mapTo(mutableSetOf()) { it.id }
@@ -160,7 +169,7 @@ class WebdavPortableStateSync @Inject constructor(
                     }
                 }
 
-                if (remoteVersioned == null || stateFingerprint(remotePayload) != stateFingerprint(remote)) {
+                if (remoteVersioned == null || webdavStateFingerprint(remotePayload) != webdavStateFingerprint(remote)) {
                     val bytes = remotePayload.toJson().toByteArray(Charsets.UTF_8)
                     try {
                         if (remoteVersioned == null || remoteVersioned.etag != null) {
@@ -212,7 +221,10 @@ class WebdavPortableStateSync @Inject constructor(
                 if (config.syncReadingDetails) {
                     com.huangder.lumibooks.reading.journal.ReadingJournalSettings.recordBackup(context)
                 }
-                return PortableStateSyncResult(uploadedAssets, downloadedAssets, themeDeferred)
+                return PortableStateSyncResult(
+                    uploadedAssets, downloadedAssets, themeDeferred,
+                    webdavStateFingerprint(remotePayload)
+                )
             } finally {
                 workDir.deleteRecursively()
             }
@@ -407,8 +419,8 @@ class WebdavPortableStateSync @Inject constructor(
         runCatching {
             // Leave unlisted uploads alone. Another device may be publishing its state.
             val current = downloadStateOrNull(serverUrl, root, username, password) ?: return
-            if (stateFingerprint(PortableSnapshot.fromJson(current.data.toString(Charsets.UTF_8))) !=
-                stateFingerprint(committed)) return
+            if (webdavStateFingerprint(PortableSnapshot.fromJson(current.data.toString(Charsets.UTF_8))) !=
+                webdavStateFingerprint(committed)) return
             client.listDirectory(WebdavUrl.append(serverUrl, root, "assets"), username, password)
                 .asSequence()
                 .filterNot { it.isCollection }
@@ -434,32 +446,6 @@ class WebdavPortableStateSync @Inject constructor(
         tombstones = emptyList(), assets = emptyList()
     )
 
-    private fun stateFingerprint(snapshot: PortableSnapshot): String {
-        val canonical = snapshot.copy(
-            createdAt = 0L,
-            sourceDeviceId = "",
-            preferences = snapshot.preferences.sortedBy { it.key },
-            books = snapshot.books.sortedBy { it.id },
-            folders = snapshot.folders.sortedBy { it.id },
-            bookFolderLinks = snapshot.bookFolderLinks.sortedBy { it.bookId },
-            tags = snapshot.tags.sortedBy { it.id },
-            annotationTags = snapshot.annotationTags.sortedBy { it.name },
-            tagGroups = snapshot.tagGroups.sortedBy { it.id },
-            bookTagLinks = snapshot.bookTagLinks.sortedBy { "${it.bookId}:${it.tagId}" },
-            readingRecords = snapshot.readingRecords.sortedBy { "${it.bookId}:${it.date}:${it.sourceDeviceId}" },
-            bookmarks = snapshot.bookmarks.sortedBy { it.syncId },
-            notes = snapshot.notes.sortedBy { it.syncId },
-            journalEvents = snapshot.journalEvents.sortedBy { it.id },
-            highlightRules = snapshot.highlightRules.sortedBy { it.id },
-            bookHighlightRuleStates = snapshot.bookHighlightRuleStates.sortedBy { "${it.bookId}:${it.ruleId}" },
-            bookHighlightSettings = snapshot.bookHighlightSettings.sortedBy { it.bookId },
-            highlightRuleExclusions = snapshot.highlightRuleExclusions.sortedBy { "${it.bookId}:${it.ruleId}:${it.matchKey}" },
-            tombstones = snapshot.tombstones.sortedBy { "${it.namespace}:${it.itemId}" },
-            assets = snapshot.assets.sortedBy { it.id }
-        ).toJson().toByteArray(Charsets.UTF_8)
-        return MessageDigest.getInstance("SHA-256").digest(canonical)
-            .joinToString("") { "%02x".format(it) }
-    }
 
     companion object {
         private const val MAX_CONFLICT_RETRIES = 3
@@ -528,4 +514,31 @@ internal fun File.sha256(): String = inputStream().buffered().use { input ->
         digest.update(buffer, 0, count)
     }
     digest.digest().joinToString("") { "%02x".format(it) }
+}
+
+internal fun webdavStateFingerprint(snapshot: PortableSnapshot): String {
+    val canonical = snapshot.copy(
+        createdAt = 0L,
+        sourceDeviceId = "",
+        preferences = snapshot.preferences.sortedBy { it.key },
+        books = snapshot.books.sortedBy { it.id },
+        folders = snapshot.folders.sortedBy { it.id },
+        bookFolderLinks = snapshot.bookFolderLinks.sortedBy { it.bookId },
+        tags = snapshot.tags.sortedBy { it.id },
+        annotationTags = snapshot.annotationTags.sortedBy { it.name },
+        tagGroups = snapshot.tagGroups.sortedBy { it.id },
+        bookTagLinks = snapshot.bookTagLinks.sortedBy { "${it.bookId}:${it.tagId}" },
+        readingRecords = snapshot.readingRecords.sortedBy { "${it.bookId}:${it.date}:${it.sourceDeviceId}" },
+        bookmarks = snapshot.bookmarks.sortedBy { it.syncId },
+        notes = snapshot.notes.sortedBy { it.syncId },
+        journalEvents = snapshot.journalEvents.sortedBy { it.id },
+        highlightRules = snapshot.highlightRules.sortedBy { it.id },
+        bookHighlightRuleStates = snapshot.bookHighlightRuleStates.sortedBy { "${it.bookId}:${it.ruleId}" },
+        bookHighlightSettings = snapshot.bookHighlightSettings.sortedBy { it.bookId },
+        highlightRuleExclusions = snapshot.highlightRuleExclusions.sortedBy { "${it.bookId}:${it.ruleId}:${it.matchKey}" },
+        tombstones = snapshot.tombstones.sortedBy { "${it.namespace}:${it.itemId}" },
+        assets = snapshot.assets.sortedBy { it.id }
+    ).toJson().toByteArray(Charsets.UTF_8)
+    return MessageDigest.getInstance("SHA-256").digest(canonical)
+        .joinToString("") { "%02x".format(it) }
 }

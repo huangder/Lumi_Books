@@ -17,6 +17,10 @@ It contains no Apple or legado-E implementation code.
 
 Third-party attribution retained from the previous distribution follows.
 
+The GitHub channel uses the Invertocat icon from Primer Octicons.
+Source: https://github.com/primer/octicons/blob/main/icons/mark-github-24.svg
+License: app/src/main/assets/licenses/primer-octicons-mit.txt
+
 Lumi uses Backdrop and adapts interaction code from AndroidLiquidGlass:
 
     Project: AndroidLiquidGlass / Backdrop

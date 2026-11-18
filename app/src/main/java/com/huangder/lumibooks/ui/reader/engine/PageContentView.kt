@@ -31,8 +31,6 @@ import com.huangder.lumibooks.ui.reader.readerCoverEdgeColor
 import com.huangder.lumibooks.ui.reader.readerBreakStrategyForText
 import com.huangder.lumibooks.ui.reader.readerJustificationForText
 import com.huangder.lumibooks.ui.reader.readerHyphenationFrequency
-import com.huangder.lumibooks.ui.reader.readerBreakStrategy
-import com.huangder.lumibooks.ui.reader.readerJustificationMode
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.util.ReaderBackgroundBlurTransformation
 import com.huangder.lumibooks.util.parser.EpubParser
@@ -41,7 +39,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 internal fun pageStartsMidParagraph(text: CharSequence, start: Int): Boolean {
-    return start > 0 && start <= text.length && text[start - 1] != '\n'
+    return start > 0 && start <= text.length && !isReaderParagraphBreakChar(text[start - 1])
 }
 
 private class PagedSelectableTextView(context: Context) : RoundedHighlightTextView(context) {
@@ -105,6 +103,8 @@ class PageContentView(context: Context) : FrameLayout(context) {
         internal const val READER_SELECTION_FLAG = 0xFD
         /** 瞬态选区固定使用的透明度（与系统选区 readerSelectionColor 一致）。 */
         private const val READER_SELECTION_ALPHA = 0x40
+        /** 透明哨兵色：表示该三元组是笔记末尾的消息图标，而不是高亮。 */
+        internal const val NOTE_MARKER_SENTINEL = 0x00C0FFEE
     }
 
     private val backgroundImageView = ImageView(context).apply {
@@ -382,7 +382,9 @@ class PageContentView(context: Context) : FrameLayout(context) {
         val justification = configuredTextAlignment.readerJustificationForText(text)
         if (textView.breakStrategy != strategy) textView.breakStrategy = strategy
         if (textView.hyphenationFrequency != hyphenation) textView.hyphenationFrequency = hyphenation
-        if (textView.justificationMode != justification) textView.justificationMode = justification
+        if (textView.justificationMode != Layout.JUSTIFICATION_MODE_NONE) {
+            textView.justificationMode = Layout.JUSTIFICATION_MODE_NONE
+        }
         (textView as? RoundedHighlightTextView)?.readerJustificationMode = justification
         justifiedView.readerBreakStrategy = strategy
         justifiedView.readerJustificationMode = justification
@@ -442,9 +444,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         }
 
         justifyLastLine = endChar < fullText.length &&
-            endChar > actualStart &&
-            fullText[endChar - 1] != '\n' &&
-            fullText[endChar - 1] != '\r'
+            !readerLineEndsParagraph(fullText, actualStart, endChar)
         (textView as? RoundedHighlightTextView)?.readerForceLastLineJustification = justifyLastLine
         justifiedView.justifyLastLine = justifyLastLine
 
@@ -514,6 +514,20 @@ class PageContentView(context: Context) : FrameLayout(context) {
         // 应用高亮（将全局偏移转换为页内偏移，基于 actualStart 而非 startChar）
         var ttsHighlightInfo: Triple<Int, Int, Int>? = null
         for ((hStart, hEnd, hColor) in highlights) {
+            if (hColor == NOTE_MARKER_SENTINEL) {
+                // 图标挂在笔记最后一个可见字上，且只在该字所在的页显示；
+                // 结尾的换行/空格可能被分页裁掉，不能作为锚点。
+                val visibleEnd = readerNoteMarkerEnd(fullText, hStart, hEnd)
+                val local = visibleEnd - actualStart
+                if (visibleEnd > hStart && local in 1..spannable.length) {
+                    spannable.setSpan(
+                        ReaderNoteMarkerSpan(chapterEnd = hEnd),
+                        local - 1, local,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                }
+                continue
+            }
             val localStart = (hStart - actualStart).coerceIn(0, spannable.length)
             val localEnd = (hEnd - actualStart).coerceIn(0, spannable.length)
             if (localStart < localEnd) {
@@ -573,6 +587,11 @@ class PageContentView(context: Context) : FrameLayout(context) {
 
         // One layout now owns visible glyphs, images, highlights, and selection geometry.
         val adjusted = adjustedReaderImages(spannable, imageSettings, imageScope) { invalidateRenderers(); coverImageView.invalidate() } as Spannable
+        if (justifyLastLine && configuredTextAlignment == ReaderTextAlignment.NATURAL && !writingMode.isVertical) {
+            val following = fullText.subSequence(endChar, minOf(endChar + 32, fullText.length))
+            adjusted.setReaderLineContinuation(if (chineseMode == "original") following else
+                com.huangder.lumibooks.util.ChineseConverter.convertPreservingSpans(following, chineseMode))
+        }
         if (endHyphenEdit != 0 && adjusted.isNotEmpty()) {
             adjusted.setSpan(ReaderPageEndHyphenSpan(endHyphenEdit), adjusted.length - 1, adjusted.length,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -927,6 +946,17 @@ class PageContentView(context: Context) : FrameLayout(context) {
         ).map { it.copy(startOffset = it.startOffset + chapterStartOffset) }
     }
 
+    /** 返回页面坐标处的笔记消息图标（横排/竖排均支持）。 */
+    internal fun noteMarkerAt(x: Float, y: Float): ReaderNoteMarker? {
+        if (showingCoverPage) return null
+        val minTouch = 32f * resources.displayMetrics.density
+        return if (writingMode.isVertical) {
+            verticalTextView.noteMarkerAt(x - verticalTextView.left, y - verticalTextView.top, minTouch)
+        } else {
+            justifiedView.noteMarkerAt(x - justifiedView.left, y - justifiedView.top, minTouch)
+        }
+    }
+
     /** 返回指定页面坐标处的 EPUB 链接；未命中链接时返回 null。 */
     fun getLinkAt(x: Float, y: Float): String? = if (writingMode.isVertical) {
         verticalTextView.getLinkAt(x, y)
@@ -998,7 +1028,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         val images = spannable.getSpans(lineStart, lineEnd, ImageSpan::class.java)
         if (images.isEmpty()) return null
         val geometry = (textView as? RoundedHighlightTextView)?.let {
-            ReaderLineGeometry(textLayout, spannable, it.readerJustificationMode)
+            ReaderLineGeometry(textLayout, spannable, it.readerJustificationMode, justifyLastLine)
         }
 
         for (image in images) {

@@ -88,12 +88,13 @@ class WebdavAutoSyncScheduler @Inject constructor(
             LocalNetworkAccessState.PERMISSION_REQUIRED
         ) return
         val request = OneTimeWorkRequestBuilder<WebdavSyncWorker>()
+            .setInitialDelay(10, TimeUnit.SECONDS)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .build()
         WorkManager.getInstance(appContext).enqueueUniqueWork(
             UNIQUE_WORK_NAME,
-            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            ExistingWorkPolicy.KEEP,
             request
         )
     }

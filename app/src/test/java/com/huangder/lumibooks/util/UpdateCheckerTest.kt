@@ -8,6 +8,34 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UpdateCheckerTest {
+    @Test
+    fun `prefers the GitHub APK for the configured release`() {
+        val release = "https://github.com/huangder/Lumi_Books/releases/tag/Dream"
+        val apk = "https://github.com/huangder/Lumi_Books/releases/download/Dream/app-universal-release.apk"
+        val update = JSONObject().put("download_url", release).put("github_apk_url", apk)
+        assertEquals(apk, UpdateChecker.resolveUpdateDownloadUrl(update, ""))
+    }
+
+    @Test
+    fun `preserves old update links when direct download is unavailable or invalid`() {
+        val release = "https://github.com/huangder/Lumi_Books/releases/tag/Dream"
+        val artifact = "/huangder/Lumi_Books/releases/download/Dream/app-universal-release.apk"
+        val update = JSONObject().put("download_url", release)
+        assertEquals(release, UpdateChecker.resolveUpdateDownloadUrl(update, ""))
+        assertEquals(release, UpdateChecker.resolveUpdateDownloadUrl(null, release))
+        for (url in listOf(
+            JSONObject.NULL,
+            "http://github.com$artifact",
+            "https://github.com.example.com$artifact",
+            "https://elsewhere@github.com$artifact",
+            "https://github.com/${artifact.removePrefix("/").replace("huangder", "another-owner")}",
+            "https://github.com${artifact.replace("/Dream/", "/Other/")}",
+            "https://github.com${artifact.replace(".apk", ".zip")}"
+        )) {
+            assertEquals(release, UpdateChecker.resolveUpdateDownloadUrl(update.put("github_apk_url", url), ""))
+        }
+    }
+
 
     @Test
     fun `reads optional photo alongside notice text`() {

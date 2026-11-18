@@ -2596,19 +2596,21 @@ private fun BookshelfCapsuleHeader(
                         size = 44.dp, iconSize = 20.dp, modifier = Modifier.coverFlowEntranceItem(1))
                     Spacer(Modifier.width(6.dp))
                 }
-                // A small letter-spaced eyebrow over a Wenkai title: the shelf reads like a book's title page.
-                Column(Modifier.weight(1f, fill = false).padding(end = 8.dp).coverFlowEntranceItem(1)) {
-                    if (folderPath.isEmpty()) Text(
-                        stringResource(R.string.bookshelf_library_summary, libraryBookCount, libraryFinishedBookCount),
-                        color = AppColors.TextSecondary, fontSize = AppType.Caption2, letterSpacing = 1.sp,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(folderPath.lastOrNull()?.name ?: stringResource(R.string.bookshelf_title),
-                        color = AppColors.TextPrimary, fontSize = 22.sp, lineHeight = 26.sp,
-                        fontFamily = com.huangder.lumibooks.ui.theme.resolveAppFontFamily(KaiTi),
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    // A small letter-spaced eyebrow over a Wenkai title: the shelf reads like a book's title page.
+                    Column(Modifier.weight(1f, fill = false).padding(end = 8.dp).coverFlowEntranceItem(1)) {
+                        if (folderPath.isEmpty()) Text(
+                            stringResource(R.string.bookshelf_library_summary, libraryBookCount, libraryFinishedBookCount),
+                            color = AppColors.TextSecondary, fontSize = AppType.Caption2, letterSpacing = 1.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(folderPath.lastOrNull()?.name ?: stringResource(R.string.bookshelf_title),
+                            color = AppColors.TextPrimary, fontSize = 22.sp, lineHeight = 26.sp,
+                            fontFamily = com.huangder.lumibooks.ui.theme.resolveAppFontFamily(KaiTi),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    syncBanner()
                 }
-                syncBanner()
-                Spacer(Modifier.weight(1f).width(8.dp))
+                Spacer(Modifier.width(8.dp))
                 LiquidGlassIconButton(imageVector = AppIcons.ListBullets,
                     contentDescription = stringResource(R.string.bookshelf_categories_title),
                     onClick = { if (browseAnchorBounds != Rect.Zero) onBrowseFilters(browseAnchorBounds) },

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="replacement_shared_hint">规则库全书共用，开关和顺序按书单独设置。新书和新规则默认关闭，开启本书及所需规则即可使用。</string>
+    <string name="replacement_shared_edit_hint">规则内容全书共用，修改会影响所有使用它的书；启用状态和执行顺序仅作用于本书。</string>
+    <string name="replacement_shared_delete">将从共用规则库删除，所有书都将无法继续使用这条规则。只想在本书停用，请关闭该规则的开关。</string>
+</resources>

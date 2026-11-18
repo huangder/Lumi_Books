@@ -416,12 +416,14 @@ class WebdavClient @Inject constructor() {
     suspend fun downloadVersioned(
         url: String,
         username: String,
-        password: String
+        password: String,
+        cached: WebdavVersionedData? = null
     ): WebdavVersionedData = withContext(Dispatchers.IO) {
-        val request = requestFor(url, username, password)
-            .get()
-            .build()
+        val builder = requestFor(url, username, password).get()
+        cached?.etag?.let { builder.header("If-None-Match", it) }
+        val request = builder.build()
         execute(request).use { response ->
+            if (response.code == 304 && cached?.etag != null) return@withContext cached
             if (!response.isSuccessful) {
                 throw httpException("Download", response.code)
             }

@@ -11,9 +11,9 @@ import org.junit.Test
 
 class JustifiedTextViewTest {
     @Test
-    fun naturalAndJustifyShareChineseFullLineStrategy() {
+    fun onlyExplicitJustificationUsesFullLineCharacterSpacing() {
         assertEquals(
-            Layout.JUSTIFICATION_MODE_INTER_CHARACTER,
+            Layout.JUSTIFICATION_MODE_NONE,
             ReaderTextAlignment.NATURAL.readerJustificationMode(sdkInt = 35)
         )
         assertEquals(
@@ -21,11 +21,11 @@ class JustifiedTextViewTest {
             ReaderTextAlignment.JUSTIFY.readerJustificationMode(sdkInt = 35)
         )
         assertEquals(
-            Layout.JUSTIFICATION_MODE_INTER_WORD,
-            ReaderTextAlignment.NATURAL.readerJustificationMode(sdkInt = 34)
+            Layout.JUSTIFICATION_MODE_INTER_CHARACTER,
+            ReaderTextAlignment.JUSTIFY.readerJustificationMode(sdkInt = 34)
         )
         assertEquals(
-            Layout.BREAK_STRATEGY_HIGH_QUALITY,
+            Layout.BREAK_STRATEGY_SIMPLE,
             ReaderTextAlignment.NATURAL.readerBreakStrategy()
         )
         assertEquals(

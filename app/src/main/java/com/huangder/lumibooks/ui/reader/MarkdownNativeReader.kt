@@ -18,8 +18,13 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.huangder.lumibooks.domain.model.Note
+import com.huangder.lumibooks.domain.model.ReaderTextAlignment
 import com.huangder.lumibooks.ui.reader.engine.ReaderSelectionMagnifier
 import com.huangder.lumibooks.ui.reader.engine.ReaderMagnifierSink
+import com.huangder.lumibooks.ui.reader.engine.ReaderNoteMarker
+import com.huangder.lumibooks.ui.reader.engine.ReaderNoteMarkerSpan
+import com.huangder.lumibooks.ui.reader.engine.ReaderNoteMarkers
+import com.huangder.lumibooks.ui.reader.engine.hasReaderNoteMarker
 import com.huangder.lumibooks.util.markdown.MarkdownLocatorMigration
 import com.huangder.lumibooks.util.markdown.native.*
 import kotlinx.coroutines.*
@@ -28,9 +33,9 @@ import kotlin.math.abs
 
 internal fun markdownPaginationSignature(identity: String, style: MarkdownPageStyle,
     density: Float, scaledDensity: Float): String = listOf(
-    "markdown-layout-2", identity, style.render.width, style.render.height, style.render.fontSize,
+    "markdown-layout-3", identity, style.render.width, style.render.height, style.render.fontSize,
     style.render.paragraphSpacing, style.render.firstLineIndent, style.lineHeight,
-    style.letterSpacing, style.alignment, style.justify, density, scaledDensity
+    style.letterSpacing, style.alignment, density, scaledDensity
 ).joinToString("|")
 
 /** Native document surface; menus, dialogs, themes and navigation remain owned by ReaderScreen. */
@@ -55,6 +60,7 @@ internal fun MarkdownNativeReaderContent(
     ttsFollowEnabled: Boolean = false,
     onSelection: (EpubSelectionInfo) -> Unit,
     onLink: (String) -> Unit,
+    onNoteMarker: (noteText: String, anchorWindowX: Float, anchorWindowY: Float) -> Unit = { _, _, _ -> },
     onMenu: () -> Unit,
     onSelectionCleared: () -> Unit = {},
     onSelectionDragging: (Boolean) -> Unit = {},
@@ -73,6 +79,7 @@ internal fun MarkdownNativeReaderContent(
     val latestVisibleCharacters by rememberUpdatedState(onVisibleCharacters)
     val latestSelection by rememberUpdatedState(onSelection)
     val latestLink by rememberUpdatedState(onLink)
+    val latestNoteMarker by rememberUpdatedState(onNoteMarker)
     val latestMenu by rememberUpdatedState(onMenu)
     val latestSelectionCleared by rememberUpdatedState(onSelectionCleared)
     val latestSelectionDragging by rememberUpdatedState(onSelectionDragging)
@@ -91,6 +98,7 @@ internal fun MarkdownNativeReaderContent(
             visibleCharactersChanged = { latestVisibleCharacters(it) }
             selected = { latestSelection(it) }
             link = { latestLink(it) }
+            noteMarker = { text, x, y -> latestNoteMarker(text, x, y) }
             menu = { latestMenu() }
             selectionCleared = { latestSelectionCleared() }
             selectionDragging = { latestSelectionDragging(it) }
@@ -138,6 +146,12 @@ internal fun markdownTextOffsetAt(view: TextView, x: Float, y: Float): Int? {
     val localY = y - view.totalPaddingTop + view.scrollY
     if (localY < 0 || localY >= layout.height) return null
     val line = layout.getLineForVertical(localY.toInt())
+    val geometry = (view as? MarkdownAnnotationTextView)?.geometryFor(layout)
+    if (geometry?.isLineStretched(line) == true) {
+        val range = geometry.lineRange(line) ?: return null
+        if (localX < range.left || localX >= range.right) return null
+        return geometry.offsetForHorizontal(line, localX)?.coerceAtMost(layout.getLineEnd(line) - 1)
+    }
     if (localX < layout.getLineLeft(line) || localX >= layout.getLineRight(line)) return null
     return layout.getOffsetForHorizontal(line, localX)
 }
@@ -218,6 +232,8 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
     var visibleCharactersChanged: (List<ReaderVisibleCharacters>) -> Unit = {}
     var selected: (EpubSelectionInfo) -> Unit = {}
     var link: (String) -> Unit = {}
+    /** 点击笔记句末消息图标：笔记文本 + 窗口坐标。 */
+    var noteMarker: (String, Float, Float) -> Unit = { _, _, _ -> }
     var menu: () -> Unit = {}
     /** Called when a user taps outside an active Markdown selection. */
     var selectionCleared: () -> Unit = {}
@@ -314,7 +330,10 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
             val screen = IntArray(2); view.getLocationOnScreen(screen)
             val line = layout.getLineForOffset(if (trailing && local > 0) local - 1 else local)
             val lineHeight = (layout.getLineBottom(line) - layout.getLineTop(line)).toFloat()
-            val x = if (trailing && local == layout.getLineStart(line + 1)) {
+            val geometry = (view as? MarkdownAnnotationTextView)?.geometryFor(layout)
+            val x = if (geometry?.isLineStretched(line) == true) {
+                geometry.horizontalPosition(local, trailing) ?: layout.getPrimaryHorizontal(local)
+            } else if (trailing && local == layout.getLineStart(line + 1)) {
                 if (layout.getParagraphDirection(line) < 0) layout.getLineLeft(line) else layout.getLineRight(line)
             } else layout.getPrimaryHorizontal(local)
             val point = android.graphics.PointF(screen[0] - location[0] + view.totalPaddingLeft - view.scrollX + x,
@@ -343,7 +362,7 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
             // including RecyclerView's small cache, without querying that ancestor.
             if (!view.isAttachedToWindow) continue
             val text = view.text as? android.text.Spannable ?: continue
-            applyMarkdownAnnotationSpans(text, start, notes)
+            applyMarkdownAnnotationSpans(text, start, notes, source.document.text)
             text.getSpans(0, text.length, SelectedRangeSpan::class.java).forEach(text::removeSpan)
             text.getSpans(0, text.length, ReadingRangeSpan::class.java).forEach(text::removeSpan)
             listOfNotNull(tts?.let { it.startOffset until it.endOffset }, searchRange).forEach { range ->
@@ -378,8 +397,72 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
             MarkdownLocatorMigration.locator(source.document.text, MarkdownLocatorMigration.Match(start, end), true),
             (left + right) / 2, top, left, top, right, bottom, annotationOnly))
     }
+    /** 当前帧绘制的笔记图标（本 surface 坐标）。 */
+    private var noteMarkers: List<ReaderNoteMarker> = emptyList()
+    private var noteMarkerTap: ReaderNoteMarker? = null
+
+    /**
+     * 文本块的宽度只到正文右缘，图标要伸进右边距，所以统一在 surface 上绘制：
+     * 由各块的 Layout 计算行末位置后换算成 surface 坐标。
+     */
+    private fun collectNoteMarkers(): List<ReaderNoteMarker> {
+        if (transitionView != null) return emptyList()
+        val origin = IntArray(2); getLocationOnScreen(origin)
+        val result = mutableListOf<ReaderNoteMarker>()
+        for ((view, _) in textOwners) {
+            if (!view.isAttachedToWindow || !view.isShown || view.text.isEmpty()) continue
+            val text = view.text as? Spanned ?: continue
+            if (text.getSpans(0, text.length, ReaderNoteMarkerSpan::class.java).isEmpty()) continue
+            val layout = view.layout ?: continue
+            val geometry = (view as? MarkdownAnnotationTextView)?.geometryFor(layout)
+            val screen = IntArray(2); view.getLocationOnScreen(screen)
+            val dx = screen[0] - origin[0] + view.totalPaddingLeft - view.scrollX.toFloat()
+            val dy = screen[1] - origin[1] + view.totalPaddingTop - view.scrollY.toFloat()
+            ReaderNoteMarkers.collect(layout, text, geometry).forEach { marker ->
+                val rect = android.graphics.RectF(marker.rect).apply { offset(dx, dy) }
+                if (rect.bottom < paddingTop || rect.top > height - paddingBottom) return@forEach
+                result += marker.copy(rect = rect)
+            }
+        }
+        return result
+    }
+
+    /** 图标点击优先于正文：按下命中图标时整段手势由 surface 自己处理。 */
+    private fun handleNoteMarkerTouch(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                noteMarkerTap = null
+                if (selectionStartGlobal >= 0 || draggingHandle != 0) return false
+                val minTouch = 32f * resources.displayMetrics.density
+                noteMarkerTap = ReaderNoteMarkers.hit(noteMarkers, event.x, event.y, minTouch) ?: return false
+                downX = event.x; downY = event.y
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> return noteMarkerTap != null
+            MotionEvent.ACTION_UP -> {
+                val marker = noteMarkerTap ?: return false
+                noteMarkerTap = null
+                val slop = ViewConfiguration.get(context).scaledTouchSlop
+                if (abs(event.x - downX) <= slop && abs(event.y - downY) <= slop) {
+                    val location = IntArray(2); getLocationInWindow(location)
+                    noteMarker(marker.text, location[0] + event.x, location[1] + event.y)
+                }
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                val consumed = noteMarkerTap != null
+                noteMarkerTap = null
+                return consumed
+            }
+        }
+        return noteMarkerTap != null
+    }
+
     override fun dispatchDraw(canvas: android.graphics.Canvas) {
         super.dispatchDraw(canvas)
+        noteMarkers = collectNoteMarkers()
+        val markerColor = provider?.style?.render?.color ?: android.graphics.Color.BLACK
+        noteMarkers.forEach { ReaderNoteMarkers.draw(canvas, it.rect, markerColor) }
         if (selectionStartGlobal < 0) return
         handlePaint.color = selectionAccent
         val radius = 7f * resources.displayMetrics.density
@@ -388,6 +471,7 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
         }
     }
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (handleNoteMarkerTouch(event)) return true
         touchSession.record(event, scrolling || (recycler?.scrollState ?: RecyclerView.SCROLL_STATE_IDLE) != RecyclerView.SCROLL_STATE_IDLE)
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             selectionGestureActive = false
@@ -648,9 +732,8 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
             com.huangder.lumibooks.domain.model.ReaderTextAlignment.RIGHT -> android.text.Layout.Alignment.ALIGN_OPPOSITE
             else -> android.text.Layout.Alignment.ALIGN_NORMAL
         }
-        provider = MarkdownPageProvider(source, MarkdownPageStyle(style, c.typeface, c.lineHeight, c.spacing * density / style.fontSize,
-            alignment, c.alignment in setOf(com.huangder.lumibooks.domain.model.ReaderTextAlignment.NATURAL,
-                com.huangder.lumibooks.domain.model.ReaderTextAlignment.JUSTIFY)))
+        provider = MarkdownPageProvider(source, MarkdownPageStyle(style, c.typeface, c.lineHeight,
+            c.spacing * density / style.fontSize, alignment))
         if (initialRestore) {
             current = locatorOffset(savedRestore) ?: (savedFraction * source.document.text.length).toInt()
             initialRestore = false
@@ -817,6 +900,7 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
                 }
             }
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                if (noteMarkers.isNotEmpty() || notes.any { it.hasReaderNoteMarker() }) invalidate()
                 if (manualScrollPending) visibleCharactersChanged(visibleTtsCharacters())
                 val index = manager.findFirstVisibleItemPosition()
                 if (index < 0) return
@@ -1222,8 +1306,12 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
         val engine = provider!!
         val c = config!!
         val text = SpannableStringBuilder(content)
+        val alignsProse = block.kind in setOf("paragraph", "quote", "list")
+        if (alignsProse && c.alignment == ReaderTextAlignment.NATURAL && text.isNotEmpty()) {
+            text.setSpan(ReaderNaturalAlignmentSpan(), 0, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
         if (offset > block.start) text.getSpans(0, text.length, MarkdownParagraphIndentSpan::class.java).forEach(text::removeSpan)
-        applyMarkdownAnnotationSpans(text, offset, notes)
+        applyMarkdownAnnotationSpans(text, offset, notes, source.document.text)
         var selectionTouchDownTime = -1L
         val tv = object : MarkdownAnnotationTextView(context) {
             override fun onSelectionChanged(selStart: Int, selEnd: Int) {
@@ -1250,13 +1338,14 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
             letterSpacing = engine.style.letterSpacing
             setLineSpacing(0f, c.lineHeight)
             breakStrategy = android.text.Layout.BREAK_STRATEGY_SIMPLE
-            textAlignment = when (c.alignment) {
+            textAlignment = when (if (block.kind == "heading") ReaderTextAlignment.NATURAL else c.alignment) {
                 com.huangder.lumibooks.domain.model.ReaderTextAlignment.CENTER -> View.TEXT_ALIGNMENT_CENTER
                 com.huangder.lumibooks.domain.model.ReaderTextAlignment.RIGHT -> View.TEXT_ALIGNMENT_VIEW_END
                 com.huangder.lumibooks.domain.model.ReaderTextAlignment.LEFT -> View.TEXT_ALIGNMENT_VIEW_START
                 else -> View.TEXT_ALIGNMENT_TEXT_START
             }
-            justificationMode = if (engine.style.justify) android.text.Layout.JUSTIFICATION_MODE_INTER_WORD else android.text.Layout.JUSTIFICATION_MODE_NONE
+            if (alignsProse) readerJustification = c.alignment.readerJustificationForText(text)
+            continuesParagraph = offset + text.length < block.end
             val headingPad = if (block.kind == "heading") (engine.style.render.fontSize * 0.12f).toInt() else 0
             // Each Markdown block is a separate TextView. Unlike a whole EPUB
             // chapter, its last line has no following line box for the underline.

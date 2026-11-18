@@ -9,10 +9,7 @@ import android.text.TextPaint
 import android.text.style.MetricAffectingSpan
 import com.huangder.lumibooks.domain.model.ReaderTextAlignment
 import com.huangder.lumibooks.domain.model.ReaderWritingMode
-import com.huangder.lumibooks.ui.reader.readerBreakStrategy
-import com.huangder.lumibooks.ui.reader.readerJustificationMode
 import com.huangder.lumibooks.ui.reader.readerBreakStrategyForText
-import com.huangder.lumibooks.ui.reader.readerJustificationForText
 import com.huangder.lumibooks.ui.reader.readerHyphenationFrequency
 import com.huangder.lumibooks.ui.reader.usesReaderEnglishHyphenation
 import kotlinx.coroutines.Dispatchers
@@ -328,7 +325,6 @@ class PageLayoutEngine {
             .setIncludePad(false)
             .setBreakStrategy(input.textAlignment.readerBreakStrategyForText(text))
             .setHyphenationFrequency(readerHyphenationFrequency(text))
-            .setJustificationMode(input.textAlignment.readerJustificationForText(text))
             .build()
 
         if (input.writingMode.isVertical) {
@@ -464,7 +460,6 @@ class PageLayoutEngine {
                         .setIncludePad(false)
                         .setBreakStrategy(input.textAlignment.readerBreakStrategyForText(slice))
                         .setHyphenationFrequency(readerHyphenationFrequency(slice))
-                        .setJustificationMode(input.textAlignment.readerJustificationForText(slice))
                         .build()
                     var last = local.lineCount - 1
                     // Spacer rows are swallowed at the page boundary and have

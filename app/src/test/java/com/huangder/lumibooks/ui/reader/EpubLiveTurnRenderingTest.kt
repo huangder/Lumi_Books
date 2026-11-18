@@ -275,6 +275,81 @@ class EpubLiveTurnRenderingTest {
         host.markPreloadLoading(EpubPageTurnHost.PreloadSlot.PREVIOUS, EpubPageTarget(0, 0), 9)
         assertNull(host.pageBeyond(EpubPageTurnHost.PreloadSlot.PREVIOUS, chapterCount = 3))
         assertFalse(host.canPrepareWarmPage())
+        assertTrue(host.canPrepareWarmPage(EpubPageTurnHost.PreloadSlot.NEXT))
+        assertFalse(host.canPrepareWarmPage(EpubPageTurnHost.PreloadSlot.PREVIOUS))
+        assertFalse(host.canPrepareAdjacentPage())
+    }
+
+    @Test fun directionalWarmPreparationRejectsAStaleFontLayout() {
+        host.nextWebView.documentLifecycle.configure("changed-font")
+        assertFalse(host.canPrepareWarmPage(EpubPageTurnHost.PreloadSlot.NEXT))
+        assertTrue(host.canPrepareWarmPage(EpubPageTurnHost.PreloadSlot.PREVIOUS))
+        host.invalidateLayout("font-size")
+        assertFalse(host.canPrepareWarmPage(EpubPageTurnHost.PreloadSlot.PREVIOUS))
+    }
+
+    @Test fun directionalWarmPreparationPausesDuringFingerDrag() {
+        assertTrue(host.canPrepareWarmPage(EpubPageTurnHost.PreloadSlot.NEXT))
+        event(MotionEvent.ACTION_DOWN, 350f, 0)
+        event(MotionEvent.ACTION_MOVE, 100f, 120)
+        assertFalse(host.canPrepareWarmPage(EpubPageTurnHost.PreloadSlot.NEXT))
+        assertFalse(host.canPrepareWarmPage(EpubPageTurnHost.PreloadSlot.PREVIOUS))
+        event(MotionEvent.ACTION_UP, 100f, 160)
+    }
+
+    @Test fun consecutiveOnePageChaptersUseWarmPagesWithoutColdNavigation() = checkShortChapterChain(1)
+
+    @Test fun consecutiveOnePageChaptersUseWarmPagesWhenTurningBackward() = checkShortChapterChain(-1)
+
+    private fun checkShortChapterChain(direction: Int) {
+        val ahead = if (direction > 0) EpubPageTurnHost.PreloadSlot.NEXT else EpubPageTurnHost.PreloadSlot.PREVIOUS
+        val behind = if (direction > 0) EpubPageTurnHost.PreloadSlot.PREVIOUS else EpubPageTurnHost.PreloadSlot.NEXT
+        val start = if (direction > 0) 0 else 10
+        fun edgeTarget(chapter: Int) = EpubPageTarget(chapter, if (direction > 0) 0 else Int.MAX_VALUE)
+        host.setCurrentPage(start, 0, 1)
+        host.markPreloadLoading(behind, null, 10)
+        val first = edgeTarget(start + direction)
+        host.markPreloadLoading(ahead, first, 11)
+        host.markPreloadReady(ahead, first, 11, 0, 1, host.preloadView(ahead)!!)
+        var generation = 12
+        var coldTurns = 0
+        var commits = 0
+        host.onUnpreparedChapterTurn = { coldTurns++ }
+        host.onPageCommit = { _, target, count ->
+            commits++
+            host.setCurrentPage(target.chapterIndex, target.pageIndex, count)
+            assertTrue(host.adoptWarmPage(ahead, edgeTarget(target.chapterIndex + direction)))
+        }
+        repeat(8) { index ->
+            assertTrue(host.hasPreparedPage(ahead, edgeTarget(start + direction * (index + 1))))
+            assertTrue(host.requestTurn(direction))
+            // The fourth view prepares the chapter after the animated destination.
+            assertTrue(host.canPrepareWarmPage(ahead))
+            assertTrue(host.ensureWarmPage())
+            val warm = host.warmWebView!!
+            warm.measure(View.MeasureSpec.makeMeasureSpec(400, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(800, View.MeasureSpec.EXACTLY))
+            warm.layout(0, 0, 400, 800)
+            warm.right = 400
+            warm.bottom = 800
+            // Match the explicit drawable used for the original three sheets:
+            // Robolectric's WebView provider does not paint its background.
+            warm.background = ColorDrawable(Color.MAGENTA)
+            val beyond = host.pageBeyond(ahead, chapterCount = 12)!!
+            assertEquals(edgeTarget(start + direction * (index + 2)), beyond)
+            host.markPreloadLoading(EpubPageTurnHost.PreloadSlot.WARM, beyond, ++generation)
+            host.markPreloadReady(EpubPageTurnHost.PreloadSlot.WARM, beyond, generation, 0, 1, warm)
+            repeat(4) {
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100))
+                host.computeScroll(); frame().recycle()
+            }
+            // Cross-chapter commit is posted after the destination's draw.
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(EpubPageTarget(start + direction * (index + 1), 0), host.currentPageTarget())
+            assertEquals("chapter $index, active attached=${host.activeWebView.isAttachedToWindow}, " +
+                "handoff=${host.hasPendingPageHandoff()}", index + 1, commits)
+        }
+        assertEquals(0, coldTurns)
     }
 
     @Test fun stillMenuTapDropsQueuedTurns() {
@@ -482,6 +557,60 @@ class EpubLiveTurnRenderingTest {
         assertFalse(host.hasPendingPageHandoff())
     }
 
+    @Test fun lateFontReflowDuringHandoffAcceptsAChangedPageAddress() {
+        verifyLateFontReflowDuringHandoff(pageIndex = 2)
+    }
+
+    @Test fun lateFontReflowDuringHandoffAlsoReleasesAnUnchangedPageAddress() {
+        verifyLateFontReflowDuringHandoff(pageIndex = 0)
+    }
+
+    private fun verifyLateFontReflowDuringHandoff(pageIndex: Int) {
+        prepareCrossChapterTurn()
+        var staleCommits = 0
+        host.onPageCommit = { _, _, _ -> staleCommits++ }
+        finishCrossChapterAnimation()
+        assertTrue(host.hasPendingPageHandoff())
+        val view = host.activeWebView
+        val generation = view.documentLifecycle.configurationGeneration
+        assertTrue(host.observeDocumentLayout(view, generation, 2, stable = false, pending = true))
+        assertFalse("late font reflow must release the old page handoff", host.hasPendingPageHandoff())
+        assertTrue(host.hasLayoutPreview())
+        assertTrue(host.observeDocumentLayout(view, generation, 3, stable = true, pending = false))
+        host.setCurrentPage(1, pageIndex, 6, onSettled = host::endLayoutPreview)
+        frame().recycle()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+        assertEquals(EpubPageTarget(1, pageIndex), host.currentPageTarget())
+        assertFalse(host.hasLayoutPreview())
+        assertEquals(0, staleCommits)
+
+        val next = EpubPageTarget(1, pageIndex + 1)
+        host.markPreloadLoading(EpubPageTurnHost.PreloadSlot.NEXT, next, 10)
+        host.markPreloadReady(EpubPageTurnHost.PreloadSlot.NEXT, next, 10, next.pageIndex, 6, host.nextWebView)
+        host.onPageCommit = { _, target, count -> host.setCurrentPage(target.chapterIndex, target.pageIndex, count) }
+        assertTrue(host.requestTurn(1))
+        SystemClock.sleep(500)
+        repeat(3) { host.computeScroll(); frame().recycle() }
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(next, host.currentPageTarget())
+    }
+
+    @Test fun staleDuplicateAndNeighbourLayoutEventsDoNotCancelTheActiveTurn() {
+        val active = host.activeWebView
+        val generation = active.documentLifecycle.configurationGeneration
+        var invalidations = 0
+        host.onInvalidatePreloads = { invalidations++ }
+        assertTrue(host.observeDocumentLayout(active, generation, 2, stable = false, pending = true))
+        assertEquals(1, invalidations)
+        assertTrue(host.observeDocumentLayout(active, generation, 2, stable = false, pending = true))
+        assertFalse(host.observeDocumentLayout(active, generation - 1, 9, stable = false, pending = true))
+        assertFalse(host.observeDocumentLayout(active, generation, 1, stable = false, pending = true))
+        val neighbour = host.nextWebView
+        assertTrue(host.observeDocumentLayout(neighbour, neighbour.documentLifecycle.configurationGeneration,
+            9, stable = false, pending = true))
+        assertEquals(1, invalidations)
+    }
+
     @Test fun marginChangeDuringChapterHandoffAcceptsTheRepaginatedPosition() {
         prepareCrossChapterTurn()
         var staleCommits = 0
@@ -560,6 +689,174 @@ class EpubLiveTurnRenderingTest {
 
         assertEquals(next, host.currentPageTarget())
         assertEquals(0, bookEnds)
+    }
+
+    private fun finishFontRepagination(page: Int = 4, count: Int = 8, mode: String = "slide") {
+        host.setTransition(mode)
+        host.onHasPotentialTurn = { direction, target, pageCount ->
+            hasPotentialEpubPageTurn(target, pageCount, chapterCount = 3, direction = direction)
+        }
+        val lifecycle = host.activeWebView.documentLifecycle
+        lifecycle.configure("font-resize-$mode")
+        host.invalidateLayout("reconfigure")
+        lifecycle.observeLayout(lifecycle.configurationGeneration, 1, stable = true)
+        host.setCurrentPage(0, page, count)
+    }
+
+    @Test fun repaginatedChapterTurnsWithoutWaitingForDuplicateWebViews() {
+        finishFontRepagination()
+        val active = host.activeWebView
+        assertTrue(host.requestTurn(1))
+        assertTrue(shadowOf(active).lastEvaluatedJavascript.contains("goToPage(5)"))
+        assertTrue(host.isAwaitingPage(0, 5))
+        assertEquals("position changes only on the stable visual callback", EpubPageTarget(0, 4), host.currentPageTarget())
+        host.setCurrentPage(0, 5, 8)
+        assertFalse(host.hasPendingPageHandoff())
+        assertSame(active, host.activeWebView)
+        assertTrue(host.requestTurn(-1))
+        assertTrue(shadowOf(active).lastEvaluatedJavascript.contains("goToPage(4)"))
+    }
+
+    @Test fun tapDuringReflowReplaysImmediatelyWhenTheCurrentChapterIsStable() {
+        host.onHasPotentialTurn = { _, _, _ -> true }
+        val lifecycle = host.activeWebView.documentLifecycle
+        lifecycle.configure("font-resize")
+        host.invalidateLayout()
+        assertTrue(host.requestTurn(1))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(host.hasPendingPageHandoff())
+        lifecycle.observeLayout(lifecycle.configurationGeneration, 1, stable = true)
+        host.setCurrentPage(0, 4, 8)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(host.isAwaitingPage(0, 5))
+        assertTrue(shadowOf(host.activeWebView).lastEvaluatedJavascript.contains("goToPage(5)"))
+    }
+
+    @Test fun swipeAfterReflowTurnsOnReleaseWhileDuplicatePagesAreLoading() {
+        finishFontRepagination()
+        event(MotionEvent.ACTION_DOWN, 350f, 0)
+        event(MotionEvent.ACTION_MOVE, 70f, 80)
+        assertFalse("moving a finger must not commit the page", host.hasPendingPageHandoff())
+        event(MotionEvent.ACTION_UP, 50f, 120)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(host.isAwaitingPage(0, 5))
+    }
+
+    @Test fun repeatedTypographyChangesRetainTheTurnUntilTheLatestPaginationFinishes() {
+        host.onHasPotentialTurn = { _, _, _ -> true }
+        val lifecycle = host.activeWebView.documentLifecycle
+        repeat(12) { step ->
+            lifecycle.configure("font-$step")
+            host.invalidateLayout("reconfigure")
+            if (step == 0) assertTrue(host.requestTurn(1))
+        }
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(host.hasPendingPageHandoff())
+        lifecycle.observeLayout(lifecycle.configurationGeneration, 1, stable = true)
+        host.setCurrentPage(0, 4, 8)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(host.isAwaitingPage(0, 5))
+    }
+
+    @Test fun rapidTapsDuringDirectHandoffLeaveOnlyOnePendingTurn() {
+        finishFontRepagination()
+        host.onCapturedTapDirection = { 1 }
+        assertTrue(host.requestTurn(1))
+        repeat(4) { index ->
+            event(MotionEvent.ACTION_DOWN, 350f, index * 40L)
+            event(MotionEvent.ACTION_UP, 350f, index * 40L + 20)
+        }
+        repeat(3) { assertTrue(host.requestTurn(1)) }
+        for (page in 5..6) {
+            assertTrue("queued turn must target page $page", host.isAwaitingPage(0, page))
+            host.setCurrentPage(0, page, 8)
+            shadowOf(Looper.getMainLooper()).idle()
+        }
+        assertFalse(host.hasPendingPageHandoff())
+        assertEquals(EpubPageTarget(0, 6), host.currentPageTarget())
+
+        assertTrue(host.requestTurn(1))
+        assertTrue(host.isAwaitingPage(0, 7))
+        host.setCurrentPage(0, 7, 8)
+        assertEquals(EpubPageTarget(0, 7), host.currentPageTarget())
+    }
+
+    // Robolectric's API 35 ImageReader cannot finish a hardware snapshot. API 28
+    // exercises the same curl input/queue using the software snapshot fallback.
+    @Test @Config(sdk = [28]) fun curlFollowUpTapOnlyReplaysIfTheHandoffIsPrompt() {
+        finishFontRepagination(page = 3, count = 6, mode = "curl")
+        host.onCapturedTapDirection = { 1 }
+        assertTrue(host.requestTurn(1))
+        assertTrue(host.isAwaitingPage(0, 4))
+        event(MotionEvent.ACTION_DOWN, 350f, 0)
+        event(MotionEvent.ACTION_UP, 350f, 20)
+        host.setCurrentPage(0, 4, 6)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(host.isAwaitingPage(0, 5))
+
+        event(MotionEvent.ACTION_DOWN, 350f, 40)
+        event(MotionEvent.ACTION_UP, 350f, 60)
+        host.setCurrentPage(0, 5, 6)
+        shadowOf(Looper.getMainLooper()).idle()
+        // The chapter is still loading after the first turn has settled.
+        assertTrue(host.requestTurn(1))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
+        val next = EpubPageTarget(1, 0)
+        val slot = EpubPageTurnHost.PreloadSlot.NEXT
+        host.markPreloadLoading(slot, next, 99)
+        host.markPreloadReady(slot, next, 99, 0, 6, host.nextWebView)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(host.ownsPage(host.nextWebView))
+
+        assertTrue(host.requestTurn(1))
+        assertTrue(host.ownsPage(host.nextWebView))
+    }
+
+    @Test @Config(sdk = [28]) fun curlAfterReflowCanUseTheCurrentChapterForTapAndQueuedSwipe() {
+        finishFontRepagination(mode = "curl")
+        assertTrue(host.requestTurn(1))
+        assertTrue(host.isAwaitingPage(0, 5))
+        host.setCurrentPage(0, 5, 8)
+        event(MotionEvent.ACTION_DOWN, 350f, 0)
+        event(MotionEvent.ACTION_MOVE, 70f, 80)
+        assertFalse(host.hasPendingPageHandoff())
+        event(MotionEvent.ACTION_UP, 50f, 120)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(host.isAwaitingPage(0, 6))
+    }
+
+    @Test fun preparedNeighbourStillUsesTheSelectedAnimationAfterReflow() {
+        finishFontRepagination()
+        val target = EpubPageTarget(0, 5)
+        host.markPreloadLoading(EpubPageTurnHost.PreloadSlot.NEXT, target, 99)
+        host.markPreloadReady(EpubPageTurnHost.PreloadSlot.NEXT, target, 99, 5, 8, host.nextWebView)
+        host.onPageCommit = { _, page, count -> host.setCurrentPage(page.chapterIndex, page.pageIndex, count) }
+        assertTrue(host.requestTurn(1))
+        assertFalse(host.hasPendingPageHandoff())
+        SystemClock.sleep(500)
+        repeat(3) { host.computeScroll(); frame().recycle() }
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(target, host.currentPageTarget())
+    }
+
+    @Test fun staleNeighbourCannotTurnBackToAnObsoletePageWhileItsReplacementIsDelayed() {
+        finishFontRepagination()
+        val stale = EpubPageTarget(0, 2)
+        host.markPreloadLoading(EpubPageTurnHost.PreloadSlot.NEXT, stale, 99)
+        host.markPreloadReady(EpubPageTurnHost.PreloadSlot.NEXT, stale, 99, 2, 8, host.nextWebView)
+        assertTrue(host.requestTurn(1))
+        assertTrue(host.isAwaitingPage(0, 5))
+    }
+
+    @Test fun currentChapterFastTurnNeverCrossesTheChapterBoundary() {
+        finishFontRepagination(page = 7)
+        val requested = mutableListOf<EpubPageTarget>()
+        host.onSlideLookaheadRequested = { _, target -> requested.add(target) }
+        assertTrue(host.requestTurn(1))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(host.hasPendingPageHandoff())
+        assertTrue(requested.contains(EpubPageTarget(1, 0)))
+        assertFalse(shadowOf(host.activeWebView).lastEvaluatedJavascript?.contains("goToPage") == true)
     }
 
     @Test fun repaginationKeepsThePreviewAboveTheWebViewUntilTheNewFrame() {

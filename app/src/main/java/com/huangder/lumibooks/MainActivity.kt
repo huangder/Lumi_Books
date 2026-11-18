@@ -957,7 +957,7 @@ class MainActivity : ComponentActivity() {
                                 // 外部导入询问弹窗也是玻璃容器，同样需要在它显示期间捕获主内容，
                                 // 否则玻璃表面拿到的是一份没有内容的 backdrop，只剩半透明底色。
                                 pendingExternalImportUris.isNotEmpty())
-                        Box(
+                        com.huangder.lumibooks.ui.layout.AdaptiveWindowLayout(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .then(com.huangder.lumibooks.util.diagnostics.startupTraceModifier(
@@ -1026,12 +1026,12 @@ class MainActivity : ComponentActivity() {
                         !onReaderRoute && appUpdate != null -> {
                             AppUpdateDialog(
                                 appVersion = appUpdate.appVersion,
+                                downloadUrl = appUpdate.releaseUrl,
                                 updateTitle = appUpdate.title,
                                 updateMessage = appUpdate.message,
                                 changelog = appUpdate.changelog,
                                 force = appUpdate.force,
-                                onDownload = {
-                                    openRemoteUrl(appUpdate.releaseUrl)
+                                onDownloadStarted = {
                                     if (!appUpdate.force) pendingAppUpdate = null
                                 },
                                 onLater = {

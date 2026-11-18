@@ -1207,7 +1207,7 @@
     <string name="goal_custom_desc">输入 1-1439 分钟</string>
     <string name="goal_custom_current_desc">当前 %1$d 分钟，可改为 1-1439 分钟</string>
     <string name="add_tag">添加标签</string>
-    <string name="apply_to_body_only">排版仅作用于正文</string>
+    <string name="apply_to_body_only">排版设置仅作用于正文</string>
     <string name="apply_to_body_only_desc">开启时字重、间距等设置仅作用于正文，标题等保持原样</string>
     <string name="body_font_weight">正文字重</string>
     <string name="body_font_weight_desc">开启后正文使用加粗字重</string>

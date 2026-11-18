@@ -1,18 +1,19 @@
 {
   "config_version": 1,
-  "generated_at": "2026-11-03T00:00:00+08:00",
-  "latest_version": "Dream",
-  "latest_version_code": 16,
-  "release_url": "https://github.com/huangder/Lumi_Books/releases/tag/Dream",
+  "generated_at": "2026-11-18T11:50:14+08:00",
+  "latest_version": "2.3.11",
+  "latest_version_code": 18,
+  "release_url": "https://github.com/huangder/Lumi_Books/releases/tag/Filmy",
   "terms_version": 3,
   "privacy_version": 4,
   "update": {
-    "latest_version_code": 16,
-    "latest_version_name": "Dream",
-    "download_url": "https://github.com/huangder/Lumi_Books/releases/tag/Dream",
-    "title": "Dream 新版本",
-    "message": "该版本新增多项阅读、书架与摘录功能，并优化界面与稳定性，推荐所有用户更新",
-    "changelog": "· 新增 吉祥物 LUMI酱，并更新欢迎页及相关视觉内容\n· 新增 摘录卡片，可将选中文字、笔记和书签制作成图片并保存或分享\n· 新增 多种摘录卡片主题，支持结合当前阅读背景生成协调配色\n· 新增 欢迎页功能预览，集中介绍摘录卡片、G2 连续圆角和词典功能\n· 新增 Android 17 本地网络权限适配，连接 NAS 或局域网 WebDAV 时按需申请\n· 新增 Markdown 原生阅读，支持标题目录、搜索、代码高亮、表格、公式与分页或连续滚动\n· 新增 Markdown 阅读副本与源文件更新提示，支持资源随备份和 WebDAV 同步，并迁移笔记与书签\n· 新增 书架封面阅读进度显示、Cover Flow 书架滚动条和「快速」动效选项\n· 新增 听书进度独立保存，可选择从当前页或原听书进度开始，并支持记住选择\n· 新增 逐行导读「超高」遮暗档位\n· 优化 全局界面形状，书架、阅读器、设置、菜单、弹窗和按钮统一使用 G2 连续圆角\n· 优化 液态玻璃控件的边缘、阴影、菜单定位和过渡效果\n· 优化 小屏幕、横屏和大字体下的布局，以及注释筛选与标签管理体验\n· 优化 EPUB 原书排版的翻页、实时渲染和高亮点击判断\n· 优化 EPUB 原书排版的章节缓存、相邻章节预加载与图片页面识别，减少重复处理和翻页等待\n· 优化 高级阅读设置的文字间距分组与页边距实时预览，调整时保留当前正文直至新排版就绪\n· 优化 听书页面自动跟随、系统语音预合成与播放恢复，减少手动翻页干扰和句间等待\n· 优化 设置、WebDAV、MinerU、翻译、词典与反馈页面的分组卡片和控件布局\n· 优化 书籍打开与返回转场的正文、背景配色衔接，以及简繁转换和 TXT 标题处理\n· 优化 界面图标统一为 Fluent UI System Icons，并更新开源许可说明\n· 优化 WebDAV 错误提示、下载校验、后台同步调度及局域网连接流程\n· 优化 桌面小组件的图片内存控制，降低大尺寸组件的内存占用\n· 修复 部分 EPUB 翻页时画面停滞、图层错位或内容刷新不及时的问题\n· 修复 EPUB 注释标记显示在正文下方、看起来像下标的问题\n· 修复 EPUB 原书排版连续滚动边距、目录定位、横屏双页恢复位置、图片越界和内容溢出问题\n· 修复 调整字号、字重或页边距后排版未及时生效，以及深色主题正文颜色冲突问题\n· 修复 阅读背景图片调整后闪烁或加载失败不重试、标注点击跳动、选字手势中断和菜单残留问题\n· 修复 翻页与菜单退出动画露出底层页面、链接确认和选字设置弹窗主题不一致的问题\n· 修复 系统听书预合成未完成时播放静默、小数句子拆分，以及 WebDAV 同步覆盖本地偏好的问题\n· 修复 部分界面在小屏幕或大字体下内容拥挤、控件遮挡的问题",
+    "latest_version_code": 18,
+    "latest_version_name": "2.3.11",
+    "download_url": "https://github.com/huangder/Lumi_Books/releases/tag/Filmy",
+    "github_apk_url": "https://github.com/huangder/Lumi_Books/releases/download/Filmy/app-universal-release.apk",
+    "title": "Lumi Books 2.3.11「Filmy」",
+    "message": "丰富阅读场景，完善书籍管理，提升阅读与听书体验。推荐所有用户更新至新版本。",
+    "changelog": "各位读者：\n\n为进一步丰富阅读场景、完善书籍管理，并提升阅读与听书体验，Lumi Books 2.3.11「Filmy」版本带来了一系列功能更新与体验优化。推荐所有用户更新至新版本，体验更加丰富、便捷的阅读服务。\n\n本次更新围绕阅读、听书、书库管理和跨设备使用等方面展开：\n\n· 阅读方式更加丰富。\n新增 AZW、AZW3 及 Word 文档导入与阅读支持；新增替换净化功能，可为书籍设置文字替换规则，同时保留原文件。\n\n· 阅读记录更加有序。\n新增书籍笔记下载与导出，支持跨书查看高亮、划线、笔记和书签，让阅读中的思考便于整理与回顾。\n\n· 听书体验进一步升级。\n新增全屏听书页面，支持封面与字幕模式、章节切换及语音引擎调整；退出书籍后也可选择继续听书，并通过悬浮字幕查看朗读内容。\n\n· 书库管理更加便捷。\n新增桌面阅读小组件、书架自定义排序与书名作者批量补全；支持 OPDS 和 WebDAV 远程书库，方便浏览、搜索和导入书籍。\n\n· 阅读体验持续优化。\n新版本完善了横屏双页阅读、高亮选色、连续滚动选区及页面布局，同时对界面、动画、自定义字体和 WebDAV 同步反馈等进行了优化，并修复部分 EPUB 脚注与链接问题。\n\n· Premium 体验更新。\n新增 5 天试用，并完善激活帮助与设备管理。\n\n每一次更新，都源于对阅读体验的关注，也离不开大家的建议与支持。感谢每一位读者的陪伴与反馈，Lumi Books 将继续倾听真实需求，认真打磨产品细节，让阅读更加自在，让热爱持续生长。\n\n建议所有用户及时更新至 Lumi Books 2.3.11，在新版本中开启更好的阅读体验。\n\nLumi Books 开发者 敬上",
     "force_update_below_version_code": 0
   },
   "notice": {
@@ -36,5 +37,10 @@
       ]
     }
   ],
-  "blocked_opds_urls": []
+  "blocked_opds_urls": [],
+  "premium_pricing": {
+    "price_minor": 2500,
+    "original_price_minor": 3500,
+    "paypal_price_minor": 400
+  }
 }

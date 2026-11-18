@@ -8,6 +8,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.text.Layout
 import android.text.SpannableString
+import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.Spannable
 import android.text.Selection
@@ -61,7 +62,40 @@ class ReaderPunctuationLayoutTest {
         StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
             .setIncludePad(false).setBreakStrategy(alignment.readerBreakStrategy())
             .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
-            .setJustificationMode(alignment.readerJustificationMode()).build()
+            .build()
+
+    @Test fun naturalFillsOnlyTheGapCausedByPunctuationIncludingAtPageEnd() {
+        val prefix = "春風吹過山間樹林"
+        val marked = prefix + "鳥。後來人們走到了山腳下"
+        val plain = prefix + "鳥兒後來走到了山腳下"
+        for (font in fonts()) for (size in listOf(28f, 48f)) {
+            val paint = paint(font, size)
+            val text = applyReaderPunctuationCompression(applyReaderTextAlignment(marked, ReaderTextAlignment.NATURAL))
+            val prefixWidth = Layout.getDesiredWidth(text, 0, prefix.length, paint)
+            val width = ((prefixWidth + size * 0.7f).toInt()..(prefixWidth + size * 1.6f).toInt()).first { width ->
+                val layout = layout(text, paint, width)
+                layout.getLineEnd(0) == prefix.length && readerPunctuationGap(layout, text, 0, width - prefixWidth)
+            }
+
+            val whole = layout(text, paint, width)
+            val geometry = ReaderLineGeometry(whole, text, Layout.JUSTIFICATION_MODE_NONE)
+            assertEquals(width.toFloat(), geometry.lineRange(0)!!.right, 0.5f)
+            assertFalse(geometry.isLineStretched(whole.lineCount - 1))
+
+            val page = SpannableStringBuilder(text.subSequence(0, prefix.length))
+            page.setReaderLineContinuation(text.subSequence(prefix.length, text.length))
+            val pageLayout = layout(page, paint, width)
+            val pageGeometry = ReaderLineGeometry(pageLayout, page, Layout.JUSTIFICATION_MODE_NONE, true)
+            assertEquals(width.toFloat(), pageGeometry.lineRange(0)!!.right, 0.5f)
+            assertEquals(geometry.horizontalPosition(3)!!, pageGeometry.horizontalPosition(3)!!, 0.5f)
+
+            val unmarked = applyReaderTextAlignment(plain, ReaderTextAlignment.NATURAL)
+            val ordinary = layout(unmarked, paint, width)
+            assertFalse(ReaderLineGeometry(ordinary, unmarked, Layout.JUSTIFICATION_MODE_NONE).isLineStretched(0))
+            assertEquals(width.toFloat(), ReaderLineGeometry(ordinary, unmarked,
+                Layout.JUSTIFICATION_MODE_INTER_CHARACTER).lineRange(0)!!.right, 0.5f)
+        }
+    }
 
     @Test fun bothModesPreserveCharactersStylesAndPunctuationClasses() {
         val source = SpannableString(sample).apply {

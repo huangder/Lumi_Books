@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_update_download_channel">다운로드 경로 선택</string>
+    <string name="app_update_download_recommended">추천</string>
+    <string name="app_update_download_baidu">바이두 넷디스크</string>
+    <string name="app_update_download_lanzou">란쭤 클라우드</string>
+    <string name="app_update_download_code">코드 %1$s</string>
+</resources>

@@ -180,6 +180,18 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private val rotationTrace = com.huangder.lumibooks.ui.reader.ReaderRotationTrace("native-pagination")
     var orientationContentProvider: (suspend (Int, Int, Int) -> CharSequence?)? = null
     private var focusedSpreadAnchor: ReaderTextAnchor? = null
+    // Keep the original character through successive layout changes. Using each
+    // intermediate page's start would round backwards again on every rotation.
+    private var relayoutAnchor: ReaderTextAnchor? = null
+    private var relayoutAnchorPage: Pair<Int, Int>? = null
+    private var restoringRelayoutAnchor = false
+
+    private fun clearRelayoutAnchor() {
+        relayoutAnchor = null
+        relayoutAnchorPage = null
+        restoringRelayoutAnchor = false
+    }
+
     private val memoryCallbacks = object : android.content.ComponentCallbacks2 {
         override fun onConfigurationChanged(config: android.content.res.Configuration) = Unit
         override fun onLowMemory() { orientationPreparation.cancel(); layoutEngine.trimAlternate() }
@@ -669,6 +681,17 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
         // 翻页后刷新高亮
         slotManager.onPageChangedCallback = { globalPage, chapterIdx, pageInChapter, chapterTotal ->
+            val location = chapterIdx to pageInChapter
+            if (restoringRelayoutAnchor) {
+                if (slotManager.getCurSlot().isLoaded) {
+                    relayoutAnchorPage = location
+                    restoringRelayoutAnchor = false
+                }
+            } else if (relayoutAnchorPage != null && relayoutAnchorPage != location) {
+                // An actual page turn establishes a new reading position. Refreshes
+                // of the same page leave the layout-independent character intact.
+                clearRelayoutAnchor()
+            }
             focusedSpreadAnchor = null
             if (lineGuidePendingDirection != 0) {
                 lineGuideAnchor = null
@@ -746,6 +769,33 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 }
             }
 
+    private var savedNoteMarkerSource: List<Note>? = null
+    private val savedNoteMarkersByChapter = HashMap<Int, List<Triple<Int, Int, Int>>>()
+
+    /** 带笔记的标注在末字符上追加一个哨兵三元组，由 PageContentView 转成消息图标。 */
+    private fun savedNoteMarkersFor(chapterIndex: Int): List<Triple<Int, Int, Int>> {
+        val notes = savedNotes
+        if (savedNoteMarkerSource !== notes) {
+            savedNoteMarkersByChapter.clear()
+            savedNoteMarkerSource = notes
+        }
+        return savedNoteMarkersByChapter.getOrPut(chapterIndex) {
+            notes.filter { it.chapterIndex == chapterIndex && it.hasReaderNoteMarker() &&
+                it.endPosition > it.startPosition }
+                .map { Triple(it.startPosition, it.endPosition, PageContentView.NOTE_MARKER_SENTINEL) }
+        }
+    }
+
+    private fun noteTextForMarker(pageView: PageContentView, marker: ReaderNoteMarker): String? {
+        val slot = slotManager.getSlotForView(pageView) ?: return null
+        val chapterIndex = chapterIndexForSpreadView(slot, pageView)
+        val texts = marker.chapterEnds.flatMap { end ->
+            savedNotes.filter { it.chapterIndex == chapterIndex && it.endPosition == end && it.hasReaderNoteMarker() }
+                .map { it.note }
+        }
+        return joinReaderNoteTexts(texts).takeIf { it.isNotEmpty() }
+    }
+
     /** 构建某章的高亮列表（savedNotes → Triple(start, end, color)） */
     private fun buildHighlights(chapterIndex: Int): List<Triple<Int, Int, Int>> {
         val savedHighlights = savedHighlightsFor(chapterIndex)
@@ -767,6 +817,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             }
         return buildList {
             addAll(savedHighlights)
+            addAll(savedNoteMarkersFor(chapterIndex))
             if (transientHighlight != null) add(transientHighlight)
             if (ttsHighlight != null) add(ttsHighlight)
             if (ownedSelection != null) add(ownedSelection)
@@ -968,6 +1019,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     }
 
     fun setContentProvider(provider: suspend (Int) -> CharSequence?) {
+        clearRelayoutAnchor()
         slotManager.clearContentCache()
         val formattedProvider: suspend (Int) -> CharSequence? = { chapterIndex ->
             provider(chapterIndex)?.let { content ->
@@ -1087,7 +1139,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val curSlotForRelayout = slotManager.getCurSlot()
         val hasCurrentAnchor = curSlotForRelayout.chapterIndex >= 0
         val effectiveStartChapter = if (relayoutToCurrent && hasCurrentAnchor) {
-            focusedSpreadAnchor?.chapterIndex ?: curSlotForRelayout.chapterIndex
+            focusedSpreadAnchor?.chapterIndex ?: relayoutAnchor?.chapterIndex ?: curSlotForRelayout.chapterIndex
         } else {
             startChapter
         }
@@ -1243,10 +1295,16 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 sizeChanged || spreadModeChanged
             ) {
                 val curSlot = slotManager.getCurSlot()
-                if (curSlot.isLoaded) {
+                val visibleAnchor = if (curSlot.isLoaded) {
                     val primaryOffset = slotManager.getPrimaryContentView().chapterStartOffset
-                    slotManager.pendingStartCharOffset = focusedSpreadAnchor?.characterOffset
-                        ?: primaryOffset.takeIf { it >= 0 } ?: curSlot.contentView.chapterStartOffset
+                    (primaryOffset.takeIf { it >= 0 } ?: curSlot.contentView.chapterStartOffset)
+                        .takeIf { it >= 0 }?.let { ReaderTextAnchor(curSlot.chapterIndex, it) }
+                } else null
+                val anchor = focusedSpreadAnchor ?: relayoutAnchor ?: visibleAnchor
+                if (anchor != null) {
+                    relayoutAnchor = anchor
+                    restoringRelayoutAnchor = true
+                    slotManager.pendingStartCharOffset = anchor.characterOffset
                 }
             }
             // Metric changes were invalidated by configure/identity; a theme refresh
@@ -1279,6 +1337,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     fun forceRelayout() {
         if (!isConfigured) return
+        clearRelayoutAnchor()
         val current = slotManager.getCurSlot()
         if (current.isLoaded) {
             val primaryOffset = slotManager.getPrimaryContentView().chapterStartOffset
@@ -1305,6 +1364,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     }
 
     private fun jumpToChapterInternal(chapterIndex: Int, pageInChapter: Int) {
+        clearRelayoutAnchor()
         val generation = beginJumpSettling()
         clearCurlTurnIntent()
         animationController.abortAnim()
@@ -2226,11 +2286,18 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         val link = hitView.getLinkAt(x - hitView.left, y - hitView.top)
         val image = hitView.getImageAt(x - hitView.left, y - hitView.top)
         val annotation = annotationSelectionAt(x, y)
+        val noteMarkerText = hitView.noteMarkerAt(x - hitView.left, y - hitView.top)
+            ?.let { noteTextForMarker(hitView, it) }
         return tap@{
             // Deferred TTS single taps belong to the page and hit geometry at UP.
             if (getCurrentLocation() != location) return@tap
             if (dismissSelection || selectionMenuVisible || hasActiveTextSelection() || contentSelection != null) {
                 callbacks?.onSelectionMenuDismiss()
+                return@tap
+            }
+            if (noteMarkerText != null) {
+                clearCurrentSelection()
+                callbacks?.onNoteMarkerClick(noteMarkerText, x, y)
                 return@tap
             }
             if (annotation != null) {

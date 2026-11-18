@@ -146,7 +146,9 @@ versionName = 1.1.01
 
 - `versionCode < 6` 的用户打开 App 会看到更新弹窗。
 - 弹窗有“下载”和“稍后”。
-- 用户点“下载”会打开 `download_url`。
+- 支持渠道选择的 App 点“下载”会弹出下载渠道。GitHub 优先打开可选的 `github_apk_url`。未配置直链时打开 `download_url`。
+- 保留 `download_url` 为当前版本的 GitHub 发布页，旧版 App 仍使用它直接打开发布页。
+- 上传并核对当前 Release 的 `app-universal-release.apk` 后，将该附件的 GitHub HTTPS 下载链接填入 `github_apk_url`。例如 Dream 使用 `https://github.com/huangder/Lumi_Books/releases/download/Dream/app-universal-release.apk`。切换 Release 时同步更新两个链接。
 
 ## 6. 如何发布强制更新
 

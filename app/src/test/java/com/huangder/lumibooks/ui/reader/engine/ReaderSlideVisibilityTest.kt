@@ -16,6 +16,43 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
 class ReaderSlideVisibilityTest {
+    @Test fun waveSelectedBeforeLayoutRoutesLongPressToVisibleCurrentPage() {
+        val reader = ReadView(RuntimeEnvironment.getApplication())
+        reader.slotManager.backgroundPreparationEnabled = false
+        val bitmap = Bitmap.createBitmap(400, 800, Bitmap.Config.ARGB_8888)
+        val currentActions = mutableListOf<Int>()
+        val nextActions = mutableListOf<Int>()
+        try {
+            reader.curPageView.setPageContent("Current TXT page", 0, 16)
+            reader.nextPageView.setPageContent("Next TXT page", 0, 13)
+            reader.curPageView.textView.setOnTouchListener { _, event ->
+                currentActions += event.actionMasked
+                true
+            }
+            reader.nextPageView.textView.setOnTouchListener { _, event ->
+                nextActions += event.actionMasked
+                true
+            }
+            // AndroidView can apply the saved animation before the first layout.
+            reader.setPageTransition("wave")
+            reader.measure(View.MeasureSpec.makeMeasureSpec(400, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(800, View.MeasureSpec.EXACTLY))
+            reader.layout(0, 0, 400, 800)
+            reader.draw(Canvas(bitmap))
+            for ((action, time) in listOf(MotionEvent.ACTION_DOWN to 100L,
+                MotionEvent.ACTION_UP to 700L)) {
+                val event = MotionEvent.obtain(100L, time, action, 200f, 400f, 0)
+                try { assertTrue(reader.dispatchTouchEvent(event)) } finally { event.recycle() }
+            }
+            assertTrue("the invisible preload must not receive the long press: $nextActions", nextActions.isEmpty())
+            assertEquals(listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP), currentActions)
+        } finally {
+            reader.animationController.abortAnim()
+            reader.slotManager.destroy()
+            bitmap.recycle()
+        }
+    }
+
     @Test fun pressDuringFadeDoesNotReachOverlappingPageText() {
         val reader = ReadView(RuntimeEnvironment.getApplication())
         reader.slotManager.backgroundPreparationEnabled = false

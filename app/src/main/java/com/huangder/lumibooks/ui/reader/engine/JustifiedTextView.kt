@@ -314,7 +314,6 @@ class JustifiedTextView @JvmOverloads constructor(
             .setIncludePad(false)
             .setBreakStrategy(readerBreakStrategy)
             .setHyphenationFrequency(com.huangder.lumibooks.ui.reader.readerHyphenationFrequency(spannable ?: ""))
-            .setJustificationMode(readerJustificationMode)
             .build()
     }
 
@@ -455,7 +454,19 @@ class JustifiedTextView @JvmOverloads constructor(
 
         readerTextPainter.draw(canvas, sl, s, geometry)
 
+        noteMarkers = ReaderNoteMarkers.collect(sl, s, geometry)
+        noteMarkers.forEach { ReaderNoteMarkers.draw(canvas, it.rect, textPaint.color) }
+
         canvas.restoreToCount(saveCount)
+    }
+
+    /** 最近一次绘制的笔记图标（Layout 坐标）。 */
+    private var noteMarkers: List<ReaderNoteMarker> = emptyList()
+
+    /** [x]/[y] 为本 View 内坐标。 */
+    internal fun noteMarkerAt(x: Float, y: Float, minTouchPx: Float): ReaderNoteMarker? {
+        if (noteMarkers.isEmpty()) return null
+        return ReaderNoteMarkers.hit(noteMarkers, x - paddingLeft, y - paddingTop - translationY, minTouchPx)
     }
 
     /**

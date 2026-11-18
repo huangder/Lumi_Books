@@ -114,8 +114,41 @@ internal class VerticalTextView(context: Context) : View(context) {
             }
         }
         drawVerticalUnderlines(canvas, spannable, page)
+        noteMarkers = collectNoteMarkers(spannable, page)
+        noteMarkers.forEach { ReaderNoteMarkers.draw(canvas, it.rect, defaultTextColor) }
         drawSelection(canvas, spannable, page)
         canvas.restoreToCount(save)
+    }
+
+    private var noteMarkers: List<ReaderNoteMarker> = emptyList()
+
+    /** 竖排：图标放在笔记末字所在列的列底下方，同一列只画一个。 */
+    private fun collectNoteMarkers(spannable: Spannable, page: VerticalPageGeometry): List<ReaderNoteMarker> {
+        val spans = spannable.getSpans(0, spannable.length, ReaderNoteMarkerSpan::class.java)
+        if (spans.isEmpty()) return emptyList()
+        val byColumn = sortedMapOf<Int, MutableList<Pair<ReaderNoteMarkerSpan, VerticalGlyphLayout>>>()
+        spans.sortedBy { spannable.getSpanEnd(it) }.forEach { span ->
+            val chapterLast = chapterStartOffset + spannable.getSpanEnd(span) - 1
+            val glyph = page.glyphs.firstOrNull { chapterLast >= it.startOffset && chapterLast < it.endOffset }
+                ?: return@forEach
+            byColumn.getOrPut(glyph.columnIndex) { mutableListOf() }.add(span to glyph)
+        }
+        return byColumn.map { (column, entries) ->
+            val columnBottom = page.glyphs.filter { it.columnIndex == column }.maxOf { it.bounds.bottom }
+            val glyph = entries.last().second
+            ReaderNoteMarker(
+                line = column,
+                rect = ReaderNoteMarkers.verticalRect(glyph.bounds.centerX, columnBottom, defaultTextSize),
+                texts = entries.map { it.first.text },
+                chapterEnds = entries.map { it.first.chapterEnd }
+            )
+        }
+    }
+
+    /** [x]/[y] 为本 View 内坐标。 */
+    internal fun noteMarkerAt(x: Float, y: Float, minTouchPx: Float): ReaderNoteMarker? {
+        if (noteMarkers.isEmpty()) return null
+        return ReaderNoteMarkers.hit(noteMarkers, x - paddingLeft, y - paddingTop - translationY, minTouchPx)
     }
 
     private fun drawGlyph(canvas: Canvas, spannable: Spannable, glyph: VerticalGlyphLayout) {

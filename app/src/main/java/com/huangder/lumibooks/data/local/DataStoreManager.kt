@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.data.local
 
 import com.huangder.lumibooks.replacement.BookReplacementRules
+import com.huangder.lumibooks.replacement.SharedReplacementRules
 
 import com.huangder.lumibooks.domain.model.AppFontSize
 import com.huangder.lumibooks.domain.model.LongPressSelectionRange
@@ -262,21 +263,19 @@ class DataStoreManager @Inject constructor(
     }
 
     internal fun replacementRules(bookId: String): Flow<BookReplacementRules> =
-        context.dataStore.data.map { BookReplacementRules.decode(it[replacementRulesKey(bookId)]) }
+        context.dataStore.data
+            .onStart { context.dataStore.edit { SharedReplacementRules.migrate(it) } }
+            .map { SharedReplacementRules.read(it, bookId) }
             .distinctUntilChanged()
 
     internal suspend fun updateReplacementRules(
         bookId: String,
         transform: (BookReplacementRules) -> BookReplacementRules
     ) {
-        val key = replacementRulesKey(bookId)
         context.dataStore.edit { preferences ->
-            val next = transform(BookReplacementRules.decode(preferences[key]))
-            if (next == BookReplacementRules()) preferences.remove(key) else preferences[key] = next.encode()
+            SharedReplacementRules.update(preferences, bookId, transform)
         }
     }
-
-    private fun replacementRulesKey(bookId: String) = stringPreferencesKey("local_replacement_rules_$bookId")
 
     fun bookReview(bookId: String): Flow<String> = context.dataStore.data.map { preferences ->
         preferences[stringPreferencesKey("book_review_$bookId")].orEmpty()
@@ -385,6 +384,7 @@ class DataStoreManager @Inject constructor(
         private val TEXT_ALIGNMENT = stringPreferencesKey("text_alignment")
         private val FONT_TYPE = stringPreferencesKey("font_type")
         private val READER_THEME = stringPreferencesKey("reader_theme")
+        private val DEFAULT_RENDER_MODE = stringPreferencesKey("default_render_mode")
         private val MARGIN_HORIZ = floatPreferencesKey("margin_horiz")
         private val MARGIN_VERT = floatPreferencesKey("margin_vert")
         private val MARGIN_LEFT = floatPreferencesKey("margin_left")
@@ -606,17 +606,13 @@ class DataStoreManager @Inject constructor(
                 )
             )
             val selectionItems = preferences.selectionMenuSettings()
-            val modeKey = stringPreferencesKey("epub_render_mode_$bookId")
             val themeSuiteBookScopedKey = booleanPreferencesKey("reader_theme_suite_book_scoped_$bookId")
             val themeSuiteBookActiveKey = stringPreferencesKey("reader_theme_suite_book_active_$bookId")
             val themeSuiteBookActiveBookLayoutKey =
                 stringPreferencesKey("reader_theme_suite_book_active_book_layout_$bookId")
             val optimizeKey = booleanPreferencesKey("optimize_layout_$bookId")
             val cssKey = booleanPreferencesKey("use_epub_css_$bookId")
-            val resolvedRenderMode = EpubRenderMode.fromStorage(preferences[modeKey]) ?: when {
-                preferences[cssKey] == true || preferences[optimizeKey] == false -> EpubRenderMode.BOOK_LAYOUT
-                else -> EpubRenderMode.READER_LAYOUT
-            }
+            val resolvedRenderMode = resolveRenderMode(preferences, bookId)
             fun cornerContent(corner: ReaderPageCorner): ReaderCornerContent {
                 val stored = preferences[readerCornerKey(corner)]
                 return if (stored == null) defaultReaderCornerContent(corner)
@@ -2466,31 +2462,41 @@ class DataStoreManager @Inject constructor(
         }
     }
 
-    /** 每本书的"优化排版"开关（per-book），默认 true */
-    fun renderMode(bookId: String): Flow<EpubRenderMode> {
+    val defaultRenderMode: Flow<EpubRenderMode> = context.dataStore.data.map { preferences ->
+        EpubRenderMode.fromStorage(preferences[DEFAULT_RENDER_MODE]) ?: EpubRenderMode.READER_LAYOUT
+    }.distinctUntilChanged()
+
+    suspend fun saveDefaultRenderMode(mode: EpubRenderMode) {
+        context.dataStore.edit { it[DEFAULT_RENDER_MODE] = mode.storageValue }
+    }
+
+    /** 单本书选择（含旧版设置）优先，未设置时使用全局默认排版。 */
+    private fun resolveRenderMode(
+        preferences: Preferences,
+        bookId: String,
+        fallback: EpubRenderMode = EpubRenderMode.READER_LAYOUT
+    ): EpubRenderMode {
         val modeKey = stringPreferencesKey("epub_render_mode_$bookId")
         val optimizeKey = booleanPreferencesKey("optimize_layout_$bookId")
         val cssKey = booleanPreferencesKey("use_epub_css_$bookId")
+        return EpubRenderMode.fromStorage(preferences[modeKey]) ?: when {
+            preferences[cssKey] == true || preferences[optimizeKey] == false -> EpubRenderMode.BOOK_LAYOUT
+            preferences.contains(optimizeKey) || preferences.contains(cssKey) -> EpubRenderMode.READER_LAYOUT
+            else -> EpubRenderMode.fromStorage(preferences[DEFAULT_RENDER_MODE]) ?: fallback
+        }
+    }
+
+    fun renderMode(bookId: String): Flow<EpubRenderMode> {
         return context.dataStore.data.map { preferences ->
-            EpubRenderMode.fromStorage(preferences[modeKey]) ?: when {
-                preferences[cssKey] == true || preferences[optimizeKey] == false -> EpubRenderMode.BOOK_LAYOUT
-                preferences.contains(optimizeKey) || preferences.contains(cssKey) -> EpubRenderMode.READER_LAYOUT
-                else -> EpubRenderMode.READER_LAYOUT
-            }
+            resolveRenderMode(preferences, bookId)
         }
     }
 
     suspend fun migrateRenderMode(bookId: String): EpubRenderMode {
         val modeKey = stringPreferencesKey("epub_render_mode_$bookId")
-        val optimizeKey = booleanPreferencesKey("optimize_layout_$bookId")
-        val cssKey = booleanPreferencesKey("use_epub_css_$bookId")
         var resolved = EpubRenderMode.READER_LAYOUT
         context.dataStore.edit { preferences ->
-            resolved = EpubRenderMode.fromStorage(preferences[modeKey]) ?: when {
-                preferences[cssKey] == true || preferences[optimizeKey] == false -> EpubRenderMode.BOOK_LAYOUT
-                preferences.contains(optimizeKey) || preferences.contains(cssKey) -> EpubRenderMode.READER_LAYOUT
-                else -> EpubRenderMode.READER_LAYOUT
-            }
+            resolved = resolveRenderMode(preferences, bookId)
             preferences[modeKey] = resolved.storageValue
         }
         return resolved
@@ -2506,10 +2512,15 @@ class DataStoreManager @Inject constructor(
     }
 
     /** Formats with tables and embedded media can default to WebView while retaining explicit choices. */
-    suspend fun initializeBookLayoutMode(bookId: String) {
+    suspend fun initializeBookLayoutMode(bookId: String, useDefaultRenderMode: Boolean = true) {
         val key = stringPreferencesKey("epub_render_mode_$bookId")
         context.dataStore.edit { preferences ->
-            if (!preferences.contains(key)) preferences[key] = EpubRenderMode.BOOK_LAYOUT.storageValue
+            if (!preferences.contains(key)) {
+                val mode = if (useDefaultRenderMode) {
+                    resolveRenderMode(preferences, bookId, EpubRenderMode.BOOK_LAYOUT)
+                } else EpubRenderMode.BOOK_LAYOUT
+                preferences[key] = mode.storageValue
+            }
         }
     }
 
@@ -3657,6 +3668,7 @@ class DataStoreManager @Inject constructor(
 
     private fun isPortablePreferenceKey(key: String): Boolean {
         if (key.startsWith("local_replacement_rules_")) return false
+        if (key.startsWith(SharedReplacementRules.LOCAL_KEY_PREFIX)) return false
         // Action ordering belongs to this installation, not to another device's progress.
         if (key.startsWith("local_book_position_use_")) return false
         if (key == PORTABLE_PREFERENCE_METADATA.name) return false

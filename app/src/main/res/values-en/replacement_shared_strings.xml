@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="replacement_shared_hint">Rules are shared by all books. Each book keeps its own switches and order. New books and rules start off; enable this book and the rules you need.</string>
+    <string name="replacement_shared_edit_hint">Editing this shared rule affects every book that uses it. Activation and execution order apply only to this book.</string>
+    <string name="replacement_shared_delete">This removes the rule from the shared library for every book. To stop using it only in this book, turn its switch off instead.</string>
+</resources>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_update_download_channel">Choose a download source</string>
+    <string name="app_update_download_recommended">Recommended</string>
+    <string name="app_update_download_baidu">Baidu Netdisk</string>
+    <string name="app_update_download_lanzou">Lanzou Cloud</string>
+    <string name="app_update_download_code">Code %1$s</string>
+</resources>

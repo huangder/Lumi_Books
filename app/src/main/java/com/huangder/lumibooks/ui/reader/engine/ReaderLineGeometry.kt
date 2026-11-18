@@ -5,7 +5,6 @@ import android.text.Layout
 import android.text.Spanned
 import com.huangder.lumibooks.ui.reader.usesReaderEnglishHyphenation
 import android.text.style.LeadingMarginSpan
-import com.huangder.lumibooks.ui.reader.ReaderChapterTitleSpan
 import kotlin.math.abs
 
 /**
@@ -96,6 +95,10 @@ internal class ReaderLineGeometry(
         return readerLineOffsets(layout, spanned, line, start, end, justificationMode,
             forceLastLineJustification).also { compressedCache[line] = it }
     }
+
+    internal fun isLineStretched(line: Int): Boolean = runCatching {
+        compressedOffsets(line)?.stretched ?: lineMetrics(line).justified
+    }.getOrDefault(false)
 
     fun horizontalRange(line: Int, start: Int, end: Int): HorizontalRange? {
         if (line !in 0 until layout.lineCount || start >= end) return null
@@ -323,39 +326,27 @@ internal class ReaderLineGeometry(
         val nativeHorizontalSpan = abs(
             (nativeEndForSpan ?: (baseStart + measuredNativeLineWidth)) - baseStart
         ).takeIf { it.isFinite() && it > 0.01f } ?: measuredNativeLineWidth
-        val ownUnitCount = countUnits(lineStart, contentEnd, advances)
-        val unitCount = if (justificationMode == Layout.JUSTIFICATION_MODE_INTER_CHARACTER) {
+        val targetEnd = if (isLtr) paragraphRight else paragraphLeft
+        val targetWidth = if (isLtr) targetEnd - baseStart else baseStart - targetEnd
+        val canStretch = isLtr && contentEnd > lineStart &&
+            readerLineCanStretch(layout, text, line, forceLastLineJustification)
+        val mode = if (canStretch && justificationMode == Layout.JUSTIFICATION_MODE_NONE &&
+            readerPunctuationGap(layout, text, line, targetWidth - nativeHorizontalSpan)) {
+            Layout.JUSTIFICATION_MODE_INTER_CHARACTER
+        } else justificationMode
+        val canJustify = canStretch && mode != Layout.JUSTIFICATION_MODE_NONE
+        val ownUnitCount = countUnits(lineStart, contentEnd, advances, mode)
+        val unitCount = if (mode == Layout.JUSTIFICATION_MODE_INTER_CHARACTER) {
             lineLetterSpacingUnitCount(line, ownUnitCount)
         } else {
             ownUnitCount
         }
-        val denominator = when (justificationMode) {
+        val denominator = when (mode) {
             Layout.JUSTIFICATION_MODE_INTER_CHARACTER -> (unitCount - 1).coerceAtLeast(0)
             Layout.JUSTIFICATION_MODE_INTER_WORD -> unitCount
             else -> 0
         }
 
-        val endsWithParagraphBreak = readerLineEndsParagraph(text, lineStart, rawLineEnd)
-        // Only continuation lines may be stretched. forceLastLineJustification
-        // covers the page's final line when the paragraph keeps flowing on the
-        // next page; it must not bypass the paragraph-break guard for the rest of
-        // the page, or every paragraph-final line here would be stretched.
-        // 章首标题段落固定左对齐：标题行即使被分页切在段落中间也不拉伸。
-        val canJustify = !isChapterTitleLine(lineStart) &&
-            isLtr && justificationMode != Layout.JUSTIFICATION_MODE_NONE &&
-            contentEnd > lineStart &&
-            shouldJustifyReaderLine(
-                lineIndex = line,
-                lineCount = layout.lineCount,
-                endsWithParagraphBreak = endsWithParagraphBreak,
-                pageEndsMidParagraph = forceLastLineJustification
-            )
-
-        // ParagraphRight includes the available line width after alignment and
-        // leading margins. For RTL the reader currently does not justify, but
-        // retaining the native direction keeps this helper safe for mixed text.
-        val targetEnd = if (isLtr) paragraphRight else paragraphLeft
-        val targetWidth = if (isLtr) targetEnd - baseStart else baseStart - targetEnd
         // Some OEMs expose already-expanded character bounds while their
         // cursor helpers remain native. Treat a bounds span that reaches the
         // paragraph edge as the effective native width to avoid double spacing.
@@ -364,7 +355,8 @@ internal class ReaderLineGeometry(
         // measurably beyond the native caret span; a percentage-sized tolerance
         // hides the small but cumulative ColorOS expansion on long lines.
         val boundsTolerance = maxOf(2f, layout.paint.textSize * 0.02f)
-        val boundsAreExpanded = targetWidth > 0f && measurement.boundsWidth?.let { width ->
+        val boundsAreExpanded = canJustify && justificationMode != Layout.JUSTIFICATION_MODE_NONE &&
+            targetWidth > 0f && measurement.boundsWidth?.let { width ->
             // fillCharacterBounds() reports glyph ink bounds. A steadily
             // changing side-bearing delta is not sufficient evidence that the
             // vendor included justification: line-boundary carets and mixed
@@ -403,7 +395,7 @@ internal class ReaderLineGeometry(
             contentEnd = contentEnd,
             baseStart = baseStart,
             advances = advances,
-            stretchUnitsBefore = buildStretchUnitsBefore(lineStart, rawLineEnd, contentEnd, advances),
+            stretchUnitsBefore = buildStretchUnitsBefore(lineStart, rawLineEnd, contentEnd, advances, mode),
             unitCount = unitCount.coerceAtLeast(0),
             denominator = denominator,
             extraPerUnit = extraPerUnit,
@@ -652,8 +644,8 @@ internal class ReaderLineGeometry(
         return HorizontalRange(left, finalRight)
     }
 
-    private fun countUnits(start: Int, end: Int, advances: FloatArray): Int {
-        if (justificationMode == Layout.JUSTIFICATION_MODE_NONE) return 0
+    private fun countUnits(start: Int, end: Int, advances: FloatArray, mode: Int): Int {
+        if (mode == Layout.JUSTIFICATION_MODE_NONE) return 0
         var count = 0
         var index = start
         while (index < end) {
@@ -666,7 +658,7 @@ internal class ReaderLineGeometry(
             val isCombining = type == Character.NON_SPACING_MARK.toInt() ||
                 type == Character.COMBINING_SPACING_MARK.toInt() ||
                 type == Character.ENCLOSING_MARK.toInt()
-            val unit = when (justificationMode) {
+            val unit = when (mode) {
                 Layout.JUSTIFICATION_MODE_INTER_WORD -> text[index] == ' '
                 Layout.JUSTIFICATION_MODE_INTER_CHARACTER -> visible && hasAdvance && !isCombining
                 else -> false
@@ -681,7 +673,8 @@ internal class ReaderLineGeometry(
         start: Int,
         end: Int,
         contentEnd: Int,
-        advances: FloatArray
+        advances: FloatArray,
+        mode: Int
     ): IntArray {
         val result = IntArray((end - start).coerceAtLeast(0) + 1)
         var index = start
@@ -695,7 +688,7 @@ internal class ReaderLineGeometry(
             val isCombining = type == Character.NON_SPACING_MARK.toInt() ||
                 type == Character.COMBINING_SPACING_MARK.toInt() ||
                 type == Character.ENCLOSING_MARK.toInt()
-            val unit = when (justificationMode) {
+            val unit = when (mode) {
                 Layout.JUSTIFICATION_MODE_INTER_WORD -> index < contentEnd && text[index] == ' '
                 Layout.JUSTIFICATION_MODE_INTER_CHARACTER -> visible && hasAdvance && !isCombining
                 else -> false
@@ -776,12 +769,4 @@ internal class ReaderLineGeometry(
         ).sumOf { it.getLeadingMargin(firstLine).toDouble() }.toFloat()
     }
 
-    /** 该行首字符是否落在章首标题段落里（标题段落一律不参与两端对齐拉伸）。 */
-    private fun isChapterTitleLine(lineStart: Int): Boolean {
-        val spanned = text as? Spanned ?: return false
-        val start = lineStart.coerceIn(0, text.length)
-        val end = (start + 1).coerceAtMost(text.length)
-        if (start >= end) return false
-        return spanned.getSpans(start, end, ReaderChapterTitleSpan::class.java).isNotEmpty()
-    }
 }

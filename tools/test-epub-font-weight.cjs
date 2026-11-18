@@ -8,7 +8,11 @@ const { spawnSync } = require('node:child_process');
 const root = join(__dirname, '..');
 const source = readFileSync(join(root, 'app/src/main/java/com/huangder/lumibooks/util/epub/EpubDocumentTransformer.kt'), 'utf8');
 const css = source.match(/private const val READER_CSS = """([\s\S]*?)"""/)[1];
-const script = [...source.matchAll(/private const val READER_SCRIPT_PART_\w+ = """([\s\S]*?)"""/g)].map(m => m[1]).join('');
+const alignmentSource = readFileSync(join(root,
+  'app/src/main/java/com/huangder/lumibooks/util/epub/EpubReaderAlignment.kt'), 'utf8');
+const alignment = alignmentSource.match(/internal const val EPUB_READER_ALIGNMENT_SCRIPT = """([\s\S]*?)"""/)[1];
+const script = [...source.matchAll(/private const val (READER_SCRIPT_PART_\w+) = """([\s\S]*?)"""/g)]
+  .map(m => m[2] + (m[1] === 'READER_SCRIPT_PART_1' ? alignment : '')).join('');
 
 async function verify(fonts) {
   let checks = 0;

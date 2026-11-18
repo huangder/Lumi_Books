@@ -1,8 +1,8 @@
 package com.huangder.lumibooks.ui.components
 
-import com.huangder.lumibooks.ui.components.AppDialogAction
-import com.huangder.lumibooks.ui.components.AppDialogActionRole
-
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -15,7 +15,12 @@ import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -28,14 +33,36 @@ import com.huangder.lumibooks.ui.theme.LocalAppTheme
 @Composable
 fun AppUpdateDialog(
     appVersion: String,
+    downloadUrl: String,
     updateTitle: String = "",
     updateMessage: String = "",
     changelog: String = "",
     force: Boolean = false,
-    onDownload: () -> Unit,
+    onDownloadStarted: () -> Unit,
     onLater: () -> Unit,
     onIgnoreVersion: (() -> Unit)? = null
 ) {
+    val context = LocalContext.current
+    var choosingChannel by rememberSaveable(appVersion, downloadUrl) { mutableStateOf(false) }
+    if (choosingChannel) {
+        UpdateDownloadSheet(
+            githubUrl = downloadUrl,
+            onDismiss = { choosingChannel = false },
+            onOpenChannel = { url ->
+                val opened = url.isNotBlank() && runCatching {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                }.isSuccess
+                if (opened) {
+                    choosingChannel = false
+                    onDownloadStarted()
+                } else {
+                    Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
+                }
+            }
+        )
+        return
+    }
+
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val displayMessage = updateMessage.ifBlank {
         if (force) {
@@ -86,7 +113,7 @@ fun AppUpdateDialog(
         actions = buildList {
             add(AppDialogAction(
                 text = stringResource(if (force) R.string.app_update_download_new_version else R.string.app_update_download),
-                onClick = onDownload
+                onClick = { choosingChannel = true }
             ))
             if (!force) {
                 onIgnoreVersion?.let { ignore ->

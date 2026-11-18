@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.reader
 
 import android.app.Application
+import androidx.test.core.app.ApplicationProvider
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
@@ -22,10 +23,12 @@ import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
@@ -34,6 +37,23 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ReplacementRulesSheetSaveTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun helpLaunchKeepsTheUnsavedDraft() {
+        val rule = ReplacementRule("rename", find = "小明", replacement = "阿明")
+        val settings = mount(BookReplacementRules(rules = listOf(rule)))
+        compose.onNodeWithContentDescription("普通, 将 小明 替换为 阿明").performClick()
+        compose.onNode(hasSetTextAction() and hasText("小明")).performTextReplacement("小红")
+        compose.onNodeWithContentDescription("正则替换使用指南").performTouchInput { click() }
+
+        compose.runOnIdle {
+            val intent = shadowOf(ApplicationProvider.getApplicationContext<Application>()).nextStartedActivity
+            assertEquals(ReplacementRuleHelpActivity::class.java.name, intent.component!!.className)
+            assertEquals(listOf(rule), settings.value.rules)
+        }
+        compose.onNode(hasSetTextAction() and hasText("小红")).assertIsDisplayed()
+        compose.onNodeWithContentDescription("确定").performTouchInput { click() }
+        compose.runOnIdle { assertEquals("小红", settings.value.rules.single().find) }
+    }
 
     @Test fun confirmSavesAnEditedRuleAfterFindBecomesValidAgain() {
         val rule = ReplacementRule("rename", find = "小明", replacement = "阿明")
@@ -60,7 +80,20 @@ class ReplacementRulesSheetSaveTest {
         confirm.assertIsEnabled().performTouchInput { click() }
 
         compose.onNodeWithText("添加规则", substring = true).assertIsDisplayed()
-        compose.runOnIdle { assertEquals("广告", settings.value.rules.single().find) }
+        compose.runOnIdle {
+            assertEquals("广告", settings.value.rules.single().find)
+            assertFalse(settings.value.enabled)
+            assertFalse(settings.value.rules.single().enabled)
+        }
+    }
+
+    @Test fun untouchedDisabledNewRuleCanBeClosedWithoutDiscardPrompt() {
+        val settings = mount(BookReplacementRules())
+        compose.onNodeWithText("添加规则", substring = true).performClick()
+        compose.onNodeWithContentDescription("返回").performTouchInput { click() }
+        compose.onNodeWithText("添加规则", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("放弃未保存的修改？").assertDoesNotExist()
+        compose.runOnIdle { assertEquals(BookReplacementRules(), settings.value) }
     }
 
     @Test fun backAsksBeforeDiscardingAnEdit() {

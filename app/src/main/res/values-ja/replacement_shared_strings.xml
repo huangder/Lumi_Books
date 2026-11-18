@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="replacement_shared_hint">ルールは全書籍で共有されます。有効状態と順序は書籍ごとに設定します。新しい書籍とルールは既定でオフです。書籍と必要なルールをオンにしてください。</string>
+    <string name="replacement_shared_edit_hint">共有ルールの内容を変更すると、使用中のすべての書籍に反映されます。有効状態と実行順序はこの書籍だけに適用されます。</string>
+    <string name="replacement_shared_delete">共有ルールを削除すると、すべての書籍で使用できなくなります。この書籍だけで停止する場合は、ルールのスイッチをオフにしてください。</string>
+</resources>

@@ -17,24 +17,20 @@ import com.huangder.lumibooks.util.parser.normalizeHeadingText
  */
 internal class ReaderChapterTitleSpan
 
-internal fun ReaderTextAlignment.usesFullLineJustification(): Boolean =
-    this == ReaderTextAlignment.NATURAL || this == ReaderTextAlignment.JUSTIFY
+internal class ReaderNaturalAlignmentSpan
 
+internal fun ReaderTextAlignment.usesFullLineJustification(): Boolean =
+    this == ReaderTextAlignment.JUSTIFY
+
+@Suppress("UNUSED_PARAMETER") // The custom painter supports character spacing on every SDK.
 internal fun ReaderTextAlignment.readerJustificationMode(
     sdkInt: Int = Build.VERSION.SDK_INT
 ): Int = when {
     !usesFullLineJustification() -> Layout.JUSTIFICATION_MODE_NONE
-    sdkInt >= Build.VERSION_CODES.VANILLA_ICE_CREAM ->
-        Layout.JUSTIFICATION_MODE_INTER_CHARACTER
-    else -> Layout.JUSTIFICATION_MODE_INTER_WORD
+    else -> Layout.JUSTIFICATION_MODE_INTER_CHARACTER
 }
 
-internal fun ReaderTextAlignment.readerBreakStrategy(): Int =
-    if (usesFullLineJustification()) {
-        Layout.BREAK_STRATEGY_HIGH_QUALITY
-    } else {
-        Layout.BREAK_STRATEGY_SIMPLE
-    }
+internal fun ReaderTextAlignment.readerBreakStrategy(): Int = Layout.BREAK_STRATEGY_SIMPLE
 
 /**
  * 本章开头第一个标题段落的结束偏移（含段落换行）；本章没有可识别的标题时返回 0。
@@ -64,7 +60,11 @@ internal fun chapterTitleParagraphEnd(text: CharSequence, chapterTitle: String?)
                 )
             // 第一个有文字的段落决定本章有没有标题；不是标题就保持正文原样。
             if (!isTitle) return 0
-            return if (breakIndex < 0) spanned.length else breakIndex + 1
+            return when {
+                breakIndex < 0 -> spanned.length
+                spanned[breakIndex] == '\r' && spanned.getOrNull(breakIndex + 1) == '\n' -> breakIndex + 2
+                else -> breakIndex + 1
+            }
         }
         // 开头没有可见文字的段落（HTML 常见的占位空行、封面页的纯图片段）跳过，
         // 继续找后面真正作为标题的段落。
@@ -85,12 +85,7 @@ private fun indexOfParagraphBreak(text: CharSequence, start: Int): Int {
 private fun isParagraphFiller(ch: Char): Boolean = ch.isWhitespace() || ch == '\uFFFC'
 
 /**
- * 正文按用户设置对齐，章首标题段落固定按起始边对齐。
- *
- * 标题段落单独挂一个 AlignmentSpan，正文的 AlignmentSpan 从标题段落之后开始，
- * 每个段落只落一个 span，结果不依赖框架对重叠 span 的取舍规则。
- *
- * [titleParagraphEnd] 为 0 表示本章没有识别出标题，行为与旧版一致。
+ * 保留章首标题的原书对齐，只在后续正文覆盖用户指定的对齐方式。
  */
 internal fun applyReaderTextAlignment(
     text: CharSequence,
@@ -104,20 +99,30 @@ internal fun applyReaderTextAlignment(
         ReaderTextAlignment.NATURAL,
         ReaderTextAlignment.JUSTIFY -> null
     }
-    // NATURAL 保留出版社自己的段落对齐；其余模式按用户设置覆盖。
-    val overridesPublisherAlignment = alignment != ReaderTextAlignment.NATURAL
-    // 没有标题、又不需要改段落对齐时原样返回，避免复制大章节（EPUB 单章可能 400K+）。
-    if (!overridesPublisherAlignment) return text
-
+    if (text.isEmpty()) return text
     val result = SpannableStringBuilder(text)
-    if (overridesPublisherAlignment) {
-        result.getSpans(0, result.length, AlignmentSpan::class.java).forEach(result::removeSpan)
+    result.getSpans(0, result.length, ReaderChapterTitleSpan::class.java).forEach(result::removeSpan)
+    result.getSpans(0, result.length, ReaderNaturalAlignmentSpan::class.java).forEach(result::removeSpan)
+    val bodyStart = titleParagraphEnd.coerceIn(0, result.length)
+    if (bodyStart > 0) {
+        result.setSpan(ReaderChapterTitleSpan(), 0, bodyStart, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
+    if (bodyStart == result.length) return result
+    if (alignment == ReaderTextAlignment.NATURAL) {
+        result.setSpan(ReaderNaturalAlignmentSpan(), bodyStart, result.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        return result
     }
 
+    result.getSpans(bodyStart, result.length, AlignmentSpan::class.java).forEach { span ->
+        val start = result.getSpanStart(span)
+        val flags = result.getSpanFlags(span)
+        result.removeSpan(span)
+        if (start < bodyStart) result.setSpan(span, start, bodyStart, flags)
+    }
     if (layoutAlignment != null) {
         result.setSpan(
             AlignmentSpan.Standard(layoutAlignment),
-            0,
+            bodyStart,
             result.length,
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
         )

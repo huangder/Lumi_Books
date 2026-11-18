@@ -1,9 +1,15 @@
 package com.huangder.lumibooks.ui.layout
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.isSpecified
 import kotlin.math.roundToInt
 
@@ -58,12 +64,24 @@ private fun sizeTier(valueDp: Int, mediumDp: Int, expandedDp: Int): WindowSizeTi
     else -> WindowSizeTier.COMPACT
 }
 
+private val LocalMeasuredWindowSize = staticCompositionLocalOf<DpSize?> { null }
+
+/** The measured app frame stays authoritative when OEM window metrics lag after rotation. */
+@Composable
+internal fun AdaptiveWindowLayout(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+    BoxWithConstraints(modifier) {
+        CompositionLocalProvider(LocalMeasuredWindowSize provides DpSize(maxWidth, maxHeight)) {
+            content()
+        }
+    }
+}
+
 @Composable
 internal fun currentAdaptiveWindowInfo(): AdaptiveWindowInfo {
     val configuration = LocalConfiguration.current
-    // WindowInfo observes the live host window, independently of resource locale
-    // overrides. Configuration dimensions can lag behind rotation on OEM devices.
-    val windowSize = LocalWindowInfo.current.containerDpSize
+    // Prefer the actual app constraints: both resource dimensions and WindowInfo
+    // can retain the previous orientation on OEM devices after the view has resized.
+    val windowSize = LocalMeasuredWindowSize.current ?: LocalWindowInfo.current.containerDpSize
     val widthDp = if (windowSize.isSpecified && windowSize.width.value > 0f) {
         windowSize.width.value.roundToInt()
     } else configuration.screenWidthDp

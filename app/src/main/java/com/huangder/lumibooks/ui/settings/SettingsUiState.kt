@@ -65,6 +65,8 @@ data class SettingsUiState(
     val nickname: String = "",
 
     // 阅读设置
+    val defaultRenderMode: com.huangder.lumibooks.util.epub.EpubRenderMode =
+        com.huangder.lumibooks.util.epub.EpubRenderMode.READER_LAYOUT,
     val selectionMenuItems: SelectionMenuSettings = SelectionMenuSettings(),
     val longPressSelectionRange: com.huangder.lumibooks.domain.model.LongPressSelectionRange =
         com.huangder.lumibooks.domain.model.LongPressSelectionRange.DEFAULT,

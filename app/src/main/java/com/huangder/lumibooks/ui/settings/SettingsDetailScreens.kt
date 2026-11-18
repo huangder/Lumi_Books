@@ -39,6 +39,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -142,7 +143,6 @@ import com.huangder.lumibooks.tts.ExternalTtsConfig
 import com.huangder.lumibooks.tts.FloatingSubtitleSettings
 import com.huangder.lumibooks.tts.FloatingSubtitleStyle
 import com.huangder.lumibooks.tts.TtsProviderSelection
-import com.huangder.lumibooks.tts.TtsStartChoice
 import com.huangder.lumibooks.ui.components.LiquidGlassSwitch
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassDialogHost
@@ -203,6 +203,7 @@ fun DetailPage(
     title: String,
     onBack: () -> Unit,
     targetSection: String? = null,
+    actions: (@Composable RowScope.() -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
@@ -241,6 +242,7 @@ fun DetailPage(
                         CollapsingSettingsScaffold(
                             title = title,
                             onBack = onBack,
+                            actions = actions,
                             modifier = Modifier.fillMaxSize()
                         ) {
                             content()
@@ -280,6 +282,19 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
     SettingsSectionTitle(stringResource(R.string.settings_section_reader_layout), "reading_layout")
     DetailCard {
         DropdownSettingRow(
+            label = stringResource(R.string.default_reader_layout),
+            options = listOf(
+                "reader_layout" to stringResource(R.string.reader_layout_editor_reader),
+                "book_layout" to stringResource(R.string.reader_layout_editor_book)
+            ),
+            selected = uiState.defaultRenderMode.storageValue,
+            onSelect = { value ->
+                com.huangder.lumibooks.util.epub.EpubRenderMode.fromStorage(value)
+                    ?.let(viewModel::saveDefaultRenderMode)
+            }
+        )
+        SettingsDivider()
+        DropdownSettingRow(
             label = stringResource(R.string.label_reader_theme),
             options = readerThemeOptions,
             selected = if (uiState.eInkModeEnabled) "day" else uiState.readerTheme,
@@ -288,14 +303,12 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
         SettingsDivider()
         SettingsSwitchRow(
             label = stringResource(R.string.label_two_page_spread),
-            supportingText = stringResource(R.string.two_page_spread_description),
             checked = uiState.twoPageSpreadEnabled,
             onCheckedChange = viewModel::saveTwoPageSpreadEnabled
         )
         SettingsDivider()
         SettingsSwitchRow(
             label = stringResource(R.string.apply_to_body_only),
-            supportingText = stringResource(R.string.apply_to_body_only_desc),
             checked = uiState.applyToBodyOnly,
             onCheckedChange = viewModel::saveApplyToBodyOnly
         )
@@ -304,8 +317,7 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
     Spacer(Modifier.height(8.dp))
     DetailCard {
         SettingsNavigationRow(
-            label = stringResource(R.string.reader_theme_suite_settings_title),
-            supportingText = stringResource(R.string.reader_theme_suite_settings_description)
+            label = stringResource(R.string.reader_theme_suite_settings_title)
         ) {
             context.startActivity(
                 Intent(context, ReaderSettingsPreviewActivity::class.java)
@@ -314,8 +326,7 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
         }
         SettingsDivider()
         SettingsNavigationRow(
-            label = stringResource(R.string.reader_page_animation_settings_title),
-            supportingText = stringResource(R.string.reader_page_animation_settings_description)
+            label = stringResource(R.string.reader_page_animation_settings_title)
         ) {
             context.startActivity(
                 Intent(context, ReaderSettingsPreviewActivity::class.java)
@@ -332,24 +343,16 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
             selected = uiState.longPressSelectionRange.storageKey,
             onSelect = { viewModel.saveLongPressSelectionRange(LongPressSelectionRange.fromKey(it)) }
         )
-        Text(
-            stringResource(R.string.default_selection_range_description),
-            fontSize = AppType.Caption,
-            color = AppColors.TextSecondary,
-            modifier = Modifier.padding(start = AppSpace.md, end = AppSpace.md, bottom = AppSpace.sm)
-        )
         SettingsDivider()
         SettingsNavigationRow(
             label = stringResource(R.string.selection_menu_settings),
-            supportingText = stringResource(R.string.selection_menu_settings_description),
             icon = AppIcons.List
         ) {
             context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "selection_menu"))
         }
         SettingsDivider()
         SettingsNavigationRow(
-            stringResource(R.string.highlight_color_palette),
-            stringResource(R.string.highlight_color_palette_desc)
+            label = stringResource(R.string.highlight_color_palette)
         ) {
             context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "highlight_color"))
         }
@@ -371,29 +374,19 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
 
     SettingsSectionTitle(stringResource(R.string.settings_section_listening), "reading_listening")
     DetailCard {
-        SettingsNavigationRow(stringResource(R.string.tts_engine_selection), selectedEngineLabel) { showEngineDialog = true }
+        SettingsNavigationRow(
+            label = stringResource(R.string.tts_engine_selection),
+            value = selectedEngineLabel
+        ) { showEngineDialog = true }
         SettingsDivider()
         SettingsNavigationRow(
-            stringResource(R.string.title_floating_subtitle_settings),
-            stringResource(R.string.floating_subtitle_settings_entry_desc)
+            label = stringResource(R.string.title_floating_subtitle_settings)
         ) {
             context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "floating_subtitle"))
         }
         SettingsDivider()
         SettingsNavigationRow(
-            stringResource(R.string.settings_listening_preferences),
-            listOf(
-                stringResource(when (uiState.ttsStartChoice) {
-                    TtsStartChoice.CURRENT_PAGE -> R.string.tts_start_current_page
-                    TtsStartChoice.SAVED_POSITION -> R.string.tts_start_saved_position
-                    null -> R.string.tts_start_ask_each_time
-                }),
-                stringResource(when (uiState.ttsContinueOnReaderExit) {
-                    true -> R.string.tts_exit_continue
-                    false -> R.string.tts_exit_stop
-                    null -> R.string.tts_start_ask_each_time
-                })
-            ).joinToString(" · ")
+            label = stringResource(R.string.settings_listening_preferences)
         ) {
             context.startActivity(Intent(context, DetailActivity::class.java).putExtra("category", "listening_preferences"))
         }
@@ -925,7 +918,6 @@ private fun TxtTocRulesManagerRow(viewModel: SettingsViewModel) {
 
     SettingsNavigationRow(
         label = stringResource(R.string.txt_toc_rules_label),
-        supportingText = stringResource(R.string.txt_toc_library_summary, rules.size, thirdPartyRules.size),
         onClick = { dialogVisible = true }
     )
 
@@ -2593,25 +2585,19 @@ fun AboutDetail(viewModel: SettingsViewModel) {
     if (update.showAppUpdateDialog) {
         AppUpdateDialog(
             appVersion = update.appVersion,
+            downloadUrl = update.releaseUrl,
             updateTitle = update.updateTitle,
             updateMessage = update.updateMessage,
             changelog = update.changelog,
             force = update.isForceUpdate,
-            onDownload = {
-                val opened = runCatching {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(update.releaseUrl))
-                    context.startActivity(intent)
-                }.isSuccess
-                if (!opened) {
-                    Toast.makeText(context, R.string.network_error, Toast.LENGTH_LONG).show()
-                } else if (!update.isForceUpdate) {
-                    viewModel.dismissAppUpdateDialog()
-                }
+            onDownloadStarted = {
+                if (!update.isForceUpdate) viewModel.dismissAppUpdateDialog()
             },
             onLater = { if (!update.isForceUpdate) viewModel.dismissAppUpdateDialog() },
             onIgnoreVersion = if (update.isForceUpdate) null else viewModel::ignoreCurrentAppUpdate
         )
     }
+    val renderUpdatePreviewControl = rememberUpdatePreviewControl(update.showAppUpdateDialog)
 
     LumiAboutHeader(
         unlocked = uiState.lumiEasterEggUnlocked,
@@ -2622,6 +2608,8 @@ fun AboutDetail(viewModel: SettingsViewModel) {
     )
 
     Spacer(Modifier.height(AppSpace.md))
+
+    renderUpdatePreviewControl()
 
     DetailCard(horizontalPadding = sectionHorizontalPadding) {
         ActionRow(label = stringResource(R.string.title_changelog)) {

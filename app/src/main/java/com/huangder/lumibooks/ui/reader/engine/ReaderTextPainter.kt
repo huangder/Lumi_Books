@@ -95,10 +95,11 @@ internal class ReaderTextPainter {
     private val runBounds = RectF()
 
     fun draw(canvas: Canvas, layout: Layout, text: Spanned, geometry: ReaderLineGeometry,
-             frameworkImagePlacement: Boolean = false, imageBleedLeft: Int = 0, imageBleedRight: Int = 0) {
+             frameworkImagePlacement: Boolean = false, imageBleedLeft: Int = 0, imageBleedRight: Int = 0,
+             lines: Iterable<Int> = readerVisibleLines(canvas, layout), drawSpanBackgrounds: Boolean = false) {
         val saved = canvas.save()
         canvas.clipRect(-imageBleedLeft.toFloat(), 0f, (layout.width + imageBleedRight).toFloat(), layout.height.toFloat())
-        for (line in readerVisibleLines(canvas, layout)) {
+        for (line in lines) {
             val native = geometry.nativeLine(line)
             if (native != null) {
                 native.draw(canvas)
@@ -107,6 +108,15 @@ internal class ReaderTextPainter {
             val start = layout.getLineStart(line)
             val end = readerLineContentEnd(text, start, layout.getLineEnd(line))
             if (start >= end) continue
+            if (drawSpanBackgrounds) {
+                text.getSpans(start, end, BackgroundColorSpan::class.java).forEach { span ->
+                    val range = geometry.horizontalRange(line, maxOf(start, text.getSpanStart(span)),
+                        minOf(end, text.getSpanEnd(span))) ?: return@forEach
+                    glyphPaint.color = span.backgroundColor
+                    canvas.drawRect(range.left, layout.getLineTop(line).toFloat(), range.right,
+                        layout.getLineBottom(line).toFloat(), glyphPaint)
+                }
+            }
             // A line-sized copy avoids copying/scanning an entire long chapter per frame.
             val lineText = TextUtils.substring(text, start, end)
             val lineChars = lineText.toCharArray()

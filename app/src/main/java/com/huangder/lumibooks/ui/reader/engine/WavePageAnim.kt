@@ -41,6 +41,7 @@ class WavePageAnim(
     override fun horizontalGestureX(x: Float): Float = x.coerceIn(0f, readView.width.toFloat())
 
     override fun onDraw(canvas: Canvas) {
+        resetChildViews()
         val width = readView.width
         val height = readView.height
         if (width <= 0 || height <= 0 || (!isRunning && !isDragging && !isFlipAnim)) return
@@ -69,6 +70,33 @@ class WavePageAnim(
             return
         }
         drawStripReveal(canvas, width, height, progress, band, overscan, sweepFromRight, newPage)
+    }
+
+    private fun resetChildViews() {
+        if (readView.animatePageViewsDirectly) return
+        // The saved transition can be applied before layout, when the host's
+        // initial offscreen offsets are zero. Alpha alone does not exclude a
+        // preload from touch dispatch. Keep live selection on the visible page,
+        // including idle frames and frames after the viewport changes size.
+        readView.curPageView.apply {
+            translationX = 0f
+            translationY = 0f
+            translationZ = 2f
+            alpha = 1f
+        }
+        val width = readView.width.toFloat()
+        readView.prevPageView.apply {
+            translationX = idleTranslationX(Direction.PREV, width)
+            translationY = 0f
+            translationZ = 0f
+            alpha = 0f
+        }
+        readView.nextPageView.apply {
+            translationX = idleTranslationX(Direction.NEXT, width)
+            translationY = 0f
+            translationZ = 0f
+            alpha = 0f
+        }
     }
 
     private fun drawStripReveal(

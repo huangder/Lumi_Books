@@ -164,7 +164,7 @@ internal fun welcomePages(
 ): List<WelcomePage> = buildList {
     if (shouldShowLanguageSetup) add(WelcomePage.LANGUAGE_SETUP)
     add(WelcomePage.INTRODUCTION)
-    // The release's three headline updates, then the appearance choice, for everyone.
+    // Everyone sees the release updates; only fresh installs choose an appearance.
     add(WelcomePage.FEATURES)
     add(WelcomePage.SUPPORT)
 }
@@ -318,7 +318,7 @@ fun WelcomeScreen(
             WelcomePage.FEATURES -> WelcomeFeatureStoriesPage(
                 hasReadingJournal = com.huangder.lumibooks.edition.editionHasReadingJournal,
                 onContinue = { currentPage = pages[(pages.indexOf(page) + 1).coerceAtMost(pages.lastIndex)] },
-                themeOptions = if (isEInkMode) emptyList() else appThemeOptions,
+                themeOptions = if (isNewInstallation && !isEInkMode) appThemeOptions else emptyList(),
                 selectedTheme = pickedTheme?.takeIf { it in appThemeOptions },
                 onSelectTheme = { theme ->
                     pickedTheme = theme

@@ -4,6 +4,7 @@ import android.graphics.*
 import android.icu.text.BreakIterator
 import android.text.*
 import android.text.style.*
+import com.huangder.lumibooks.ui.reader.ReaderNaturalAlignmentSpan
 import com.huangder.lumibooks.util.epub.*
 import java.io.File
 import java.util.Locale
@@ -32,20 +33,42 @@ internal sealed interface NativeEpubDrawItem {
 }
 internal class NativeEpubHorizontalItem(override val start: Int, override val end: Int,
     val layout: StaticLayout, val firstLine: Int, val lastLine: Int, val x: Float, val y: Float,
-    val background: Int?) : NativeEpubDrawItem {
+    val background: Int?, adaptivePunctuation: Boolean = false) : NativeEpubDrawItem {
     private val firstY = layout.getLineTop(firstLine).toFloat()
     private val height = layout.getLineBottom(lastLine - 1) - firstY
+    private val geometry = if (adaptivePunctuation) ReaderLineGeometry(layout, layout.text, Layout.JUSTIFICATION_MODE_NONE) else null
+    private val adjustedLines = geometry?.let { positions -> (firstLine until lastLine).filter(positions::isLineStretched) }.orEmpty()
+    private val textPainter = if (adjustedLines.isEmpty()) null else ReaderTextPainter()
     override fun draw(canvas: Canvas) {
         canvas.save(); canvas.translate(x, y)
         background?.let { canvas.drawRect(0f, 0f, layout.width.toFloat(), height, Paint().apply { color = it }) }
         canvas.clipRect(0f, 0f, layout.width.toFloat(), height)
-        canvas.translate(0f, -firstY); layout.draw(canvas); canvas.restore()
+        canvas.translate(0f, -firstY)
+        canvas.save()
+        for (line in adjustedLines) canvas.clipOutRect(0, layout.getLineTop(line), layout.width, layout.getLineBottom(line))
+        layout.draw(canvas)
+        canvas.restore()
+        textPainter?.draw(canvas, layout, layout.text as Spanned, checkNotNull(geometry),
+            lines = adjustedLines, drawSpanBackgrounds = true)
+        canvas.restore()
     }
     override fun hit(x: Float, y: Float): NativeEpubHit? {
         if (y < this.y || y >= this.y + height) return null
         val line = layout.getLineForVertical((y - this.y + firstY).toInt())
         val px = x - this.x
-        if (line !in firstLine until lastLine || px < layout.getLineLeft(line) || px > layout.getLineRight(line)) return null
+        if (line !in firstLine until lastLine) return null
+        val adjusted = geometry?.takeIf { line in adjustedLines }
+        val bounds = adjusted?.lineRange(line)
+        if (px < (bounds?.left ?: layout.getLineLeft(line)) || px > (bounds?.right ?: layout.getLineRight(line))) return null
+        if (adjusted != null) {
+            val local = adjusted.offsetForHorizontal(line, px)?.coerceAtMost(layout.getLineEnd(line) - 1) ?: return null
+            val range = adjusted.horizontalRange(line, local, local + 1) ?: return null
+            val base = start - layout.getLineStart(firstLine)
+            return NativeEpubHit(base + local, base + local + 1,
+                RectF(this.x + range.left, this.y + layout.getLineTop(line) - firstY,
+                    this.x + range.right, this.y + layout.getLineBottom(line) - firstY),
+                (base + layout.getLineStart(line)) until (base + layout.getLineEnd(line)))
+        }
         val local = layout.getOffsetForHorizontal(line, px)
         return NativeEpubHit(start + local - layout.getLineStart(firstLine), start + local - layout.getLineStart(firstLine) + 1,
             RectF(this.x + layout.getPrimaryHorizontal(local), this.y + layout.getLineTop(line) - firstY,
@@ -59,7 +82,17 @@ internal class NativeEpubHorizontalItem(override val start: Int, override val en
         if (a >= b) return
         val path = Path(); layout.getSelectionPath(a, b, path)
         canvas.save(); canvas.translate(x, y); canvas.clipRect(0f, 0f, layout.width.toFloat(), height)
-        canvas.translate(0f, -firstY); canvas.drawPath(path, paint); canvas.restore()
+        canvas.translate(0f, -firstY)
+        canvas.save()
+        for (line in adjustedLines) canvas.clipOutRect(0, layout.getLineTop(line), layout.width, layout.getLineBottom(line))
+        canvas.drawPath(path, paint)
+        canvas.restore()
+        for (line in adjustedLines) {
+            val range = geometry?.horizontalRange(line, a, b) ?: continue
+            canvas.drawRect(range.left, layout.getLineTop(line).toFloat(), range.right,
+                layout.getLineBottom(line).toFloat(), paint)
+        }
+        canvas.restore()
     }
 }
 internal class NativeEpubGlyphItem(override val start: Int, override val end: Int,
@@ -90,6 +123,7 @@ internal class NativeEpubChapterLayout(val document: NativeEpubDocument, val pag
     val config: NativeEpubRenderConfig, private val images: List<Bitmap>) : AutoCloseable {
     private var closed = false
     fun pageFor(offset: Int): Int = pages.indexOfLast { it.start <= offset }.coerceAtLeast(0)
+
     @Synchronized fun draw(canvas: Canvas, page: Int, highlights: List<Pair<IntRange, Int>> = emptyList()) {
         if (closed) return
         canvas.drawColor(config.paper)
@@ -216,6 +250,9 @@ internal object NativeEpubChapterRenderer {
                         "right" -> if (st.direction == "rtl") Layout.Alignment.ALIGN_NORMAL else Layout.Alignment.ALIGN_OPPOSITE
                         "left" -> if (st.direction == "rtl") Layout.Alignment.ALIGN_OPPOSITE else Layout.Alignment.ALIGN_NORMAL
                         "end" -> Layout.Alignment.ALIGN_OPPOSITE; else -> Layout.Alignment.ALIGN_NORMAL }
+                    val adaptivePunctuation = block.isParagraph && st.direction != "rtl" &&
+                        st.align in setOf("start", "left") && text.isNotEmpty()
+                    if (adaptivePunctuation) text.setSpan(ReaderNaturalAlignmentSpan(), 0, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                     val layout = StaticLayout.Builder.obtain(text, 0, text.length, paint(st), width)
                         .setAlignment(alignment).setTextDirection(if (st.direction == "rtl") TextDirectionHeuristics.RTL else TextDirectionHeuristics.LTR)
                         .setIncludePad(false).setLineSpacing(0f, config.lineHeightOverride ?: st.lineHeight)
@@ -230,7 +267,8 @@ internal object NativeEpubChapterRenderer {
                         var last = first + 1
                         while (last < layout.lineCount && y + layout.getLineBottom(last) - layout.getLineTop(first) <= bottom) last++
                         items += NativeEpubHorizontalItem(block.start + layout.getLineStart(first), block.start + layout.getLineEnd(last - 1), layout,
-                            first, last, blockLeft, y, if (config.publisherColors) cssColor(st.background) else null)
+                            first, last, blockLeft, y, if (config.publisherColors) cssColor(st.background) else null,
+                            adaptivePunctuation)
                         y += layout.getLineBottom(last - 1) - layout.getLineTop(first)
                         first = last
                         if (first < layout.lineCount) { flush(); y = top }

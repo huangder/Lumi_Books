@@ -42,6 +42,22 @@ import java.util.concurrent.atomic.AtomicInteger
 @Config(sdk = [35], application = Application::class)
 class WebdavReaderThemeSyncTest {
     @Test
+    fun `local change check ignores sync bookkeeping but tracks settings and asset content`() = runBlocking {
+        withSync {
+            val files = saveTheme()
+            val before = sync.localFingerprint(config)
+            prefs.updateWebdavLastSyncTime(12345)
+            assertEquals(before, sync.localFingerprint(config))
+            prefs.saveFontType("serif")
+            assertNotEquals(before, sync.localFingerprint(config))
+            val changedSettings = sync.localFingerprint(config)
+            files.first().writeText("changed background content")
+            assertNotEquals(changedSettings, sync.localFingerprint(config))
+            assertEquals(0, assetReads.get())
+        }
+    }
+
+    @Test
     fun `sync keeps nested theme assets across devices and repeated runs`() = runBlocking {
         withSync {
             val originals = saveTheme()

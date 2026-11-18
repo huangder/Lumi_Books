@@ -11,7 +11,8 @@ import android.text.style.LeadingMarginSpan
 /** 一行逐字左边界，以及该行内容结束位置（绘制文字用的同一套坐标）。 */
 internal class ReaderLineOffsets(
     val lefts: FloatArray,
-    val right: Float
+    val right: Float,
+    val stretched: Boolean
 )
 
 /**
@@ -76,10 +77,6 @@ internal fun readerLineOffsets(
     val edgeCorrection = if (gaps.isNotEmpty()) (measuredTotal - estimatedTotal) / gaps.size else 0f
     val naturalTotal = if (gaps.isNotEmpty()) measuredTotal else estimatedTotal
     val alignment = layout.getParagraphAlignment(line)
-    val canStretch = alignment == Layout.Alignment.ALIGN_NORMAL &&
-        justificationMode != Layout.JUSTIFICATION_MODE_NONE &&
-        shouldJustifyReaderLine(line, layout.lineCount,
-            readerLineEndsParagraph(text, lineStart, layout.getLineEnd(line)), forceLastLineJustification)
     val lineRight = layout.getParagraphRight(line).toFloat()
     val baseStart = when (alignment) {
         Layout.Alignment.ALIGN_CENTER -> (layout.getParagraphLeft(line) + lineRight - naturalTotal) / 2f
@@ -87,8 +84,11 @@ internal fun readerLineOffsets(
         else -> layout.getPrimaryHorizontal(lineStart)
     }
     if (!baseStart.isFinite()) return null
+    val gap = lineRight - baseStart - naturalTotal
+    val canStretch = readerLineCanStretch(layout, text, line, forceLastLineJustification) &&
+        (justificationMode != Layout.JUSTIFICATION_MODE_NONE || readerPunctuationGap(layout, text, line, gap))
     val extra = if (canStretch && gaps.isNotEmpty())
-        (lineRight - baseStart - naturalTotal).coerceAtLeast(0f) / gaps.size else 0f
+        gap.coerceAtLeast(0f) / gaps.size else 0f
     val lefts = FloatArray(count)
     var cursor = baseStart
     for (index in 0 until count) {
@@ -96,7 +96,7 @@ internal fun readerLineOffsets(
         cursor += slots[index]
         if (index < gaps.size) cursor += gaps[index] + edgeCorrection + extra
     }
-    return ReaderLineOffsets(lefts, cursor)
+    return ReaderLineOffsets(lefts, if (extra > 0f) lineRight else cursor, extra > 0f)
 }
 
 /**

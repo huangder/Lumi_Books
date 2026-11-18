@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.reader
 
+import com.huangder.lumibooks.domain.model.HighlightRule
 import com.huangder.lumibooks.domain.model.Note
 import com.huangder.lumibooks.domain.model.RuleStyle
 import org.junit.Assert.assertEquals
@@ -68,5 +69,12 @@ class AnnotationColorTargetTest {
         val style = RuleStyle(0xFFFF0000.toInt(), 3, 2f, 1f, 400, false)
 
         assertNull(annotationSnapshotStyleForRendering(note, style).textColor)
+        assertEquals(HighlightRule.HIGHLIGHT_NONE, annotationSnapshotStyleForRendering(note, style).highlightMode)
+        assertEquals(style.underlineMode, annotationSnapshotStyleForRendering(note, style).underlineMode)
+
+        val ruleNote = note.copy(
+            origin = Note.ORIGIN_HIGHLIGHT_RULE, sourceRuleId = "rule", sourceMatchKey = "match"
+        )
+        assertEquals(style, annotationSnapshotStyleForRendering(ruleNote, style))
     }
 }

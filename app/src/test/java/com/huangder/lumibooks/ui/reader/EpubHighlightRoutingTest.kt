@@ -89,6 +89,8 @@ class EpubHighlightRoutingTest {
         assertEquals(2, payload.getJSONObject(2).getJSONObject("ruleStyle").getInt("underlineMode"))
         assertFalse(payload.getJSONObject(1).getJSONObject("ruleStyle").has("textColor"))
         assertFalse(payload.getJSONObject(2).getJSONObject("ruleStyle").has("textColor"))
+        assertEquals(2, payload.getJSONObject(1).getJSONObject("ruleStyle").getInt("highlightMode"))
+        assertEquals(2, payload.getJSONObject(2).getJSONObject("ruleStyle").getInt("highlightMode"))
     }
 
     private fun note(

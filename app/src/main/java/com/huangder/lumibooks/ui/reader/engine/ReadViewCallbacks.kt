@@ -58,6 +58,9 @@ interface ReadViewCallbacks {
     /** 点击 EPUB 正文中的超链接。x/y 为 ReadView 内的点击坐标（像素）。 */
     fun onLinkClick(href: String, x: Float, y: Float) {}
 
+    /** 点击笔记句末的消息图标；x/y 为 ReadView 内坐标。 */
+    fun onNoteMarkerClick(noteText: String, x: Float, y: Float) {}
+
     /** Called after a plain EPUB image is long-pressed. Coordinates are in screen pixels. */
     fun onImageLongPress(chapterIndex: Int, image: ReaderImageHit) {}
 

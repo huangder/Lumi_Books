@@ -18,7 +18,6 @@ import com.huangder.lumibooks.ui.reader.engine.ReaderLineGeometry
 import com.huangder.lumibooks.ui.reader.engine.applyReaderPunctuationCompression
 import com.huangder.lumibooks.util.ChineseConverter
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -28,8 +27,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * 章首标题段落固定左对齐：不管用户选哪种对齐模式，标题都不跟随居中/右对齐，
- * 也不参与两端对齐拉伸；正文段落仍按用户设置排版。
+ * 章首标题保留原书对齐，正文段落按用户设置排版。
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "xxhdpi")
@@ -121,7 +119,7 @@ class ChapterTitleAlignmentTest {
 
             assertEquals("$alignment 下正文段落应只有一个对齐 span", 1, spans.size)
             assertEquals(layoutAlignment, spans.single().alignment)
-            assertEquals(0, aligned.getSpanStart(spans.single()))
+            assertEquals(titleEnd, aligned.getSpanStart(spans.single()))
             assertEquals(aligned.length, aligned.getSpanEnd(spans.single()))
         }
 
@@ -164,21 +162,21 @@ class ChapterTitleAlignmentTest {
             )
         }
 
-        val aligned = applyReaderTextAlignment(source, ReaderTextAlignment.NATURAL, titleEnd) as Spanned
-
-        assertEquals(
-            Layout.Alignment.ALIGN_CENTER,
-            aligned.getSpans(0, 1, AlignmentSpan::class.java).single().alignment
-        )
-        assertSame(source, aligned)
+        ReaderTextAlignment.entries.forEach { alignment ->
+            val aligned = applyReaderTextAlignment(source, alignment, titleEnd) as Spanned
+            val titleSpan = aligned.getSpans(0, 1, AlignmentSpan::class.java).single()
+            assertEquals(Layout.Alignment.ALIGN_CENTER, titleSpan.alignment)
+            if (alignment != ReaderTextAlignment.NATURAL) assertEquals(titleEnd, aligned.getSpanEnd(titleSpan))
+        }
     }
 
     @Test
     fun alignmentWithoutTitleParagraphMatchesLegacyBehaviour() {
         val chapter = txtChapter()
 
-        // 没有识别出标题时不做任何复制，也不改对齐。
-        assertSame(chapter, applyReaderTextAlignment(chapter, ReaderTextAlignment.NATURAL))
+        val natural = applyReaderTextAlignment(chapter, ReaderTextAlignment.NATURAL) as Spanned
+        assertEquals(chapter.toString(), natural.toString())
+        assertTrue(natural.getSpans(0, natural.length, AlignmentSpan::class.java).isEmpty())
 
         val aligned = applyReaderTextAlignment(chapter, ReaderTextAlignment.RIGHT) as Spanned
         listOf(0, titleEnd).forEach { offset ->
@@ -206,7 +204,6 @@ class ChapterTitleAlignmentTest {
         val marked = applyReaderTextAlignment(text, ReaderTextAlignment.JUSTIFY, titleEnd)
         val layout = StaticLayout.Builder.obtain(marked, 0, marked.length, paint, 600)
             .setIncludePad(false)
-            .setJustificationMode(Layout.JUSTIFICATION_MODE_INTER_CHARACTER)
             .build()
         assertTrue("标题应换行才能覆盖续行场景", layout.lineCount > 1)
 
@@ -216,13 +213,7 @@ class ChapterTitleAlignmentTest {
             justificationMode = Layout.JUSTIFICATION_MODE_INTER_CHARACTER,
             forceLastLineJustification = true
         )
-        val secondCharOffset = layout.getLineStart(0) + 1
-        assertEquals(
-            "标题行不能额外拉伸字符间距",
-            layout.getPrimaryHorizontal(secondCharOffset),
-            geometry.horizontalPosition(secondCharOffset) ?: Float.NaN,
-            0.01f
-        )
+        assertTrue("标题行不能额外拉伸字符间距", !geometry.isLineStretched(0))
     }
 
 }

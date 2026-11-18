@@ -59,7 +59,8 @@ class WelcomeThemeRenderTest {
                         isLiquidGlass = theme == "liquid_glass" && !ink,
                         onFinished = {},
                         onOpenSponsor = {},
-                        onLanguageSetupComplete = { _, _ -> }
+                        onLanguageSetupComplete = { _, _ -> },
+                        appThemeOptions = listOf("liquid_glass", "lumi", "material3")
                     )
                 }
             }

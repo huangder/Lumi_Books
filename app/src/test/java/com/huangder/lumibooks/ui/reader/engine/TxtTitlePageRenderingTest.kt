@@ -90,11 +90,10 @@ class TxtTitlePageRenderingTest {
     }
 
     /**
-     * TXT 标题跟随用户对齐设置。居中 / 右对齐只移动标题，不改变字形宽度；
-     * NATURAL / JUSTIFY 的短标题末行仍保持左对齐，避免额外拉伸。
+     * TXT 标题没有原书对齐样式，在各模式下使用相同的起始边对齐。
      */
     @Test
-    fun chapterTitleFollowsConfiguredAlignmentWithoutStretchingGlyphs() {
+    fun chapterTitleKeepsItsAlignmentWithoutStretchingGlyphs() {
         val title = "\u7b2c5\u7ae0 \u4e0e\u65f6\u95f4\u8d5b\u8dd1"
         val source = SpannableStringBuilder("$title\n").apply {
             setSpan(AbsoluteSizeSpan(22, true), 0, title.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -116,18 +115,7 @@ class TxtTitlePageRenderingTest {
             val first = firstInkColumn(actual)
             val last = lastInkColumn(actual)
             assertTrue("$alignment changed title glyph width", abs(last - first - inkWidth) <= 2)
-            when (alignment) {
-                ReaderTextAlignment.CENTER -> {
-                    assertTrue("Centered title must move away from the left margin", first > leftEdge)
-                    assertTrue("Title ink must be centered", abs(first + last - (actual.width - 1)) <= 4)
-                }
-                ReaderTextAlignment.RIGHT -> {
-                    assertTrue("Right-aligned title must move away from the left margin", first > leftEdge)
-                    assertTrue("Title ink must reach the right reader margin",
-                        actual.width - 1 - last in 40..80)
-                }
-                else -> assertTrue("$alignment stretched the title's final line", left.sameAs(actual))
-            }
+            assertTrue("$alignment moved or stretched the title", left.sameAs(actual))
             actual.recycle()
         }
         // 标题墨迹要贴在正文列左边缘，而不是被居中后留下大段左边距。

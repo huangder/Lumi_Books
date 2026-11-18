@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="replacement_help_title">正则替换使用指南</string>
+    <string name="replacement_help_tab_tutorial">教程</string>
+    <string name="replacement_help_tab_ai">AI 提示词</string>
+    <string name="replacement_help_ai_screenshot_title">第 1 步：截取想要替换的片段</string>
+    <string name="replacement_help_ai_screenshot_body">在阅读页截图，保留想要删除或替换的文字，以及前后几行正文。如果同一类内容有不同写法，准备多张截图。\n\n把截图发给你使用的 AI，并补充一句目标，例如：“删除截图中的广告提示，保留其他正文”，或“把小明、小铭都改成阿明”。截图中的文字要清楚；不方便截图时，也可以直接粘贴原文。</string>
+    <string name="replacement_help_ai_copy_title">第 2 步：复制提示词，和截图一起发给 AI</string>
+    <string name="replacement_help_ai_copy_body">点击下方按钮复制完整提示词，将它与截图、替换目标一同发送给支持看图的 AI。提示词已包含 Lumi 的正则语法、替换格式和限制，AI 会按截图里的文字样式生成规则。截图自动折行不一定是实际换行；识别不清楚时，让 AI 先确认原文。</string>
+    <string name="replacement_help_ai_copy">复制完整提示词</string>
+    <string name="replacement_help_ai_copied">已复制，可发送给 AI</string>
+    <string name="replacement_help_ai_prompt_title">发送给 AI 的提示词</string>
+    <string name="replacement_help_ai_apply_title">拿到结果后，粘贴回 Lumi</string>
+    <string name="replacement_help_ai_apply_body">回到替换净化 → 添加规则 → 选择“正则”。将 AI 输出的查找表达式和替换内容分别复制到“查找”“替换为”，不要复制代码框的围栏和说明。删除规则的“替换为”保持空白。\n\n当前通过这两个输入框粘贴规则，无需导入文件。核对当前章节预览后，点击勾保存，再开启本书和规则开关。如果匹配不对，把原文、错误提示和期望结果补充给 AI，让它调整。</string>
+    <string name="replacement_help_intro_title">先理解：查找一类文字，再统一处理</string>
+    <string name="replacement_help_intro_body">普通替换适合固定文字，例如把“小明”改成“阿明”。正则替换则用一段“匹配规则”找出相似内容，例如同时找到“小明”和“小铭”，或找到以“本章未完”开头的整行。\n\n普通和正则规则都保存在全书共用的规则库中，换书后无需重新输入。新书和新规则默认关闭，每本书单独选择要开启的规则、设置执行顺序。修改或删除规则内容会影响所有使用它的书。\n\n净化只改变启用它的书在阅读时显示的正文，不会改写原文件。关闭“在本书启用”或某条规则，就可以恢复对应原文。</string>
+    <string name="replacement_help_steps_title">第一次使用，按这 5 步来</string>
+    <string name="replacement_help_steps_body">1. 返回替换净化，点击“添加规则”。\n2. 选择“正则”，将下面示例的查找式填入“查找”。只填表达式本身，不要加引号、代码框符号或 /…/g。\n3. 填写“替换为”。留空表示删除匹配内容，不要真的输入“留空”两个字。名称可不填。\n4. 查看“当前章节预览”，核对匹配处数和替换前后的文字。这里只展示第一处附近的变化，不代表整本书只有这一处。\n5. 点击右上角的勾保存，并打开“在本书启用”和该条规则的开关。\n\n可从新建或编辑页右上角的 i 打开本教程，返回后继续填写。</string>
+    <string name="replacement_help_symbols_title">常用符号速查</string>
+    <string name="replacement_help_symbols_body">.　任意一个字符，默认不包括换行\n[明铭]　匹配“明”或“铭”中的一个字\n[0-9] 或 \\d　一个半角数字；全角数字可用 [０-９]\n[一二三四五六七八九十百千万]+　一个或多个列出的中文数字字符\n\\s　空白字符，包含空格、制表符和换行\n[ \\t]　只匹配半角空格或制表符，不跨行\n\\S　非空白字符\n*　前面的内容重复 0 次或多次\n+　重复 1 次或多次\n?　出现 0 次或 1 次\n{2,4}　重复 2 至 4 次；{2} 表示恰好 2 次\nA|B　匹配 A 或 B\n(…)　把内容分为一组，可在替换时取用\n^ / $　文本片段的开头 / 结尾；加 (?m) 后也匹配行首 / 行尾\n\n例如 [0-9]+ 可以找到 1、25、108。方括号表示“选一个字符”，圆括号表示“把一段内容分组”，两者作用不同。</string>
+    <string name="replacement_help_escape_title">符号本身怎么查找？</string>
+    <string name="replacement_help_escape_body">在“查找”中，. * + ? ( ) [ ] { } ^ $ | 和反斜杠本身有特殊含义。要匹配原样符号，通常在前面加一个反斜杠。\n\n例如：\\. 查找句点，\\( 查找左圆括号，\\[ 查找左方括号，\\\\ 查找一个反斜杠。输入框里直接写 \\d，不要像编程代码那样写成 \\\\d。\n\n若只想删除一个固定短语（包括其中的标点），选择“普通”模式更方便，无需转义。中文括号“（ ）”和书名号“《 》”可直接填写。</string>
+    <string name="replacement_help_examples_title">可以照着填写的例子</string>
+    <string name="replacement_help_examples_body">以下示例都选择“正则”模式。长按表达式可选中复制，再按自己的书籍内容修改。示例中的“留空”表示不输入任何内容。</string>
+    <string name="replacement_help_example_names_title">1. 统一角色名的不同写法</string>
+    <string name="replacement_help_example_names_body">[明铭] 只占一个字的位置，因此可以同时找到“小明”和“小铭”，不会找到“小红”。</string>
+    <string name="replacement_help_example_ads_title">2. 删除以提示语开头的一整行</string>
+    <string name="replacement_help_example_ads_body">(?m) 让 ^ 匹配每一行的开头。[ \\t]* 允许行首有空格，括号里的 | 表示几种提示语任选一种，后面的内容一直匹配到行尾。\n\n只在确认整行都是提示或广告时使用。如果提示语后还有正文，整行正文也会被删掉。这个例子保留换行，可能留下空行。</string>
+    <string name="replacement_help_example_brackets_title">3. 删除方括号中的广告标记</string>
+    <string name="replacement_help_example_brackets_body">\\[ 和 \\] 匹配方括号本身；[^\\]\\r\\n]* 表示匹配不是右方括号、也不是换行的内容。这样只删除以“广告：”开头的一段方括号文字，尽量不影响后面的正文。</string>
+    <string name="replacement_help_example_spaces_title">4. 合并重复的半角空格</string>
+    <string name="replacement_help_example_spaces_body">{2,} 表示至少两个空格。“替换为”里输入一个真正的半角空格。此例不处理全角空格，也不删除换行。</string>
+    <string name="replacement_help_example_groups_title">5. 保留章节数字，调整写法</string>
+    <string name="replacement_help_example_groups_body">([0-9]+) 把章节数字存为第 1 组，“替换为”里的 $1 取出它。\\s* 允许“第”、数字和“章”之间有空白。此例处理半角阿拉伯数字，不匹配“第十二章”。这里只演示正文替换，不会重新生成目录。</string>
+    <string name="replacement_help_example_case_title">6. 忽略英文字母大小写</string>
+    <string name="replacement_help_example_case_body">(?i) 使后面的内容忽略大小写，可以同时找到 VIP、Vip 和 vip。此例会替换所有出现的位置，包括其他单词中的这几个字母；如果只想替换独立单词，可用 (?i)\\bvip\\b。</string>
+    <string name="replacement_help_empty">留空（不输入内容）</string>
+    <string name="replacement_help_one_space">一个半角空格</string>
+    <string name="replacement_help_groups_title">分组和“替换为”的写法</string>
+    <string name="replacement_help_groups_body">“查找”中的圆括号按左括号出现的顺序编号：$1 是第 1 组，$2 是第 2 组；$0 是整段匹配内容。例如查找 (小)(明)，替换为 $2$1，会把“小明”变成“明小”。(?:…) 只分组，不占编号。只能引用实际存在的组。\n\n“替换为”不是另一条正则：$1 用来取出分组，\\$ 输出美元符号，\\\\ 输出一个反斜杠。要输出 $1 这两个字符本身，填写 \\$1。\n\n不要在“替换为”中写 \\n 期待得到换行：这里反斜杠会转义紧随的字符，因此 \\n 会输出字母 n。需要换行时请输入真正的换行。</string>
+    <string name="replacement_help_flags_title">按行匹配、跨行匹配与匹配范围</string>
+    <string name="replacement_help_flags_body">(?m)：让 ^ 和 $ 识别行首、行尾；它不会让点号跨越换行。\n(?s)：让点号 . 也能匹配换行。跨行删除很容易多删，建议优先用不会跨行的表达式。\n.*：尽可能多地匹配，例如“【甲】【乙】”用 【.*】 会匹配整段。\n.*?：尽可能少地匹配，改用 【.*?】 会分别匹配“【甲】”和“【乙】”。\n\n排版中的自动折行不一定是真正的换行。EPUB、MOBI 的替换按可处理的正文片段执行，不能跨独立段落、图片等边界；即使加 (?s)，也不能保证跨这些边界匹配。不要把净化规则当成修改 HTML 标签的工具。</string>
+    <string name="replacement_help_order_title">多条规则怎么配合？</string>
+    <string name="replacement_help_order_body">规则内容全书共用，启用状态和执行顺序按书单独设置。规则在本书从上到下依次处理，后一条看到的是前一条替换后的结果。比如先把“小明”改成“阿明”，后面查找“小明”的规则就匹配不到了，可用上移、下移调整顺序。\n\n建议每条规则只处理一件事，给规则起清楚的名称，并逐条查看预览。若结果不对，先关闭可疑规则，或关闭本书总开关恢复原文。</string>
+    <string name="replacement_help_faq_title">没有效果或提示错误时</string>
+    <string name="replacement_help_faq_body">• 当前章节无匹配：先确认这章确实有目标文字，再检查空格、换行、全角/半角和大小写。可先用短表达式找到目标，再逐步补充条件。保存后的规则也会作用于其他章节。\n• 正则无效：检查括号是否成对，特殊符号是否转义。本功能使用 RE2/J，不支持 (?=…)、(?!…)、(?&lt;=…)、(?&lt;!…) 这样的环视，也不支持在“查找”中用 \\1 引用前面的组。替换内容中的 $1 则可以使用。\n• 捕获组无效：例如只有一组，却写了 $2；或单独输入了 $；或末尾留下一个反斜杠。输出美元符号要写 \\$。\n• 保存后没变化：检查本书开关、单条规则开关和执行顺序，并确认已点击勾保存。只匹配空位置（例如单独的 ^）不会插入文字。\n• 删除太多：避免一开始就用 .* 或 (?s)，先明确目标边界，再看预览。当前章节的第一处预览无法证明所有匹配都正确。</string>
+    <!-- Exact input/output samples; shared across UI languages and verified against the real engine. -->
+    <string name="replacement_help_names_find" translatable="false">小[明铭]</string>
+    <string name="replacement_help_names_value" translatable="false">阿明</string>
+    <string name="replacement_help_names_before" translatable="false">小明遇见小铭。</string>
+    <string name="replacement_help_names_after" translatable="false">阿明遇见阿明。</string>
+    <string name="replacement_help_ads_find" translatable="false">(?m)^[ \\t]*(本章未完|点击下一页继续阅读)[^\\r\\n]*</string>
+    <string name="replacement_help_ads_before" translatable="false">他推开门。\n本章未完，请继续阅读\n门外有人。</string>
+    <string name="replacement_help_ads_after" translatable="false">他推开门。\n\n门外有人。</string>
+    <string name="replacement_help_brackets_find" translatable="false">\\[广告：[^\\]\\r\\n]*\\]</string>
+    <string name="replacement_help_brackets_before" translatable="false">他[广告：限时推广]回来了。</string>
+    <string name="replacement_help_brackets_after" translatable="false">他回来了。</string>
+    <string name="replacement_help_spaces_find" translatable="false">[ ]{2,}</string>
+    <string name="replacement_help_spaces_before" translatable="false">"他  回来了。"</string>
+    <string name="replacement_help_spaces_after" translatable="false">"他 回来了。"</string>
+    <string name="replacement_help_groups_find" translatable="false">第\\s*([0-9]+)\\s*章</string>
+    <string name="replacement_help_groups_value" translatable="false">第$1节</string>
+    <string name="replacement_help_groups_before" translatable="false">第 12 章 开始</string>
+    <string name="replacement_help_groups_after" translatable="false">第12节 开始</string>
+    <string name="replacement_help_case_find" translatable="false">(?i)vip</string>
+    <string name="replacement_help_case_value" translatable="false">会员</string>
+    <string name="replacement_help_case_before" translatable="false">VIP / Vip / vip</string>
+    <string name="replacement_help_case_after" translatable="false">会员 / 会员 / 会员</string>
+</resources>

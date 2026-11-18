@@ -86,14 +86,17 @@ class MarkdownRenderingRegressionTest {
         }
     }
 
-    @Test fun naturalAndExplicitJustificationUseBothEdges() {
+    @Test fun onlyExplicitJustificationFillsOrdinaryWrappedRows() {
         for (alignment in listOf(ReaderTextAlignment.NATURAL, ReaderTextAlignment.JUSTIFY)) {
             withSurface("Words with variable lengths fill the reading column. ".repeat(10),
                 ReaderUiState(textAlignment = alignment)) { _, views ->
                 val view = views.single()
                 assertTrue(view.layout.lineCount > 1)
-                assertEquals(android.text.Layout.JUSTIFICATION_MODE_INTER_WORD, view.justificationMode)
-                assertEquals(view.layout.width.toFloat(), view.layout.getLineRight(0), 1f)
+                val geometry = (view as MarkdownAnnotationTextView).geometryFor(view.layout)
+                assertEquals(alignment == ReaderTextAlignment.JUSTIFY, geometry.isLineStretched(0))
+                if (alignment == ReaderTextAlignment.JUSTIFY) {
+                    assertEquals(view.layout.width.toFloat(), geometry.lineRange(0)!!.right, 1f)
+                }
             }
         }
     }

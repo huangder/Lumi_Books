@@ -22,7 +22,8 @@ internal data class QueuedCurlTurn(
     val gestureStartY: Float? = null,
     val input: CurlTurnInput = CurlTurnInput.TAP,
     val expedited: Boolean = false,
-    val pageGeneration: Long = 0L
+    val pageGeneration: Long = 0L,
+    val expiresAtMs: Long = Long.MAX_VALUE
 )
 
 internal enum class CurlTurnInput { TAP, SWIPE }
@@ -56,7 +57,8 @@ internal class ReaderCurlTurnSequencer {
         gestureStartY: Float? = null,
         input: CurlTurnInput = CurlTurnInput.TAP,
         expedited: Boolean = false,
-        pageGeneration: Long = 0L
+        pageGeneration: Long = 0L,
+        expiresAtMs: Long = Long.MAX_VALUE
     ) {
         if (state == State.DESTROYED) return
         if (direction == PageAnimationController.Direction.NONE) return
@@ -71,7 +73,8 @@ internal class ReaderCurlTurnSequencer {
                 gestureStartY = gestureStartY?.takeIf { it.isFinite() },
                 input = input,
                 expedited = expedited,
-                pageGeneration = pageGeneration
+                pageGeneration = pageGeneration,
+                expiresAtMs = expiresAtMs
             )
         )
     }
@@ -94,6 +97,8 @@ internal class ReaderCurlTurnSequencer {
     fun poll(): PageAnimationController.Direction {
         return pollTurn().direction
     }
+
+    fun peekTurn(): QueuedCurlTurn? = pendingTurns.firstOrNull()
 
     fun pollTurn(): QueuedCurlTurn {
         if (state == State.DESTROYED || pendingTurns.isEmpty()) {

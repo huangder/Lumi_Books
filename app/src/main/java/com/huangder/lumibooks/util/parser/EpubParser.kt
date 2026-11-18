@@ -2056,7 +2056,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             val start: Int,
             val end: Int,
             val leadingWhitespaceEnd: Int,
-            val hasImage: Boolean,
+            val isImageOnly: Boolean,
             val isHeading: Boolean,
             val isChapterTitle: Boolean
         )
@@ -2086,6 +2086,11 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                     }
                     val imageRange = imageRanges.getOrNull(imageRangeIndex)
                     val hasImage = imageRange != null && imageRange.first < j
+                    // 脚注图标也是 ImageSpan，但带图标的正文仍需首行缩进。
+                    // 只有纯图片段落跳过；图片加载失败的占位同样按段落内容判断。
+                    val isImageOnly = hasImage && (paraStart until j).all { index ->
+                        ssb[index].isWhitespace() || ssb[index] == '\uFFFC'
+                    }
                     // 标题不参与首行缩进：h1/h2 之类的标题同样以段落形式出现在文本里，
                     // 用 CSS 类排版的标题则靠"首段 == 章节标题"兜底。
                     val isHeading = isHeadingParagraph(ssb, paraStart, j)
@@ -2094,12 +2099,12 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                             ssb.subSequence(paraStart, j),
                             normalizedChapterTitle
                         )
-                    if (!hasImage && leadingWhitespaceEnd < j) firstContentParagraphSeen = true
+                    if (!isImageOnly && leadingWhitespaceEnd < j) firstContentParagraphSeen = true
                     paragraphs += ParagraphInfo(
                         start = paraStart,
                         end = j,
                         leadingWhitespaceEnd = leadingWhitespaceEnd,
-                        hasImage = hasImage,
+                        isImageOnly = isImageOnly,
                         isHeading = isHeading,
                         isChapterTitle = isChapterTitle
                     )
@@ -2111,7 +2116,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         // 倒序删除，保持尚未处理段落的索引有效。即使用户把缩进设为 0，
         // 也必须执行这一步，才能清掉 EPUB 自带的段首空白。
         paragraphs.asReversed().forEach { paragraph ->
-            val isBodyParagraph = !paragraph.hasImage &&
+            val isBodyParagraph = !paragraph.isImageOnly &&
                 !paragraph.isHeading && !paragraph.isChapterTitle &&
                 paragraph.leadingWhitespaceEnd < paragraph.end
             if (!isBodyParagraph) return@forEach

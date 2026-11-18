@@ -44,7 +44,7 @@ android {
         applicationId = "com.huangder.lumibooks"
         minSdk = 26
         targetSdk = 37
-        versionCode = 17
+        versionCode = 18
         versionName = "2.3.11"
 
         buildConfigField("boolean", "DIAGNOSTIC_BUILD", "false")
@@ -110,6 +110,22 @@ android {
                 res.srcDir("src/premium/res")
                 assets.srcDir("src/premium/assets")
             }
+        }
+        getByName("debug") {
+            if (premiumEdition) {
+                java.srcDir("src/premium/debug/java")
+                res.srcDir("src/premium/debug/res")
+            }
+        }
+        // Only the debug build type includes the development controls.
+        listOf("release", "benchmark", "diagnostic").forEach { buildType ->
+            getByName(buildType) {
+                java.srcDir("src/nonDebug/java")
+                if (premiumEdition) java.srcDir("src/premium/nonDebug/java")
+            }
+        }
+        getByName("testDebug") {
+            if (premiumEdition) java.srcDir("src/premium/debug/test")
         }
         getByName("test") {
             java.srcDir(if (premiumEdition) "src/premium/test" else "src/oss/test")

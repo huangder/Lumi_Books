@@ -512,6 +512,17 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
     protected open fun readerDrawingGeometry(textLayout: Layout, spanned: Spanned): ReaderLineGeometry =
         ReaderLineGeometry(textLayout, spanned, readerJustificationMode, readerForceLastLineJustification)
 
+    /** Note icons from the last frame, in Layout coordinates. */
+    private var readerNoteMarkers: List<ReaderNoteMarker> = emptyList()
+
+    /** Returns the note icon at view coordinates [x]/[y], if any. */
+    internal fun readerNoteMarkerAt(x: Float, y: Float): ReaderNoteMarker? {
+        if (readerNoteMarkers.isEmpty()) return null
+        val minTouch = 32f * resources.displayMetrics.density
+        return ReaderNoteMarkers.hit(readerNoteMarkers,
+            x - totalPaddingLeft + scrollX, y - totalPaddingTop + scrollY, minTouch)
+    }
+
     override fun onDraw(canvas: Canvas) {
         // Replacing Editor's selection buffer can clear Layout without resizing
         // the view. Our custom drawing bypasses TextView.onDraw's assumeLayout().
@@ -549,6 +560,9 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
                 frameworkImagePlacement = true,
                 imageBleedLeft = if (readerImageBleed) totalPaddingLeft else 0,
                 imageBleedRight = if (readerImageBleed) totalPaddingRight else 0)
+            readerNoteMarkers = ReaderNoteMarkers.collect(textLayout, spanned, geometry,
+                readerVisibleLines(canvas, textLayout))
+            readerNoteMarkers.forEach { ReaderNoteMarkers.draw(canvas, it.rect, currentTextColor) }
             canvas.restoreToCount(saved)
         } else {
             super.onDraw(canvas)

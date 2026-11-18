@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="default_reader_layout">默认排版</string>
+    <string name="default_reader_layout_description">适用于支持切换排版的书籍，单本书已保存的排版优先生效。</string>
+</resources>

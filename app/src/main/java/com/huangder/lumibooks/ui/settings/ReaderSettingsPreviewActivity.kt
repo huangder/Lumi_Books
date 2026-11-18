@@ -1871,15 +1871,23 @@ private fun PreviewReadView(
         effectiveSettings.firstLineIndent,
         effectiveSettings.paragraphSpacing,
         effectiveSettings.fontSize,
+        effectiveSettings.textAlignment,
         density
     ) {
-        ReaderParagraphFormatter.applyFirstLineIndent(
+        val formatted = ReaderParagraphFormatter.applyFirstLineIndent(
             text = sample,
             indentCharacters = effectiveSettings.firstLineIndent,
             textSizePx = effectiveSettings.fontSize * density,
             paragraphSpacingPx = effectiveSettings.paragraphSpacing * density,
             skipFirstNonEmptyParagraph = true
         )
+        val aligned = com.huangder.lumibooks.ui.reader.applyReaderTextAlignment(
+            formatted, effectiveSettings.textAlignment,
+            com.huangder.lumibooks.ui.reader.chapterTitleParagraphEnd(formatted, sample.lineSequence().firstOrNull())
+        )
+        val styled = com.huangder.lumibooks.ui.reader.prepareReaderEnglishHyphenation(aligned)
+        if (com.huangder.lumibooks.ui.reader.usesReaderEnglishHyphenation(styled)) styled else
+            com.huangder.lumibooks.ui.reader.engine.applyReaderPunctuationCompression(styled)
     }
     val previewNotes = remember(sample, showAnnotationSamples) {
         if (showAnnotationSamples) annotationPreviewNotes(sample) else emptyList()

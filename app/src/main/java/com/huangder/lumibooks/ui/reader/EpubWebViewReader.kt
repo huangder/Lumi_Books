@@ -930,6 +930,11 @@ internal fun EpubWebViewReaderContent(
     val webViewState = remember(session) { mutableStateOf<WebView?>(null) }
     val ttsPageViewByChapter = remember(session) { mutableStateOf<Map<Int, WebView>>(emptyMap()) }
     val pageTurnHostState = remember(session) { mutableStateOf<EpubPageTurnHost?>(null) }
+    LaunchedEffect(layoutPreviewActive, pageTurnHostState.value) {
+        val host = pageTurnHostState.value ?: return@LaunchedEffect
+        if (layoutPreviewActive) host.invalidatePreloads("typography_preview")
+        else restorePreloads.value?.invoke()
+    }
     LaunchedEffect(orientationPrewarm, pageTurnHostState.value) {
         if (orientationPrewarm) pageTurnHostState.value?.let { host ->
             host.endLayoutPreview()
@@ -1532,32 +1537,22 @@ internal fun EpubWebViewReaderContent(
                     return beyond.takeIf { warmStagingChapter() != it.chapterIndex }
                 }
 
-                // "Beyond" is unknown until the ahead neighbour is ready; only worth waiting for
-                // when the staging view holds another chapter, as right after a crossing.
-                fun warmAheadStillDeciding(): Boolean {
-                    if (latestContinuousScroll.value) return false
-                    val slot = warmAheadSlot()
-                    val ahead = pageTurnHost.preloadTarget(slot) ?: return false
-                    return !pageTurnHost.isPreloadReady(slot) && warmStagingChapter() != ahead.chapterIndex
-                }
-
                 var warmRetries = 0
                 val warmWork = object : Runnable {
                     override fun run() {
-                        if (pageTurnHost.released || navigationInFlight != null || !latestBackgroundPreparationEnabled.value) return
-                        val target = warmPageTarget()
-                        if (target == null) {
-                            if (warmAheadStillDeciding() && warmRetries++ < EPUB_WARM_RETRY_LIMIT) {
-                                pageTurnHost.postDelayed(this, 50L)
-                            } else {
-                                pageTurnHost.discardWarmPage()
-                            }
-                            return
-                        }
-                        if (!pageTurnHost.canPrepareWarmPage() || !pageTurnHost.activeWebView.documentLifecycle.let {
+                        if (pageTurnHost.released || navigationInFlight != null || !latestBackgroundPreparationEnabled.value ||
+                            latestLayoutPreviewActive.value) return
+                        if (!pageTurnHost.canPrepareWarmPage(warmAheadSlot()) || !pageTurnHost.activeWebView.documentLifecycle.let {
                                 it.isStable(it.configurationGeneration, it.layoutRevision) }) {
+                            // Keep an in-flight warm document until the new ahead slot is
+                            // known: it may be adopted instead of loading the chapter again.
                             // The next commit schedules again, so polling stops after a few seconds.
                             if (warmRetries++ < EPUB_WARM_RETRY_LIMIT) pageTurnHost.postDelayed(this, 50L)
+                            return
+                        }
+                        val target = warmPageTarget()
+                        if (target == null) {
+                            pageTurnHost.discardWarmPage()
                             return
                         }
                         if (pageTurnHost.ensureWarmPage()) updatePreload(EpubPageTurnHost.PreloadSlot.WARM, target)
@@ -1567,13 +1562,32 @@ internal fun EpubWebViewReaderContent(
                 fun scheduleWarmPage() {
                     pageTurnHost.removeCallbacks(warmWork)
                     warmRetries = 0
-                    // Decide at the commit itself: during fast turns the host is never idle later.
+                    // The fourth view is independent of the animated sheets.
+                    // Start ahead as soon as the next page is ready, including
+                    // while a prepared automatic cross-chapter turn is moving.
                     pageTurnHost.post(warmWork)
                 }
 
+                val adjacentPreloads = EpubPreloadScheduler(
+                    post = { work, delay -> if (!pageTurnHost.released) pageTurnHost.postDelayed(work, delay) },
+                    remove = { pageTurnHost.removeCallbacks(it) },
+                    foregroundReady = {
+                        !pageTurnHost.released && navigationInFlight == null &&
+                            latestBackgroundPreparationEnabled.value && !latestLayoutPreviewActive.value &&
+                            pageTurnHost.canPrepareAdjacentPage() &&
+                            pageTurnHost.activeWebView.documentLifecycle.let {
+                                it.isStable(it.configurationGeneration, it.layoutRevision)
+                            }
+                    },
+                    prepared = pageTurnHost::hasPreparedPage,
+                    prepare = ::updatePreload,
+                    onAheadReady = ::scheduleWarmPage,
+                    onIdle = ::scheduleWarmPage
+                )
+
                 fun updateAdjacentPreloads(currentChapter: Int, currentPage: Int, pageCount: Int) {
                     if (!latestBackgroundPreparationEnabled.value) return
-                    if (pageTurnHost.released || navigationInFlight != null) return
+                    if (pageTurnHost.released || navigationInFlight != null || latestLayoutPreviewActive.value) return
                     val (previous, next) = epubAdjacentPreloadTargets(
                         currentChapter, currentPage, pageCount, session.chapterCount,
                         latestContinuousScroll.value
@@ -1585,12 +1599,14 @@ internal fun EpubWebViewReaderContent(
                         if (delta != 0) recentTurnDirection = delta
                     }
                     lastPreloadPosition = position
-                    updatePreload(EpubPageTurnHost.PreloadSlot.PREVIOUS, previous)
-                    updatePreload(EpubPageTurnHost.PreloadSlot.NEXT, next)
+                    if (previous == null) updatePreload(EpubPageTurnHost.PreloadSlot.PREVIOUS, null)
+                    if (next == null) updatePreload(EpubPageTurnHost.PreloadSlot.NEXT, null)
+                    adjacentPreloads.update(position, previous, next, recentTurnDirection)
                     scheduleWarmPage()
                 }
 
                 fun invalidateAdjacentPreloads() {
+                    adjacentPreloads.cancel()
                     EpubTurnTrace.log("preload_reset",
                         "prevLoaded" to loadedChapterByView[pageTurnHost.previousWebView],
                         "nextLoaded" to loadedChapterByView[pageTurnHost.nextWebView],
@@ -2372,6 +2388,7 @@ internal fun EpubWebViewReaderContent(
                                         actualCount,
                                         view
                                     )
+                                    adjacentPreloads.onPrepared()
                                     readyTtsPageViewByChapter[target.chapterIndex] = view
                                     publishTtsPageViews()
                                     applyCurrentTtsHighlight(view, target.chapterIndex)
@@ -2501,6 +2518,16 @@ internal fun EpubWebViewReaderContent(
                                                 pageIndex,
                                                 pageCount
                                             ) {
+                                                // Reflow can supersede a promoted chapter's delayed
+                                                // commit. Adopt its document before the page callback
+                                                // updates Compose and asks AndroidView to render it.
+                                                if (loadedChapter.value != messageChapterIndex) {
+                                                    loadedChapter.value = messageChapterIndex
+                                                    activeDocumentUrl.value = expectedDocumentUrl
+                                                    configuredKey.value = activeConfigurationKey(messageChapterIndex)
+                                                    chapterLoadPending.value = false
+                                                    readyChapter.value = messageChapterIndex
+                                                }
                                                 pageTurnHost.endLayoutPreview()
                                                 activePageHandoffByView.remove(view)
                                                 updateAdjacentPreloads(
@@ -2776,12 +2803,23 @@ internal fun EpubWebViewReaderContent(
                                     if (type in setOf("ready", "page", "layoutStable", "layoutPending", "pagePrepared")) {
                                         val newerLayout = payload.optLong("layoutRevision", -1L) >
                                             contentView.documentLifecycle.layoutRevision
-                                        if (!contentView.documentLifecycle.observeLayout(
+                                        if (!pageTurnHost.observeDocumentLayout(
+                                                contentView,
                                                 payload.optLong("configurationGeneration", -1L),
                                                 payload.optLong("layoutRevision", -1L),
-                                                stable = type == "layoutStable"
+                                                stable = type == "layoutStable",
+                                                pending = type == "layoutPending"
                                             )) return
-                                        if (newerLayout) activePageHandoffByView.remove(contentView)
+                                        if (newerLayout) {
+                                            activePageHandoffByView.remove(contentView)
+                                            if (pageTurnHost.roleOf(contentView) == EpubPageTurnHost.WebViewRole.ACTIVE) {
+                                                // A late font reflow may cancel the promoted page's
+                                                // onPageCommit before it consumes these records. They
+                                                // must not fence the active document to its old page.
+                                                preloadRequestByView.remove(contentView)
+                                                preparedPageByView.remove(contentView)
+                                            }
+                                        }
                                     }
                                     if (type == "pagePrepared") {
                                         handlePreparedMessage(
@@ -3333,7 +3371,10 @@ internal fun EpubWebViewReaderContent(
                     }
                 }
                 pageTurnHost.onSlideLookaheadRequested = { slot, target ->
+                    adjacentPreloads.cancel()
+                    pageTurnHost.removeCallbacks(warmWork)
                     updatePreload(slot, target)
+                    scheduleWarmPage()
                 }
                 pageTurnHost.onBookEnd = { latestBookEnd.value() }
                 pageTurnHost.onBookEndPull = { latestBookEndPull.value(it) }

@@ -1073,7 +1073,7 @@
     <string name="goal_custom_target">自訂目標</string>
     <string name="goal_custom_desc">輸入 1-1439 分鐘</string>
     <string name="goal_custom_current_desc">目前 %1$d 分鐘，可改為 1-1439 分鐘</string>
-    <string name="apply_to_body_only">排版僅作用於正文</string>
+    <string name="apply_to_body_only">排版設定僅作用於正文</string>
     <string name="apply_to_body_only_desc">開啟時字重、間距等設定僅作用於正文，標題等保持原樣</string>
     <string name="batch_add_tags">新增標籤</string>
     <string name="body_font_weight">正文字重</string>

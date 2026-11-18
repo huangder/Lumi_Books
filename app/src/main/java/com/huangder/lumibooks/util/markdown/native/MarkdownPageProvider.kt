@@ -2,17 +2,19 @@ package com.huangder.lumibooks.util.markdown.native
 
 import android.graphics.Typeface
 import android.text.Layout
+import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.util.LruCache
+import com.huangder.lumibooks.ui.reader.engine.setReaderLineContinuation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 data class MarkdownPageStyle(val render: MarkdownRenderStyle, val typeface: Typeface,
     val lineHeight: Float, val letterSpacing: Float,
-    val alignment: Layout.Alignment = Layout.Alignment.ALIGN_NORMAL, val justify: Boolean = false)
+    val alignment: Layout.Alignment = Layout.Alignment.ALIGN_NORMAL)
 data class MarkdownPageFragment(val block: MarkdownBlock, val localStart: Int, val localEnd: Int,
     val text: CharSequence, val height: Int, val cells: List<MarkdownCellFragment> = emptyList(), val repeatedHeader: Boolean = false)
 data class MarkdownCellFragment(val localStart: Int, val text: CharSequence, val width: Int, val height: Int, val column: Int = 0)
@@ -38,8 +40,8 @@ class MarkdownPageProvider(private val source: MarkdownBlockSource, val style: M
         layouts.get(index)?.let { return@withContext it }
         val text = source.renderBlock(index, style.render)
         val value = text to StaticLayout.Builder.obtain(text, 0, text.length, paint, style.render.width.coerceAtLeast(1))
-            .setAlignment(style.alignment).setIncludePad(false)
-            .setJustificationMode(if (style.justify) Layout.JUSTIFICATION_MODE_INTER_WORD else Layout.JUSTIFICATION_MODE_NONE)
+            .setAlignment(if (source.document.blocks[index].kind == "heading") Layout.Alignment.ALIGN_NORMAL else style.alignment)
+            .setIncludePad(false)
             .setLineSpacing(0f, style.lineHeight).setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE).build()
         layouts.put(index, value)
         value
@@ -124,7 +126,11 @@ class MarkdownPageProvider(private val source: MarkdownBlockSource, val style: M
             val end = if (last < layout.lineCount) layout.getLineStart(last) else text.length
             if (end <= local) { index++; continue }
             val h = (layout.getLineBottom(last - 1) - layout.getLineTop(first)).coerceAtLeast(1)
-            fragments.add(MarkdownPageFragment(node, local, end, text.subSequence(local, end), h))
+            val slice = text.subSequence(local, end)
+            val fragment = if (end == text.length) slice else SpannableStringBuilder(slice).apply {
+                setReaderLineContinuation(text.subSequence(end, minOf(end + 32, text.length)))
+            }
+            fragments.add(MarkdownPageFragment(node, local, end, fragment, h))
             at = node.start + end
             remaining -= h
             if (end < text.length) break

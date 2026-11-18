@@ -686,7 +686,7 @@ html.lumi-footnote-open { touch-action: none !important; }
   top: 12px;
   width: max-content;
   min-width: 112px;
-  max-width: min(84vw, 420px);
+  max-width: min(84vw, 300px);
   max-height: min(56vh, 520px);
   box-sizing: border-box;
   overflow: visible;
@@ -699,7 +699,7 @@ html.lumi-footnote-open { touch-action: none !important; }
   box-shadow: 0 24px 72px rgba(0, 0, 0, 0.10), 0 6px 24px rgba(0, 0, 0, 0.05);
   font-family: sans-serif;
   font-size: 16px;
-  line-height: 1.62;
+  line-height: 1.7;
   text-align: start;
   filter: none;
   opacity: 0;
@@ -890,9 +890,10 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
         buildString(
             READER_SCRIPT_PART_1.length + READER_SCRIPT_PART_1B.length +
                 READER_SCRIPT_PART_2.length + READER_SCRIPT_PART_3.length +
-                READER_SCRIPT_PART_3B.length
+                READER_SCRIPT_PART_3B.length + EPUB_READER_ALIGNMENT_SCRIPT.length
         ) {
             append(READER_SCRIPT_PART_1)
+            append(EPUB_READER_ALIGNMENT_SCRIPT)
             append(READER_SCRIPT_PART_1B)
             append(READER_SCRIPT_PART_2)
             append(READER_SCRIPT_PART_3)
@@ -2478,6 +2479,8 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
     clearPageStage();
     var paginateStarted = traceNow();
     var body = document.body;
+    var hadReaderLineSpacing = readerLineSpacing.length > 0;
+    clearReaderLineSpacing();
     clearOverflowFits();
     applyPendingRuleStyles();
     // Insets cannot change footnote references or bodies. Keep document setup
@@ -2641,6 +2644,7 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
       body.style.columnWidth = 'auto';
       body.style.columnGap = 'normal';
       fitReflowableHorizontalOverflow();
+      adjustReaderPunctuationLines();
       var metrics = scrollMetrics();
       applyScrollability(metrics);
       state.pageOffsets = [0];
@@ -2653,6 +2657,7 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
       applyPaginationBox(body);
       fitPublisherFloats();
       fitReflowableHorizontalOverflow();
+      adjustReaderPunctuationLines();
       var extent = Math.max(document.documentElement.scrollWidth, body.scrollWidth, state.viewportWidth);
       var physicalTotal = Math.max(1, Math.ceil((extent - 1) / state.pageStep));
       state.pageOffsets = collectOccupiedPages(physicalTotal - 1);
@@ -2662,8 +2667,15 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
         : state.page;
       moveToPage(target, false);
     }
+    if (hadReaderLineSpacing || readerLineSpacing.length) locatorFrameCache = null;
     if (insetAnchor) {
-      if (insetAnchor.range && document.body.contains(insetAnchor.range.startContainer)) {
+      if ((hadReaderLineSpacing || readerLineSpacing.length) && insetAnchor.locator &&
+          typeof insetAnchor.locator.textPosition === 'number') {
+        var position = insetAnchor.locator.textPosition;
+        var restored = rangeAtOffsets(textIndex(), position, position);
+        if (restored) moveToPage(pageForRange(restored), false);
+        else state.pendingLocator = insetAnchor.locator;
+      } else if (insetAnchor.range && document.body.contains(insetAnchor.range.startContainer)) {
         moveToPage(pageForRange(insetAnchor.range), false);
       } else if (insetAnchor.locator) {
         state.pendingLocator = insetAnchor.locator;
@@ -2964,6 +2976,8 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
     // 原排版的「自然对齐」保留书籍 CSS（包括标题居中、段落继承和署名右对齐）。
     // 只有用户明确选择的对齐方式才覆盖原书；恢复自然对齐时也要移除旧覆盖。
     if (!/^(left|center|right|justify)$/.test(textAlignment)) textAlignment = '';
+    var legacyAlignment = state.fixed || getComputedStyle(document.body).writingMode.indexOf('horizontal') !== 0;
+    setReaderAlignment(legacyAlignment ? '' : textAlignment);
     var letterSpacingDp = Number(config.letterSpacingDp);
     var hasLetterSpacing = Number.isFinite(letterSpacingDp);
     var lineHeight = Number(config.lineHeight);
@@ -3030,8 +3044,8 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
       rules += '[data-lumi-publisher-vf]{font-variation-settings:"wght" ' + bodyFontWeight + ' !important;' +
         (hasOutline ? '-webkit-text-stroke-width:0 !important;' : '') + '}';
       rules += 'body [data-lumi-rule-font],body [data-lumi-bionic]{font-variation-settings:normal !important;}';
+    if (legacyAlignment && textAlignment) rules += textSelector + '{text-align:' + textAlignment + ' !important;}';
     }
-    if (textAlignment) rules += textSelector + '{text-align:' + textAlignment + ' !important;}';
     if (style.textContent !== rules) style.textContent = rules;
     if (!existing) document.head.appendChild(style);
     updatePublisherWeightTargets(publisherVariable);
@@ -3452,6 +3466,7 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
     applyPublisherNightShade(publisherNightShade);
     applyReaderOverrides(config);
     if (geometryChanged) {
+      clearReaderLineSpacing();
       applyChineseConversion(config);
       applyBionicReading(config.bionicReading === true);
     }
@@ -3562,6 +3577,9 @@ html.lumi-paginated body[data-lumi-layout="reflowable"] [data-lumi-floated-media
     if (image && !target.exact) return pageForRange(image);
     var range = null;
     if (Number(target.version || 1) >= 2 && target.exact) range = quoteRange(target);
+    if (!range && readerLineSpacing.length && typeof target.textPosition === 'number') {
+      range = rangeAtOffsets(textIndex(), target.textPosition, target.textPosition);
+    }
     var node = !range ? nodeAtPath(target.domPath || []) : null;
     if (!range && node && node.nodeType === Node.TEXT_NODE) {
       try {
@@ -4821,6 +4839,25 @@ private const val READER_SCRIPT_PART_3 = """
     var pairs = pairSameDocumentFootnoteBodies();
     for (var i = 0; i < pairs.length; i++) {
       pairs[i].body.setAttribute('data-lumi-footnote-body', 'true');
+    }
+    // Hiding note items alone leaves publisher list padding, borders and even
+    // glowing box-shadows at chapter end. Collapse only wrappers made entirely
+    // of hidden notes, preserving mixed prose, headings and illustrations.
+    for (var p = 0; p < pairs.length; p++) {
+      var wrapper = pairs[p].body.parentElement;
+      while (wrapper && wrapper !== document.body &&
+          /^(div|section|article|aside|blockquote|ol|ul|li|dl|dd|dt)$/.test(wrapper.localName)) {
+        var notesOnly = Array.from(wrapper.childNodes).every(function (node) {
+          if (node.nodeType === Node.COMMENT_NODE) return true;
+          if (node.nodeType === Node.TEXT_NODE) return !node.nodeValue.trim();
+          return node.nodeType === Node.ELEMENT_NODE &&
+            (node.getAttribute('data-lumi-footnote-body') === 'true' ||
+              /^(script|style)$/.test(node.localName));
+        });
+        if (!notesOnly) break;
+        wrapper.setAttribute('data-lumi-footnote-body', 'true');
+        wrapper = wrapper.parentElement;
+      }
     }
   }
 

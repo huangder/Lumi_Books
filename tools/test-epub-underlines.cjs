@@ -7,7 +7,10 @@ const { pathToFileURL } = require('node:url');
 const { spawnSync } = require('node:child_process');
 const source = readFileSync(join(__dirname, '../app/src/main/java/com/huangder/lumibooks/util/epub/EpubDocumentTransformer.kt'), 'utf8');
 const css = source.match(/private const val READER_CSS = """([\s\S]*?)"""/)[1];
-const script = [...source.matchAll(/private const val READER_SCRIPT_PART_\w+ = """([\s\S]*?)"""/g)].map(m => m[1]).join('');
+const alignmentSource = readFileSync(join(__dirname, '../app/src/main/java/com/huangder/lumibooks/util/epub/EpubReaderAlignment.kt'), 'utf8');
+const alignmentScript = alignmentSource.match(/EPUB_READER_ALIGNMENT_SCRIPT = """([\s\S]*?)"""/)[1];
+const script = [...source.matchAll(/private const val (READER_SCRIPT_PART_\w+) = """([\s\S]*?)"""/g)]
+  .map(m => m[2] + (m[1] === 'READER_SCRIPT_PART_1' ? alignmentScript : '')).join('');
 
 async function verify(flow, vertical) {
   const check = (condition, message) => { if (!condition) throw Error(message); };
@@ -22,12 +25,14 @@ async function verify(flow, vertical) {
         const originalHighlight = window.Highlight;
         if (fallback) window.Highlight = undefined;
         const item = { type: 'underline', exact, start: { exact }, color: '#ff0000', ruleStyle: {
-          underlineMode: mode, textColor: '#ff0000', fontWeight: 400, italic: false
+          underlineMode: mode, highlightMode: 2, fontWeight: 400, italic: false
         } };
         window.LumiReader.setHighlights([]);
         check(window.LumiReader.setHighlights([item]), 'Overlay call failed');
         window.Highlight = originalHighlight;
         const lines = [...document.querySelectorAll('#lumi-underline-layer svg')];
+        check(document.querySelector('#lumi-highlight-layer').children.length === 0,
+          `Changing manual underline to mode ${mode} added a background, fallback ${fallback}`);
         check(lines.length > 1, `Expected multiple ${vertical ? 'columns' : 'lines'}, mode ${mode}`);
         const range = document.createRange(); range.selectNodeContents(target);
         const rects = [...range.getClientRects()].filter(r => r.width > 0 && r.height > 0);
@@ -43,6 +48,14 @@ async function verify(flow, vertical) {
           if (mode === 2) check((path.getAttribute('d').match(/M/g) || []).length === 2, 'Double line missing stroke');
           if (mode === 4) check(path.getAttribute('stroke-dasharray') === '4 3', 'Dash pattern missing');
         });
+        // Rules may intentionally combine a background and an underline.
+        const combined = { ...item, generatedByRule: true,
+          ruleStyle: { ...item.ruleStyle, highlightMode: 0 } };
+        if (fallback) window.Highlight = undefined;
+        window.LumiReader.setHighlights([combined]);
+        window.Highlight = originalHighlight;
+        check(document.querySelector('#lumi-highlight-layer').children.length > 0, 'Combined rule background missing');
+        check(document.querySelector('#lumi-underline-layer svg'), 'Combined rule underline missing');
         checks++;
       }
     }

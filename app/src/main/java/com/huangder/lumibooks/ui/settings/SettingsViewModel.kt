@@ -189,6 +189,11 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            dataStoreManager.defaultRenderMode.collectLatest { mode ->
+                _uiState.update { it.copy(defaultRenderMode = mode) }
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.lineHeight.collectLatest { value ->
                 _uiState.value = _uiState.value.copy(lineHeight = value)
             }
@@ -519,6 +524,10 @@ class SettingsViewModel @Inject constructor(
     }
 
     // ─── 阅读设置 ───
+
+    fun saveDefaultRenderMode(mode: com.huangder.lumibooks.util.epub.EpubRenderMode) {
+        viewModelScope.launch { dataStoreManager.saveDefaultRenderMode(mode) }
+    }
 
     fun saveFontSize(value: Float) {
         viewModelScope.launch {

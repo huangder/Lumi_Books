@@ -128,6 +128,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import com.huangder.lumibooks.ui.theme.fangSongFamily
+import com.huangder.lumibooks.ui.theme.KaiTi
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -136,8 +138,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import androidx.core.graphics.ColorUtils
-import com.huangder.lumibooks.ui.theme.fangSongFamily
-import com.huangder.lumibooks.ui.theme.KaiTi
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
@@ -2670,14 +2670,6 @@ fun AdvancedSettingsSheet(
     // 预览文本用的字体（自定义字体从文件路径加载，与阅读页保持一致）
     val previewCustomPath = customFonts.firstOrNull { it.fontTypeKey == currentFontType }?.path
         ?: customFontPath
-    val customPreviewFontFamily = rememberCustomReaderFontFamily(currentFontType, previewCustomPath)
-    val previewFont = when {
-        currentFontType == "serif" -> rememberReaderSerifFontFamily()
-        currentFontType == "fangsong" -> fangSongFamily()
-        currentFontType == "kaiti" -> KaiTi
-        currentFontType.startsWith("custom") -> customPreviewFontFamily
-        else -> androidx.compose.ui.text.font.FontFamily.Default
-    }
     val resolvedPreviewText = previewText.ifBlank { stringResource(R.string.preview_text) }
     val previewParagraphs = remember(resolvedPreviewText) {
         buildPreviewParagraphs(resolvedPreviewText)
@@ -2695,7 +2687,7 @@ fun AdvancedSettingsSheet(
     val previewParagraphSpacing = currentParagraphSpacing
     val previewFirstLineIndent = currentFirstLineIndent
     val previewContext = LocalContext.current
-    val verticalPreviewTypeface by androidx.compose.runtime.produceState(
+    val previewTypeface by androidx.compose.runtime.produceState(
         android.graphics.Typeface.DEFAULT, previewContext, currentFontType, previewCustomPath
     ) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -2751,7 +2743,7 @@ fun AdvancedSettingsSheet(
                         text = previewParagraphs.joinToString("\n"),
                         fontSizeSp = currentFontSizeSp,
                         textColor = currentTextColor,
-                        typeface = verticalPreviewTypeface,
+                        typeface = previewTypeface,
                         lineHeight = previewLineHeight,
                         letterSpacingDp = previewLetterSpacing,
                         paragraphSpacingDp = previewParagraphSpacing,
@@ -2778,20 +2770,33 @@ fun AdvancedSettingsSheet(
                         )
                     ) {
                         previewParagraphs.forEach { paragraph ->
-                            Text(
-                                text = paragraph,
-                                modifier = Modifier.fillMaxWidth(),
-                                style = androidx.compose.ui.text.TextStyle(
-                                    fontSize = currentFontSizeSp.sp,
-                                    color = currentTextColor,
-                                    fontFamily = previewFont,
-                                    lineHeight = (currentFontSizeSp * previewLineHeight).sp,
-                                    letterSpacing = previewLetterSpacing.sp,
-                                    textAlign = currentTextAlignment.toComposeTextAlign(),
-                                    textIndent = androidx.compose.ui.text.style.TextIndent(
-                                        firstLine = (currentFontSizeSp * previewFirstLineIndent).sp
-                                    )
+                            val density = LocalDensity.current
+                            val sizePx = with(density) { currentFontSizeSp.sp.toPx() }
+                            val trackingPx = with(density) { previewLetterSpacing.dp.toPx() }
+                            val preview = remember(paragraph, sizePx, previewFirstLineIndent, currentTextAlignment) {
+                                val formatted = com.huangder.lumibooks.ui.reader.engine.ReaderParagraphFormatter.applyFirstLineIndent(
+                                    paragraph, previewFirstLineIndent, sizePx, 0f, false
                                 )
+                                val aligned = applyReaderTextAlignment(formatted, currentTextAlignment)
+                                val styled = prepareReaderEnglishHyphenation(aligned)
+                                if (usesReaderEnglishHyphenation(styled)) styled else
+                                    com.huangder.lumibooks.ui.reader.engine.applyReaderPunctuationCompression(styled)
+                            }
+                            AndroidView(
+                                factory = { com.huangder.lumibooks.ui.reader.engine.RoundedHighlightTextView(it) },
+                                modifier = Modifier.fillMaxWidth(),
+                                update = { view ->
+                                    view.includeFontPadding = false
+                                    view.typeface = previewTypeface
+                                    view.setTextColor(currentTextColor.toArgb())
+                                    view.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, sizePx)
+                                    view.setLineSpacing(0f, previewLineHeight)
+                                    view.letterSpacing = trackingPx / sizePx.coerceAtLeast(1f)
+                                    view.breakStrategy = currentTextAlignment.readerBreakStrategyForText(preview)
+                                    view.hyphenationFrequency = readerHyphenationFrequency(preview)
+                                    view.readerJustificationMode = currentTextAlignment.readerJustificationForText(preview)
+                                    view.setText(preview, android.widget.TextView.BufferType.SPANNABLE)
+                                }
                             )
                         }
                     }
@@ -4337,14 +4342,6 @@ private fun readerTextAlignmentLabel(alignment: ReaderTextAlignment): String = s
         ReaderTextAlignment.JUSTIFY -> R.string.text_alignment_justify
     }
 )
-
-private fun ReaderTextAlignment.toComposeTextAlign(): TextAlign = when (this) {
-    ReaderTextAlignment.NATURAL -> TextAlign.Justify
-    ReaderTextAlignment.LEFT -> TextAlign.Left
-    ReaderTextAlignment.CENTER -> TextAlign.Center
-    ReaderTextAlignment.RIGHT -> TextAlign.Right
-    ReaderTextAlignment.JUSTIFY -> TextAlign.Justify
-}
 
 @Composable
 private fun readerCornerContentLabel(content: ReaderCornerContent): String = stringResource(

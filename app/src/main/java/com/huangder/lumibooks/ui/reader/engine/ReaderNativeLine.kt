@@ -112,9 +112,7 @@ internal class ReaderNativeLine private constructor(
             if (native.any { !it.isFinite() }) return null
             val spaces = (start until end).filter { text[it] == ' ' }
             val justify = justification == Layout.JUSTIFICATION_MODE_INTER_WORD &&
-                layout.getParagraphAlignment(line) == Layout.Alignment.ALIGN_NORMAL &&
-                shouldJustifyReaderLine(line, layout.lineCount,
-                    readerLineEndsParagraph(text, start, layout.getLineEnd(line)), forceLast)
+                readerLineCanStretch(layout, text, line, forceLast)
             // Some platform/font combinations round advances differently during
             // breaking and drawing. Absorb that small excess in word spaces too.
             val extra = if (justify && spaces.isNotEmpty()) {

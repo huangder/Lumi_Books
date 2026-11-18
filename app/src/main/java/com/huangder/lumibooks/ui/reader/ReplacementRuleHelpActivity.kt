@@ -1,0 +1,90 @@
+package com.huangder.lumibooks.ui.reader
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalView
+import com.huangder.lumibooks.data.local.DataStoreManager
+import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
+import com.huangder.lumibooks.ui.components.ConfigurableActivityBack
+import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.EBookReaderTheme
+import com.huangder.lumibooks.ui.theme.effectiveAppTheme
+import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
+import com.huangder.lumibooks.util.LaunchThemeController
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
+import com.huangder.lumibooks.ui.animation.finishWithPush
+
+@AndroidEntryPoint
+class ReplacementRuleHelpActivity : ComponentActivity() {
+    @Inject
+    lateinit var dataStoreManager: DataStoreManager
+
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(com.huangder.lumibooks.util.LocaleHelper.applyLanguage(newBase))
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
+        super.onCreate(savedInstanceState)
+        val launchTheme = LaunchThemeController.themeSnapshot(this)
+
+        setContent {
+            val appTheme by dataStoreManager.appTheme.collectAsState(initial = launchTheme.appTheme)
+            val appAccentColor by dataStoreManager.appAccentColor.collectAsState(initial = launchTheme.appAccentColor)
+            val appFontSize by dataStoreManager.appFontSize.collectAsState(initial = launchTheme.appFontSize)
+            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = launchTheme.globalFontMode)
+            val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = launchTheme.liquidGlassTransparency)
+            val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = launchTheme.liquidGlassHdrHighlightEnabled)
+            val darkMode by dataStoreManager.darkMode.collectAsState(initial = launchTheme.darkMode)
+            val isDark = when (darkMode) {
+                "dark" -> true
+                "light" -> false
+                else -> isSystemInDarkTheme()
+            }
+            val capability = rememberLiquidGlassCapability(view = LocalView.current)
+            val resolvedTheme = effectiveAppTheme(appTheme, capability)
+
+            val eInkMode by dataStoreManager.eInkModeEnabled.collectAsState(initial = launchTheme.eInkModeEnabled)
+            val motion by dataStoreManager.motionPreference.collectAsState(initial = launchTheme.motionPreference)
+            val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = launchTheme.menuAnimationStyle)
+            val liquidGlassStyle by dataStoreManager.liquidGlassStyle
+                .collectAsState(initial = launchTheme.liquidGlassStyle)
+            val liquidGlassSamplingQuality by dataStoreManager.liquidGlassSamplingQuality
+                .collectAsState(initial = launchTheme.liquidGlassSamplingQuality)
+            val reduceTransparencyEnabled by dataStoreManager.reduceTransparencyEnabled
+                .collectAsState(initial = launchTheme.reduceTransparencyEnabled)
+            EBookReaderTheme(
+                liquidGlassStyle = liquidGlassStyle,
+                liquidGlassSamplingQuality = liquidGlassSamplingQuality,
+                reduceTransparencyEnabled = reduceTransparencyEnabled,
+                menuAnimationStyle = com.huangder.lumibooks.domain.model.MenuAnimationStyle.fromStoredValue(menuAnimationStyleValue),
+                motionPreference = com.huangder.lumibooks.ui.theme.MotionPreference.fromStoredValue(motion),
+                eInkMode = eInkMode,
+                darkTheme = isDark,
+                dynamicColor = resolvedTheme == "material3",
+                appTheme = appTheme,
+                lumiBackgroundScene = com.huangder.lumibooks.ui.theme.LumiBackgroundScene.SECONDARY,
+                appAccentColor = appAccentColor.ifBlank { DEFAULT_APP_ACCENT_HEX },
+                liquidGlassTransparency = liquidGlassTransparency,
+                liquidGlassHdrHighlightEnabled = liquidGlassHdrHighlightEnabled,
+                appFontSize = appFontSize,
+                globalFontMode = globalFontMode
+            ) {
+                ConfigurableActivityBack(
+                    predictiveBackEnabled = dataStoreManager.predictiveBackEnabled.collectAsState(initial = launchTheme.predictiveBackEnabled).value,
+                    onBack = { finishWithPush() }
+                )
+                Surface(color = AppColors.PageBg) {
+                    ReplacementRuleHelpPage(onBack = { finishWithPush() })
+                }
+            }
+        }
+    }
+}

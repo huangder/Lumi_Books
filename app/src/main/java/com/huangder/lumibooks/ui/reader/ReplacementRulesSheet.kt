@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.reader
 
+import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -36,6 +37,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -123,6 +126,8 @@ internal fun ReplacementRulesSheet(
     var saving by remember { mutableStateOf(false) }
     var saveFailed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val keyboard = LocalSoftwareKeyboardController.current
     fun update(change: (BookReplacementRules) -> BookReplacementRules, onSaved: () -> Unit = {}) {
         if (saving) return
         saving = true
@@ -149,7 +154,7 @@ internal fun ReplacementRulesSheet(
             val current = draft
             when {
                 current == null -> onDismiss()
-                current != (original ?: ReplacementRule(current.id)) -> confirmDiscard = true
+                current != (original ?: ReplacementRule(current.id, enabled = false)) -> confirmDiscard = true
                 else -> draft = null
             }
         }
@@ -185,7 +190,21 @@ internal fun ReplacementRulesSheet(
                 onBack = if (editor != null) goBack else null,
                 // Save lives in the header so it stays reachable while the keyboard covers the sheet.
                 onConfirm = if (editor != null) save else null,
-                confirmEnabled = error == null && !saving
+                confirmEnabled = error == null && !saving,
+                actions = {
+                    LiquidGlassIconButton(
+                        imageVector = AppIcons.Info,
+                        contentDescription = stringResource(R.string.replacement_help_title),
+                        onClick = {
+                            keyboard?.hide()
+                            context.startActivity(Intent(context, ReplacementRuleHelpActivity::class.java))
+                        },
+                        size = 44.dp,
+                        iconSize = 20.dp,
+                        normalContainerColor = AppColors.BgGray
+                    )
+                    if (editor != null) Spacer(Modifier.width(8.dp))
+                }
             )
             AnimatedVisibility(saveFailed, enter = motion.expand, exit = motion.collapse) {
                 Text(stringResource(R.string.replacement_save_failed), color = AppColors.Destructive,
@@ -232,7 +251,7 @@ internal fun ReplacementRulesSheet(
             AnimatedVisibility(editor == null, enter = motion.expand, exit = motion.collapse) {
                 Box(Modifier.padding(top = 12.dp)) {
                     LiquidGlassButton(
-                        onClick = { draft = ReplacementRule(UUID.randomUUID().toString()) },
+                        onClick = { draft = ReplacementRule(UUID.randomUUID().toString(), enabled = false) },
                         enabled = !saving,
                         tintedColor = AppColors.Accent,
                         modifier = Modifier.fillMaxWidth()
@@ -251,7 +270,11 @@ internal fun ReplacementRulesSheet(
             onDismissRequest = { pendingDelete = null },
             titleText = stringResource(R.string.replacement_delete),
             text = {
-                ReplacementMapping(rule, maxLines = 3)
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ReplacementMapping(rule, maxLines = 3)
+                    Text(stringResource(R.string.replacement_shared_delete), color = AppColors.TextSecondary,
+                        fontSize = AppType.Footnote)
+                }
             },
             contentScrimColor = AppColors.CardBg.copy(alpha = 0.82f),
             actions = listOf(
@@ -321,6 +344,9 @@ internal fun ReplacementRuleList(
             )
         }
     }
+
+    Text(stringResource(R.string.replacement_shared_hint), color = AppColors.TextSecondary,
+        fontSize = AppType.Footnote, modifier = Modifier.padding(horizontal = 4.dp))
 
     if (settings.rules.isEmpty()) {
         ReplacementEmptyState()
@@ -533,6 +559,8 @@ internal fun ReplacementRuleEditor(
     previewChapter: suspend () -> ReplacementPreview?
 ) {
     val codeStyle = TextStyle(fontSize = AppType.BodySmall, fontFamily = RegexFont)
+    Text(stringResource(R.string.replacement_shared_edit_hint), color = AppColors.TextSecondary,
+        fontSize = AppType.Footnote, modifier = Modifier.padding(horizontal = 4.dp))
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         val modes = listOf(stringResource(R.string.replacement_plain), stringResource(R.string.replacement_regex))
         LiquidGlassSegmentedControl(

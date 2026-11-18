@@ -17,6 +17,47 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class EpubReflowableScrollInstrumentedTest {
+    @Test
+    fun bodyAlignmentKeepsPublisherTitleAndOnlyRepairsPunctuationGapsInNaturalMode() {
+        val sample = "春風吹過山間樹林鳥。後來人們走到了山腳下吾乃漢字標點避讓的驗證工具。"
+        val paragraphs = (170..198).joinToString("") { width -> "<p style=\"width:${width}px\">$sample</p>" }
+        val webView = openPage("""
+            <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+              <head><meta name="viewport" content="width=320,initial-scale=1"/>
+                <style>h2,[id="subtitle"]{text-align:center} p{margin:0;font:20px sans-serif;line-height:28px}</style>
+              </head>
+              <body><h2 id="title">章節標題</h2><p id="subtitle" epub:type="subtitle">副標題</p>
+                <section id="prose" lang="zh-Hant">$paragraphs</section>
+              </body>
+            </html>
+        """.trimIndent())
+        val measure = """
+            (function(){
+              var blocks=Array.from(document.querySelectorAll('#prose p'));
+              return JSON.stringify({
+                adjusted:document.querySelectorAll('[data-lumi-line-spacing]').length,
+                allTextPreserved:blocks.every(function(p){return p.textContent==='$sample'}),
+                title:getComputedStyle(document.getElementById('title')).textAlign,
+                subtitle:getComputedStyle(document.getElementById('subtitle')).textAlign,
+                body:getComputedStyle(blocks[0]).textAlign,
+                last:getComputedStyle(blocks[0]).textAlignLast
+              });
+            })()
+        """.trimIndent()
+        for (flow in listOf("scrolled", "paginated")) {
+            val natural = configureAndEvaluate(webView, measure, flow)
+            assertTrue(natural.toString(), natural.getInt("adjusted") > 0)
+            assertTrue(natural.getBoolean("allTextPreserved"))
+            val justified = configureAndEvaluate(webView, measure, flow, "justify")
+            assertEquals(0, justified.getInt("adjusted"))
+            assertTrue(justified.getBoolean("allTextPreserved"))
+            assertEquals("justify", justified.getString("body"))
+            assertEquals("start", justified.getString("last"))
+            assertEquals("center", justified.getString("title"))
+            assertEquals("center", justified.getString("subtitle"))
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     @Test
     fun shortPublisherPageUsesFullViewportAndFitsDecoratedContent() {
@@ -265,14 +306,15 @@ class EpubReflowableScrollInstrumentedTest {
     private fun configureAndEvaluate(
         webView: WebView,
         expression: String,
-        flow: String = "scrolled"
+        flow: String = "scrolled",
+        alignment: String = "natural"
     ): JSONObject {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val completed = CountDownLatch(1)
         var result: JSONObject? = null
         instrumentation.runOnMainSync {
             webView.evaluateJavascript(
-                "window.LumiReader.configure({flow:'$flow',theme:'day',preservePublisherBackground:true," +
+                "window.LumiReader.configure({flow:'$flow',textAlignment:'$alignment',theme:'day',preservePublisherBackground:true," +
                     "insets:{top:28,right:27,bottom:32,left:23}});"
             ) {
                 webView.postDelayed({

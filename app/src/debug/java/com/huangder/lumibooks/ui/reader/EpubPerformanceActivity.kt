@@ -56,9 +56,11 @@ class EpubPerformanceActivity : ComponentActivity() {
         val turns = intent.getIntExtra("turns", 0).coerceIn(0, 300)
         val fixture = intent.getStringExtra("fixture") ?: "text"
         val suiteCycles = intent.getIntExtra("suite_cycles", 0).coerceIn(0, 30)
+        val typographyCycles = intent.getIntExtra("typography_cycles", 0).coerceIn(0, 30)
         // Fast cross-chapter runs: interval between inputs, and api | tap | swipe input.
         val intervalMs = intent.getLongExtra("interval_ms", 700L).coerceIn(50L, 5_000L)
         val input = intent.getStringExtra("input") ?: "api"
+        val burstDirection = if (intent.getIntExtra("direction", 1) < 0) -1 else 1
         // "user" for transition/long_press reads the saved reader settings.
         val longPressKey = intent.getStringExtra("long_press")
         // A library book by percent-encoded title, opened in this process only.
@@ -68,7 +70,12 @@ class EpubPerformanceActivity : ComponentActivity() {
             setTurnScreenOn(true)
         }
         val chapters = List(40) { chapter ->
-            List(if (chapter % 3 == 2) 3 else 40) { paragraph ->
+            val paragraphs = when {
+                fixture == "frontmatter" && chapter < 12 -> 1
+                chapter % 3 == 2 -> 3
+                else -> 40
+            }
+            List(paragraphs) { paragraph ->
                 "第 ${chapter + 1} 章，第 ${paragraph + 1} 段。清晨的阳光照在书页上，阅读应该流畅而安静。".repeat(3)
             }.joinToString("\n\n")
         }
@@ -80,6 +87,10 @@ class EpubPerformanceActivity : ComponentActivity() {
             var navigation by remember { mutableStateOf<EpubNavigationRequest?>(null) }
             var navigationId by remember { mutableLongStateOf(0L) }
             var ready by remember { mutableStateOf(false) }
+            var fontSize by remember { mutableFloatStateOf(18f) }
+            var fontWeight by remember { mutableIntStateOf(400) }
+            var typographyPreview by remember { mutableStateOf(false) }
+            var committedTurns by remember { mutableIntStateOf(0) }
             var turn by remember { mutableStateOf<((Int) -> Boolean)?>(null) }
             var activeTheme by remember { mutableStateOf(theme) }
             var publisherPaint by remember { mutableStateOf(publisher) }
@@ -89,6 +100,7 @@ class EpubPerformanceActivity : ComponentActivity() {
             var bookFormat by remember { mutableStateOf("EPUB") }
             var bookNativeCss by remember { mutableStateOf(engine == "native_css") }
             fun position(c: Int, p: Int, n: Int) {
+                if (c != chapter || p != page) committedTurns++
                 chapter = c; page = p; count = n; ready = true
                 Log.d("EpubPerfFixture", "position engine=$engine transition=$activeTransition chapter=$c page=$p count=$n")
             }
@@ -142,6 +154,44 @@ class EpubPerformanceActivity : ComponentActivity() {
                 if (engine != "native" && renderSession == null) return@LaunchedEffect
                 while (!ready || turn == null) delay(50)
                 delay(1500)
+                if (typographyCycles > 0 && engine == "epub") {
+                    repeat(typographyCycles) { cycle ->
+                        typographyPreview = true
+                        for (step in 0..3) {
+                            ready = false
+                            fontSize = listOf(18f, 30f, 22f, if (cycle % 2 == 0) 26f else 20f)[step]
+                            fontWeight = listOf(400, 900, 500, if (cycle % 2 == 0) 800 else 600)[step]
+                            delay(35)
+                        }
+                        typographyPreview = false
+                        val releasedAt = android.os.SystemClock.uptimeMillis()
+                        var elapsed = 0
+                        while (!ready && elapsed < 8_000) { delay(10); elapsed += 10 }
+                        if (!ready) {
+                            Log.e("EpubPerfFixture", "TYPOGRAPHY_FAIL cycle=$cycle stage=pagination")
+                            return@LaunchedEffect
+                        }
+                        val sourceChapter = chapter
+                        val sourcePage = page
+                        val startedAt = android.os.SystemClock.uptimeMillis()
+                        Log.d("EpubPerfFixture", "TYPOGRAPHY_TURN cycle=$cycle from=$chapter/$page count=$count " +
+                            "paginationMs=${startedAt - releasedAt} size=$fontSize weight=$fontWeight")
+                        if (input == "swipe") injectSwipe(vertical = activeTransition == "scroll")
+                        else turn?.invoke(1)
+                        elapsed = 0
+                        while (chapter == sourceChapter && page == sourcePage && elapsed < 8_000) {
+                            delay(10); elapsed += 10
+                        }
+                        if (chapter == sourceChapter && page == sourcePage) {
+                            Log.e("EpubPerfFixture", "TYPOGRAPHY_FAIL cycle=$cycle stage=turn")
+                            return@LaunchedEffect
+                        }
+                        Log.d("EpubPerfFixture", "TYPOGRAPHY_PASS cycle=$cycle to=$chapter/$page " +
+                            "turnMs=${android.os.SystemClock.uptimeMillis() - startedAt}")
+                        delay(100)
+                    }
+                    Log.d("EpubPerfFixture", "TYPOGRAPHY_DONE cycles=$typographyCycles transition=$activeTransition input=$input")
+                }
                 if (suiteCycles > 0 && engine == "epub") {
                     repeat(suiteCycles) { cycle ->
                         for (step in 0..2) {
@@ -169,20 +219,40 @@ class EpubPerformanceActivity : ComponentActivity() {
                     Log.d("EpubPerfFixture", "SUITE_DONE cycles=$suiteCycles transition=$transition")
                 }
                 Log.d("EpubPerfFixture", "START engine=$engine transition=$activeTransition fixture=$fixture turns=$turns " +
-                    "input=$input intervalMs=$intervalMs longPress=${activeLongPress.storageKey} durationMs=$activeDurationMs")
+                    "input=$input intervalMs=$intervalMs direction=$burstDirection " +
+                    "longPress=${activeLongPress.storageKey} durationMs=$activeDurationMs")
+                val burstChapter = chapter
+                val burstPage = page
+                val burstCommitted = committedTurns
                 repeat(turns) { index ->
                     val startedAt = android.os.SystemClock.uptimeMillis()
                     Log.d("EpubPerfFixture", "intent=$index chapter=$chapter page=$page count=$count")
                     when (input) {
                         "drag_probe" -> injectHeldDrag()
-                        "swipe" -> injectSwipe(vertical = activeTransition == "scroll" || activeTransition == "continuous")
-                        "tap" -> injectTap()
-                        else -> turn?.invoke(1)
+                        "swipe" -> injectSwipe(vertical = activeTransition == "scroll" || activeTransition == "continuous",
+                            direction = burstDirection)
+                        "tap" -> injectTap(burstDirection)
+                        else -> turn?.invoke(burstDirection)
                     }
                     // interval_ms is the period between input starts, so 166 means six per second.
                     delay((intervalMs - (android.os.SystemClock.uptimeMillis() - startedAt)).coerceAtLeast(0L))
                 }
-                Log.d("EpubPerfFixture", "DONE engine=$engine transition=$activeTransition chapter=$chapter page=$page")
+                var drainMs = 0
+                while (committedTurns - burstCommitted < turns && drainMs < 8_000) {
+                    delay(20); drainMs += 20
+                }
+                val expectedChapter = burstChapter + burstDirection * turns
+                if (fixture == "frontmatter" && engine == "epub" && input != "drag_probe" &&
+                    burstChapter in 0..11 && expectedChapter in 0..11 && burstPage == 0) {
+                    if (chapter == expectedChapter && page == 0 && committedTurns - burstCommitted == turns) {
+                        Log.d("EpubPerfFixture", "BURST_PASS from=$burstChapter/0 to=$chapter/$page turns=$turns drainMs=$drainMs")
+                    } else {
+                        Log.e("EpubPerfFixture", "BURST_FAIL expected=$expectedChapter/0 actual=$chapter/$page " +
+                            "turns=${committedTurns - burstCommitted}/$turns drainMs=$drainMs")
+                    }
+                }
+                Log.d("EpubPerfFixture", "DONE engine=$engine transition=$activeTransition chapter=$chapter page=$page " +
+                    "observedTurns=${committedTurns - burstCommitted} drainMs=$drainMs")
             }
             if (engine == "native") {
                 AndroidView(factory = { context ->
@@ -210,7 +280,8 @@ class EpubPerformanceActivity : ComponentActivity() {
                     () -> Unit
                 ) -> Unit = { snapshotProvider, centerTap ->
                 EpubWebViewReader(
-                    session = book, chapterIndex = chapter, nativeCssEnabled = bookNativeCss, fontSizeSp = 18f, fontType = "system",
+                    session = book, chapterIndex = chapter, nativeCssEnabled = bookNativeCss, fontSizeSp = fontSize, fontType = "system",
+                    bodyFontWeight = fontWeight.toFloat(), layoutPreviewActive = typographyPreview,
                     twoPageSpread = intent.getBooleanExtra("spread", false) && !continuous && bookFormat == "EPUB",
                     fontFilePath = null, textColorOverride = null, theme = activeTheme, coverBackgroundColor = null,
                     publisherPaintOnly = publisherPaint, restoreLocatorJson = null, restoreProgression = 0f,
@@ -282,11 +353,13 @@ class EpubPerformanceActivity : ComponentActivity() {
         Log.d("EpubPerfFixture", "DRAG_RELEASED")
     }
 
-    private suspend fun injectSwipe(vertical: Boolean = false) {
+    private suspend fun injectSwipe(vertical: Boolean = false, direction: Int = 1) {
         val root = window.decorView
         // Next page: leftward swipe, or upward for vertical paging and scrolling.
-        val start = if (vertical) root.width * 0.5f to root.height * 0.75f else root.width * 0.8f to root.height * 0.5f
-        val end = if (vertical) root.width * 0.5f to root.height * 0.25f else root.width * 0.2f to root.height * 0.5f
+        val forwardStart = if (vertical) root.width * 0.5f to root.height * 0.75f else root.width * 0.8f to root.height * 0.5f
+        val forwardEnd = if (vertical) root.width * 0.5f to root.height * 0.25f else root.width * 0.2f to root.height * 0.5f
+        val start = if (direction < 0) forwardEnd else forwardStart
+        val end = if (direction < 0) forwardStart else forwardEnd
         val downTime = android.os.SystemClock.uptimeMillis()
         fun send(action: Int, point: Pair<Float, Float>, time: Long) {
             val event = android.view.MotionEvent.obtain(downTime, time, action, point.first, point.second, 0)
@@ -306,9 +379,9 @@ class EpubPerformanceActivity : ComponentActivity() {
         send(android.view.MotionEvent.ACTION_UP, end, android.os.SystemClock.uptimeMillis())
     }
 
-    private fun injectTap() {
+    private fun injectTap(direction: Int = 1) {
         val root = window.decorView
-        val x = root.width * 0.85f
+        val x = root.width * if (direction < 0) 0.15f else 0.85f
         val y = root.height * 0.5f
         val downTime = android.os.SystemClock.uptimeMillis()
         listOf(android.view.MotionEvent.ACTION_DOWN to downTime,

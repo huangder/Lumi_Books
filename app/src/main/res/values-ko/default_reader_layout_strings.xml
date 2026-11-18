@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="default_reader_layout">기본 레이아웃</string>
+    <string name="default_reader_layout_description">레이아웃 전환을 지원하는 책에 적용됩니다. 책별로 저장한 설정이 우선합니다.</string>
+</resources>

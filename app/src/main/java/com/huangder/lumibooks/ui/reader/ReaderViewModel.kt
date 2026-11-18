@@ -195,7 +195,9 @@ internal fun shouldStyleTxtChapterTitle(firstLine: String, chapterTitle: String)
 
 internal fun annotationSnapshotStyleForRendering(note: Note, style: RuleStyle): RuleStyle =
     if (note.type == "underline" && !note.isGeneratedByHighlightRule) {
-        style.copy(textColor = null)
+        // Manual underline snapshots also predate an explicit highlight mode.
+        // Their default filled mode must not turn a line-style edit into a highlight.
+        style.copy(textColor = null, highlightMode = HighlightRule.HIGHLIGHT_NONE)
     } else {
         style
     }
@@ -1145,7 +1147,14 @@ class ReaderViewModel @Inject constructor(
                 val openedBook = bookDeferred.await()
                 val format = openedBook?.format
                 val storedPreferences = if (format == BookFormat.MARKDOWN || format?.isWord == true) {
-                    dataStoreManager.initializeBookLayoutMode(bookId)
+                    dataStoreManager.initializeBookLayoutMode(
+                        bookId, useDefaultRenderMode = format != BookFormat.MARKDOWN
+                    )
+                    dataStoreManager.readerPreferences(bookId).first()
+                } else if (format?.supportsBookLayout == true) {
+                    // Remember the opening layout so changing the global default cannot
+                    // apply another layout's theme settings to this already-open reader.
+                    dataStoreManager.migrateRenderMode(bookId)
                     dataStoreManager.readerPreferences(bookId).first()
                 } else initialPreferences
                 val preferences = wordReaderPreferences(storedPreferences, format)
@@ -1157,6 +1166,15 @@ class ReaderViewModel @Inject constructor(
                     replacementProgram = ReplacementProgram(stored.rules.takeIf { stored.enabled }.orEmpty())
                 }
                 loadBook(preferences, openedBook)
+                if (format.supportsReplacementRules()) {
+                    // A rule can be edited in another open book; refresh this reader as well.
+                    dataStoreManager.replacementRules(bookId).collect {
+                        replacementWrites.withLock {
+                            // Re-read under the write lock to avoid applying a queued older snapshot.
+                            applyReplacementRules(dataStoreManager.replacementRules(bookId).first())
+                        }
+                    }
+                }
             }
         }
         viewModelScope.launch {
@@ -2904,54 +2922,58 @@ class ReaderViewModel @Inject constructor(
         // Closing the sheet can cancel its caller after the DataStore write has completed.
         // The reader owns applying the saved rules to the live chapter.
         replacementWrites.withLock {
-            val before = _replacementRules.value
             dataStoreManager.updateReplacementRules(bookId, transform)
-            val after = dataStoreManager.replacementRules(bookId).first()
-            val oldRules = before.rules.filter { before.enabled && it.enabled }.map { it.copy(name = "") }
-            val newRules = after.rules.filter { after.enabled && it.enabled }.map { it.copy(name = "") }
-            if (oldRules == newRules) {
-                _replacementRules.value = after
-                return@withLock
-            }
-            val state = _uiState.value
-            val chapter = state.currentChapterIndex
-            val bookLayout = state.renderMode == EpubRenderMode.BOOK_LAYOUT
-            val flow = if (state.readerWritingMode.usesContinuousScroll(state.pageTransition, state.eInkModeEnabled)) {
-                ReaderPositionFlow.CONTINUOUS
-            } else ReaderPositionFlow.PAGED
-            val visible = if (flow == ReaderPositionFlow.CONTINUOUS) {
-                continuousViewportCharacter?.takeIf { it.first == chapter }?.second
-            } else pageLayoutEngine.getPageLayout(chapter, state.currentPageIndex)?.startCharOffset
-            val program = ReplacementProgram(newRules)
-            ++progressWriteVersion
-            val nextPosition = withContext(Dispatchers.IO) {
-                val original = if (bookLayout) epubReplacementLocator(chapter, state.epubLocatorJson, toSource = true) else null
-                val sourceOffset = if (!bookLayout) visible?.let { canvasReplacement(chapter)?.offsets?.source(it) ?: it } else null
-                changeReplacementProgram(program)
-                val locator = if (bookLayout) epubReplacementLocator(chapter, original, toSource = false) else null
-                val displayOffset = sourceOffset?.let { canvasReplacement(chapter)?.offsets?.display(it) ?: it }
-                locator to displayOffset
-            }
-            if (_ttsState.value.activeBookId == bookId) stopTts()
-            preloadJobs.values.forEach { it.cancel() }
-            preloadJobs.clear()
-            preloadCache.clear()
-            pageLayoutEngine.invalidateAll()
-            val current = _uiState.value
-            val fraction = (state.currentPageIndex.toFloat() / state.totalPages.coerceAtLeast(1)).coerceIn(0f, 0.9999f)
-            _uiState.value = current.copy(
-                contentRevision = current.contentRevision + 1,
-                replacementRevision = current.replacementRevision + 1,
-                epubLocatorJson = nextPosition.first,
-                pendingPageFraction = fraction,
-                pendingReaderPosition = if (!bookLayout) ReaderPositionLocator(
-                    chapter, fraction, flow, characterOffset = nextPosition.second
-                ) else null
-            )
-            _replacementRules.value = after
-            refreshReaderNotes(_notes.value)
+            applyReplacementRules(dataStoreManager.replacementRules(bookId).first())
         }
     }.await()
+
+    /** Caller holds replacementWrites, including updates observed from another reader. */
+    private suspend fun applyReplacementRules(after: BookReplacementRules) {
+        val before = _replacementRules.value
+        val oldRules = before.rules.filter { before.enabled && it.enabled }.map { it.copy(name = "") }
+        val newRules = after.rules.filter { after.enabled && it.enabled }.map { it.copy(name = "") }
+        if (oldRules == newRules) {
+            _replacementRules.value = after
+            return
+        }
+        val state = _uiState.value
+        val chapter = state.currentChapterIndex
+        val bookLayout = state.renderMode == EpubRenderMode.BOOK_LAYOUT
+        val flow = if (state.readerWritingMode.usesContinuousScroll(state.pageTransition, state.eInkModeEnabled)) {
+            ReaderPositionFlow.CONTINUOUS
+        } else ReaderPositionFlow.PAGED
+        val visible = if (flow == ReaderPositionFlow.CONTINUOUS) {
+            continuousViewportCharacter?.takeIf { it.first == chapter }?.second
+        } else pageLayoutEngine.getPageLayout(chapter, state.currentPageIndex)?.startCharOffset
+        val program = ReplacementProgram(newRules)
+        ++progressWriteVersion
+        val nextPosition = withContext(Dispatchers.IO) {
+            val original = if (bookLayout) epubReplacementLocator(chapter, state.epubLocatorJson, toSource = true) else null
+            val sourceOffset = if (!bookLayout) visible?.let { canvasReplacement(chapter)?.offsets?.source(it) ?: it } else null
+            changeReplacementProgram(program)
+            val locator = if (bookLayout) epubReplacementLocator(chapter, original, toSource = false) else null
+            val displayOffset = sourceOffset?.let { canvasReplacement(chapter)?.offsets?.display(it) ?: it }
+            locator to displayOffset
+        }
+        if (_ttsState.value.activeBookId == bookId) stopTts()
+        preloadJobs.values.forEach { it.cancel() }
+        preloadJobs.clear()
+        preloadCache.clear()
+        pageLayoutEngine.invalidateAll()
+        val current = _uiState.value
+        val fraction = (state.currentPageIndex.toFloat() / state.totalPages.coerceAtLeast(1)).coerceIn(0f, 0.9999f)
+        _uiState.value = current.copy(
+            contentRevision = current.contentRevision + 1,
+            replacementRevision = current.replacementRevision + 1,
+            epubLocatorJson = nextPosition.first,
+            pendingPageFraction = fraction,
+            pendingReaderPosition = if (!bookLayout) ReaderPositionLocator(
+                chapter, fraction, flow, characterOffset = nextPosition.second
+            ) else null
+        )
+        _replacementRules.value = after
+        refreshReaderNotes(_notes.value)
+    }
 
     private val replacementWrites = kotlinx.coroutines.sync.Mutex()
 
@@ -5925,8 +5947,7 @@ class ReaderViewModel @Inject constructor(
         } else {
             chapterText
         }
-        // 章首标题段落固定左对齐（不跟随居中/右对齐，也不参与两端对齐拉伸），
-        // 正文段落仍按用户设置排版。
+        // 章首标题保留原书对齐，正文按阅读器设置排版。
         val titleParagraphEnd = chapterTitleParagraphEnd(
             formatted,
             state.chapterTitles.getOrNull(index)
@@ -7142,6 +7163,42 @@ class ReaderViewModel @Inject constructor(
         if (replacement.offsets.changed) replacement.projectNote(note, web = true) else note
     }
 
+    private class SelectionChapterText(
+        val chapterIndex: Int,
+        val parser: BookParser?,
+        val program: Any,
+        val contentRevision: Long,
+        val text: CharSequence
+    )
+    @Volatile private var selectionChapterTextCache: SelectionChapterText? = null
+
+    /**
+     * Chapter text used only to map a tapped/selected range onto saved notes.
+     * Rebuilding it costs a full chapter decode; book layout (WebView) never
+     * keeps that text warm, so every tap or long press used to stall the UI
+     * thread. Character offsets do not depend on font or page geometry.
+     */
+    private fun selectionChapterText(chapterIndex: Int): CharSequence? {
+        val activeParser = parser
+        val program = replacementProgram
+        val revision = _uiState.value.contentRevision
+        selectionChapterTextCache?.takeIf {
+            it.chapterIndex == chapterIndex && it.parser === activeParser &&
+                it.program === program && it.contentRevision == revision
+        }?.let { return it.text }
+        val text = runCatching { getChapterText(chapterIndex) }.getOrNull() ?: return null
+        selectionChapterTextCache = SelectionChapterText(chapterIndex, activeParser, program, revision, text)
+        return text
+    }
+
+    /** Warm [selectionChapterText] off the main thread when a book-layout chapter opens. */
+    fun prewarmSelectionChapterText(chapterIndex: Int) {
+        if (chapterIndex < 0) return
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+            runCatching { selectionChapterText(chapterIndex) }
+        }
+    }
+
     internal fun resolveAnnotationSelection(
         chapterIndex: Int,
         startPosition: Int,
@@ -7150,7 +7207,7 @@ class ReaderViewModel @Inject constructor(
         startLocatorJson: String?,
         endLocatorJson: String?
     ): ResolvedHighlightRange? {
-        val chapterText = runCatching { getChapterText(chapterIndex) }.getOrNull() ?: return null
+        val chapterText = selectionChapterText(chapterIndex) ?: return null
         return HighlightAnchorResolver.resolve(
             chapterText = chapterText,
             storedStart = startPosition,
@@ -7168,8 +7225,7 @@ class ReaderViewModel @Inject constructor(
         startLocatorJson: String?,
         endLocatorJson: String?
     ): List<Note> {
-        val chapterText = runCatching { getChapterText(chapterIndex) }.getOrNull()
-            ?: return emptyList()
+        val chapterText = selectionChapterText(chapterIndex) ?: return emptyList()
         return findOverlappingResolvedNotes(
             chapterText = chapterText,
             notes = _readerNotes.value,

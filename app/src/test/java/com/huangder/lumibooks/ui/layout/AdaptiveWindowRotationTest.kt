@@ -34,6 +34,46 @@ class AdaptiveWindowRotationTest {
     @get:Rule val compose = createComposeRule()
 
     @Test
+    fun tabletNavigationFollowsMeasuredFrameWhenWindowMetricsRemainLandscape() {
+        val staleWindow = object : WindowInfo {
+            override val isWindowFocused = true
+            override val containerDpSize = DpSize(1280.dp, 800.dp)
+        }
+        var frame by mutableStateOf(DpSize(800.dp, 1280.dp))
+        lateinit var observed: AdaptiveWindowInfo
+        compose.setContent {
+            val staleConfig = android.content.res.Configuration(LocalConfiguration.current).apply {
+                screenWidthDp = 1280
+                screenHeightDp = 800
+            }
+            CompositionLocalProvider(LocalConfiguration provides staleConfig, LocalWindowInfo provides staleWindow) {
+                EBookReaderTheme(appTheme = "lumi", darkTheme = false) {
+                    AdaptiveWindowLayout(Modifier.size(frame).testTag("root")) {
+                        observed = currentAdaptiveWindowInfo()
+                        FloatingTabBar(selectedIndex = 0, onTabSelected = {}, vertical = observed.usesSideChrome)
+                    }
+                }
+            }
+        }
+        repeat(3) {
+            compose.runOnIdle {
+                assertEquals(800, observed.widthDp)
+                assertEquals(1280, observed.heightDp)
+                assertFalse(observed.usesSideChrome)
+                frame = DpSize(1280.dp, 800.dp)
+            }
+            compose.waitForIdle()
+            compose.runOnIdle {
+                assertEquals(1280, observed.widthDp)
+                assertTrue(observed.usesSideChrome)
+                frame = DpSize(800.dp, 1280.dp)
+            }
+            compose.waitForIdle()
+        }
+        compose.runOnIdle { assertFalse(observed.usesSideChrome) }
+    }
+
+    @Test
     fun navigationAndSheetsFollowTheLiveWindowWhenResourceDimensionsAreStale() {
         val window = object : WindowInfo {
             override val isWindowFocused = true
