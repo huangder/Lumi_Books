@@ -1,6 +1,6 @@
 {
   "config_version": 1,
-  "generated_at": "2026-11-18T11:50:14+08:00",
+  "generated_at": "2026-11-18T16:59:38+08:00",
   "latest_version": "2.3.11",
   "latest_version_code": 18,
   "release_url": "https://github.com/huangder/Lumi_Books/releases/tag/Filmy",
@@ -17,13 +17,12 @@
     "force_update_below_version_code": 0
   },
   "notice": {
-    "id": "notice-20261112-early-donor-thanks",
+    "id": "notice-20261118-23-reading-performance",
     "enabled": true,
-    "min_version_code": 1,
-    "max_version_code": 999999,
-    "title": "致谢 Lumi 的早期捐赠者",
-    "message": "感谢每一位在 Lumi 早期给予支持的朋友。你们的捐赠与鼓励，让 Lumi 能够继续成长。\n\n为了表达感谢，Lumi 为 2026 年 11 月 14 日之前捐赠过的朋友准备了一份小礼物：Lumi Premium 权益。\n\n请在浏览器打开以下网址，填写领取表单：\nhttps://f.wps.cn/g/eYdlswhc/\n\n已经领取过的朋友可以忽略本消息。",
-    "image_url": "https://raw.githubusercontent.com/huangder/Lumi_Books/main/docs/media/early-donor-claim-code.png"
+    "min_version_code": 18,
+    "max_version_code": 18,
+    "title": "关于 2.3 版本的更新说明",
+    "message": "这次版本更新幅度较大，尤其是原排版相关的调整较多，部分使用场景下可能会出现阅读时偶发卡顿，给大家带来不便，抱歉。\n\n目前建议大家优先使用「阅读器排版」，以获得更稳定、流畅的阅读体验。\n\n我会继续排查和优化，并在 2.4 版本之前发布 2.3fix 修复版本，优先处理阅读卡顿和稳定性问题。\n\n如果遇到问题，欢迎反馈设备型号、使用的排版模式及具体操作步骤，方便我定位和修复。\n\n感谢大家的理解与耐心，也谢谢大家一直以来的支持。"
   },
   "fonts": [
     {
