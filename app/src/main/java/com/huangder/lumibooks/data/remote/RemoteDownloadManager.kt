@@ -84,6 +84,9 @@ class RemoteDownloadManager @Inject constructor(
     private var batchFailed = 0
     private val stagingRoot = File(context.cacheDir, "remote_import")
 
+    /** Owned by one details page. The staging sweep also recovers previews after process death. */
+    internal fun newPreviewDirectory(): File = File(stagingRoot, "preview-${UUID.randomUUID()}")
+
     init {
         stagingRoot.deleteRecursively()
         scope.launch {
@@ -99,14 +102,14 @@ class RemoteDownloadManager @Inject constructor(
         prefetched: Map<String, File> = emptyMap()
     ) {
         val accepted = items.filter { (item, _) ->
-            val current = _states.value[item.key]
+            val current = _states.value[item.documentKey]
             current == null || current is RemoteDownloadState.Failed || current is RemoteDownloadState.Completed
         }
         if (accepted.isEmpty()) return
         synchronized(this) { pendingInBatch += accepted.size }
-        _states.update { states -> states + accepted.associate { (item, _) -> item.key to RemoteDownloadState.Queued } }
+        _states.update { states -> states + accepted.associate { (item, _) -> item.documentKey to RemoteDownloadState.Queued } }
         accepted.forEach { (item, format) ->
-            cancelled.remove(item.key)
+            cancelled.remove(item.documentKey)
             // The caller's preview may be deleted when its page closes; queue a private copy.
             val owned = prefetched[item.key]?.takeIf(File::isFile)?.let { preview ->
                 runCatching {
@@ -120,22 +123,22 @@ class RemoteDownloadManager @Inject constructor(
         }
     }
 
-    fun cancel(itemKey: String) {
-        val state = _states.value[itemKey]
+    fun cancel(documentKey: String) {
+        val state = _states.value[documentKey]
         if (state is RemoteDownloadState.Queued || state is RemoteDownloadState.Downloading) {
-            cancelled.add(itemKey)
+            cancelled.add(documentKey)
         }
     }
 
-    fun clearFinished(itemKey: String) {
+    fun clearFinished(documentKey: String) {
         _states.update { states ->
-            val state = states[itemKey]
-            if (state is RemoteDownloadState.Failed || state is RemoteDownloadState.Completed) states - itemKey else states
+            val state = states[documentKey]
+            if (state is RemoteDownloadState.Failed || state is RemoteDownloadState.Completed) states - documentKey else states
         }
     }
 
     private suspend fun process(request: Request) {
-        val key = request.item.key
+        val key = request.item.documentKey
         val result: RemoteDownloadState? = try {
             if (key in cancelled) null else runDownload(request)
         } catch (_: CancellationException) {
@@ -181,6 +184,7 @@ class RemoteDownloadManager @Inject constructor(
 
     private suspend fun runDownload(request: Request): RemoteDownloadState {
         val (source, item, format, destination, prefetched) = request
+        val documentKey = item.documentKey
         if (!format.isSupported) throw RemoteException(RemoteErrorKind.UNSUPPORTED_FORMAT)
         if (localNetworkAccessManager.stateFor(source.url) == LocalNetworkAccessState.PERMISSION_REQUIRED) {
             throw RemoteException(RemoteErrorKind.LOCAL_NETWORK_PERMISSION)
@@ -205,12 +209,12 @@ class RemoteDownloadManager @Inject constructor(
             } else {
                 staged = File(batch, "download.part")
                 val password = store.password(source.id)
-                _states.update { it + (item.key to RemoteDownloadState.Downloading(0L, format.sizeBytes)) }
+                _states.update { it + (documentKey to RemoteDownloadState.Downloading(0L, format.sizeBytes)) }
                 val onProgress: (Long, Long) -> Unit = { read, total ->
                     val known = total.takeIf { it > 0L } ?: format.sizeBytes
-                    _states.update { it + (item.key to RemoteDownloadState.Downloading(read, known)) }
+                    _states.update { it + (documentKey to RemoteDownloadState.Downloading(read, known)) }
                 }
-                val isCancelled = { item.key in cancelled }
+                val isCancelled = { documentKey in cancelled }
                 val downloaded = when (source.type) {
                     RemoteSourceType.OPDS ->
                         opdsClient.download(source, password, format.url, staged, isCancelled, onProgress)
@@ -237,11 +241,10 @@ class RemoteDownloadManager @Inject constructor(
             if (!RemoteFileSniffer.matches(staged, extension)) {
                 throw RemoteException(RemoteErrorKind.INVALID_FILE, message = "Content does not match $extension")
             }
-            _states.update { it + (item.key to RemoteDownloadState.Importing) }
+            _states.update { it + (documentKey to RemoteDownloadState.Importing) }
             val bookFile = File(batch, fileName).also { target ->
                 check(staged.renameTo(target)) { "Unable to stage download" }
             }
-            val documentKey = RemoteBookFiles.remoteDocumentKey(source.id, item.key)
             val hash = runCatching { authorizedStorageManager.sha256(context, bookFile.absolutePath) }.getOrNull()
             val remembered = store.load().importedBooks[documentKey]
             pipeline.findExisting(context, remembered, documentKey, hash)?.let { existing ->

@@ -10,7 +10,6 @@ import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.data.remote.LocalBookMetadata
 import com.huangder.lumibooks.data.remote.OpdsClient
-import com.huangder.lumibooks.data.remote.RemoteBookFiles
 import com.huangder.lumibooks.data.remote.RemoteBookItem
 import com.huangder.lumibooks.data.remote.RemoteBookMetadataReader
 import com.huangder.lumibooks.data.remote.RemoteDestination
@@ -75,7 +74,7 @@ class RemoteBookDetailsViewModel @Inject constructor(
     private val local = MutableStateFlow(RemoteBookDetailsUiState())
     private var targetFolderId: String? = null
     private var started = false
-    private val previewDirectory = File(application.cacheDir, "remote_preview").apply { mkdirs() }
+    private val previewDirectory = downloads.newPreviewDirectory()
     private var previewFile: File? = null
 
     val uiState: StateFlow<RemoteBookDetailsUiState> = combine(
@@ -84,14 +83,9 @@ class RemoteBookDetailsViewModel @Inject constructor(
         downloads.states,
         dataStoreManager.authorizedBookDirectories
     ) { state, stored, downloadStates, directories ->
-        val source = state.source
         val item = state.item
-        val rememberedBookId = if (source != null && item != null) {
-            stored.importedBooks[RemoteBookFiles.remoteDocumentKey(source.id, item.key)]
-        } else {
-            null
-        }
-        val downloadState = item?.let { downloadStates[it.key] }
+        val rememberedBookId = item?.let { stored.importedBooks[it.documentKey] }
+        val downloadState = item?.let { downloadStates[it.documentKey] }
         state.copy(
             importedBookId = (downloadState as? RemoteDownloadState.Completed)?.bookId ?: rememberedBookId,
             downloadState = downloadState,
@@ -138,7 +132,8 @@ class RemoteBookDetailsViewModel @Inject constructor(
         local.update { it.copy(readingMetadata = true, metadataError = null, metadataNeedsConfirmation = false) }
         viewModelScope.launch {
             val result = runCatching {
-                val file = File(previewDirectory, "${RemoteBookFiles.sha256Hex(item.key).take(24)}.${format.extension}")
+                previewDirectory.mkdirs()
+                val file = File(previewDirectory, "book.${format.extension}")
                 if (!file.isFile || file.length() != format.sizeBytes) {
                     webdavClient.download(source, store.password(source.id), format.url, file, { false }) { _, _ -> }
                 }
@@ -183,11 +178,11 @@ class RemoteBookDetailsViewModel @Inject constructor(
     }
 
     fun cancelDownload() {
-        uiState.value.item?.let { downloads.cancel(it.key) }
+        uiState.value.item?.let { downloads.cancel(it.documentKey) }
     }
 
     fun clearFailure() {
-        uiState.value.item?.let { downloads.clearFinished(it.key) }
+        uiState.value.item?.let { downloads.clearFinished(it.documentKey) }
     }
 
     suspend fun authorizeFolder(treeUri: Uri): AuthorizedFolderOption? = runCatching {
@@ -216,7 +211,7 @@ class RemoteBookDetailsViewModel @Inject constructor(
 
     override fun onCleared() {
         // Previews are only useful while the page is open; the import copies what it needs.
-        previewDirectory.listFiles()?.forEach { it.delete() }
+        previewDirectory.deleteRecursively()
     }
 
     private companion object {

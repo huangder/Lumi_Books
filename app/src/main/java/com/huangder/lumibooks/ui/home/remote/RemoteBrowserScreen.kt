@@ -333,7 +333,7 @@ private fun RemoteLevelContent(
                     book = book,
                     selected = book.key in selection,
                     imported = book.key in importedKeys,
-                    downloadState = downloadStates[book.key],
+                    downloadState = downloadStates[book.documentKey],
                     onClick = { bookClick(book) },
                     onLongClick = { onOpenBook(book) }
                 )
@@ -358,7 +358,7 @@ private fun RemoteLevelContent(
                 compact = layoutMode == 3,
                 selected = book.key in selection,
                 imported = book.key in importedKeys,
-                downloadState = downloadStates[book.key],
+                downloadState = downloadStates[book.documentKey],
                 onClick = { bookClick(book) },
                 onLongClick = { onOpenBook(book) }
             )

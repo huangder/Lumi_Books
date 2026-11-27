@@ -101,9 +101,9 @@ class RemoteLibraryViewModel @Inject constructor(
             totalSourceCount = stored.sources.size,
             activeSource = active,
             levels = if (active == null) emptyList() else state.levels,
-            importedKeys = active?.let { source ->
+            importedKeys = active?.let {
                 state.levels.lastOrNull()?.page?.books.orEmpty()
-                    .filter { RemoteBookFiles.remoteDocumentKey(source.id, it.key) in stored.importedBooks }
+                    .filter { it.documentKey in stored.importedBooks }
                     .mapTo(mutableSetOf()) { it.key }
             }.orEmpty(),
             downloadStates = downloadStates,
@@ -358,7 +358,10 @@ class RemoteLibraryViewModel @Inject constructor(
         downloads.enqueue(source, items, destination)
     }
 
-    fun cancelDownload(itemKey: String) = downloads.cancel(itemKey)
+    fun cancelDownload(itemKey: String) {
+        val source = browse.value.activeSource ?: return
+        downloads.cancel(RemoteBookFiles.remoteDocumentKey(source.id, itemKey))
+    }
 
     /** Persists a freshly picked folder like the import sheet's "authorize a folder" flow. */
     suspend fun authorizeFolder(treeUri: Uri): AuthorizedFolderOption? = runCatching {
