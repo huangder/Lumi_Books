@@ -80,6 +80,57 @@ class OpdsFeedParserTest {
     }
 
     @Test
+    fun `links resolve against their own xml base within the feed and entry`() {
+        val feed = """
+            <feed xmlns="http://www.w3.org/2005/Atom" xml:base="/catalog/">
+              <link rel="next" xml:base="pages/" href="2"/>
+              <link rel="search" xml:base="search/" href="find?q={searchTerms}"/>
+              <entry xml:base="sections/">
+                <link rel="subsection" xml:base="fiction/" href="new"/>
+              </entry>
+              <entry xml:base="books/">
+                <link rel="http://opds-spec.org/acquisition" xml:base="files/" href="one.epub"/>
+                <link rel="http://opds-spec.org/image" xml:base="../covers/" href="one.jpg"/>
+                <link rel="http://opds-spec.org/image/thumbnail" href="thumb.jpg"/>
+              </entry>
+            </feed>
+        """.trimIndent()
+        val page = OpdsFeedParser.parse(feed.toByteArray(), base, "src")
+        val catalog = "https://books.example.com/catalog/"
+        assertEquals(catalog + "pages/2", page.nextUrl)
+        assertEquals(catalog + "search/find?q={searchTerms}", page.searchTemplate)
+        assertEquals(catalog + "sections/fiction/new", page.folders.single().url)
+        val book = page.books.single()
+        assertEquals(catalog + "books/files/one.epub", book.preferredFormat?.url)
+        assertEquals(catalog + "covers/one.jpg", book.coverUrl)
+        assertEquals(catalog + "books/thumb.jpg", book.thumbnailUrl)
+    }
+
+    @Test
+    fun `OpenSearch uses the xml base of the description link and the URL template`() {
+        val feed = """
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <link rel="search" xml:base="search/" href="description.xml"/>
+            </feed>
+        """.trimIndent()
+        val descriptionUrl = "https://books.example.com/opds/search/description.xml"
+        assertEquals(
+            OpdsFeedParser.OPENSEARCH_PREFIX + descriptionUrl,
+            OpdsFeedParser.parse(feed.toByteArray(), base, "src").searchTemplate
+        )
+
+        val description = """
+            <OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/" xml:base="../api/">
+              <Url type="application/atom+xml" xml:base="v2/" template="find?q={searchTerms}"/>
+            </OpenSearchDescription>
+        """.trimIndent()
+        assertEquals(
+            "https://books.example.com/opds/api/v2/find?q={searchTerms}",
+            OpdsFeedParser.parseOpenSearchTemplate(description.toByteArray(), descriptionUrl.toHttpUrl())
+        )
+    }
+
+    @Test
     fun `opensearch description link is marked for a follow-up fetch`() {
         val page = OpdsFeedParser.parse(OPENSEARCH_LINK_FEED.toByteArray(), base, "src")
         assertEquals(

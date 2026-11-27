@@ -35,6 +35,7 @@ object OpdsFeedParser {
     /** OpenSearch description documents point at the real search URL template. */
     fun parseOpenSearchTemplate(body: ByteArray, baseUrl: HttpUrl): String? {
         val root = runCatching { parse(body).documentElement }.getOrNull() ?: return null
+        val rootBase = xmlBase(root, baseUrl)
         return root.children("Url")
             .filter { url ->
                 val type = url.getAttribute("type").lowercase()
@@ -43,8 +44,8 @@ object OpdsFeedParser {
             .ifEmpty { root.children("Url") }
             .firstNotNullOfOrNull { url ->
                 url.getAttribute("template").takeIf { it.contains("{searchTerms}") }
+                    ?.let { resolveTemplate(xmlBase(url, rootBase), it) }
             }
-            ?.let { resolveTemplate(baseUrl, it) }
     }
 
     fun parse(body: ByteArray, baseUrl: HttpUrl, sourceId: String): RemotePage {
@@ -58,15 +59,15 @@ object OpdsFeedParser {
         val feedBase = xmlBase(feed, baseUrl)
         val feedLinks = feed.children("link")
         val next = feedLinks.firstOrNull { it.getAttribute("rel").split(' ').contains("next") }
-            ?.let { resolve(feedBase, it.getAttribute("href")) }
+            ?.resolvedHref(feedBase)
         val searchLink = feedLinks.firstOrNull { it.getAttribute("rel").split(' ').contains("search") }
-        val searchTemplate = searchLink?.getAttribute("href")?.let { href ->
-            if (href.contains("{searchTerms}")) resolveTemplate(feedBase, href) else null
-        }
-        val searchDescription = if (searchTemplate == null) {
-            searchLink?.getAttribute("href")?.let { resolve(feedBase, it) }
-        } else {
-            null
+        val searchTemplate = searchLink?.let { link ->
+            val href = link.getAttribute("href")
+            if (href.contains("{searchTerms}")) {
+                resolveTemplate(xmlBase(link, feedBase), href)
+            } else {
+                link.resolvedHref(feedBase)?.let { "$OPENSEARCH_PREFIX$it" }
+            }
         }
 
         val folders = mutableListOf<RemoteFolder>()
@@ -81,7 +82,7 @@ object OpdsFeedParser {
                 continue
             }
             val navigation = links.firstOrNull { isNavigation(it) } ?: continue
-            val href = resolve(entryBase, navigation.getAttribute("href")) ?: continue
+            val href = navigation.resolvedHref(entryBase) ?: continue
             folders += RemoteFolder(
                 title = title,
                 url = href,
@@ -98,7 +99,7 @@ object OpdsFeedParser {
             folders = folders.distinctBy { it.url },
             books = books.distinctBy { it.key },
             nextUrl = next,
-            searchTemplate = searchTemplate ?: searchDescription?.let { "$OPENSEARCH_PREFIX$it" }
+            searchTemplate = searchTemplate
         )
     }
 
@@ -118,7 +119,7 @@ object OpdsFeedParser {
             if (NON_FREE_ACQUISITIONS.any { rel.endsWith("/$it") }) return@mapNotNull null
             val type = RemoteBookFiles.normalizeMimeType(link.getAttribute("type"))
             if (type in DRM_TYPES || hasDrmIndirection(link)) return@mapNotNull null
-            val href = resolve(base, link.getAttribute("href")) ?: return@mapNotNull null
+            val href = link.resolvedHref(base) ?: return@mapNotNull null
             val extension = RemoteBookFiles.extensionForMimeType(type)
                 ?: RemoteBookFiles.extensionFromName(href)
             RemoteFormat(
@@ -167,13 +168,13 @@ object OpdsFeedParser {
     private fun imageUrl(links: List<Element>, base: HttpUrl): String? =
         links.firstOrNull {
             it.getAttribute("rel") == REL_IMAGE || it.getAttribute("rel") == "x-stanza-cover-image"
-        }?.let { resolve(base, it.getAttribute("href")) }
+        }?.resolvedHref(base)
             ?: thumbnailUrl(links, base)
 
     private fun thumbnailUrl(links: List<Element>, base: HttpUrl): String? =
         links.firstOrNull {
             it.getAttribute("rel") == REL_THUMBNAIL || it.getAttribute("rel") == "x-stanza-cover-image-thumbnail"
-        }?.let { resolve(base, it.getAttribute("href")) }
+        }?.resolvedHref(base)
 
     private fun isAcquisition(link: Element): Boolean {
         val rel = link.getAttribute("rel")
@@ -231,6 +232,9 @@ object OpdsFeedParser {
         }
         return (number * multiplier).toLong().takeIf { it > 0L }
     }
+
+    private fun Element.resolvedHref(inheritedBase: HttpUrl): String? =
+        resolve(xmlBase(this, inheritedBase), getAttribute("href"))
 
     private fun resolve(base: HttpUrl, href: String?): String? {
         val value = href?.trim()?.takeIf(String::isNotBlank) ?: return null
