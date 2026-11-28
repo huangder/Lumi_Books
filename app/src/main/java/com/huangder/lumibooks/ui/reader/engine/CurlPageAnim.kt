@@ -7,6 +7,7 @@ import android.util.Log
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import com.huangder.lumibooks.ui.animation.VisualMotion
+import com.huangder.lumibooks.util.performance.EpubTurnTrace
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -25,7 +26,8 @@ class CurlPageAnim(
     readView: PageAnimationSurface,
     /** Kept for host call sites; every host now shares the same quick catch-up. */
     @Suppress("UNUSED_PARAMETER") trackCornerTouchDirectly: Boolean = false,
-    private var baseDurationMs: Int = 800
+    private var baseDurationMs: Int = 800,
+    private val preserveTurnFrames: Boolean = false
 ) : PageAnimationController(readView) {
     enum class MotionState { IDLE, DRAGGING, SETTLING, DESTROYED }
 
@@ -53,6 +55,9 @@ class CurlPageAnim(
     private var tweenTilt = 0f
     private var terminalPending = false
     private var completionPosted = false
+    private var drewCurlFrame = false
+    private var deferredSwipeTurn = false
+    private var tracedDeferredFold = false
     /** The running turn is already finishing early for queued input. */
     private var catchingUp = false
     /** Bumped whenever a turn starts or ends; stale posted completions compare against it. */
@@ -240,10 +245,16 @@ class CurlPageAnim(
     override fun computeScroll(): Boolean {
         if (destroyed) return false
         val active = tween ?: return terminalPending
-        val elapsed = SystemClock.uptimeMillis() - tweenStarted
+        val actualElapsed = SystemClock.uptimeMillis() - tweenStarted
+        val elapsed = if (deferredSwipeTurn && !drewCurlFrame && active.durationMs > 2L) {
+            val latestFirstFrame = active.durationMs * (if (direction == Direction.NEXT) 1L else 2L) / 3L
+            actualElapsed.coerceAtMost(latestFirstFrame)
+        } else actualElapsed
         progress = active.position(elapsed)
         tilt = tweenTilt * (1f - PaperCurl.smoothstep(0f, 1f, elapsed.toFloat() / active.durationMs))
-        if (elapsed >= active.durationMs) {
+        if (elapsed >= active.durationMs && preserveTurnFrames && isFlipAnim && !drewCurlFrame) {
+            progress = (active.from + active.to) * 0.5f
+        } else if (elapsed >= active.durationMs) {
             progress = active.to
             tilt = 0f
             tween = null
@@ -258,6 +269,11 @@ class CurlPageAnim(
         if (!captured || active == null) return
         try {
             active.draw(canvas, pose, look)
+            if (progress > 0f && progress < 1f) drewCurlFrame = true
+            if (EpubTurnTrace.enabled && deferredSwipeTurn && !tracedDeferredFold && abs(foldNormalY) > 0.01f) {
+                tracedDeferredFold = true
+                EpubTurnTrace.log("queued_curl_fold_drawn", "ny" to foldNormalY, "progress" to progress)
+            }
         } catch (error: RuntimeException) {
             // Never let a driver or shader problem break reading: later turns use the mesh.
             Log.w(TAG, "Curl shader failed; using the mesh renderer", error)
@@ -294,6 +310,8 @@ class CurlPageAnim(
         terminalPending = false
         completionPosted = false
         catchingUp = false
+        deferredSwipeTurn = false
+        tracedDeferredFold = false
         isRunning = false
         isDragging = false
         isFlipAnim = false
@@ -302,6 +320,7 @@ class CurlPageAnim(
     private fun releaseTurn() {
         renderer?.release()
         captured = false
+        drewCurlFrame = false
         pose = CurlPose.FLAT
         progress = 0f
         tilt = 0f
@@ -377,16 +396,37 @@ class CurlPageAnim(
         return PaperCurlMeshRenderer().also { renderer = it; shaderRenderer = false }
     }
     /** Plays a whole turn without a finger: an upright fold, easing in like a light flick. */
-    fun startFromTap(dir: Direction, gestureStartY: Float? = null, expedited: Boolean = false): Boolean {
+    fun startFromTap(dir: Direction, gestureStartY: Float? = null, expedited: Boolean = false): Boolean =
+        startAutomaticTurn(dir, gestureStartY, expedited, deferredSwipe = null)
+
+    internal fun startFromDeferredSwipe(dir: Direction, swipe: DeferredCurlSwipe, expedited: Boolean): Boolean =
+        startAutomaticTurn(dir, swipe.startY, expedited, deferredSwipe = swipe)
+
+    internal val foldNormalY: Float get() = pose.ny
+
+    private fun startAutomaticTurn(
+        dir: Direction,
+        gestureStartY: Float?,
+        expedited: Boolean,
+        deferredSwipe: DeferredCurlSwipe?
+    ): Boolean {
         if (destroyed || isRunning || isDragging || dir == Direction.NONE) return false
         if (onCanFlip?.invoke(dir) != true) return false
         if (captured) abortAnim()
         startY = gestureStartY?.takeIf { it.isFinite() } ?: readView.height * 0.5f
         startX = if (dir == Direction.NEXT) readView.width.toFloat() else 0f
         if (!capture(dir, startY)) return false
+        if (deferredSwipe != null) {
+            originX = deferredSwipe.startX
+            originY = startY
+            tilt = desiredTilt(deferredSwipe.endX, deferredSwipe.endY)
+            deferredSwipeTurn = true
+        }
         isRunning = true
         isFlipAnim = true
-        val duration = (if (expedited) curlExpeditedDurationMs(baseDurationMs)
+        val duration = (if (expedited && preserveTurnFrames) {
+            (baseDurationMs * 0.28f).roundToInt().coerceIn(48, 96).coerceAtMost(baseDurationMs)
+        } else if (expedited) curlExpeditedDurationMs(baseDurationMs)
             else (baseDurationMs * TAP_DURATION_FACTOR).roundToInt()).coerceAtLeast(1).toLong()
         val average = 1f / duration
         val (start, end) = when {
@@ -426,6 +466,10 @@ class CurlPageAnim(
     /** A confirmed drag owns the next frame, so the running page is handed over now. */
     fun completeRunningFlipForGestureHandoff(): RunningFlipHandoff =
         if (committedRunning()) completeSynchronously() else RunningFlipHandoff.NOT_COMMITTED
+
+    internal fun expediteRunningFlip() {
+        if (committedRunning() && !catchingUp && !terminalPending) expedite()
+    }
 
     private fun committedRunning() = captured && isRunning && isFlipAnim && direction != Direction.NONE
 

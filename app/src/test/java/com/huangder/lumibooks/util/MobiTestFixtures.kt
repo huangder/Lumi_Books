@@ -30,7 +30,8 @@ object MobiTestFixtures {
         titleOverride: String = "MOBI Book",
         coverOffset: Int = 0,
         firstImageIndex: Int = 3,
-        textRecordCount: Int = 2
+        textRecordCount: Int = 2,
+        kf8Record: Int? = null
     ): ByteArray {
         val mobiHeaderLength = 232
         val exthBody = ByteArrayOutputStream().apply {
@@ -43,6 +44,7 @@ object MobiTestFixtures {
             entry(100, author.toByteArray(Charsets.UTF_8))
             entry(503, titleOverride.toByteArray(Charsets.UTF_8))
             entry(201, be32(coverOffset))
+            kf8Record?.let { entry(121, be32(it)) }
         }.toByteArray()
         val exthLength = 12 + exthBody.size
         val fullNameBytes = fullName.toByteArray(Charsets.UTF_8)
@@ -73,7 +75,7 @@ object MobiTestFixtures {
             while (size() < 16 + mobiHeaderLength) write(0)
             write("EXTH".toByteArray(Charsets.US_ASCII))
             write(be32(exthLength))
-            write(be32(3))
+            write(be32(if (kf8Record == null) 3 else 4))
             write(exthBody)
             while (size() < fullNameOffset) write(0)
             write(fullNameBytes)

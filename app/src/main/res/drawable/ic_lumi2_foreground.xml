@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lumi 2 adaptive-icon foreground: a soft rasterised glow under crisp vector shapes. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_lumi2_glow" />
+    <item android:drawable="@drawable/ic_lumi2_foreground_shapes" />
+</layer-list>

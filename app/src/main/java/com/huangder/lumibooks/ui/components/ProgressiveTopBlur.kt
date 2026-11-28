@@ -21,8 +21,10 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.ui.theme.AppColors
+import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalEInkMode
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassCapability
+import com.huangder.lumibooks.ui.theme.LocalLiquidGlassSamplingQuality
 import com.huangder.lumibooks.ui.theme.LocalLumiBackgroundBackdrop
 import com.huangder.lumibooks.ui.theme.LocalProgressiveBlurBackgroundBackdrop
 import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
@@ -121,9 +123,11 @@ fun ProgressiveTopBlur(
     maxBlurRadius: Dp = ProgressiveTopBlurMaxRadius,
     bandHeight: Dp = ProgressiveTopBlurBandHeight,
     tint: Color? = null,
+    sampleBlurOverLiveContent: Boolean = false,
 ) {
     ProgressiveSurface(backdrop, strength, modifier.fillMaxWidth().height(bandHeight),
-        maxBlurRadius, tint, ProgressiveBlurDirection.Top)
+        maxBlurRadius, tint, ProgressiveBlurDirection.Top,
+        sampleBlurOverLiveContent = sampleBlurOverLiveContent)
 }
 
 @Composable
@@ -146,9 +150,11 @@ fun ProgressiveBottomBlur(
     maxBlurRadius: Dp = ProgressiveTopBlurMaxRadius,
     bandHeight: Dp = ProgressiveTopBlurBandHeight,
     tint: Color? = null,
+    sampleBlurOverLiveContent: Boolean = false,
 ) {
     ProgressiveSurface(backdrop, 1f, modifier.fillMaxWidth().height(bandHeight),
-        maxBlurRadius, tint, ProgressiveBlurDirection.Bottom)
+        maxBlurRadius, tint, ProgressiveBlurDirection.Bottom,
+        sampleBlurOverLiveContent = sampleBlurOverLiveContent)
 }
 
 @Composable
@@ -161,7 +167,7 @@ fun ProgressiveBottomScrim(
         0.dp, tint, ProgressiveBlurDirection.Bottom)
 }
 
-/** Shared Miuix full-resolution composite and blur-free, opaque-edge fallback. */
+/** Shared Miuix progressive composite and blur-free, opaque-edge fallback. */
 @Composable
 internal fun ProgressiveSurface(
     backdrop: Backdrop?,
@@ -173,6 +179,7 @@ internal fun ProgressiveSurface(
     solidFraction: Float = 0f,
     exportedBackdrop: LayerBackdrop? = null,
     blurStartFraction: Float = 0f,
+    sampleBlurOverLiveContent: Boolean = false,
 ) {
     if (LocalEInkMode.current) return
     val resolvedStrength = quantizeBlurStrength(strength)
@@ -204,23 +211,32 @@ internal fun ProgressiveSurface(
             .background(fallbackBrush))
         return
     }
-    // Miuix's native sharp end requires the ORIGINAL source pixels even when glass buttons use
-    // reduced-resolution buffers. Limit this override to the edge band, never the whole page.
-    CompositionLocalProvider(LocalBackdropSamplingScale provides 1f) {
+    val scale = if (sampleBlurOverLiveContent && LocalAppTheme.current == "liquid_glass") {
+        LocalLiquidGlassSamplingQuality.current.scale
+    } else 1f
+    val blurPadding = MiuixProgressiveBlurEffect.padding(radius)
+    // Reveal the native-resolution content already under the overlay at its clear edge.
+    CompositionLocalProvider(LocalBackdropSamplingScale provides scale) {
         Box(modifier.drawPlainBackdrop(
             backdrop = activeBackdrop ?: backdrop,
             shape = { RectangleShape },
             effects = {
-                padding = MiuixProgressiveBlurEffect.padding(radius)
-                renderEffect = effect.effect(radius, size.width, size.height, padding, direction, blurStartFraction)
+                padding = blurPadding
+                renderEffect = effect.effect(
+                    radius * samplingScale,
+                    size.width * samplingScale,
+                    size.height * samplingScale,
+                    padding * samplingScale,
+                    direction,
+                    blurStartFraction,
+                    revealLiveContent = samplingScale < 1f,
+                )
             },
             exportedBackdrop = exportedBackdrop,
             // Captures may contain transparent text/card gaps; include their actual page color
             // before blurring so alpha normalization cannot turn those gaps into dark halos.
             onDrawBackdrop = { drawBackdrop ->
-                val pad = MiuixProgressiveBlurEffect.padding(radius)
-                drawRect(pageBackground, topLeft = Offset(-pad, -pad),
-                    size = Size(size.width + pad * 2f, size.height + pad * 2f))
+                drawRect(pageBackground, topLeft = Offset(-blurPadding, -blurPadding), size = size)
                 drawBackdrop()
             },
             onDrawSurface = {

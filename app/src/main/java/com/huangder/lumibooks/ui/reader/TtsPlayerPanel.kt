@@ -80,6 +80,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.tts.TtsPlaybackState
+import com.huangder.lumibooks.tts.TtsPauseDuration
 import com.huangder.lumibooks.tts.TtsProsodyMode
 import com.huangder.lumibooks.ui.components.LiquidGlassSurface
 import com.huangder.lumibooks.ui.theme.AppColors
@@ -141,11 +142,15 @@ internal fun TtsPlayerPanel(
     onSetSleepTimer: (Int) -> Unit,
     onCancelSleepTimer: () -> Unit,
     onAutoPageTurnChange: (Boolean) -> Unit = {},
+    allowConcurrentPlayback: Boolean,
+    onAllowConcurrentPlaybackChange: (Boolean) -> Unit,
     onReturnToProgress: () -> Unit = {},
     onStartFromCurrentPage: () -> Unit = {},
     showFromCurrentPage: Boolean = false,
     canReturnToProgress: Boolean = false,
     readerMenuVisible: Boolean = false,
+    pauseDuration: TtsPauseDuration = TtsPauseDuration.STANDARD,
+    onPauseDurationChange: (TtsPauseDuration) -> Unit = {},
     readerBackgroundColor: Color,
     readerContentColor: Color,
     forceSolidSurface: Boolean = false,
@@ -168,6 +173,7 @@ internal fun TtsPlayerPanel(
     val menuHost = LocalLiquidGlassMenuHost.current
     val moreId = remember { Any() }
     var capsuleBounds by remember { mutableStateOf(Rect.Zero) }
+    val pauseMenu = ttsPauseDurationMenu(pauseDuration, onPauseDurationChange)
     val followEngineLabel = stringResource(R.string.tts_follow_engine)
     val cancelTimerLabel = stringResource(R.string.tts_timer_cancel)
     val eInkMode = LocalEInkMode.current
@@ -246,6 +252,9 @@ internal fun TtsPlayerPanel(
     val autoPageTurnLabel = stringResource(R.string.tts_auto_page_turn)
     val currentAutoPageTurn by rememberUpdatedState(autoPageTurn)
     val currentOnAutoPageTurnChange by rememberUpdatedState(onAutoPageTurnChange)
+    val allowConcurrentPlaybackLabel = stringResource(R.string.tts_allow_concurrent_playback)
+    val currentAllowConcurrentPlayback by rememberUpdatedState(allowConcurrentPlayback)
+    val currentOnAllowConcurrentPlaybackChange by rememberUpdatedState(onAllowConcurrentPlaybackChange)
     val timerLabel = stringResource(R.string.tts_timer_label)
     val rateLabel = stringResource(R.string.tts_speech_rate)
     val pitchLabel = stringResource(R.string.tts_pitch_label)
@@ -256,19 +265,22 @@ internal fun TtsPlayerPanel(
             return
         }
         menuHost?.show(LiquidGlassMenuSpec(
-            anchorBounds = Rect.Zero, sourceId = moreId, width = 176.dp,
+            anchorBounds = Rect.Zero, sourceId = moreId, width = 224.dp,
             items = listOf(
                 LiquidGlassMenuItem(returnLabel, enabled = canReturnToProgress, onClick = onReturnToProgress),
                 LiquidGlassMenuItem(fromPageLabel, onClick = onStartFromCurrentPage),
                 LiquidGlassMenuItem(autoPageTurnLabel, selectedState = { currentAutoPageTurn },
                     onClick = { currentOnAutoPageTurnChange(!currentAutoPageTurn) }),
+                LiquidGlassMenuItem(allowConcurrentPlaybackLabel, selectedState = { currentAllowConcurrentPlayback },
+                    onClick = { currentOnAllowConcurrentPlaybackChange(!currentAllowConcurrentPlayback) }),
                 LiquidGlassMenuItem(timerLabel, dividerBefore = true,
                     subtitle = sleepTimerRemainingMs?.let(::formatSleepTimer), submenuItems = choices(TtsMenuKind.Timer)),
                 LiquidGlassMenuItem(rateLabel, subtitle = if (usesAndroidTts && speechRateMode == TtsProsodyMode.FOLLOW_ENGINE)
                     followEngineLabel else formatSpeechRate(speechRate), submenuItems = choices(TtsMenuKind.Rate)),
                 LiquidGlassMenuItem(pitchLabel, enabled = usesAndroidTts,
                     subtitle = if (pitchMode == TtsProsodyMode.FOLLOW_ENGINE) followEngineLabel else formatPitch(pitch),
-                    submenuItems = choices(TtsMenuKind.Pitch))
+                    submenuItems = choices(TtsMenuKind.Pitch)),
+                pauseMenu
             ),
             passThroughBounds = { capsuleBounds },
             surfaceColor = panelFallbackColor, contentColor = panelContentColor,

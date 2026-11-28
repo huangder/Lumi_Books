@@ -22,12 +22,12 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class RoundedHighlightRenderingInstrumentedTest {
     @Test
-    fun ttsHighlightUsesTheUnifiedTenPercentContrastBoost() {
+    fun ttsHighlightHasSlightlyMoreContrastThanBefore() {
         val lightBackground = Color.WHITE
         val darkBackground = 0xFF111111.toInt()
-        val oldLight = TtsSentenceHighlightSpan.computeHighlightColor(lightBackground, 0.06f)
+        val oldLight = TtsSentenceHighlightSpan.computeHighlightColor(lightBackground, 0.13f)
         val newLight = TtsSentenceHighlightSpan.computeHighlightColor(lightBackground)
-        val oldDark = TtsSentenceHighlightSpan.computeHighlightColor(darkBackground, 0.06f)
+        val oldDark = TtsSentenceHighlightSpan.computeHighlightColor(darkBackground, 0.13f)
         val newDark = TtsSentenceHighlightSpan.computeHighlightColor(darkBackground)
 
         assertEquals(Color.alpha(oldLight), Color.alpha(newLight))

@@ -318,17 +318,27 @@ fun Modifier.liquidGlassSheetSurface(
             )
 
         if (activeBackdrop != null && !forceFallback) {
-            floatingSurface.liquidGlassBackdrop(
-                backdrop = activeBackdrop,
-                shape = floatingShape,
-                isDark = isDark,
-                transparency = sheetTransparency,
-                reduceTransparency = LocalReduceTransparency.current,
-                fallbackBlurRadius = AppPresentation.OverlayFallbackBlur,
-                refractionState = refractionState,
-                contentScrimColor = fallbackColor.copy(alpha = scrimAlpha),
-                contrastScrimColor = contrastScrim,
-                scaleOnPress = false
+            val reduceTransparency = LocalReduceTransparency.current
+            // Same inputs must yield the same modifier: a fresh element makes the backdrop
+            // node rebuild its whole RenderEffect chain on every recomposition.
+            floatingSurface.then(
+                remember(
+                    activeBackdrop, floatingShape, isDark, sheetTransparency, reduceTransparency,
+                    refractionState, fallbackColor, scrimAlpha, contrastScrim
+                ) {
+                    Modifier.liquidGlassBackdrop(
+                        backdrop = activeBackdrop,
+                        shape = floatingShape,
+                        isDark = isDark,
+                        transparency = sheetTransparency,
+                        reduceTransparency = reduceTransparency,
+                        fallbackBlurRadius = AppPresentation.OverlayFallbackBlur,
+                        refractionState = refractionState,
+                        contentScrimColor = fallbackColor.copy(alpha = scrimAlpha),
+                        contrastScrimColor = contrastScrim,
+                        scaleOnPress = false
+                    )
+                }
             )
         } else {
             floatingSurface
@@ -370,7 +380,8 @@ fun LiquidGlassSheetContainer(
 ) {
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass"
     val parentBackdrop = backdrop ?: LocalLiquidGlassBackdrop.current
-    val containerBackdrop = rememberLayerBackdrop()
+    // The export layer is only recorded for a visible glass surface.
+    val containerBackdrop = if (isLiquidGlass && surfaceVisible) rememberLayerBackdrop() else null
     val contentShape = if (isLiquidGlass || cardSheet) AppRoundedCornerShape(AppPresentation.SheetCorner) else shape
 
     // 弹层保持手机端宽度（平板不拉长，避免内容排版被拉伸）。
@@ -382,7 +393,7 @@ fun LiquidGlassSheetContainer(
                 modifier = Modifier
                     .matchParentSize()
                     .then(
-                        if (isLiquidGlass && surfaceVisible) Modifier.layerBackdrop(containerBackdrop) else Modifier
+                        if (containerBackdrop != null) Modifier.layerBackdrop(containerBackdrop) else Modifier
                     )
                     .then(
                         if (surfaceVisible) {
@@ -398,7 +409,7 @@ fun LiquidGlassSheetContainer(
                         }
                      )
             )
-            ProvideLiquidGlassBackdrop(containerBackdrop.takeIf { isLiquidGlass && surfaceVisible }) {
+            ProvideLiquidGlassBackdrop(containerBackdrop) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -508,7 +519,7 @@ fun LiquidGlassSurface(
     // actual page. The global Lumi artwork is only the final fallback.
     val activeBackdrop = resolveGlassBackdrop(backdrop, inheritedBackdrop, globalBackdrop)
     val refractionState = remember { GlassRefractionState() }
-    val surfaceBackdrop = rememberLayerBackdrop()
+    val surfaceBackdrop = if (provideSurfaceBackdrop && isLiquidGlass) rememberLayerBackdrop() else null
     val density = LocalDensity.current
     val surfaceClip = if (shapeProvider == null) Modifier.clip(shape) else Modifier.graphicsLayer {
         this.shape = shapeProvider()
@@ -565,35 +576,50 @@ fun LiquidGlassSurface(
     } else {
         Modifier
     }
+    // Callers usually pass a fresh provider lambda. Reading it through state keeps the
+    // glass modifier itself stable; the effect block observes the read, so a replaced
+    // provider still re-resolves the blur without rebuilding the modifier chain.
+    val latestBlurBoostProvider = rememberUpdatedState(blurBoostProvider)
+    val hasBlurBoostProvider = blurBoostProvider != null
+    val reduceTransparency = LocalReduceTransparency.current
     val surfaceModifier = if (isLiquidGlass && activeBackdrop != null) {
-        Modifier.liquidGlassBackdrop(
-            backdrop = activeBackdrop,
-            shape = shape,
-            lensShape = lensShape,
-            isDark = isDark,
-            transparency = transparency,
-            reduceTransparency = LocalReduceTransparency.current,
-            contentScrimColor = contentScrimColor,
-            contrastScrimColor = contrastScrim,
-            tintColor = tintColor,
-            scaleOnPress = false,
-            buttonInteractionState = interactionState,
-            buttonInteraction = handlesButtonGesture,
-            applyButtonTransform = false,
-            motionEnabled = motionEnabled,
-            blurBoostPx = with(density) { blurBoost.toPx() },
-            blurBoostPxProvider = blurBoostProvider?.let { provider ->
-                { with(density) { provider().toPx() } }
-            },
-            fallbackBlurRadius = liquidGlassFallbackBlurRadius(role, fallbackBlurRadius?.value).dp,
-            refractionState = refractionState,
-            shadowRadius = 24.dp,
-            shadowAlpha = 0f,
-            pressedShadowAlpha = 0.02f,
-            controlEdge = useControlEdge,
-            controlEdgeColor = edgeColor,
-            controlEdgeForceCanvas = forceCanvasEdge
-        )
+        // Same inputs must yield the same modifier: a fresh element makes the backdrop
+        // node rebuild its whole RenderEffect chain on every recomposition.
+        remember(
+            activeBackdrop, shape, lensShape, isDark, transparency, reduceTransparency,
+            contentScrimColor, contrastScrim, tintColor, interactionState, handlesButtonGesture,
+            motionEnabled, density, blurBoost, hasBlurBoostProvider, role, fallbackBlurRadius,
+            refractionState, useControlEdge, edgeColor, forceCanvasEdge
+        ) {
+            Modifier.liquidGlassBackdrop(
+                backdrop = activeBackdrop,
+                shape = shape,
+                lensShape = lensShape,
+                isDark = isDark,
+                transparency = transparency,
+                reduceTransparency = reduceTransparency,
+                contentScrimColor = contentScrimColor,
+                contrastScrimColor = contrastScrim,
+                tintColor = tintColor,
+                scaleOnPress = false,
+                buttonInteractionState = interactionState,
+                buttonInteraction = handlesButtonGesture,
+                applyButtonTransform = false,
+                motionEnabled = motionEnabled,
+                blurBoostPx = with(density) { blurBoost.toPx() },
+                blurBoostPxProvider = if (hasBlurBoostProvider) {
+                    { latestBlurBoostProvider.value?.let { with(density) { it().toPx() } } ?: 0f }
+                } else null,
+                fallbackBlurRadius = liquidGlassFallbackBlurRadius(role, fallbackBlurRadius?.value).dp,
+                refractionState = refractionState,
+                shadowRadius = 24.dp,
+                shadowAlpha = 0f,
+                pressedShadowAlpha = 0.02f,
+                controlEdge = useControlEdge,
+                controlEdgeColor = edgeColor,
+                controlEdgeForceCanvas = forceCanvasEdge
+            )
+        }
     } else if (isLiquidGlass) {
         val fallbackScrim = if (tintColor != null) {
             tintColor.copy(alpha = 0.75f)
@@ -723,7 +749,7 @@ fun LiquidGlassSurface(
             modifier = Modifier
                 .matchParentSize()
                 .padding(effectPadding)
-                .then(if (provideSurfaceBackdrop && isLiquidGlass) Modifier.layerBackdrop(surfaceBackdrop) else Modifier)
+                .then(if (surfaceBackdrop != null) Modifier.layerBackdrop(surfaceBackdrop) else Modifier)
                 .then(surfaceTransformModifier)
                 .then(surfaceModifier)
                 .then(surfaceClip)
@@ -735,7 +761,7 @@ fun LiquidGlassSurface(
         )
         val surfaceScope = this
         CompositionLocalProvider(
-            LocalLiquidGlassBackdrop provides if (provideSurfaceBackdrop && isLiquidGlass) surfaceBackdrop else activeBackdrop,
+            LocalLiquidGlassBackdrop provides (surfaceBackdrop ?: activeBackdrop),
             LocalLiquidGlassLayer provides glassLayer
         ) {
             Box(

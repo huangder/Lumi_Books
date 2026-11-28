@@ -21,14 +21,26 @@ interface SyncStateDao {
     @Upsert
     suspend fun putState(state: SyncStateEntity)
 
+    @Query("DELETE FROM sync_state WHERE `key` = :key")
+    suspend fun removeState(key: String)
+
     @Query("SELECT * FROM reading_records")
     suspend fun getAllReadingRecords(): List<ReadingRecordEntity>
 
     @Query("SELECT * FROM bookmarks")
     suspend fun getAllBookmarks(): List<BookmarkEntity>
 
+    @Query("SELECT * FROM bookmarks WHERE syncId = :syncId")
+    suspend fun findBookmark(syncId: String): BookmarkEntity?
+
     @Query("SELECT * FROM notes")
     suspend fun getAllNotes(): List<NoteEntity>
+
+    @Query("SELECT * FROM notes WHERE syncId = :syncId")
+    suspend fun findNote(syncId: String): NoteEntity?
+
+    @Query("SELECT * FROM notes WHERE bookId = :bookId AND sourceRuleId = :rule AND sourceMatchKey = :match")
+    suspend fun findRuleNote(bookId: String, rule: String, match: String): NoteEntity?
 
     @Query("SELECT * FROM folders")
     suspend fun getAllFolders(): List<FolderEntity>
@@ -47,6 +59,9 @@ interface SyncStateDao {
 
     @Upsert
     suspend fun upsertReadingRecords(items: List<ReadingRecordEntity>)
+
+    @Query("DELETE FROM reading_records WHERE id = :id")
+    suspend fun deleteReadingRecord(id: Long)
 
     @Upsert
     suspend fun upsertBookmarks(items: List<BookmarkEntity>)

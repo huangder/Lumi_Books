@@ -25,10 +25,16 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.tts.TtsListeningPosition
+import com.huangder.lumibooks.tts.TtsReaderResumeChoice
 import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
 import com.huangder.lumibooks.ui.components.LiquidGlassTextButton
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.kyant.backdrop.Backdrop
+
+internal fun effectiveListeningResumeChoice(
+    remembered: TtsReaderResumeChoice?, hasLivePosition: Boolean, autoPageTurn: Boolean
+): TtsReaderResumeChoice? = remembered ?: TtsReaderResumeChoice.LISTENING_POSITION
+    .takeIf { hasLivePosition && autoPageTurn }
 
 internal fun shouldOfferListeningResume(
     position: TtsListeningPosition?,

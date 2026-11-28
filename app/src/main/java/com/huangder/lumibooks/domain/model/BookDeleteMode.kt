@@ -3,7 +3,12 @@ package com.huangder.lumibooks.domain.model
 enum class BookDeleteMode {
     LOCAL_ONLY,
     LOCAL_AND_CLOUD,
-    FORCE_LOCAL_AND_CLOUD;
+    FORCE_LOCAL_AND_CLOUD,
+    /** Remove the cloud copy and keep the local book untouched. */
+    CLOUD_ONLY;
+
+    val keepsLocalBook: Boolean
+        get() = this == CLOUD_ONLY
 
     val attemptsCloudDelete: Boolean
         get() = this != LOCAL_ONLY

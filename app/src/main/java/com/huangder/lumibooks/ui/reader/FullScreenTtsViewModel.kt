@@ -10,6 +10,7 @@ import com.huangder.lumibooks.tts.*
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 data class ListeningSentence(val chapter: Int, val segment: TtsTextSegment) {
@@ -37,15 +38,20 @@ internal fun listeningText(chapter: TtsChapterSnapshot?, page: TtsPageContent?, 
         if (length > 0) (offset.toFloat() / length).coerceIn(0f, 1f) else 0f)
 }
 
-internal fun ListeningText.withRangeProgress(frame: TtsListeningFrame, range: TtsTextSegment?): ListeningText {
-    val utterance = frame.utterance ?: return this
-    val offset = range?.startCharacterOffset?.takeIf {
-        it in utterance.startCharacterOffset..utterance.endCharacterOffset
-    } ?: return this
-    val length = frame.chapter?.takeIf { it.index == chapter }?.text?.length
-        ?: frame.page?.endCharacterOffset ?: return this
-    val focus = sentences.indexOfLast { it.segment.startCharacterOffset <= offset }.coerceAtLeast(0)
-    return copy(focus = focus, progress = if (length > 0) (offset.toFloat() / length).coerceIn(0f, 1f) else progress)
+internal fun ListeningText.withSpokenClause(clause: TtsTextSegment, length: Int): ListeningText {
+    val offset = clause.startCharacterOffset
+    val index = sentences.indexOfLast { it.segment.startCharacterOffset <= offset }
+    val row = sentences.getOrNull(index)
+    // A seek or a sentence carried over a page boundary can start inside a chapter row.
+    val rows = if (row != null && offset < row.segment.endCharacterOffset) {
+        if (row.segment.text == clause.text) sentences
+        else sentences.toMutableList().apply { this[index] = ListeningSentence(chapter, clause) }
+    } else {
+        sentences.toMutableList().apply { add(index + 1, ListeningSentence(chapter, clause)) }
+    }
+    val focusIndex = if (row == null || offset >= row.segment.endCharacterOffset) index + 1 else index
+    return copy(sentences = rows, focus = focusIndex,
+        progress = if (length > 0) (offset.toFloat() / length).coerceIn(0f, 1f) else progress)
 }
 
 @HiltViewModel
@@ -68,10 +74,24 @@ class FullScreenTtsViewModel @Inject constructor(
     val engineBusy = MutableStateFlow(false)
     val engineError = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val engines = engine.getInstalledEngines()
-    // Range callbacks move clause focus/progress without re-splitting the chapter.
-    val text = controller.listeningFrame.map { frame ->
-        frame to listeningText(frame.chapter, frame.page, frame.utterance)
-    }.combine(controller.currentSentence) { (frame, text), range -> text.withRangeProgress(frame, range) }
+    // Chapter parsing can be expensive. A short spoken clause only moves the focused row.
+    val text = controller.listeningFrame
+        .map { it.chapter to it.page }
+        .distinctUntilChanged()
+        .map { (chapter, page) ->
+            val rows = listeningText(chapter, page, null)
+            val length = chapter?.takeIf { it.index == rows.chapter }?.text?.length ?: page?.endCharacterOffset ?: 0
+            rows to length
+        }
+        .flowOn(Dispatchers.Default)
+        .combine(controller.subtitleFrame) { (rows, length), subtitle ->
+            when {
+                subtitle.current == null -> rows.copy(focus = -1)
+                subtitle.bookId != bookId || subtitle.chapterIndex != rows.chapter -> null
+                else -> rows.withSpokenClause(subtitle.current, length)
+            }
+        }
+        .filterNotNull()
         .stateIn(viewModelScope, SharingStarted.Eagerly, ListeningText())
 
     init {

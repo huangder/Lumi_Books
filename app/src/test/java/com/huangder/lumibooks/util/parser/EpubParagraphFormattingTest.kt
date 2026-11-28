@@ -7,6 +7,7 @@ import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.ImageSpan
 import android.text.style.LeadingMarginSpan
+import android.text.style.URLSpan
 import android.view.View
 import androidx.test.core.app.ApplicationProvider
 import com.huangder.lumibooks.ui.reader.engine.PageContentView
@@ -44,6 +45,37 @@ class EpubParagraphFormattingTest {
             formatted.getSpans(0, formatted.length, LeadingMarginSpan.Standard::class.java)
                 .isEmpty()
         )
+    }
+
+    @Test
+    fun changingIndentNormalizesAnchoredBodyAndKeepsLinkTargets() = withBook(
+        """<html><body><h1>第一章</h1>
+            <p id="first">　　<a id="nested"></a>&nbsp;第一段正文</p>
+            <p>　　<a id="second"></a>第二段正文</p>
+            <p><a href="#second">跳到第二段</a></p></body></html>"""
+    ) { parser ->
+        parser.paragraphSpacingDp = 4f
+        for (indent in listOf(2f, 0f, 1.5f)) {
+            parser.firstLineIndentChars = indent
+            parser.clearHtmlCache()
+            val preview = parser.getChapterContentPreview(0, 400, 0, 1000, 24f)
+            val full = parser.getChapterContent(0, 400, 0, 24f)
+            val pagination = parser.getChapterContentForPagination(0, 400, 200, 24f)
+            assertTrue(preview.isComplete)
+            for (text in listOf(preview.text, full, pagination)) {
+                assertEquals("第一章\n\n第一段正文\n\n第二段正文\n\n跳到第二段\n", text.toString())
+                val spanned = text as Spanned
+                for (paragraph in listOf("第一段正文", "第二段正文")) {
+                    val start = text.indexOf(paragraph)
+                    val span = spanned.getSpans(start, start + 1, LeadingMarginSpan::class.java)
+                        .singleOrNull()
+                    assertEquals((indent * 24f).roundToInt(), span?.getLeadingMargin(true) ?: 0)
+                }
+            }
+            assertEquals(full.indexOf("第一段正文"), parser.resolveLink(0, "#first")?.characterOffset)
+            assertEquals(full.indexOf("第一段正文"), parser.resolveLink(0, "#nested")?.characterOffset)
+            assertEquals(full.indexOf("第二段正文"), parser.resolveLink(0, "#second")?.characterOffset)
+        }
     }
 
     @Test
@@ -149,6 +181,30 @@ class EpubParagraphFormattingTest {
                     LeadingMarginSpan::class.java).isEmpty())
             }
         }
+    }
+
+    @Test
+    fun weReadFootnotesStayInlineAndResolveAlongsideLinkedFootnotes() = withBook(
+        """<html><body><p>正文<span class="reader_footer_note js_readerFooterNote"
+            data-wr-footernote="中文 &amp; &lt;cite&gt;English&lt;/cite&gt;"></span>后文<a epub:type="noteref" href="#fn">[1]</a></p>
+            <p>${"正文内容".repeat(100)}</p>
+            <p>下一段<span class="reader_footer_note" data-wr-footernote="第二条注释"></span>末尾</p>
+            <aside epub:type="footnote" id="fn">链接注释</aside></body></html>"""
+    ) { parser ->
+        val text = parser.getChapterContent(0) as Spanned
+        assertTrue(text.contains("正文注后文"))
+        assertTrue(text.contains("下一段注末尾"))
+        assertTrue(!text.contains("链接注释"))
+        val links = text.getSpans(0, text.length, URLSpan::class.java).sortedBy(text::getSpanStart)
+        assertEquals(3, links.size)
+        assertTrue(!parser.getChapterContentPreview(0, 320, 0, 70).isComplete)
+        assertEquals(
+            listOf("中文 & <cite>English</cite>", "链接注释", "第二条注释"),
+            links.map { link ->
+                assertTrue(parser.isFootnoteHref(0, link.url))
+                parser.resolveFootnoteText(0, link.url)
+            }
+        )
     }
 
     @Test

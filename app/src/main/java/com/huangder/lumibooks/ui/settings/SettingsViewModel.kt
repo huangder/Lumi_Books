@@ -442,6 +442,11 @@ class SettingsViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            dataStoreManager.ttsAllowConcurrentPlayback.collectLatest { allow ->
+                _uiState.value = _uiState.value.copy(ttsAllowConcurrentPlayback = allow)
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.ttsContinueOnReaderExit.collectLatest { choice ->
                 _uiState.value = _uiState.value.copy(ttsContinueOnReaderExit = choice)
             }
@@ -624,6 +629,10 @@ class SettingsViewModel @Inject constructor(
 
     fun saveTtsStartChoice(choice: com.huangder.lumibooks.tts.TtsStartChoice?) {
         viewModelScope.launch { dataStoreManager.saveTtsStartChoice(choice) }
+    }
+
+    fun saveTtsAllowConcurrentPlayback(allow: Boolean) {
+        viewModelScope.launch { dataStoreManager.saveTtsAllowConcurrentPlayback(allow) }
     }
 
     fun saveTtsContinueOnReaderExit(choice: Boolean?) {

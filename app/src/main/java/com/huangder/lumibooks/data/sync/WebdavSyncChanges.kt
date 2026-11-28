@@ -18,7 +18,7 @@ class WebdavSyncChanges @Inject constructor(
     private val preferences = context.getSharedPreferences("webdav_change_baselines", Context.MODE_PRIVATE)
 
     fun key(config: WebdavConfig): String = syncFingerprint(
-        config.normalized().copy(lastSyncTime = 0).toString()
+        "body-reconciliation-v2:" + config.normalized().copy(lastSyncTime = 0)
     )
 
     suspend fun unchanged(key: String, local: String, config: WebdavConfig, password: String): Boolean {
@@ -66,7 +66,20 @@ class WebdavSyncChanges @Inject constructor(
         }
     }
 
-    companion object { private const val MISSING = "missing" }
+    companion object {
+        private const val MISSING = "missing"
+
+        /**
+         * A book body was rewritten in place. Size and timestamp cannot be trusted to show it
+         * (SAF documents report neither), so the next automatic sync must not be skipped.
+         */
+        fun markLocalChanged(context: Context) {
+            val preferences = context.getSharedPreferences("webdav_change_baselines", Context.MODE_PRIVATE)
+            val editor = preferences.edit()
+            preferences.all.keys.filter { it.endsWith(".local") }.forEach(editor::remove)
+            editor.apply()
+        }
+    }
 }
 
 internal fun WebdavConfig.usesPortableState(): Boolean =

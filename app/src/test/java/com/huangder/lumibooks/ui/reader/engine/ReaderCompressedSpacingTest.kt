@@ -48,4 +48,15 @@ class ReaderCompressedSpacingTest {
         assertTrue(compressed.size < normal.size)
         assertEquals(text, compressed.joinToString("") { text.substring(it.startOffset, it.endOffset) })
     }
+
+    @Test fun verticalParagraphGapUsesTheConfiguredWidth() {
+        for (gap in listOf(0f, 2f, 8f, 24f)) {
+            val chapter = ReaderParagraphFormatter.applyFirstLineIndent("甲\n乙", 0f, 32f, gap, false)
+            val page = VerticalTextLayouter.layout(chapter, TextPaint().apply { textSize = 32f },
+                320, 480, 0f, 1f, 0f).single()
+            val (first, second) = page.geometry.glyphs
+            assertEquals(1, second.columnIndex - first.columnIndex)
+            assertEquals(gap, first.bounds.left - second.bounds.right, 0.01f)
+        }
+    }
 }

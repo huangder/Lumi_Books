@@ -244,6 +244,7 @@ private fun PreviewMenus(
             modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(24.dp)
                 .liquidGlassMenuAnchor(sourceId)
         )
+        var allowConcurrentPlayback by remember { mutableStateOf(false) }
         TtsPlayerPanel(
             playbackState = if (playing) TtsPlaybackState.PLAYING else TtsPlaybackState.PAUSED,
             speechRate = rate, speechRateMode = TtsProsodyMode.OVERRIDE,
@@ -255,6 +256,8 @@ private fun PreviewMenus(
             onPitchChange = { pitch = it; selected = "Pitch " + it; actions++ }, onPitchModeChange = { selected = "Pitch mode " + it; actions++ },
             onSetSleepTimer = { timer = it * 60_000L; selected = "Timer " + it; actions++ },
             onCancelSleepTimer = { timer = null; actions++ },
+            allowConcurrentPlayback = allowConcurrentPlayback,
+            onAllowConcurrentPlaybackChange = { allowConcurrentPlayback = it; actions++ },
             readerBackgroundColor = AppColors.CardBg, readerContentColor = AppColors.TextPrimary,
             forceSolidSurface = solid,
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(horizontal = 24.dp, vertical = 32.dp)

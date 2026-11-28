@@ -2,6 +2,7 @@
 
 package com.huangder.lumibooks.ui.bookshelf
 
+import com.huangder.lumibooks.ui.bookshelf.spine.SpineArrangement
 import com.huangder.lumibooks.ui.icons.ControlIcon
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
@@ -9,6 +10,7 @@ import com.huangder.lumibooks.ui.components.AppDialogAction
 import com.huangder.lumibooks.ui.components.AppDialogActionRole
 
 import com.huangder.lumibooks.ui.theme.LocalReduceTransparency
+import com.huangder.lumibooks.ui.theme.LocalLiquidGlassSamplingQuality
 import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
 import com.huangder.lumibooks.ui.components.liquidGlassMenuAnchor
 import com.huangder.lumibooks.ui.components.shiftHue
@@ -174,6 +176,7 @@ import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
 import com.huangder.lumibooks.R
 import androidx.compose.ui.res.stringResource
 import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
@@ -204,12 +207,15 @@ fun BookshelfScreen(
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val finishedBookCount = remember(uiState.books) { uiState.books.count { it.isReadingFinished } }
     val effectiveLayoutMode = if (uiState.bookshelfLayoutModeLoaded) {
         uiState.bookshelfLayoutMode
     } else {
         initialLayoutMode ?: uiState.bookshelfLayoutMode
     }
-    var selectedFilter by remember { mutableStateOf<BookshelfFilter>(BookshelfFilter.All) }
+    var selectedFilter by rememberSaveable(stateSaver = BookshelfFilterSaver) {
+        mutableStateOf<BookshelfFilter>(BookshelfFilter.All)
+    }
     val changeLayout: (Int) -> Unit = { mode ->
         val commit = {
             if (mode == BookshelfLayout.CoverFlow) selectedFilter = BookshelfFilter.All
@@ -222,6 +228,26 @@ fun BookshelfScreen(
     var currentFolderId by rememberSaveable { mutableStateOf<String?>(null) }
     var renderedFolderId by rememberSaveable { mutableStateOf<String?>(null) }
     var folderNavigationForward by remember { mutableStateOf(true) }
+    // The filter and folder last used survive leaving the bookshelf and restarting the app. They
+    // are restored once, without a folder transition; afterwards every change is written back.
+    var bookshelfLocationRestored by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(uiState.bookshelfLocationLoaded) {
+        if (bookshelfLocationRestored || !uiState.bookshelfLocationLoaded) return@LaunchedEffect
+        if (selectedFilter == BookshelfFilter.All && effectiveLayoutMode != BookshelfLayout.CoverFlow) {
+            selectedFilter = BookshelfFilter.decode(uiState.bookshelfLastFilter)
+        }
+        if (currentFolderId == null && requestedFolderId == null) {
+            currentFolderId = uiState.bookshelfLastFolderId
+            renderedFolderId = uiState.bookshelfLastFolderId
+        }
+        bookshelfLocationRestored = true
+    }
+    LaunchedEffect(selectedFilter, bookshelfLocationRestored) {
+        if (bookshelfLocationRestored) viewModel.saveBookshelfFilter(selectedFilter.encode())
+    }
+    LaunchedEffect(currentFolderId, bookshelfLocationRestored) {
+        if (bookshelfLocationRestored) viewModel.saveBookshelfFolder(currentFolderId)
+    }
     LaunchedEffect(currentFolderId, requestedFolderId) {
         onFolderOpenChange(currentFolderId != null || requestedFolderId != null)
         onCurrentFolderChange(requestedFolderId ?: currentFolderId)
@@ -336,7 +362,9 @@ fun BookshelfScreen(
         }
     }
 
-    LaunchedEffect(uiState.tags) {
+    LaunchedEffect(uiState.tags, uiState.tagsLoaded) {
+        // Before the tags load the list is empty; a restored tag filter must survive that.
+        if (!uiState.tagsLoaded) return@LaunchedEffect
         val activeTagFilter = selectedFilter as? BookshelfFilter.Tag
         if (activeTagFilter != null && uiState.tags.none { it.id == activeTagFilter.tagId }) {
             selectedFilter = BookshelfFilter.All
@@ -359,7 +387,9 @@ fun BookshelfScreen(
         onRequestedFolderConsumed()
     }
 
-    LaunchedEffect(uiState.folders, currentFolderId) {
+    LaunchedEffect(uiState.folders, uiState.foldersLoaded, currentFolderId) {
+        // Before the folders load the list is empty; a restored folder must survive that.
+        if (!uiState.foldersLoaded) return@LaunchedEffect
         if (currentFolderId != null && uiState.folders.none { it.id == currentFolderId }) {
             folderNavigationForward = false
             currentFolderId = null
@@ -574,18 +604,14 @@ fun BookshelfScreen(
     val currentLevelBooks = remember(uiState.books, shelfFolderLinks, renderedFolderId) {
         booksAtFolderLevel(uiState.books, shelfFolderLinks, renderedFolderId)
     }
-    val layoutBooks = remember(
-        uiState.books,
-        shelfFolderLinks,
-        renderedFolderId,
-        effectiveLayoutMode
-    ) {
-        if (effectiveLayoutMode == BookshelfLayout.CoverFlow) {
-            booksForCoverFlow(uiState.books, shelfFolderLinks, renderedFolderId)
-        } else {
-            currentLevelBooks
-        }
+    val spinePoses = remember(uiState.spinePoses) {
+        uiState.spinePoses.mapNotNull { (id, stored) ->
+            com.huangder.lumibooks.ui.bookshelf.spine.SpinePose.fromStorageKey(stored)?.let { id to it }
+        }.toMap()
     }
+    // Every layout, CoverFlow included, shows only the current folder level; sub-folders get
+    // their own cards or spines instead of spilling their books into this level.
+    val layoutBooks = currentLevelBooks
     val allFolderCounts = remember(uiState.folders, shelfFolderLinks) {
         folderBookCounts(uiState.folders, shelfFolderLinks)
     }
@@ -973,8 +999,20 @@ fun BookshelfScreen(
                         spineSceneKey = renderedFolderId.orEmpty(),
                         spineSharpCovers = uiState.spineSharpCovers,
                         onReorder = if (isSearchActive) null else viewModel::reorderBooks,
-                        spineRowBreaks = if (uiState.sortBy == SortBy.CUSTOM) uiState.spineRowBreaks else emptyMap(),
-                        onSpineArrange = if (isSearchActive) null else viewModel::arrangeSpineShelf,
+                        spineSavedOrder = uiState.bookshelfCustomOrder?.let {
+                            if (uiState.sortBy == SortBy.CUSTOM) it else emptyList()
+                        },
+                        spineItemRows = if (uiState.sortBy == SortBy.CUSTOM) {
+                            uiState.spineRowsByScene[renderedFolderId.orEmpty()].orEmpty()
+                        } else emptyMap(),
+                        onSpineArrange = if (isSearchActive) null else { arrangement ->
+                            viewModel.reorderSpines(renderedFolderId.orEmpty(), arrangement)
+                        },
+                        spineStacked = if (uiState.sortBy == SortBy.CUSTOM) {
+                            uiState.spineStackedByScene[renderedFolderId.orEmpty()].orEmpty()
+                        } else emptySet(),
+                        spinePoses = spinePoses,
+                        onSpinePoseChange = { id, pose -> viewModel.setSpinePose(id, pose?.storageKey) },
                         onFolderClick = openFolder,
                         onFolderRename = renameFolderFromList,
                         onFolderDelete = deleteFolderFromList,
@@ -1028,7 +1066,7 @@ fun BookshelfScreen(
                         isEditing = isEditing,
                         selectedCount = selectedBookIds.size,
                         libraryBookCount = uiState.books.size,
-                        libraryFinishedBookCount = uiState.books.count { it.isReadingFinished },
+                        libraryFinishedBookCount = finishedBookCount,
                         onFilterSelected = { selectedFilter = it },
                         onEditToggle = {
                             isEditing = !isEditing
@@ -1125,8 +1163,20 @@ fun BookshelfScreen(
                         spineSceneKey = renderedFolderId.orEmpty(),
                         spineSharpCovers = uiState.spineSharpCovers,
                         onReorder = if (isSearchActive) null else viewModel::reorderBooks,
-                        spineRowBreaks = if (uiState.sortBy == SortBy.CUSTOM) uiState.spineRowBreaks else emptyMap(),
-                        onSpineArrange = if (isSearchActive) null else viewModel::arrangeSpineShelf,
+                        spineSavedOrder = uiState.bookshelfCustomOrder?.let {
+                            if (uiState.sortBy == SortBy.CUSTOM) it else emptyList()
+                        },
+                        spineItemRows = if (uiState.sortBy == SortBy.CUSTOM) {
+                            uiState.spineRowsByScene[renderedFolderId.orEmpty()].orEmpty()
+                        } else emptyMap(),
+                        onSpineArrange = if (isSearchActive) null else { arrangement ->
+                            viewModel.reorderSpines(renderedFolderId.orEmpty(), arrangement)
+                        },
+                        spineStacked = if (uiState.sortBy == SortBy.CUSTOM) {
+                            uiState.spineStackedByScene[renderedFolderId.orEmpty()].orEmpty()
+                        } else emptySet(),
+                        spinePoses = spinePoses,
+                        onSpinePoseChange = { id, pose -> viewModel.setSpinePose(id, pose?.storageKey) },
                         onFolderClick = openFolder,
                         onFolderRename = renameFolderFromList,
                         onFolderDelete = deleteFolderFromList,
@@ -1180,21 +1230,28 @@ fun BookshelfScreen(
             } else {
                 154.dp
             }
+            val sampleHeaderBlur = !reduceTransparency && LocalLiquidGlassSamplingQuality.current.scale < 1f
             StatusGradientOverlay(
                 backdrop = bookshelfBackdrop,
                 exportedBackdrop = bookshelfTopBlurBackdrop,
                 height = blurHeight,
                 blurRadius = 38.dp,
-                solidFraction = 0.68f
+                solidFraction = 0.68f,
+                sampleBlurOverLiveContent = sampleHeaderBlur,
             )
-            ProvideLiquidGlassBackdrop(bookshelfTopBlurBackdrop) {
+            val controlsBackdrop = if (sampleHeaderBlur) {
+                rememberCombinedBackdrop(bookshelfBackdrop, bookshelfTopBlurBackdrop)
+            } else {
+                bookshelfTopBlurBackdrop
+            }
+            ProvideLiquidGlassBackdrop(controlsBackdrop) {
                 BookshelfCapsuleHeader(
                     filterTabs = filterTabs,
                     selectedFilter = selectedFilter,
                     isEditing = isEditing,
                     selectedCount = selectedBookIds.size,
                     libraryBookCount = uiState.books.size,
-                    libraryFinishedBookCount = uiState.books.count { it.isReadingFinished },
+                    libraryFinishedBookCount = finishedBookCount,
                     onFilterSelected = { selectedFilter = it },
                     onEditToggle = {
                         isEditing = !isEditing
@@ -1686,9 +1743,17 @@ fun BookshelfScreen(
                     booksPendingDeletion = emptyList()
                 },
                 onDelete = { mode ->
-                    pendingDeleteMode = mode
-                    booksPendingDeletion = targets
-                    deletingBookIds = targets.mapTo(mutableSetOf()) { it.id }
+                    if (mode == BookDeleteMode.CLOUD_ONLY) {
+                        // The books stay on the shelf, so nothing fades out.
+                        viewModel.deleteBooks(targets, mode)
+                        booksPendingDeletion = emptyList()
+                        selectedBookIds = emptySet()
+                        isEditing = false
+                    } else {
+                        pendingDeleteMode = mode
+                        booksPendingDeletion = targets
+                        deletingBookIds = targets.mapTo(mutableSetOf()) { it.id }
+                    }
                     showBatchDeleteConfirm = false
                 }
             )
@@ -1783,10 +1848,12 @@ internal fun BookshelfCollection(
      * a long press then opens the menu at once, as before.
      */
     onReorder: ((List<String>) -> Unit)? = null,
-    /** Spine shelf rows chosen by dragging (book id → row break), for the custom sort. */
-    spineRowBreaks: Map<String, Int> = emptyMap(),
-    /** Commits a spine drag: new order of [books]' ids plus their row breaks. */
-    onSpineArrange: ((List<String>, Map<String, Int>) -> Unit)? = null,
+    spineSavedOrder: List<String>? = emptyList(),
+    spineItemRows: Map<String, Int> = emptyMap(),
+    onSpineArrange: ((SpineArrangement) -> Unit)? = null,
+    spineStacked: Set<String> = emptySet(),
+    spinePoses: Map<String, com.huangder.lumibooks.ui.bookshelf.spine.SpinePose> = emptyMap(),
+    onSpinePoseChange: ((String, com.huangder.lumibooks.ui.bookshelf.spine.SpinePose?) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val targetMode = BookshelfLayout.normalize(layoutMode)
@@ -1936,7 +2003,8 @@ internal fun BookshelfCollection(
                         onFolderClick = onFolderClick, onFolderRename = onFolderRename,
                         onFolderDelete = onFolderDelete, onFolderSetCover = onFolderSetCover,
                         onFolderRemoveCover = onFolderRemoveCover, onFolderMove = onFolderMove,
-                        onReorder = onReorder.takeIf { !transitionInProgress }
+                        onReorder = onReorder.takeIf { !transitionInProgress },
+                        folderPreviewBooks = folderPreviewBooks
                     )
                 }
             } else if (renderedMode == BookshelfLayout.Spine) {
@@ -1961,8 +2029,12 @@ internal fun BookshelfCollection(
                         onFolderClick = onFolderClick,
                         onSelectionToggle = onSelectionToggle, onHaptic = onHaptic,
                         onMenuVisibleChange = onCoverFlowMenuVisibleChange,
-                        rowBreaks = spineRowBreaks,
-                        onArrange = onSpineArrange.takeIf { !transitionInProgress }
+                        savedOrder = spineSavedOrder,
+                        rowsByItem = spineItemRows,
+                        onArrange = onSpineArrange.takeIf { !transitionInProgress },
+                        stackedItems = spineStacked,
+                        poses = spinePoses,
+                        onPoseChange = onSpinePoseChange
                     ),
                     modifier = Modifier.mainTabEntrance()
                 )
@@ -2007,7 +2079,7 @@ internal fun BookshelfCollection(
                     val listBooks = listReorder.draftOrder?.let { draft ->
                         mergeDraftGroup(books, draft)
                     } ?: books
-                    lazyListItemsIndexed(listBooks, key = { _, book -> "list_${book.id}" }) { _, book ->
+                    lazyListItemsIndexed(listBooks, key = { _, book -> "list_${book.id}" }, contentType = { _, _ -> "book_list" }) { _, book ->
                         val listDrag = if (onReorder != null && !isEditing && !transitionInProgress) {
                             BookDragCallbacks(
                                 onLift = {
@@ -2134,7 +2206,8 @@ internal fun BookshelfCollection(
             ) {
                 itemsIndexed(
                     folders,
-                    key = { _, folder -> "folder_grid_${renderedMode}_${folder.id}" }
+                    key = { _, folder -> "folder_grid_${renderedMode}_${folder.id}" },
+                    contentType = { _, _ -> "folder_grid" }
                 ) { index, folder ->
                     PageEntranceItem(play = playEntranceAnimation, index = index + 2) {
                         FolderGridItem(
@@ -2150,7 +2223,7 @@ internal fun BookshelfCollection(
                     }
                 }
                 val gridBooks = gridReorder.draftOrder ?: books
-                itemsIndexed(gridBooks, key = { _, book -> "grid_${renderedMode}_${book.id}" }) { index, book ->
+                itemsIndexed(gridBooks, key = { _, book -> "grid_${renderedMode}_${book.id}" }, contentType = { _, _ -> "book_grid" }) { index, book ->
                     val gridDrag: ((() -> Unit) -> BookDragCallbacks)? =
                         if (onReorder != null && !isEditing && !transitionInProgress) {
                             { openMenu ->
@@ -3012,7 +3085,7 @@ private data class PendingFolderMenuAction(
     val folder: LibraryFolder
 )
 
-private sealed interface BookshelfFilter {
+internal sealed interface BookshelfFilter {
     data object All : BookshelfFilter
     data object EpubMobi : BookshelfFilter
     data object Pdf : BookshelfFilter
@@ -3021,7 +3094,43 @@ private sealed interface BookshelfFilter {
     data object Comic : BookshelfFilter
     data object Favorites : BookshelfFilter
     data class Tag(val tagId: String) : BookshelfFilter
+
+    /** Stable text form used to remember the filter across restarts. */
+    fun encode(): String = when (this) {
+        All -> "all"
+        EpubMobi -> "epub_mobi"
+        Pdf -> "pdf"
+        Markdown -> "markdown"
+        Txt -> "txt"
+        Comic -> "comic"
+        Favorites -> "favorites"
+        is Tag -> TAG_PREFIX + tagId
+    }
+
+    companion object {
+        private const val TAG_PREFIX = "tag:"
+
+        /** Unknown or empty values fall back to [All]. */
+        fun decode(value: String?): BookshelfFilter = when {
+            value == null -> All
+            value.startsWith(TAG_PREFIX) -> value.removePrefix(TAG_PREFIX).takeIf { it.isNotEmpty() }?.let(::Tag) ?: All
+            else -> when (value) {
+                "epub_mobi" -> EpubMobi
+                "pdf" -> Pdf
+                "markdown" -> Markdown
+                "txt" -> Txt
+                "comic" -> Comic
+                "favorites" -> Favorites
+                else -> All
+            }
+        }
+    }
 }
+
+private val BookshelfFilterSaver = androidx.compose.runtime.saveable.Saver<BookshelfFilter, String>(
+    save = { it.encode() },
+    restore = { BookshelfFilter.decode(it) }
+)
 
 private data class BookshelfFilterTab(
     val filter: BookshelfFilter,

@@ -117,6 +117,7 @@ internal class ReaderHighlightPainter(
     private val minimumLineGap = 1.5f * density
     private val cornerRadius = 6f * density
     private val bounds = RectF()
+    private val blockBounds = RectF()
     private val selectionPath = Path()
     private val pathBounds = RectF()
 
@@ -129,7 +130,8 @@ internal class ReaderHighlightPainter(
         end: Int,
         color: Int,
         outline: Boolean = false,
-        style: ReaderAnnotationStyle = ReaderAnnotationStyle.DEFAULT
+        style: ReaderAnnotationStyle = ReaderAnnotationStyle.DEFAULT,
+        singleBlock: Boolean = false
     ) {
         if (color ushr 24 == 0) return
         val safeStart = start.coerceIn(0, text.length)
@@ -148,11 +150,16 @@ internal class ReaderHighlightPainter(
             paint.style = previousStyle
             return
         }
-        val firstLine = maxOf(layout.getLineForOffset(safeStart), visible.first)
-        val lastLine = minOf(layout.getLineForOffset(safeEnd - 1), visible.last)
-        for (line in firstLine..lastLine) {
-            drawLineSegment(
-                canvas = canvas,
+        val firstLine = layout.getLineForOffset(safeStart)
+        val lastLine = layout.getLineForOffset(safeEnd - 1)
+        blockBounds.setEmpty()
+        val lines = if (singleBlock && firstLine <= visible.last && lastLine >= visible.first) {
+            firstLine..lastLine
+        } else {
+            maxOf(firstLine, visible.first)..minOf(lastLine, visible.last)
+        }
+        for (line in lines) {
+            if (!setLineBounds(
                 layout = layout,
                 text = text,
                 geometry = geometry,
@@ -161,13 +168,19 @@ internal class ReaderHighlightPainter(
                 fontMetrics = fontMetrics,
                 line = line,
                 style = style
-            )
+            )) continue
+            if (singleBlock) blockBounds.union(bounds) else drawBlock(canvas, bounds)
         }
+        if (singleBlock && !blockBounds.isEmpty) drawBlock(canvas, blockBounds)
         paint.style = previousStyle
     }
 
-    private fun drawLineSegment(
-        canvas: Canvas,
+    private fun drawBlock(canvas: Canvas, bounds: RectF) {
+        val radius = minOf(cornerRadius, bounds.width() / 2f, bounds.height() / 2f)
+        canvas.drawRoundRect(bounds, radius, radius, paint)
+    }
+
+    private fun setLineBounds(
         layout: Layout,
         text: Spanned,
         geometry: ReaderLineGeometry,
@@ -176,16 +189,16 @@ internal class ReaderHighlightPainter(
         fontMetrics: Paint.FontMetrics,
         line: Int,
         style: ReaderAnnotationStyle
-    ) {
+    ): Boolean {
         val lineStart = layout.getLineStart(line)
         val rawLineEnd = layout.getLineEnd(line)
         val contentEnd = readerLineContentEnd(text, lineStart, rawLineEnd)
         val segmentStart = maxOf(start, lineStart)
         val segmentEnd = minOf(end, contentEnd)
-        if (segmentStart >= segmentEnd) return
+        if (segmentStart >= segmentEnd) return false
 
         val paragraphIsLtr = layout.getParagraphDirection(line) == Layout.DIR_LEFT_TO_RIGHT
-        val geometryRange = geometry.horizontalRange(line, segmentStart, segmentEnd) ?: return
+        val geometryRange = geometry.horizontalRange(line, segmentStart, segmentEnd) ?: return false
         val segmentStartX = geometryRange.left
         val segmentEndX = geometryRange.right
         // 常规 LTR 文本直接用排版推进量；选区路径边界可能带上相邻 run，只在 RTL/混排时使用。
@@ -201,7 +214,7 @@ internal class ReaderHighlightPainter(
         val usePathBounds = !pathBounds.isEmpty() && !paragraphIsLtr
         val segmentLeft = if (usePathBounds) pathBounds.left else minOf(segmentStartX, segmentEndX)
         val segmentRight = if (usePathBounds) pathBounds.right else maxOf(segmentStartX, segmentEndX)
-        if (segmentRight <= segmentLeft) return
+        if (segmentRight <= segmentLeft) return false
 
         // 用户加高高亮时允许占满行距（不再预留行间空隙），否则保持原有空隙。
         val lineGap = if (style.highlightHeightDp > 0f) 0f else minimumLineGap
@@ -215,7 +228,7 @@ internal class ReaderHighlightPainter(
         val offsetY = style.highlightOffsetYDp * density
         val top = glyphTop.coerceAtLeast(lineTop) + offsetY
         val bottom = glyphBottom.coerceAtMost(lineBottom) + offsetY
-        if (bottom <= top) return
+        if (bottom <= top) return false
 
         bounds.set(
             (segmentLeft - inlinePadding).coerceAtLeast(if (keepCornersInsideLayout) 0f else -inlinePadding),
@@ -223,7 +236,6 @@ internal class ReaderHighlightPainter(
             (segmentRight + inlinePadding).coerceAtMost(layout.width + if (keepCornersInsideLayout) 0f else inlinePadding),
             bottom
         )
-        val radius = minOf(cornerRadius, bounds.height() / 2f)
-        canvas.drawRoundRect(bounds, radius, radius, paint)
+        return !bounds.isEmpty
     }
 }

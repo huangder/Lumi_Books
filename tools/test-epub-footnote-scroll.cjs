@@ -8,8 +8,12 @@ const { spawn } = require('node:child_process');
 const source = fs.readFileSync(path.join(__dirname,
   '../app/src/main/java/com/huangder/lumibooks/util/epub/EpubDocumentTransformer.kt'), 'utf8');
 const constant = name => source.match(new RegExp('private const val ' + name + ' = """([\\s\\S]*?)"""'))[1];
+const alignment = fs.readFileSync(path.join(__dirname,
+  '../app/src/main/java/com/huangder/lumibooks/util/epub/EpubReaderAlignment.kt'), 'utf8')
+  .match(/EPUB_READER_ALIGNMENT_SCRIPT = """([\s\S]*?)"""/)[1];
 const assembly = source.match(/private val READER_SCRIPT:[\s\S]*?private const val READER_SCRIPT_PART_/)[0];
-const script = [...assembly.matchAll(/append\((READER_SCRIPT_PART_\w+)\)/g)].map(m => constant(m[1])).join('');
+const script = [...assembly.matchAll(/append\((\w+)\)/g)]
+  .map(m => m[1] === 'EPUB_READER_ALIGNMENT_SCRIPT' ? alignment : constant(m[1])).join('');
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const directory = fs.mkdtempSync(path.join(tmpdir(), 'lumi-footnote-scroll-'));
 let browser, socket;
@@ -86,9 +90,14 @@ async function main() {
   for (const layout of ['reflowable', 'pre_paginated']) for (const flow of ['paginated', 'scrolled']) {
     const file = path.join(directory, `${layout}-${flow}.html`);
     fs.writeFileSync(file, `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+      <style>
+        span.reader_footer_note { display: inline-block; width: 19px; height: 19px; background: black; }
+        span.reader_footer_note:hover::after { content: attr(data-wr-footernote); position: fixed; }
+      </style>
       <style>${constant('READER_CSS')}</style></head><body data-lumi-layout="${layout}">
       <p id="reading-line"><a id="note" epub:type="noteref" href="#fn">[1]</a>
-        <a id="short-note" epub:type="noteref" href="#fn2">[2]</a> Reading page</p>
+        <a id="short-note" epub:type="noteref" href="#fn2">[2]</a> Reading page<span id="weread"
+          class="reader_footer_note js_readerFooterNote" data-wr-footernote="中文 &amp; &lt;cite&gt;English&lt;/cite&gt;"></span></p>
       ${'<p style="padding-block: 16px">Reading surface with enough text to fill several pages.</p>'.repeat(60)}
       <aside id="fn" epub:type="footnote">${'<p>Long footnote content for scrolling.</p>'.repeat(80)}</aside>
       <aside id="fn2" epub:type="footnote"><p>Short footnote.</p></aside>
@@ -160,6 +169,15 @@ async function main() {
     await tap(point(460, 740));
     await checkClosed();
 
+    assert.equal(await evaluate('document.getElementById("weread").offsetWidth'), 19,
+      'WeRead must retain the publisher icon before fixed-layout scaling');
+    assert.equal(await evaluate('getComputedStyle(document.getElementById("weread"), "::after").content'), 'none');
+    await open('weread');
+    assert.equal(await evaluate('document.getElementById("lumi-footnote-content").textContent'), '中文 & <cite>English</cite>');
+    assert.equal(await evaluate('document.querySelector("#lumi-footnote-content cite")'), null);
+    await tap(point(460, 740));
+    await checkClosed();
+
     if (layout === 'reflowable' && flow === 'scrolled') {
       await swipe(point(460, 740), point(460, 400));
       assert.ok(await evaluate('window.scrollY > 30'), 'A fresh swipe must scroll the reading page');
@@ -168,7 +186,7 @@ async function main() {
       await swipe(point(420, 650), point(80, 650));
       assert.equal(await evaluate('LumiReader.currentPosition().pageIndex'), 1, 'A fresh swipe must turn the reading page');
     }
-    console.log(`PASS: ${layout}/${flow}: long/short notes, frame-by-frame page isolation, cancellation and dismissal`);
+    console.log(`PASS: ${layout}/${flow}: linked and WeRead notes, page isolation, cancellation and dismissal`);
   }
   await send('Browser.close');
 }

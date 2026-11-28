@@ -33,6 +33,12 @@ class GlassSamplingGeometryTest {
         assertEquals(IntSize(1, 1), LiquidGlassSamplingQuality.BALANCED.sampleSize(IntSize.Zero))
     }
 
+    @Test fun frostedSurfacesSampleLessWhilePrismsUseTheSelectedPreset() {
+        val presets = LiquidGlassSamplingQuality.entries
+        assertEquals(listOf(1f, 0.5f, 1f / 3f, 1f / 3f), presets.map { it.frostedSurfaceScale })
+        assertEquals(listOf(1f, 1f, 1f, 1f / 3f), presets.map { it.tabPrismScale })
+    }
+
     @Test fun windowCaptureRetainsItsExistingCapBeforeApplyingQuality() {
         val viewport = IntSize(1080, 2400)
         assertEquals(IntSize(648, 1440), windowGlassSampleSize(viewport, LiquidGlassSamplingQuality.ORIGINAL))

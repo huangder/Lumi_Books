@@ -1,9 +1,11 @@
 package com.huangder.lumibooks.util
 
 import android.app.Application
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.text.Spanned
 import android.text.style.StyleSpan
+import com.huangder.lumibooks.util.parser.EpubParser.ParagraphLineHeightSpan
 import com.huangder.lumibooks.util.parser.MobiParser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -45,11 +47,24 @@ class MobiParagraphFormattingTest {
         }
     }
 
-    private fun withChapter(html: String, indent: Float, verify: (Spanned) -> Unit) {
+    @Test
+    fun paragraphSpacingAddsOnlyTheConfiguredGap() {
+        for (gap in listOf(2f, 8f, 24f)) {
+            withChapter("<p>第一段</p><p>第二段</p>", indent = 0f, gap = gap) { text ->
+                assertEquals("第一段\n\n第二段\n", text.toString())
+                val spacer = text.getSpans(0, text.length, ParagraphLineHeightSpan::class.java).single()
+                val metrics = Paint.FontMetricsInt().apply { ascent = -20; descent = 5 }
+                spacer.chooseHeight(text, text.getSpanStart(spacer), text.getSpanEnd(spacer), 0, 0, metrics)
+                assertEquals((gap * 2.75f).toInt(), metrics.descent - metrics.ascent)
+            }
+        }
+    }
+
+    private fun withChapter(html: String, indent: Float, gap: Float = 0f, verify: (Spanned) -> Unit) {
         val file = File.createTempFile("mobi_indent", ".mobi")
         val parser = MobiParser().apply {
             contentWidth = 800
-            paragraphSpacingDp = 0f
+            paragraphSpacingDp = gap
             firstLineIndentChars = indent
         }
         try {

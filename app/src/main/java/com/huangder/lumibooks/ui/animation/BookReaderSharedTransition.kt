@@ -1107,6 +1107,7 @@ internal fun Modifier.bookReaderLibraryLayer(
 internal fun BookReaderLibraryLayer(
     transition: BookReaderTransitionState,
     blurEnabled: Boolean,
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
     val coordinateSpace = remember { LibraryCoordinateSpace() }
@@ -1118,7 +1119,7 @@ internal fun BookReaderLibraryLayer(
         transition.screenCornerRadiusDp = screenCornerRadiusPx(view) / density
     }
     CompositionLocalProvider(LocalLibraryCoordinateSpace provides coordinateSpace) {
-        Box(Modifier.fillMaxSize().bookReaderLibraryLayer(transition, blurEnabled)
+        Box(modifier.fillMaxSize().bookReaderLibraryLayer(transition, blurEnabled)
             .onPlaced { coordinateSpace.coordinates = it }) { content() }
     }
 }

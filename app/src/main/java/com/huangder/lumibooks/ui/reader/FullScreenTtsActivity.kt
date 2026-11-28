@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import android.widget.Toast
@@ -45,14 +46,20 @@ class FullScreenTtsActivity : ComponentActivity() {
             val predictive by model.settings.predictiveBackEnabled.collectAsState(snapshot.predictiveBackEnabled)
             val menus by model.settings.menuAnimationStyle.collectAsState(snapshot.menuAnimationStyle)
             val appTheme by model.settings.appTheme.collectAsState(snapshot.appTheme)
+            val darkMode by model.settings.darkMode.collectAsState(snapshot.darkMode)
             val glassSamplingQuality by model.settings.liquidGlassSamplingQuality.collectAsState(snapshot.liquidGlassSamplingQuality)
+            val dark = when (darkMode) {
+                "dark" -> true
+                "light" -> false
+                else -> isSystemInDarkTheme()
+            }
             val context = LocalContext.current
             LaunchedEffect(model) {
                 model.engineError.collect { Toast.makeText(context, R.string.tts_full_engine_failed, Toast.LENGTH_LONG).show() }
             }
             EBookReaderTheme(
                 liquidGlassSamplingQuality = glassSamplingQuality,
-                darkTheme = true, appTheme = appTheme, eInkMode = eInk,
+                darkTheme = dark, appTheme = appTheme, eInkMode = eInk,
                 reduceTransparencyEnabled = reduce, motionPreference = MotionPreference.fromStoredValue(motion),
                 menuAnimationStyle = MenuAnimationStyle.fromStoredValue(menus)
             ) {

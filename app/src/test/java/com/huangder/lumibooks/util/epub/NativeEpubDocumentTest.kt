@@ -4,6 +4,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class NativeEpubDocumentTest {
+    @Test fun originalFontSkipsUnavailableSourcesAndRetainsTheFallbackStack() {
+        val embedded = EpubResource("OPS/reader.ttf", "font/ttf", byteArrayOf(1))
+        val css = "@font-face{font-family:'Book Face';src:local('Book Face'),url(missing.ttf),url(reader.ttf)}" +
+            "p{font-family:'Book Face',monospace,serif}"
+        val source = NativeEpubSource("OPS/chapter.xhtml", EpubResource("OPS/chapter.xhtml", "application/xhtml+xml",
+            "<p>A<span>B</span></p>".toByteArray()), listOf("OPS/book.css" to css), EpubRenditionLayout.REFLOWABLE)
+        val document = checkNotNull(NativeEpubCompiler.compile(source) { embedded.takeIf { resource -> resource.path == it } }.document)
+        assertEquals(embedded, document.embeddedFonts.single().resource)
+        assertTrue(document.runs.all { it.style.family == "Book Face" && it.style.fontFallbacks == listOf("monospace", "serif") })
+    }
+
     private fun compile(body: String, css: String = "", fixed: Boolean = false) = NativeEpubCompiler.compile(
         NativeEpubSource("OPS/chapter.xhtml", EpubResource("OPS/chapter.xhtml", "application/xhtml+xml",
             "<html><head></head><body>$body</body></html>".toByteArray()), listOf("OPS/book.css" to css),
@@ -51,8 +62,8 @@ class NativeEpubDocumentTest {
             "<p>A</p>" to "p{float:left}", "<p>A</p>" to "p{position:absolute}",
             "<p>A</p>" to "p{column-count:2}", "<p>A</p>" to "p::before{content:'A'}",
             "<p>A</p>" to "@media(max-width:600px){p{color:red}}",
-            "<p>A</p>" to "p{padding:2em}", "<p>A</p>" to "p{width:8em}",
-            "<p>A</p>" to "p{border:1px solid black}", "<p>A</p>" to "p{opacity:0}",
+            "<p>A</p>" to "p{padding:20%}", "<p>A</p>" to "p{height:8em}",
+            "<p>A</p>" to "p{border:1px dashed black}", "<p>A</p>" to "p{opacity:0}",
             "<p>A</p>" to "p{white-space:pre}", "<p>A</p>" to "p{background:url(pic.png)}",
             "<script>bad()</script><p>A</p>" to "",
             "<p><svg><text>A</text></svg></p>" to "", "<p style='font-size:calc(2em + 1px)'>A</p>" to "")
@@ -72,7 +83,7 @@ class NativeEpubDocumentTest {
                 "<html><body><p>A</p></body></html>".toByteArray()),
             listOf("OPS/styles/book.css" to
                 "@font-face{font-family:'book face';src:url(../fonts/book.ttf);font-weight:700;font-style:italic}" +
-                    "p{font-family:'book face',serif}"),
+                    "p{font-family:'book face'}"),
             EpubRenditionLayout.REFLOWABLE
         )
         val face = EpubResource("OPS/fonts/book.ttf", "font/ttf", byteArrayOf(1, 2, 3))
@@ -86,7 +97,7 @@ class NativeEpubDocumentTest {
         assertEquals(ChapterRenderEngine.WEBVIEW, missingFont.decision.engine)
         assertTrue(missingFont.decision.reason!!.startsWith("missing embedded font"))
         assertEquals(ChapterRenderEngine.WEBVIEW,
-            compile("<p>A</p>", "@media screen { @FONT-FACE {font-family:book;src:url(book.ttf)} }").decision.engine)
+            compile("<p>A</p>", "@media screen { @FONT-FACE {font-family:book;src:url(book.ttf)} p{font-family:book} }").decision.engine)
         assertEquals(ChapterRenderEngine.NATIVE,
             compile("<p>A</p>", "/* @font-face{font-family:book;src:url(book.ttf)} */").decision.engine)
     }
@@ -108,6 +119,30 @@ class NativeEpubDocumentTest {
         assertTrue(doc.bodyStyle.vertical); assertTrue(doc.blocks.single().style.vertical)
         val image = compile("<div><img src='pic.jpg'/></div><p>Caption</p>").document!!
         assertEquals("OPS/pic.jpg", image.blocks.first().imagePath)
-        assertEquals(ChapterRenderEngine.WEBVIEW, compile("<p>inline<img src='pic.jpg'/></p>").decision.engine)
+        assertEquals(ChapterRenderEngine.WEBVIEW,
+            compile("<p>inline<img src='pic.jpg'/></p>", "body{writing-mode:vertical-rl}").decision.engine)
+    }
+
+    @Test fun inlineImageDoesNotConsumeRawTextOrLeakIntoCopiedText() {
+        val doc = compile("<p>甲<img src='avatar.png' height='2em'/>乙</p>", "img{vertical-align:middle}").document!!
+        val image = doc.inlineImages.single()
+        val next = doc.text.indexOf('乙')
+        assertEquals(NativeEpubLength(32f, false), image.style.height)
+        assertEquals(1, doc.sourcePosition(image.offset))
+        assertEquals(1, doc.sourcePosition(next))
+        assertEquals(next, doc.resolve(doc.locator(next)))
+        assertEquals("甲乙", doc.selectionText(0, next + 1))
+    }
+
+    @Test fun wideImageOnlyReferenceKeepsBlockGeometryAndAnswerAsset() {
+        val doc = compile("""
+            <p>题目</p><a class='duokan-footnote' epub:type='noteref' href='#answer'><img src='question.png' width='100%'/></a>
+            <p>正文</p><aside epub:type='footnote'><ol><li id='answer'>答案<img src='answer.png'/></li></ol></aside>
+        """.trimIndent()).document!!
+        val question = doc.blocks.single { it.imagePath != null }
+        assertEquals(NativeEpubLength(100f, true), question.imageStyle?.width)
+        assertEquals("#answer", doc.imageLinks[question.start])
+        assertEquals(NativeEpubFootnote("答案", listOf("OPS/answer.png")), doc.footnotes["#answer"])
+        assertFalse(doc.text.contains("答案"))
     }
 }

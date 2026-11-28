@@ -31,7 +31,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
@@ -47,6 +49,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -69,6 +72,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -150,7 +154,40 @@ private data class HighlightImportPreview(
 )
 
 @Composable
-fun HighlightRulesSheet(
+internal fun rememberHighlightRulesSheetState(): HighlightRulesSheetState {
+    val listState = rememberLazyListState()
+    return remember(listState) { HighlightRulesSheetState(listState) }
+}
+
+internal class HighlightRulesSheetState(val listState: LazyListState) {
+    private data class PendingMove(
+        val ruleId: String,
+        val ruleIndex: Int,
+        val listIndex: Int,
+        val scrollOffset: Int
+    )
+
+    private var pendingMove: PendingMove? = null
+
+    fun recordMove(ruleId: String, ruleIndex: Int) {
+        val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == ruleId }
+        pendingMove = item?.let { PendingMove(ruleId, ruleIndex, it.index, -it.offset) }
+    }
+
+    fun restoreMovedRulePosition(rules: List<HighlightRule>) {
+        val move = pendingMove ?: return
+        val newIndex = rules.indexOfFirst { it.id == move.ruleId }
+        if (newIndex == move.ruleIndex) return
+        pendingMove = null
+        if (newIndex >= 0) {
+            // Apply the anchor when the saved order reaches the list, including when it was remounted.
+            listState.requestScrollToItem(move.listIndex + newIndex - move.ruleIndex, move.scrollOffset)
+        }
+    }
+}
+
+@Composable
+internal fun HighlightRulesSheet(
     visible: Boolean,
     requestClose: Boolean = false,
     rules: List<HighlightRule>,
@@ -170,10 +207,12 @@ fun HighlightRulesSheet(
     onImportFont: suspend (Uri, String) -> CustomFontPreset? = { _, _ -> null },
     onCancelScan: () -> Unit,
     onRebuild: () -> Unit,
+    state: HighlightRulesSheetState? = null,
     onDismiss: () -> Unit
 ) {
     if (!visible) return
 
+    val sheetState = state ?: rememberHighlightRulesSheetState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val sheetOffset = remember { Animatable(1f) }
@@ -184,7 +223,9 @@ fun HighlightRulesSheet(
     var exportData by remember { mutableStateOf<ByteArray?>(null) }
     val predictiveBackProgress = ConfigurableBottomSheetBackHandler { isClosing = true }
 
-    LaunchedEffect(visible) {
+    SideEffect { sheetState.restoreMovedRulePosition(rules) }
+
+    LaunchedEffect(Unit) {
         sheetOffset.snapTo(1f)
         if (eInkModeEnabled) sheetOffset.snapTo(0f) else sheetOffset.animateBottomSheetIn()
     }
@@ -303,6 +344,7 @@ fun HighlightRulesSheet(
             }
 
             LazyColumn(
+                state = sheetState.listState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(
                     top = 16.dp,
@@ -431,8 +473,14 @@ fun HighlightRulesSheet(
                         onEdit = { editingRule = rule },
                         onDuplicate = { onDuplicateRule(rule) },
                         onDelete = { deleteRule = rule },
-                        onMoveUp = { onMoveRule(rule.id, -1) },
-                        onMoveDown = { onMoveRule(rule.id, 1) }
+                        onMoveUp = {
+                            sheetState.recordMove(rule.id, index)
+                            onMoveRule(rule.id, -1)
+                        },
+                        onMoveDown = {
+                            sheetState.recordMove(rule.id, index)
+                            onMoveRule(rule.id, 1)
+                        }
                     )
                 }
 
@@ -660,7 +708,7 @@ private fun HighlightRuleRow(
 ) {
     val error = remember(rule) { HighlightRuleMatcher.validationError(rule) }
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().testTag("highlight-rule-${rule.id}"),
         shape = AppRoundedCornerShape(18.dp),
         color = AppColors.BgGray
     ) {

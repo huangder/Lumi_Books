@@ -5,9 +5,18 @@ import kotlin.math.min
 import kotlin.math.sin
 import kotlin.random.Random
 
-internal enum class SpinePose { Upright, Leaning, Flat }
+internal enum class SpinePose {
+    Upright, Leaning, Flat;
 
-/** Per-book look, fixed for one process so the shelf does not reshuffle while the app is open. */
+    /** Stored form of a pose the user chose for a book. */
+    val storageKey: String get() = name.lowercase()
+
+    companion object {
+        fun fromStorageKey(value: String?): SpinePose? = entries.firstOrNull { it.storageKey == value }
+    }
+}
+
+/** Per-book look, tied to its id so it also stays stable across app restarts. */
 internal data class SpineTraits(
     /** Spine thickness in dp. */
     val thickness: Float,
@@ -22,11 +31,15 @@ internal data class SpineTraits(
 )
 
 /**
- * One item to shelve. [breakBefore] > 0 starts the item on a shelf row of its own choosing:
- * 1 puts it at the start of the next row (the current one if that is still empty), each more
- * leaves one more row empty before it. 0 lets it flow on from the previous item.
+ * [pose] is the placement the user chose (null: the book's automatic look). [stacked] lays a flat
+ * book on top of the flat book (or stack) just before it instead of beside it.
  */
-internal data class SpineEntry(val id: String, val isFolder: Boolean = false, val breakBefore: Int = 0)
+internal data class SpineEntry(
+    val id: String,
+    val isFolder: Boolean = false,
+    val pose: SpinePose? = null,
+    val stacked: Boolean = false
+)
 
 /**
  * One item in row coordinates, in dp. The box is unrotated: [x] is its left edge from the shelf
@@ -48,8 +61,7 @@ internal data class PlacedSpine(
     val traits: SpineTraits
 )
 
-/** One shelf row; [explicit] when it was started by a [SpineEntry.breakBefore] (or left empty by one). */
-internal data class SpineRow(val items: List<PlacedSpine>, val explicit: Boolean = false)
+internal data class SpineRow(val items: List<PlacedSpine>)
 
 internal data class SpinePage(val rows: List<SpineRow>)
 
@@ -59,11 +71,16 @@ internal object SpineLayout {
     const val FLAT_GAP = 5f
     const val FOLDER_THICKNESS = 46f
     const val MAX_STACK = 3
+    /** A stack the user builds by hand may grow higher than the automatic ones. */
+    const val MAX_PLACED_STACK = 6
+    const val MAX_FLAT_LENGTH = 132f
+    const val MAX_FLAT_WIDTH_FRACTION = 0.44f
     /** A lean needs a neighbour at least this tall, relative to the leaning book. */
     const val LEAN_SUPPORT = 0.75f
     /** Flat stacks stay well below the shelf above. */
     const val MAX_STACK_HEIGHT_FRACTION = 0.55f
 
+    const val SHELF_SEED = 0x4C756D69426F6F6BL
     private const val MIX = -7046029254386353131L
 
     /** Largest extra space added between two neighbours when a full row is spread out. */
@@ -136,12 +153,10 @@ internal object SpineLayout {
         var stackX = 0f
         var stackWidth = 0f
         var stackHeight = 0f
-        var rowExplicit = false
 
         fun closeRow(justify: Boolean = true) {
-            pageRows += SpineRow(if (justify) justified(row, shelfWidth) else row.toList(), rowExplicit)
+            pageRows += SpineRow(if (justify) justified(row, shelfWidth) else row.toList())
             row.clear()
-            rowExplicit = false
             cursor = 0f
             stackSize = 0
             if (pageRows.size == rows) {
@@ -152,32 +167,27 @@ internal object SpineLayout {
         }
 
         for (entry in entries) {
-            if (entry.breakBefore > 0) {
-                // A row the user chose ends ragged, like the last one; it is not spread out.
-                var skips = entry.breakBefore
-                if (row.isNotEmpty()) closeRow(justify = false)
-                skips--
-                while (skips-- > 0) {
-                    rowExplicit = true
-                    closeRow(justify = false)
-                }
-                rowExplicit = true
-            }
             val traits = traits(entry.id, seed, entry.isFolder)
             var height = maxBookHeight * traits.heightFraction
-            val width = traits.thickness
-            var pose = traits.pose
+            val width = traits.thickness.coerceAtMost(shelfWidth)
+            val chosen = entry.pose.takeUnless { entry.isFolder }
+            var pose = chosen ?: traits.pose
 
             if (pose == SpinePose.Flat) {
-                val length = height * 0.92f
+                val length = minOf(height * 0.92f, MAX_FLAT_LENGTH, shelfWidth * MAX_FLAT_WIDTH_FRACTION)
                 val thick = width * 0.85f
                 val previous = row.lastOrNull()
-                if (stackSize in 1 until MAX_STACK && previous?.pose == SpinePose.Flat &&
+                // Placed by hand onto a stack, or an automatic flat book beside another flat one;
+                // a book the user laid flat without stacking starts its own pile.
+                val wantsStack = entry.stacked || chosen == null
+                val stackLimit = if (entry.stacked) MAX_PLACED_STACK else MAX_STACK
+                if (wantsStack && stackSize in 1 until stackLimit && previous?.pose == SpinePose.Flat &&
+                    stackX + length <= shelfWidth &&
                     stackHeight + thick <= maxBookHeight * MAX_STACK_HEIGHT_FRACTION
                 ) {
                     val offset = ((traits.dropJitterMs % 9) - 4).toFloat()
                     val x = (stackX + (stackWidth - length) / 2f + offset)
-                        .coerceIn(0f, (shelfWidth - length).coerceAtLeast(0f))
+                        .coerceIn(stackX, maxOf(stackX, shelfWidth - length))
                     row += PlacedSpine(entry.id, entry.isFolder, x, length, thick, stackHeight,
                         SpinePose.Flat, 0f, order++, traits)
                     stackHeight += thick
@@ -185,11 +195,8 @@ internal object SpineLayout {
                     cursor = maxOf(cursor, x + length + FLAT_GAP)
                     continue
                 }
-                // At the end of a row a book that will not lie down there stands up instead,
-                // so the row stays full.
-                val fitsStanding = row.isNotEmpty() && cursor + length > shelfWidth && cursor + width <= shelfWidth
-                if (length <= shelfWidth && !fitsStanding) {
-                    if (cursor + length > shelfWidth && row.isNotEmpty()) closeRow()
+                // A flat book can stand instead whenever its horizontal footprint won't fit.
+                if (cursor + length <= shelfWidth) {
                     row += PlacedSpine(entry.id, entry.isFolder, cursor, length, thick, 0f,
                         SpinePose.Flat, 0f, order++, traits)
                     stackX = cursor
@@ -209,10 +216,10 @@ internal object SpineLayout {
                 val tallest = ((maxBookHeight - width * sin(radians)) / cos(radians)).toFloat()
                 height = min(height, tallest)
                 val footprint = (width * cos(radians) + height * sin(radians)).toFloat()
-                if (cursor + footprint > shelfWidth && row.isNotEmpty() && cursor + width <= shelfWidth) {
+                if (cursor + footprint > shelfWidth) {
                     height = maxBookHeight * traits.heightFraction
                     pose = SpinePose.Upright
-                } else if (cursor + footprint > shelfWidth && row.isNotEmpty()) closeRow()
+                }
             }
             if (pose == SpinePose.Leaning) {
                 val radians = Math.toRadians(traits.leanDegrees.toDouble())
@@ -241,7 +248,6 @@ internal object SpineLayout {
 
         // The last row of the library is left ragged, like the end of a real shelf.
         if (row.isNotEmpty()) closeRow(justify = false)
-        rowExplicit = false
         if (pageRows.isNotEmpty() || pages.isEmpty()) {
             while (pageRows.size < rows) pageRows += SpineRow(emptyList())
             pages += SpinePage(pageRows.toList())

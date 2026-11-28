@@ -8,6 +8,7 @@ import com.huangder.lumibooks.tts.TtsPageChangeOrigin
 interface ReadViewCallbacks {
     /** Records actual input before deferred tap handling or page animations finish. */
     fun onReadingTouchStarted() {}
+    fun onVisiblePageTextChanged(chapterIndex: Int, offset: Int) {}
 
     /**
      * 页面切换时回调。

@@ -2,10 +2,16 @@ package com.huangder.lumibooks.ui.reader
 
 import android.app.Application
 import android.graphics.Bitmap
+import android.graphics.Rect
 import android.graphics.drawable.BitmapDrawable
+import android.view.View
+import android.view.ViewGroup
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -24,6 +30,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.domain.model.ReaderCornerContent
+import com.huangder.lumibooks.ui.reader.engine.RoundedHighlightTextView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -46,31 +53,46 @@ class AdvancedSettingsSheetTest {
     @Config(qualifiers = "en-rUS-w891dp-h411dp-xxhdpi")
     fun compactScreenKeepsBookSpacingAccessible() = verifyBookSpacing()
 
-    @Test fun marginPreviewOnlyUpdatesDuringConfirmedHorizontalDrags() {
+    @Test fun marginPreviewOnlyUpdatesDuringConfirmedHorizontalDrags() = verifyMarginPreview()
+
+    @Test fun releasingMarginSliderRestoresPageAndScrollWhenSheetIsRebuilt() =
+        verifyMarginPreview(rebuildOnCommit = true)
+
+    private fun verifyMarginPreview(rebuildOnCommit: Boolean = false) {
+        val overlayMounted = mutableStateOf(true)
         val margin = mutableFloatStateOf(38f)
         var previewCount = 0
         var commitCount = 0
         val context = RuntimeEnvironment.getApplication()
         compose.setContent {
-            AdvancedSettingsSheet(
-                visible = true, previewText = "Live margin preview text.",
-                currentLineHeight = 1.5f, currentLetterSpacing = 0f,
-                currentFontType = "system", currentBackgroundSelection = "day", customBackgrounds = emptyList(),
-                currentMarginLeft = margin.floatValue, currentMarginRight = 38f,
-                currentMarginTop = 64f, currentMarginBottom = 64f,
-                currentBgColor = Color.White, currentBackgroundImagePath = null,
-                currentTextColor = Color.Black, currentTextColorOverride = null, currentFontSizeSp = 16f,
-                eInkModeEnabled = true,
-                onLineHeightChange = {}, onLetterSpacingChange = {}, onFontTypeChange = {},
-                onBackgroundSelect = {}, onAddBackgroundColor = { _, _ -> },
-                onAddBackgroundImage = { _, _ -> }, onDeleteBackground = {},
-                onMarginLeftChange = { margin.floatValue = it; commitCount++ },
-                onMarginLeftPreview = { margin.floatValue = it; previewCount++ },
-                onMarginRightChange = {}, onMarginTopChange = {}, onMarginBottomChange = {},
-                readerTopLeftContent = ReaderCornerContent.NONE, readerTopRightContent = ReaderCornerContent.NONE,
-                readerBottomLeftContent = ReaderCornerContent.NONE, readerBottomRightContent = ReaderCornerContent.NONE,
-                onReaderCornerContentChange = { _, _ -> }, onTextColorChange = {}, onResetSettings = {}, onDismiss = {}
-            )
+            val session = rememberSaveableStateHolder()
+            if (overlayMounted.value) {
+                session.SaveableStateProvider("advanced-settings") {
+                    AdvancedSettingsSheet(
+                        visible = true, previewText = "Live margin preview text.",
+                        currentLineHeight = 1.5f, currentLetterSpacing = 0f,
+                        currentFontType = "system", currentBackgroundSelection = "day", customBackgrounds = emptyList(),
+                        currentMarginLeft = margin.floatValue, currentMarginRight = 38f,
+                        currentMarginTop = 64f, currentMarginBottom = 64f,
+                        currentBgColor = Color.White, currentBackgroundImagePath = null,
+                        currentTextColor = Color.Black, currentTextColorOverride = null, currentFontSizeSp = 16f,
+                        eInkModeEnabled = !rebuildOnCommit,
+                        onLineHeightChange = {}, onLetterSpacingChange = {}, onFontTypeChange = {},
+                        onBackgroundSelect = {}, onAddBackgroundColor = { _, _ -> },
+                        onAddBackgroundImage = { _, _ -> }, onDeleteBackground = {},
+                        onMarginLeftChange = {
+                            margin.floatValue = it
+                            commitCount++
+                            if (rebuildOnCommit) overlayMounted.value = false
+                        },
+                        onMarginLeftPreview = { margin.floatValue = it; previewCount++ },
+                        onMarginRightChange = {}, onMarginTopChange = {}, onMarginBottomChange = {},
+                        readerTopLeftContent = ReaderCornerContent.NONE, readerTopRightContent = ReaderCornerContent.NONE,
+                        readerBottomLeftContent = ReaderCornerContent.NONE, readerBottomRightContent = ReaderCornerContent.NONE,
+                        onReaderCornerContentChange = { _, _ -> }, onTextColorChange = {}, onResetSettings = {}, onDismiss = {}
+                    )
+                }
+            }
         }
         openTab(R.string.reader_settings_tab_page)
         val marginSlider = compose.onAllNodes(SemanticsMatcher("horizontal margin slider") {
@@ -87,10 +109,16 @@ class AdvancedSettingsSheetTest {
         }
 
         marginSlider.performScrollTo()
+        val sliderTop = marginSlider.fetchSemanticsNode().boundsInRoot.top
         marginSlider.performTouchInput { down(center); moveBy(Offset(120f, 0f)) }
         compose.runOnIdle { assertTrue(previewCount > 0) }
         marginSlider.performTouchInput { up() }
+        if (rebuildOnCommit) {
+            label.assertDoesNotExist()
+            compose.runOnIdle { overlayMounted.value = true }
+        }
         label.assertIsDisplayed()
+        assertEquals(sliderTop, marginSlider.fetchSemanticsNode().boundsInRoot.top, 1f)
         compose.runOnIdle { assertEquals(1, commitCount) }
     }
 
@@ -186,7 +214,9 @@ class AdvancedSettingsSheetTest {
         val previewImage = if (withImage) {
             BitmapDrawable(context.resources, Bitmap.createBitmap(24, 24, Bitmap.Config.ARGB_8888))
         } else null
+        lateinit var composeView: View
         compose.setContent {
+            composeView = LocalView.current
             AdvancedSettingsSheet(
                 visible = true,
                 previewText = if (withImage) "" else "A preview paragraph with enough words to fill several lines.",
@@ -234,15 +264,29 @@ class AdvancedSettingsSheetTest {
             .performSemanticsAction(SemanticsActions.SetProgress) { it(-2f) }
         compose.runOnIdle { assertEquals(-2f, letterSpacing.floatValue, 0.01f) }
         if (withImage) {
-            val textPreview = compose.onNodeWithText(context.getString(R.string.preview_text).take(18), substring = true)
+            val sample = context.getString(R.string.preview_text).take(18)
             val imagePreview = compose.onNodeWithTag("reader-image-adjustment-preview")
-            textPreview.assertIsDisplayed()
+            assertTextPreviewIsVisible(composeView, sample)
             imagePreview.assertDoesNotExist()
             openTab(R.string.reader_settings_tab_appearance)
             compose.onNodeWithText(context.getString(R.string.reader_image_adjustment))
                 .performScrollTo().performClick()
             imagePreview.performScrollTo().assertIsDisplayed()
-            textPreview.assertIsDisplayed()
+            assertTextPreviewIsVisible(composeView, sample)
         }
+    }
+
+    private fun assertTextPreviewIsVisible(root: View, sample: String) = compose.runOnIdle {
+        fun descendants(view: View): Sequence<View> = sequence {
+            yield(view)
+            if (view is ViewGroup) {
+                for (index in 0 until view.childCount) yieldAll(descendants(view.getChildAt(index)))
+            }
+        }
+        val preview = descendants(root).filterIsInstance<RoundedHighlightTextView>()
+            .first { it.text.toString().contains(sample) }
+        val visibleBounds = Rect()
+        assertTrue("The native text preview should be visible", preview.getGlobalVisibleRect(visibleBounds))
+        assertTrue("The preview should show at least one line", visibleBounds.height() >= preview.lineHeight)
     }
 }

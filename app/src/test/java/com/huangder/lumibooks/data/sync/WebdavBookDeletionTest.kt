@@ -54,8 +54,11 @@ class WebdavBookDeletionTest {
     @Test
     fun retryKeepsTheOriginalDeletionAndCleanupTargets() {
         val original = DeletedBookEntry(10, "book.epub", "cover.jpg", "progress.json")
-        val manifest = SyncManifest(deletedBooks = mapOf("wire" to original))
-        val pending = mapOf("local" to "local.epub")
+        val manifest = SyncManifest(
+            books = mapOf("shared" to SyncFileEntry("book.epub", "book", 100, 1)),
+            deletedBooks = mapOf("wire" to original)
+        )
+        val pending = mapOf("local" to "book.epub")
         val ids = manifest.resolveBookDeletionIds(pending, mapOf("local" to "wire"))
 
         assertEquals(manifest, manifest.withBookDeletions(pending, ids, deletedAt = 20))
@@ -104,7 +107,7 @@ class WebdavBookDeletionTest {
                 WebdavPortableStateSync(context, WebdavClient(), snapshots)
                     .sync(config, "test", deletedBookIds = setOf(stale.id))
             }
-            assertEquals(listOf(live.id), db.bookDao().getAllBooksSnapshot().map { it.id })
+            assertEquals(emptyList<String>(), db.bookDao().getAllBooksSnapshot().map { it.id })
         } finally {
             db.close()
         }

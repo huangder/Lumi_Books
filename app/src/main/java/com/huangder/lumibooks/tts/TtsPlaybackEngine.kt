@@ -34,6 +34,14 @@ interface TtsPlaybackEngine {
     /** Best-effort memory-only prefetch. Implementations may ignore it. */
     suspend fun prefetch(text: String) = Unit
 
+    /** How many following sentences [prefetchAll] should receive while one is audible. */
+    val prefetchDepth: Int get() = 1
+
+    /** Prefetches following sentences in speaking order; the first one is the most urgent. */
+    suspend fun prefetchAll(texts: List<String>) {
+        texts.firstOrNull()?.let { prefetch(it) }
+    }
+
     /** Restores a persisted utterance from [startFrame] when this engine supports PCM caching. */
     suspend fun speak(
         text: String,

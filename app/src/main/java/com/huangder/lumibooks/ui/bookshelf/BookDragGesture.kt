@@ -24,8 +24,8 @@ internal class BookDragCallbacks(
      * [HOLD_TO_MENU_MILLIS] towards the size its menu opens at.
      */
     val onLift: () -> Unit,
-    /** The finger moved after the lift. Return false to refuse the drag (the item then settles). */
-    val onDragStart: () -> Boolean,
+    /** Starts the drag with the finger position before drag travel, in local pixels. */
+    val onDragStart: (Offset) -> Boolean,
     /** Finger movement since the previous call, in pixels. */
     val onDrag: (Offset) -> Unit,
     val onDragEnd: () -> Unit,
@@ -61,7 +61,7 @@ internal fun Modifier.longPressDragOrMenu(
     val proxy = remember {
         BookDragCallbacks(
             onLift = { latest.onLift() },
-            onDragStart = { latest.onDragStart() },
+            onDragStart = { latest.onDragStart(it) },
             onDrag = { latest.onDrag(it) },
             onDragEnd = { latest.onDragEnd() },
             onDragCancel = { latest.onDragCancel() },
@@ -109,6 +109,7 @@ internal fun Modifier.longPressDragOrMenuAt(
             // moving first turns the hold into a drag.
             current.onLift()
             var travel = Offset.Zero
+            var dragOrigin = down.position
             val decision = withTimeoutOrNull(HOLD_TO_MENU_MILLIS) {
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -118,7 +119,10 @@ internal fun Modifier.longPressDragOrMenuAt(
                     event.changes.forEach { it.consume() }
                     if (change == null || !change.pressed) return@withTimeoutOrNull HOLD_RELEASED
                     travel += delta
-                    if (travel.getDistance() > slop) return@withTimeoutOrNull HOLD_MOVED
+                    if (travel.getDistance() > slop) {
+                        dragOrigin = change.position - travel
+                        return@withTimeoutOrNull HOLD_MOVED
+                    }
                 }
                 @Suppress("UNREACHABLE_CODE")
                 HOLD_RELEASED
@@ -134,7 +138,7 @@ internal fun Modifier.longPressDragOrMenuAt(
                     return@awaitEachGesture
                 }
             }
-            if (!current.onDragStart()) {
+            if (!current.onDragStart(dragOrigin)) {
                 current.onDragCancel()
                 consumeUntilUp(pointer)
                 return@awaitEachGesture

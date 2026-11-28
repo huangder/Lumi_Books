@@ -14,4 +14,10 @@
     <string name="tts_return_to_book">返回正在听的书</string>
     <string name="tts_return_reading_progress">返回阅读进度</string>
     <string name="tts_restore_subtitle">展开悬浮字幕</string>
+    <string name="tts_pause_duration">间隔时长</string>
+    <string name="tts_pause_standard">标准</string>
+    <string name="tts_pause_long">长</string>
+    <string name="tts_pause_short">短</string>
+    <string name="tts_pause_very_short">极短</string>
+    <string name="tts_listening_more">更多</string>
 </resources>

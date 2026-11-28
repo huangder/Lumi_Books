@@ -15,6 +15,8 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowSystemClock
+import java.time.Duration
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
@@ -121,5 +123,26 @@ class PaperCurlLifecycleTest {
             curl.completeRunningFlipForNewInput())
         assertEquals(1, commits)
         assertFalse(curl.isRunning)
+    }
+
+    @Test fun deferredSwipeKeepsItsSlopeEvenWhenTheFirstFrameIsLate() = fixture { curl, _, _ ->
+        val next = PageAnimationController.Direction.NEXT
+        val previous = PageAnimationController.Direction.PREV
+        assertTrue(curl.startFromDeferredSwipe(next, DeferredCurlSwipe(36f, 40f, 12f, 14f), expedited = true))
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(1))
+        assertTrue(curl.computeScroll())
+        assertTrue(curl.foldNormalY > 0.01f)
+        curl.abortAnim()
+
+        assertTrue(curl.startFromDeferredSwipe(previous, DeferredCurlSwipe(4f, 40f, 28f, 66f), expedited = true))
+        ShadowSystemClock.advanceBy(Duration.ofMillis(curlExpeditedDurationMs(800).toLong() - 1L))
+        assertTrue(curl.computeScroll())
+        assertTrue(curl.foldNormalY < -0.01f)
+        curl.abortAnim()
+
+        assertTrue(curl.startFromTap(next, expedited = true))
+        ShadowSystemClock.advanceBy(Duration.ofMillis(32))
+        assertTrue(curl.computeScroll())
+        assertEquals(0f, curl.foldNormalY, 0f)
     }
 }

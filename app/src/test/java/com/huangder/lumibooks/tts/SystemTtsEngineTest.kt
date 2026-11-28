@@ -503,6 +503,9 @@ class SystemTtsEngineTest {
             callbacks.onDone(firstId)
             shadowOf(Looper.getMainLooper()).idle()
             runCurrent()
+            assertTrue(started.isEmpty()) // Synthesis and queued PCM are not audible yet.
+            track.playbackHeadPosition = 1
+            advanceTimeBy(10); runCurrent()
             assertEquals(listOf("first"), started)
             assertTrue(done.isEmpty())
             assertEquals(2, shadow.requests.size)
@@ -523,8 +526,11 @@ class SystemTtsEngineTest {
             engine.speak("Next sentence.", "next")
             runCurrent()
             assertEquals(2, shadow.requests.size)
-            assertEquals(listOf("first", "next"), started)
+            assertEquals(listOf("first"), started)
             assertEquals(List<Byte>(8) { 2 }, track.bytes)
+            track.playbackHeadPosition = 1
+            advanceTimeBy(10); runCurrent()
+            assertEquals(listOf("first", "next"), started)
 
             // Old synthesis callbacks must not affect the promoted sentence.
             callbacks.onError(firstId, TextToSpeech.ERROR_SYNTHESIS)
@@ -607,6 +613,10 @@ class SystemTtsEngineTest {
             callbacks.onAudioAvailable(replacementId, ByteArray(8) { 3 })
             callbacks.onDone(replacementId)
             shadowOf(Looper.getMainLooper()).idle()
+            runCurrent()
+            assertEquals(listOf("first"), started)
+            track.playbackHeadPosition = 1
+            advanceTimeBy(10)
             runCurrent()
             assertEquals(listOf("first", "next"), started)
         } finally {
@@ -743,6 +753,10 @@ class SystemTtsEngineTest {
             runCurrent()
             assertEquals(2, shadow.requests.size)
             assertEquals(List<Byte>(8) { 2 }, track.bytes)
+            assertEquals(listOf("first"), started)
+            track.playbackHeadPosition = 1
+            advanceTimeBy(10); runCurrent()
+            assertEquals(listOf("first", "next"), started)
             engine.stop()
             engine.speak("Replacement sentence.", "replacement")
             shadow.utteranceProgressListener.onError(next.id, TextToSpeech.ERROR_SYNTHESIS)

@@ -13,10 +13,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -63,6 +66,7 @@ internal fun MainTabsPager(
     userScrollEnabled: Boolean,
     modifier: Modifier = Modifier,
     selection: MainTabSelection? = null,
+    precomposeInactivePages: Boolean = true,
     content: @Composable (Int) -> Unit
 ) {
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
@@ -167,7 +171,7 @@ internal fun MainTabsPager(
                     state, page, isLtr,
                     // Selection resets the motion above. Keep the item modifier layers
                     // attached through the fade so retained pages keep their display lists.
-                    motion.takeIf { motionEnabled }, selection, content
+                    motion.takeIf { motionEnabled }, selection, precomposeInactivePages, content
                 )
             }
         }
@@ -181,6 +185,7 @@ private fun MainTabPage(
     isLtr: Boolean,
     motion: MainTabMotion?,
     selection: MainTabSelection?,
+    precomposeInactivePages: Boolean,
     content: @Composable (Int) -> Unit
 ) {
     val parent = LocalLifecycleOwner.current
@@ -195,6 +200,12 @@ private fun MainTabPage(
             else abs(page - state.currentPage - state.currentPageOffsetFraction) < 1f
         }
     }
+    var retained by remember { mutableStateOf(false) }
+    if (!retained && !precomposeInactivePages && (active || visible)) {
+        SideEffect { retained = true }
+    }
+    if (!precomposeInactivePages && !retained && !active && !visible) return
+
     DisposableEffect(parent, owner, active, visible) {
         fun updateLifecycle() {
             val parentState = parent.lifecycle.currentState

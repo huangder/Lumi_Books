@@ -12,6 +12,25 @@ class TtsTextExtractor {
         private val SOFT_BREAKS = setOf('，', ',', '、', '：', ':')
         private val CLAUSE_BREAKS = TERMINATORS + SOFT_BREAKS + setOf('…', '\n')
         private val FULL_STOPS = setOf('.', '。')
+        private val SHORTENABLE_PUNCTUATION = SOFT_BREAKS + FULL_STOPS + setOf('；', ';', '…')
+    }
+
+    internal fun boundaryPause(text: String, duration: TtsPauseDuration): Long = when (
+        text.trimEnd { it.isWhitespace() || it in CLOSING_PUNCTUATION }.lastOrNull()
+    ) {
+        in TERMINATORS, '…' -> duration.sentenceMillis
+        in SOFT_BREAKS -> duration.phraseMillis
+        else -> 0L
+    }
+
+    internal fun shortenPlaybackPause(text: String): String {
+        // Keep question/exclamation marks for intonation. Replace softer punctuation in place
+        // so range callback offsets still refer to the same characters.
+        val end = text.indexOfLast { !it.isWhitespace() && it !in CLOSING_PUNCTUATION }
+        if (end < 0 || text[end] !in SHORTENABLE_PUNCTUATION) return text
+        var start = end
+        while (start > 0 && text[start - 1] in SHORTENABLE_PUNCTUATION) start--
+        return text.replaceRange(start, end + 1, " ".repeat(end - start + 1)).trimEnd()
     }
 
     fun extractPageText(

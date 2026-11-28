@@ -1,12 +1,18 @@
 # Liquid Glass sampling quality
 
-The Visual & Motion glass section offers Original (1x), Clear (2/3x), Balanced
-(1/2x, default) and Performance (1/3x). Missing or unknown values use Balanced.
-For compatibility, stored/debug IDs remain `original`, `balanced` (Clear, 2/3x),
-`smooth` (Balanced, 1/2x) and `performance`; existing selections retain their scale.
-DataStore and the launch-theme mirror both retain the selected value;
-nested reader themes inherit it. Other themes and unsupported/e-ink devices
-continue to use native-resolution backdrop effects and hide the setting.
+| Preset | Frosted surfaces | Progressive blur over live content | Tab prism |
+| --- | ---: | ---: | ---: |
+| Original | 1x | 1x | 1x |
+| Clear | 1/2x | 2/3x | 1x |
+| Balanced (default) | 1/3x | 1/2x | 1x |
+| Performance | 1/3x | 1/3x | 1/3x |
+
+Stored/debug IDs remain `original`, `balanced` (Clear), `smooth` (Balanced)
+and `performance`. Missing or unknown values use Balanced. DataStore and the
+launch-theme mirror retain the selection, and nested themes inherit it. The
+frame-time governor can lower the frosted and progressive scales in Clear
+and Balanced. The prism uses the selected preset. Other themes and
+unsupported/e-ink devices hide the setting.
 
 `third_party/backdrop` is the licensed 1.0.6 source with a small sampling patch.
 It reduces the **effect buffer**, rather than just reducing a source bitmap that
@@ -15,6 +21,12 @@ screen coordinates; the effect layer rasterizes at the selected scale and scales
 back up. Blur radii and lens shader uniforms are compensated together. Foreground
 content, clipping, tints, highlights and shadows remain at native resolution.
 Custom menu lens uniforms use the same scale; foreground menu warping stays native.
+Progressive blur can use the sampled layer when its clear edge reveals matching live
+content. Composites that supply the complete backdrop use native resolution.
+
+Activity push transitions reuse toolbar snapshots in a half-resolution effect
+layer while the animated blur radius exceeds 2 dp, with the radius compensated
+for the reduced buffer. The layer returns to native resolution near the handoff.
 
 Window snapshots keep their existing 1440px long-edge cap, then apply the selected
 quality. Native EPUB captures render directly to the selected bitmap dimensions.

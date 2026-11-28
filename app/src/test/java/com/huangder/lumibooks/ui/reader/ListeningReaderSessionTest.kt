@@ -1,6 +1,7 @@
 package com.huangder.lumibooks.ui.reader
 
 import com.huangder.lumibooks.tts.TtsListeningPosition
+import com.huangder.lumibooks.tts.TtsReaderResumeChoice
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -10,6 +11,16 @@ import org.junit.Test
 
 class ListeningReaderSessionTest {
     private val target = TtsListeningPosition("book", 2, 3, 450, 123L)
+
+    @Test fun reopenFollowsLiveAudioByDefaultOnlyWhenAutoPageTurnIsOn() {
+        assertEquals(TtsReaderResumeChoice.LISTENING_POSITION,
+            effectiveListeningResumeChoice(null, hasLivePosition = true, autoPageTurn = true))
+        assertNull(effectiveListeningResumeChoice(null, hasLivePosition = true, autoPageTurn = false))
+        assertNull(effectiveListeningResumeChoice(null, hasLivePosition = false, autoPageTurn = true))
+        for (choice in TtsReaderResumeChoice.entries) {
+            assertEquals(choice, effectiveListeningResumeChoice(choice, hasLivePosition = true, autoPageTurn = true))
+        }
+    }
 
     @Test fun pageFollowResumesAfterRepeatedFullscreenLifecycleCallbacks() {
         val session = ListeningReaderSession()
@@ -109,6 +120,30 @@ class ListeningReaderSessionTest {
         assertNull(session.returnFromBackground(42))
     }
 
+    @Test fun backgroundReturnQueuesLiveCharacterAnchorEvenIfListeningPageIndexDidNotChange() {
+        val session = ListeningReaderSession()
+        session.requestJump(target, 42)
+        assertTrue(session.completeJump(target))
+        session.suspendForBackground(42)
+
+        val livePosition = target.copy(characterOffset = target.characterOffset + 600)
+        assertEquals(true, session.returnFromBackground(42) { livePosition })
+        assertEquals(livePosition, session.jumpRequest.value)
+        assertFalse(session.followEnabled.value)
+        assertFalse(session.isJumpSessionCurrent(43))
+        assertTrue(session.isJumpSessionCurrent(42))
+        assertTrue(session.isFollowCatchUp(livePosition))
+        assertTrue(session.completeJump(livePosition))
+        assertTrue(session.followEnabled.value)
+        assertFalse(session.isFollowCatchUp(livePosition))
+    }
+
+    @Test fun openingJumpToListeningPositionIsNotAFollowCatchUp() {
+        val session = ListeningReaderSession()
+        session.requestJump(target, 42)
+        assertFalse(session.isFollowCatchUp(target))
+    }
+
     @Test fun backgroundReturnAfterManualBrowsingDoesNotRestartFollowingOrPrompt() {
         val session = ListeningReaderSession()
         session.follow()
@@ -141,7 +176,7 @@ class ListeningReaderSessionTest {
         val session = openedSession()
         session.keepReading()
         session.suspendForBackground(9)
-        assertEquals(true, session.returnFromBackground(9))
+        assertEquals(true, session.returnFromBackground(9) { error("Detached reader must keep its position") })
         assertFalse(session.followEnabled.value)
         assertNull(session.beginCheck())
     }

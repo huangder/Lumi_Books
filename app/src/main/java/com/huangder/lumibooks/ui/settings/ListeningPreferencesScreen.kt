@@ -22,7 +22,8 @@ fun ListeningPreferencesDetail(viewModel: SettingsViewModel) {
         uiState,
         viewModel::saveTtsStartChoice,
         viewModel::saveTtsReaderResumeChoice,
-        viewModel::saveTtsContinueOnReaderExit
+        viewModel::saveTtsContinueOnReaderExit,
+        viewModel::saveTtsAllowConcurrentPlayback
     )
 }
 
@@ -31,7 +32,8 @@ internal fun ListeningPreferencesContent(
     uiState: SettingsUiState,
     onStartChoice: (TtsStartChoice?) -> Unit,
     onResumeChoice: (TtsReaderResumeChoice?) -> Unit,
-    onContinueOnExit: (Boolean?) -> Unit
+    onContinueOnExit: (Boolean?) -> Unit,
+    onAllowConcurrentPlayback: (Boolean) -> Unit = {}
 ) {
     var showStartDialog by remember { mutableStateOf(false) }
     var showResumeDialog by remember { mutableStateOf(false) }
@@ -60,6 +62,12 @@ internal fun ListeningPreferencesContent(
         sectionKey = "listening_behavior"
     )
     DetailCard {
+        SettingsSwitchRow(
+            label = stringResource(R.string.tts_allow_concurrent_playback),
+            checked = uiState.ttsAllowConcurrentPlayback,
+            onCheckedChange = onAllowConcurrentPlayback
+        )
+        SettingsDivider()
         SettingsNavigationRow(
             label = stringResource(R.string.tts_start_setting),
             value = startOptions.first { it.first == uiState.ttsStartChoice }.second

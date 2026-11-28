@@ -3,8 +3,10 @@ package com.huangder.lumibooks.ui.reader
 import android.graphics.*
 import android.media.ImageReader
 import android.os.Build
+import android.os.SystemClock
 import android.view.View
 import androidx.annotation.RequiresApi
+import com.huangder.lumibooks.util.performance.EpubTurnTrace
 import java.nio.ByteBuffer
 
 /** Copies viewport pixels only; the final row's alignment padding need not be mapped. */
@@ -47,7 +49,12 @@ internal class EpubHardwareSnapshot(val width: Int, val height: Int) : AutoClose
             background(recording); view.alpha = 1f; view.translationX = 0f; view.translationY = 0f
             view.draw(recording)
         } finally { view.alpha = alpha; view.translationX = tx; view.translationY = ty; node.endRecording() }
+        val renderStartedAt = if (EpubTurnTrace.enabled) SystemClock.uptimeMillis() else 0L
         renderer.createRenderRequest().setWaitForPresent(true).syncAndDraw()
+        if (EpubTurnTrace.enabled) {
+            EpubTurnTrace.log("snapshot_render", "wv" to (view as? EpubContentWebView)?.traceId,
+                "ms" to SystemClock.uptimeMillis() - renderStartedAt)
+        }
         val image = reader.acquireLatestImage() ?: return null
         image.use {
             val plane = it.planes.firstOrNull() ?: return null

@@ -52,13 +52,20 @@ internal data class KindleProbe(val version: Int, val compression: Int, val hybr
                     val type = u32()
                     val size = u32()
                     if (size < 8 || position + size > exth + length) invalid()
-                    if (type == 121L && size == 12L) {
-                        val boundary = u32()
-                        if (boundary != 0xffffffffL) {
-                            if (boundary !in 1 until count.toLong() - 1) invalid()
-                            input.seek(offsets[boundary.toInt()])
+                    // Standalone KF8 files can retain this tag after splitting a hybrid.
+                    if (version < 8 && type == 121L && size == 12L) {
+                        val kf8Record = u32()
+                        if (kf8Record != 0xffffffffL) {
+                            // The tag points to the KF8 header, immediately after BOUNDARY.
+                            if (kf8Record !in 2 until count.toLong()) invalid()
+                            val index = kf8Record.toInt()
+                            val kf8Start = offsets[index]
+                            val kf8End = offsets.getOrElse(index + 1) { input.length() }
+                            val boundaryStart = offsets[index - 1]
+                            if (kf8Start - boundaryStart < 8 || kf8End - kf8Start < 16) invalid()
+                            input.seek(boundaryStart)
                             if (String(ByteArray(8).also(input::readFully), Charsets.US_ASCII) != "BOUNDARY") invalid()
-                            input.seek(offsets[boundary.toInt() + 1] + 12)
+                            input.seek(kf8Start + 12)
                             if (input.readUnsignedShort() != 0) throw KindleException(KindleFailure.ENCRYPTED)
                             hybrid = true
                         }

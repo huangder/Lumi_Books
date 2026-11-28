@@ -185,6 +185,16 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     private var relayoutAnchor: ReaderTextAnchor? = null
     private var relayoutAnchorPage: Pair<Int, Int>? = null
     private var restoringRelayoutAnchor = false
+    private val typographyLayoutEngine = PageLayoutEngine()
+    private var typographyPreviewJob: Job? = null
+    private var typographyPreviewActive = false
+    private var typographyRelayoutPending = false
+    private data class TypographyAnchor(val chapter: Int, val text: CharSequence, val offset: Int, val pageChars: Int)
+    private var typographyAnchor: TypographyAnchor? = null
+    private var typographyWindowLayout: ChapterLayout? = null
+    private var typographyPageIndex = -1
+    private var typographySourceNeedsRefresh = false
+    private var typographyText: CharSequence? = null
 
     private fun clearRelayoutAnchor() {
         relayoutAnchor = null
@@ -595,12 +605,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                     }
                 }
                 PageAnimationController.Direction.PREV -> {
-                    val cur = slotManager.getCurSlot()
-                    val isBookFirstPage = cur.chapterIndex == 0 && cur.pageIndex == 0
-                    if (isBookFirstPage) false else {
-                        val prev = slotManager.getPrevSlot()
-                        prev.isLoaded
-                    }
+                    slotManager.getPrevSlot().isLoaded
                 }
                 else -> false
             }
@@ -721,6 +726,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 drainPendingPageTurn()
                 drainPendingContentSelectionTurn()
             }
+        }
+        slotManager.onTypographyPositionChanged = { chapter, offset ->
+            callbacks?.onVisiblePageTextChanged(chapter, offset)
         }
 
         setWillNotDraw(false)
@@ -1056,8 +1064,11 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         writingMode: ReaderWritingMode = ReaderWritingMode.HORIZONTAL,
         twoPageSpread: Boolean = false,
         width: Int = this.width,
-        height: Int = this.height
+        height: Int = this.height,
+        previewTypography: Boolean = false
     ) {
+        val finishTypographyPreview = typographyRelayoutPending && !previewTypography
+        typographyPreviewActive = previewTypography
         val positionRequestChanged = positionRequestTracker.observe(startChapter, startPage)
         if (width <= 0 || height <= 0 || chapterCount <= 0) {
             // 仅在拿到真实起始位置时更新锚点；书籍尚未加载（chapterCount<=0）
@@ -1094,7 +1105,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
         val themeChanged = currentTheme != theme
         val chapterCountChanged = currentChapterCount != chapterCount
-        val fontSizeChanged = Math.abs(currentFontSizePx - fontSizePx) > 0.5f
+        val fontSizeChanged = Math.abs(currentFontSizePx - fontSizePx) > 0.01f
         val lineHeightChanged = Math.abs(currentLineHeightMult - lineHeightMult) > 0.01f
         val letterSpacingChanged = Math.abs(currentLetterSpacingDp - letterSpacingDp) > 0.05f
         val textAlignmentChanged = currentTextAlignment != textAlignment
@@ -1128,14 +1139,17 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 letterSpacingChanged || textAlignmentChanged || fontTypeChanged || customFontPathChanged || marginChanged ||
                 overlayInsetChanged || paragraphSpacingChanged || bionicReadingChanged || pageBottomAlignedChanged ||
                 firstLineIndentChanged || bodyFontWeightChanged || paginationLayoutChanged ||
-                writingModeChanged || spreadModeChanged || sizeChanged
+                writingModeChanged || spreadModeChanged || sizeChanged || finishTypographyPreview
         // 旋转/进出双页/窗口 resize（含 ColorOS 小窗）时，重新分页必须基于“当前真实槽位”的章与页，
         // 而不是 onLayout 传进来的过期 pendingStartChapter/pendingStartPage，
         // 否则整本书会跳回第 1 页（锚点只修正章内页码，不修正章节）。
         // 槽位在异步加载中（isLoaded=false）时 chapterIndex/pageIndex 仍是本次目标位置，
         // 必须继续作为锚点；否则连续 resize 期间会回退到 startChapter/pendingStartChapter
         // （初始化早期可能为 0），把阅读进度清零。
-        val relayoutToCurrent = sizeChanged || spreadModeChanged || marginChanged || pageBottomAlignedChanged
+        val chapterFormattingChanged = fontSizeChanged || paragraphSpacingChanged || firstLineIndentChanged
+        val typographyChanged = chapterFormattingChanged || lineHeightChanged || letterSpacingChanged
+        val relayoutToCurrent = sizeChanged || spreadModeChanged || marginChanged || pageBottomAlignedChanged ||
+            typographyChanged || finishTypographyPreview
         val curSlotForRelayout = slotManager.getCurSlot()
         val hasCurrentAnchor = curSlotForRelayout.chapterIndex >= 0
         val effectiveStartChapter = if (relayoutToCurrent && hasCurrentAnchor) {
@@ -1159,13 +1173,27 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             // A direct TOC jump advances the slot before Compose receives its page callback.
             // Repeated old snapshots must not command the slot back to the previous page.
             if (positionRequestChanged && startChapter >= 0 &&
-                (currentSlot.chapterIndex != startChapter || currentSlot.pageIndex != startPage)
+                (currentSlot.chapterIndex != startChapter ||
+                    slotManager.publishedPageIndex(currentSlot.chapterIndex, currentSlot.pageIndex) != startPage)
             ) {
                 jumpToChapter(startChapter, startPage)
             }
             return
         }
 
+        val needsTypographyWindow = typographyChanged || finishTypographyPreview && typographyPreviewJob?.isActive == true
+        val useTypographyPreview = (previewTypography || finishTypographyPreview) && needsTypographyWindow && isConfigured && !sizeChanged &&
+            !spreadModeChanged && !writingModeChanged && !chapterCountChanged && !positionRequestChanged
+        if (useTypographyPreview && typographyAnchor == null && curSlotForRelayout.isLoaded) {
+            val chapter = curSlotForRelayout.chapterIndex
+            val page = slotManager.displayedPage()
+            val source = slotManager.cachedChapterText(chapter)
+            if (source != null && page != null) {
+                typographyAnchor = TypographyAnchor(chapter, source, page.startCharOffset,
+                    page.endCharOffset - page.startCharOffset)
+            }
+        }
+        val localTypography = typographyAnchor?.takeIf { useTypographyPreview }
         currentFontSizePx = fontSizePx
         currentTheme = theme
         currentChapterCount = chapterCount
@@ -1189,7 +1217,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         currentWritingMode = writingMode
         currentTwoPageSpreadEnabled = twoPageSpread
         currentTwoPageSpread = resolvedSpread
-        updatePaginationLayoutIdentity()
+        if (localTypography == null) updatePaginationLayoutIdentity()
         // 双页对开/竖排不在自持跨页选择的支持范围内：切换过去时直接结束自持选区，
         // 否则手柄与翻页语义都会对不上。
         if (!isContentSelectionSupported()) clearReaderSelection()
@@ -1245,7 +1273,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
             )
         }
 
-        layoutEngine.configure(
+        val targetEngine = if (localTypography != null) typographyLayoutEngine else layoutEngine
+        targetEngine.configure(
             width = pageWidth,
             height = height,
             fontSizePx = fontSizePx,
@@ -1269,6 +1298,90 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 context, fontType, customFontPath, currentBodyFontWeight)
         )
 
+        typographyPreviewJob?.cancel()
+        typographyPreviewJob = null
+        if (localTypography != null) {
+            typographyLayoutEngine.sharedTextPaint = android.text.TextPaint().apply {
+                set(curPageView.textView.paint)
+                textSize = fontSizePx
+                typeface = resolvedTypeface.typeface
+                isFakeBoldText = resolvedTypeface.fakeBold
+                letterSpacing = com.huangder.lumibooks.util.readerLetterSpacingEm(lsPx, fontSizePx)
+            }
+            typographyRelayoutPending = true
+            clearCurlTurnIntent()
+            animationController.abortAnim()
+            val provider = slotManager.contentProvider
+            val job = orientationScope.launch {
+                typographyWindowLayout = null
+                try {
+                    val text = if (typographySourceNeedsRefresh || chapterFormattingChanged) {
+                        typographySourceNeedsRefresh = true
+                        withContext(Dispatchers.IO) { provider?.invoke(localTypography.chapter) }
+                    } else typographyText ?: localTypography.text
+                    if (text.isNullOrEmpty()) return@launch
+                    val offset = withContext(Dispatchers.Default) {
+                        typographyOffset(localTypography.text, text, localTypography.offset).coerceAtMost(text.lastIndex)
+                    }
+                    val window = typographyWindow(text, offset, localTypography.pageChars)
+                    val local = targetEngine.layoutWindow(localTypography.chapter, text, window.first, window.last + 1)
+                    val pages = local.pages.dropLastWhile {
+                        it.endCharOffset == window.last + 1 && it.endCharOffset < text.length
+                    }
+                    val index = pages.indexOfFirst { offset in it.startCharOffset until it.endCharOffset }
+                    val page = pages.getOrNull(index) ?: return@launch
+                    val current = slotManager.getCurSlot()
+                    if (current.chapterIndex != localTypography.chapter || !current.isLoaded) return@launch
+                    val right = if (resolvedSpread && current.rightIsLoaded) {
+                        if (current.rightChapterIndex != current.chapterIndex) return@launch
+                        pages.getOrNull(index + 1)?.takeUnless {
+                            it.endCharOffset == window.last + 1 && it.endCharOffset < text.length
+                        } ?: return@launch
+                    } else null
+                    configureCurrentPageView(height)
+                    slotManager.displayTypographyPreview(text, page, right)
+                    typographyWindowLayout = local.copy(pages = pages, totalPages = pages.size)
+                    typographyPageIndex = index
+                    typographyText = text
+                    typographySourceNeedsRefresh = false
+                    invalidate()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    Log.d(TAG, "Typography preview could not be prepared", failure)
+                }
+            }
+            typographyPreviewJob = job
+            if (!previewTypography) job.invokeOnCompletion {
+                post {
+                    if (typographyPreviewJob === job && typographyRelayoutPending && !typographyPreviewActive) {
+                        typographyPreviewJob = null
+                        configure(
+                            fontSizePx, theme, chapterCount, startChapter, startPage, lineHeightMult,
+                            letterSpacingDp, textAlignment, fontType, customFontPath, marginLeftDp,
+                            marginRightDp, marginTopDp, marginBottomDp, topOverlayInsetDp, bottomOverlayInsetDp,
+                            paragraphSpacingDp, firstLineIndent, bodyFontWeight, bionicReadingEnabled,
+                            pageBottomAligned, useDisplayDensityForSpans, writingMode, twoPageSpread,
+                            width, height, previewTypography = false
+                        )
+                    }
+                }
+            }
+            return
+        }
+
+        val heldTypographyLayout = typographyWindowLayout.takeIf {
+            finishTypographyPreview && !typographyChanged
+        }
+        val heldTypographyText = typographyText
+        val heldTypographyPage = heldTypographyLayout?.pages?.getOrNull(typographyPageIndex)
+        val oldTypographyAnchor = typographyAnchor
+        typographyAnchor = null
+        typographyWindowLayout = null
+        typographyPageIndex = -1
+        typographyText = null
+        typographySourceNeedsRefresh = false
+        typographyRelayoutPending = false
         configureCurrentPageView(height)
 
         // 🔥 共用 TextPaint：让 PageLayoutEngine 的 StaticLayout 使用与 TextView 完全相同的 Paint
@@ -1300,7 +1413,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                     (primaryOffset.takeIf { it >= 0 } ?: curSlot.contentView.chapterStartOffset)
                         .takeIf { it >= 0 }?.let { ReaderTextAnchor(curSlot.chapterIndex, it) }
                 } else null
-                val anchor = focusedSpreadAnchor ?: relayoutAnchor ?: visibleAnchor
+                val anchor = oldTypographyAnchor?.let { ReaderTextAnchor(it.chapter, it.offset) }
+                    ?: focusedSpreadAnchor ?: relayoutAnchor ?: visibleAnchor
                 if (anchor != null) {
                     relayoutAnchor = anchor
                     restoringRelayoutAnchor = true
@@ -1314,10 +1428,25 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
         if (!isConfigured || needsRelayout) {
             slotManager.setChapterCount(chapterCount)
+            if (oldTypographyAnchor != null && heldTypographyText != null && heldTypographyLayout != null &&
+                heldTypographyPage != null && !sizeChanged && !positionRequestChanged
+            ) {
+                slotManager.startTypographyHandoff(heldTypographyText, heldTypographyLayout, heldTypographyPage,
+                    oldPageIndex = effectiveStartPage,
+                    idle = { !typographyPreviewActive && !typographyRelayoutPending &&
+                        !animationController.isRunning && !animationController.isDragging &&
+                        !animationController.isCompletingTurn && !rvIsHandlingPageGesture })
+                return
+            }
+            if (oldTypographyAnchor != null) {
+                slotManager.reconcileTypography(
+                    oldTypographyAnchor.chapter, oldTypographyAnchor.text, oldTypographyAnchor.offset
+                )
+            }
             slotManager.initialize(
                 effectiveStartChapter,
                 effectiveStartPage,
-                preserveCurrentContent = isConfigured && marginChanged &&
+                preserveCurrentContent = isConfigured && (marginChanged || typographyChanged || finishTypographyPreview) &&
                     !chapterCountChanged && !writingModeChanged && !spreadModeChanged
             )
             isConfigured = true
@@ -1337,6 +1466,7 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
 
     fun forceRelayout() {
         if (!isConfigured) return
+        if (typographyRelayoutPending) return
         clearRelayoutAnchor()
         val current = slotManager.getCurSlot()
         if (current.isLoaded) {
@@ -1448,17 +1578,19 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
     fun getCurrentLocation(): Pair<Int, Int>? {
         val current = slotManager.getCurSlot()
         if (current.chapterIndex < 0 || current.pageIndex < 0) return null
-        return current.chapterIndex to current.pageIndex
+        return current.chapterIndex to slotManager.publishedPageIndex(current.chapterIndex, current.pageIndex)
     }
 
     /** 查询下一页位置，不执行翻页。 */
     fun getNextPageLocation(): Pair<Int, Int> {
-        return slotManager.getNextPageLocation()
+        val (chapter, page) = slotManager.getNextPageLocation()
+        return chapter to slotManager.publishedPageIndex(chapter, page)
     }
 
     /** 查询上一页位置，不执行翻页。 */
     fun getPrevPageLocation(): Pair<Int, Int> {
-        return slotManager.getPrevPageLocation()
+        val (chapter, page) = slotManager.getPrevPageLocation()
+        return chapter to slotManager.publishedPageIndex(chapter, page)
     }
 
     /** 设置简繁转换模式，刷新当前页 */
@@ -1525,7 +1657,9 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         }
         lastRenderConfig = config
 
-        layoutEngine.setPaginationIdentity(config.paginationContentIdentity)
+        if (!config.layout.typographyPreviewActive) {
+            layoutEngine.setPaginationIdentity(config.paginationContentIdentity)
+        }
 
         if (previous?.layout != config.layout) {
             with(config.layout) {
@@ -1553,7 +1687,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                     pageBottomAligned = pageBottomAligned,
                     useDisplayDensityForSpans = useDisplayDensityForSpans,
                     writingMode = writingMode,
-                    twoPageSpread = twoPageSpread
+                    twoPageSpread = twoPageSpread,
+                    previewTypography = this.typographyPreviewActive
                 )
             }
         }
@@ -1762,9 +1897,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
         if (isJumpSettling) return false
         finishRunningPageTurnForNewInput()
         val current = slotManager.getCurSlot()
-        val isBookFirstPage = current.chapterIndex == 0 && current.pageIndex == 0
         val previous = slotManager.getPrevSlot()
-        if (isBookFirstPage || !previous.isLoaded) return false
+        if (!previous.isLoaded) return false
         clearCurrentSelection()
         ReaderPageTurnPerformance.beginIntent(
             preloaded = true,
@@ -3226,7 +3360,8 @@ class ReadView(context: Context, externalLayoutEngine: PageLayoutEngine? = null)
                 writingMode = currentWritingMode,
                 twoPageSpread = currentTwoPageSpreadEnabled,
                 width = layoutWidth,
-                height = layoutHeight
+                height = layoutHeight,
+                previewTypography = typographyPreviewActive
             )
             // configure updates the half-page LayoutParams. Measure them in this
             // pass: requesting another layout from onLayout can be swallowed by

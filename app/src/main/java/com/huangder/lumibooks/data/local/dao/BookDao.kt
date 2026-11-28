@@ -11,12 +11,15 @@ import com.huangder.lumibooks.data.local.entity.BookEntity
 import com.huangder.lumibooks.data.local.model.ContinueReadingWidgetData
 import kotlinx.coroutines.flow.Flow
 
+private const val WEBDAV_AVAILABLE = "(filePath != '' OR NOT EXISTS " +
+    "(SELECT 1 FROM sync_state WHERE `key` = 'webdav_suppressed:' || books.id))"
+
 @Dao
 interface BookDao {
-    @Query("SELECT * FROM books WHERE isHidden = 0 AND isArchived = 0 ORDER BY lastReadTime DESC")
+    @Query("SELECT * FROM books WHERE isHidden = 0 AND isArchived = 0 AND " + WEBDAV_AVAILABLE + " ORDER BY lastReadTime DESC")
     fun observeVisibleBooks(): Flow<List<BookEntity>>
 
-    @Query("SELECT * FROM books WHERE id = :id AND isHidden = 0 AND isArchived = 0")
+    @Query("SELECT * FROM books WHERE id = :id AND isHidden = 0 AND isArchived = 0 AND " + WEBDAV_AVAILABLE)
     suspend fun getVisibleBookById(id: String): BookEntity?
 
     /** Rejects stale external-reader writes and books hidden since the snapshot was loaded. */
@@ -28,7 +31,7 @@ interface BookDao {
         progress: Float, locator: String, timestamp: Long
     ): Int
 
-    @Query("SELECT * FROM books ORDER BY lastReadTime DESC")
+    @Query("SELECT * FROM books WHERE " + WEBDAV_AVAILABLE + " ORDER BY lastReadTime DESC")
     fun getAllBooks(): Flow<List<BookEntity>>
 
     @Query("SELECT * FROM books ORDER BY lastReadTime DESC")
@@ -51,17 +54,18 @@ interface BookDao {
 
     @Query(
         "SELECT id AS bookId, title, author, coverPath, readingProgress " +
-            "FROM books WHERE isHidden = 0 AND isArchived = 0 ORDER BY lastReadTime DESC LIMIT 1"
+            "FROM books WHERE isHidden = 0 AND isArchived = 0 AND " + WEBDAV_AVAILABLE + " ORDER BY lastReadTime DESC LIMIT 1"
     )
     suspend fun getContinueReadingWidgetData(): ContinueReadingWidgetData?
 
     @Query(
         "SELECT id AS bookId, title, author, coverPath, readingProgress " +
-            "FROM books WHERE isHidden = 0 AND isArchived = 0 ORDER BY lastReadTime DESC LIMIT 1"
+            "FROM books WHERE isHidden = 0 AND isArchived = 0 AND " + WEBDAV_AVAILABLE + " ORDER BY lastReadTime DESC LIMIT 1"
     )
     fun observeContinueReadingWidgetData(): Flow<ContinueReadingWidgetData?>
 
-    @Query("SELECT * FROM books WHERE title LIKE '%' || :query || '%' OR author LIKE '%' || :query || '%'")
+    @Query("SELECT * FROM books WHERE " + WEBDAV_AVAILABLE +
+        " AND (title LIKE '%' || :query || '%' OR author LIKE '%' || :query || '%')")
     fun searchBooks(query: String): Flow<List<BookEntity>>
 
     @Upsert

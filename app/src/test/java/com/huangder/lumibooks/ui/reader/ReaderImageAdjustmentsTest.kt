@@ -13,10 +13,12 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.annotation.LooperMode
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
+@LooperMode(LooperMode.Mode.INSTRUMENTATION_TEST)
 class ReaderImageAdjustmentsTest {
     private fun edgeBitmap(): Bitmap = Bitmap.createBitmap(5, 3, Bitmap.Config.ARGB_8888).apply {
         for (y in 0..2) for (x in 0..4) {

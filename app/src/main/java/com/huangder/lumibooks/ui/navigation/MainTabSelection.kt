@@ -8,7 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.huangder.lumibooks.ui.animation.VisualMotion.tween
 
-/** Tab clicks retain the original 700 ms fade without travelling through other tabs. */
+/** Tab clicks crossfade directly between the two tabs. */
 internal class MainTabSelection {
     var fromPage by mutableIntStateOf(0)
         private set
@@ -26,7 +26,7 @@ internal class MainTabSelection {
         running = true
         try {
             state.scrollToPage(page)
-            if (motionEnabled) progress.animateTo(1f, tween(700))
+            if (motionEnabled) progress.animateTo(1f, tween())
         } finally {
             running = false
         }

@@ -7,7 +7,10 @@ const { pathToFileURL } = require('node:url');
 const { spawnSync } = require('node:child_process');
 const source = readFileSync(join(__dirname, '../app/src/main/java/com/huangder/lumibooks/util/epub/EpubDocumentTransformer.kt'), 'utf8');
 const css = source.match(/private const val READER_CSS = """([\s\S]*?)"""/)[1];
-const script = [...source.matchAll(/private const val READER_SCRIPT_PART_(?:[123]B?) = """([\s\S]*?)"""/g)].map(m => m[1]).join('');
+const alignment = readFileSync(join(__dirname, '../app/src/main/java/com/huangder/lumibooks/util/epub/EpubReaderAlignment.kt'), 'utf8')
+  .match(/EPUB_READER_ALIGNMENT_SCRIPT = """([\s\S]*?)"""/)[1];
+const script = [...source.matchAll(/private const val (READER_SCRIPT_PART_\w+) = """([\s\S]*?)"""/g)]
+  .map(m => m[2] + (m[1] === 'READER_SCRIPT_PART_1' ? alignment : '')).join('');
 
 async function verify() {
   const check = (condition, message) => { if (!condition) throw Error(message); };
@@ -18,6 +21,20 @@ async function verify() {
     await delay(300);
     const text = document.getElementById('reading').textContent;
     const offset = paragraph => text.indexOf('Paragraph ' + paragraph + ':');
+    const blocks = () => [...document.querySelectorAll('.lumi-tts-highlight-block')];
+    const wrappedStart = offset(119) + 'Paragraph 119: '.length;
+    const wrappedEnd = text.indexOf('.', wrappedStart) + 1;
+    const wrappedRange = document.createRange();
+    wrappedRange.setStart(document.getElementById('reading').firstChild, wrappedStart);
+    wrappedRange.setEnd(document.getElementById('reading').firstChild, wrappedEnd);
+    check(wrappedRange.getClientRects().length > 1, 'The sentence fixture must wrap');
+    reader.setTtsHighlight(wrappedStart, wrappedEnd, '#aaccff');
+    check(blocks().length === 1 && parseFloat(getComputedStyle(blocks()[0]).borderRadius) > 0,
+      'A wrapped sentence must have a single rounded background');
+    const wrappedHeight = blocks()[0].getBoundingClientRect().height;
+    reader.setTtsHighlight(wrappedStart, wrappedStart + 10, '#aaccff');
+    check(blocks().length === 1 && blocks()[0].getBoundingClientRect().height < wrappedHeight,
+      'Moving to a short sentence must replace the old wrapped background');
     const highlight = paragraph => {
       const start = offset(paragraph);
       reader.setTtsHighlight(start, start + 40, '#aaccff', true);
@@ -94,7 +111,23 @@ async function verify() {
     highlight(110);
     await delay(50);
     check(window.scrollY === returnedY, 'A tap without dragging must leave automatic following enabled');
-    document.getElementById('result').textContent = JSON.stringify({ passed: true, checks: 17 });
+    reader.configure({ flow: 'paginated', transition: 'none', canTurnPrevious: false, canTurnNext: false });
+    await delay(300);
+    const start = offset(90);
+    const anchor = { version: 2, textPosition: start, textLength: text.length, progression: 0 };
+    reader.goToPage(0);
+    check(reader.restore(anchor) && reader.currentPosition().pageIndex === 0,
+      'An ordinary locator with no quote still uses its stored progression');
+    check(reader.restore({ ...anchor, listeningAnchor: true }), 'The listening character anchor must resolve');
+    const page = reader.currentPosition().pageIndex;
+    check(page > 0, 'A background audio chunk must not strand the reader on its old page');
+    const visible = reader.pageText(page);
+    check(visible.startCharacterOffset <= start && start < visible.endCharacterOffset,
+      'The restored page must contain the spoken offset');
+    const pageBoundary = visible.endCharacterOffset;
+    reader.setTtsHighlight(pageBoundary - 20, pageBoundary + 20, '#aaccff');
+    check(blocks().length === 2, 'A sentence crossing two pages must have one background per page');
+    document.getElementById('result').textContent = JSON.stringify({ passed: true, checks: 25 });
   } catch (error) {
     document.getElementById('result').textContent = JSON.stringify({ passed: false, error: error.message });
   }
@@ -105,7 +138,9 @@ try {
   let checks = 0;
   for (const size of [18, 30]) {
     const file = join(directory, `follow-${size}.html`);
-    const text = Array.from({ length: 120 }, (_, i) => `Paragraph ${i + 1}: reading text with a stable listening position.`).join('\n');
+    const text = Array.from({ length: 120 }, (_, i) => `Paragraph ${i + 1}: ${i === 118
+      ? 'a single long sentence that naturally wraps onto several lines as the reader increases the font size and continues to listen'
+      : 'reading text with a stable listening position'}.`).join('\n');
     writeFileSync(file, `<!doctype html><html><head><meta charset="utf-8"><style>${css}</style>
       <style>body{font-size:${size}px!important;line-height:1.7!important}p{white-space:pre-wrap!important}</style></head>
       <body data-lumi-layout="reflowable"><p id="reading">${text}</p><pre id="result" style="display:none"></pre>
@@ -124,7 +159,7 @@ try {
     assert.ok(report.passed, `Font ${size}: ${report.error}`);
     checks += report.checks;
   }
-  console.log(`PASS: ${checks} EPUB TTS checks for drag interruption, late highlights, finger-up and explicit return.`);
+  console.log(`PASS: ${checks} EPUB TTS checks for scroll interruption, explicit return and paginated listening restoration.`);
 } finally {
   const absolute = resolve(directory);
   assert.equal(dirname(absolute), resolve(tmpdir()));

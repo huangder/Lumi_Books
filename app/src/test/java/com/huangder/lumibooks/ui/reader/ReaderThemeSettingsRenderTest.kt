@@ -17,6 +17,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.huangder.lumibooks.R
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import java.io.File
 import org.junit.Rule
@@ -114,4 +115,26 @@ class ReaderThemeSettingsRenderTest {
 
     @Test fun light() = render("lumi")
     @Test fun dark() = render("lumi", dark = true)
+
+    @Test fun epubRendererFooterShowsActiveEngineAfterScrollingAndFallback() {
+        val active = mutableStateOf<Boolean?>(true)
+        compose.setContent {
+            EBookReaderTheme(appTheme = "lumi", darkTheme = false) {
+                ThemeSettingsSheet(visible = true, currentFontSize = 20f,
+                    currentTheme = "day", isAppDark = false,
+                    supportsBookLayout = true, supportsNativeEpubCss = true,
+                    nativeEpubCssEnabled = true, epubNativeRendererActive = active.value,
+                    onFontSizeChange = {}, onThemeChange = {}, onOpenAdvanced = {}, onDismiss = {})
+            }
+        }
+        val nativeLabel = org.robolectric.RuntimeEnvironment.getApplication().getString(R.string.epub_renderer_native)
+        val footer = compose.onNodeWithTag("epub-renderer-status")
+        footer.performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(nativeLabel).assertIsDisplayed()
+        compose.runOnIdle { active.value = false }
+        footer.assertIsDisplayed()
+        compose.onNodeWithText("WebView").assertIsDisplayed()
+        compose.runOnIdle { active.value = null }
+        footer.assertDoesNotExist()
+    }
 }

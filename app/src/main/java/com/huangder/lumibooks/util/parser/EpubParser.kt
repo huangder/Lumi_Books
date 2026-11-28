@@ -462,14 +462,18 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
          * 剩下的按文档顺序配对，然后把引用 href 改写到配对正文的 id 上；
          * 正文缺 id 时补一个合成 id 并预先抽出正文文本，保证气泡能取到正确内容。
          */
-        internal fun alignFootnoteReferences(html: String, idPrefix: String): FootnoteAlignment {
+        internal fun alignFootnoteReferences(
+            html: String,
+            idPrefix: String,
+            inlineNoteHrefs: Set<String> = emptySet()
+        ): FootnoteAlignment {
             // 绝大多数章节没有注释，先做一次廉价判断，避免整章多次正则扫描。
             val mentionsNotes = listOf("footnote", "noteref", "endnote", "rearnote", "epub:type", "jzyy_")
                 .any { html.contains(it, ignoreCase = true) }
             if (!mentionsNotes) {
                 return FootnoteAlignment(html, emptySet(), emptyMap())
             }
-            val references = collectFootnoteReferences(html)
+            val references = collectFootnoteReferences(html).filterNot { it.href in inlineNoteHrefs }
             if (references.isEmpty()) {
                 return FootnoteAlignment(html, emptySet(), emptyMap())
             }
@@ -805,8 +809,9 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
     data class ChapterContentPreview(val text: CharSequence, val isComplete: Boolean)
     private data class AnchoredChapter(
         val text: SpannableStringBuilder,
-        val offsets: Map<String, Int>
+        val offsets: MutableMap<String, Int>
     )
+    private class ChapterAnchor(val name: String)
     private val htmlCache = WeightedLruCache<HtmlCacheKey, String>(8L * 1024L * 1024L) {
         it.length.toLong() * Char.SIZE_BYTES
     }
@@ -1752,32 +1757,36 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 )
 
                 val parseStartedAt = android.os.SystemClock.elapsedRealtime()
-                val spanned = htmlToSpanned(chapterIndex, previewHtml.html, zipFile, width, height)
+                val spanned = htmlToSpanned(
+                    chapterIndex, previewHtml, zipFile, revision, width, height
+                )
                 val htmlParsedAt = android.os.SystemClock.elapsedRealtime()
                 if (!isActiveRevision(revision, zipFile)) return@chapterLoad ChapterContentPreview("", true)
 
-                // 应用段间距和首行缩进（Canvas 引擎需要在 Spanned 层面处理）
+                // Remove the HTML anchor markers before looking for leading whitespace.
+                val anchored = extractAnchorOffsets(spanned)
+                val anchoredAt = android.os.SystemClock.elapsedRealtime()
                 val formatted = applyParagraphFormatting(
-                    spanned,
+                    anchored.text,
                     chapterTitle = chapters.getOrNull(chapterIndex)?.title.orEmpty(),
-                    textSizePx = textSizePx
+                    textSizePx = textSizePx,
+                    anchorOffsets = anchored.offsets
                 )
                 val formattedAt = android.os.SystemClock.elapsedRealtime()
                 // 修剪末尾多余换行（防止章节末尾出现空白页）
                 val trimmed = trimTrailingNewlines(formatted)
-                // 移除 HTML 锚点占位，并记录其在最终章节文本中的字符位置
-                val anchored = extractAnchorOffsets(trimmed)
-                val anchoredAt = android.os.SystemClock.elapsedRealtime()
                 // 如果 Spanned 为空（纯图片章节图片加载失败），返回占位文本
-                val result: CharSequence = if (anchored.text.isBlank()) {
+                val result: CharSequence = if (trimmed.isBlank()) {
                     android.text.SpannableString(" ")
                 } else {
-                    anchored.text
+                    trimmed
                 }
 
                 val stored = synchronized(zipLock) storeResult@{
                     if (!isActiveRevisionLocked(revision, zipFile)) return@storeResult false
-                    anchorOffsets[chapterIndex] = anchored.offsets
+                    anchorOffsets[chapterIndex] = anchored.offsets.mapValues { (_, offset) ->
+                        offset.coerceAtMost(result.length)
+                    }
                     if (retainCache) {
                         contentCache.put(loadKey, result)
                         previewCompleteness[loadKey] = previewHtml.isComplete
@@ -1795,8 +1804,8 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 android.util.Log.d(
                     "EpubParser",
                     "getChapterContent: idx=$chapterIndex result.length=${result.length} " +
-                        "html=${htmlParsedAt - parseStartedAt}ms format=${formattedAt - htmlParsedAt}ms " +
-                        "anchors=${anchoredAt - formattedAt}ms total=${anchoredAt - parseStartedAt}ms"
+                        "html=${htmlParsedAt - parseStartedAt}ms anchors=${anchoredAt - htmlParsedAt}ms " +
+                        "format=${formattedAt - anchoredAt}ms total=${formattedAt - parseStartedAt}ms"
                 )
                 ChapterContentPreview(result, previewHtml.isComplete)
             }
@@ -1963,7 +1972,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
     }
 
     /** 扫描章节 HTML，收集注释引用链接的 href（保持 HTML 属性原样，仅解码实体）。 */
-    private fun collectFootnoteHrefs(chapterIndex: Int, html: String) {
+    private fun collectFootnoteHrefs(html: String): Set<String> {
         val hrefs = mutableSetOf<String>()
         val anchorRegex = Regex(
             """<a\b[^>]*>(.*?)</a>""",
@@ -1979,9 +1988,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
                 tagAttribute(openTag, "href")?.let { hrefs.add(decodeTagEntities(it)) }
             }
         }
-        synchronized(zipLock) {
-            footnoteHrefs[chapterIndex] = hrefs
-        }
+        return hrefs
     }
 
     override fun isFootnoteHref(chapterIndex: Int, href: String): Boolean {
@@ -2040,7 +2047,8 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
     private fun applyParagraphFormatting(
         text: CharSequence,
         chapterTitle: String = "",
-        textSizePx: Float = defaultTextSizePx()
+        textSizePx: Float = defaultTextSizePx(),
+        anchorOffsets: MutableMap<String, Int> = mutableMapOf()
     ): CharSequence {
         val density = context?.resources?.displayMetrics?.density ?: 2.75f
         val indentPx = if (firstLineIndentChars > 0f) (firstLineIndentChars * textSizePx).roundToInt() else 0
@@ -2048,7 +2056,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
 
         // Build paragraph separators once. Repeated insert/delete on a 400K+ Spanned
         // relocates every following character and span thousands of times.
-        val ssb = rebuildParagraphBreaks(text, spacingPx)
+        val ssb = rebuildParagraphBreaks(text, spacingPx, anchorOffsets)
 
         // EPUB 正文常把首行缩进直接写成全角空格或 nbsp。先移除这些源文本空白，
         // 否则它会和用户设置的 LeadingMarginSpan 叠加，造成固定多出两格左右。
@@ -2137,6 +2145,12 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             }
         }
 
+        // Mark spans follow deletions at the start of a paragraph.
+        ssb.getSpans(0, ssb.length, ChapterAnchor::class.java).forEach { anchor ->
+            anchorOffsets[anchor.name] = ssb.getSpanStart(anchor)
+            ssb.removeSpan(anchor)
+        }
+
         android.util.Log.d(
             "EpubParser",
             "Paragraph formatting complete: length=${ssb.length} indentSpans=$indentCount spacingPx=$spacingPx"
@@ -2167,7 +2181,8 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
 
     private fun rebuildParagraphBreaks(
         text: CharSequence,
-        spacingPx: Int
+        spacingPx: Int,
+        anchorOffsets: Map<String, Int>
     ): SpannableStringBuilder {
         val source = text.toString()
         val startOffsets = IntArray(source.length + 1)
@@ -2212,6 +2227,10 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
         }
         val result = SpannableStringBuilder(plainText)
         copyMappedSpans(text, result, startOffsets, endOffsets)
+        anchorOffsets.forEach { (name, offset) ->
+            val position = startOffsets[offset]
+            result.setSpan(ChapterAnchor(name), position, position, Spanned.SPAN_MARK_MARK)
+        }
         spacerOffsets.forEach { spacerStart ->
             result.setSpan(
                 ParagraphLineHeightSpan(spacingPx),
@@ -2821,9 +2840,10 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             ((bytes[offset + 2].toInt() and 0xFF) shl 16)
 
     private fun htmlToSpanned(
-        chapterIndex: Int, html: String, zipFile: ZipFile,
+        chapterIndex: Int, chapterHtml: HtmlPreviewSlice, zipFile: ZipFile, revision: Long,
         contentWidth: Int = this.contentWidth, contentHeight: Int = this.contentHeight
     ): Spanned {
+        val html = chapterHtml.html
         val bodyContent = extractBody(html) ?: html
 
         // 出版社用 CSS/内联背景图做的装饰在阅读器排版里没有渲染路径，先把它还原成图片；
@@ -2843,17 +2863,14 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             .replace(Regex("""\n{3,}"""), "\n\n")
 
         // 注释引用与正文先配对：导出器常把 href 指错、正文漏 id，配对后 href 才能稳定解析。
-        val alignment = alignFootnoteReferences(cleaned, "lumi-footnote-$chapterIndex-")
-        synchronized(zipLock) {
-            if (alignment.textByHref.isEmpty()) footnoteTextByHref.remove(chapterIndex)
-            else footnoteTextByHref[chapterIndex] = alignment.textByHref
-        }
-
-        // 收集注释引用链接（Canvas 引擎注释气泡判定用，用重写后的 href）
-        collectFootnoteHrefs(chapterIndex, alignment.html)
+        val alignment = alignFootnoteReferences(
+            cleaned, "lumi-footnote-$chapterIndex-", prepared.inlineFootnotes.keys
+        )
+        val noteHrefs = collectFootnoteHrefs(alignment.html)
+        val linkedNoteHrefs = noteHrefs - prepared.inlineFootnotes.keys
 
         // 注释正文改由注释气泡呈现：只移除本章确实被引用到的注释容器，正文流里不再重复出现。
-        val withoutFootnoteBodies = stripReferencedFootnoteBodies(chapterIndex, alignment.html)
+        val withoutFootnoteBodies = stripReferencedFootnoteBodies(chapterIndex, alignment.html, linkedNoteHrefs)
 
         // 注释引用图标（注释链接里的 <img>）是行内标记，必须保持行内。
         val baselineNormalized = normalizeFootnoteMarkerBaseline(withoutFootnoteBodies)
@@ -2901,10 +2918,15 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
             parsed
         }
         val fullPage = android.text.SpannableStringBuilder(pageContent)
-        normalizeFootnoteReferenceSpans(
-            fullPage,
-            synchronized(zipLock) { footnoteHrefs[chapterIndex].orEmpty().toSet() }
-        )
+        normalizeFootnoteReferenceSpans(fullPage, noteHrefs)
+        synchronized(zipLock) {
+            if (isActiveRevisionLocked(revision, zipFile) &&
+                (chapterHtml.isComplete || chapterIndex !in footnoteHrefs)
+            ) {
+                footnoteHrefs[chapterIndex] = noteHrefs
+                footnoteTextByHref[chapterIndex] = alignment.textByHref + prepared.inlineFootnotes
+            }
+        }
         val images = fullPage.getSpans(0, fullPage.length, android.text.style.ImageSpan::class.java)
         val hasVisibleText = fullPage.any { character ->
             !character.isWhitespace() && character != '\uFFFC'
@@ -2926,8 +2948,7 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
      * 只移除本章确实检测到引用链接、且 id/name 与引用 fragment 对应的容器，
      * 避免误删没有引用标记的注释段落（例如《毛泽东选集》式的正文注释）。
      */
-    private fun stripReferencedFootnoteBodies(chapterIndex: Int, html: String): String {
-        val hrefs = synchronized(zipLock) { footnoteHrefs[chapterIndex] } ?: return html
+    private fun stripReferencedFootnoteBodies(chapterIndex: Int, html: String, hrefs: Set<String>): String {
         val fragments = hrefs.mapNotNull { href ->
             decodeTagEntities(href)
                 .substringAfter('#', "")
@@ -3047,6 +3068,9 @@ class EpubParser(private val context: Context? = null) : BookParser, BookRenderS
 
     private fun extractAnchorOffsets(text: CharSequence): AnchoredChapter {
         val source = text.toString()
+        if (!source.contains(ANCHOR_MARKER_PREFIX)) {
+            return AnchoredChapter(text as? SpannableStringBuilder ?: SpannableStringBuilder(text), mutableMapOf())
+        }
         val startOffsets = IntArray(source.length + 1)
         val endOffsets = IntArray(source.length + 1)
         val plainText = StringBuilder(source.length)

@@ -4,6 +4,41 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ReaderCurlTurnSequencerTest {
+    @Test fun originalCurlConflatesOnlyOverloadedTapsAndDoesNotReplayThemLate() {
+        val sequencer = ReaderCurlTurnSequencer(boundTapBacklog = true)
+        val next = PageAnimationController.Direction.NEXT
+        sequencer.offer(next, input = CurlTurnInput.SWIPE, nowMs = 10)
+        repeat(20) { index -> sequencer.offer(next, nowMs = 20L + index * 10) }
+        assertEquals(2, sequencer.pendingSteps)
+        sequencer.discardStaleBurstTaps(561)
+        assertEquals(CurlTurnInput.SWIPE, sequencer.pollTurn().input)
+        assertEquals(0, sequencer.pendingSteps)
+
+        sequencer.offer(next, nowMs = 600)
+        sequencer.discardStaleBurstTaps(1_100)
+        assertEquals(next, sequencer.poll())
+    }
+
+    @Test fun originalCurlKeepsTwentyTapsAtCadenceWhenTheRendererKeepsUp() {
+        val sequencer = ReaderCurlTurnSequencer(boundTapBacklog = true)
+        val next = PageAnimationController.Direction.NEXT
+        repeat(20) { index ->
+            sequencer.offer(next, nowMs = index * 166L)
+            assertEquals(next, sequencer.poll())
+        }
+        assertEquals(0, sequencer.pendingSteps)
+    }
+
+    @Test fun finalTapInABurstCannotReplayAfterTheRendererStalls() {
+        val sequencer = ReaderCurlTurnSequencer(boundTapBacklog = true)
+        val next = PageAnimationController.Direction.NEXT
+        sequencer.offer(next, nowMs = 100)
+        assertEquals(next, sequencer.poll())
+        sequencer.offer(next, nowMs = 266)
+        sequencer.discardStaleBurstTaps(617)
+        assertEquals(0, sequencer.pendingSteps)
+    }
+
     @Test
     fun asynchronousHandoffQueuesWithoutAbortingCurrentTurn() {
         assertEquals(
@@ -161,14 +196,18 @@ class ReaderCurlTurnSequencerTest {
     @Test
     fun queuedTurnPreservesInputTypeAccelerationAndOriginGeneration() {
         val sequencer = ReaderCurlTurnSequencer()
+        val swipe = DeferredCurlSwipe(960f, 1780f, 380f, 1250f)
         sequencer.offer(
             direction = PageAnimationController.Direction.NEXT,
             gestureStartY = 1780f,
             input = CurlTurnInput.SWIPE,
             expedited = true,
-            pageGeneration = 42L
+            pageGeneration = 42L,
+            deferredSwipe = swipe
         )
 
+        sequencer.offer(PageAnimationController.Direction.NEXT, nowMs = 500L)
+        sequencer.restore(sequencer.pollTurn())
         val turn = sequencer.pollTurn()
 
         assertEquals(PageAnimationController.Direction.NEXT, turn.direction)
@@ -176,5 +215,7 @@ class ReaderCurlTurnSequencerTest {
         assertEquals(CurlTurnInput.SWIPE, turn.input)
         assertEquals(true, turn.expedited)
         assertEquals(42L, turn.pageGeneration)
+        assertEquals(swipe, turn.deferredSwipe)
+        assertEquals(null, sequencer.pollTurn().deferredSwipe)
     }
 }

@@ -55,4 +55,16 @@ class ContinuousReaderViewportTest {
         assertEquals(listOf(ReaderVisibleCharacters(0, 0, 2)),
             continuousVisibleCharacters(0, 0, text, null, 100, 0, 400, 150, 250))
     }
+
+    @Test fun imageGeometryIsReusedUntilTheChapterSourceChanges() {
+        val cache = ContinuousViewportImageCache(200, 100, 10, 400, comic = false)
+        val preview = SpannableStringBuilder().apply { image(this, 100) }
+        val full = SpannableStringBuilder().apply { image(this, 100); image(this, 200) }
+        val positions = cache.positions(2, preview)
+        assertSame(positions, cache.positions(2, preview))
+        assertEquals(listOf(ContinuousImagePosition(0, 0, 100)), positions)
+        val expanded = cache.positions(2, full)
+        assertEquals(listOf(ContinuousImagePosition(0, 0, 100), ContinuousImagePosition(2, 110, 200)), expanded)
+        assertEquals(0.2f, captureContinuousViewportAnchor(2, -150, null, expanded)?.imageFraction ?: -1f, 0.001f)
+    }
 }

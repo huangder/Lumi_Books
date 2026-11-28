@@ -78,7 +78,7 @@ class ContinuousImageLayoutTest {
         assertTrue(continuousChapterImages("plain novel").isEmpty())
     }
 
-    @Test fun imageAndParagraphGapStayFixedAcrossTextLineSpacingSettings() {
+    @Test fun imageHeightStaysFixedAndParagraphGapUsesTextLineSpacingOnce() {
         for (imageHeight in listOf(40, 800, 1800)) for (multiplier in listOf(1f, 1.5f, 2.8f)) {
             val text = SpannableStringBuilder("before\n")
             image(text, imageHeight)
@@ -91,7 +91,8 @@ class ContinuousImageLayoutTest {
                 TextPaint().apply { textSize = 20f }, 300).setIncludePad(false).build()
             assertEquals("image=$imageHeight multiplier=$multiplier", imageHeight,
                 layout.getLineTop(2) - layout.getLineTop(1))
-            assertEquals("paragraph gap is counted once", 14, layout.getLineTop(3) - layout.getLineTop(2))
+            assertEquals("paragraph gap is scaled once", kotlin.math.round(14 * multiplier).toInt(),
+                layout.getLineTop(3) - layout.getLineTop(2))
         }
     }
 

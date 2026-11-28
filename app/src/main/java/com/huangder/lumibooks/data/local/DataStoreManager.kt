@@ -90,6 +90,7 @@ import com.huangder.lumibooks.tts.ExternalTtsSettings
 import com.huangder.lumibooks.tts.ExternalTtsConfig
 import com.huangder.lumibooks.tts.FloatingSubtitleSettings
 import com.huangder.lumibooks.tts.FloatingSubtitleStyle
+import com.huangder.lumibooks.tts.TtsPauseDuration
 import com.huangder.lumibooks.tts.TtsSettingsStore
 import com.huangder.lumibooks.domain.model.BookPositionUse
 import com.huangder.lumibooks.domain.model.BookPositionSource
@@ -121,6 +122,17 @@ import kotlinx.coroutines.cancel
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
+internal data class BookshelfSortPreferences(
+    val mode: String,
+    val order: List<String>,
+    val spineRowsByScene: Map<String, Map<String, Int>>,
+    /** Per spine scene: items lying on top of the flat book before them in the order. */
+    val spineStackedByScene: Map<String, Set<String>> = emptyMap()
+)
+
+/** Where the bookshelf was last left: encoded filter and folder (null is the root). */
+internal data class BookshelfLocation(val filter: String, val folderId: String?)
+
 data class StoredNotesExportTemplate(
     val header: String,
     val entry: String,
@@ -132,6 +144,8 @@ data class StoredExcerptPreferences(
     val aspectRatioName: String,
     val signature: String
 )
+
+internal data class StartupNavigationSnapshot(val screen: String, val bookshelfLayoutMode: Int)
 
 data class ReaderPreferencesSnapshot(
     val fontSize: Float,
@@ -446,6 +460,7 @@ class DataStoreManager @Inject constructor(
         private val TTS_START_CHOICE = stringPreferencesKey("tts_start_choice")
         private val TTS_PAGE_DEFAULT_STYLE = stringPreferencesKey("tts_page_default_style")
         private val TTS_SUBTITLE_SEEK_GESTURE = stringPreferencesKey("tts_subtitle_seek_gesture")
+        private val TTS_ALLOW_CONCURRENT_PLAYBACK = booleanPreferencesKey("tts_allow_concurrent_playback")
         private val TTS_CONTINUE_ON_READER_EXIT = booleanPreferencesKey("tts_continue_on_reader_exit")
         private val TTS_READER_RESUME_CHOICE = stringPreferencesKey("tts_reader_resume_choice")
         private val TTS_READER_RESUME_HINT_MIGRATED = booleanPreferencesKey("tts_reader_resume_hint_migrated_v1")
@@ -477,6 +492,7 @@ class DataStoreManager @Inject constructor(
         private val READER_CORNER_MARGIN_RIGHT = floatPreferencesKey("reader_corner_margin_right")
         private val READER_CORNER_MARGIN_TOP = floatPreferencesKey("reader_corner_margin_top")
         private val READER_CORNER_MARGIN_BOTTOM = floatPreferencesKey("reader_corner_margin_bottom")
+        private val TTS_PAUSE_DURATION = stringPreferencesKey("tts_pause_duration")
         private val TTS_SPEECH_RATE = floatPreferencesKey("tts_speech_rate")
         private val TTS_SPEECH_RATE_MODE = stringPreferencesKey("tts_speech_rate_mode")
         private val TTS_PITCH = floatPreferencesKey("tts_pitch")
@@ -516,7 +532,11 @@ class DataStoreManager @Inject constructor(
         private val SPINE_SHARP_COVERS = booleanPreferencesKey("spine_sharp_covers")
         private val BOOKSHELF_SORT_MODE = stringPreferencesKey("bookshelf_sort_mode")
         private val BOOKSHELF_CUSTOM_ORDER = stringPreferencesKey("bookshelf_custom_order")
-        private val SPINE_ROW_BREAKS = stringPreferencesKey("spine_row_breaks")
+        private val SPINE_ITEM_ROWS = stringPreferencesKey("spine_item_rows")
+        private val SPINE_ITEM_STACKED = stringPreferencesKey("spine_item_stacked")
+        private val SPINE_ITEM_POSES = stringPreferencesKey("spine_item_poses")
+        private val BOOKSHELF_LAST_FILTER = stringPreferencesKey("bookshelf_last_filter")
+        private val BOOKSHELF_LAST_FOLDER_ID = stringPreferencesKey("bookshelf_last_folder_id")
         private val IMPORT_BOOKS_LAYOUT_MODE = intPreferencesKey("import_books_layout_mode")
         private val FOLDER_BOOKS_LAYOUT_MODE = intPreferencesKey("folder_books_layout_mode")
         private val FOLDER_BOOKS_SORT_MODE = stringPreferencesKey("folder_books_sort_mode")
@@ -1086,6 +1106,10 @@ class DataStoreManager @Inject constructor(
         }
 
 
+    override val ttsPauseDuration: Flow<TtsPauseDuration> = context.dataStore.data.map { preferences ->
+        TtsPauseDuration.fromStoredValue(preferences[TTS_PAUSE_DURATION])
+    }.distinctUntilChanged()
+
     override val ttsProsodySettings: Flow<TtsProsodySettings> = context.dataStore.data.map { preferences ->
         TtsProsodySettings(
             speechRate = preferences[TTS_SPEECH_RATE] ?: 1f,
@@ -1128,6 +1152,15 @@ class DataStoreManager @Inject constructor(
 
     val startupScreen: Flow<String> = context.dataStore.data.map { preferences ->
         normalizeStartupScreen(preferences[STARTUP_SCREEN])
+    }
+
+    internal val startupNavigationSnapshot = context.dataStore.data.map { preferences ->
+        StartupNavigationSnapshot(
+            screen = normalizeStartupScreen(preferences[STARTUP_SCREEN]),
+            bookshelfLayoutMode = com.huangder.lumibooks.domain.model.BookshelfLayout.normalize(
+                preferences[BOOKSHELF_LAYOUT_MODE] ?: 2
+            )
+        )
     }
 
     val appAccentColor: Flow<String> = context.dataStore.data.map { preferences ->
@@ -1259,24 +1292,66 @@ class DataStoreManager @Inject constructor(
         preferences[PREDICTIVE_BACK_ENABLED] ?: true
     }
 
-    val bookshelfSortMode: Flow<String> = context.dataStore.data.map { preferences ->
-        preferences[BOOKSHELF_SORT_MODE] ?: "DATE_ADDED"
+    /** Read the sort, manual item order, and row placement from one preference snapshot. */
+    internal val bookshelfSort: Flow<BookshelfSortPreferences> = context.dataStore.data.map { preferences ->
+        val mode = preferences[BOOKSHELF_SORT_MODE] ?: "DATE_ADDED"
+        val order = preferences[BOOKSHELF_CUSTOM_ORDER].orEmpty().lineSequence().filter { it.isNotEmpty() }.toList()
+        val rows = runCatching { JSONObject(preferences[SPINE_ITEM_ROWS] ?: "{}") }
+            .getOrElse { JSONObject() }
+        val rowsByScene = buildMap {
+            for (scene in rows.keys()) {
+                val starts = rows.optJSONObject(scene) ?: continue
+                put(scene, buildMap {
+                    for (id in starts.keys()) {
+                        val row = starts.optInt(id, -1)
+                        if (row >= 0) put(id, row)
+                    }
+                })
+            }
+        }
+        val stacked = runCatching { JSONObject(preferences[SPINE_ITEM_STACKED] ?: "{}") }
+            .getOrElse { JSONObject() }
+        val stackedByScene = buildMap {
+            for (scene in stacked.keys()) {
+                val ids = stacked.optJSONArray(scene) ?: continue
+                put(scene, buildSet { for (i in 0 until ids.length()) ids.optString(i).takeIf { it.isNotEmpty() }?.let(::add) })
+            }
+        }
+        BookshelfSortPreferences(mode, order, rowsByScene, stackedByScene)
+    }.distinctUntilChanged()
+
+    /** Last bookshelf filter and folder; local to this device, never synced. */
+    internal val bookshelfLocation: Flow<BookshelfLocation> = context.dataStore.data.map { preferences ->
+        BookshelfLocation(
+            filter = preferences[BOOKSHELF_LAST_FILTER] ?: "all",
+            folderId = preferences[BOOKSHELF_LAST_FOLDER_ID]?.takeIf { it.isNotEmpty() }
+        )
+    }.distinctUntilChanged()
+
+    suspend fun saveBookshelfFilter(filter: String) {
+        context.dataStore.edit { it[BOOKSHELF_LAST_FILTER] = filter }
     }
 
-    /** Book ids in the order the user arranged them by dragging, for the custom sort. */
-    val bookshelfCustomOrder: Flow<List<String>> = context.dataStore.data.map { preferences ->
-        preferences[BOOKSHELF_CUSTOM_ORDER].orEmpty().split('\n').filter { it.isNotEmpty() }
+    suspend fun saveBookshelfFolder(folderId: String?) {
+        context.dataStore.edit { preferences ->
+            if (folderId.isNullOrEmpty()) preferences.remove(BOOKSHELF_LAST_FOLDER_ID)
+            else preferences[BOOKSHELF_LAST_FOLDER_ID] = folderId
+        }
+    }
+
+    /** Spine placement chosen per book ("upright", "leaning", "flat"); absent means automatic. */
+    val spineItemPoses: Flow<Map<String, String>> = context.dataStore.data.map { preferences ->
+        val json = runCatching { JSONObject(preferences[SPINE_ITEM_POSES] ?: "{}") }.getOrElse { JSONObject() }
+        buildMap { for (id in json.keys()) json.optString(id).takeIf { it.isNotEmpty() }?.let { put(id, it) } }
     }.distinctUntilChanged()
 
-    /** Spine shelf rows the user placed books on: book id → row break before it. */
-    val spineRowBreaks: Flow<Map<String, Int>> = context.dataStore.data.map { preferences ->
-        preferences[SPINE_ROW_BREAKS].orEmpty().split('\n').mapNotNull { line ->
-            val tab = line.lastIndexOf('\t')
-            if (tab <= 0) return@mapNotNull null
-            val count = line.substring(tab + 1).toIntOrNull()?.takeIf { it > 0 } ?: return@mapNotNull null
-            line.substring(0, tab) to count
-        }.toMap()
-    }.distinctUntilChanged()
+    suspend fun saveSpineItemPose(itemId: String, pose: String?) {
+        context.dataStore.edit { preferences ->
+            val json = runCatching { JSONObject(preferences[SPINE_ITEM_POSES] ?: "{}") }.getOrElse { JSONObject() }
+            if (pose == null) json.remove(itemId) else json.put(itemId, pose)
+            preferences[SPINE_ITEM_POSES] = json.toString()
+        }
+    }
 
     /** Single DataStore read used to refresh the non-blocking Activity launch snapshot. */
     val launchThemeSnapshot: Flow<LaunchThemeSnapshot> = context.dataStore.data.map { preferences ->
@@ -1440,6 +1515,14 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { it[TTS_SUBTITLE_SEEK_GESTURE] = gesture.storedValue }
     }
 
+    val ttsAllowConcurrentPlayback: Flow<Boolean> = context.dataStore.data.map {
+        it[TTS_ALLOW_CONCURRENT_PLAYBACK] ?: false
+    }
+
+    suspend fun saveTtsAllowConcurrentPlayback(allow: Boolean) {
+        context.dataStore.edit { it[TTS_ALLOW_CONCURRENT_PLAYBACK] = allow }
+    }
+
     val ttsContinueOnReaderExit: Flow<Boolean?> = context.dataStore.data.map { it[TTS_CONTINUE_ON_READER_EXIT] }
 
     suspend fun saveTtsContinueOnReaderExit(keepListening: Boolean?) {
@@ -1582,15 +1665,20 @@ class DataStoreManager @Inject constructor(
     suspend fun saveBookshelfCustomOrderAndSort(
         order: List<String>,
         mode: String,
-        spineRowBreaks: Map<String, Int>? = null
+        spineRowsByScene: Map<String, Map<String, Int>>,
+        spineStackedByScene: Map<String, Set<String>>? = null
     ) {
         context.dataStore.edit { preferences ->
             preferences[BOOKSHELF_CUSTOM_ORDER] = order.joinToString("\n")
-            if (spineRowBreaks != null) {
-                preferences[SPINE_ROW_BREAKS] = spineRowBreaks.entries
-                    .joinToString("\n") { (id, count) -> "$id\t$count" }
-            }
             preferences[BOOKSHELF_SORT_MODE] = mode
+            preferences[SPINE_ITEM_ROWS] = JSONObject(spineRowsByScene).toString()
+            if (spineStackedByScene != null) {
+                preferences[SPINE_ITEM_STACKED] = JSONObject().apply {
+                    spineStackedByScene.forEach { (scene, ids) ->
+                        if (ids.isNotEmpty()) put(scene, org.json.JSONArray(ids.sorted()))
+                    }
+                }.toString()
+            }
         }
     }
 
@@ -2013,6 +2101,10 @@ class DataStoreManager @Inject constructor(
         }
     }
 
+    override suspend fun saveTtsPauseDuration(duration: TtsPauseDuration) {
+        context.dataStore.edit { preferences -> preferences[TTS_PAUSE_DURATION] = duration.storedValue }
+    }
+
     override suspend fun saveTtsProsodySettings(settings: TtsProsodySettings) {
         val normalized = settings.normalized()
         context.dataStore.edit { preferences ->
@@ -2086,7 +2178,7 @@ class DataStoreManager @Inject constructor(
             fun ReaderThemeSettings.resetTypography() = copy(
                 textColor = null, fontType = "system", lineHeight = 1.5f,
                 letterSpacing = 0f, textAlignment = ReaderTextAlignment.NATURAL,
-                paragraphSpacing = 2f, firstLineIndent = 2f,
+                paragraphSpacing = 2f, paragraphSpacingEdited = false, firstLineIndent = 2f,
                 marginLeft = 38f, marginRight = 38f,
                 marginTop = 64f, marginBottom = 64f,
                 cornerMargins = ReaderCornerMargins()
@@ -2463,7 +2555,7 @@ class DataStoreManager @Inject constructor(
     }
 
     val defaultRenderMode: Flow<EpubRenderMode> = context.dataStore.data.map { preferences ->
-        EpubRenderMode.fromStorage(preferences[DEFAULT_RENDER_MODE]) ?: EpubRenderMode.READER_LAYOUT
+        EpubRenderMode.fromStorage(preferences[DEFAULT_RENDER_MODE]) ?: EpubRenderMode.DEFAULT
     }.distinctUntilChanged()
 
     suspend fun saveDefaultRenderMode(mode: EpubRenderMode) {
@@ -2473,8 +2565,7 @@ class DataStoreManager @Inject constructor(
     /** 单本书选择（含旧版设置）优先，未设置时使用全局默认排版。 */
     private fun resolveRenderMode(
         preferences: Preferences,
-        bookId: String,
-        fallback: EpubRenderMode = EpubRenderMode.READER_LAYOUT
+        bookId: String
     ): EpubRenderMode {
         val modeKey = stringPreferencesKey("epub_render_mode_$bookId")
         val optimizeKey = booleanPreferencesKey("optimize_layout_$bookId")
@@ -2482,7 +2573,7 @@ class DataStoreManager @Inject constructor(
         return EpubRenderMode.fromStorage(preferences[modeKey]) ?: when {
             preferences[cssKey] == true || preferences[optimizeKey] == false -> EpubRenderMode.BOOK_LAYOUT
             preferences.contains(optimizeKey) || preferences.contains(cssKey) -> EpubRenderMode.READER_LAYOUT
-            else -> EpubRenderMode.fromStorage(preferences[DEFAULT_RENDER_MODE]) ?: fallback
+            else -> EpubRenderMode.fromStorage(preferences[DEFAULT_RENDER_MODE]) ?: EpubRenderMode.DEFAULT
         }
     }
 
@@ -2494,7 +2585,7 @@ class DataStoreManager @Inject constructor(
 
     suspend fun migrateRenderMode(bookId: String): EpubRenderMode {
         val modeKey = stringPreferencesKey("epub_render_mode_$bookId")
-        var resolved = EpubRenderMode.READER_LAYOUT
+        var resolved = EpubRenderMode.DEFAULT
         context.dataStore.edit { preferences ->
             resolved = resolveRenderMode(preferences, bookId)
             preferences[modeKey] = resolved.storageValue
@@ -2504,7 +2595,12 @@ class DataStoreManager @Inject constructor(
 
     suspend fun saveRenderMode(bookId: String, mode: EpubRenderMode) {
         val key = stringPreferencesKey("epub_render_mode_$bookId")
-        context.dataStore.edit { preferences -> preferences[key] = mode.storageValue }
+        context.dataStore.edit { preferences ->
+            if (mode == EpubRenderMode.BOOK_LAYOUT && resolveRenderMode(preferences, bookId) != mode) {
+                preferences.remove(booleanPreferencesKey("native_epub_css_$bookId"))
+            }
+            preferences[key] = mode.storageValue
+        }
     }
 
     suspend fun saveNativeEpubCssEnabled(bookId: String, enabled: Boolean) {
@@ -2517,7 +2613,7 @@ class DataStoreManager @Inject constructor(
         context.dataStore.edit { preferences ->
             if (!preferences.contains(key)) {
                 val mode = if (useDefaultRenderMode) {
-                    resolveRenderMode(preferences, bookId, EpubRenderMode.BOOK_LAYOUT)
+                    resolveRenderMode(preferences, bookId)
                 } else EpubRenderMode.BOOK_LAYOUT
                 preferences[key] = mode.storageValue
             }
@@ -3277,6 +3373,7 @@ class DataStoreManager @Inject constructor(
         val encoded = buildString {
             append("ch=${position.chapterIndex}|pg=${position.pageIndex}|off=${position.characterOffset}")
             if (position.clauseIndex > 0) append("|clause=${position.clauseIndex}")
+            position.spokenCharacterOffset?.let { append("|spoken=$it") }
             position.pageFingerprint?.let { append("|page=$it") }
             position.cacheKey?.let { append("|cache=$it|frame=${position.pcmFrameOffset.coerceAtLeast(0L)}") }
         }
@@ -3310,6 +3407,7 @@ class DataStoreManager @Inject constructor(
                 chapterIndex = parts["ch"]?.toIntOrNull() ?: return null,
                 pageIndex = parts["pg"]?.toIntOrNull() ?: return null,
                 characterOffset = parts["off"]?.toIntOrNull() ?: return null,
+                spokenCharacterOffset = parts["spoken"]?.toIntOrNull()?.takeIf { it >= 0 },
                 clauseIndex = parts["clause"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0,
                 pageFingerprint = pageFingerprint,
                 cacheKey = cacheKey,
@@ -3756,7 +3854,9 @@ class DataStoreManager @Inject constructor(
             "tts_floating_y_fraction",
             "tts_floating_width_dp",
             "tts_floating_height_dp",
-            "remote_font_versions"
+            "remote_font_versions",
+            "bookshelf_last_filter",
+            "bookshelf_last_folder_id"
         )
 
     private fun Preferences.resolveLegacyBackgroundColorSelection(selection: String): String {

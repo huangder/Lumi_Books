@@ -44,7 +44,8 @@ class PagePushToolbarTest {
             view = LocalView.current
             Box(Modifier.fillMaxSize().background(Color.White).drawWithContent {
                 drawContent()
-                if (scene.moving && scene.toolbarReady) drawToolbar(scene, scene.progress, true)
+                scene.toolbarCapture?.takeIf { it.mode == PagePushToolbarCapture.Mode.OVERLAY }
+                    ?.let { drawToolbar(scene, it, scene.progress, true) }
             }) {
                 Box(Modifier.fillMaxSize().onPlaced { scene.pageCoordinates = it }) {
                     CompositionLocalProvider(LocalPageScene provides scene) {
@@ -82,17 +83,21 @@ class PagePushToolbarTest {
         val source = snapshot()
         val captured = Bitmap.createBitmap(source, 6, 6, 88, 88).asImageBitmap()
         source.recycle()
-        compose.runOnIdle { scene.moving = true }
+        val capture = PagePushToolbarCapture(Long.MAX_VALUE)
         compose.runOnIdle {
-            scene.controls.values.single().snapshot = captured
+            scene.toolbarCapture = capture
+            capture.submit(scene.controls.values.single(), captured)
         }
         // One control finishing capture must not hide it before the whole group hands off.
         assertBadge()
-        compose.runOnIdle { scene.toolbarReady = true }
+        compose.runOnIdle { capture.complete(ready = true) }
         assertBadge()
         for (step in 1..5) {
             compose.runOnIdle { scene.progress = 1f - step * 0.1f }
             val image = snapshot()
+            compose.runOnIdle {
+                assertEquals(if (step == 1) 1f else 0.5f, scene.controls.values.single().renderedScale, 0f)
+            }
             var ink = 0
             for (y in 15..85) for (x in 15..85) {
                 if (image.getPixel(x, y) != android.graphics.Color.WHITE) ink++
@@ -100,7 +105,12 @@ class PagePushToolbarTest {
             assertTrue("The fading/blurred control must still contain pixels at step $step", ink > 20)
             image.recycle()
         }
-        compose.runOnIdle { scene.progress = 1f; scene.moving = false }
+        compose.runOnIdle { scene.progress = 1f }
+        assertBadge()
+        compose.runOnIdle {
+            assertEquals(1f, scene.controls.values.single().renderedScale, 0f)
+            scene.toolbarCapture = null
+        }
         assertBadge()
     }
 
@@ -126,7 +136,7 @@ class PagePushToolbarTest {
         compose.runOnIdle { assertEquals(3, scene.controls.size) }
     }
 
-    @Test fun actionLoadedDuringMotionWaitsForItsSnapshotInsteadOfDrawingSharp() {
+    @Test fun actionLoadedAfterHandoffStaysHiddenUntilThePageSettles() {
         val scene = PageScene(Robolectric.buildActivity(ComponentActivity::class.java).create().get(), false)
         val loaded = mutableStateOf(false)
         lateinit var view: View
@@ -134,7 +144,8 @@ class PagePushToolbarTest {
             view = LocalView.current
             Box(Modifier.fillMaxSize().background(Color.White).drawWithContent {
                 drawContent()
-                if (scene.moving && scene.toolbarReady) drawToolbar(scene, scene.progress, false)
+                scene.toolbarCapture?.takeIf { it.mode == PagePushToolbarCapture.Mode.OVERLAY }
+                    ?.let { drawToolbar(scene, it, scene.progress, false) }
             }.onPlaced { scene.pageCoordinates = it }) {
                 CompositionLocalProvider(LocalPageScene provides scene) {
                     Row(Modifier.offset(30.dp, 30.dp).pagePushToolbarItem()) {
@@ -143,7 +154,8 @@ class PagePushToolbarTest {
                 }
             }
         }
-        compose.runOnIdle { scene.moving = true; scene.toolbarReady = true; scene.progress = .5f }
+        val capture = PagePushToolbarCapture(Long.MAX_VALUE)
+        compose.runOnIdle { scene.toolbarCapture = capture; capture.complete(ready = true); scene.progress = .5f }
         compose.runOnIdle { loaded.value = true }
         fun pixel(): Int {
             var color = 0
@@ -158,9 +170,60 @@ class PagePushToolbarTest {
         assertEquals("A late action cannot bypass the fixed overlay", android.graphics.Color.WHITE, pixel())
         val bitmap = Bitmap.createBitmap(88, 88, Bitmap.Config.ARGB_8888)
         Canvas(bitmap).drawRect(24f, 24f, 64f, 64f, android.graphics.Paint().apply { color = android.graphics.Color.GREEN })
-        compose.runOnIdle { scene.controls.values.single().snapshot = bitmap.asImageBitmap() }
-        val color = pixel()
-        assertTrue("The loaded action uses the page's partial opacity", android.graphics.Color.red(color) in 100..155)
-        assertEquals(255, android.graphics.Color.green(color))
+        compose.runOnIdle { capture.submit(scene.controls.values.single(), bitmap.asImageBitmap()) }
+        assertEquals("A late snapshot cannot join a sealed overlay", android.graphics.Color.WHITE, pixel())
+        compose.runOnIdle { scene.toolbarCapture = null }
+        assertEquals(android.graphics.Color.GREEN, pixel())
+    }
+
+    @Test fun timedOutCaptureDrawsLiveAndIgnoresLateResults() {
+        val scene = PageScene(Robolectric.buildActivity(ComponentActivity::class.java).create().get(), false)
+        val capture = PagePushToolbarCapture(0)
+        lateinit var view: View
+        compose.setContent {
+            view = LocalView.current
+            CompositionLocalProvider(LocalPageScene provides scene) {
+                Box(Modifier.fillMaxSize()) {
+                    Box(Modifier.offset(30.dp, 30.dp).size(40.dp)
+                        .pagePushToolbarItem().background(Color.Green))
+                }
+            }
+        }
+        compose.runOnIdle {
+            val item = scene.controls.values.single()
+            assertEquals(false, item.isReadyFor(capture))
+            scene.toolbarCapture = capture
+            capture.complete(ready = false)
+            capture.submit(item, Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).asImageBitmap())
+            assertEquals(PagePushToolbarCapture.Mode.LIVE, capture.mode)
+            assertEquals(null, capture[item])
+            val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap))
+            assertEquals(android.graphics.Color.GREEN, bitmap.getPixel(40, 40))
+            bitmap.recycle()
+        }
+    }
+
+    @Test fun failedCopyDiscardsThePartialGroup() {
+        val capture = PagePushToolbarCapture(Long.MAX_VALUE)
+        compose.setContent {
+            val scene = androidx.compose.runtime.remember {
+                PageScene(Robolectric.buildActivity(ComponentActivity::class.java).create().get(), false)
+            }
+            CompositionLocalProvider(LocalPageScene provides scene) {
+                Row {
+                    Box(Modifier.size(40.dp).pagePushToolbarItem())
+                    Box(Modifier.size(40.dp).pagePushToolbarItem())
+                }
+            }
+            androidx.compose.runtime.SideEffect {
+                val (available, broken) = scene.controls.values.toList()
+                capture.submit(available, Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).asImageBitmap())
+                capture.submit(broken, null)
+                capture.complete(ready = true)
+                assertEquals(null, capture[available])
+            }
+        }
+        compose.runOnIdle { assertEquals(PagePushToolbarCapture.Mode.LIVE, capture.mode) }
     }
 }

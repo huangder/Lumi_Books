@@ -27,14 +27,16 @@ import org.robolectric.annotation.GraphicsMode
 @OptIn(ExperimentalCoroutinesApi::class)
 class RasterRenderSessionTest {
     private class Decoder(private val tiled: Boolean = false, private val reduced: Boolean = false,
-        override val pageCount: Int = 1) : RasterPageDecoder {
+        override val pageCount: Int = 1, override val canReuseLargerBitmap: Boolean = true) : RasterPageDecoder {
         override val parallelism = 2
         var boundsReads = 0
         var decodes = 0
         var closed = false
         override fun dimensions(page: Int): RasterDimensions { boundsReads++; return RasterDimensions(200, 300) }
         override fun spec(page: Int, dimensions: RasterDimensions, width: Int, mode: PageRenderMode, preview: Boolean) =
-            RasterDecodeSpec(page, if (preview) 20 else 200, if (preview) 30 else 300)
+            if (preview) RasterDecodeSpec(page, 20, 30)
+            else if (canReuseLargerBitmap) RasterDecodeSpec(page, 200, 300)
+            else RasterDecodeSpec(page, 200 * (mode.ordinal + 1), 300 * (mode.ordinal + 1))
         override fun decode(spec: RasterDecodeSpec): Bitmap {
             check(!closed)
             decodes++
@@ -58,6 +60,25 @@ class RasterRenderSessionTest {
         assertEquals(2, decoder.decodes)
         session.close()
         runCurrent()
+    }
+
+    @Test fun `PDF switches to the requested resolution even when a larger bitmap is cached`() = runTest {
+        val decoder = Decoder(canReuseLargerBitmap = false)
+        val session = RasterRenderSession(decoder, scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)))
+        try {
+            val native = session.renderPage(0, 200, PageRenderMode.NATIVE)!!
+            val normal = session.renderPage(0, 200, PageRenderMode.NORMAL)!!
+            val high = session.renderPage(0, 200, PageRenderMode.HIGH)!!
+            assertEquals(listOf(200, 400, 600), listOf(normal.width, high.width, native.width))
+            assertSame(native, session.renderPreview(0, 20))
+            assertSame(normal, session.renderPage(0, 200, PageRenderMode.NORMAL))
+            assertSame(high, session.renderPage(0, 200, PageRenderMode.HIGH))
+            assertSame(native, session.renderPage(0, 200, PageRenderMode.NATIVE))
+            assertEquals(3, decoder.decodes)
+        } finally {
+            session.close()
+            runCurrent()
+        }
     }
 
     @Test fun `tiled visible page does not compete with SSIV until bitmap fallback is requested`() = runTest {

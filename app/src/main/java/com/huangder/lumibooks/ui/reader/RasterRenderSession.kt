@@ -30,12 +30,15 @@ internal class RasterRenderSession(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 ) : BitmapPageSource {
     override val pageCount = decoder.pageCount
+    private val pdfDecoder = decoder as? PdfPageDecoder
+    override val supportsPdfTiles: Boolean get() = pdfDecoder != null
     private val scheduler = RasterWorkScheduler(scope, decoder.parallelism, ::log)
     private val dimensions = ConcurrentHashMap<Int, RasterDimensions>()
     private val horizontalCrops = ConcurrentHashMap<Int, RasterHorizontalCrop>()
     private val pageCache = bitmapCache(PAGE_BYTES)
     private val previewCache = bitmapCache(PREVIEW_BYTES)
     private val thumbnailCache = bitmapCache(THUMBNAIL_BYTES)
+    private val pdfTileCache = WeightedLruCache<PdfTile, Bitmap>(PDF_TILE_BYTES) { it.allocationByteCount.toLong() }
     private val caches = listOf(pageCache, previewCache, thumbnailCache)
     private val diskAttempted = ConcurrentHashMap.newKeySet<Int>()
     private val motion = MutableStateFlow(true)
@@ -72,8 +75,9 @@ internal class RasterRenderSession(
     override fun cachedAspectRatio(pageIndex: Int): Float? = dimensions[pageIndex]?.ratio
         ?: cachedPage(pageIndex)?.let { it.width.toFloat() / it.height }
 
-    private fun cached(spec: RasterDecodeSpec): Bitmap? {
+    private fun cached(spec: RasterDecodeSpec, allowLarger: Boolean = decoder.canReuseLargerBitmap): Bitmap? {
         caches.forEach { cache -> cache[spec]?.let { return it } }
+        if (!allowLarger) return null
         for (cache in caches) {
             val key = cache.entries.filter { it.key.page == spec.page && it.value.width >= spec.width && it.value.height >= spec.height }
                 .minByOrNull { it.value.allocationByteCount }?.key
@@ -126,6 +130,25 @@ internal class RasterRenderSession(
         return render(pageIndex, targetWidthPx, mode, preview = false, priority = 1)
     }
 
+    override suspend fun renderPdfTile(tile: PdfTile): Bitmap? {
+        val pdf = pdfDecoder ?: return null
+        if (closed || paused || tile.page !in 0 until pageCount) return null
+        pdfTileCache[tile]?.let { return it }
+        return scheduler.execute(tile, priority = 1) {
+            pdfTileCache[tile] ?: try {
+                pdf.decodeTile(tile).also { pdfTileCache.put(tile, it) }
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                android.util.Log.w("RasterReader", "Unable to render PDF tile: $tile", error)
+                null
+            } catch (error: OutOfMemoryError) {
+                pdfTileCache.clear()
+                android.util.Log.w("RasterReader", "PDF tile allocation failed: $tile", error)
+                null
+            }
+        }
+    }
+
     override suspend fun renderThumbnail(pageIndex: Int, targetWidthPx: Int): Bitmap? =
         render(pageIndex, targetWidthPx, PageRenderMode.NORMAL, preview = true, priority = 0, thumbnail = true)
 
@@ -138,10 +161,11 @@ internal class RasterRenderSession(
         if (preview && !thumbnail) cachedPage(page)?.let { return it }
         val size = geometry(page, priority, background) ?: return null
         val spec = decoder.spec(page, size, width, mode, preview)
-        cached(spec)?.let { log("memory_hit page=$page"); return it }
+        val allowLarger = preview || decoder.canReuseLargerBitmap
+        cached(spec, allowLarger)?.let { log("memory_hit page=$page mode=$mode size=${it.width}x${it.height}"); return it }
         val queuedAt = SystemClock.elapsedRealtime()
         return scheduler.execute(spec, priority, background, large = !preview && (mode != PageRenderMode.NORMAL || width > viewport.width)) {
-            cached(spec) ?: run {
+            cached(spec, allowLarger) ?: run {
                 val started = SystemClock.elapsedRealtime()
                 Trace.beginSection("Raster.decode.$page")
                 val bitmap = try { decoder.decode(spec) } catch (error: Throwable) {
@@ -156,7 +180,7 @@ internal class RasterRenderSession(
                     // bitmap satisfy a later full-resolution cache lookup under the original key.
                     put(cache, budget, spec.copy(width = it.width, height = it.height), it)
                 }
-                log("decode page=$page preview=$preview queueMs=${started - queuedAt} decodeMs=${SystemClock.elapsedRealtime() - started} bytes=${bitmap?.allocationByteCount ?: 0}")
+                log("decode page=$page preview=$preview mode=$mode size=${bitmap?.width}x${bitmap?.height} queueMs=${started - queuedAt} decodeMs=${SystemClock.elapsedRealtime() - started} bytes=${bitmap?.allocationByteCount ?: 0}")
                 bitmap
             }
         }
@@ -269,6 +293,7 @@ internal class RasterRenderSession(
                 decoder.close()
                 disk?.close()
                 caches.forEach { it.clear() }
+                pdfTileCache.clear()
                 scope.cancel()
             }
         }
@@ -283,6 +308,7 @@ internal class RasterRenderSession(
         const val PAGE_BYTES = 64L * 1024 * 1024
         const val PREVIEW_BYTES = 4L * 1024 * 1024
         const val THUMBNAIL_BYTES = 8L * 1024 * 1024
+        const val PDF_TILE_BYTES = 24L * 1024 * 1024
         fun bitmapCache(budget: Long) = WeightedLruCache<RasterDecodeSpec, Bitmap>(budget) { it.allocationByteCount.toLong() }
         fun log(message: String) { if (BuildConfig.DEBUG) android.util.Log.d("RasterLoad", message) }
     }

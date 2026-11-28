@@ -2,6 +2,7 @@ package com.huangder.lumibooks.data.repository
 
 import androidx.room.withTransaction
 import com.huangder.lumibooks.data.local.database.AppDatabase
+import com.huangder.lumibooks.data.local.entity.AnnotationTagEntity
 import com.huangder.lumibooks.data.local.entity.TagEntity
 import com.huangder.lumibooks.data.local.entity.TagGroupEntity
 import com.huangder.lumibooks.domain.model.ManagedTag
@@ -90,14 +91,37 @@ class TagManagementRepository @Inject constructor(
         if (!validGroup(type, groupId)) return@operation failure("invalid_group")
         val normalized = TagNameValidator.normalized(name)
         if (catalogSnapshot(type).any { TagNameValidator.normalized(it.name) == normalized }) return@operation failure("duplicate_name")
+        insertTags(type, listOf(TagNameValidator.clean(name)), groupId)
+        success()
+    }
+
+    internal suspend fun createTags(type: String, names: List<String>, groupId: String? = null): TagOperationResult =
+        operation(type, premiumOnly = true) {
+            val cleaned = names.map(TagNameValidator::clean)
+            if (cleaned.isEmpty() || cleaned.any { !validTagName(type, it) }) return@operation failure("invalid_name")
+            if (!validGroup(type, groupId)) return@operation failure("invalid_group")
+
+            val seen = catalogSnapshot(type).mapTo(mutableSetOf()) { TagNameValidator.normalized(it.name) }
+            val newNames = cleaned.filter { seen.add(TagNameValidator.normalized(it)) }
+            if (newNames.isEmpty()) return@operation failure("duplicate_name")
+
+            insertTags(type, newNames, groupId)
+            success()
+        }
+
+    private suspend fun insertTags(type: String, names: List<String>, groupId: String?) {
         val now = nextTime()
         if (type == TagTypes.BOOK) {
-            db.tagDao().insertTag(TagEntity(UUID.randomUUID().toString(), name.trim(), normalized, now, groupId = groupId))
+            names.forEachIndexed { index, name ->
+                val insertedId = db.tagDao().insertTag(TagEntity(
+                    UUID.randomUUID().toString(), name, TagNameValidator.normalized(name), now + index, groupId = groupId
+                ))
+                check(insertedId != -1L) { "Failed to insert book tag" }
+            }
         } else {
-            reading.createAnnotationTag(name.trim())
-            db.annotationTagDao().moveTags(listOf(name.trim()), groupId, nextTime())
+            // An upsert also revives an explicitly deleted annotation tag with this name.
+            db.annotationTagDao().upsertTags(names.map { AnnotationTagEntity(it, now, groupId = groupId) })
         }
-        success()
     }
 
     suspend fun renameTag(type: String, key: String, name: String): TagOperationResult {

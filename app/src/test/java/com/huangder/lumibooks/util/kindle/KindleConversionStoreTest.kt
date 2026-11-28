@@ -34,6 +34,35 @@ class KindleConversionStoreTest {
         assertTrue(KindleProbe.read(book("huff.azw", 6, 17480)).needsReconstruction)
     }
 
+    @Test fun standaloneKf8AcceptsRetainedHybridMetadata() {
+        val header = MobiTestFixtures.buildRecord0(textRecordCount = 1, compression = 17480, kf8Record = 2)
+        MobiTestFixtures.be32(8).copyInto(header, 36)
+        val source = MobiTestFixtures.writeMobiFile(
+            File(directory.root, "standalone.azw3"),
+            listOf("text".toByteArray(), "CDIC".toByteArray(), "other".toByteArray()),
+            record0 = header
+        )
+        assertEquals(KindleProbe(8, 17480, hybrid = false), KindleProbe.read(source))
+    }
+
+    @Test fun hybridChecksEncryptionAtTheKf8HeaderAfterTheBoundary() {
+        val classic = MobiTestFixtures.buildRecord0(textRecordCount = 1, kf8Record = 3)
+        MobiTestFixtures.be32(6).copyInto(classic, 36)
+        val kf8 = MobiTestFixtures.buildRecord0(textRecordCount = 1)
+        MobiTestFixtures.be32(8).copyInto(kf8, 36)
+        fun writeHybrid() = MobiTestFixtures.writeMobiFile(
+            File(directory.root, "hybrid.mobi"),
+            listOf("classic".toByteArray(), "BOUNDARY".toByteArray(), kf8, "kf8".toByteArray()),
+            record0 = classic
+        )
+
+        assertEquals(KindleProbe(6, 1, hybrid = true), KindleProbe.read(writeHybrid()))
+        kf8[13] = 2
+        assertEquals(KindleFailure.ENCRYPTED, assertThrows(KindleException::class.java) {
+            KindleProbe.read(writeHybrid())
+        }.failure)
+    }
+
     @Test fun encryptionAndInvalidRecordOffsetsFailBeforeConversion() {
         val encrypted = book()
         val bytes = encrypted.readBytes()

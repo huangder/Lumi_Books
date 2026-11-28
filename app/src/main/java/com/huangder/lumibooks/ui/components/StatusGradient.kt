@@ -29,6 +29,7 @@ fun StatusGradientOverlay(
     height: Dp = 96.dp,
     blurRadius: Dp = 30.dp,
     solidFraction: Float = 0.12f,
+    sampleBlurOverLiveContent: Boolean = false,
     /**
      * Optional 0..1 visibility read in the draw phase. Scrolling pages pass their scroll so the
      * overlay is invisible at rest (the large title, eyebrow and atmosphere stay clear) and only
@@ -38,7 +39,7 @@ fun StatusGradientOverlay(
 ) {
     if (visibility != null) {
         Box(Modifier.graphicsLayer { alpha = visibility().coerceIn(0f, 1f) }) {
-            StatusGradientOverlay(backdrop, exportedBackdrop, height, blurRadius, solidFraction, null)
+            StatusGradientOverlay(backdrop, exportedBackdrop, height, blurRadius, solidFraction, sampleBlurOverLiveContent)
         }
         return
     }
@@ -57,6 +58,7 @@ fun StatusGradientOverlay(
             solidFraction = if (reduced) solidFraction.coerceIn(0.55f, 0.82f) else solidFraction.coerceIn(0f, 0.82f),
             blurStartFraction = solidFraction.coerceIn(0f, 0.82f),
             exportedBackdrop = exportedBackdrop,
+            sampleBlurOverLiveContent = sampleBlurOverLiveContent,
         )
         return
     }

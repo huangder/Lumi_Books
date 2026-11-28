@@ -5,4 +5,5 @@
     <string name="reader_corner_content_global_page_number_book_progress">全局页码＋全书进度</string>
     <string name="reader_corner_content_chapter_page_number">章节信息＋本章页码</string>
     <string name="reader_corner_content_chapter_book_progress">章节信息＋全书进度</string>
+    <string name="reader_chapter_pages_pending_book_index">本章 %1$d / %2$d</string>
 </resources>

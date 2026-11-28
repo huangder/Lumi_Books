@@ -17,6 +17,16 @@ class EpubWarmChapterTest {
         assertNull(epubWarmChapterTarget(0, 0, 1, 1, 1, false))
     }
 
+    @Test fun fastTurningWidensTheWarmMargin() {
+        assertEquals(3, epubWarmEdgePages(0))
+        assertEquals(3, epubWarmEdgePages(2))
+        assertEquals(9, epubWarmEdgePages(8))
+        assertEquals(12, epubWarmEdgePages(40))
+        assertNull(epubWarmChapterTarget(2, 12, 20, 5, 1, false))
+        assertEquals(EpubPageTarget(3, 0), epubWarmChapterTarget(2, 12, 20, 5, 1, false, epubWarmEdgePages(8)))
+        assertEquals(EpubPageTarget(1, Int.MAX_VALUE), epubWarmChapterTarget(2, 7, 20, 5, -1, false, epubWarmEdgePages(8)))
+    }
+
     @Test fun continuousScrollAlreadyPreloadsNeighbourChapters() {
         assertNull(epubWarmChapterTarget(2, 7, 10, 5, 1, true))
     }

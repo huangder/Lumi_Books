@@ -46,7 +46,10 @@ class WebdavPortableStateSync @Inject constructor(
         config: WebdavConfig,
         password: String,
         wireBookIds: Map<String, String> = emptyMap(),
-        deletedBookIds: Set<String> = emptySet()
+        deletedBookIds: Set<String> = emptySet(),
+        duplicateRows: Set<String> = emptySet(),
+        duplicateWireOwners: Map<String, String> = emptyMap(),
+        archiveOwners: Set<String> = emptySet()
     ): PortableStateSyncResult {
         val serverUrl = config.serverUrl
         val root = "${config.syncPath}/state-v1"
@@ -63,9 +66,10 @@ class WebdavPortableStateSync @Inject constructor(
         }.mapTo(mutableSetOf()) { it.id }
         val physicalSnapshot = captured.snapshot.copy(
             books = captured.snapshot.books.filter { it.id !in placeholderIds }
-        )
+        ).withoutWebdavBookIds(duplicateRows)
         val localSnapshot = physicalSnapshot.remapWebdavBookIds(wireBookIds)
-        val currentIds = captured.snapshot.books.mapTo(mutableSetOf()) { it.id }
+        val currentIds = physicalSnapshot.books.mapTo(mutableSetOf()) { it.id }
+        val aliases = duplicateWireOwners.keys
         val localBookIds = wireBookIds.filterKeys { it in currentIds }
             .entries.associate { (local, wire) -> wire to local }
         var uploadedAssets = 0
@@ -85,10 +89,6 @@ class WebdavPortableStateSync @Inject constructor(
             val merged = PortableSnapshotMerger.merge(local, remoteForMerge)
             val candidate = selectForRemote(local, remoteForMerge, merged, config)
             val shadowedIds = currentIds.filterTo(mutableSetOf()) { wireBookIds[it]?.let { wire -> wire != it } == true }
-            // A progress record is not a downloadable book. Wait for the user's local import.
-            if (config.syncReadingProgressOnly && !config.syncBookFiles) {
-                shadowedIds += candidate.books.map { it.id }.toSet() - local.books.map { it.id }.toSet()
-            }
             val workDir = File(context.cacheDir, "webdav_state_${UUID.randomUUID()}").apply { mkdirs() }
             try {
                 val files = mutableMapOf<String, File>()
@@ -113,9 +113,43 @@ class WebdavPortableStateSync @Inject constructor(
                 } else if (!config.syncProfileAndSettings) {
                     candidate.retainingReaderThemeAssetsFrom(remote)
                 } else candidate
-                val physicalPayload = selectForLocal(local, remotePayload, config, themeDeferred)
-                    .withoutWebdavBookIds(shadowedIds + deletedBookIds)
+                val selected = selectForLocal(local, remotePayload, config, themeDeferred)
+                val archiveById = physicalSnapshot.books.filter { it.id in archiveOwners }.associateBy { it.id }
+                val selectedPhysical = selected.withoutWebdavBookIds(shadowedIds + deletedBookIds + aliases)
                     .remapWebdavBookIds(localBookIds)
+                // Only the body manifest can introduce a book. Keep state-only descriptors on
+                // the server for a future import, but never apply their dependent rows here.
+                val unknownIds = (selectedPhysical.books.map { it.id } + selectedPhysical.bookFolderLinks.map { it.bookId } +
+                    selectedPhysical.bookTagLinks.map { it.bookId } + selectedPhysical.readingRecords.map { it.bookId } +
+                    selectedPhysical.bookmarks.map { it.bookId } + selectedPhysical.notes.map { it.bookId } +
+                    selectedPhysical.journalEvents.map { it.bookId } + selectedPhysical.highlightRuleExclusions.map { it.bookId })
+                    .toSet() - currentIds
+                val allowed = selectedPhysical.withoutWebdavBookIds(unknownIds)
+                val physicalPayload = duplicateWireOwners.entries.fold(allowed) { payload, (wire, owner) ->
+                    if (wire in deletedBookIds || owner !in currentIds) return@fold payload
+                    val base = payload.books.firstOrNull { it.id == owner } ?: return@fold payload
+                    val alias = selected.books.firstOrNull { it.id == wire }
+                    val fragment = selected.copy(
+                        preferences = emptyList(),
+                        books = listOf(if (alias == null || !config.syncReadingData) base else base.copy(
+                            lastReadTime = readingPositionTimestamp(alias.lastReadTime, alias.createdAt,
+                                alias.readingProgress, alias.locatorJson, alias.isManuallyMarkedRead),
+                            readingProgress = alias.readingProgress, locatorJson = alias.locatorJson,
+                            isManuallyMarkedRead = alias.isManuallyMarkedRead
+                        )),
+                        bookFolderLinks = selected.bookFolderLinks.filter { it.bookId == wire }.map { it.copy(bookId = owner) },
+                        bookTagLinks = selected.bookTagLinks.filter { it.bookId == wire }.map { it.copy(bookId = owner) },
+                        readingRecords = selected.readingRecords.filter { it.bookId == wire }.map { it.copy(bookId = owner) },
+                        bookmarks = selected.bookmarks.filter { it.bookId == wire }.map { it.copy(bookId = owner) },
+                        notes = selected.notes.filter { it.bookId == wire }.map { it.copy(bookId = owner) },
+                        journalEvents = selected.journalEvents.filter { it.bookId == wire }.map { it.copy(bookId = owner) },
+                        highlightRuleExclusions = selected.highlightRuleExclusions.filter { it.bookId == wire }.map { it.copy(bookId = owner) },
+                        tombstones = emptyList(), assets = emptyList()
+                    )
+                    PortableSnapshotMerger.merge(payload, fragment)
+                }.let { payload -> payload.copy(books = payload.books.map { book ->
+                    archiveById[book.id]?.let { book.copy(isArchived = it.isArchived) } ?: book
+                }) }
                 val physicalBaseline = if (themeDeferred) {
                     physicalSnapshot.copy(preferences = physicalSnapshot.preferences.withoutReaderTheme())
                 } else physicalSnapshot

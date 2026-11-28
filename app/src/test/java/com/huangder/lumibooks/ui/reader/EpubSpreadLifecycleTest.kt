@@ -530,7 +530,7 @@ class EpubSpreadLifecycleTest {
 
     private fun commit(slot: Any, direction: Int) {
         host.javaClass.declaredMethods.single { it.name == "animateCommit" }.apply { isAccessible = true }
-            .invoke(host, slot, direction, null, null, null)
+            .invoke(host, slot, direction, null, null, null, null)
     }
 
     private fun accepts(leaf: Any, request: EpubSpreadLeafRequest, fence: Long, generation: Long, revision: Long): Boolean =

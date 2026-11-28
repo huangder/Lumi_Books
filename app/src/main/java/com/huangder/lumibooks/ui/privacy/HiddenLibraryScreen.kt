@@ -305,7 +305,10 @@ fun HiddenLibraryScreen(
             onDismiss = { pendingDelete = emptyList() },
             onDelete = { mode ->
                 pendingDelete = emptyList()
-                delete(targets, mode)
+                // Removing only the cloud copy keeps the books here, so nothing fades out.
+                if (mode == com.huangder.lumibooks.domain.model.BookDeleteMode.CLOUD_ONLY) {
+                    viewModel.deleteBooks(targets, mode)
+                } else delete(targets, mode)
             }
         )
     }

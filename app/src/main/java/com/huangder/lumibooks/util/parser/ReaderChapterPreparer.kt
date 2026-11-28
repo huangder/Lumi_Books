@@ -2,6 +2,8 @@ package com.huangder.lumibooks.util.parser
 
 import com.huangder.lumibooks.util.epub.EpubCssIndex
 import com.huangder.lumibooks.util.epub.EpubPathResolver
+import com.huangder.lumibooks.util.epub.WEREAD_FOOTNOTE_SELECTOR
+import com.huangder.lumibooks.util.epub.WEREAD_FOOTNOTE_TEXT_ATTR
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 
@@ -34,12 +36,13 @@ internal data class ReaderImageSizeHint(val width: String) {
     }
 }
 
-/** 章节预处理结果：注入装饰图之后的 HTML，以及图片尺寸/内联矢量图查询表。 */
+/** 预处理后的 HTML，以及渲染和注释气泡所需的查询表。 */
 internal data class PreparedChapterHtml(
     val html: String,
     val sizeHints: Map<String, ReaderImageSizeHint>,
     val inlineSvgSources: Map<String, ByteArray>,
-    val changed: Boolean
+    val changed: Boolean,
+    val inlineFootnotes: Map<String, String> = emptyMap()
 )
 
 /**
@@ -72,12 +75,13 @@ internal object ReaderChapterPreparer {
         resourceExists: (String) -> Boolean
     ): PreparedChapterHtml {
         val needsSvgRewrite = rawHtml.contains("<svg", ignoreCase = true)
+        val needsInlineFootnotes = rawHtml.contains(WEREAD_FOOTNOTE_TEXT_ATTR, ignoreCase = true)
         // 只在该书样式表真的声明了背景图/宽度时才为此解析章节，普通小说不付这份开销。
         val needsDecorations = includeBackgroundDecorations &&
             (cssIndex.hasBackgroundImageRules || rawHtml.contains("background", ignoreCase = true))
         // HTML 的 width 属性也要收（`<img width="12%">`），因此章节里有图片就当有尺寸可还原。
         val needsSizeHints = cssIndex.hasWidthRules || rawHtml.contains("<img", ignoreCase = true)
-        if (!needsSvgRewrite && !needsDecorations && !needsSizeHints) {
+        if (!needsSvgRewrite && !needsDecorations && !needsSizeHints && !needsInlineFootnotes) {
             return PreparedChapterHtml(rawHtml, emptyMap(), emptyMap(), false)
         }
 
@@ -90,13 +94,27 @@ internal object ReaderChapterPreparer {
         if (needsDecorations) injectBackgroundDecorations(body, cssIndex, chapterPath, resourceExists)
         if (needsSvgRewrite) rewriteVectorMedia(body, inlineSvgs, sizeHints)
         if (needsSizeHints || needsDecorations) collectElementSizeHints(body, cssIndex, sizeHints)
+        val inlineFootnotes = if (needsInlineFootnotes) linkWeReadFootnotes(body) else emptyMap()
 
         return PreparedChapterHtml(
             html = body.html(),
             sizeHints = sizeHints,
             inlineSvgSources = inlineSvgs,
-            changed = true
+            changed = true,
+            inlineFootnotes = inlineFootnotes
         )
+    }
+
+    private fun linkWeReadFootnotes(body: Element): Map<String, String> = buildMap {
+        body.select(WEREAD_FOOTNOTE_SELECTOR).forEach { marker ->
+            val text = marker.attr(WEREAD_FOOTNOTE_TEXT_ATTR).trim()
+            if (text.isEmpty() || marker.closest("a[href]") != null) return@forEach
+            val href = "#lumi-weread-footnote-${size + 1}"
+            put(href, text)
+            marker.tagName("a").attr("href", href).attr("epub:type", "noteref")
+                .removeAttr(WEREAD_FOOTNOTE_TEXT_ATTR)
+            if (marker.wholeText().isBlank() && marker.childrenSize() == 0) marker.text("注")
+        }
     }
 
     private fun injectBackgroundDecorations(

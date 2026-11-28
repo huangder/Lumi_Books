@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.reader
 
+import com.huangder.lumibooks.util.readerLetterSpacingEm
 import com.huangder.lumibooks.ui.icons.ControlIcon
 
 import com.huangder.lumibooks.ui.components.AppDialogAction
@@ -81,6 +82,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.focus.FocusRequester
@@ -283,6 +285,7 @@ fun ThemeSettingsSheet(
     onRenderModeChange: (EpubRenderMode) -> Unit = {},
     supportsNativeEpubCss: Boolean = false,
     nativeEpubCssEnabled: Boolean = false,
+    epubNativeRendererActive: Boolean? = null,
     onNativeEpubCssChange: (Boolean) -> Unit = {},
     onWritingModeChange: (ReaderWritingMode) -> Unit = {},
     onChineseModeChange: (String) -> Unit = {},
@@ -1046,6 +1049,25 @@ fun ThemeSettingsSheet(
                     LiquidGlassSwitch(
                         checked = currentOptimizeLayout,
                         onCheckedChange = onOptimizeLayoutChange
+                    )
+                }
+            }
+            if (epubNativeRendererActive != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).testTag("epub-renderer-status"),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.epub_current_renderer),
+                        modifier = Modifier.weight(1f),
+                        fontSize = AppType.Caption,
+                        color = LightTextSecondary
+                    )
+                    Text(
+                        text = stringResource(if (epubNativeRendererActive) R.string.epub_renderer_native else R.string.epub_renderer_webview),
+                        fontSize = AppType.Caption,
+                        color = AppColors.TextPrimary
                     )
                 }
             }
@@ -2791,7 +2813,7 @@ fun AdvancedSettingsSheet(
                                     view.setTextColor(currentTextColor.toArgb())
                                     view.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, sizePx)
                                     view.setLineSpacing(0f, previewLineHeight)
-                                    view.letterSpacing = trackingPx / sizePx.coerceAtLeast(1f)
+                                    view.letterSpacing = readerLetterSpacingEm(trackingPx, sizePx)
                                     view.breakStrategy = currentTextAlignment.readerBreakStrategyForText(preview)
                                     view.hyphenationFrequency = readerHyphenationFrequency(preview)
                                     view.readerJustificationMode = currentTextAlignment.readerJustificationForText(preview)
@@ -2851,6 +2873,7 @@ fun AdvancedSettingsSheet(
             ) {
                 HorizontalPager(
                     state = pagerState,
+                    key = { settingsPages[it].name },
                     userScrollEnabled = marginPreview == null,
                     beyondViewportPageCount = 1,
                     verticalAlignment = Alignment.Top,
@@ -3163,7 +3186,7 @@ fun AdvancedSettingsSheet(
                             eInkModeEnabled = eInkModeEnabled
                         ) {
                             // 左上角只占内容宽度的选择 tag：决定下面四个滑块调正文还是页眉/页脚。
-                            var marginTarget by remember { mutableStateOf(ReaderMarginTarget.BODY) }
+                            var marginTarget by rememberSaveable { mutableStateOf(ReaderMarginTarget.BODY) }
                             ReaderMarginTargetTag(
                                 selected = marginTarget,
                                 onSelect = { marginTarget = it },

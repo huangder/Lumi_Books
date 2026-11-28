@@ -8,7 +8,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Rect
-import android.graphics.RectF
 import android.graphics.ColorFilter
 import android.graphics.PixelFormat
 import android.graphics.drawable.Drawable
@@ -47,7 +46,7 @@ internal class TtsSentenceHighlightSpan(val color: Int) : CharacterStyle(), Upda
 
     companion object {
         /** Small theme-aware contrast boost used by every TTS renderer. */
-        const val DEFAULT_CONTRAST_DELTA = 0.13f
+        const val DEFAULT_CONTRAST_DELTA = 0.16f
 
         fun computeHighlightColor(bgColor: Int, delta: Float = DEFAULT_CONTRAST_DELTA): Int {
             val r = android.graphics.Color.red(bgColor)
@@ -139,7 +138,6 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
         density = resources.displayMetrics.density
     )
     private val selectionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
-    private val highlightBounds = RectF()
     private val selectionPath = Path()
     private var leftSelectionHandle: OffsetSelectionHandleDrawable? = null
     private var rightSelectionHandle: OffsetSelectionHandleDrawable? = null
@@ -1323,7 +1321,7 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
             drawRoundedHighlight(canvas, spanned, textLayout, span, span.color)
         }
         spanned.getSpans(visibleStart, visibleEnd, TtsSentenceHighlightSpan::class.java).forEach { span ->
-            drawTtsSentenceHighlight(canvas, textLayout, span, span.color)
+            drawRoundedHighlight(canvas, spanned, textLayout, span, span.color)
         }
         canvas.restoreToCount(saveCount)
     }
@@ -1351,43 +1349,8 @@ internal open class RoundedHighlightTextView(context: Context) : ReaderGeometryT
             end = spanEnd,
             color = color,
             outline = (span as? ReaderHighlightSpan)?.outline == true,
-            style = if (span is ReaderHighlightSpan) annotationStyle else ReaderAnnotationStyle.DEFAULT
+            style = if (span is ReaderHighlightSpan) annotationStyle else ReaderAnnotationStyle.DEFAULT,
+            singleBlock = span is TtsSentenceHighlightSpan
         )
-    }
-
-    /** 褰撳墠鍙ュ彞 TTS 楂樹寒锛氭暣涓彞瀛愬潡鍏辩敤涓€涓ぇ鍦嗚鐭╁舰锛堣法琛屾暣浣?*/
-    private fun drawTtsSentenceHighlight(
-        canvas: Canvas,
-        textLayout: Layout,
-        span: TtsSentenceHighlightSpan,
-        color: Int
-    ) {
-        if (color ushr 24 == 0) return
-        val spanned = text as? Spanned ?: return
-        val spanStart = spanned.getSpanStart(span).coerceIn(0, spanned.length)
-        val spanEnd = spanned.getSpanEnd(span).coerceIn(spanStart, spanned.length)
-        if (spanStart >= spanEnd) return
-
-        val density = resources.displayMetrics.density
-        val horizontalPadding = 3f * density
-        val cornerRadius = 12f * density
-        val minimumLineGap = 1.5f * density
-        val firstLine = textLayout.getLineForOffset(spanStart)
-        val lastLine = textLayout.getLineForOffset(spanEnd - 1)
-        val top = textLayout.getLineTop(firstLine).toFloat() + minimumLineGap
-        val glyphBottom = textLayout.getLineBaseline(lastLine).toFloat() +
-            textLayout.paint.fontMetrics.descent + 2f * density
-        val bottom = minOf(glyphBottom, textLayout.getLineBottom(lastLine).toFloat() - minimumLineGap)
-        if (bottom <= top) return
-
-        highlightPaint.color = color
-        highlightBounds.set(
-            -horizontalPadding,
-            top,
-            textLayout.width + horizontalPadding,
-            bottom
-        )
-        val radius = minOf(cornerRadius, highlightBounds.height() / 2f)
-        canvas.drawRoundRect(highlightBounds, radius, radius, highlightPaint)
     }
 }

@@ -179,7 +179,7 @@ class ExternalTtsAudioCache internal constructor(
         return contains(key)
     }
 
-    private fun writeThrough(
+    internal fun writeThrough(
         key: String,
         source: Flow<PcmChunk>,
         maxBytes: Long

@@ -5,29 +5,27 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ListeningTextTest {
-    @Test fun subtitlesHaveClauseRowsAndWordProgressMovesFocusWithinOneUtterance() {
+    @Test fun spokenClauseMovesFocusWithinOneUtterance() {
         val chapter = TtsChapterSnapshot(0, 1, "第一小句，第二小句，句子结束。")
         val page = TtsPageContent(TtsPageLocation(0, 0), chapter.text, null, null)
         val utterance = TtsTextSegment(chapter.text, 0, chapter.text.length)
         val text = listeningText(chapter, page, utterance)
         assertEquals(listOf("第一小句，", "第二小句，", "句子结束。"), text.sentences.map { it.segment.text })
-        val progressed = text.withRangeProgress(TtsListeningFrame(chapter, page, utterance), TtsTextSegment("二", 6, 7))
+        val progressed = text.withSpokenClause(text.sentences[1].segment, chapter.text.length)
         assertEquals(1, progressed.focus)
         assertSame(text.sentences, progressed.sentences)
     }
 
-    @Test fun wordProgressAdvancesWithoutChangingSentenceIdentityOrFocus() {
+    @Test fun seekInsideRowDisplaysExactAudibleText() {
         val chapter = TtsChapterSnapshot(0, 1, "First sentence. A sentence across pages. Last sentence.")
         val page = TtsPageContent(TtsPageLocation(0, 0), chapter.text, null, null)
         val utterance = TtsTextSegment("A sentence across pages.", 16, 40)
-        val frame = TtsListeningFrame(chapter, page, utterance)
         val text = listeningText(chapter, page, utterance)
-        val progressed = text.withRangeProgress(frame, TtsTextSegment("across", 27, 33))
+        val progressed = text.withSpokenClause(TtsTextSegment("across pages.", 27, 40), chapter.text.length)
         assertEquals(text.focus, progressed.focus)
-        assertSame(text.sentences, progressed.sentences)
+        assertEquals("across pages.", progressed.sentences[progressed.focus].segment.text)
         assertTrue(progressed.progress > text.progress)
         assertEquals(27f / chapter.text.length, progressed.progress, .0001f)
-        assertEquals(text, text.withRangeProgress(frame, TtsTextSegment("stale", 0, 5)))
     }
 
     @Test fun crossPageFragmentsResolveToTheSameWholeSentence() {

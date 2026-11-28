@@ -32,9 +32,12 @@ import com.huangder.lumibooks.ui.components.GlassBitmapBackdrop
 import com.huangder.lumibooks.ui.reader.engine.BookmarkPullGestureTracker
 import com.huangder.lumibooks.ui.reader.engine.CurlFrameSource
 import com.huangder.lumibooks.ui.reader.engine.CurlPageAnim
+import com.huangder.lumibooks.ui.reader.engine.CurlTurnInput
 import com.huangder.lumibooks.ui.reader.engine.PageAnimationController
 import com.huangder.lumibooks.ui.reader.engine.PageAnimationSurface
 import com.huangder.lumibooks.ui.reader.engine.PageBitmapSource
+import com.huangder.lumibooks.ui.reader.engine.QueuedCurlTurn
+import com.huangder.lumibooks.ui.reader.engine.ReaderCurlTurnSequencer
 import com.huangder.lumibooks.ui.reader.engine.RenderResourceLease
 import com.huangder.lumibooks.ui.reader.engine.RenderResourcePool
 import com.huangder.lumibooks.ui.reader.engine.ScrollPageAnim
@@ -103,6 +106,7 @@ internal class EpubSpreadTurnHost(
         var request: EpubSpreadLeafRequest? = null
         var documentUrl: String? = null
         var configurationIdentity: Any? = null
+        var documentSession: BookRenderSession? = null
         var configured = false
         var documentReady = false
         var semanticApplied = false
@@ -211,7 +215,13 @@ internal class EpubSpreadTurnHost(
     private var preparationSlot: SpreadSlot? = null
     private var lastOperationId: Long? = null
     private var pendingTurn = 0
+    private val curlTurns = ReaderCurlTurnSequencer(boundTapBacklog = true)
+    private var curlSnapshotWait: QueuedCurlTurn? = null
+    private var curlOwnsTap = false
+    private var recentCurlDirection = 1
     private val preloadDirections = ArrayDeque<Int>()
+    private var pendingTypographyUpdate: (() -> Unit)? = null
+    private var typographyPreviewActive = false
     var backgroundPreparationEnabled = true
         set(value) {
             if (field == value) return
@@ -222,6 +232,7 @@ internal class EpubSpreadTurnHost(
             } else {
                 // A retained alternate direction owns just its current spread.
                 removeCallbacks(warmCurlSnapshot)
+                clearCurlTurns()
                 current.invalidateSnapshot()
                 cancelPreparation(replaced = false)
                 abortAnimation()
@@ -229,17 +240,33 @@ internal class EpubSpreadTurnHost(
             }
         }
     private var controller: PageAnimationController? = null
+    private var curlLookaheadSource: EpubSpreadTarget? = null
+    private val curlLookaheadSlot: SpreadSlot?
+        get() = when (curlLookaheadSource) {
+            null -> null
+            next.target -> previous
+            previous.target -> next
+            else -> null
+        }
     private var animationCommit: (() -> Unit)? = null
     private var fade: ValueAnimator? = null
     private var leafCapture: Bitmap? = null
     private val warmCurlSnapshot = Runnable {
         if (!canWarmCurlSnapshots()) return@Runnable
-        val slot = listOf(current, next, previous).firstOrNull { candidate ->
+        val direction = curlTurns.peekTurn()?.direction?.toSpreadDirection()
+            ?: waitingGesture?.let(::gestureDirection) ?: recentCurlDirection
+        val ahead = if (direction < 0) previous else next
+        val behind = if (direction < 0) next else previous
+        val candidates = if (controller == null) listOf(current, ahead, behind) else listOfNotNull(curlLookaheadSlot)
+        val slot = candidates.firstOrNull { candidate ->
             candidate.snapshot == null && candidate.isReady() &&
                 candidate.target?.pages?.indices?.none { candidate.leaves[it].snapshotPaintPending } == true
         } ?: return@Runnable
         // Give input and drawing a frame between spread captures.
-        if (captureSlot(slot)) scheduleCurlSnapshots()
+        if (captureSlot(slot)) {
+            drainCurlTurns()
+            scheduleCurlSnapshots()
+        }
     }
     private val bookmarkPull = BookmarkPullGestureTracker()
     private var pullingBookmark = false
@@ -277,6 +304,9 @@ internal class EpubSpreadTurnHost(
 
     fun evaluateVisible(script: String) { visibleWebViews().forEach { it.evaluateJavascript(script, null) } }
 
+    fun isPaginationIdle(): Boolean = !released && preparation == null && animationCommit == null &&
+        !gestureClaimed && current.isReady() && currentConfigurationValid()
+
     fun update(
         session: BookRenderSession,
         configurationIdentity: Any,
@@ -285,11 +315,25 @@ internal class EpubSpreadTurnHost(
         durationMillis: Int,
         reverseAxis: Boolean,
         edgeTapMode: ReaderEdgeTapMode,
-        backgroundColor: Int
+        backgroundColor: Int,
+        layoutPreview: Boolean = false,
+        onApplyingConfiguration: () -> Unit = {}
     ) {
         if (released) return
         val sessionChanged = this.session !== session
         val layoutChanged = sessionChanged || this.configurationIdentity != configurationIdentity || requestedReverseAxis != reverseAxis
+        if (layoutPreview && !sessionChanged && layoutChanged && isRebuildingCurrentSpread() &&
+            (request == null || request.operationId == lastOperationId)
+        ) {
+            pendingTypographyUpdate = {
+                update(session, configurationIdentity, request, transition, durationMillis, reverseAxis,
+                    edgeTapMode, backgroundColor, layoutPreview, onApplyingConfiguration)
+            }
+            return
+        }
+        pendingTypographyUpdate = null
+        typographyPreviewActive = layoutPreview
+        onApplyingConfiguration()
         val pendingRequest = preparation?.request
         val restartingRequest = if (layoutChanged) {
             request?.takeIf { state == null || it.operationId != lastOperationId } ?: pendingRequest
@@ -341,6 +385,7 @@ internal class EpubSpreadTurnHost(
             if (transition == "curl") scheduleCurlSnapshots()
             else {
                 removeCallbacks(warmCurlSnapshot)
+                clearCurlTurns()
                 listOf(previous, current, next).forEach { it.invalidateSnapshot() }
             }
         }
@@ -358,6 +403,7 @@ internal class EpubSpreadTurnHost(
         abortAnimation()
         preloadDirections.clear()
         pendingTurn = 0
+        clearCurlTurns()
         val destination = request.destination
         trace("jump", "op=${request.operationId} chapter=${request.targetChapterIndex} destination=${destination.javaClass.simpleName} size=${width}x$height")
         val visiblePage = (destination as? EpubNavigationDestination.Page)?.takeIf { it.chapterFraction == null }
@@ -383,6 +429,17 @@ internal class EpubSpreadTurnHost(
         val spread = state
         if (released || direction == 0 || spread == null || selectionMenuVisible) return false
         val sign = if (direction > 0) 1 else -1
+        if (transition == "curl") {
+            if (controller == null && curlTurns.peekTurn() == null && !isRebuildingCurrentSpread() &&
+                atSpreadBoundary(sign)
+            ) {
+                if (sign > 0) onBookEnd()
+                return false
+            }
+            queueSpreadCurl(sign)
+            if (dragSlotReady(sign)) drainCurlTurns()
+            return true
+        }
         if (isRebuildingCurrentSpread()) {
             pendingTurn = sign
             return true
@@ -408,6 +465,77 @@ internal class EpubSpreadTurnHost(
         return true
     }
 
+    private fun atSpreadBoundary(direction: Int): Boolean =
+        if (direction > 0) isShowingFinalSpread() else state?.first?.target == EpubPageTarget(0, 0)
+
+    private fun queueSpreadCurl(direction: Int, startY: Float? = null) {
+        if (direction == 0) return
+        val expedited = controller?.isRunning == true || curlTurns.peekTurn() != null || startY != null
+        curlTurns.offer(
+            if (direction > 0) PageAnimationController.Direction.NEXT else PageAnimationController.Direction.PREV,
+            gestureStartY = startY,
+            input = if (startY == null) CurlTurnInput.TAP else CurlTurnInput.SWIPE,
+            expedited = expedited,
+            nowMs = android.os.SystemClock.uptimeMillis()
+        )
+        if (curlTurns.peekTurn() != null) (controller as? CurlPageAnim)?.expediteRunningFlip()
+        post(::drainCurlTurns)
+    }
+
+    private fun drainCurlTurns() {
+        if (released || transition != "curl" || state == null || isRebuildingCurrentSpread() ||
+            controller != null || animationCommit != null
+        ) return
+        curlTurns.discardStaleBurstTaps(android.os.SystemClock.uptimeMillis())
+        val turn = curlTurns.peekTurn()
+        if (turn == null) {
+            resumeWaitingGesture()
+            drainPreloads()
+            return
+        }
+        if (gestureClaimed || curlOwnsTap) return
+        val direction = turn.direction.toSpreadDirection()
+        if (atSpreadBoundary(direction)) {
+            clearCurlTurns()
+            return
+        }
+        val slot = if (direction > 0) next else previous
+        if (!slot.isReady()) {
+            if (preparation?.direction != direction) {
+                cancelPreparation(replaced = false)
+                prepareAdjacent(direction)
+            }
+            return
+        }
+        if (dragSlotReady(direction) && animateCommit(slot, direction, null, curlTurn = turn)) {
+            curlTurns.pollTurn()
+        } else {
+            scheduleCurlSnapshots()
+            if (curlSnapshotWait === turn) return
+            curlSnapshotWait = turn
+            postDelayed({
+                curlTurns.discardStaleBurstTaps(android.os.SystemClock.uptimeMillis())
+                if (curlSnapshotWait !== turn) return@postDelayed
+                curlSnapshotWait = null
+                if (!released && transition == "curl" && curlTurns.peekTurn() === turn &&
+                    controller == null && !gestureClaimed && !curlOwnsTap && slot.isReady() &&
+                    slot === (if (direction > 0) next else previous)
+                ) {
+                    curlTurns.pollTurn()
+                    trace("snapshot_timeout", "direction=$direction")
+                    spreadCommit(slot, direction, null)()
+                } else drainCurlTurns()
+            }, EPUB_NAVIGATION_TIMEOUT_MS)
+        }
+    }
+
+    private fun clearCurlTurns() {
+        curlTurns.clear()
+        curlSnapshotWait = null
+        curlOwnsTap = false
+        clearWaitingGesture()
+    }
+
     fun focus(view: EpubContentWebView, locatorJson: String? = null) {
         val old = state ?: return
         val page = current.leaves.firstOrNull { it.view === view }?.page ?: return
@@ -422,6 +550,17 @@ internal class EpubSpreadTurnHost(
         val job = Preparation(++preparationSequence, direction, null, active.target, active.target.first, true)
         preparation = job
         preparationSlot = slot
+        advance(job)
+    }
+
+    private fun prepareCurlLookahead(slot: SpreadSlot, direction: Int, animation: CurlPageAnim) {
+        if (!backgroundPreparationEnabled || !animation.isCompletingTurn || controller !== animation ||
+            preparation != null || curlLookaheadSource != null) return
+        val source = slot.target ?: return
+        curlLookaheadSource = source
+        preparationSlot = if (direction > 0) previous else next
+        val job = Preparation(++preparationSequence, direction, null, source, source.first, true)
+        preparation = job
         advance(job)
     }
 
@@ -459,7 +598,9 @@ internal class EpubSpreadTurnHost(
             EpubSpreadPlan.Boundary -> {
                 preparation = null
                 preparationSlot = null
+                if (job.source != state?.target) return
                 if (pendingTurn == job.direction) pendingTurn = 0
+                if (curlTurns.peekTurn()?.direction?.toSpreadDirection() == job.direction) clearCurlTurns()
                 drainPreloads()
             }
             is EpubSpreadPlan.NeedsPageCount -> prepareProbe(slot,
@@ -486,6 +627,9 @@ internal class EpubSpreadTurnHost(
                             if (job.request != null || pendingTurn == job.direction) {
                                 if (pendingTurn == job.direction) pendingTurn = 0
                                 animateCommit(slot, job.direction, job.request, job.anchor, job.resolvedLocatorJson)
+                            } else if (transition == "curl") {
+                                scheduleCurlSnapshots()
+                                post(::drainCurlTurns)
                             } else if (gestureClaimed && waitingGesture != null) {
                                 resumeWaitingGesture()
                             } else drainPreloads()
@@ -537,9 +681,10 @@ internal class EpubSpreadTurnHost(
         leaf.semanticApplied = false
         leaf.semanticInFlight = false
         val url = book.chapterUrl(target.chapterIndex)
-        val reload = leaf.documentUrl != url || leaf.configurationIdentity != configurationIdentity
+        val reload = leaf.documentUrl != url || leaf.documentSession !== book
         trace("leaf", "wv=${leaf.view.traceId} target=${target.traceLabel()} reload=$reload size=${leaf.view.width}x${leaf.view.height}")
         leaf.documentUrl = url
+        leaf.documentSession = book
         leaf.configurationIdentity = configurationIdentity
         armTimeout(leaf)
         if (reload) {
@@ -589,6 +734,7 @@ internal class EpubSpreadTurnHost(
                 cancelPreparation(replaced = false)
                 abortAnimation()
                 pendingTurn = 0
+                clearCurlTurns()
             }
             leaf.fence++
             leaf.ready = null
@@ -607,10 +753,11 @@ internal class EpubSpreadTurnHost(
             if (active) onFailure(EpubRenderFailure(reason, leaf.request?.target?.chapterIndex ?: 0,
                 position, hasVisiblePage = false))
             else if (preparing) {
-                val requested = job?.request != null || pendingTurn != 0
+                val requested = job?.request != null || pendingTurn != 0 || curlTurns.peekTurn() != null
                 cancelPreparation(replaced = false, notifyCancellation = false)
                 if (requested) {
                     pendingTurn = 0
+                    clearCurlTurns()
                     job?.request?.let { onNavigationResult(EpubNavigationResult.Failed(it.operationId, EpubNavigationFailureReason.RENDERER_GONE)) }
                     onFailure(EpubRenderFailure(reason, leaf.request?.target?.chapterIndex ?: 0, position, state != null))
                 }
@@ -637,9 +784,11 @@ internal class EpubSpreadTurnHost(
             return
         }
         val job = preparation
-        val requested = job?.request != null || pendingTurn == job?.direction
+        val requested = job?.request != null || pendingTurn == job?.direction ||
+            curlTurns.peekTurn()?.direction?.toSpreadDirection() == job?.direction
         cancelPreparation(replaced = false, notifyCancellation = false)
         pendingTurn = 0
+        if (requested) clearCurlTurns()
         if (requested || state == null) {
             job?.request?.let { onNavigationResult(EpubNavigationResult.Failed(it.operationId,
                 if (reason == EpubInitialLoadFailureReason.PAGE_READY_TIMEOUT) EpubNavigationFailureReason.TIMEOUT else EpubNavigationFailureReason.DOCUMENT_ERROR)) }
@@ -732,6 +881,7 @@ internal class EpubSpreadTurnHost(
         leaf.documentReady = false
         leaf.snapshotPaintPending = false
         leaf.documentUrl = null
+        leaf.documentSession = null
         leaf.configured = false
         leaf.configurationIdentity = null
         attach(leaf)
@@ -877,14 +1027,16 @@ internal class EpubSpreadTurnHost(
 
     private fun spreadCommit(slot: SpreadSlot, direction: Int, request: EpubNavigationRequest?,
         focused: EpubPageTarget? = null, focusedLocatorJson: String? = null): () -> Unit = {
-            abortAnimation()
+            val keepLookahead = direction != 0 && curlLookaheadSource != null && curlLookaheadSource == slot.target
+            if (!keepLookahead && curlLookaheadSource != null) cancelPreparation(replaced = false)
+            abortAnimation(keepCurlTouch = direction != 0 && transition == "curl" && waitingGesture != null)
             val oldCurrent = current
             if (slot === next) {
                 current = next; next = previous; previous = oldCurrent
-                clearSlot(next)
+                if (!keepLookahead) clearSlot(next)
             } else {
                 current = previous; previous = next; next = oldCurrent
-                clearSlot(previous)
+                if (!keepLookahead) clearSlot(previous)
             }
             // A jump does not turn the old unrelated spread into an adjacent preload.
             if (direction == 0) { clearSlot(previous); clearSlot(next) }
@@ -899,18 +1051,30 @@ internal class EpubSpreadTurnHost(
             onSpreadChanged(state!!)
             request?.let { onNavigationResult(EpubNavigationResult.Committed(it.operationId,
                 focusPage.target.chapterIndex, focusPage.target.pageIndex, focusPage.pageCount, focusPage.locatorJson)) }
+            if (transition == "curl" && direction != 0) recentCurlDirection = direction
             enqueueAdjacentPreloads()
+            if (pendingTypographyUpdate != null) post {
+                val update = pendingTypographyUpdate
+                pendingTypographyUpdate = null
+                update?.invoke()
+            }
             val queued = pendingTurn
             pendingTurn = 0
             scheduleCurlSnapshots()
-            if (queued != 0) post { turn(queued) } else post { drainPreloads() }
+            if (transition == "curl") post(::drainCurlTurns)
+            else if (queued != 0) post { turn(queued) } else post { drainPreloads() }
     }
 
     private fun animateCommit(slot: SpreadSlot, direction: Int, request: EpubNavigationRequest?, focused: EpubPageTarget? = null,
-        focusedLocatorJson: String? = null) {
-        if (!slot.isReady()) return
+        focusedLocatorJson: String? = null, curlTurn: QueuedCurlTurn? = null): Boolean {
+        if (!slot.isReady()) return false
         val commit = spreadCommit(slot, direction, request, focused, focusedLocatorJson)
-        if (direction == 0 || transition == "none" || state == null || width <= 0 || height <= 0) { commit(); return }
+        if (direction == 0 || transition == "none" || state == null) { commit(); return true }
+        if (width <= 0 || height <= 0 || transition == "curl" && !dragSlotReady(direction)) {
+            if (curlTurn != null) return false
+            commit()
+            return true
+        }
         animationCommit = commit
         request?.let { onNavigationStage(it, EpubNavigationStage.ANIMATING) }
         if (transition == "fade") {
@@ -923,29 +1087,37 @@ internal class EpubSpreadTurnHost(
                 addListener(object : AnimatorListenerAdapter() { override fun onAnimationEnd(animation: Animator) { animationCommit?.invoke() } })
                 start()
             }
-            return
+            return true
         }
         if (transition == "curl") {
-            val cachedCurrent = current.snapshot != null
-            val cachedTarget = slot.snapshot != null
-            if (!ensureTurnSnapshot(current) || !ensureTurnSnapshot(slot)) { commit(); return }
-            trace("turn_start", "direction=$direction cachedCurrent=$cachedCurrent cachedTarget=$cachedTarget")
+            trace("turn_start", "direction=$direction cachedCurrent=true cachedTarget=true")
         } else if (transition == "wave" && (!captureSlot(current) || !captureSlot(slot))) {
             commit()
-            return
+            return true
         }
-        controller = createAnimation().also { animation ->
+        val animation = createAnimation()
+        controller = animation
+        animation.apply {
             animation.onCanFlip = { slot.isReady() }
             animation.onAnimationComplete = { animationCommit?.invoke() }
             val dir = if (direction > 0) PageAnimationController.Direction.NEXT else PageAnimationController.Direction.PREV
             when (animation) {
-                is CurlPageAnim -> if (!animation.startFromTap(dir)) commit()
+                is CurlPageAnim -> {
+                    if (!animation.startFromTap(dir, curlTurn?.gestureStartY, curlTurn?.expedited == true)) {
+                        abortAnimation()
+                        if (curlTurn != null) return false
+                        commit()
+                        return true
+                    }
+                    post { prepareCurlLookahead(slot, direction, animation) }
+                }
                 is WavePageAnim -> animation.startFromTap(dir)
                 is ScrollPageAnim -> animation.startFromTap(dir)
                 is SlidePageAnim -> animation.startFromTap(dir)
             }
         }
         postInvalidateOnAnimation()
+        return true
     }
 
     private fun createAnimation(): PageAnimationController {
@@ -959,7 +1131,7 @@ internal class EpubSpreadTurnHost(
                 } else false
             })
         return when (transition) {
-            "curl" -> CurlPageAnim(surface, baseDurationMs = durationMillis)
+            "curl" -> CurlPageAnim(surface, baseDurationMs = durationMillis, preserveTurnFrames = true)
             "wave" -> WavePageAnim(surface, durationMillis)
             "scroll" -> ScrollPageAnim(surface, durationMillis)
             "fade" -> EpubSpreadFadeAnimation(surface, durationMillis)
@@ -975,6 +1147,7 @@ internal class EpubSpreadTurnHost(
     override fun dispatchDraw(canvas: Canvas) {
         val animation = controller
         if (animation != null && animation.drawsDirectlyOnCanvas && animationCommit != null) {
+            curlLookaheadSlot?.let { drawChild(canvas, it, drawingTime) }
             canvas.drawColor(pageBackgroundColor)
             animation.onDraw(canvas)
         } else {
@@ -997,9 +1170,11 @@ internal class EpubSpreadTurnHost(
         }
     }
 
-    private fun abortAnimation() {
-        gestureClaimed = false
-        clearWaitingGesture()
+    private fun abortAnimation(keepCurlTouch: Boolean = false) {
+        if (!keepCurlTouch) {
+            gestureClaimed = false
+            clearWaitingGesture()
+        }
         animationCommit = null
         fade?.removeAllListeners()
         fade?.cancel()
@@ -1008,13 +1183,15 @@ internal class EpubSpreadTurnHost(
         controller?.abortAnim()
         (controller as? CurlPageAnim)?.destroy()
         controller = null
+        curlLookaheadSource = null
         resetSlots()
     }
 
     private fun enqueueAdjacentPreloads() {
         preloadDirections.clear()
-        preloadDirections.add(-1)
-        preloadDirections.add(1)
+        val ahead = if (transition == "curl") recentCurlDirection else -1
+        preloadDirections.add(ahead)
+        preloadDirections.add(-ahead)
     }
 
     private fun drainPreloads() {
@@ -1026,6 +1203,7 @@ internal class EpubSpreadTurnHost(
             }
             return
         }
+        if (typographyPreviewActive) return
         if (released || preparation != null || animationCommit != null || gestureClaimed || state == null) return
         scheduleCurlSnapshots()
         while (preloadDirections.isNotEmpty()) {
@@ -1121,6 +1299,7 @@ internal class EpubSpreadTurnHost(
             MotionEvent.ACTION_DOWN -> {
                 touchX = event.x; touchY = event.y; gestureStartedAt = event.eventTime
                 gestureClaimed = false; pullingBookmark = false
+                curlOwnsTap = transition == "curl" && (animationCommit != null || curlTurns.peekTurn() != null)
                 systemBackCandidate = isSystemBackGestureStart(width.toFloat(), height.toFloat(),
                     event.x, event.y, resources.displayMetrics.density)
                 systemBackSuppressed = false
@@ -1133,6 +1312,12 @@ internal class EpubSpreadTurnHost(
                     systemBackSuppressed = true
                     bookmarkPull.reset()
                     return false
+                }
+                // Past the long-press window WebView is selecting text; keep the stroke there.
+                if (event.eventTime - gestureStartedAt >= android.view.ViewConfiguration.getLongPressTimeout() ||
+                    visibleWebViews().any { it.hasSelectionUi() }
+                ) {
+                    bookmarkPull.abandonCandidate()
                 }
                 val pull = bookmarkPull.move(event.x, event.y)
                 if (pull?.justClaimed == true) {
@@ -1147,7 +1332,8 @@ internal class EpubSpreadTurnHost(
                 if (moved && maxOf(dx, dy) > 18f * resources.displayMetrics.density && event.eventTime - gestureStartedAt < 500) {
                     // A new confirmed stroke can take over a settling animation. Taps and
                     // long presses never prematurely commit the previous turn.
-                    if (controller?.isCompletingTurn == true) animationCommit?.invoke()
+                    if (transition == "curl") (controller as? CurlPageAnim)?.expediteRunningFlip()
+                    else if (controller?.isCompletingTurn == true) animationCommit?.invoke()
                     else if (controller != null) abortAnimation()
                     gestureClaimed = true
                     bookmarkPull.reset()
@@ -1158,7 +1344,7 @@ internal class EpubSpreadTurnHost(
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> bookmarkPull.reset()
         }
-        return animationCommit != null
+        return animationCommit != null || curlOwnsTap
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -1177,6 +1363,23 @@ internal class EpubSpreadTurnHost(
             }
             return true
         }
+        if (transition == "curl" && !gestureClaimed && curlOwnsTap &&
+            (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL)
+        ) {
+            curlOwnsTap = false
+            if (event.actionMasked == MotionEvent.ACTION_CANCEL) clearCurlTurns()
+            else if (!systemBackSuppressed && event.eventTime - gestureStartedAt < 300L &&
+                abs(event.x - touchX) <= 12f && abs(event.y - touchY) <= 12f
+            ) {
+                when {
+                    event.x < width * .3f -> tapEdge(edgeTapMode.leftAction)
+                    event.x > width * .7f -> tapEdge(edgeTapMode.rightAction)
+                    else -> onCenterTap()
+                }
+            }
+            post(::drainCurlTurns)
+            return true
+        }
         if (gestureClaimed) {
             if (trackBookEndPull(event)) return true
             when (event.actionMasked) {
@@ -1188,7 +1391,13 @@ internal class EpubSpreadTurnHost(
                     val animation = controller
                     gestureClaimed = false
                     clearWaitingGesture()
-                    if (animation != null) {
+                    curlOwnsTap = false
+                    if (transition == "curl" && (animation == null || animation.isRunning)) {
+                        if (cancelled) clearCurlTurns()
+                        else if (gestureCanCommit(event)) queueSpreadCurl(direction, touchY)
+                        post(::drainCurlTurns)
+                    } else if (animation != null) {
+                        if (cancelled && transition == "curl") clearCurlTurns()
                         // If reversal is waiting for a different slot, the old sheet must
                         // return instead of committing the page from the previous direction.
                         val actual = animation.currentDirection.toSpreadDirection()
@@ -1278,19 +1487,26 @@ internal class EpubSpreadTurnHost(
         if (direction == 0) return false
         val slot = if (direction > 0) next else previous
         if (!slot.isReady()) return false
-        if (transition == "curl" || transition == "wave") {
-            if (!ensureTurnSnapshot(current) || !ensureTurnSnapshot(slot)) return false
-        }
+        if (transition == "curl") return hasCurlSnapshot(current) && hasCurlSnapshot(slot)
+        if (transition == "wave" && (!ensureTurnSnapshot(current) || !ensureTurnSnapshot(slot))) return false
         return true
     }
 
     private fun followGesture(event: MotionEvent, finishing: Boolean = false) {
         if (transition == "none" || isRebuildingCurrentSpread()) return
         val direction = gestureDirection(event)
+        curlTurns.discardStaleBurstTaps(android.os.SystemClock.uptimeMillis())
+        if (transition == "curl" && (controller?.isRunning == true || curlTurns.peekTurn() != null)) {
+            clearWaitingGesture()
+            if (!finishing) waitingGesture = MotionEvent.obtain(event)
+            return
+        }
         if (direction != 0 && !dragSlotReady(direction)) {
             clearWaitingGesture()
             if (!finishing) waitingGesture = MotionEvent.obtain(event)
-            if (preparation?.direction != direction) {
+            val slot = if (direction > 0) next else previous
+            if (transition == "curl" && slot.isReady()) scheduleCurlSnapshots()
+            else if (preparation?.direction != direction) {
                 cancelPreparation(replaced = false)
                 prepareAdjacent(direction)
             }
@@ -1311,10 +1527,14 @@ internal class EpubSpreadTurnHost(
             }
             animation.onAnimationComplete = { if (controller === animation) animationCommit?.invoke() }
             if (animation is CurlPageAnim) animation.onMotionStateChanged = { motion ->
+                if (motion == CurlPageAnim.MotionState.SETTLING && animation.isCompletingTurn) {
+                    val delta = animation.currentDirection.toSpreadDirection()
+                    if (delta != 0) post { prepareCurlLookahead(if (delta > 0) next else previous, delta, animation) }
+                }
                 if (motion == CurlPageAnim.MotionState.IDLE) post {
                     if (controller === animation && !gestureClaimed && !animation.isRunning) {
                         abortAnimation()
-                        drainPreloads()
+                        drainCurlTurns()
                     }
                 }
             }
@@ -1340,9 +1560,9 @@ internal class EpubSpreadTurnHost(
         scheduleCurlSnapshots()
     }
 
-    private fun canWarmCurlSnapshots(): Boolean = !released && backgroundPreparationEnabled &&
+    private fun canWarmCurlSnapshots(): Boolean = !released && backgroundPreparationEnabled && !typographyPreviewActive &&
         transition == "curl" && isAttachedToWindow && state != null &&
-        controller == null && animationCommit == null && !gestureClaimed
+        (controller == null && animationCommit == null || curlLookaheadSlot != null)
 
     private fun scheduleCurlSnapshots() {
         if (!canWarmCurlSnapshots()) return
@@ -1367,6 +1587,9 @@ internal class EpubSpreadTurnHost(
     }
 
     private fun ensureTurnSnapshot(slot: SpreadSlot): Boolean = slot.snapshot != null || captureSlot(slot)
+
+    private fun hasCurlSnapshot(slot: SpreadSlot): Boolean = slot.snapshot?.isRecycled == false &&
+        slot.target?.pages?.indices?.none { slot.leaves[it].snapshotPaintPending } == true
 
     private fun captureSlot(slot: SpreadSlot): Boolean {
         val started = android.os.SystemClock.uptimeMillis()
@@ -1447,7 +1670,9 @@ internal class EpubSpreadTurnHost(
         val views = allWebViews()
         val window = rootView
         released = true
+        pendingTypographyUpdate = null
         removeCallbacks(warmCurlSnapshot)
+        clearCurlTurns()
         spreadBackground.release()
         cancelPreparation(replaced = false)
         abortAnimation()

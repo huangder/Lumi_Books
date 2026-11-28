@@ -235,11 +235,10 @@ fun WelcomeScreen(
             }
         )
     }
-    val pageIndex = pages.indexOf(currentPage)
-
-    LaunchedEffect(pages) {
-        if (currentPage !in pages) currentPage = WelcomePage.INTRODUCTION
-    }
+    // A recreated Activity can restore the language page after setup has been saved.
+    // Only pass a page that is still available to the animation, even on the first frame.
+    val visiblePage = currentPage.takeIf { it in pages } ?: pages.first()
+    val pageIndex = pages.indexOf(visiblePage)
 
     val predictiveBackProgress = ConfigurableBackHandler(
         enabled = pageIndex > 0
@@ -257,7 +256,7 @@ fun WelcomeScreen(
     androidx.compose.animation.SharedTransitionLayout {
     CompositionLocalProvider(LocalWelcomeSharedScope provides if (sharedMotion) this else null) {
     AnimatedContent(
-        targetState = currentPage,
+        targetState = visiblePage,
         modifier = Modifier
             .fillMaxSize()
             .graphicsLayer {
@@ -297,6 +296,7 @@ fun WelcomeScreen(
         },
         label = "welcomePage"
     ) { page ->
+        if (page !in pages) return@AnimatedContent
         CompositionLocalProvider(LocalWelcomeAnimatedScope provides if (sharedMotion) this else null) {
         when (page) {
             WelcomePage.LANGUAGE_SETUP -> LanguageAndEInkPage(

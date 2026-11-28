@@ -144,7 +144,7 @@ internal fun CoverFlowActionBar(
 }
 
 @Composable
-private fun CoverFlowAction(
+internal fun CoverFlowAction(
     icon: ImageVector,
     label: String,
     onClick: () -> Unit,

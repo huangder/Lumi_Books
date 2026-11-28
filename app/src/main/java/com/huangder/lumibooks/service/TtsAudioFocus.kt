@@ -33,8 +33,9 @@ internal fun ttsAudioFocusActionForChange(
 internal fun shouldHoldTtsAudioFocus(
     playbackState: TtsPlaybackState,
     usesSystemEngine: Boolean,
-    pausedForLoss: Boolean
-): Boolean = usesSystemEngine && (
+    pausedForLoss: Boolean,
+    allowConcurrentPlayback: Boolean = false
+): Boolean = !allowConcurrentPlayback && usesSystemEngine && (
     playbackState == TtsPlaybackState.PLAYING ||
         playbackState == TtsPlaybackState.INITIALIZING ||
         pausedForLoss
@@ -42,7 +43,7 @@ internal fun shouldHoldTtsAudioFocus(
 
 /**
  * 系统 TTS 引擎播放时自身不持有音频焦点，部分机型因此把耳机媒体按键路由给“上次播放音频的应用”。
- * 听书（系统引擎）播放期间由本控制器持有可 duck 焦点，让背景音乐可继续播放；
+ * 默认请求可 duck 的媒体焦点，允许同时播放时释放焦点。
  * 通知音只触发 duck 时继续朗读，被电话等短暂独占时暂停并在焦点恢复后继续。
  *
  * AI/第三方 TTS 引擎由它自己的播放器管理焦点，这里不重复请求。
@@ -59,10 +60,14 @@ internal class TtsAudioFocusController(
         .build()
 
     private var focusRequest: AudioFocusRequest? = null
+    private var allowConcurrentPlayback = false
     private var holding = false
     private var pausedForLoss = false
 
-    private val listener = AudioManager.OnAudioFocusChangeListener { change ->
+    private var requestGeneration = 0L
+
+    private fun focusListener(generation: Long) = AudioManager.OnAudioFocusChangeListener { change ->
+        if (generation != requestGeneration || allowConcurrentPlayback || focusRequest == null) return@OnAudioFocusChangeListener
         val action = ttsAudioFocusActionForChange(change, pausedForLoss)
         logTtsServiceEvent(
             event = "audio_focus_changed",
@@ -97,12 +102,14 @@ internal class TtsAudioFocusController(
     }
 
     /** 按当前会话状态与引擎类型同步焦点持有状态。 */
-    fun update(playbackState: TtsPlaybackState, usesSystemEngine: Boolean) {
+    fun update(playbackState: TtsPlaybackState, usesSystemEngine: Boolean, allowConcurrentPlayback: Boolean = false) {
+        this.allowConcurrentPlayback = allowConcurrentPlayback
         if (playbackState == TtsPlaybackState.PLAYING) pausedForLoss = false
         val shouldHold = shouldHoldTtsAudioFocus(
             playbackState = playbackState,
             usesSystemEngine = usesSystemEngine,
-            pausedForLoss = pausedForLoss
+            pausedForLoss = pausedForLoss,
+            allowConcurrentPlayback = allowConcurrentPlayback
         )
         logTtsServiceEvent(
             event = "audio_focus_policy_evaluated",
@@ -121,6 +128,7 @@ internal class TtsAudioFocusController(
 
     fun release() {
         if (!holding && focusRequest == null) return
+        requestGeneration++
         val abandonResult = focusRequest?.let { request ->
             runCatching { audioManager.abandonAudioFocusRequest(request) }.getOrNull()
         }
@@ -142,7 +150,7 @@ internal class TtsAudioFocusController(
         if (holding) return
         val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
             .setAudioAttributes(attributes)
-            .setOnAudioFocusChangeListener(listener, mainHandler)
+            .setOnAudioFocusChangeListener(focusListener(++requestGeneration), mainHandler)
             .build()
         val result = runCatching { audioManager.requestAudioFocus(request) }
             .getOrElse { error ->

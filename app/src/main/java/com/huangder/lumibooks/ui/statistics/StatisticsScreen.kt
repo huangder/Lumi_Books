@@ -9,6 +9,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -59,7 +60,13 @@ internal fun monthlyTotals(year: Int, daily: Map<LocalDate, ActivityDuration>): 
 internal fun StatisticsScreen(
     playEntranceAnimation: Boolean = false,
     onMessage: (String) -> Unit = {},
-    viewModel: StatisticsViewModel = hiltViewModel()
+    viewModel: StatisticsViewModel = hiltViewModel(),
+    onStartupContentPlaced: (() -> Unit)? = null,
+    readingReviewEntry: @Composable (ReadingReportPeriod, Boolean) -> Unit = { period, compact ->
+        EditionReadingReviewEntry(period, compact)
+    },
+    readingJournalCard: (@Composable () -> Unit)? =
+        if (editionHasReadingJournal) {{ EditionReadingJournalCard() }} else null
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -78,7 +85,10 @@ internal fun StatisticsScreen(
     val isLiquidGlass = LocalAppTheme.current == "liquid_glass" && !LocalEInkMode.current
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val controlsBackdrop = rememberLayerBackdrop()
-    ProvideInsightsMotion { Box(Modifier.fillMaxSize().background(AppColors.PageBg)) {
+    val startupPlacement = if (onStartupContentPlaced != null && (data != null || state.error != null)) {
+        Modifier.onGloballyPositioned { onStartupContentPlaced() }
+    } else Modifier
+    ProvideInsightsMotion { Box(startupPlacement.fillMaxSize().background(AppColors.PageBg)) {
         // Navigation captures the whole page. Controls must sample this sibling
         // background instead, otherwise their RenderNodes reference themselves.
         // The atmosphere glow is part of this background sibling: glass tabs may refract it, and it is
@@ -113,7 +123,7 @@ internal fun StatisticsScreen(
                                 val compact = titleWidth + buttonWidth + 16.dp > maxWidth
                                 MainTabHeader(eyebrow = insightsDate(today, "MMMMdEEEE"), horizontalPadding = 0.dp,
                                     modifier = Modifier.padding(bottom = AppSpace.sm),
-                                    trailing = { EditionReadingReviewEntry(state.selection.reportPeriod(today), compact) }) {
+                                    trailing = { readingReviewEntry(state.selection.reportPeriod(today), compact) }) {
                                     MainTabTitle(title)
                                 }
                             }
@@ -151,7 +161,7 @@ internal fun StatisticsScreen(
                             }
                         }
                         item("metrics") { InsightsAppear(1, dim) { InsightsMetrics(data, scope == StatisticsScope.ALL) } }
-                        if (editionHasReadingJournal) item("journal") { InsightsAppear(2, dim) { EditionReadingJournalCard() } }
+                        if (readingJournalCard != null) item("journal") { InsightsAppear(2, dim, content = readingJournalCard) }
                         if (scope == StatisticsScope.MONTH || scope == StatisticsScope.YEAR) item("calendar") {
                             InsightsAppear(2, dim) {
                                 InsightsCard(stringResource(R.string.insights_distribution), icon = AppIcons.ChartBar, tint = InsightsHue.Green) {

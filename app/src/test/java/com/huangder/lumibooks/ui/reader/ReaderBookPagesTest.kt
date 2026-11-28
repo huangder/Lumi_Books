@@ -9,7 +9,10 @@ class ReaderBookPagesTest {
         assertEquals(3, pages.pageNumber(0, 2))
         assertNull(pages.pageNumber(2, 0))
         assertNull(pages.totalPages)
-        assertNull(readerBookPageLabel(pages, 0, 2))
+        assertEquals("3 / …", readerBookPageLabel(pages, 0, 2))
+        assertNull(readerBookPageLabel(pages, 2, 0))
+        assertEquals("3 / …", readerBookPageLabel(pages, 0, 2, 1, 0))
+        assertEquals("2–3 / …", readerBookPageLabel(pages, 0, 1, 0, 2))
         assertEquals(6, pages.withChapter(1, 2).pageNumber(2, 0))
     }
 

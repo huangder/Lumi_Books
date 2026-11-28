@@ -40,7 +40,8 @@ data class ExternalTtsResumePosition(
     val clauseIndex: Int = 0,
     val cacheKey: String? = null,
     val pageFingerprint: String? = null,
-    val pcmFrameOffset: Long = 0L
+    val pcmFrameOffset: Long = 0L,
+    val spokenCharacterOffset: Int? = null
 )
 
 object ExternalTtsConfig {

@@ -8,6 +8,8 @@
             <intent-filter>
                 <action android:name="com.huangder.lumibooks.benchmark.CLEAR_READER_CACHE" />
                 <action android:name="com.huangder.lumibooks.benchmark.PREPARE_APP" />
+                <action android:name="com.huangder.lumibooks.benchmark.CONFIGURE_READER" />
+                <action android:name="com.huangder.lumibooks.benchmark.PREPARE_BOOKSHELF" />
                 <action android:name="com.huangder.lumibooks.benchmark.RESET_READING_POSITION" />
             </intent-filter>
         </receiver>

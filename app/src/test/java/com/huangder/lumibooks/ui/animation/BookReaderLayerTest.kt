@@ -3,9 +3,9 @@ package com.huangder.lumibooks.ui.animation
 import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Paint
 import android.view.View
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
@@ -26,7 +26,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
-import com.huangder.lumibooks.ui.theme.AppShapes
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.toAppPath
 import com.huangder.lumibooks.domain.model.Book
@@ -165,14 +164,12 @@ class BookReaderLayerTest {
                     val expected = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
                     val canvas = Canvas(expected)
                     canvas.drawColor(android.graphics.Color.RED)
-                    // The shell measures at the actual window size without stretching its corners.
+                    // Match the circular hardware corners used by the moving window.
                     canvas.translate(bounds.left, bounds.top)
-                    val path = AppShapes.rounded(state.cornerRadiusSnapshot.value.dp,
-                        AppShapes.usesContinuousCorners(name))
+                    val path = RoundedCornerShape(state.cornerRadiusSnapshot.value.dp)
                         .createOutline(bounds.size, LayoutDirection.Ltr, Density(density)).toAppPath()
-                    canvas.drawPath(path.asAndroidPath(), Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                        color = android.graphics.Color.WHITE
-                    })
+                    canvas.clipPath(path.asAndroidPath())
+                    canvas.drawColor(android.graphics.Color.WHITE)
                     var difference = 0L
                     for (y in 0 until actual.height) for (x in 0 until actual.width) {
                         difference += kotlin.math.abs(android.graphics.Color.green(actual.getPixel(x, y)) -

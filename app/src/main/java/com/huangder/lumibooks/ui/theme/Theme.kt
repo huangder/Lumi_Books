@@ -144,7 +144,8 @@ fun EBookReaderTheme(
     appAccentColor: String = DEFAULT_APP_ACCENT_HEX,
     reduceTransparencyEnabled: Boolean = LocalReduceTransparency.current,
     liquidGlassStyle: LiquidGlassStyle = LocalLiquidGlassStyle.current,
-    liquidGlassSamplingQuality: LiquidGlassSamplingQuality = LocalLiquidGlassSamplingQuality.current,
+    liquidGlassSamplingQuality: LiquidGlassSamplingQuality =
+        LocalSelectedLiquidGlassSamplingQuality.current ?: LocalLiquidGlassSamplingQuality.current,
     liquidGlassTransparency: Float = 0.55f,
     liquidGlassHdrHighlightEnabled: Boolean = false,
     cardOutlinesEnabled: Boolean = false,
@@ -246,9 +247,10 @@ fun EBookReaderTheme(
         LocalGlobalFontMode provides GlobalFontMode.normalize(globalFontMode),
         LocalReduceTransparency provides reduceTransparencyEnabled,
         LocalLiquidGlassStyle provides liquidGlassStyle,
+        LocalSelectedLiquidGlassSamplingQuality provides liquidGlassSamplingQuality,
         LocalLiquidGlassSamplingQuality provides effectiveGlassSamplingQuality,
         com.kyant.backdrop.LocalBackdropSamplingScale provides
-            (if (effectiveAppTheme == "liquid_glass") effectiveGlassSamplingQuality.scale else 1f),
+            (if (effectiveAppTheme == "liquid_glass") effectiveGlassSamplingQuality.frostedSurfaceScale else 1f),
         LocalLiquidGlassControlEdgeEnabled provides (liquidGlassStyle == LiquidGlassStyle.DEFAULT),
         LocalLiquidGlassTransparency provides liquidGlassTransparency.coerceIn(0f, 1f),
         LocalLiquidGlassHdrHighlightEnabled provides hdrHighlightActive,

@@ -1336,6 +1336,7 @@ private fun AnchoredLiquidGlassMenu(
     val reduceTransparency = LocalReduceTransparency.current
     val contentOptics = if (droplet && glassSurface) rememberMenuOptics() else null
     val panelContentBackdrop = rememberLayerBackdrop()
+    val contentBlur = remember { com.huangder.lumibooks.ui.animation.QuantizedBlur() }
     val transparency = LocalLiquidGlassTransparency.current
     val currentGeometry by rememberUpdatedState(geometry)
     val currentSourceRect by rememberUpdatedState(sourceRect)
@@ -1504,7 +1505,7 @@ private fun AnchoredLiquidGlassMenu(
                         // Rows that have faded out are skipped instead of blurred every frame.
                         val blurPx = if (blurContent && reveal > 0.01f) LiquidGlassMenuMorph.contentBlurDp(reveal).dp.toPx() else 0f
                         val blurring = blurPx > 0.1.dp.toPx()
-                        renderEffect = if (blurring) BlurEffect(blurPx, blurPx, TileMode.Clamp) else null
+                        renderEffect = if (blurring) contentBlur.at(blurPx) else null
                         // Bounded like Modifier.blur while the effect is active. Blur is linear,
                         // so fading in the same layer matches fading underneath it.
                         clip = blurring

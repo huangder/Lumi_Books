@@ -460,6 +460,7 @@
     <string name="line_guide_dim_medium">中</string>
     <string name="line_guide_dim_high">高</string>
     <string name="line_guide_dim_very_high">超高</string>
+    <string name="line_guide_show_all_features">顯示全部功能</string>
     <string name="line_guide_close">關閉逐行導讀</string>
     <string name="bionic_reading_hint">加粗詞語的前半部分，幫助視線快速定位並提升閱讀專注度</string>
     <string name="reader_page_bottom_aligned">對齊頁面下邊距</string>
@@ -468,8 +469,8 @@
     <string name="reader_edge_tap_page_turn_hint">設定點擊左、右兩側時的翻頁方向</string>
     <string name="reader_edge_tap_left_previous_right_next">左上右下</string>
     <string name="reader_edge_tap_left_next_right_previous">左下右上</string>
-    <string name="reader_edge_tap_both_previous">左上左上</string>
-    <string name="reader_edge_tap_both_next">左下左下</string>
+    <string name="reader_edge_tap_both_previous">左上右上</string>
+    <string name="reader_edge_tap_both_next">左下右下</string>
     <string name="reader_page_layout">閱讀頁資訊</string>
     <string name="reader_page_layout_hint">選擇閱讀頁四個角顯示的內容</string>
     <string name="reader_corner_top_left">左上</string>
@@ -816,7 +817,7 @@
     <string name="webdav_not_configured">未設定</string>
     <string name="webdav_server_url_label">伺服器位址</string>
     <string name="webdav_server_url_hint">https://dav.example.com/dav/</string>
-    <string name="webdav_username_label">使用者名稱</string>
+    <string name="webdav_username_label">帳號</string>
     <string name="webdav_password_label">密碼</string>
     <string name="webdav_password_hint">輸入 WebDAV 密碼</string>
     <string name="webdav_token_saved">已加密儲存；留空可繼續使用</string>
@@ -827,14 +828,14 @@
     <string name="webdav_syncing">正在同步…</string>
     <string name="webdav_test_connection">測試連線</string>
     <string name="webdav_test_success">連線成功，WebDAV 服務可用</string>
-    <string name="webdav_test_failed">連線失敗，請檢查伺服器位址、使用者名稱和密碼</string>
+    <string name="webdav_test_failed">連線失敗，請檢查伺服器位址、帳號和密碼</string>
     <string name="webdav_test_running">正在測試連線…</string>
     <string name="webdav_test_failed_detail">連線失敗：%1$s</string>
     <string name="webdav_test_success_dir_pending">連線成功；同步資料夾將在首次同步時自動建立</string>
     <string name="webdav_required_password">未設定 WebDAV 密碼，請重新輸入並儲存</string>
-    <string name="webdav_error_auth">認證失敗（HTTP 401）：請檢查使用者名稱與密碼；若伺服器啟用了兩步驟驗證，請使用應用程式專用密碼</string>
+    <string name="webdav_error_auth">認證失敗（HTTP 401）：請檢查帳號與密碼；若伺服器啟用了兩步驟驗證，請使用應用程式專用密碼</string>
     <string name="webdav_error_forbidden">伺服器拒絕存取（HTTP 403）：請確認帳號有權限，且伺服器位址指向可寫入的 WebDAV 資料夾</string>
-    <string name="webdav_error_not_found">位址不存在（HTTP 404）：請檢查伺服器位址與同步資料夾。Nextcloud 一般形如 https://主機/remote.php/dav/files/使用者名稱/</string>
+    <string name="webdav_error_not_found">位址不存在（HTTP 404）：請檢查伺服器位址與同步資料夾。Nextcloud 一般形如 https://主機/remote.php/dav/files/帳號/</string>
     <string name="webdav_error_conflict">無法在伺服器上建立同步資料夾（HTTP 409）：請確認伺服器位址指向已存在的 WebDAV 資料夾</string>
     <string name="webdav_error_not_supported">該位址不是可用的 WebDAV 資料夾（HTTP %1$d）：伺服器不支援 PROPFIND/MKCOL，請確認位址是否正確</string>
     <string name="webdav_error_service_unavailable">WebDAV 服務暫時無法使用（HTTP 503）：可能正在維護、負載過高或被反向代理攔截，請稍後重試並檢查伺服器狀態</string>
@@ -844,7 +845,7 @@
     <string name="webdav_error_invalid_url">伺服器位址無效：請以 http:// 或 https:// 開頭</string>
     <string name="webdav_error_redirect">伺服器將 WebDAV 請求重新導向至其他位址（目標主機：%1$s），請直接填寫最終 WebDAV 位址</string>
     <string name="webdav_error_invalid_response">伺服器回傳無法辨識的 WebDAV 回應（HTTP %1$s），可能被登入頁面、反向代理或閘道攔截</string>
-    <string name="webdav_server_url_help">建議填寫 WebDAV 的完整存取位址，例如 https://dav.example.com/dav/，Nextcloud 為 https://主機/remote.php/dav/files/使用者名稱/</string>
+    <string name="webdav_server_url_help">建議填寫 WebDAV 的完整存取位址，例如 https://dav.example.com/dav/，Nextcloud 為 https://主機/remote.php/dav/files/帳號/</string>
     <string name="webdav_sync_success">同步完成</string>
     <string name="webdav_sync_failed">同步失敗，請檢查網路和伺服器狀態</string>
     <string name="webdav_disable">停用 WebDAV 同步</string>
@@ -858,7 +859,7 @@
     <string name="webdav_last_sync_time">上次同步：%1$s</string>
     <string name="webdav_status_card_title">連線狀態</string>
     <string name="webdav_sync_path_hint">同步目錄（可選，預設為 LumiBooks）</string>
-    <string name="webdav_required_fields">請填寫伺服器位址和使用者名稱</string>
+    <string name="webdav_required_fields">請填寫伺服器位址和帳號</string>
     <string name="webdav_third_party_title">關於 WebDAV 同步</string>
     <string name="webdav_third_party_notice">WebDAV 同步使用您自行設定的 WebDAV 伺服器。您選擇的書籍檔案和閱讀資料將上傳至該伺服器。連接 NAS 或局域網伺服器時，本地網絡權限只用於存取該地址；公網 WebDAV 不需要此權限。LumiBooks 不傳輸資料至自身伺服器，也不管控第三方伺服器的可用性與安全性。</string>
     <string name="epub_render_mode">EPUB 排版模式</string>
@@ -1305,6 +1306,12 @@
     <string name="delete_cloud_book_choice">所選 %1$d 本書包含雲端副本。請選擇刪除範圍。</string>
     <string name="delete_local_only">只刪除本機</string>
     <string name="delete_local_and_cloud">本機與雲端一起刪除</string>
+    <string name="delete_cloud_only">只刪除雲端</string>
+    <string name="book_detail_cloud_removed">已從雲端刪除 · 點按重新上載</string>
+    <string name="webdav_status_clean_duplicates">清理重複的雲端舊版本（%1$d）</string>
+    <string name="webdav_clean_duplicates_title">清理重複的雲端舊版本</string>
+    <string name="webdav_clean_duplicates_message">以下 %1$d 個只在雲端的副本與本機已有的書同名，很可能是修改書籍內容前留下的舊版本。清理後會從雲端刪除它們，並把其中的閱讀資料併入本機的書；本機的書籍檔案不受影響。\n\n%2$s</string>
+    <string name="webdav_clean_duplicates_confirm">清理</string>
     <string name="force_delete">強制刪除</string>
     <string name="force_delete_hint">強制刪除會先從本機書庫移除，再嘗試清理 WebDAV；即使雲端失敗，本機刪除仍會完成。只應在一般刪除失敗時使用。</string>
     <string name="force_delete_cloud_failed">已刪除本機書目，但雲端清理未完成：%1$s</string>
@@ -1485,6 +1492,11 @@
     <string name="spine_shelf_folder_count">%1$d 本</string>
     <string name="spine_menu_tags">標籤</string>
     <string name="spine_menu_notes">筆記</string>
+    <string name="spine_menu_pose">書脊擺放</string>
+    <string name="spine_pose_auto">自動</string>
+    <string name="spine_pose_flat">橫放</string>
+    <string name="spine_pose_leaning">斜靠</string>
+    <string name="spine_pose_upright">豎立</string>
     <string name="spine_menu_edit">編輯</string>
     <string name="spine_menu_cover">封面</string>
     <string name="spine_menu_restore_cover">原封面</string>
@@ -1564,4 +1576,5 @@
     <string name="floating_subtitle_locked_notification_text">點按解鎖，解鎖後可拖曳並展開控制</string>
     <string name="floating_subtitle_color_reset">恢復預設</string>
     <string name="webdav_sync_reader_theme_deferred">目前的閱讀主題已保留。請在仍有原始圖片或字型檔案的裝置上重新同步。</string>
+    <string name="tts_allow_concurrent_playback">允許與其他應用程式同時播放</string>
 </resources>

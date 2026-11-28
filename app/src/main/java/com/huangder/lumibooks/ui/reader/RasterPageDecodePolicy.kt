@@ -103,7 +103,7 @@ internal fun pdfRenderScale(
     pageHeight: Int,
     targetWidthPx: Int,
     mode: PageRenderMode,
-    memoryPixelBudget: Long = pdfRenderPixelBudget(mode)
+    memoryPixelBudget: Long = pdfRenderPixelBudget(PageRenderMode.NATIVE)
 ): Float {
     if (pageWidth <= 0 || pageHeight <= 0 || targetWidthPx <= 0) return MIN_PDF_RENDER_SCALE
     val requestedScale = (
@@ -111,11 +111,21 @@ internal fun pdfRenderScale(
         ).coerceIn(MIN_PDF_RENDER_SCALE, pdfMaxRenderScale(mode))
     val requestedPixels = pageWidth.toDouble() * pageHeight.toDouble() *
         requestedScale.toDouble() * requestedScale.toDouble()
-    val pixelBudget = minOf(pdfRenderPixelBudget(mode), memoryPixelBudget.coerceAtLeast(1L))
+    // Reserve a different share of the available pixels for each mode. A common heap cap
+    // otherwise collapses HIGH and NATIVE (and on small heaps, even NORMAL) at the same size.
+    val availablePixels = memoryPixelBudget.coerceIn(1L, pdfRenderPixelBudget(PageRenderMode.NATIVE))
+    val modePixels = when (mode) {
+        PageRenderMode.NORMAL -> availablePixels / 2
+        PageRenderMode.HIGH -> availablePixels * 3 / 4
+        PageRenderMode.NATIVE -> availablePixels
+    }
+    val pixelBudget = minOf(pdfRenderPixelBudget(mode), modePixels.coerceAtLeast(1L))
     val pixelScale = if (requestedPixels > pixelBudget)
         (requestedScale * kotlin.math.sqrt(pixelBudget.toDouble() / requestedPixels)).toFloat()
     else requestedScale
-    return minOf(pixelScale, PDF_RENDER_MAX_DIMENSION.toFloat() / maxOf(pageWidth, pageHeight))
+    // Long pages can hit the texture limit before the pixel limit. Keep the same tier ordering.
+    val maxDimension = PDF_RENDER_MAX_DIMENSION * (pdfMaxRenderScale(mode) / pdfMaxRenderScale(PageRenderMode.NATIVE))
+    return minOf(pixelScale, maxDimension / maxOf(pageWidth, pageHeight))
 }
 
 /**

@@ -10,6 +10,8 @@ import com.huangder.lumibooks.util.epub.EpubRenderMode
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -29,16 +31,37 @@ class DefaultReaderLayoutPersistenceTest {
     }
 
     @Test fun defaultPersistsAndReachesBothReaderPaths() = runBlocking {
-        assertEquals(EpubRenderMode.READER_LAYOUT, manager.defaultRenderMode.first())
+        assertEquals(EpubRenderMode.BOOK_LAYOUT, manager.defaultRenderMode.first())
+        assertEquals(EpubRenderMode.BOOK_LAYOUT, manager.renderMode("new-book").first())
+        assertEquals(EpubRenderMode.BOOK_LAYOUT, manager.migrateRenderMode("new-book"))
+        assertFalse(manager.readerPreferences("new-book").first().nativeEpubCssEnabled)
         for (mode in listOf(EpubRenderMode.BOOK_LAYOUT, EpubRenderMode.READER_LAYOUT)) {
             manager.saveDefaultRenderMode(mode)
             val reloaded = DataStoreManager(context)
             assertEquals(mode, reloaded.defaultRenderMode.first())
-            assertEquals(mode, reloaded.renderMode("new-book").first())
-            assertEquals(mode, reloaded.readerPreferences("new-book").first().renderMode)
+            assertEquals(mode, reloaded.renderMode("unopened-book").first())
+            assertEquals(mode, reloaded.readerPreferences("unopened-book").first().renderMode)
         }
         context.dataStore.edit { it[stringPreferencesKey("default_render_mode")] = "unknown" }
-        assertEquals(EpubRenderMode.READER_LAYOUT, manager.readerPreferences("new-book").first().renderMode)
+        assertEquals(EpubRenderMode.BOOK_LAYOUT, manager.readerPreferences("unopened-book").first().renderMode)
+    }
+
+    @Test fun nativeEpubRequiresPerBookOptInWhenSwitchingBackToBookLayout() = runBlocking {
+        val book = "native-opt-in"
+        manager.migrateRenderMode(book)
+        manager.saveNativeEpubCssEnabled(book, true)
+        manager.migrateRenderMode(book)
+        assertTrue(DataStoreManager(context).readerPreferences(book).first().nativeEpubCssEnabled)
+        assertFalse(manager.readerPreferences("other-book").first().nativeEpubCssEnabled)
+
+        manager.saveRenderMode(book, EpubRenderMode.READER_LAYOUT)
+        manager.saveRenderMode(book, EpubRenderMode.BOOK_LAYOUT)
+        val reopened = DataStoreManager(context).readerPreferences(book).first()
+        assertEquals(EpubRenderMode.BOOK_LAYOUT, reopened.renderMode)
+        assertFalse(reopened.nativeEpubCssEnabled)
+
+        manager.saveNativeEpubCssEnabled(book, true)
+        assertTrue(manager.readerPreferences(book).first().nativeEpubCssEnabled)
     }
 
     @Test fun explicitAndLegacyBookChoicesOverrideGlobalDefault() = runBlocking {

@@ -32,10 +32,10 @@ class GlassSnapshotLifecycleTest {
                 }
             }
         }
-        compose.waitUntil { result.ready }
+        awaitSnapshot { result.ready }
         val first = result.backdrop!!
         compose.runOnIdle { quality.value = com.huangder.lumibooks.domain.model.LiquidGlassSamplingQuality.BALANCED }
-        compose.waitUntil { result.backdrop !== first }
+        awaitSnapshot { result.backdrop !== first }
         compose.runOnIdle {
             assertEquals(2, captures)
             assertTrue(first.isClosed)
@@ -56,7 +56,7 @@ class GlassSnapshotLifecycleTest {
             }
             Box {}
         }
-        compose.waitUntil { result.ready }
+        awaitSnapshot { result.ready }
         val first = result.backdrop!!
         compose.runOnIdle { frozen.value = true }
         compose.waitForIdle()
@@ -69,7 +69,7 @@ class GlassSnapshotLifecycleTest {
         compose.waitForIdle()
         compose.runOnIdle { assertSame(first, result.backdrop) }
         compose.runOnIdle { frozen.value = false }
-        compose.waitUntil { result.backdrop !== first }
+        awaitSnapshot { result.backdrop !== first }
         val second = compose.runOnIdle { result.backdrop!! }
         compose.runOnIdle {
             assertNotSame(first, second)
@@ -84,14 +84,14 @@ class GlassSnapshotLifecycleTest {
             assertFalse(second.isClosed)
             frozen.value = false
         }
-        compose.waitUntil { result.backdrop !== second }
+        awaitSnapshot { result.backdrop !== second }
         val third = compose.runOnIdle { result.backdrop!! }
         compose.runOnIdle {
             assertTrue(second.isClosed)
             assertFalse(third.isClosed)
             enabled.value = false
         }
-        compose.waitForIdle()
+        awaitSnapshot { result.backdrop == null }
         compose.runOnIdle {
             assertNull(result.backdrop)
             assertTrue(third.isClosed)
@@ -117,21 +117,25 @@ class GlassSnapshotLifecycleTest {
                 }
             }
         }
-        compose.waitUntil { result.ready }
+        awaitSnapshot { result.ready }
         val previous = result.backdrop!!
         compose.runOnIdle { page.value = 2 }
-        compose.waitUntil { retryStarted.isCompleted }
+        awaitSnapshot { retryStarted.isCompleted }
         compose.runOnIdle {
             assertSame(previous, result.backdrop)
             assertFalse(previous.isClosed)
         }
         finishRetry.complete(Unit)
-        compose.waitUntil { captures == 3 && result.backdrop == null }
+        awaitSnapshot { captures == 3 && result.backdrop == null }
         compose.runOnIdle {
             assertEquals(3, captures)
             assertNull(result.backdrop)
             assertTrue(previous.isClosed)
         }
+    }
+
+    private fun awaitSnapshot(condition: () -> Boolean) {
+        compose.waitUntil(5_000) { compose.runOnIdle(condition) }
     }
 
     @Test fun closingLeaseDoesNotRecyclePixelsStillReferencedByDisplayLists() {

@@ -285,7 +285,8 @@ private fun ProgressiveTopBlurBand(
         strength = strength,
         modifier = modifier,
         bandHeight = bandHeight,
-        tint = tint.copy(alpha = tintAlpha)
+        tint = tint.copy(alpha = tintAlpha),
+        sampleBlurOverLiveContent = true
     )
 }
 

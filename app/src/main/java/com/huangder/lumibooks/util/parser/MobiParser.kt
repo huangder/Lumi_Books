@@ -535,12 +535,10 @@ class MobiParser(private val context: Context? = null) : BookParser, BookRenderS
 
     private fun applyParagraphFormatting(text: CharSequence): CharSequence {
         val ssb = SpannableStringBuilder(text)
-        if (paragraphSpacingDp <= 0f) {
-            var i = ssb.length - 1
-            while (i > 0) {
-                if (ssb[i] == '\n' && ssb[i - 1] == '\n') ssb.delete(i, i + 1)
-                i--
-            }
+        var i = ssb.length - 1
+        while (i > 0) {
+            if (ssb[i] == '\n' && ssb[i - 1] == '\n') ssb.delete(i, i + 1)
+            i--
         }
 
         val density = context?.resources?.displayMetrics?.density ?: 2.75f
@@ -548,13 +546,13 @@ class MobiParser(private val context: Context? = null) : BookParser, BookRenderS
 
         if (spacingPx > 0) {
             val newlinePositions = ArrayList<Int>()
-            for (j in 0 until ssb.length) {
+            for (j in 0 until ssb.length - 1) {
                 if (ssb[j] == '\n') newlinePositions.add(j)
             }
             for (nl in newlinePositions.asReversed()) {
                 ssb.insert(nl + 1, "\n")
                 ssb.setSpan(
-                    ParagraphLineHeightSpan(spacingPx),
+                    EpubParser.ParagraphLineHeightSpan(spacingPx),
                     nl + 1, nl + 2,
                     Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                 )
@@ -601,24 +599,6 @@ class MobiParser(private val context: Context? = null) : BookParser, BookRenderS
         while (end > 0 && text[end - 1] == '\n') end--
         if (end < text.length) end++
         return if (end == text.length) text else text.subSequence(0, end)
-    }
-
-    private class ParagraphLineHeightSpan(val extraHeightPx: Int) : android.text.style.LineHeightSpan {
-        override fun chooseHeight(
-            text: CharSequence,
-            start: Int,
-            end: Int,
-            spanstartv: Int,
-            v: Int,
-            fm: android.graphics.Paint.FontMetricsInt
-        ) {
-            val isSpacerLine = start < end && (start until end).all { index -> text[index] == '\n' }
-            if (!isSpacerLine) return
-            val lineHeight = fm.descent - fm.ascent
-            if (lineHeight <= 0) return
-            val targetExtra = (extraHeightPx * lineHeight.toFloat() / lineHeight.coerceAtLeast(1)).toInt()
-            fm.descent += targetExtra.coerceAtLeast(0)
-        }
     }
 
     private fun detectImageMime(bytes: ByteArray): String = when {

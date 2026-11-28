@@ -124,6 +124,27 @@ class BookmarkPullGestureTrackerTest {
     }
 
     @Test
+    fun abandonedCandidateDoesNotClaimLaterDownwardDrag() {
+        tracker.start(x = 100f, y = 50f, density = 1f, enabled = true)
+
+        tracker.abandonCandidate()
+
+        assertNull(tracker.move(x = 100f, y = 150f))
+        assertFalse(tracker.finish(cancelled = false).wasActive)
+    }
+
+    @Test
+    fun abandoningCandidateKeepsActivePull() {
+        tracker.start(x = 100f, y = 50f, density = 1f, enabled = true)
+        assertTrue(tracker.move(x = 100f, y = 80f)!!.justClaimed)
+
+        tracker.abandonCandidate()
+
+        assertTrue(tracker.move(x = 100f, y = 130f)!!.armed)
+        assertTrue(tracker.finish(cancelled = false).commit)
+    }
+
+    @Test
     fun disabledTrackerDoesNotClaim() {
         tracker.start(x = 100f, y = 50f, density = 1f, enabled = false)
 

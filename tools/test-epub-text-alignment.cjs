@@ -10,8 +10,12 @@ const { spawnSync } = require('node:child_process');
 
 const source = readFileSync(join(__dirname,
   '../app/src/main/java/com/huangder/lumibooks/util/epub/EpubDocumentTransformer.kt'), 'utf8');
-const scriptParts = [...source.matchAll(/private const val READER_SCRIPT_PART_\w+ = """([\s\S]*?)"""/g)];
-const readerScript = scriptParts.map(match => match[1]).join('');
+const alignmentSource = readFileSync(join(__dirname,
+  '../app/src/main/java/com/huangder/lumibooks/util/epub/EpubReaderAlignment.kt'), 'utf8');
+const alignmentScript = alignmentSource.match(/EPUB_READER_ALIGNMENT_SCRIPT = """([\s\S]*?)"""/)[1];
+const scriptParts = [...source.matchAll(/private const val (READER_SCRIPT_PART_\w+) = """([\s\S]*?)"""/g)];
+const readerScript = scriptParts
+  .map(([, name, script]) => script + (name === 'READER_SCRIPT_PART_1' ? alignmentScript : '')).join('');
 const readerCss = source.match(/private const val READER_CSS = """([\s\S]*?)"""/)[1];
 
 function verifyAlignment() {
@@ -85,6 +89,10 @@ function verifyAlignment() {
       equal(zero.lineHeight, (parseFloat(zero.fontSize) * 1.8) + 'px', flow + ' spacing without other overrides');
       equal(zero.marginBlockEnd, '0px', flow + ' zero paragraph spacing');
       equal(zero.textIndent, '0px', flow + ' zero indent');
+      for (const gap of [2, 8, 24]) {
+        configure(flow, { paragraphSpacingDp: gap });
+        equal(getComputedStyle(paragraph).marginBlockEnd, gap + 'px', flow + ' paragraph spacing ' + gap);
+      }
       configure(flow, { lineHeight: 8, paragraphSpacingDp: 80, firstLineIndent: 8 });
       const clamped = getComputedStyle(paragraph);
       equal(clamped.lineHeight, (parseFloat(clamped.fontSize) * 2.5) + 'px', flow + ' clamp line height');

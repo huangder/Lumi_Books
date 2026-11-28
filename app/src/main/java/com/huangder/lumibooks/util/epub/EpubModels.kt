@@ -5,6 +5,8 @@ enum class EpubRenderMode(val storageValue: String) {
     READER_LAYOUT("reader_layout");
 
     companion object {
+        val DEFAULT = BOOK_LAYOUT
+
         fun fromStorage(value: String?): EpubRenderMode? = entries.firstOrNull {
             it.storageValue == value
         }

@@ -2,4 +2,7 @@
 <resources>
     <string name="native_epub_css_title">原生 CSS 排版（实验）</string>
     <string name="native_epub_css_hint">仅对本书启用。常用排版使用原生引擎；复杂章节和暂不支持的阅读设置自动使用 WebView。</string>
+    <string name="epub_current_renderer">当前渲染引擎</string>
+    <string name="epub_renderer_native">EPUB 原生</string>
+    <string name="epub_renderer_webview" translatable="false">WebView</string>
 </resources>

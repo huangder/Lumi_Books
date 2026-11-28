@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.reader
 
+import com.huangder.lumibooks.ui.reader.engine.PageLayout
 import org.json.JSONObject
 import kotlin.math.ceil
 
@@ -83,10 +84,30 @@ internal fun restoredPagedPageIndex(
     return page.coerceIn(0, totalPages - 1)
 }
 
+/** Resolve a saved anchor against the actual pages, including trimmed whitespace and stale offsets. */
+internal fun restoredPagedPageIndex(position: ReaderPositionLocator, pages: List<PageLayout>): Int? {
+    if (pages.isEmpty()) return null
+    val offset = position.characterOffset ?: return restoredPagedPageIndex(
+        position.chapterFraction, pages.size, ReaderPageFractionSemantics.START
+    )
+    val match = pages.binarySearch { it.startCharOffset.compareTo(offset) }
+    return if (match >= 0) match else (-match - 2).coerceAtLeast(0)
+}
+
 internal fun hasPendingReaderRestore(
     locator: ReaderPositionLocator?,
     chapterFraction: Float
 ): Boolean = locator != null || chapterFraction > 0f
+
+internal fun ReaderUiState.pendingPagedPageIndex(chapterIndex: Int, pages: List<PageLayout>): Int? {
+    if (pages.isEmpty()) return null
+    val locator = pendingReaderPosition
+    if (locator != null) {
+        return if (locator.chapterIndex == chapterIndex) restoredPagedPageIndex(locator, pages) else null
+    }
+    if (chapterIndex != currentChapterIndex || pendingPageFraction <= 0f) return null
+    return restoredPagedPageIndex(pendingPageFraction, pages.size, pendingPageFractionSemantics)
+}
 
 /** Capture before mode switching clears page counters; rapid switches retain the pending anchor. */
 internal fun positionForReaderFlowChange(

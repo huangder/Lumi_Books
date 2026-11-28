@@ -11,6 +11,19 @@ enum class LiquidGlassSamplingQuality(val storedValue: String, val scale: Float)
     BALANCED("smooth", 0.5f),
     PERFORMANCE("performance", 1f / 3f);
 
+    internal val frostedSurfaceScale: Float
+        get() = when (this) {
+            ORIGINAL -> scale
+            CLEAR -> BALANCED.scale
+            BALANCED, PERFORMANCE -> PERFORMANCE.scale
+        }
+
+    internal val tabPrismScale: Float
+        get() = if (this == PERFORMANCE) scale else ORIGINAL.scale
+
+    internal val adaptive: Boolean
+        get() = this == CLEAR || this == BALANCED
+
     fun sampleSize(viewport: IntSize): IntSize = IntSize(
         ceil(viewport.width.coerceAtLeast(1) * scale).toInt().coerceAtLeast(1),
         ceil(viewport.height.coerceAtLeast(1) * scale).toInt().coerceAtLeast(1)

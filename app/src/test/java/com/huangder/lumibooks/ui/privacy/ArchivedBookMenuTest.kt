@@ -36,10 +36,12 @@ class ArchivedBookMenuTest {
             }
         }
         compose.runOnIdle { state.onLongPressConfirmed(book, Rect(20f, 30f, 110f, 170f), {}) }
-        compose.mainClock.advanceTimeBy(1_000)
-        compose.onNodeWithText(context.getString(R.string.archive_book)).performScrollTo().performClick()
+        compose.mainClock.advanceTimeUntil { state.phase == ContextMenuPhase.Visible }
+        val archiveLabel = context.getString(R.string.archive_book)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(archiveLabel))
+        compose.onNodeWithText(archiveLabel).assertIsDisplayed().performClick()
         compose.runOnIdle { assertEquals(book, archived) }
-        compose.mainClock.advanceTimeBy(1_000)
+        compose.mainClock.advanceTimeUntil { state.phase == ContextMenuPhase.Idle }
         compose.runOnIdle { assertEquals(ContextMenuPhase.Idle, state.phase) }
     }
 
@@ -52,7 +54,9 @@ class ArchivedBookMenuTest {
             }
         }
         compose.runOnIdle { state.onLongPressConfirmed(book.copy(isHidden = true), Rect(20f, 30f, 110f, 170f), {}) }
-        compose.mainClock.advanceTimeBy(1_000)
+        compose.mainClock.advanceTimeUntil { state.phase == ContextMenuPhase.Visible }
+        // Inspect the end of the lazy actions list, where Archive would be offered.
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(context.getString(R.string.delete)))
         compose.onNodeWithText(context.getString(R.string.archive_book)).assertDoesNotExist()
     }
 

@@ -1446,8 +1446,8 @@ internal fun TextPanel(
                     SettingSlider(
                         stringResource(R.string.label_paragraph_spacing),
                         settings.paragraphSpacing, 0f..30f, 29, "dp",
-                        onPreview = { onPreviewUpdate(settings.copy(paragraphSpacing = it)) },
-                        onChange = { onUpdate(settings.copy(paragraphSpacing = it)) },
+                        onPreview = { onPreviewUpdate(settings.copy(paragraphSpacing = it, paragraphSpacingEdited = true)) },
+                        onChange = { onUpdate(settings.copy(paragraphSpacing = it, paragraphSpacingEdited = true)) },
                         onActiveChange = onActive
                     )
                 },

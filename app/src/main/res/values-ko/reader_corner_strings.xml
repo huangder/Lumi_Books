@@ -5,4 +5,5 @@
     <string name="reader_corner_content_global_page_number_book_progress">전체 페이지＋전체 진행률</string>
     <string name="reader_corner_content_chapter_page_number">장 제목＋장 페이지</string>
     <string name="reader_corner_content_chapter_book_progress">장 제목＋전체 진행률</string>
+    <string name="reader_chapter_pages_pending_book_index">장 내 %1$d / %2$d</string>
 </resources>

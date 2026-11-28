@@ -51,6 +51,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.asComposeRenderEffect
@@ -108,6 +109,9 @@ import com.huangder.lumibooks.ui.animation.BookReaderTransitionPhase
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBarsIgnoringVisibility
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -219,9 +223,24 @@ private fun ReaderRouter(
     var backgroundWorkReady by remember(bookId) { mutableStateOf(false) }
     val activeReader = rememberUpdatedState(readerActive)
     val latestFirstContentCallback = rememberUpdatedState(onFirstContentDrawn)
+    // Content drawn while the reader is not yet the active route is held and reported once it
+    // becomes active; dropping it would leave the opening overlay waiting forever.
+    var firstContentPending by remember(bookId) { mutableStateOf(false) }
     val reportFirstContent = {
-        if (activeReader.value && !firstContentDrawn) {
+        if (!firstContentDrawn) {
+            if (activeReader.value) {
+                firstContentDrawn = true
+                firstContentPending = false
+                latestFirstContentCallback.value()
+            } else {
+                firstContentPending = true
+            }
+        }
+    }
+    LaunchedEffect(readerActive, firstContentPending) {
+        if (readerActive && firstContentPending && !firstContentDrawn) {
             firstContentDrawn = true
+            firstContentPending = false
             latestFirstContentCallback.value()
         }
     }
@@ -250,12 +269,15 @@ private fun ReaderRouter(
     if (documentState.book != null) {
         androidx.compose.runtime.SideEffect { onReaderPaperColorChanged(paperColor) }
     }
-    if (!shouldMountReaderContent(documentState, windowReady = mountReady)) {
+    // Plain holder, not state: it only records that content has been shown for this book.
+    val contentMounted = remember(bookId) { booleanArrayOf(false) }
+    if (!shouldMountReaderContent(documentState, windowReady = mountReady, alreadyMounted = contentMounted[0])) {
         // The ViewModel loads independently. Avoid constructing the text engine
         // with default settings before the actual book/renderer is known.
         ReaderOpeningPlaceholder(onNavigateBack, openingPaperColor ?: AppColors.PageBg)
         return
     }
+    contentMounted[0] = true
     // PDF and CBZ share the raster page reader; every other format uses the text engines.
     val isRasterPageFormat = documentState.book?.format?.isRasterPageFormat == true || documentState.epubComicReader
     val isAppDarkTheme = LocalIsDarkTheme.current
@@ -296,7 +318,12 @@ private fun ReaderRouter(
             com.huangder.lumibooks.ui.reader.LocalReaderOpeningSnapshotSink provides
                 openingSnapshotSink.takeIf { openingSnapshotsEnabled }
         ) {
-            Box(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize().then(
+                if (com.huangder.lumibooks.BuildConfig.BUILD_TYPE in com.huangder.lumibooks.BENCHMARK_BUILD_TYPES &&
+                    firstContentDrawn && openingComplete && readerActive
+                ) Modifier.semantics { testTagsAsResourceId = true }.testTag("reader_content_interactive")
+                else Modifier
+            )) {
             Box(Modifier.fillMaxSize().then(
                 activeComicDialogBackdrop?.let { Modifier.layerBackdrop(it) } ?: Modifier
             )) {
@@ -371,8 +398,11 @@ fun MainNavGraph(
     onOpenBookRequestConsumed: () -> Unit = {},
     onOpenBookshelfRequestConsumed: () -> Unit = {},
     onOpenStatisticsRequestConsumed: () -> Unit = {},
-    onOpenHiddenLibraryRequestConsumed: () -> Unit = {}
+    onOpenHiddenLibraryRequestConsumed: () -> Unit = {},
+    onStartupContentPlaced: (() -> Unit)? = null,
+    precomposeInactiveTabs: Boolean = true,
 ) {
+    val shouldPrecomposeInactiveTabs by rememberUpdatedState(precomposeInactiveTabs)
     val mainStartDestination = when (startDestination) {
         Screen.Bookshelf.route -> Screen.Bookshelf.route
         Screen.Statistics.route -> Screen.Statistics.route
@@ -407,6 +437,11 @@ fun MainNavGraph(
     var transitionBookId by remember { mutableStateOf<String?>(null) }
     var readerReady by remember { mutableStateOf(false) }
     var pendingBookId by remember { mutableStateOf<String?>(null) }
+    // Guards against a second open of the same book while the first is still on its way (a
+    // double tap during the async lookups), which would push another reader or restart the
+    // loading overlay over a reader already showing text.
+    var openingReaderBookId by remember { mutableStateOf<String?>(null) }
+    var openingReaderAt by remember { mutableStateOf(0L) }
     var tabBarVisible by remember { mutableStateOf(true) }
     var bookshelfContextMenuVisible by remember { mutableStateOf(false) }
     var useMainReturnTabBarTransition by remember { mutableStateOf(false) }
@@ -617,7 +652,15 @@ fun MainNavGraph(
     ) {
         if (book.isMissing) {
             transientMessage = context.getString(R.string.book_file_unavailable)
-        } else if (eInkMode) {
+            return
+        }
+        val now = android.os.SystemClock.uptimeMillis()
+        val top = navController.currentBackStackEntry
+        if (top?.destination?.route == Screen.Reader.route && top.arguments?.getString("bookId") == book.id) return
+        if (openingReaderBookId == book.id && now - openingReaderAt < READER_OPEN_GUARD_MS) return
+        openingReaderBookId = book.id
+        openingReaderAt = now
+        if (eInkMode) {
             ReaderOpenPerformance.start(book.id)
             transitionBookId = book.id
             navController.navigate(Screen.Reader.createRoute(book.id))
@@ -884,6 +927,10 @@ fun MainNavGraph(
     // 监听路由变化，从阅读页/设置页返回时延迟显示 TabBar
     val currentEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentEntry?.destination?.route
+    LaunchedEffect(currentRoute) {
+        // The reader is on screen: the top-of-stack check takes over from the open guard.
+        if (currentRoute == Screen.Reader.route) openingReaderBookId = null
+    }
 
     // Leaving the hidden pages for the main tabs locks them again. The first route seen after
     // composition is skipped, so the settings entry (unlock, then navigate here) keeps its unlock.
@@ -983,6 +1030,12 @@ fun MainNavGraph(
     // Navigate immediately so the reader can load behind the original loading page.
     // The overlay intentionally receives no source bounds: there is no connected-cover
     // transition, only the established loading surface.
+    LaunchedEffect(showTransition, transitionBookId) {
+        // Safety net for the hidden reader above: never keep it hidden indefinitely.
+        if (!showTransition) return@LaunchedEffect
+        delay(LOADING_PAGE_READY_TIMEOUT_MS)
+        if (showTransition && !readerReady) readerReady = true
+    }
     LaunchedEffect(pendingBookId) {
         val bookId = pendingBookId ?: return@LaunchedEffect
         if (!showTransition) return@LaunchedEffect
@@ -1093,6 +1146,7 @@ fun MainNavGraph(
                 MainTabsPager(
                     state = mainPagerState,
                     selection = mainTabSelection,
+                    precomposeInactivePages = shouldPrecomposeInactiveTabs,
                     userScrollEnabled = !showTransition &&
                         bookReaderTransition.phase == BookReaderTransitionPhase.Library &&
                         !homeGoalSheetVisible && !showImportActions &&
@@ -1108,6 +1162,7 @@ fun MainNavGraph(
                     val bookAnchorScope = remember(bookReaderTransition) {
                         BookReaderAnchorScope(transitionState = bookReaderTransition)
                     }
+                    val startupPlacement = onStartupContentPlaced.takeIf { page == selectedTab }
                     CompositionLocalProvider(
                         LocalBookReaderAnchorScope provides bookAnchorScope.takeIf {
                             page == selectedTab && entranceAnimationsEnabled && !eInkMode
@@ -1116,7 +1171,10 @@ fun MainNavGraph(
                     ) {
                         BookReaderLibraryLayer(
                             transition = bookReaderTransition,
-                            blurEnabled = !eInkMode
+                            blurEnabled = !eInkMode,
+                            modifier = if (page != 2 && !homeUiState.isLoading && startupPlacement != null) {
+                                Modifier.onGloballyPositioned { startupPlacement() }
+                            } else Modifier
                         ) {
                             when (page) {
                                 0 -> {
@@ -1195,6 +1253,7 @@ fun MainNavGraph(
                                 else -> {
                                     StatisticsScreen(
                                         playEntranceAnimation = playEntranceAnimation,
+                                        onStartupContentPlaced = startupPlacement,
                                         onMessage = { transientMessage = it }
                                     )
                                 }
@@ -1352,7 +1411,14 @@ fun MainNavGraph(
                                             }
                                         }
                                     } else {
-                                        Modifier
+                                        // Loading-page open: the reader stays hidden until it
+                                        // reports its first real page, the same contract the
+                                        // hero uses. Otherwise text drawn while the overlay is
+                                        // still transparent shows through, and the overlay then
+                                        // fades in on top of it.
+                                        Modifier.graphicsLayer {
+                                            alpha = if (showTransition && transitionBookId == bookId && !readerReady) 0f else 1f
+                                        }
                                     }
                                 )
                         ) {
@@ -1915,3 +1981,9 @@ fun MainNavGraph(
     }
     }
 }
+
+/** How long a pending open of one book blocks a repeated open of the same book. */
+private const val READER_OPEN_GUARD_MS = 3_000L
+
+/** Longest the loading-page overlay keeps the reader hidden while waiting for its first page. */
+private const val LOADING_PAGE_READY_TIMEOUT_MS = 10_000L

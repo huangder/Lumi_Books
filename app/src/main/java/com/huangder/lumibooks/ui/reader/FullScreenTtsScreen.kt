@@ -68,7 +68,8 @@ internal data class ListeningScreenState(
     val provider: TtsProviderSelection = TtsProviderSelection.SystemDefault,
     val engines: List<InstalledTtsEngine> = emptyList(), val aiAvailable: Boolean = false,
     val chapterBusy: Boolean = false, val engineBusy: Boolean = false,
-    val seekGesture: SubtitleSeekGesture = SubtitleSeekGesture.DOUBLE_TAP
+    val seekGesture: SubtitleSeekGesture = SubtitleSeekGesture.DOUBLE_TAP,
+    val pauseDuration: TtsPauseDuration = TtsPauseDuration.STANDARD
 )
 
 internal data class ListeningActions(
@@ -77,7 +78,8 @@ internal data class ListeningActions(
     val progress: (Float) -> Unit = {}, val rate: (Float) -> Unit = {}, val pitch: (Float) -> Unit = {},
     val rateMode: (TtsProsodyMode) -> Unit = {}, val pitchMode: (TtsProsodyMode) -> Unit = {},
     val timer: (Int) -> Unit = {}, val cancelTimer: () -> Unit = {},
-    val engine: (TtsProviderSelection) -> Unit = {}, val openSettings: () -> Unit = {}
+    val engine: (TtsProviderSelection) -> Unit = {}, val openSettings: () -> Unit = {},
+    val pauseDuration: (TtsPauseDuration) -> Unit = {}
 )
 
 @Composable
@@ -93,6 +95,7 @@ internal fun FullScreenTtsRoute(model: FullScreenTtsViewModel, onExit: () -> Uni
     val pitchMode by model.controller.pitchMode.collectAsState()
     val androidEngine by model.controller.usesAndroidTts.collectAsState()
     val timer by model.controller.sleepTimerRemainingMs.collectAsState()
+    val pauseDuration by model.controller.pauseDuration.collectAsState()
     val provider by model.controller.providerSelection.collectAsState()
     val external by model.settings.externalTtsSettings.collectAsState(ExternalTtsSettings())
     val chapterBusy by model.chapterBusy.collectAsState()
@@ -104,11 +107,12 @@ internal fun FullScreenTtsRoute(model: FullScreenTtsViewModel, onExit: () -> Uni
             book?.format == BookFormat.PDF, playback, text, subtitles, rate, pitch, rateMode, pitchMode,
             androidEngine, timer, provider, model.engines,
             external.enabled && external.hasRequiredFields && external.consentVersion >= ExternalTtsConfig.CONSENT_VERSION,
-            chapterBusy, engineBusy, pageSettings.seekGesture),
+            chapterBusy, engineBusy, pageSettings.seekGesture, pauseDuration),
         ListeningActions(model::toggleMode, model::togglePlayback, model::chapter, model::seek,
             model::seekProgress, model::rate, model::pitch, model::rateMode, model::pitchMode,
             model.controller::setSleepTimer, model.controller::cancelSleepTimer, model::engine,
-            openSettings = { context.startActivity(Intent(context, com.huangder.lumibooks.ui.settings.ListeningPageSettingsActivity::class.java)) }),
+            openSettings = { context.startActivity(Intent(context, com.huangder.lumibooks.ui.settings.ListeningPageSettingsActivity::class.java)) },
+            pauseDuration = model.controller::setPauseDuration),
         entered = model.entered, onEntered = { model.entered = true },
         sessionEnded = activeBook != model.bookId || playback == TtsPlaybackState.IDLE || !model.isCurrentSession(),
         onExit = onExit
@@ -121,9 +125,24 @@ internal fun FullScreenTtsScreen(
     entered: Boolean = false, onEntered: () -> Unit = {}, sessionEnded: Boolean = false, onExit: () -> Unit
 ) {
     val eInk = LocalEInkMode.current
+    val dark = LocalIsDarkTheme.current
     val animated = LocalMotionEnabled.current && !eInk
     val reduce = LocalReduceTransparency.current || eInk
-    val foreground = if (eInk) Color.Black else Color.White
+    val foreground = when {
+        eInk -> Color.Black
+        dark -> Color(0xFFF5F7FA)
+        else -> Color(0xFF182C35)
+    }
+    val background = when {
+        eInk -> Color.White
+        dark -> Color(0xFF151F28)
+        else -> Color(0xFFD5E4EB)
+    }
+    val backgroundTint = if (dark) {
+        Brush.verticalGradient(listOf(Color(0xB8101923), Color(0xD91C2834)))
+    } else {
+        Brush.verticalGradient(listOf(Color(0xB8CEE0E8), Color(0xD9E6ECEF)))
+    }
     val scope = rememberCoroutineScope()
     val motion = remember { ListeningMotion(entered || !animated) }
     var transition by remember { mutableStateOf<Job?>(null) }
@@ -248,7 +267,7 @@ internal fun FullScreenTtsScreen(
         Box(Modifier.fillMaxSize().then(dragModifier)) {
             // One cached, downsampled blur. Translation never recomputes bitmap pixels.
             Box(Modifier.fillMaxSize().graphicsLayer { translationY = effective * heightPx; clip = true }
-                .background(if (eInk) Color.White else Color(0xFF789FB3))) {
+                .background(background)) {
                 if (!reduce && state.cover != null) {
                     val request = remember(state.cover) {
                         ImageRequest.Builder(context).data(state.cover).size(400)
@@ -256,8 +275,7 @@ internal fun FullScreenTtsScreen(
                     }
                     AsyncImage(request, null, Modifier.fillMaxSize().scale(1.2f), contentScale = ContentScale.Crop)
                 }
-                if (!eInk) Box(Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(listOf(Color(0x147AABC6), Color(0x337AABC6), Color(0xC0DFE5E7)))))
+                if (!eInk) Box(Modifier.fillMaxSize().background(backgroundTint))
             }
             BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().padding(vertical = 16.dp)) {
                 val w = maxWidth.coerceAtMost(480.dp)
@@ -278,15 +296,21 @@ internal fun FullScreenTtsScreen(
                 val coverH = coverW * 1.342f
                 val coverX = lerpDp((w - largeW) / 2, w * .0925f, mode)
                 val coverY = lerpDp(h * .12f, h * .055f, mode)
+                val coverPlaceholder = when {
+                    eInk -> AppColors.BgGray
+                    dark -> Color(0xFF334456)
+                    else -> Color(0xFF44596F)
+                }
                 Box(Modifier.offset(x = xInset + coverX, y = coverY).size(coverW, coverH)
                     .then(layer(0)).zIndex(1f).testTag("listening-cover").onGloballyPositioned { coverBounds = it.boundsInRoot() }
                     .shadow(if (eInk) 0.dp else 24.dp, AppRoundedCornerShape(8.dp))
-                    .clip(AppRoundedCornerShape(8.dp)).background(Color(0xFF44596F))
+                    .clip(AppRoundedCornerShape(8.dp)).background(coverPlaceholder)
                     .clickable(enabled = !closing, indication = null, interactionSource = remember { MutableInteractionSource() }) {
                         touch(); actions.toggleMode()
                     }) {
                     if (state.cover != null) AsyncImage(state.cover, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                    else Icon(AppIcons.BookOpen, null, Modifier.align(Alignment.Center).size(coverW * .4f), tint = Color.White.copy(.8f))
+                    else Icon(AppIcons.BookOpen, null, Modifier.align(Alignment.Center).size(coverW * .4f),
+                        tint = if (eInk) Color.Black else Color.White.copy(.8f))
                 }
                 Column(Modifier.offset(x = xInset + lerpDp(w * .087f, w * .287f, mode))
                     .width(lerpDp(w * .826f, w * .568f, mode))
@@ -297,14 +321,13 @@ internal fun FullScreenTtsScreen(
                         val y = centered + ((h * .065f).toPx() - centered) * mode
                         layout(metadata.width, metadata.height) { metadata.placeRelative(0, y.roundToInt()) }
                     }.testTag("listening-metadata").then(layer(1)).zIndex(1f)) {
-                    val metadataColor = if (eInk) Color.Black else Color(0xFF182C35)
-                    Text(state.title, color = metadataColor, fontSize = (20f - mode * 4f).sp,
+                    Text(state.title, color = foreground, fontSize = (20f - mode * 4f).sp,
                         fontWeight = FontWeight.Normal, maxLines = 2, overflow = TextOverflow.Ellipsis,
                         lineHeight = (28f - mode * 5f).sp,
                         textAlign = if (mode < .5f) TextAlign.Center else TextAlign.Start,
                         modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(8.dp))
-                    Text(state.author, color = metadataColor.copy(.5f), fontSize = (13f - mode).sp,
+                    Text(state.author, color = foreground.copy(.74f), fontSize = (13f - mode).sp,
                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                         textAlign = if (mode < .5f) TextAlign.Center else TextAlign.Start,
                         modifier = Modifier.fillMaxWidth())
@@ -335,7 +358,7 @@ internal fun FullScreenTtsScreen(
                     Text(if (state.text.chapterCount > 0) stringResource(
                         if (state.pdf) R.string.tts_full_page else R.string.tts_full_chapter,
                         state.text.chapter + 1, state.text.chapterCount) else "",
-                        color = foreground.copy(.55f), fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
+                        color = foreground.copy(.74f), fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
                 }
                 Row(Modifier.offset(xInset, playbackY).width(w).testTag("listening-playback").then(layer(4, controlsAlpha)),
                     horizontalArrangement = Arrangement.spacedBy(w * .10f, Alignment.CenterHorizontally),
@@ -371,13 +394,6 @@ internal fun FullScreenTtsScreen(
                         Box(Modifier.size(32.dp).clip(RoundedCornerShape(50)).background(foreground.copy(.2f)),
                             contentAlignment = Alignment.Center) {
                             Icon(painterResource(R.drawable.ic_listening_lyrics), null, Modifier.size(21.dp), tint = foreground)
-                        }
-                    }
-                    ListeningPressControl(stringResource(R.string.tts_page_settings_title),
-                        !closing, animated, foreground, onClick = { touch(); actions.openSettings() }) {
-                        Box(Modifier.size(32.dp).clip(RoundedCornerShape(50)).background(foreground.copy(.2f)),
-                            contentAlignment = Alignment.Center) {
-                            Icon(AppIcons.Gear, null, Modifier.size(21.dp), tint = foreground)
                         }
                     }
                 }
@@ -428,6 +444,7 @@ private fun ListeningSettings(
     val animated = LocalMotionEnabled.current && !LocalEInkMode.current
     val eInk = LocalEInkMode.current
     val solid = LocalReduceTransparency.current || eInk
+    val menuSurface = AppColors.CardBg
     val system = stringResource(R.string.tts_full_system)
     val ai = stringResource(R.string.tts_full_ai)
     val follow = stringResource(R.string.tts_follow_engine)
@@ -437,15 +454,19 @@ private fun ListeningSettings(
         TtsProviderSelection.AiModel -> ai
         is TtsProviderSelection.AndroidEngine -> state.engines.find { it.packageName == selection.packageName }?.label ?: selection.packageName
     }
+    val moreLabel = stringResource(R.string.tts_listening_more)
+    val pauseMenu = ttsPauseDurationMenu(state.pauseDuration, actions.pauseDuration)
+    val engineTitle = stringResource(R.string.tts_full_engine)
+    val settingsTitle = stringResource(R.string.tts_page_settings_title)
     val labels = listOf(stringResource(R.string.tts_full_rate_value, formatListeningNumber(state.rate)),
         stringResource(R.string.tts_full_pitch_value, formatListeningNumber(state.pitch)),
         state.timer?.let { "%02d:%02d".format(it / 60000, it / 1000 % 60) } ?: stringResource(R.string.tts_timer_label),
-        engineLabel)
+        moreLabel)
     val descriptions = listOf(stringResource(R.string.tts_speech_rate), stringResource(R.string.tts_pitch_label),
-        stringResource(R.string.tts_timer_label), stringResource(R.string.tts_full_engine))
+        stringResource(R.string.tts_timer_label), moreLabel)
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         repeat(4) { index ->
-            val active = enabled && (index != 1 || state.androidEngine) && (index != 3 || !state.engineBusy)
+            val active = enabled && (index != 1 || state.androidEngine)
             ListeningPressControl(descriptions[index], active, animated, foreground,
                 Modifier.weight(1f).height(36.dp).liquidGlassMenuAnchor(ids[index]), pill = true,
                 onClick = {
@@ -463,14 +484,23 @@ private fun ListeningSettings(
                         2 -> listOf(10, 20, 30, 40, 50, 60, 90, 120, 150, 180).map { minutes ->
                             option("$minutes min", state.timer?.let { (it + 59999) / 60000 == minutes.toLong() } == true) { actions.timer(minutes) }
                         } + if (state.timer != null) listOf(option(cancel) { actions.cancelTimer() }) else emptyList()
-                        else -> listOf(option(system, state.provider == TtsProviderSelection.SystemDefault) { actions.engine(TtsProviderSelection.SystemDefault) }) +
-                            state.engines.map { engine -> option(engine.label, state.provider == TtsProviderSelection.AndroidEngine(engine.packageName)) {
-                                actions.engine(TtsProviderSelection.AndroidEngine(engine.packageName)) } } +
-                            if (state.aiAvailable) listOf(option(ai, state.provider == TtsProviderSelection.AiModel) { actions.engine(TtsProviderSelection.AiModel) }) else emptyList()
+                        else -> {
+                            val providers = listOf(TtsProviderSelection.SystemDefault to system) +
+                                state.engines.map { TtsProviderSelection.AndroidEngine(it.packageName) to it.label } +
+                                listOfNotNull((TtsProviderSelection.AiModel to ai).takeIf { state.aiAvailable })
+                            listOf(
+                                pauseMenu,
+                                LiquidGlassMenuItem(engineTitle, subtitle = engineLabel, enabled = !state.engineBusy,
+                                    submenuItems = providers.map { (provider, label) ->
+                                        option(label, state.provider == provider) { actions.engine(provider) }
+                                    }),
+                                option(settingsTitle, click = actions.openSettings)
+                            )
+                        }
                     }
                     host?.toggle(LiquidGlassMenuSpec(Rect.Zero, if (index == 3) 240.dp else 180.dp,
                         options, sourceId = ids[index], preferAbove = true,
-                        surfaceColor = if (eInk) Color.White else Color(0xFF25303F),
+                        surfaceColor = menuSurface,
                         contentColor = foreground, forceSolid = solid))
                 }) {
                 Crossfade(labels[index], animationSpec = if (animated) tween(120) else snap(), label = "setting value") { value ->
@@ -517,9 +547,9 @@ private fun ListeningProgress(
                 })
         }, contentAlignment = Alignment.CenterStart) {
         Box(Modifier.fillMaxWidth().height(30.dp).testTag("listening-progress-track")
-            .clip(RoundedCornerShape(50)).background(foreground.copy(.55f))) {
+            .clip(RoundedCornerShape(50)).background(foreground.copy(.14f))) {
             Box(Modifier.fillMaxWidth(displayedProgress).fillMaxHeight().testTag("listening-progress-fill")
-                .clip(RoundedCornerShape(50)).background(tone.copy(.55f)))
+                .clip(RoundedCornerShape(50)).background(tone.copy(.30f)))
         }
         Text("${(displayedProgress * 100).roundToInt()}%", color = foreground, fontSize = 22.sp,
             fontWeight = FontWeight.Thin,
@@ -569,7 +599,7 @@ private fun ListeningSubtitleChapter(
     enabled: Boolean, focusInset: Dp, onScrolling: (Boolean) -> Unit,
     seekGesture: SubtitleSeekGesture, onTouch: () -> Unit, onSeek: (ListeningSentence) -> Unit
 ) {
-    val list = rememberLazyListState(initialFirstVisibleItemIndex = text.focus)
+    val list = rememberLazyListState(initialFirstVisibleItemIndex = text.focus.coerceAtLeast(0))
     var browsing by remember { mutableStateOf(false) }
     var returningFromBrowse by remember { mutableStateOf(false) }
     val latestTouch by rememberUpdatedState(onTouch)
@@ -585,7 +615,7 @@ private fun ListeningSubtitleChapter(
     DisposableEffect(Unit) { onDispose { latestScrolling(false) } }
     val focusId = text.sentences.getOrNull(text.focus)?.id
     LaunchedEffect(focusId) {
-        // Browsing alone never seeks. The next whole sentence brings the list back.
+        // Browsing alone never seeks. The next spoken clause brings the list back.
         val slowReturn = browsing || returningFromBrowse
         browsing = false
         returningFromBrowse = slowReturn

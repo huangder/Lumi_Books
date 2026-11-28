@@ -31,6 +31,7 @@ import com.huangder.lumibooks.ui.reader.ContinuousSelectableTextView
 import com.huangder.lumibooks.ui.reader.applyReaderTextAlignment
 import com.huangder.lumibooks.ui.reader.readerBreakStrategy
 import com.huangder.lumibooks.ui.reader.readerJustificationMode
+import com.huangder.lumibooks.util.readerLetterSpacingEm
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -40,6 +41,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
 import kotlinx.coroutines.runBlocking
+import kotlin.math.ceil
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33, 35], application = Application::class)
@@ -63,6 +65,27 @@ class ReaderPunctuationLayoutTest {
             .setIncludePad(false).setBreakStrategy(alignment.readerBreakStrategy())
             .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
             .build()
+
+    @Test fun justifiedWrappedHeadingKeepsItsLastGlyphInsideTheColumn() {
+        val line = "成本是为了得到它所放"
+        val text = SpannableString(line + "弃的东西\n正文").apply {
+            val headingEnd = indexOf('\n')
+            setSpan(AbsoluteSizeSpan(48), 0, headingEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            setSpan(StyleSpan(Typeface.BOLD), 0, headingEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        for (font in fonts()) for (spacing in listOf(-0.05f, 0f, 0.1f)) {
+            val paint = paint(font, 36f, spacing)
+            val width = ceil(Layout.getDesiredWidth(text, 0, line.length, paint)).toInt() + 1
+            val layout = layout(text, paint, width)
+            assertEquals(line.length, layout.getLineEnd(0))
+            val last = line.lastIndex
+            val geometry = ReaderLineGeometry(layout, text, Layout.JUSTIFICATION_MODE_INTER_CHARACTER)
+            val x = geometry.horizontalRange(0, last, last + 1)!!.left
+            val glyphPaint = readerGlyphPaint(paint, text, last, last + 1).apply { letterSpacing = 0f }
+            val right = x + readerGlyphInk(glyphPaint, text, last, last + 1).right
+            assertTrue("Last glyph ends at $right in a $width px column (tracking $spacing)", right <= width + 1f)
+        }
+    }
 
     @Test fun naturalFillsOnlyTheGapCausedByPunctuationIncludingAtPageEnd() {
         val prefix = "春風吹過山間樹林"
@@ -331,6 +354,68 @@ class ReaderPunctuationLayoutTest {
             ReaderTextPainter().draw(Canvas(actual), sl, text, ReaderLineGeometry(sl, text, 0))
             assertTrue("Complex shaping differs from Android: $raw", expected.sameAs(actual))
             expected.recycle(); actual.recycle()
+        }
+    }
+
+    @Test fun tightTrackingLeavesRoomForNameSeparators() {
+        for (font in fonts()) for (size in listOf(20f, 38f)) {
+            val spacing = readerLetterSpacingEm(-0.25f * size, size)
+            for (raw in listOf("杜维·罗林·鲁道夫", "Dewey Rowling Rudolf", "Dewey\u00a0Rowling\u00a0Rudolf")) {
+                val text = SpannableString(applyReaderPunctuationCompression(raw))
+                val sl = layout(text, paint(font, size, spacing), 720)
+                val geometry = ReaderLineGeometry(sl, text, Layout.JUSTIFICATION_MODE_NONE)
+                for (i in raw.indices) {
+                    val advance = geometry.horizontalPosition(i + 1, trailing = true)!! -
+                        geometry.horizontalPosition(i)!!
+                    assertTrue("$raw at $i: $advance", advance > 0f)
+                    if (raw[i] in " ·\u00a0") assertTrue("Separator in $raw: $advance", advance >= size * 0.08f)
+                }
+            }
+            assertEquals(-0.05f, readerLetterSpacingEm(-0.05f * size, size), 0.0001f)
+            assertEquals(0.1f, readerLetterSpacingEm(0.1f * size, size), 0.0001f)
+        }
+    }
+
+    @Test fun greekLetterInkFollowsJustifiedMixedScriptGeometry() {
+        val source = SpannableString("数据α与数据β，比较疑似γ的结果")
+        val letters = mapOf('α' to Color.RED, 'β' to Color.GREEN, 'γ' to Color.BLUE)
+        for ((letter, color) in letters) {
+            val offset = source.indexOf(letter)
+            source.setSpan(ForegroundColorSpan(color), offset, offset + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        val text = applyReaderPunctuationCompression(source) as Spanned
+        for (font in fonts()) for (spacing in listOf(-0.05f, 0f, 0.1f)) {
+            val glyphPaint = paint(font, 38f, spacing)
+            val sl = layout(text, glyphPaint, 840)
+            assertEquals(1, sl.lineCount)
+            val geometry = ReaderLineGeometry(sl, text, Layout.JUSTIFICATION_MODE_INTER_CHARACTER,
+                forceLastLineJustification = true)
+
+            val actual = Bitmap.createBitmap(sl.width, sl.height, Bitmap.Config.ARGB_8888)
+            ReaderTextPainter().draw(Canvas(actual), sl, text, geometry)
+            fun inkLeft(bitmap: Bitmap, color: Int): Int = (0 until bitmap.width).first { x ->
+                (0 until bitmap.height).any { y ->
+                    val pixel = bitmap.getPixel(x, y)
+                    Color.alpha(pixel) > 128 && Color.rgb(Color.red(pixel), Color.green(pixel),
+                        Color.blue(pixel)) == color
+                }
+            }
+            val expected = Bitmap.createBitmap(sl.width, sl.height, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(expected)
+            for ((letter, color) in letters) {
+                val offset = source.indexOf(letter)
+                val left = geometry.horizontalRange(0, offset, offset + 1)!!.left
+                assertTrue(left - sl.getPrimaryHorizontal(offset) > 5f)
+                canvas.drawText(letter.toString(), left, sl.getLineBaseline(0).toFloat(),
+                    TextPaint(glyphPaint).apply {
+                        this.color = color
+                        letterSpacing = 0f
+                    })
+                assertEquals("Letter $letter with tracking $spacing",
+                    inkLeft(expected, color).toFloat(), inkLeft(actual, color).toFloat(), 1f)
+            }
+            expected.recycle()
+            actual.recycle()
         }
     }
 

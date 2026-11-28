@@ -1285,9 +1285,17 @@ private fun CategoryBooksPage(
                 pendingDeleteBooks = emptyList()
             },
             onDelete = { mode ->
-                pendingDeleteMode = mode
-                pendingDeleteBooks = targets
-                deletingBookIds = targets.mapTo(mutableSetOf()) { it.id }
+                if (mode == BookDeleteMode.CLOUD_ONLY) {
+                    // The books stay in the category, so nothing fades out.
+                    viewModel.deleteBooks(targets, mode)
+                    pendingDeleteBooks = emptyList()
+                    selectedBookIds = emptySet()
+                    isEditing = false
+                } else {
+                    pendingDeleteMode = mode
+                    pendingDeleteBooks = targets
+                    deletingBookIds = targets.mapTo(mutableSetOf()) { it.id }
+                }
                 showDeleteConfirm = false
             }
         )

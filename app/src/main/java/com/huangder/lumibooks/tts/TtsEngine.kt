@@ -741,8 +741,11 @@ class TtsEngine internal constructor(
             },
             onError = { error -> if (task === activeSynthesis) failLocalSynthesis(task, error) },
             onRenderedStart = {
-                if (task === activeSynthesis) logSynthesis("audio_first_frame_rendered", task,
-                    mapOf("startLatencyMs" to (SystemClock.elapsedRealtime() - task.playbackRequestedAtMs)))
+                if (task === activeSynthesis && !task.playbackDone) {
+                    logSynthesis("audio_first_frame_rendered", task,
+                        mapOf("startLatencyMs" to (SystemClock.elapsedRealtime() - task.playbackRequestedAtMs)))
+                    task.playbackId?.let { playbackListener?.onStart(it) }
+                }
             },
             onPlaybackActivity = { active ->
                 if (task === activeSynthesis && !task.playbackDone) {
@@ -755,7 +758,6 @@ class TtsEngine internal constructor(
         }
         task.playbackStarted = true
         if (activePaused) localAudioPlayer.pause()
-        task.playbackId?.let { playbackListener?.onStart(it) }
         task.chunks.forEach(localAudioPlayer::append)
         task.chunks.clear()
         task.bufferedBytes = 0

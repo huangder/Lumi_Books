@@ -32,8 +32,13 @@ data class ReaderThemeSettings(
     /** Stroke width (dp) of note underlines. */
     val underlineThicknessDp: Float = DEFAULT_UNDERLINE_THICKNESS_DP,
     /** Shift (dp, positive = away from text) of note underlines. */
-    val underlineOffsetYDp: Float = 0f
+    val underlineOffsetYDp: Float = 0f,
+    /** An explicit 2 dp also overrides the book's paragraph spacing. */
+    val paragraphSpacingEdited: Boolean = false
 ) {
+    val publisherParagraphSpacingOverride: Float?
+        get() = paragraphSpacing.takeIf { paragraphSpacingEdited || kotlin.math.abs(it - 2f) > 0.001f }
+
     companion object {
         const val DEFAULT_UNDERLINE_THICKNESS_DP = 1f
         val HIGHLIGHT_WIDTH_RANGE = -3f..8f
@@ -78,7 +83,7 @@ data class ReaderThemeSuite(
     val customName: String? = null,
     val settings: ReaderThemeSettings,
     val bookLayoutSettings: ReaderThemeSettings = settings,
-    /** Optional light/dark overrides. Legacy suites use [settings] for both modes. */
+    /** Optional light/dark overrides. Custom themes inherit light typography until dark is edited. */
     val lightSettings: ReaderThemeSettings? = null,
     val darkSettings: ReaderThemeSettings? = null,
     val darkMaskOpacity: Float = 0f,
@@ -105,10 +110,27 @@ data class ReaderThemeSuite(
             ReaderLayoutTarget.BOOK_LAYOUT -> copy(bookLayoutSettings = updated)
         }
 
-    fun settingsFor(layout: ReaderLayoutTarget, dark: Boolean): ReaderThemeSettings =
-        if (layout == ReaderLayoutTarget.READER_LAYOUT) {
-            (if (dark) darkSettings else lightSettings) ?: settings
-        } else (if (dark) bookLayoutDarkSettings else bookLayoutLightSettings) ?: bookLayoutSettings
+    fun settingsFor(layout: ReaderLayoutTarget, dark: Boolean): ReaderThemeSettings {
+        val base = settingsFor(layout)
+        val light = when (layout) {
+            ReaderLayoutTarget.READER_LAYOUT -> lightSettings
+            ReaderLayoutTarget.BOOK_LAYOUT -> bookLayoutLightSettings
+        } ?: base
+        if (!dark) return light
+
+        val darkOverride = when (layout) {
+            ReaderLayoutTarget.READER_LAYOUT -> darkSettings
+            ReaderLayoutTarget.BOOK_LAYOUT -> bookLayoutDarkSettings
+        }
+        return darkOverride ?: if (isBuiltIn) base else light.copy(
+            // Image selections keep a separate paper color beneath the image.
+            backgroundSelection = light.backgroundSelection.takeIf {
+                it.startsWith("custom:") && it != light.backgroundColorSelection
+            } ?: ReaderThemeSuites.NIGHT_ID,
+            backgroundColorSelection = ReaderThemeSuites.NIGHT_ID,
+            textColor = null
+        )
+    }
 
     fun withModeSettings(dark: Boolean, updated: ReaderThemeSettings): ReaderThemeSuite =
         if (dark) copy(darkSettings = updated) else copy(lightSettings = updated)
@@ -347,7 +369,7 @@ object ReaderThemeSuiteCodec {
                         ?.toThemeSettings()
                         ?: settings
                     val lightSettings = item.optJSONObject("light")?.toThemeSettings() ?: settings
-                    val darkSettings = item.optJSONObject("dark")?.toThemeSettings() ?: settings
+                    val darkSettings = item.optJSONObject("dark")?.toThemeSettings()
                     if (id.isNotBlank()) {
                         add(
                             ReaderThemeSuite(
@@ -381,6 +403,7 @@ object ReaderThemeSuiteCodec {
         put("letterSpacing", letterSpacing.toDouble())
         put("textAlignment", textAlignment.key)
         put("paragraphSpacing", paragraphSpacing.toDouble())
+        if (paragraphSpacingEdited) put("paragraphSpacingEdited", true)
         put("firstLineIndent", firstLineIndent.toDouble())
         put("marginLeft", marginLeft.toDouble())
         put("marginRight", marginRight.toDouble())
@@ -429,6 +452,7 @@ object ReaderThemeSuiteCodec {
         letterSpacing = optDouble("letterSpacing", 0.0).toFloat(),
         textAlignment = ReaderTextAlignment.fromKey(optString("textAlignment")),
         paragraphSpacing = optDouble("paragraphSpacing", 2.0).toFloat(),
+        paragraphSpacingEdited = optBoolean("paragraphSpacingEdited"),
         firstLineIndent = optDouble("firstLineIndent", 2.0).toFloat(),
         marginLeft = optDouble("marginLeft", 38.0).toFloat(),
         marginRight = optDouble("marginRight", 38.0).toFloat(),
@@ -468,7 +492,7 @@ object LumiThemeBundleCodec {
         val portableSuites = suites.map { suite ->
             suite.copy(
                 lightSettings = suite.lightSettings ?: suite.settings,
-                darkSettings = suite.darkSettings ?: suite.settings
+                darkSettings = suite.darkSettings ?: suite.settings.takeIf { suite.isBuiltIn }
             )
         }
         put("themes", JSONArray(ReaderThemeSuiteCodec.encodeExact(portableSuites)))

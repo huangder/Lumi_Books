@@ -1,5 +1,6 @@
 package com.huangder.lumibooks.ui.reader
 
+import com.huangder.lumibooks.util.readerLetterSpacingEm
 import android.content.Context
 import android.widget.TextView
 import com.huangder.lumibooks.ui.reader.engine.PageLayoutEngine
@@ -33,7 +34,7 @@ internal fun configureScrollPagination(
         textSize = fontSize
         typeface = face.typeface
         isFakeBoldText = face.fakeBold
-        letterSpacing = state.letterSpacing * density / fontSize
+        letterSpacing = readerLetterSpacingEm(state.letterSpacing * density, fontSize)
     }
     engine.setPaginationIdentity(contentIdentity)
     engine.setPaginationLayoutIdentity(listOf(fontKey, state.paragraphSpacing, state.firstLineIndent,

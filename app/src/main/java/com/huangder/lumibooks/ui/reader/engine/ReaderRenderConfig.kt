@@ -27,7 +27,8 @@ data class ReaderLayoutConfig(
     val writingMode: ReaderWritingMode,
     val twoPageSpread: Boolean,
     /** 整页正文对齐到同一条下边线（会微调行距）；不改变分页。 */
-    val pageBottomAligned: Boolean = false
+    val pageBottomAligned: Boolean = false,
+    val typographyPreviewActive: Boolean = false
 )
 
 data class ReaderBackgroundConfig(

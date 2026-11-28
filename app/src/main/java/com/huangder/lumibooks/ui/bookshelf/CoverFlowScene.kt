@@ -123,7 +123,9 @@ internal fun CoverFlowScene(
     menusEnabled: Boolean = true,
     lightColors: List<Color> = emptyList(),
     /** Commits a drag on the stage with the new order of [books]' ids; null turns dragging off. */
-    onReorder: ((List<String>) -> Unit)? = null
+    onReorder: ((List<String>) -> Unit)? = null,
+    /** Folder stand-ins in [books] (see [COVER_FLOW_FOLDER_PREFIX]) and what their cards show. */
+    folderCards: Map<String, CoverFlowFolderCardInfo> = emptyMap()
 ) {
     val density = LocalDensity.current
     val context = LocalContext.current
@@ -300,7 +302,8 @@ internal fun CoverFlowScene(
                         com.huangder.lumibooks.ui.animation.VisualMotion.tween(if (motionEnabled) 220 else 0), label = "coverFlowDelete")
                     // Keep anchors stable while the focus crosses books. Adding/removing a
                     // position callback at each crossing can miss a layout-only registration.
-                    val anchor = Modifier.bookCoverTransitionAnchor(
+                    val folderCard = folderCards[book.id]
+                    val anchor = if (folderCard != null) Modifier else Modifier.bookCoverTransitionAnchor(
                         bookId = book.id, cornerRadiusDp = 2f,
                         titleStyle = BookCoverTitleStyle(14f, 2, 8f, BookCoverTitleColor.Secondary, false, true, 8),
                         presentation = BookReaderPresentation.CoverFlow
@@ -342,10 +345,14 @@ internal fun CoverFlowScene(
                             .onGloballyPositioned { layout.covers[book.id] = it }
                             .clearAndSetSemantics { }
                     ) {
-                        // Read only by the gloss layer's graphicsLayer: no recomposition or redraw.
-                        CoverFlowCover(book, Modifier.fillMaxSize(), tilt = {
-                            geometry.transform((index - state.position) * direction).rotationY / 62f
-                        })
+                        if (folderCard != null) {
+                            CoverFlowFolderCardFace(folderCard, Modifier.fillMaxSize())
+                        } else {
+                            // Read only by the gloss layer's graphicsLayer: no recomposition or redraw.
+                            CoverFlowCover(book, Modifier.fillMaxSize(), tilt = {
+                                geometry.transform((index - state.position) * direction).rotationY / 62f
+                            })
+                        }
                     }
                 }
             }
@@ -510,7 +517,12 @@ private suspend fun AwaitPointerEventScope.holdDragOrMenu(
             reorder.liftedId = null
             return
         }
-        true -> Unit
+        true -> if (isCoverFlowFolderCard(book.id)) {
+            // Folder cards keep their place ahead of the books; a slide just lets go.
+            reorder.liftedId = null
+            consumeRest(pointer)
+            return
+        }
     }
 
     // Drag: the carousel follows the finger beneath the held book.

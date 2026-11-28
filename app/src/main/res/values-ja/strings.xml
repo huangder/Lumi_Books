@@ -460,6 +460,7 @@
     <string name="line_guide_dim_medium">中</string>
     <string name="line_guide_dim_high">強</string>
     <string name="line_guide_dim_very_high">最強</string>
+    <string name="line_guide_show_all_features">すべての機能を表示</string>
     <string name="line_guide_close">読書ガイドをオフ</string>
     <string name="bionic_reading_hint">単語の前半を太字にして、視線の移動と集中を助けます</string>
     <string name="reader_page_bottom_aligned">ページ下端をそろえる</string>
@@ -1306,6 +1307,12 @@
     <string name="delete_cloud_book_choice">選択した %1$d 冊にはクラウドコピーがあります。削除範囲を選択してください。</string>
     <string name="delete_local_only">端末のみ削除</string>
     <string name="delete_local_and_cloud">端末とクラウドから削除</string>
+    <string name="delete_cloud_only">クラウドのみ削除</string>
+    <string name="book_detail_cloud_removed">クラウドから削除済み · タップして再アップロード</string>
+    <string name="webdav_status_clean_duplicates">重複した古いクラウド版を整理（%1$d）</string>
+    <string name="webdav_clean_duplicates_title">重複した古いクラウド版を整理</string>
+    <string name="webdav_clean_duplicates_message">次の %1$d 件のクラウドのみのコピーは、この端末にある本と同じタイトルで、本文を編集する前に残った古い版と思われます。整理するとクラウドから削除され、読書データはこの端末の本に統合されます。端末内の書籍ファイルには影響しません。\n\n%2$s</string>
+    <string name="webdav_clean_duplicates_confirm">整理</string>
     <string name="force_delete">強制削除</string>
     <string name="force_delete_hint">強制削除は先に端末のライブラリから削除し、その後 WebDAV のクリーンアップを試みます。クラウド側で失敗しても端末側の削除は完了します。通常の削除に失敗した場合のみ使用してください。</string>
     <string name="force_delete_cloud_failed">端末の項目は削除されましたが、クラウドのクリーンアップは完了しませんでした：%1$s</string>
@@ -1486,6 +1493,11 @@
     <string name="spine_shelf_folder_count">%1$d 冊</string>
     <string name="spine_menu_tags">タグ</string>
     <string name="spine_menu_notes">メモ</string>
+    <string name="spine_menu_pose">置き方</string>
+    <string name="spine_pose_auto">自動</string>
+    <string name="spine_pose_flat">横置き</string>
+    <string name="spine_pose_leaning">斜め</string>
+    <string name="spine_pose_upright">縦置き</string>
     <string name="spine_menu_edit">編集</string>
     <string name="spine_menu_cover">表紙</string>
     <string name="spine_menu_restore_cover">元の表紙</string>
@@ -1565,4 +1577,5 @@
     <string name="floating_subtitle_locked_notification_text">タップして解除すると、移動や操作ができます</string>
     <string name="floating_subtitle_color_reset">デフォルトに戻す</string>
     <string name="webdav_sync_reader_theme_deferred">現在の読書テーマを保持しました。元の画像やフォントが残っている端末でもう一度同期してください。</string>
+    <string name="tts_allow_concurrent_playback">他のアプリとの同時再生を許可</string>
 </resources>

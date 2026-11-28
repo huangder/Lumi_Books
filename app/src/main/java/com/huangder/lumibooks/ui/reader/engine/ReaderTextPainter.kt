@@ -150,13 +150,14 @@ internal class ReaderTextPainter {
                 var next = if (nextBoundary == BreakIterator.DONE) end else start + nextBoundary
                 // Joining scripts must be painted as a complete style/bidi run, not
                 // once per grapheme (a ligature can cover multiple graphemes).
-                // Latin uses shaped clusters below: drawing a whole word from
-                // Layout's unexpanded selection path bypasses reader justification
-                // and puts its ink at different coordinates from punctuation/touches.
+                // Latin, Greek and Cyrillic use shaped clusters below so their
+                // ink follows the same justified coordinates as punctuation and touch.
                 val script = Character.UnicodeScript.of(Character.codePointAt(text, index))
                 val joining = script != Character.UnicodeScript.HAN &&
                     script != Character.UnicodeScript.COMMON &&
                     script != Character.UnicodeScript.LATIN &&
+                    script != Character.UnicodeScript.GREEK &&
+                    script != Character.UnicodeScript.CYRILLIC &&
                     script != Character.UnicodeScript.HIRAGANA && script != Character.UnicodeScript.KATAKANA &&
                     script != Character.UnicodeScript.HANGUL
                 if (joining) {

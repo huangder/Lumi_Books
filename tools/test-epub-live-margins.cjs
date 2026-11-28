@@ -9,7 +9,11 @@ const source = readFileSync(join(__dirname,
   '../app/src/main/java/com/huangder/lumibooks/util/epub/EpubDocumentTransformer.kt'), 'utf8');
 const parts = [...source.matchAll(/private const val READER_SCRIPT_PART_\w+ = """([\s\S]*?)"""/g)];
 assert.equal(parts.length, 5);
-const script = parts.map(match => match[1]).join('');
+const alignmentSource = readFileSync(join(__dirname,
+  '../app/src/main/java/com/huangder/lumibooks/util/epub/EpubReaderAlignment.kt'), 'utf8');
+const alignment = alignmentSource.match(/EPUB_READER_ALIGNMENT_SCRIPT = """([\s\S]*?)"""/)[1];
+const [first, ...rest] = parts.map(match => match[1]);
+const script = [first, alignment, ...rest].join('');
 const css = source.match(/private const val READER_CSS = """([\s\S]*?)"""/)[1];
 
 async function verify(flow, fixed, night) {
@@ -20,9 +24,54 @@ async function verify(flow, fixed, night) {
   const config = { flow, transition: 'none', theme: night ? 'night' : 'day',
     publisherPaintOnly: !night, fontFamily: 'serif', lineHeight: 1.8,
     insets: { top: 20, right: 20, bottom: 20, left: 20 }, configurationGeneration: 1 };
+  if (flow === 'scrolled') config.scrollViewportInsets = { top: 34, bottom: 22 };
   try {
     reader.configure(config);
     await delay(250);
+    if (flow === 'scrolled') {
+      window.scrollTo(0, 685);
+      window.dispatchEvent(new Event('scroll'));
+      await delay(150);
+      const before = reader.currentPosition();
+      const messageStart = __lumiMessages.length;
+      window.scrollBy(0, 7);
+      window.dispatchEvent(new Event('scroll'));
+      await delay(150);
+      const expectedY = window.scrollY;
+      const current = reader.currentPosition();
+      check(current.pageIndex === before.pageIndex,
+        'Small scroll remains on the same page: ' + before.pageIndex + ' → ' + current.pageIndex);
+      const committed = __lumiMessages.slice(messageStart).filter(m => m.type === 'page').at(-1);
+      check(committed && committed.payload.locator.scrollFraction === current.locator.scrollFraction &&
+        Number.isFinite(committed.payload.locator.scrollAnchorOffset), 'Same-page movement publishes its new position');
+      let saved = JSON.parse(JSON.stringify(committed.payload.locator));
+      for (let reopen = 0; reopen < 3; reopen++) {
+        window.scrollTo(0, 0);
+        reader.restore(saved);
+        check(Math.abs(window.scrollY - expectedY) <= 1, 'Reloading saved scroll must not jump backward');
+        saved = JSON.parse(JSON.stringify(reader.currentLocator()));
+      }
+      const frame = document.createElement('iframe');
+      frame.style.cssText = 'position:fixed;inset:0;border:0;width:100%;height:100%';
+      const load = new Promise(resolve => frame.addEventListener('load', resolve, { once: true }));
+      const bridge = document.scripts[1].textContent;
+      frame.srcdoc = '<!doctype html><html><head>' + document.head.innerHTML +
+        '</head><body data-lumi-layout="reflowable">' + document.getElementById('reading').outerHTML +
+        '<script>' + bridge + '</' + 'script><script>window.LumiReader.configure(' +
+        JSON.stringify(config) + ');window.LumiReader.restore(' + JSON.stringify(saved) + ');</' + 'script>';
+      document.documentElement.append(frame);
+      await load;
+      for (let i = 0; i < 20 && frame.contentWindow.scrollY === 0; i++) await delay(25);
+      check(Math.abs(frame.contentWindow.scrollY - expectedY) <= 1, 'Fresh document restores before first layout');
+      frame.remove();
+      const { scrollAnchorOffset, scrollFraction, ...oldLocator } = saved;
+      window.scrollTo(0, 0);
+      reader.restore(oldLocator);
+      check(Math.abs(window.scrollY - expectedY) <= 36, 'Old text locators restore to the reading line');
+      reader.restore(saved);
+      reader.repaginate();
+      check(Math.abs(window.scrollY - expectedY) <= 1, 'Repagination keeps the saved scroll position');
+    }
     if (!fixed) reader.goToPage(Math.floor(reader.currentPosition().pageCount / 2));
     const originalText = document.getElementById('reading').textContent;
     const override = document.getElementById('lumi-reader-overrides');
@@ -60,11 +109,34 @@ async function verify(flow, fixed, night) {
     check(mutations.takeRecords().length === 0, 'Margins must not rewrite typography styles');
     check(document.getElementById('reading').textContent === originalText, 'Publisher DOM text retained');
     check(getComputedStyle(document.getElementById('copy-0')).color === nightColor, 'Publisher/night colors retained');
-    // Changing typography after previews must still take the full configuration path.
+    // Typography updates reflow the live document and retain its reading anchor.
     reader.configure({ ...config, configurationGeneration: 20, lineHeight: 2 });
     check(getComputedStyle(document.getElementById('copy-0')).lineHeight === '36px', 'Typography changes still apply');
     check(__lumiMessages.some(m => m.type === 'ready' && m.payload.configurationGeneration === 20),
       'Final configuration reports completed geometry');
+    if (!fixed) {
+      const anchor = reader.currentPosition().locator;
+      const positionBefore = anchor.textPosition;
+      const scansBefore = footnoteScans;
+      const preview = { ...config, lineHeight: 1.7, paragraphSpacingDp: 8,
+        letterSpacingDp: 0.5, typographyPreview: true, typographyLocator: anchor };
+      reader.configure({ ...preview, configurationGeneration: 81 });
+      check(document.body.style.visibility === 'visible', 'Typography preview keeps the body visible');
+      check(footnoteScans === scansBefore, 'Typography updates reuse the existing footnote structure');
+      check(reader.paginationMeasurement(81) === null, 'The preview is never used for the book index');
+      const previewPosition = reader.currentPosition();
+      if (flow === 'scrolled') {
+        check(Math.abs(previewPosition.locator.textPosition - positionBefore) < 150,
+          'Scroll preview keeps the reading anchor nearby');
+      }
+      reader.configure({ ...preview, typographyPreview: false, configurationGeneration: 82 });
+      check(reader.currentPosition().pageIndex === previewPosition.pageIndex,
+        'Finishing the preview does not navigate the page');
+      if (flow === 'scrolled') {
+        check(reader.currentPosition().locator.numberingPageCount > 0,
+          'Finishing the preview restores exact scrolling page counts');
+      }
+    }
     if (flow === 'paginated' && !fixed) {
       config.transition = 'slide';
       config.configurationGeneration = 21;

@@ -46,5 +46,15 @@ class MiuixProgressiveBlurEffectTest {
         assertNotNull(held)
         assertNotSame(resized, held)
     }
+
+    @Test fun revealingLiveContentHasItsOwnCachedBlendMode() {
+        val effect = MiuixProgressiveBlurEffect()
+        val direction = ProgressiveBlurDirection.Top
+        val sampled = effect.effect(19f, 320f, 180f, 26f, direction, 0.68f, revealLiveContent = true)
+        assertNotNull(sampled)
+        assertFalse(effect.failed)
+        assertSame(sampled, effect.effect(19f, 320f, 180f, 26f, direction, 0.68f, revealLiveContent = true))
+        assertNotSame(sampled, effect.effect(19f, 320f, 180f, 26f, direction, 0.68f))
+    }
 }
 

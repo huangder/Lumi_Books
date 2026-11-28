@@ -3,6 +3,7 @@ package com.huangder.lumibooks.ui.reader
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
@@ -21,6 +22,7 @@ import java.io.Closeable
 /** Bitmaps are shared with caches and other consumers; callers must never recycle them. */
 internal interface BitmapPageSource : Closeable {
     val pageCount: Int
+    val supportsPdfTiles: Boolean get() = false
     val moving: StateFlow<Boolean>
     val visiblePages: StateFlow<Set<Int>>
     fun updateViewport(viewport: RasterViewport)
@@ -36,6 +38,7 @@ internal interface BitmapPageSource : Closeable {
     suspend fun horizontalCrop(pageIndex: Int): RasterHorizontalCrop
     suspend fun renderPreview(pageIndex: Int, targetWidthPx: Int): Bitmap?
     suspend fun renderPage(pageIndex: Int, targetWidthPx: Int, mode: PageRenderMode = PageRenderMode.NORMAL): Bitmap?
+    suspend fun renderPdfTile(tile: PdfTile): Bitmap? = null
     suspend fun renderThumbnail(pageIndex: Int, targetWidthPx: Int): Bitmap?
 }
 
@@ -84,6 +87,8 @@ internal object BitmapPageSourceFactory {
 internal interface RasterPageDecoder : Closeable {
     val pageCount: Int
     val parallelism: Int
+    /** Larger decoded images can substitute for sampled comics, but not a selected PDF resolution. */
+    val canReuseLargerBitmap: Boolean get() = true
     fun dimensions(page: Int): RasterDimensions?
     fun spec(page: Int, dimensions: RasterDimensions, width: Int, mode: PageRenderMode, preview: Boolean): RasterDecodeSpec
     fun decode(spec: RasterDecodeSpec): Bitmap?
@@ -96,6 +101,7 @@ internal class PdfPageDecoder(
 ) : RasterPageDecoder {
     override val pageCount = renderer.pageCount
     override val parallelism = 1
+    override val canReuseLargerBitmap = false
     private val memoryPixelBudget = pdfMemoryPixelBudget(Runtime.getRuntime().maxMemory())
 
     override fun dimensions(page: Int): RasterDimensions = renderer.openPage(page).use {
@@ -130,6 +136,26 @@ internal class PdfPageDecoder(
         } catch (error: Throwable) {
             android.util.Log.w("RasterReader", "PDF decode failed: ${spec.page}", error)
             null
+        }
+    }
+
+    fun decodeTile(tile: PdfTile): Bitmap {
+        return renderer.openPage(tile.page).use { page ->
+            val bitmap = Bitmap.createBitmap(tile.width + 2, tile.height + 2, Bitmap.Config.ARGB_8888)
+            try {
+                val scale = tile.pageWidth.toFloat() / page.width
+                val transform = Matrix().apply {
+                    setScale(scale, scale)
+                    // The surrounding pixel keeps the sharpening kernel continuous across tiles.
+                    postTranslate(1f - tile.left, 1f - tile.top)
+                }
+                bitmap.eraseColor(android.graphics.Color.WHITE)
+                page.render(bitmap, null, transform, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                bitmap
+            } catch (error: Throwable) {
+                bitmap.recycle()
+                throw error
+            }
         }
     }
 

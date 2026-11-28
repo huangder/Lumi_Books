@@ -1,7 +1,6 @@
 package com.huangder.lumibooks.ui.bookshelf.spine
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.cos
@@ -13,14 +12,15 @@ class SpineLayoutTest {
     private fun layout(seed: Long, list: List<SpineEntry> = entries) =
         SpineLayout.paginate(list, seed, shelfWidth = 340f, maxBookHeight = 150f, rows = 4)
 
-    @Test fun `same seed gives the same shelf`() {
-        assertEquals(layout(42L), layout(42L))
+    @Test fun `saved items occupy the same spots when the shelf is rebuilt`() {
+        val restoredEntries = entries.map { it.copy() }
+        assertEquals(layout(SpineLayout.SHELF_SEED), layout(SpineLayout.SHELF_SEED, restoredEntries))
     }
 
-    @Test fun `a new process seed re-rolls the poses`() {
-        val first = layout(1L).flatMap { page -> page.rows.flatMap { it.items } }.map { it.pose to it.width }
-        val second = layout(2L).flatMap { page -> page.rows.flatMap { it.items } }.map { it.pose to it.width }
-        assertNotEquals(first, second)
+    @Test fun `only the last page has empty rows`() {
+        val pages = layout(SpineLayout.SHELF_SEED)
+        assertTrue(pages.size > 1)
+        assertTrue(pages.dropLast(1).all { page -> page.rows.all { it.items.isNotEmpty() } })
     }
 
     @Test fun `every book appears exactly once in order`() {
@@ -118,6 +118,38 @@ class SpineLayoutTest {
                 }
             }
         }
+    }
+
+    @Test fun `flat books stay inside their stack and clear the neighbours on tall shelves`() {
+        var stacks = 0
+        for (width in listOf(200f, 340f, 500f)) {
+            repeat(15) { seed ->
+                SpineLayout.paginate(entries, seed.toLong(), width, maxBookHeight = 300f, rows = 4)
+                    .flatMap { it.rows }.forEach { row ->
+                        var rightEdge = 0f
+                        var stackLeft = 0f
+                        for (item in row.items) {
+                            if (item.lift == 0f) {
+                                val left = if (item.pose == SpinePose.Leaning) {
+                                    item.x + item.height * sin(Math.toRadians(item.angle.toDouble())).toFloat()
+                                } else item.x
+                                assertTrue(left >= rightEdge - 0.01f)
+                                stackLeft = item.x
+                            } else {
+                                stacks++
+                                assertTrue(item.x >= stackLeft - 0.01f)
+                            }
+                            if (item.pose == SpinePose.Flat) {
+                                assertTrue(item.width <= SpineLayout.MAX_FLAT_LENGTH + 0.01f)
+                                assertTrue(item.width <= width * SpineLayout.MAX_FLAT_WIDTH_FRACTION + 0.01f)
+                            }
+                            rightEdge = maxOf(rightEdge, SpineLayout.rightEdge(item))
+                            assertTrue(rightEdge <= width + 0.01f)
+                        }
+                    }
+            }
+        }
+        assertTrue(stacks > 0)
     }
 
     @Test fun `folders stand upright`() {

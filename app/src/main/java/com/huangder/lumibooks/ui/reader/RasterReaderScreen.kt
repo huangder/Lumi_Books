@@ -1063,6 +1063,7 @@ fun RasterReaderScreen(
     LaunchedEffect(listeningResumeJumpRequest, readerActive, firstPagePrepared, uiState.isLoading) {
         val position = listeningResumeJumpRequest ?: return@LaunchedEffect
         if (!readerActive || !firstPagePrepared || uiState.isLoading) return@LaunchedEffect
+        if (!viewModel.isListeningResumeJumpCurrent(position)) return@LaunchedEffect
         scrollToPdfPage(position.chapterIndex, animate = false, manual = false)
         viewModel.completeListeningResumeJump(position)
     }
@@ -2016,12 +2017,17 @@ fun RasterReaderScreen(
             menuEnterMillis = 280,
             menuExitMillis = 220
         ) { placement ->
+            val allowConcurrentPlayback by viewModel.ttsAllowConcurrentPlayback.collectAsState(false)
             TtsPlayerPanel(
                 placement = placement,
+                allowConcurrentPlayback = allowConcurrentPlayback,
+                onAllowConcurrentPlaybackChange = viewModel::saveTtsAllowConcurrentPlayback,
                 chapterTitle = comicIndex?.pages?.getOrNull(currentPage)?.let { page ->
                     comicIndex.chapterTitles.getOrNull(page.chapterIndex)
                 } ?: uiState.chapterTitles.getOrNull(currentPage) ?: (book?.title ?: ""),
                 playbackState = ttsState.playbackState,
+                pauseDuration = ttsState.pauseDuration,
+                onPauseDurationChange = viewModel::setTtsPauseDuration,
                 speechRate = ttsState.speechRate,
                 speechRateMode = ttsState.speechRateMode,
                 pitch = ttsState.pitch,
@@ -3945,8 +3951,7 @@ private fun PdfPageItem(
     // 缩放时按半倍档补高分辨率图，不在手势每一帧重新分配 Bitmap。
     val zoomRenderBucket = pdfZoomRenderBucket(zoomScale)
     val renderTargetWidthPx = (baseDisplayWidthPx * zoomRenderBucket / crop.width).toInt()
-    val effectiveRenderMode = if (requestSelectedQuality && LocalReaderOpeningComplete.current)
-        renderMode else PageRenderMode.NORMAL
+    val openingComplete = LocalReaderOpeningComplete.current
     var retryGeneration by remember(pageSource, pageIndex) { mutableStateOf(0) }
     var decodeFailed by remember(pageSource, pageIndex) { mutableStateOf(false) }
     var bitmap by remember(pageSource, pageIndex) { mutableStateOf(pageSource?.cachedReadablePage(pageIndex)) }
@@ -3994,7 +3999,8 @@ private fun PdfPageItem(
     // Every composed page must obtain a readable NORMAL bitmap even if visibility reporting lags
     // behind a fast fling or a tiled source fails. Visible PDF pages can then refine to the selected
     // quality; CBZ tiles provide their own high-detail refinement above this bitmap.
-    val bitmapRequestMode = if (visible && activeTileSource == null) effectiveRenderMode else PageRenderMode.NORMAL
+    val useSelectedQuality = visible && activeTileSource == null && requestSelectedQuality && openingComplete
+    val bitmapRequestMode = if (useSelectedQuality) renderMode else PageRenderMode.NORMAL
     val bitmapRequestWidthPx = if (visible && activeTileSource == null) renderTargetWidthPx
         else (baseDisplayWidthPx / crop.width).toInt()
     LaunchedEffect(
@@ -4002,6 +4008,7 @@ private fun PdfPageItem(
         pageIndex,
         bitmapRequestWidthPx,
         bitmapRequestMode,
+        useSelectedQuality,
         retryGeneration,
         tileSourceResolved,
         activeTileSource,
@@ -4018,9 +4025,10 @@ private fun PdfPageItem(
             // Keep a short timeout so a slow codec can never strand the page blank.
             delay(CBZ_BITMAP_FALLBACK_DELAY_MS)
         }
-        // 已有更宽的图时直接复用；缩小回去不需要再渲染一张小图。
+        // 缩小但未切档时复用已有位图。当前页切档后要重新请求，即使切向更低的档位。
+        // 页面暂时离开阅读焦点时保留已完成的清晰图，避免翻页和滚动引发反复解码。
         if (bitmap != null && bitmapTargetWidthPx >= bitmapRequestWidthPx &&
-            bitmapRenderMode.ordinal >= bitmapRequestMode.ordinal
+            (bitmapRenderMode == bitmapRequestMode || !useSelectedQuality && bitmapRenderMode.ordinal > bitmapRequestMode.ordinal)
         ) {
             return@LaunchedEffect
         }
@@ -4038,9 +4046,7 @@ private fun PdfPageItem(
             if (rendered != null) {
                 bitmap = rendered
                 bitmapTargetWidthPx = bitmapRequestWidthPx
-                if (bitmapRequestMode.ordinal > bitmapRenderMode.ordinal) {
-                    bitmapRenderMode = bitmapRequestMode
-                }
+                bitmapRenderMode = bitmapRequestMode
                 return@LaunchedEffect
             }
             attempt++
@@ -4102,6 +4108,12 @@ private fun PdfPageItem(
                 },
                 colorFilter = ColorFilter.colorMatrix(ColorMatrix(imageAdjustments.colorMatrixValues()))
             )
+            if (pageSource?.supportsPdfTiles == true && visible && fullRatio != null &&
+                bitmap != null && renderedPage.width < renderTargetWidthPx
+            ) {
+                PdfTileLayer(pageSource, pageIndex, fullRatio, crop, fitToViewport,
+                    renderedPage.width, bitmapRequestMode, imageAdjustments, Modifier.matchParentSize())
+            }
         } else {
             Box(
                 modifier = if (fitToViewport) {

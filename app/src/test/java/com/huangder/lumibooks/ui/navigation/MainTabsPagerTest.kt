@@ -26,6 +26,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -106,6 +107,36 @@ class MainTabsPagerTest {
                 }
             }
         }
+    }
+
+    @Test
+    fun startupCanDeferInactivePagesWithoutBlockingFirstSelection() {
+        val composed = BooleanArray(3)
+        var ready by mutableStateOf(false)
+        compose.setContent {
+            state = rememberPagerState(initialPage = 1) { mainTabRoutes.size }
+            selection = remember { MainTabSelection() }
+            val scope = rememberCoroutineScope()
+            Column {
+                MainTabsPager(state, true, Modifier.weight(1f), selection, precomposeInactivePages = ready) { page ->
+                    SideEffect { composed[page] = true }
+                    Text("page-$page", Modifier.testTag("page-$page"))
+                }
+                Text("Statistics", Modifier.testTag("statistics").clickable {
+                    scope.launch { selection.select(state, 2, motionEnabled = false) }
+                })
+            }
+        }
+        compose.runOnIdle {
+            assertTrue(booleanArrayOf(false, true, false).contentEquals(composed))
+        }
+        compose.onNodeWithTag("statistics").performClick()
+        compose.onNodeWithTag("page-2").assertExists()
+        compose.runOnIdle {
+            assertTrue(booleanArrayOf(false, true, true).contentEquals(composed))
+            ready = true
+        }
+        compose.runOnIdle { assertTrue(composed.all { it }) }
     }
 
     @Test

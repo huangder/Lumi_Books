@@ -99,6 +99,7 @@ internal class ReaderOrientationEvents {
     var active = false
     var onReady: () -> Unit = {}
     private var wasActive = false
+    val activating get() = active && !wasActive
     private val retained = linkedMapOf<String, () -> Unit>()
     private var expectedOperation: Long? = null
     private var completedOperation: Long? = null

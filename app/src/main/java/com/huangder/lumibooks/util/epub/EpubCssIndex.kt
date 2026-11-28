@@ -156,6 +156,9 @@ internal class EpubCssIndex(internal val rules: List<EpubCssRule>) {
             return URL_REGEX.find(declaration)?.groupValues?.get(2)?.trim()?.takeIf { it.isNotEmpty() }
         }
 
+        fun urls(value: String): Sequence<String> = URL_REGEX.findAll(value)
+            .map { it.groupValues[2].trim() }.filter(String::isNotEmpty)
+
         fun isFullWidthValue(value: String?): Boolean =
             FULL_WIDTH_REGEX.matches(value?.trim()?.lowercase().orEmpty())
 
@@ -173,6 +176,11 @@ internal class EpubCssIndex(internal val rules: List<EpubCssRule>) {
                 val semicolon = topLevelIndexOf(css, ';', index)
                 if (semicolon in 0 until brace) {
                     index = semicolon + 1
+                    continue
+                }
+                val strayClose = topLevelIndexOf(css, '}', index)
+                if (strayClose in index until brace) {
+                    index = strayClose + 1
                     continue
                 }
                 val prelude = css.substring(index, brace).trim()

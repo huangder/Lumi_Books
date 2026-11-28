@@ -4,6 +4,9 @@ import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.cancel
+import org.junit.After
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.graphics.Color
@@ -36,11 +39,20 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ReadingInsightsScreenTest {
     @get:Rule val compose=createComposeRule()
+    private lateinit var model: StatisticsViewModel
+
+    @After fun cancelModelScope() {
+        if (::model.isInitialized) model.viewModelScope.cancel()
+    }
+
+    private fun awaitStatistics(condition: () -> Boolean) {
+        compose.waitUntil(10_000) { compose.runOnIdle(condition) }
+    }
 
     @Test @Config(sdk=[31])
     fun glassStatisticsNeverSamplesTheNavigationLayerContainingIt() {
         val context = RuntimeEnvironment.getApplication()
-        val model = StatisticsViewModel(ReadingInsightsFixtures.repository, ReadingInsightsFixtures.library, DataStoreManager(context))
+        model = StatisticsViewModel(ReadingInsightsFixtures.repository, ReadingInsightsFixtures.library, DataStoreManager(context))
         var parentSamples = 0
         val parent = object : Backdrop {
             override val isCoordinatesDependent = false
@@ -58,10 +70,10 @@ class ReadingInsightsScreenTest {
                     LocalAppTheme provides "liquid_glass",
                     LocalLiquidGlassCapability provides LiquidGlassCapability(true, false),
                     LocalLiquidGlassBackdrop provides parent
-                ) { StatisticsScreen(viewModel=model) }
+                ) { StatisticsScreen(viewModel = model, readingReviewEntry = { _, _ -> }, readingJournalCard = null) }
             }
         }
-        compose.waitUntil(10_000) { model.uiState.value.insights != null }
+        awaitStatistics { model.uiState.value.insights != null }
         for (scope in listOf(R.string.insights_all, R.string.tab_week, R.string.tab_month, R.string.tab_year)) {
             compose.onNodeWithText(context.getString(scope)).performClick().assertIsSelected()
             compose.waitForIdle()
@@ -78,7 +90,7 @@ class ReadingInsightsScreenTest {
     // supported blur path for software screenshots and verify refraction on-device.
     @Test @Config(sdk=[31]) fun overviewWorksAcrossThemesAndLargeText() {
         val context=RuntimeEnvironment.getApplication()
-        val model=StatisticsViewModel(ReadingInsightsFixtures.repository,ReadingInsightsFixtures.library,DataStoreManager(context))
+        model=StatisticsViewModel(ReadingInsightsFixtures.repository,ReadingInsightsFixtures.library,DataStoreManager(context))
         var theme by mutableStateOf("lumi")
         var dark by mutableStateOf(false)
         var eInk by mutableStateOf(false)
@@ -87,10 +99,10 @@ class ReadingInsightsScreenTest {
         compose.setContent {
             view=LocalView.current
             EBookReaderTheme(appTheme=theme,darkTheme=dark,eInkMode=eInk,appFontSize=if(large) AppFontSize.EXTRA_LARGE else AppFontSize.STANDARD,motionPreference=MotionPreference.REDUCED) {
-                StatisticsScreen(viewModel=model)
+                StatisticsScreen(viewModel = model, readingReviewEntry = { _, _ -> }, readingJournalCard = null)
             }
         }
-        compose.waitUntil(10_000) { model.uiState.value.insights!=null }
+        awaitStatistics { model.uiState.value.insights!=null }
         compose.onNodeWithText(context.getString(R.string.insights_all)).assertIsSelected()
         compose.onAllNodes(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab)).assertCountEquals(4)
         val output=File("build/reading-insights-qa").apply { mkdirs() }
@@ -111,7 +123,7 @@ class ReadingInsightsScreenTest {
         compose.onNodeWithContentDescription(ReadingInsightsFixtures.today.toString()).assertHasClickAction()
         compose.onNodeWithText(context.getString(R.string.tab_month)).performClick()
         compose.onNodeWithText(context.getString(R.string.tab_month)).assertIsSelected()
-        compose.waitUntil(10_000) { model.uiState.value.selection.scope == StatisticsScope.MONTH && model.uiState.value.insights != null }
+        awaitStatistics { model.uiState.value.selection.scope == StatisticsScope.MONTH && model.uiState.value.insights != null }
         compose.onNodeWithText(context.getString(R.string.insights_overview)).assertExists()
     }
 
@@ -119,20 +131,20 @@ class ReadingInsightsScreenTest {
     @Config(qualifiers="en-w960dp-h480dp-mdpi")
     fun landscapeStatisticsCanNavigateToAnHistoricalPeriod() {
         val context = RuntimeEnvironment.getApplication()
-        val model = StatisticsViewModel(ReadingInsightsFixtures.repository, ReadingInsightsFixtures.library, DataStoreManager(context))
+        model = StatisticsViewModel(ReadingInsightsFixtures.repository, ReadingInsightsFixtures.library, DataStoreManager(context))
         lateinit var view: View
         compose.setContent {
             view = LocalView.current
             EBookReaderTheme(appTheme="lumi", motionPreference=MotionPreference.REDUCED) {
-                StatisticsScreen(viewModel=model)
+                StatisticsScreen(viewModel = model, readingReviewEntry = { _, _ -> }, readingJournalCard = null)
             }
         }
-        compose.waitUntil(10_000) { model.uiState.value.insights != null }
+        awaitStatistics { model.uiState.value.insights != null }
         compose.onNodeWithText(context.getString(R.string.tab_month)).performClick()
-        compose.waitUntil(10_000) { model.uiState.value.selection.scope == StatisticsScope.MONTH && model.uiState.value.insights != null }
+        awaitStatistics { model.uiState.value.selection.scope == StatisticsScope.MONTH && model.uiState.value.insights != null }
         compose.onNodeWithContentDescription(context.getString(R.string.insights_previous_period)).performClick()
         val previous = ReadingInsightsFixtures.today.minusMonths(1)
-        compose.waitUntil(10_000) { model.uiState.value.selection.year == previous.year &&
+        awaitStatistics { model.uiState.value.selection.year == previous.year &&
             model.uiState.value.selection.month0 == previous.monthValue - 1 && model.uiState.value.insights != null }
         compose.onNodeWithText(periodLabel(StatisticsPeriod.month(previous.year, previous.monthValue - 1))).assertIsDisplayed()
         compose.runOnIdle {

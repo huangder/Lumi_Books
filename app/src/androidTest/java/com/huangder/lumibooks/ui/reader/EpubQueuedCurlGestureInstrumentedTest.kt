@@ -17,6 +17,57 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class EpubQueuedCurlGestureInstrumentedTest {
     @Test
+    fun burstWaitsForFramesAndDoesNotReplayATailOfStaleTaps() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val activity = instrumentation.startActivitySync(
+            Intent(instrumentation.targetContext, EpubHighlightTestActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        ) as EpubHighlightTestActivity
+        lateinit var host: EpubPageTurnHost
+        val committed = mutableListOf<Int>()
+        val commitCount = AtomicInteger()
+        val pageCount = 30
+        var generation = 0
+        instrumentation.runOnMainSync {
+            host = EpubPageTurnHost(activity)
+            activity.setContentView(host)
+        }
+        instrumentation.waitForIdleSync()
+
+        try {
+            instrumentation.runOnMainSync {
+                fun prepare(slot: EpubPageTurnHost.PreloadSlot, target: EpubPageTarget) {
+                    val view = checkNotNull(host.preloadView(slot))
+                    val request = ++generation
+                    host.markPreloadLoading(slot, target, request)
+                    host.markPreloadReady(slot, target, request, target.pageIndex, pageCount, view)
+                }
+
+                host.setTransition("curl", 300)
+                host.setCurrentPage(0, 0, pageCount)
+                host.onHasPotentialTurn = { delta, target, count -> target.pageIndex + delta in 0 until count }
+                host.onSlideLookaheadRequested = ::prepare
+                host.onPageCommit = { _, target, count ->
+                    committed += target.pageIndex
+                    host.setCurrentPage(target.chapterIndex, target.pageIndex, count)
+                    commitCount.incrementAndGet()
+                }
+                prepare(EpubPageTurnHost.PreloadSlot.NEXT, EpubPageTarget(0, 1))
+
+                repeat(20) { assertTrue(host.requestTurn(1)) }
+                assertEquals("new input must not commit without a draw", 0, commitCount.get())
+            }
+            SystemClock.sleep(1_000L)
+            instrumentation.runOnMainSync { assertTrue(committed == listOf(1) || committed == listOf(1, 2)) }
+        } finally {
+            instrumentation.runOnMainSync {
+                host.setNativePagingEnabled(false)
+                activity.finish()
+            }
+        }
+    }
+
+    @Test
     fun busySwipeResumesBeforeReleaseAndCommitsExactlyOnce() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val activity = instrumentation.startActivitySync(

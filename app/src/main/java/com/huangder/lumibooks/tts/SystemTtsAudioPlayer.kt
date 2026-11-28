@@ -92,16 +92,19 @@ internal class SystemTtsAudioPlayer(
         val activityCallback = onPlaybackActivity
         val activity = RenderedAudioActivity(monotonicMs)
         renderActivity = activity
+        var renderedStart = false
+        suspend fun notifyRenderedStart() {
+            withContext(Dispatchers.Main.immediate) {
+                if (token == generation && !paused && !renderedStart && created.playbackHeadPosition > 0L) {
+                    renderedStart = true
+                    renderedCallback?.invoke()
+                }
+            }
+        }
         renderMonitor = scope.launch {
-            var renderedStart = false
             while (token == generation) {
                 val head = created.playbackHeadPosition
-                if (head > 0L && !renderedStart) {
-                    renderedStart = true
-                    withContext(Dispatchers.Main.immediate) {
-                        if (token == generation) renderedCallback?.invoke()
-                    }
-                }
+                if (head > 0L && !renderedStart) notifyRenderedStart()
                 activity.update(head, paused || completed)?.let { active ->
                     withContext(Dispatchers.Main.immediate) {
                         if (token == generation) activityCallback?.invoke(active)
@@ -147,6 +150,8 @@ internal class SystemTtsAudioPlayer(
                     }
                     if (token == generation) withContext(Dispatchers.Main.immediate) {
                         if (token == generation) {
+                            // A tiny clip can drain between monitor polls. Start still precedes done.
+                            notifyRenderedStart()
                             dispatchRenderedRanges(created, token)
                             completed = true
                             doneCallback?.invoke()

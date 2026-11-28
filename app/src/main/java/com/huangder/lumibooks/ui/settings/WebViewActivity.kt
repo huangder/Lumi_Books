@@ -1,10 +1,9 @@
 package com.huangder.lumibooks.ui.settings
-import androidx.compose.ui.graphics.toArgb
-import com.huangder.lumibooks.ui.icons.directionalIcon
-import com.huangder.lumibooks.ui.icons.AppIcons
 
 import android.content.res.Configuration
 import android.os.Bundle
+import android.view.MotionEvent
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
@@ -12,42 +11,21 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import android.view.MotionEvent
 import com.huangder.lumibooks.ui.components.CollapsingPageScaffold
 import com.huangder.lumibooks.ui.components.rememberCollapsingPageState
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
-import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.ui.theme.AppColors
-import com.huangder.lumibooks.ui.theme.AppSpace
-import com.huangder.lumibooks.ui.theme.AppType
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.rememberLiquidGlassCapability
 import com.huangder.lumibooks.ui.theme.effectiveAppTheme
-import com.huangder.lumibooks.ui.theme.fangSongFamily
-import com.huangder.lumibooks.ui.theme.resolveAppFontFamily
-import com.huangder.lumibooks.ui.components.LiquidGlassIconButton
 import com.huangder.lumibooks.util.LaunchThemeController
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -60,7 +38,7 @@ import com.huangder.lumibooks.ui.animation.finishWithPush
  *   "title"  — 页面标题
  *   "file"   — assets 文件名（如 "privacy.html"）
  *
- * 过渡动画继承系统默认。
+ * 使用应用的页面过渡动画。
  */
 @AndroidEntryPoint
 class WebViewActivity : ComponentActivity() {
@@ -156,18 +134,37 @@ internal fun BundledDocumentView(
     AndroidView(
         factory = { context ->
             WebView(context).apply {
+                val assetBase = "file:///android_asset/html/"
+                fun loadDocument(file: String) {
+                    val url = assetBase + file
+                    // Decode the asset explicitly so WebView does not sniff the CJK text encoding.
+                    runCatching {
+                        context.assets.open("html/$file")
+                            .bufferedReader(Charsets.UTF_8)
+                            .use { it.readText() }
+                    }.onSuccess { html ->
+                        loadDataWithBaseURL(
+                            url,
+                            themeBundledDocument(html, isDark, bgColor),
+                            "text/html",
+                            "UTF-8",
+                            url
+                        )
+                    }.onFailure {
+                        loadUrl(url)
+                    }
+                }
                 setBackgroundColor(bgColor)
                 webViewClient = object : WebViewClient() {
-                    override fun onPageFinished(view: WebView, url: String) {
-                        if (isDark) {
-                            view.evaluateJavascript("""
-                                (function(){
-                                    var s=document.createElement('style');
-                                    s.textContent=':root{--bg:#000;--card:#1C1C1E;--text:#fff;--text2:#98989D;--line:#38383A}';
-                                    document.head.appendChild(s);
-                                })();
-                            """.trimIndent(), null)
+                    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                        if (!request.isForMainFrame) return false
+                        val file = when (request.url.toString()) {
+                            assetBase + "privacy.html" -> "privacy.html"
+                            assetBase + "terms.html" -> "terms.html"
+                            else -> return false
                         }
+                        loadDocument(file)
+                        return true
                     }
                 }
                 if (onScroll != null) {
@@ -187,28 +184,23 @@ internal fun BundledDocumentView(
                 settings.javaScriptEnabled = true
                 settings.defaultTextEncodingName = "UTF-8"
 
-                // Decode the asset ourselves before passing it to WebView. This prevents
-                // stale file:// cache entries or device-specific charset sniffing from
-                // turning CJK policy text into question marks after an app update.
-                runCatching {
-                    context.assets
-                        .open("html/$assetFile")
-                        .bufferedReader(Charsets.UTF_8)
-                        .use { it.readText() }
-                }.onSuccess { html ->
-                    loadDataWithBaseURL(
-                        "file:///android_asset/html/",
-                        html,
-                        "text/html",
-                        "UTF-8",
-                        null
-                    )
-                }.onFailure {
-                    loadUrl("file:///android_asset/html/$assetFile")
-                }
+                loadDocument(assetFile)
             }
         },
         modifier = modifier,
         onRelease = { it.destroy() }
     )
+}
+
+internal fun themeBundledDocument(html: String, isDark: Boolean, backgroundColor: Int): String {
+    // Resolve the bundled palette before the first paint using the app theme.
+    val darkMedia = if (isDark) "all" else "not all"
+    val colorScheme = if (isDark) "dark" else "light"
+    val background = (backgroundColor and 0xFFFFFF).toString(16).padStart(6, '0')
+    return html
+        .replace("@media (prefers-color-scheme: dark)", "@media $darkMedia")
+        .replace(
+            "</head>",
+            "<style>:root { color-scheme: $colorScheme; --bg: #$background; }</style>\n</head>"
+        )
 }

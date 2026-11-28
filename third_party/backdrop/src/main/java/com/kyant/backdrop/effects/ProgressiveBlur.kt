@@ -4,7 +4,7 @@
 // Adapted from compose-miuix-ui/miuix at 4873fc7392871cd6cf3ea263020f5c7032b3de2a:
 // miuix-blur ProgressiveBlur, internal/BlurEffect, RenderEffectCompat.android and Shaders.
 // Lumi adaptation: full-resolution Android stack for the existing Backdrop capture API;
-// no post effects, downsampling, multiplatform wrappers or separate sharp overlay.
+// optionally reveals live content under the sampled backdrop at the sharp edge.
 
 package com.kyant.backdrop.effects
 
@@ -40,7 +40,7 @@ class MiuixProgressiveBlurEffect {
 
     private data class Geometry(
         val width: Float, val height: Float, val padding: Float,
-        val direction: ProgressiveBlurDirection, val startFraction: Float
+        val direction: ProgressiveBlurDirection, val startFraction: Float, val revealLiveContent: Boolean
     )
     private var geometry: Geometry? = null
     private var heavyMask: RenderEffect? = null
@@ -60,11 +60,12 @@ class MiuixProgressiveBlurEffect {
         padding: Float,
         direction: ProgressiveBlurDirection,
         startFraction: Float = 0f,
+        revealLiveContent: Boolean = false,
     ): RenderEffect? {
         if (failed || width <= 0f || height <= 0f) return null
         return try {
             val start = if (startFraction.isFinite()) startFraction.coerceIn(0f, 0.99f) else 0f
-            build(radius, Geometry(width, height, padding, direction, start))
+            build(radius, Geometry(width, height, padding, direction, start, revealLiveContent))
         } catch (_: IllegalArgumentException) {
             failed = true
             cachedEffect = null
@@ -120,8 +121,8 @@ class MiuixProgressiveBlurEffect {
             ?: RenderEffect.createOffsetEffect(0f, 0f)
         stack = RenderEffect.createBlendModeEffect(stack, masked(0.4f, mediumMask!!), BlendMode.SRC_OVER)
         stack = RenderEffect.createBlendModeEffect(stack, masked(1f, heavyMask!!), BlendMode.SRC_OVER)
-        // Original source at full resolution: the clear edge stays pixel-sharp.
-        stack = RenderEffect.createBlendModeEffect(stack, sharpMask!!, BlendMode.SRC_OVER)
+        val clearEdgeMode = if (next.revealLiveContent) BlendMode.DST_OUT else BlendMode.SRC_OVER
+        stack = RenderEffect.createBlendModeEffect(stack, sharpMask!!, clearEdgeMode)
         cachedRadius = radius
         cachedEffect = stack
         return stack

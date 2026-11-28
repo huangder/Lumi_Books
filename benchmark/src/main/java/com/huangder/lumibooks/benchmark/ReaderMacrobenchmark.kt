@@ -29,10 +29,13 @@ class ReaderMacrobenchmark {
     }
 
     @Test
-    fun coldStartupAndBookshelfScroll() = measureStartupAndBookshelf(StartupMode.COLD)
+    fun coldStartup() = measureStartup(StartupMode.COLD, splash = false)
 
     @Test
-    fun warmStartupAndBookshelfScroll() = measureStartupAndBookshelf(StartupMode.WARM)
+    fun warmStartup() = measureStartup(StartupMode.WARM, splash = false)
+
+    @Test
+    fun coldStartupWithBrandedSplash() = measureStartup(StartupMode.COLD, splash = true)
 
     @Test
     fun firstOpenLargeTxt() = measureBookOpen(BenchmarkBooks.txtLarge, clearCache = true)
@@ -47,31 +50,59 @@ class ReaderMacrobenchmark {
     fun hotOpenLargeEpub() = measureBookOpen(BenchmarkBooks.epubLarge, clearCache = false)
 
     @Test
+    fun resumeLargeTxt() = measureBookOpen(BenchmarkBooks.txtLarge, clearCache = false, resume = true)
+
+    @Test
+    fun resumeLargeEpub() = measureBookOpen(BenchmarkBooks.epubLarge, clearCache = false, resume = true)
+
+    @Test
+    fun firstOpenOriginalLargeEpub() = measureBookOpen(BenchmarkBooks.epubLarge, clearCache = true, original = true)
+
+    @Test
+    fun hotOpenOriginalLargeEpub() = measureBookOpen(BenchmarkBooks.epubLarge, clearCache = false, original = true)
+
+    @Test
+    fun resumeOriginalLargeEpub() = measureBookOpen(BenchmarkBooks.epubLarge, clearCache = false, original = true, resume = true)
+
+    @Test
     fun continuousThirtyPageTurnsTxt() = measurePageTurns(BenchmarkBooks.txtLarge, 30)
 
     @Test
     fun continuousAndCrossChapterTurnsEpub() = measurePageTurns(BenchmarkBooks.epubRegular, 40)
 
-    private fun measureStartupAndBookshelf(startupMode: StartupMode) {
+    @Test
+    fun continuousEpubFling() = measureReaderBurst(vertical = true, original = false)
+
+    @Test
+    fun rapidOriginalEpubCurl() = measureReaderBurst(vertical = false, original = true)
+
+    @Test
+    fun bookshelfFlingOriginalGlass() = measureBookshelfBurst("original")
+
+    @Test
+    fun bookshelfFlingPerformanceGlass() = measureBookshelfBurst("performance")
+
+    private fun measureStartup(startupMode: StartupMode, splash: Boolean) {
         BenchmarkBooks.all.forEach { BenchmarkBooks.ensureImported(device, it) }
+        BenchmarkBooks.prepareApp(device, splash)
         rule.measureRepeated(
             packageName = BenchmarkBooks.PACKAGE_NAME,
-            metrics = listOf(StartupTimingMetric(), FrameTimingMetric(), FrameTimingGfxInfoMetric()),
+            metrics = listOf(StartupTimingMetric()),
             iterations = 10,
             compilationMode = optimizedCompilation,
             startupMode = startupMode,
             setupBlock = { pressHome() }
         ) {
             startActivityAndWait()
-            repeat(3) { BenchmarkBooks.scrollHome(device) }
-            BenchmarkBooks.showBookshelf(device)
-            repeat(3) { BenchmarkBooks.scrollBookshelf(device) }
+            BenchmarkBooks.awaitStartupContent(device)
         }
     }
 
     private fun measureBookOpen(
         fixture: BenchmarkBooks.Fixture,
-        clearCache: Boolean
+        clearCache: Boolean,
+        original: Boolean = false,
+        resume: Boolean = false
     ) {
         BenchmarkBooks.ensureImported(device, fixture)
         rule.measureRepeated(
@@ -82,17 +113,64 @@ class ReaderMacrobenchmark {
             setupBlock = {
                 pressHome()
                 startActivityAndWait()
+                val mode = if (original) "book_layout" else "reader_layout"
                 if (clearCache) {
                     BenchmarkBooks.clearReaderCache(device)
                 } else {
+                    BenchmarkBooks.configureReader(device, fixture, renderMode = mode, resume = resume)
                     BenchmarkBooks.openFromBookshelf(device, fixture)
                     BenchmarkBooks.awaitReaderSettled(device)
                     BenchmarkBooks.closeReader(device, fixture)
                 }
+                BenchmarkBooks.configureReader(device, fixture, renderMode = mode, resume = resume)
+                BenchmarkBooks.prepareBookOpen(device, fixture)
             }
         ) {
-            BenchmarkBooks.openFromBookshelf(device, fixture, resetPosition = true)
+            BenchmarkBooks.clickPreparedBook(device, fixture)
             BenchmarkBooks.awaitReaderSettled(device)
+        }
+    }
+
+    private fun measureReaderBurst(vertical: Boolean, original: Boolean) {
+        val fixture = BenchmarkBooks.epubRegular
+        BenchmarkBooks.ensureImported(device, fixture)
+        rule.measureRepeated(
+            packageName = BenchmarkBooks.PACKAGE_NAME,
+            metrics = if (vertical) frameMetrics else pageTurnMetrics,
+            iterations = 10,
+            compilationMode = optimizedCompilation,
+            setupBlock = {
+                pressHome()
+                startActivityAndWait()
+                BenchmarkBooks.configureReader(device, fixture,
+                    renderMode = if (original) "book_layout" else "reader_layout",
+                    transition = if (vertical) "continuous" else "curl")
+                BenchmarkBooks.openFromBookshelf(device, fixture)
+                BenchmarkBooks.awaitReaderSettled(device)
+            }
+        ) {
+            BenchmarkBooks.swipeBurst(device, BenchmarkBooks.readerBounds(device), vertical, forward = 12, reverse = 5)
+            BenchmarkBooks.awaitBurstTail(device)
+        }
+    }
+
+    private fun measureBookshelfBurst(glassQuality: String) {
+        BenchmarkBooks.ensureImported(device, BenchmarkBooks.txtSmall)
+        BenchmarkBooks.prepareBookshelfFixture(device, glassQuality)
+        rule.measureRepeated(
+            packageName = BenchmarkBooks.PACKAGE_NAME,
+            metrics = frameMetrics,
+            iterations = 10,
+            compilationMode = optimizedCompilation,
+            setupBlock = {
+                pressHome()
+                startActivityAndWait()
+                BenchmarkBooks.showBookshelf(device)
+                BenchmarkBooks.scrollBookshelfToStart(device)
+            }
+        ) {
+            BenchmarkBooks.swipeBurst(device, BenchmarkBooks.bookshelfBounds(device), vertical = true, forward = 4, reverse = 2)
+            BenchmarkBooks.awaitBurstTail(device)
         }
     }
 
@@ -109,7 +187,8 @@ class ReaderMacrobenchmark {
             setupBlock = {
                 pressHome()
                 startActivityAndWait()
-                BenchmarkBooks.openFromBookshelf(device, fixture, resetPosition = true)
+                BenchmarkBooks.configureReader(device, fixture)
+                BenchmarkBooks.openFromBookshelf(device, fixture)
                 BenchmarkBooks.awaitReaderSettled(device)
             }
         ) {
@@ -118,6 +197,7 @@ class ReaderMacrobenchmark {
     }
 
     private companion object {
+        val frameMetrics = listOf(FrameTimingMetric(), FrameTimingGfxInfoMetric())
         val optimizedCompilation = CompilationMode.Partial(
             baselineProfileMode = BaselineProfileMode.UseIfAvailable,
             warmupIterations = 3

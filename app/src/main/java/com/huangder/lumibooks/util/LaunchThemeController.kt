@@ -68,6 +68,37 @@ object LaunchThemeController {
     private const val PREDICTIVE_BACK_ENABLED = "predictive_back_enabled"
     private const val COMPLETED_WELCOME_INSTALL_TIME = "completed_welcome_install_time"
     private const val HAS_COMPLETED_WELCOME_LANGUAGE_SETUP = "has_completed_welcome_language_setup"
+    private const val STARTUP_SCREEN = "startup_screen"
+    private const val STARTUP_BOOKSHELF_LAYOUT_MODE = "startup_bookshelf_layout_mode"
+
+    /**
+     * The start tab and shelf layout as last seen in DataStore, or null before the first
+     * mirror write. Lets the first frame compose the real start screen instead of waiting
+     * for the settings file, which grows with the library, to be read and parsed.
+     */
+    internal fun startupNavigationSnapshot(context: Context): com.huangder.lumibooks.data.local.StartupNavigationSnapshot? {
+        val preferences = context.getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
+        if (!preferences.contains(STARTUP_SCREEN) || !preferences.contains(STARTUP_BOOKSHELF_LAYOUT_MODE)) return null
+        return com.huangder.lumibooks.data.local.StartupNavigationSnapshot(
+            screen = com.huangder.lumibooks.data.local.DataStoreManager.normalizeStartupScreen(
+                preferences.getString(STARTUP_SCREEN, null)
+            ),
+            bookshelfLayoutMode = com.huangder.lumibooks.domain.model.BookshelfLayout.normalize(
+                preferences.getInt(STARTUP_BOOKSHELF_LAYOUT_MODE, 2)
+            )
+        )
+    }
+
+    internal fun updateStartupNavigationSnapshot(
+        context: Context,
+        snapshot: com.huangder.lumibooks.data.local.StartupNavigationSnapshot
+    ) {
+        context.getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)
+            .edit()
+            .putString(STARTUP_SCREEN, snapshot.screen)
+            .putInt(STARTUP_BOOKSHELF_LAYOUT_MODE, snapshot.bookshelfLayoutMode)
+            .apply()
+    }
 
     fun deferSplashEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(STATE_PREFERENCES, Context.MODE_PRIVATE)

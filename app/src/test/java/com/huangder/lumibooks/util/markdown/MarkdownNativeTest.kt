@@ -5,14 +5,13 @@ import android.graphics.Typeface
 import androidx.test.core.app.ApplicationProvider
 import com.huangder.lumibooks.util.markdown.native.*
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.test.setMain
-import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.LooperMode
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
@@ -105,18 +104,20 @@ class MarkdownNativeTest {
             }
         } finally { source.close() }
     }
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    @Test(timeout = 20000) fun nativeFormulaAndDataImageRenderWithoutChangingTextOffsets() = runBlocking {
-        Dispatchers.setMain(Dispatchers.Unconfined)
+    @Test
+    @LooperMode(LooperMode.Mode.INSTRUMENTATION_TEST)
+    fun nativeFormulaAndDataImageRenderWithoutChangingTextOffsets() = runBlocking {
         val doc = MarkdownNativeParser.parse("${'$'}x^2${'$'}\n\n![test](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aVV4AAAAASUVORK5CYII=)")
         val source = MarkwonBlockSource(ApplicationProvider.getApplicationContext(), doc, emptyMap())
-        try {
-            val style = MarkdownRenderStyle(320, 480, 20f, 0xff111111.toInt(), false)
-            for (block in doc.blocks) {
-                val rendered = source.renderBlock(block.index, style)
-                assertEquals(block.text, rendered.toString())
-                assertTrue(block.runs.toString(), rendered.getSpans(0, rendered.length, android.text.style.ImageSpan::class.java).isNotEmpty())
+        source.use {
+            withTimeout(20_000) {
+                val style = MarkdownRenderStyle(320, 480, 20f, 0xff111111.toInt(), false)
+                for (block in doc.blocks) {
+                    val rendered = source.renderBlock(block.index, style)
+                    assertEquals(block.text, rendered.toString())
+                    assertTrue(block.runs.toString(), rendered.getSpans(0, rendered.length, android.text.style.ImageSpan::class.java).isNotEmpty())
+                }
             }
-        } finally { source.close(); Dispatchers.resetMain() }
+        }
     }
 }

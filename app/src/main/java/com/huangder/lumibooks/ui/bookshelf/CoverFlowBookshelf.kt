@@ -108,7 +108,8 @@ internal fun CoverFlowBookshelf(
     modifier: Modifier = Modifier,
     pickerMode: Boolean = false,
     /** Commits a drag on the stage with the new order of [books]' ids; null turns dragging off. */
-    onReorder: ((List<String>) -> Unit)? = null
+    onReorder: ((List<String>) -> Unit)? = null,
+    folderPreviewBooks: Map<String, List<Book?>> = emptyMap()
 ) {
     val state = rememberSaveable(saver = CoverFlowState.Saver) { CoverFlowState() }
     val motionEnabled = LocalMotionEnabled.current && !LocalEInkMode.current
@@ -116,6 +117,16 @@ internal fun CoverFlowBookshelf(
     val controlsBackdrop = rememberLayerBackdrop()
     val sceneLayout = remember { CoverFlowSceneLayout() }
     val bookIds = remember(books) { books.map { it.id } }
+    // The stage leads with a card per sub-folder, then this level's books. The edit list below
+    // only ever holds real books.
+    val folderCards = remember(folders, folderBookCounts, folderPreviewBooks) {
+        folders.associate { folder ->
+            (COVER_FLOW_FOLDER_PREFIX + folder.id) to CoverFlowFolderCardInfo(
+                folder, folderBookCounts[folder.id] ?: 0, folderPreviewBooks[folder.id].orEmpty())
+        }
+    }
+    val stageBooks = remember(folders, books) { folders.map(::coverFlowFolderCard) + books }
+    val stageIds = remember(stageBooks) { stageBooks.map { it.id } }
     val progress = remember { Animatable(if (isEditing) 1f else 0f) }
     val listState = rememberLazyListState()
     val readerTransition = LocalBookReaderAnchorScope.current?.transitionState
@@ -134,8 +145,8 @@ internal fun CoverFlowBookshelf(
     // Light-field colours follow the focused cover, but only once the flow settles: a fast fling
     // across a large library never decodes a palette per book it passes.
     val eInk = LocalEInkMode.current
-    var lightCoverPath by remember { mutableStateOf(books.getOrNull(state.focusedIndex)?.coverPath) }
-    val currentBooks by rememberUpdatedState(books)
+    var lightCoverPath by remember { mutableStateOf(stageBooks.getOrNull(state.focusedIndex)?.coverPath) }
+    val currentBooks by rememberUpdatedState(stageBooks)
     LaunchedEffect(state, eInk) {
         if (eInk) return@LaunchedEffect
         snapshotFlow { if (state.isMoving) null else currentBooks.getOrNull(state.focusedIndex)?.let { it.id to it.coverPath } }
@@ -147,10 +158,10 @@ internal fun CoverFlowBookshelf(
     val lightColors = remember(pickedColors) { pickedColors }
     val ribbonLight = androidx.compose.animation.animateColorAsState(lightColors.first(), tween(700), label = "coverFlowRibbon")
 
-    LaunchedEffect(bookIds) { state.updateBooks(bookIds) }
-    LaunchedEffect(closingBookId, bookIds, topPadding, bottomPadding) {
+    LaunchedEffect(stageIds) { state.updateBooks(stageIds) }
+    LaunchedEffect(closingBookId, stageIds, topPadding, bottomPadding) {
         closingBookId?.let {
-            state.updateBooks(bookIds)
+            state.updateBooks(stageIds)
             state.restoreBook(it)
             withFrameNanos { }
             withFrameNanos { }
@@ -172,8 +183,8 @@ internal fun CoverFlowBookshelf(
 
     // The list and scene coexist only as needed. Their duplicate hero covers are hidden while a
     // single GPU layer flies between actual root-coordinate anchors. Reversal keeps the progress.
-    LaunchedEffect(isEditing, bookIds) {
-        state.updateBooks(bookIds)
+    LaunchedEffect(isEditing, bookIds, stageIds) {
+        state.updateBooks(stageIds)
         if (!isEditing && !listMounted) return@LaunchedEffect
         state.interrupt()
         if (books.isEmpty()) {
@@ -184,34 +195,39 @@ internal fun CoverFlowBookshelf(
             transferring = false
             return@LaunchedEffect
         }
-        val returningId = heroBookId?.takeIf { it in bookIds } ?: state.focusedId ?: books.first().id
+        // Only a real book flies between the stage and the list; a centred folder card fades.
         if (isEditing && !listMounted) {
-            heroBookId = state.focusedId ?: books[state.focusedIndex].id
-            heroSource = sceneLayout.hero(state.focusedIndex, state.position)
+            heroBookId = state.focusedId?.takeIf { it in bookIds }
+            heroSource = heroBookId?.let { sceneLayout.hero(state.focusedIndex, state.position) }
             listCoverBounds = Rect.Zero
             transferring = true
             listMounted = true
-            listState.scrollToItem(bookIds.indexOf(heroBookId).coerceAtLeast(0))
+            listState.scrollToItem(heroBookId?.let { bookIds.indexOf(it) }?.coerceAtLeast(0) ?: 0)
         } else {
-            if (heroBookId != returningId) listCoverBounds = Rect.Zero
-            heroBookId = returningId
+            val returningId = heroBookId?.takeIf { it in bookIds } ?: state.focusedId ?: books.first().id
+            val returningBook = returningId.takeIf { it in bookIds }
+            if (heroBookId != returningBook) listCoverBounds = Rect.Zero
+            heroBookId = returningBook
             if (!isEditing) {
                 state.restoreBook(returningId)
-                val index = bookIds.indexOf(returningId)
-                if (progress.value >= 0.999f) {
+                if (returningBook == null) {
+                    heroSource = null
+                } else if (progress.value >= 0.999f) {
                     // Keep the list visible during this scroll, then reverse the same cover flight.
-                    val row = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == returningId }
+                    val row = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == returningBook }
                     if (row == null || row.offset < listState.layoutInfo.viewportStartOffset) {
-                        listState.animateScrollToItem(index.coerceAtLeast(0))
+                        listState.animateScrollToItem(bookIds.indexOf(returningBook).coerceAtLeast(0))
                     }
                     withFrameNanos { }
-                    heroSource = sceneLayout.hero(index, state.position)
+                    heroSource = sceneLayout.hero(stageIds.indexOf(returningBook), state.position)
                 }
             }
             transferring = true
         }
-        withTimeoutOrNull(1000) { snapshotFlow { listCoverBounds }.first { it.width > 0f && it.height > 0f } }
-        if (heroSource == null) heroSource = sceneLayout.hero(state.focusedIndex, state.position)
+        if (heroBookId != null) {
+            withTimeoutOrNull(1000) { snapshotFlow { listCoverBounds }.first { it.width > 0f && it.height > 0f } }
+            if (heroSource == null) heroSource = sceneLayout.hero(state.focusedIndex, state.position)
+        }
         progress.animateTo(
             if (isEditing) 1f else 0f,
             if (motionEnabled) spring(dampingRatio = 1f, stiffness = 240f, visibilityThreshold = 0.001f) else tween(100)
@@ -245,7 +261,7 @@ internal fun CoverFlowBookshelf(
                 onFolderSetCover, onFolderRemoveCover, onFolderMove, showAddBook && !isLoading,
                 onAddBook, enabled && !isEditing && !transferring, onHaptic
             )
-            if (books.isEmpty()) {
+            if (stageBooks.isEmpty()) {
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     if (isLoading) CircularProgressIndicator(color = AppColors.Accent)
                     else EmptyState(message = stringResource(R.string.no_books), icon = AppIcons.Books)
@@ -256,20 +272,25 @@ internal fun CoverFlowBookshelf(
                     val stage: @Composable (Modifier) -> Unit = { stageModifier ->
                         ProvideLiquidGlassBackdrop(null) {
                         CoverFlowScene(
-                            books, state, sceneLayout, motionEnabled,
+                            stageBooks, state, sceneLayout, motionEnabled,
                             enabled && libraryReady && !isEditing && !transferring,
                             heroBookId.takeIf { transferring && heroSource != null && motionEnabled },
                             downloadStates, deletingBookIds,
                             onOpen = { book, bounds ->
                                 state.dismissMenu()
-                                actions.open(book, bounds ?: sceneLayout.hero(state.focusedIndex, state.position)?.bounds)
+                                val folder = folderCards[book.id]?.folder
+                                if (folder != null) onFolderClick(folder)
+                                else actions.open(book, bounds ?: sceneLayout.hero(state.focusedIndex, state.position)?.bounds)
                             },
                             onHaptic = onHaptic,
                             menusEnabled = !pickerMode,
                             modifier = stageModifier,
                             sceneAlpha = { 1f - progress.value },
                             lightColors = lightColors,
-                            onReorder = onReorder.takeIf { !pickerMode }
+                            onReorder = onReorder?.takeIf { !pickerMode }?.let { commit ->
+                                { ids: List<String> -> commit(withoutCoverFlowFolderCards(ids)) }
+                            },
+                            folderCards = folderCards
                         )
                         }
                     }
@@ -282,26 +303,36 @@ internal fun CoverFlowBookshelf(
                             alpha = (1f - progress.value) * (1f - departure)
                         },
                             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                            CoverFlowPaperLabel(books, state, syncedBookIds, downloadStates, { ribbonLight.value },
+                            CoverFlowPaperLabel(stageBooks, folderCards, state, syncedBookIds, downloadStates, { ribbonLight.value },
                                 Modifier.fillMaxWidth().height((112f * density.fontScale.coerceIn(1f, 1.6f)).dp))
                             Box(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 12.dp), contentAlignment = Alignment.TopCenter) {
                                 CoverFlowScrollbar(
                                     state = state,
-                                    bookCount = books.size,
+                                    bookCount = stageBooks.size,
                                     enabled = enabled && libraryReady && !isEditing && !transferring,
                                     motionEnabled = motionEnabled,
                                     modifier = Modifier.widthIn(max = 360.dp).fillMaxWidth().padding(horizontal = 20.dp),
                                     thumbColor = { ribbonLight.value }.takeIf { !eInk }
                                 )
-                                val menuBook = books.firstOrNull { it.id == state.menuBookId }
+                                val menuBook = stageBooks.firstOrNull { it.id == state.menuBookId }
                                 androidx.compose.animation.AnimatedVisibility(!pickerMode && menuBook != null && !isEditing && enabled,
                                     enter = fadeIn(tween(110)) + scaleIn(initialScale = if (motionEnabled) 0.92f else 1f,
                                         animationSpec = spring(dampingRatio = 0.9f, stiffness = 450f)),
                                     exit = fadeOut(tween(90)) + scaleOut(spring(stiffness = 400f), targetScale = if (motionEnabled) 0.96f else 1f)) {
                                     // Keep the outgoing content until AnimatedVisibility finishes its exit.
-                                    val displayed = remember { menuBook ?: books[state.focusedIndex.coerceIn(books.indices)] }
-                                    val current = books.firstOrNull { it.id == displayed.id } ?: displayed
-                                    CoverFlowActionBar(current, actions,
+                                    val displayed = remember { menuBook ?: stageBooks[state.focusedIndex.coerceIn(stageBooks.indices)] }
+                                    val current = stageBooks.firstOrNull { it.id == displayed.id } ?: displayed
+                                    val folderCard = folderCards[current.id]
+                                    if (folderCard != null) CoverFlowFolderActionBar(folderCard.folder,
+                                        onOpen = {
+                                            state.dismissMenu()
+                                            onFolderClick(folderCard.folder)
+                                        },
+                                        onRename = onFolderRename, onCover = onFolderSetCover,
+                                        onRemoveCover = onFolderRemoveCover, onMove = onFolderMove,
+                                        onDelete = onFolderDelete,
+                                        onDismiss = state::dismissMenu)
+                                    else CoverFlowActionBar(current, actions,
                                         onOpen = {
                                             state.dismissMenu()
                                             actions.open(current, sceneLayout.coverBounds(current.id)
@@ -393,6 +424,7 @@ internal fun CoverFlowBookshelf(
 @Composable
 private fun CoverFlowPaperLabel(
     books: List<Book>,
+    folderCards: Map<String, CoverFlowFolderCardInfo>,
     state: CoverFlowState,
     syncedIds: Set<String>,
     downloadStates: Map<String, BookDownloadState>,
@@ -421,26 +453,50 @@ private fun CoverFlowPaperLabel(
                 key(book.id) {
                     Box(Modifier.matchParentSize()
                         .graphicsLayer { alpha = (1f - abs(index - state.position)).coerceIn(0f, 1f) }) {
-                        CoverFlowLabelContent(book, book.id in syncedIds, downloadStates[book.id], light, titleFont)
-                        // The bookmark ribbon hangs over the label's top edge.
-                        val favorite = book.isFavorite
-                        Box(Modifier.align(Alignment.TopEnd).padding(end = 18.dp).offset(y = (-4).dp)
-                            .size(11.dp, 26.dp)
-                            .drawWithCache {
-                                val path = ribbonPath(size.width, size.height)
-                                val fold = Color.Black.copy(alpha = 0.18f)
-                                onDrawBehind {
-                                    val c = if (eInk) Color.Black else if (favorite) accent else light()
-                                    drawPath(path, c)
-                                    drawLine(fold, Offset(0f, 4.dp.toPx()), Offset(size.width, 4.dp.toPx()), 1f)
-                                }
-                            }, contentAlignment = Alignment.TopCenter) {
-                            if (favorite) Icon(AppIcons.Heart.filled, null, tint = Color.White.copy(alpha = 0.92f),
-                                modifier = Modifier.padding(top = 7.dp).size(7.dp))
+                        val folderCard = folderCards[book.id]
+                        if (folderCard != null) {
+                            CoverFlowFolderLabelContent(folderCard, titleFont)
+                        } else {
+                            CoverFlowLabelContent(book, book.id in syncedIds, downloadStates[book.id], light, titleFont)
+                            // The bookmark ribbon hangs over the label's top edge.
+                            val favorite = book.isFavorite
+                            Box(Modifier.align(Alignment.TopEnd).padding(end = 18.dp).offset(y = (-4).dp)
+                                .size(11.dp, 26.dp)
+                                .drawWithCache {
+                                    val path = ribbonPath(size.width, size.height)
+                                    val fold = Color.Black.copy(alpha = 0.18f)
+                                    onDrawBehind {
+                                        val c = if (eInk) Color.Black else if (favorite) accent else light()
+                                        drawPath(path, c)
+                                        drawLine(fold, Offset(0f, 4.dp.toPx()), Offset(size.width, 4.dp.toPx()), 1f)
+                                    }
+                                }, contentAlignment = Alignment.TopCenter) {
+                                if (favorite) Icon(AppIcons.Heart.filled, null, tint = Color.White.copy(alpha = 0.92f),
+                                    modifier = Modifier.padding(top = 7.dp).size(7.dp))
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun CoverFlowFolderLabelContent(card: CoverFlowFolderCardInfo, titleFont: FontFamily) {
+    val secondary = AppColors.TextSecondary
+    Column(Modifier.fillMaxSize().padding(horizontal = 36.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Text(card.folder.name, color = AppColors.TextPrimary, fontFamily = titleFont, fontWeight = FontWeight.Normal,
+            fontSize = AppType.Headline, lineHeight = 22.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center)
+        Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(12.dp, 1.dp).background(secondary.copy(alpha = 0.35f)))
+            Icon(AppIcons.FolderSimple, null, tint = secondary, modifier = Modifier.padding(start = 6.dp).size(12.dp))
+            Text(stringResource(R.string.bookshelf_category_book_count, card.bookCount), color = secondary,
+                fontSize = AppType.Caption, letterSpacing = 0.8.sp, fontFamily = FontFamily.Serif, maxLines = 1,
+                modifier = Modifier.padding(start = 4.dp, end = 6.dp))
+            Box(Modifier.size(12.dp, 1.dp).background(secondary.copy(alpha = 0.35f)))
         }
     }
 }

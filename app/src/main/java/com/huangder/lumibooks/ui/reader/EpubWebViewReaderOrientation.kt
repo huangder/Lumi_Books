@@ -89,6 +89,8 @@ internal fun EpubWebViewReader(
     onSpreadChanged: (EpubSpreadState?) -> Unit = {},
     onFocusedPageChanged: (EpubSpreadPage) -> Unit = {},
     layoutPreviewActive: Boolean = false,
+    backgroundPaginationRequested: Boolean = false,
+    isChapterIndexed: (Int) -> Boolean = { false },
     imageAdjustments: com.huangder.lumibooks.domain.model.ReaderImageAdjustments = com.huangder.lumibooks.domain.model.ReaderImageAdjustments(),
     chapterIndex: Int,
     nativeCssEnabled: Boolean = false,
@@ -198,6 +200,8 @@ internal fun EpubWebViewReader(
         onSpreadChanged = onSpreadChanged,
         onFocusedPageChanged = onFocusedPageChanged,
         layoutPreviewActive = layoutPreviewActive,
+        backgroundPaginationRequested = backgroundPaginationRequested,
+        isChapterIndexed = isChapterIndexed,
         imageAdjustments = imageAdjustments,
         chapterIndex = chapterIndex,
         nativeCssEnabled = nativeCssEnabled,
@@ -302,6 +306,8 @@ private class EpubWebViewReaderOrientationArguments(
     val onSpreadChanged: (EpubSpreadState?) -> Unit,
     val onFocusedPageChanged: (EpubSpreadPage) -> Unit,
     val layoutPreviewActive: Boolean,
+    val backgroundPaginationRequested: Boolean,
+    val isChapterIndexed: (Int) -> Boolean,
     val imageAdjustments: com.huangder.lumibooks.domain.model.ReaderImageAdjustments,
     val chapterIndex: Int,
     val nativeCssEnabled: Boolean,
@@ -397,14 +403,26 @@ private class EpubWebViewReaderOrientationArguments(
     @Composable
     fun Render(viewport: ReaderViewport, active: Boolean, events: ReaderOrientationEvents, anchor: Pair<Int, String?>?, updateAnchor: (Int, String?) -> Unit, spreadEnabled: Boolean) {
         LaunchedEffect(active) { if (active) events.retryOnActivation() }
-        val hiddenNavigation = remember(anchor, viewport, events.recoveryGeneration, paginationContentIdentity, fontSizeSp, fontFilePath,
+        val originalCurl = pageTransition == "curl" && !continuousScroll
+        var preparedAnchor by remember { mutableStateOf(anchor) }
+        LaunchedEffect(active, originalCurl, anchor) {
+            if (active) {
+                preparedAnchor = anchor
+            } else if (originalCurl) {
+                kotlinx.coroutines.delay(1_500L)
+                preparedAnchor = anchor
+            }
+        }
+        val preparationAnchor = if (!active && originalCurl) preparedAnchor else anchor
+        val hiddenNavigation = remember(preparationAnchor, viewport, events.recoveryGeneration, paginationContentIdentity, fontSizeSp, fontFilePath,
             fontType, bodyFontWeight, letterSpacingDp, textSpacing, marginLeftDp, marginRightDp, marginTopDp, marginBottomDp,
-            nativeCssEnabled, textAlignment, bionicReadingEnabled, chineseMode, continuousScroll, imagePageCrop, imageAdjustments) { anchor?.second?.let { json ->
+            nativeCssEnabled, textAlignment, bionicReadingEnabled, chineseMode, continuousScroll, imagePageCrop, imageAdjustments) { preparationAnchor?.second?.let { json ->
             EpubNavigationRequest(-System.nanoTime().coerceAtLeast(1), EpubNavigationOrigin.RETURN_TO_SOURCE,
-                anchor.first, 0, anchor.first, EpubNavigationDestination.Locator(json), false,
+                preparationAnchor.first, 0, preparationAnchor.first, EpubNavigationDestination.Locator(json), false,
                 restoreSourceOnCancel = false)
         } }
-        if (!events.preparationFailed && (!active || events.viewportChanged) && hiddenNavigation != null) events.expect(hiddenNavigation.operationId)
+        val needsOrientationCatchUp = originalCurl && events.activating && preparedAnchor != anchor
+        if (!events.preparationFailed && (!active || events.viewportChanged || needsOrientationCatchUp) && hiddenNavigation != null) events.expect(hiddenNavigation.operationId)
         if (active && navigationRequest != null) events.expectForeground(navigationRequest.operationId)
         EpubWebViewReaderContent(
             session = session,
@@ -413,8 +431,10 @@ private class EpubWebViewReaderOrientationArguments(
             onSpreadChanged = { p0 -> events.dispatch("onSpreadChanged", true) { onSpreadChanged(p0) } },
             onFocusedPageChanged = { p0 -> events.dispatch("onFocusedPageChanged", false) { updateAnchor(p0.target.chapterIndex, p0.locatorJson); onFocusedPageChanged(p0) } },
             layoutPreviewActive = layoutPreviewActive,
+            backgroundPaginationRequested = active && backgroundPaginationRequested,
+            isChapterIndexed = isChapterIndexed,
             imageAdjustments = imageAdjustments,
-            chapterIndex = if (active) chapterIndex else anchor?.first ?: chapterIndex,
+            chapterIndex = if (active) chapterIndex else preparationAnchor?.first ?: chapterIndex,
             nativeCssEnabled = nativeCssEnabled,
             fontSizeSp = fontSizeSp,
             letterSpacingDp = letterSpacingDp,
@@ -437,7 +457,7 @@ private class EpubWebViewReaderOrientationArguments(
             publisherPaintOnly = publisherPaintOnly,
             bionicReadingEnabled = bionicReadingEnabled,
             chineseMode = chineseMode,
-            restoreLocatorJson = if (active) restoreLocatorJson else anchor?.second ?: restoreLocatorJson,
+            restoreLocatorJson = if (active) restoreLocatorJson else preparationAnchor?.second ?: restoreLocatorJson,
             restoreProgression = restoreProgression,
             restoreProgressionInclusive = restoreProgressionInclusive,
             initialFragment = initialFragment,

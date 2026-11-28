@@ -37,7 +37,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.sync.WebdavLibraryOverview
 import com.huangder.lumibooks.data.sync.WebdavSyncStatus
+import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.ui.components.AppBottomSheet
+import com.huangder.lumibooks.ui.components.AppDialogAction
+import com.huangder.lumibooks.ui.components.AppDialogActionRole
+import com.huangder.lumibooks.ui.components.LiquidGlassAlertDialog
 import com.huangder.lumibooks.ui.components.AppSheetHeader
 import com.huangder.lumibooks.ui.components.GroupedCard
 import com.huangder.lumibooks.ui.components.GroupedRowDivider
@@ -74,8 +78,23 @@ internal fun WebdavSyncStatusSheet(
     val downloadingAll by viewModel.isDownloadingAllCloudBooks.collectAsStateWithLifecycle()
     val enabled = config?.enabled == true
 
+    val supersededCopies by viewModel.supersededCloudCopies.collectAsStateWithLifecycle()
+    val library by viewModel.uiState.collectAsStateWithLifecycle()
+    var confirmCleanup by remember { mutableStateOf(false) }
+
     LaunchedEffect(enabled) { if (enabled) viewModel.loadWebdavOverview() }
+    LaunchedEffect(enabled, status) { if (enabled && status !is WebdavSyncStatus.Running) viewModel.loadCloudCopyState() }
     DisposableEffect(Unit) { onDispose { viewModel.resetWebdavOverview() } }
+
+    if (confirmCleanup) SupersededCopiesDialog(
+        copies = supersededCopies,
+        books = library.books + library.hiddenBooks + library.archivedBooks,
+        onDismiss = { confirmCleanup = false },
+        onConfirm = {
+            confirmCleanup = false
+            viewModel.cleanUpSupersededCloudCopies()
+        }
+    )
 
     AppBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -163,6 +182,15 @@ internal fun WebdavSyncStatusSheet(
                     )
                     GroupedRowDivider()
                 }
+                if (enabled && supersededCopies.isNotEmpty()) {
+                    LumiActionRow(
+                        title = stringResource(R.string.webdav_status_clean_duplicates, supersededCopies.size),
+                        icon = AppIcons.Trash,
+                        enabled = status !is WebdavSyncStatus.Running && !library.isBookDeleteInProgress,
+                        onClick = { confirmCleanup = true }
+                    )
+                    GroupedRowDivider()
+                }
                 LumiActionRow(
                     title = stringResource(R.string.webdav_status_view_logs),
                     icon = AppIcons.FileText,
@@ -177,6 +205,35 @@ internal fun WebdavSyncStatusSheet(
             }
         }
     }
+}
+
+/** Lists each old cloud copy next to the book that replaced it; nothing is deleted before confirming. */
+@Composable
+private fun SupersededCopiesDialog(
+    copies: Map<String, String>,
+    books: List<Book>,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    val byId = remember(books) { books.associateBy { it.id } }
+    val names = copies.entries.mapNotNull { (copy, owner) ->
+        val title = byId[owner]?.title ?: byId[copy]?.title ?: return@mapNotNull null
+        "· $title" + byId[copy]?.remoteFileName?.let { "\n   $it" }.orEmpty()
+    }.joinToString("\n")
+    LiquidGlassAlertDialog(
+        onDismissRequest = onDismiss,
+        titleText = stringResource(R.string.webdav_clean_duplicates_title),
+        text = {
+            Text(
+                stringResource(R.string.webdav_clean_duplicates_message, copies.size, names),
+                modifier = Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())
+            )
+        },
+        actions = listOf(
+            AppDialogAction(stringResource(R.string.webdav_clean_duplicates_confirm), onConfirm, AppDialogActionRole.Destructive),
+            AppDialogAction(stringResource(R.string.cancel), onDismiss, AppDialogActionRole.Cancel)
+        )
+    )
 }
 
 @Composable

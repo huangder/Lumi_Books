@@ -24,14 +24,17 @@ import kotlinx.coroutines.delay
 
 /**
  * Keep a solid paper surface visible while the reader document loads behind the window.
+ * Once the reader has been mounted it stays mounted: a later reload (cache recovery, a stored
+ * position reload) must not swap visible text back to the loading surface.
  */
 internal fun shouldMountReaderContent(
     state: ReaderDocumentState,
-    windowReady: Boolean = true
+    windowReady: Boolean = true,
+    alreadyMounted: Boolean = false
 ): Boolean = windowReady && (
+    alreadyMounted ||
     state.error != null ||
-        state.book != null ||
-        (!state.isLoading && state.book == null)
+        (!state.preparingSavedReaderPosition && (state.book != null || !state.isLoading))
     )
 
 /** Delays mounting reader content until the route transition has settled. */

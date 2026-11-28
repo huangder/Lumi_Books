@@ -1,16 +1,9 @@
 package com.huangder.lumibooks.ui.bookshelf.spine
 
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.random.Random
 
-/**
- * Process-lifetime shelf state. A cold start (the app removed from recents) draws a new seed, so
- * poses are re-rolled and the books fall again; returning from the reader keeps both. Each
- * folder is its own scene: its books fall the first time it is opened in this process.
- */
+/** Tracks the first-visit animation and scroll position of each shelf during this process. */
 internal object SpineShelfSession {
-    val seed: Long = Random.nextLong()
-
     private val dropped = ConcurrentHashMap.newKeySet<String>()
     private val scroll = ConcurrentHashMap<String, Pair<Int, Int>>()
 

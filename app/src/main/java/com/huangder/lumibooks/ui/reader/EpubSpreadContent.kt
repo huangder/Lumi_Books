@@ -88,6 +88,9 @@ internal data class EpubSpreadCallbacks(
 internal fun EpubSpreadContent(
     session: BookRenderSession,
     backgroundPreparationEnabled: Boolean = true,
+    layoutPreviewActive: Boolean = false,
+    backgroundPaginationRequested: Boolean = false,
+    isChapterIndexed: (Int) -> Boolean = { false },
     chapterIndex: Int,
     appearance: EpubSpreadAppearance,
     restoreLocatorJson: String?,
@@ -128,6 +131,7 @@ internal fun EpubSpreadContent(
     val latestTtsColor = rememberUpdatedState(ttsHighlightColor)
     val latestRestoreInclusive = rememberUpdatedState(restoreProgressionInclusive)
     val latestSelectionMenu = rememberUpdatedState(selectionMenuVisible)
+    val latestLayoutPreview = rememberUpdatedState(layoutPreviewActive)
     var host by remember(session) { mutableStateOf<EpubSpreadTurnHost?>(null) }
     var viewport by remember(session) { mutableStateOf(0 to 0) }
     var state by remember(session) { mutableStateOf<EpubSpreadState?>(null) }
@@ -138,7 +142,7 @@ internal fun EpubSpreadContent(
         metrics.density, metrics.scaledDensity, webVersion, appearance,
         appearance.fontPath?.let { java.io.File(it).let { file -> file.length() to file.lastModified() } }
     ).joinToString("|")
-    val latestSignature = rememberUpdatedState(signature)
+    val appliedConfiguration = remember(session) { mutableStateOf(Triple(appearance, signature, layoutPreviewActive)) }
     val ruleFonts = rememberEpubRuleFonts(session, notes, appearance.customFonts)
     val latestRuleFonts = rememberUpdatedState(ruleFonts)
     val initial = remember(session) {
@@ -176,6 +180,13 @@ internal fun EpubSpreadContent(
     }
 
     Box(modifier) {
+        if (backgroundPaginationRequested && backgroundPreparationEnabled && !layoutPreviewActive &&
+            explicitRequest == null && state != null
+        ) {
+            EpubBackgroundPagination(session, signature, viewport, appearance, chapterIndex,
+                continuous = false, spread = true, isIndexed = isChapterIndexed,
+                idle = { host?.isPaginationIdle() == true }, onCount = callbacks.count)
+        }
         AndroidView(modifier = Modifier.fillMaxSize(), factory = { viewContext ->
             if (com.huangder.lumibooks.BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
             EpubSpreadTurnHost(viewContext).apply {
@@ -183,12 +194,12 @@ internal fun EpubSpreadContent(
                     view.deferForRuleHighlights(scope, latestRuleHighlights, chapter, resume)
                 }
                 configureReader = { view, request ->
-                    val a = latestAppearance.value
+                    val (a, renderSignature, preview) = appliedConfiguration.value
                     val chapter = request.target.chapterIndex
                     view.settings.textZoom = epubTextZoom(a.fontSize, session.renditionLayout(chapter))
                     val destination = request.destination
                     com.huangder.lumibooks.ui.reader.configureReader(
-                        view = view, paginationSignature = latestSignature.value,
+                        view = view, paginationSignature = renderSignature,
                         session = session, chapterIndex = chapter, fontType = a.fontType,
                         fontFilePath = a.fontPath, letterSpacingDp = a.letterSpacing,
                         textSpacing = a.textSpacing, bodyFontWeight = a.weight,
@@ -226,12 +237,17 @@ internal fun EpubSpreadContent(
                             destination is EpubNavigationDestination.Page && destination.chapterFraction == null,
                         backgroundImageOpacity = a.backgroundOpacity,
                         backgroundImageBlurDp = a.backgroundBlur,
-                        backgroundInHost = a.backgroundPath != null
+                        backgroundInHost = a.backgroundPath != null,
+                        typographyPreview = preview,
+                        useHostViewport = true
                     )
                     decorate(view, chapter)
                 }
                 onViewportChanged = { width, height -> viewport = width to height }
-                onPageCountConfirmed = { chapter, count -> latest.value.count(latestSignature.value, chapter, count) }
+                onPageCountConfirmed = { chapter, count ->
+                    val (_, renderSignature, preview) = appliedConfiguration.value
+                    if (!preview && !latestLayoutPreview.value) latest.value.count(renderSignature, chapter, count)
+                }
                 onSpreadChanged = { spread ->
                     state = spread
                     visibleWebViews().forEach { view ->
@@ -313,9 +329,12 @@ internal fun EpubSpreadContent(
                 appearance.backgroundOpacity, appearance.backgroundBlur)
             view.selectionMenuVisible = selectionMenuVisible
             view.bookmarkPullEnabled = bookmarkPullEnabled
-            view.update(session, signature, externalRequest, pageTransition, pageTransitionDurationMs,
+            val configurationIdentity = if (layoutPreviewActive) "$signature|typography-preview" else signature
+            view.update(session, configurationIdentity, externalRequest, pageTransition, pageTransitionDurationMs,
                 session.pageProgressionDirection(chapterIndex) == EpubPageProgressionDirection.RTL,
-                edgeTapMode, appearance.backgroundColor)
+                edgeTapMode, appearance.backgroundColor, layoutPreviewActive) {
+                appliedConfiguration.value = Triple(appearance, signature, layoutPreviewActive)
+            }
         }, onRelease = { view -> view.release(); if (host === view) host = null })
         image?.let { request ->
             EpubImagePreviewOverlay(session, appearance.images, request, imageProgress.value) {
@@ -324,8 +343,8 @@ internal fun EpubSpreadContent(
         }
     }
 
-    LaunchedEffect(signature) {
-        if (viewport.first > 0 && viewport.second > 0) latest.value.signature(signature)
+    LaunchedEffect(signature, layoutPreviewActive) {
+        if (!layoutPreviewActive && viewport.first > 0 && viewport.second > 0) latest.value.signature(signature)
     }
     val preparedRuleNotes = ruleHighlights?.preparedNotes()
     LaunchedEffect(notes, preparedRuleNotes, annotationStyle, ruleFonts, ttsCurrentSentence, ttsHighlightColor, ttsFollowEnabled,

@@ -315,17 +315,12 @@ internal class ReaderLineGeometry(
         // The caret span is the only value that describes the coordinate system
         // used by Editor, so prefer it and use getLineWidth only as a fallback.
         val measuredNativeLineWidth = nativeLineWidth(line, contentEnd, rawLineEnd, advances)
-        val nativeEnd = nativePosition(contentEnd)
         val wrappedBoundary = contentEnd == rawLineEnd && line < layout.lineCount - 1
-        // At a wrapped boundary ColorOS returns the following line's leading
-        // caret (usually x=0). Do not treat that as this line's width; use the
-        // sum of the character advances instead.
-        val nativeEndForSpan = nativeEnd?.takeUnless {
-            wrappedBoundary && abs(it - baseStart) < measuredNativeLineWidth * 0.5f
+        // The boundary caret of a wrapped line belongs to the following line.
+        val nativeHorizontalSpan = if (wrappedBoundary) measuredNativeLineWidth else {
+            nativePosition(contentEnd)?.let { abs(it - baseStart) }
+                ?.takeIf { it.isFinite() && it > 0.01f } ?: measuredNativeLineWidth
         }
-        val nativeHorizontalSpan = abs(
-            (nativeEndForSpan ?: (baseStart + measuredNativeLineWidth)) - baseStart
-        ).takeIf { it.isFinite() && it > 0.01f } ?: measuredNativeLineWidth
         val targetEnd = if (isLtr) paragraphRight else paragraphLeft
         val targetWidth = if (isLtr) targetEnd - baseStart else baseStart - targetEnd
         val canStretch = isLtr && contentEnd > lineStart &&
@@ -462,11 +457,11 @@ internal class ReaderLineGeometry(
             }
             val left = nativePosition(offset)
             val right = if (offset + 1 == contentEnd && contentEnd == end && line < layout.lineCount - 1) {
-                // A wrapped line's content end is also the next line's start.
-                // Its primary horizontal is commonly 0; measure only this glyph
-                // for the native advance and resolve the line endpoint separately.
-                runCatching { abs(layout.paint.measureText(text, offset, offset + 1)) }.getOrNull()
-                    ?.let { measured -> (left ?: 0f) + measured }
+                // The laid-out line edge includes the final glyph's styled size and tracking.
+                // Measuring it with the base paint makes justification push large glyphs past the column.
+                nativeWrappedLineRight(line, offset, left)
+                    ?: runCatching { abs(layout.paint.measureText(text, offset, offset + 1)) }.getOrNull()
+                        ?.let { measured -> (left ?: 0f) + measured }
             } else {
                 nativePosition(offset + 1)
             }
@@ -716,19 +711,12 @@ internal class ReaderLineGeometry(
         }
     }
 
-    /** Returns this line's trailing edge instead of the following line's x=0 caret. */
-    private fun nativeContentEndPosition(
-        line: Int,
-        lineStart: Int,
-        rawLineEnd: Int,
-        contentEnd: Int
-    ): Float? {
-        if (contentEnd == rawLineEnd && contentEnd > lineStart && line < layout.lineCount - 1) {
-            return runCatching { layout.getLineRight(line) }
-                .getOrNull()
-                ?.takeIf(Float::isFinite)
-        }
-        return nativePosition(contentEnd)
+    private fun nativeWrappedLineRight(line: Int, lastOffset: Int, lastLeft: Float?): Float? {
+        if (lastLeft == null || layout.getParagraphDirection(line) != Layout.DIR_LEFT_TO_RIGHT ||
+            layout.isRtlCharAt(lastOffset)) return null
+        // Framework-justified bounds can already include expansion while the carets do not.
+        if (Build.VERSION.SDK_INT >= 35 && layout.getJustificationMode() != Layout.JUSTIFICATION_MODE_NONE) return null
+        return safeLineRight(line, Float.NaN).takeIf { it > lastLeft }
     }
 
     private fun nativePosition(offset: Int): Float? {

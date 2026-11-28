@@ -47,7 +47,9 @@ data class TtsPageTurnRequest(
     val bookId: String,
     val sessionId: Long,
     val requestId: Long,
-    val location: TtsPageLocation
+    val location: TtsPageLocation,
+    /** A catch-up target may be in a different visual page than the background audio chunk. */
+    val characterOffset: Int? = null
 )
 
 enum class TtsPageChangeOrigin {

@@ -2023,6 +2023,7 @@ class TxtParser(private val context: Context? = null) : BookParser {
             TxtIndexCoordinator.invalidate(semanticIndexKey(sourceLocation).sourceIdentity)
             synchronized(contentCache) { contentCache.clear() }
             synchronized(htmlCache) { htmlCache.clear() }
+            context?.let(com.huangder.lumibooks.data.sync.WebdavSyncChanges::markLocalChanged)
             val reparseError = if (reparseAfterWrite) {
                 runCatching {
                     parse(sourceLocation.ifBlank { file.absolutePath })

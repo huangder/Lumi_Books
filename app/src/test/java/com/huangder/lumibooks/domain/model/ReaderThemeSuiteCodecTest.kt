@@ -337,6 +337,56 @@ class ReaderThemeSuiteCodecTest {
     }
 
     @Test
+    fun uneditedCustomDarkModeFollowsLightTypographyThroughPersistenceAndExport() {
+        for (layout in ReaderLayoutTarget.entries) {
+            val light = ReaderThemeSettings(
+                backgroundSelection = ReaderThemeSuites.SEPIA_ID,
+                backgroundColorSelection = ReaderThemeSuites.SEPIA_ID,
+                textColor = 0xFF202020.toInt(),
+                fontType = "serif",
+                fontSize = 24f,
+                paragraphSpacing = 12f,
+                lineHeight = 1.8f,
+                marginLeft = 27f
+            )
+            val suite = ReaderThemeSuites.newCustom("focus", "Focus").withModeSettings(layout, false, light)
+            val expectedDark = light.copy(
+                backgroundSelection = ReaderThemeSuites.NIGHT_ID,
+                backgroundColorSelection = ReaderThemeSuites.NIGHT_ID,
+                textColor = null
+            )
+            for (decoded in listOf(
+                ReaderThemeSuiteCodec.decode(ReaderThemeSuiteCodec.encodeExact(listOf(suite))).single(),
+                LumiThemeBundleCodec.decode(LumiThemeBundleCodec.encode(listOf(suite))).single()
+            )) {
+                assertEquals(expectedDark, decoded.settingsFor(layout, true))
+                val editedLight = light.copy(paragraphSpacing = 18f)
+                assertEquals(expectedDark.copy(paragraphSpacing = 18f),
+                    decoded.withModeSettings(layout, false, editedLight).settingsFor(layout, true))
+                val editedDark = expectedDark.copy(fontSize = 19f)
+                assertEquals(editedDark, decoded.withModeSettings(layout, true, editedDark)
+                    .withModeSettings(layout, false, editedLight).settingsFor(layout, true))
+            }
+        }
+    }
+
+    @Test
+    fun publisherParagraphSpacingDistinguishesTheDefaultFromAnExplicitTwoDp() {
+        val suite = ReaderThemeSuites.newCustom("focus", "Focus")
+        val layout = ReaderLayoutTarget.BOOK_LAYOUT
+        val defaults = suite.settingsFor(layout, false)
+        assertNull(defaults.publisherParagraphSpacingOverride)
+        for (spacing in listOf(0f, 2f, 8f, 24f)) {
+            val edited = defaults.copy(paragraphSpacing = spacing, paragraphSpacingEdited = true)
+            val updated = suite.withModeSettings(layout, false, edited)
+            val saved = ReaderThemeSuiteCodec.decode(ReaderThemeSuiteCodec.encodeExact(listOf(updated))).single()
+            assertEquals(spacing, saved.settingsFor(layout, false).publisherParagraphSpacingOverride)
+            assertEquals(spacing, saved.settingsFor(layout, true).publisherParagraphSpacingOverride)
+        }
+        assertEquals(12f, defaults.copy(paragraphSpacing = 12f).publisherParagraphSpacingOverride)
+    }
+
+    @Test
     fun lumiBundleRoundTripsLightAndDarkSettings() {
         val suite = ReaderThemeSuites.newCustom("focus", "Focus").copy(
             lightSettings = ReaderThemeSettings(textColor = 0xFF111111.toInt(), marginLeft = 20f),
@@ -371,12 +421,14 @@ class ReaderThemeSuiteCodecTest {
         }
     }
 
-    @Test fun legacyPublisherLayoutFallsBackToItsOwnSettingsInBothModes() {
+    @Test fun legacyCustomThemeInheritsPublisherTypographyAndKeepsSavedReaderDarkMode() {
         val suite = ReaderThemeSuiteCodec.decode(
             """[{"id":"legacy","settings":{"background":"day","fontSize":18},"dark":{"background":"night","fontSize":24},"bookLayoutSettings":{"background":"sepia","fontSize":21}}]"""
         ).single()
         assertEquals(suite.bookLayoutSettings, suite.settingsFor(ReaderLayoutTarget.BOOK_LAYOUT, false))
-        assertEquals(suite.bookLayoutSettings, suite.settingsFor(ReaderLayoutTarget.BOOK_LAYOUT, true))
+        assertEquals(suite.bookLayoutSettings.copy(backgroundSelection = ReaderThemeSuites.NIGHT_ID,
+            backgroundColorSelection = ReaderThemeSuites.NIGHT_ID),
+            suite.settingsFor(ReaderLayoutTarget.BOOK_LAYOUT, true))
         val edited = suite.withModeSettings(ReaderLayoutTarget.BOOK_LAYOUT, true,
             suite.bookLayoutSettings.copy(fontSize = 25f))
         assertEquals(21f, edited.settingsFor(ReaderLayoutTarget.BOOK_LAYOUT, false).fontSize)

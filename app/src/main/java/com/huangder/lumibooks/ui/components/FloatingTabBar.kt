@@ -61,6 +61,7 @@ import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -108,8 +109,10 @@ import com.huangder.lumibooks.ui.theme.LocalAppTheme
 import com.huangder.lumibooks.ui.theme.LocalIsDarkTheme
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassTransparency
 import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
+import com.huangder.lumibooks.ui.theme.LocalSelectedLiquidGlassSamplingQuality
 import com.huangder.lumibooks.ui.theme.AppType
 import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.LocalBackdropSamplingScale
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -667,9 +670,10 @@ fun FloatingTabBar(
                             )
                         )
                 }
-                Box(
-                    modifier = prismGestureModifier.then(prismVisualModifier)
-                )
+                val prismSamplingScale = LocalSelectedLiquidGlassSamplingQuality.current?.tabPrismScale ?: 1f
+                CompositionLocalProvider(LocalBackdropSamplingScale provides prismSamplingScale) {
+                    Box(modifier = prismGestureModifier.then(prismVisualModifier))
+                }
             }
 
             }

@@ -1,6 +1,8 @@
 package com.huangder.lumibooks
 
 import com.huangder.lumibooks.util.diagnostics.StartupTrace
+import com.huangder.lumibooks.data.local.StartupNavigationSnapshot
+import com.huangder.lumibooks.ui.splash.awaitBrandedSplashExit
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
@@ -11,9 +13,12 @@ import android.widget.Toast
 import android.view.ActionMode
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.ReportDrawnWhen
+import androidx.compose.runtime.withFrameNanos
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import com.huangder.lumibooks.ui.animation.VisualMotion.tween
@@ -23,15 +28,22 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
@@ -45,7 +57,6 @@ import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.data.sync.LocalNetworkAccessManager
 import com.huangder.lumibooks.data.sync.WebdavAutoSyncScheduler
 import com.huangder.lumibooks.data.sync.WebdavSyncUpgradeStore
-import com.huangder.lumibooks.domain.model.DEFAULT_APP_ACCENT_HEX
 import com.huangder.lumibooks.domain.model.AppUiIconStyle
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.model.BookFormat
@@ -94,7 +105,6 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import dagger.hilt.android.AndroidEntryPoint
 import java.io.File
 import java.io.IOException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -163,6 +173,9 @@ private data class PendingAppUpdate(
     val force: Boolean
 )
 
+/** Build types driven by the macrobenchmark and Baseline Profile generator. */
+internal val BENCHMARK_BUILD_TYPES = setOf("benchmark", "nonMinifiedRelease")
+
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
@@ -206,7 +219,7 @@ class MainActivity : ComponentActivity() {
     lateinit var builtinGuideSeeder: BuiltinGuideSeeder
 
     @Inject
-    lateinit var ttsController: TtsController
+    lateinit var ttsController: dagger.Lazy<TtsController>
 
     @Inject
     lateinit var floatingSubtitleOverlayController: com.huangder.lumibooks.service.FloatingSubtitleOverlayController
@@ -238,9 +251,10 @@ class MainActivity : ComponentActivity() {
         // 部分 ROM / 耳机把媒体按键投递给前台窗口而不是 MediaSession。
         // 听书进行中时在这里兜底处理；未听书时不拦截，仍交给系统的媒体按键路由。
         if (TtsMediaButtons.isSupportedKey(event.keyCode)) {
-            val result = TtsMediaButtons.handleEvent(ttsController, event)
-            logMediaButtonDelivery("activity_window", event, result, ttsController)
-            if (result.consumed && ttsController.playbackState.value != TtsPlaybackState.IDLE) {
+            val controller = ttsController.get()
+            val result = TtsMediaButtons.handleEvent(controller, event)
+            logMediaButtonDelivery("activity_window", event, result, controller)
+            if (result.consumed && controller.playbackState.value != TtsPlaybackState.IDLE) {
                 return true
             }
         }
@@ -795,34 +809,34 @@ class MainActivity : ComponentActivity() {
         } else {
             LaunchThemeController.splashEnabledSnapshot(this)
         }
-        StartupTrace.event("main_splash_decision", mapOf("enabled" to splashEnabledAtLaunch, "source" to if (isExternalBookOpen) "external_book" else if (intent.hasExtra(LaunchThemeController.EXTRA_SPLASH_ENABLED)) "intent" else "cache", "snapshot" to LaunchThemeController.splashEnabledSnapshot(this)))
+        if (BuildConfig.STARTUP_TRACE_ENABLED) StartupTrace.event("main_splash_decision", mapOf("enabled" to splashEnabledAtLaunch, "source" to if (isExternalBookOpen) "external_book" else if (intent.hasExtra(LaunchThemeController.EXTRA_SPLASH_ENABLED)) "intent" else "cache", "snapshot" to LaunchThemeController.splashEnabledSnapshot(this)))
         val iconStyleAtLaunch = LaunchThemeController.iconStyleSnapshot(this)
 
-        val appFontLaunchSnapshot = com.huangder.lumibooks.util.LaunchThemeController.themeSnapshot(this)
+        val launchTheme = LaunchThemeController.themeSnapshot(this)
+        val startupNavigationAtLaunch: StartupNavigationSnapshot? = LaunchThemeController.startupNavigationSnapshot(this)
         setContent {
-            val appTheme by dataStoreManager.appTheme.collectAsState(initial = LaunchThemeController.themeSnapshot(this).appTheme)
+            val appTheme by dataStoreManager.appTheme.collectAsState(initial = launchTheme.appTheme)
             val appUiIconStyle by dataStoreManager.appUiIconStyle.collectAsState(initial = AppUiIconStyle.DEFAULT.storedValue)
-            val startupScreen by produceState<String?>(initialValue = null, dataStoreManager) {
-                value = dataStoreManager.startupScreen.first()
+            // The mirrored value decides this launch; the Application collector refreshes
+            // it from DataStore, so a stale mirror is corrected for the next launch.
+            val startupNavigation by produceState(startupNavigationAtLaunch, dataStoreManager) {
+                if (value == null) value = dataStoreManager.startupNavigationSnapshot.first()
             }
-            val bookshelfLayoutMode by produceState<Int?>(initialValue = null, dataStoreManager) {
-                value = dataStoreManager.bookshelfLayoutMode.first()
-            }
-            val appAccentColor by dataStoreManager.appAccentColor.collectAsState(initial = DEFAULT_APP_ACCENT_HEX)
-            val appFontSize by dataStoreManager.appFontSize.collectAsState(initial = appFontLaunchSnapshot.appFontSize)
-            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = "system")
-            val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = 0.55f)
-            val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = false)
-            val cardOutlinesEnabled by dataStoreManager.cardOutlinesEnabled.collectAsState(initial = false)
+            val appAccentColor by dataStoreManager.appAccentColor.collectAsState(initial = launchTheme.appAccentColor)
+            val appFontSize by dataStoreManager.appFontSize.collectAsState(initial = launchTheme.appFontSize)
+            val globalFontMode by dataStoreManager.globalFontMode.collectAsState(initial = launchTheme.globalFontMode)
+            val liquidGlassTransparency by dataStoreManager.liquidGlassTransparency.collectAsState(initial = launchTheme.liquidGlassTransparency)
+            val liquidGlassHdrHighlightEnabled by dataStoreManager.liquidGlassHdrHighlightEnabled.collectAsState(initial = launchTheme.liquidGlassHdrHighlightEnabled)
+            val cardOutlinesEnabled by dataStoreManager.cardOutlinesEnabled.collectAsState(initial = launchTheme.cardOutlinesEnabled)
             val coverReadingProgressEnabled by dataStoreManager.coverReadingProgressEnabled.collectAsState(initial = false)
-            val darkMode by dataStoreManager.darkMode.collectAsState(initial = "system")
+            val darkMode by dataStoreManager.darkMode.collectAsState(initial = launchTheme.darkMode)
             val entranceAnimationsEnabled by dataStoreManager.entranceAnimationsEnabled.collectAsState(initial = true)
-            val motionPreferenceValue by dataStoreManager.motionPreference.collectAsState(initial = "standard")
+            val motionPreferenceValue by dataStoreManager.motionPreference.collectAsState(initial = launchTheme.motionPreference)
             val bookOpenTransition by dataStoreManager.bookOpenTransition.collectAsState(
                 initial = com.huangder.lumibooks.domain.model.BookOpenTransition.HERO.storedValue
             )
-            val eInkModeEnabled by dataStoreManager.eInkModeEnabled.collectAsState(initial = false)
-            val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = true)
+            val eInkModeEnabled by dataStoreManager.eInkModeEnabled.collectAsState(initial = launchTheme.eInkModeEnabled)
+            val predictiveBackEnabled by dataStoreManager.predictiveBackEnabled.collectAsState(initial = launchTheme.predictiveBackEnabled)
             val isDark = if (eInkModeEnabled) {
                 false
             } else when (darkMode) {
@@ -838,31 +852,42 @@ class MainActivity : ComponentActivity() {
             // 条款/政策更新弹窗状态
             var policyDialog by remember { mutableStateOf<PendingPolicyUpdate?>(null) }
             var showSplash by remember { mutableStateOf(splashEnabledAtLaunch) }
+            var startupContentReady by remember { mutableStateOf(false) }
+            val splashVisibility = remember { MutableTransitionState(splashEnabledAtLaunch) }
+            SideEffect { splashVisibility.targetState = showSplash && !eInkModeEnabled }
 
             if (BuildConfig.STARTUP_TRACE_ENABLED) {
                 LaunchedEffect(showSplash, eInkModeEnabled) {
                     StartupTrace.event("splash_visibility_decision", mapOf("showSplash" to showSplash, "eInkMode" to eInkModeEnabled, "visible" to (showSplash && !eInkModeEnabled)))
                 }
-                LaunchedEffect(startupScreen, bookshelfLayoutMode) {
-                    StartupTrace.event("main_content_readiness", mapOf("startupScreen" to startupScreen, "bookshelfLayoutReady" to (bookshelfLayoutMode != null)))
+                LaunchedEffect(startupNavigation, startupContentReady) {
+                    StartupTrace.event("main_content_readiness", mapOf("startupScreen" to startupNavigation?.screen, "bookshelfLayoutReady" to (startupNavigation != null), "contentPlaced" to startupContentReady))
                 }
             }
             LaunchedEffect(eInkModeEnabled) {
-                if (eInkModeEnabled) {
-                    showSplash = false
-                } else {
-                    if (splashEnabledAtLaunch) {
-                        delay(1_100)
-                    }
-                    showSplash = false
+                if (showSplash && !eInkModeEnabled) {
+                    awaitBrandedSplashExit(snapshotFlow { startupContentReady })
                 }
+                showSplash = false
             }
 
             val mainContentAlpha by animateFloatAsState(
                 targetValue = if (eInkModeEnabled || !showSplash) 1f else 0f,
-                animationSpec = tween(460),
+                animationSpec = tween(260),
                 label = "mainContentAlpha"
             )
+            val mainContentOpaque by remember { derivedStateOf { mainContentAlpha == 1f } }
+            val splashGone = eInkModeEnabled || (!showSplash && splashVisibility.isIdle && !splashVisibility.currentState)
+            val startupInteractive = startupContentReady && splashGone && mainContentOpaque
+            if (!isExternalBookOpen) {
+                ReportDrawnWhen { startupInteractive }
+                LaunchedEffect(startupInteractive) {
+                    if (startupInteractive) {
+                        withFrameNanos { }
+                        com.huangder.lumibooks.util.performance.ReaderClassWarmup.start(classLoader)
+                    }
+                }
+            }
             val mainContentScale by animateFloatAsState(
                 targetValue = if (eInkModeEnabled || !showSplash) 1f else 0.985f,
                 animationSpec = tween(520),
@@ -881,13 +906,13 @@ class MainActivity : ComponentActivity() {
                 pendingPolicyUpdate = null
             }
 
-            val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = com.huangder.lumibooks.util.LaunchThemeController.themeSnapshot(this).menuAnimationStyle)
+            val menuAnimationStyleValue by dataStoreManager.menuAnimationStyle.collectAsState(initial = launchTheme.menuAnimationStyle)
             val liquidGlassStyle by dataStoreManager.liquidGlassStyle
-                .collectAsState(initial = appFontLaunchSnapshot.liquidGlassStyle)
+                .collectAsState(initial = launchTheme.liquidGlassStyle)
             val liquidGlassSamplingQuality by dataStoreManager.liquidGlassSamplingQuality
-                .collectAsState(initial = appFontLaunchSnapshot.liquidGlassSamplingQuality)
+                .collectAsState(initial = launchTheme.liquidGlassSamplingQuality)
             val reduceTransparencyEnabled by dataStoreManager.reduceTransparencyEnabled
-                .collectAsState(initial = appFontLaunchSnapshot.reduceTransparencyEnabled)
+                .collectAsState(initial = launchTheme.reduceTransparencyEnabled)
             EBookReaderTheme(
                 liquidGlassStyle = liquidGlassStyle,
                 liquidGlassSamplingQuality = liquidGlassSamplingQuality,
@@ -949,6 +974,15 @@ class MainActivity : ComponentActivity() {
                         LaunchedEffect(onReaderRoute) {
                             floatingSubtitleOverlayController.setReaderVisible(onReaderRoute)
                         }
+                        var inactiveTabsPrecomposed by remember { mutableStateOf(false) }
+                        val canPrecomposeTabs = startupInteractive && !onReaderRoute && requestedOpenBookId == null
+                        LaunchedEffect(canPrecomposeTabs) {
+                            if (canPrecomposeTabs && !inactiveTabsPrecomposed) {
+                                // Let the startup frame reach the display before preparing the other tabs.
+                                kotlinx.coroutines.delay(350)
+                                inactiveTabsPrecomposed = true
+                            }
+                        }
                         val globalGlassDialogVisible = !onReaderRoute && (
                             pendingAppUpdate != null ||
                                 pendingEarlyDonorNotice || pendingRemoteNotice != null ||
@@ -960,8 +994,11 @@ class MainActivity : ComponentActivity() {
                         com.huangder.lumibooks.ui.layout.AdaptiveWindowLayout(
                             modifier = Modifier
                                 .fillMaxSize()
+                                .then(if (BuildConfig.BUILD_TYPE in BENCHMARK_BUILD_TYPES && startupInteractive) {
+                                    Modifier.semantics { testTagsAsResourceId = true }.testTag("startup_content_interactive")
+                                } else Modifier)
                                 .then(com.huangder.lumibooks.util.diagnostics.startupTraceModifier(
-                                    if (startupScreen != null && bookshelfLayoutMode != null) "main_content" else "main_loading"
+                                    if (startupNavigation != null) "main_content" else "main_loading"
                                 ))
                                 .then(
                                     if (isLiquidGlass && globalGlassDialogVisible) {
@@ -977,9 +1014,8 @@ class MainActivity : ComponentActivity() {
                                     translationY = mainContentOffset.toPx()
                                 }
                         ) {
-                            startupScreen?.let { configuredStartupScreen ->
-                                bookshelfLayoutMode?.let { configuredBookshelfLayoutMode ->
-                                val startupRoute = when (configuredStartupScreen) {
+                            startupNavigation?.let { navigation ->
+                                val startupRoute = when (navigation.screen) {
                                     DataStoreManager.STARTUP_SCREEN_BOOKSHELF -> Screen.Bookshelf.route
                                     DataStoreManager.STARTUP_SCREEN_STATISTICS -> Screen.Statistics.route
                                     else -> Screen.Home.route
@@ -987,7 +1023,11 @@ class MainActivity : ComponentActivity() {
                                 MainNavGraph(
                                     navController = navController,
                                     startDestination = startupRoute,
-                                    initialBookshelfLayoutMode = configuredBookshelfLayoutMode,
+                                    initialBookshelfLayoutMode = navigation.bookshelfLayoutMode,
+                                    precomposeInactiveTabs = inactiveTabsPrecomposed,
+                                    onStartupContentPlaced = if (startupContentReady) null else {
+                                        { startupContentReady = true }
+                                    },
                                     entranceAnimationsEnabled = entranceAnimationsEnabled &&
                                         motionPreferenceValue != "reduced" &&
                                         !showSplash && !eInkModeEnabled,
@@ -1013,7 +1053,6 @@ class MainActivity : ComponentActivity() {
                                         requestedOpenFolderId = null
                                     }
                                 )
-                                }
                             }
                         }
 
@@ -1134,12 +1173,18 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                        AnimatedVisibility(
-                            visible = showSplash && !eInkModeEnabled,
-                            exit = fadeOut(animationSpec = tween(260)),
-                            modifier = Modifier.fillMaxSize()
-                        ) {
-                            SplashScreen(isDark = isDark, iconStyle = iconStyleAtLaunch)
+                        if (!eInkModeEnabled) {
+                            AnimatedVisibility(
+                                visibleState = splashVisibility,
+                                exit = fadeOut(animationSpec = tween(260)),
+                                modifier = Modifier.fillMaxSize().pointerInput(Unit) {
+                                    awaitPointerEventScope {
+                                        while (true) awaitPointerEvent().changes.forEach { it.consume() }
+                                    }
+                                }
+                            ) {
+                                SplashScreen(isDark = isDark, iconStyle = iconStyleAtLaunch)
+                            }
                         }
                     }
                     }

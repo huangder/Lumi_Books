@@ -1,17 +1,29 @@
 package com.huangder.lumibooks.ui.reader
 
 internal const val EPUB_NAVIGATION_TIMEOUT_MS = 8_000L
+internal const val EPUB_WARM_EDGE_PAGES = 3
+private const val EPUB_WARM_EDGE_PAGES_MAX = 12
+
+/**
+ * A chapter takes a few hundred milliseconds to load. Someone turning several pages a
+ * second covers the fixed three-page margin faster than that, so the margin grows with
+ * the number of turns made in the last second.
+ */
+internal fun epubWarmEdgePages(turnsInLastSecond: Int): Int =
+    (turnsInLastSecond + 1).coerceIn(EPUB_WARM_EDGE_PAGES, EPUB_WARM_EDGE_PAGES_MAX)
 
 /** One speculative chapter; immediate neighbours always retain their own slots. */
 internal fun epubWarmChapterTarget(
     chapter: Int, page: Int, pageCount: Int, chapterCount: Int,
-    direction: Int, scrolling: Boolean
+    direction: Int, scrolling: Boolean,
+    /** Pages from the chapter edge at which the neighbour starts loading. */
+    edgePages: Int = EPUB_WARM_EDGE_PAGES
 ): EpubPageTarget? {
     if (scrolling || pageCount < 1) return null
     val previous = EpubPageTarget(chapter - 1, Int.MAX_VALUE)
-        .takeIf { chapter > 0 && page < 3 }
+        .takeIf { chapter > 0 && page < edgePages }
     val next = EpubPageTarget(chapter + 1, 0)
-        .takeIf { chapter + 1 < chapterCount && page >= pageCount - 3 }
+        .takeIf { chapter + 1 < chapterCount && page >= pageCount - edgePages }
     return if (direction < 0) previous ?: next else next ?: previous
 }
 
@@ -65,6 +77,7 @@ internal enum class EpubNavigationOrigin {
     SEARCH,
     INTERNAL_LINK,
     TTS,
+    LISTENING_RESUME,
     RETURN_TO_SOURCE,
     PAGE_TURN,
     CHAPTER_CONTROL,

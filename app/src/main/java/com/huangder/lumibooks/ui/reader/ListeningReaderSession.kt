@@ -36,6 +36,8 @@ internal class ListeningReaderSession {
     private var followedBeforeBackground = false
     private var browsedBeforeBackground = false
     private var jumpSessionId: Long? = null
+    /** A follow catch-up after background has no separate reading spot to return to. */
+    private var followCatchUpJump: TtsListeningPosition? = null
 
     /** Lifecycle can report PAUSE/STOP and composition changes for the same transition. */
     fun suspendForBackground(sessionId: Long?): Boolean {
@@ -49,7 +51,9 @@ internal class ListeningReaderSession {
     }
 
     /** null means a fresh open/session and keeps the existing saved-position policy. */
-    fun returnFromBackground(sessionId: Long?): Boolean? {
+    fun returnFromBackground(
+        sessionId: Long?, currentFollowTarget: () -> TtsListeningPosition? = { null }
+    ): Boolean? {
         if (!backgrounded) return null
         backgrounded = false
         val previousSessionId = backgroundSessionId
@@ -62,13 +66,17 @@ internal class ListeningReaderSession {
         // Interrupted loads/jumps must still apply the saved policy on first RESUME.
         if (!checked || sessionId == null || sessionId != previousSessionId) return null
         if (wasFollowing) {
-            follow()
+            val position = currentFollowTarget()
+            if (position == null) follow() else requestJump(position, sessionId, followCatchUp = true)
         } else if (wasBrowsing) {
             // Keep the manual browse detached until the next viewport gesture settles.
             _manualBrowse.value = ManualListeningBrowse(sessionId, generation, canPrompt = false)
         }
         return true
     }
+
+    fun isFollowCatchUp(position: TtsListeningPosition): Boolean =
+        followCatchUpJump == position && _jumpRequest.value == position
 
     fun isJumpSessionCurrent(sessionId: Long?): Boolean =
         jumpSessionId == null || jumpSessionId == sessionId
@@ -174,11 +182,12 @@ internal class ListeningReaderSession {
         checked = false
     }
 
-    fun requestJump(position: TtsListeningPosition, sessionId: Long? = null) {
+    fun requestJump(position: TtsListeningPosition, sessionId: Long? = null, followCatchUp: Boolean = false) {
         // Queuing navigation does not mean the renderer has accepted it yet.
         checked = false
         checkingGeneration = null
         jumpSessionId = sessionId
+        followCatchUpJump = position.takeIf { followCatchUp }
         clearManualBrowse()
         _prompt.value = null
         _jumpRequest.value = position
@@ -194,6 +203,7 @@ internal class ListeningReaderSession {
         clearManualBrowse()
         checkingGeneration = null
         jumpSessionId = null
+        followCatchUpJump = null
         generation++
         checked = true
         _prompt.value = null
@@ -205,6 +215,7 @@ internal class ListeningReaderSession {
         clearManualBrowse()
         checkingGeneration = null
         jumpSessionId = null
+        followCatchUpJump = null
         generation++
         if (!preservePrompt) _prompt.value = null
         _jumpRequest.value = null

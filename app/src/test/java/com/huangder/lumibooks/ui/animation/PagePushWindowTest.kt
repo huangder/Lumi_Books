@@ -9,6 +9,7 @@ import android.view.animation.AnimationUtils
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import com.huangder.lumibooks.R
@@ -20,6 +21,7 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28, 35], application = Application::class)
@@ -114,6 +116,48 @@ class PagePushWindowTest {
         assertEquals(corners.bottomLeft, shadow.roundRect.bottomLeftCornerRadius.x - spread, 0f)
         assertEquals(corners.topRight, shadow.roundRect.topRightCornerRadius.x - spread, 0f)
         assertEquals(corners.bottomRight, shadow.roundRect.bottomRightCornerRadius.x - spread, 0f)
+    }
+
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    @Test fun cachedShadowHasAFadingEdgeAndRoundCornersWithoutAFullPageBitmap() {
+        val corners = PageCorners(30f, 35f, 45f, 40f)
+        val shadow = buildPageShadow(Size(250f, 400f), corners, 24f)
+        val pixels = shadow.image.toPixelMap()
+        val edge = shadow.padding.toInt()
+        assertTrue(shadow.image.width < 80)
+        assertTrue(pixels[edge - 3, 200].alpha > pixels[edge - 18, 200].alpha)
+        assertTrue(pixels[edge - 3, 0].alpha < pixels[edge - 3, 200].alpha)
+        assertTrue((edge until shadow.image.width).any { pixels[it, 0].alpha > 0f })
+        assertEquals(0f, pixels[edge + 20, 200].alpha, 0f)
+    }
+
+    @Test fun predictiveBackReplaysLatestProgressAndThenUpdatesImmediatelyUntilCommit() {
+        var position = 1f
+        val gesture = PagePushGesture { position = it }
+        gesture.start(position)
+        gesture.update(0.2f)
+        gesture.update(0.4f)
+        assertEquals(1f, position, 0f)
+        gesture.ready()
+        assertEquals(0.6f, position, 0.0001f)
+        gesture.update(0.7f)
+        assertEquals(0.3f, position, 0.0001f)
+        assertTrue(gesture.stop())
+        gesture.update(1f)
+        assertEquals(0.3f, position, 0.0001f)
+    }
+
+    @Test fun cancellingBeforePreparationFinishesIgnoresDelayedReadiness() {
+        var position = 1f
+        val gesture = PagePushGesture { position = it }
+        gesture.start(position)
+        gesture.update(0.7f)
+        assertFalse(gesture.stop())
+        gesture.ready()
+        assertEquals(1f, position, 0f)
+        gesture.start(position)
+        gesture.ready()
+        assertEquals(1f, position, 0f)
     }
 
     @Test fun standardAndFastTimingMatchTheWindowFallback() {

@@ -66,7 +66,7 @@ data class SettingsUiState(
 
     // 阅读设置
     val defaultRenderMode: com.huangder.lumibooks.util.epub.EpubRenderMode =
-        com.huangder.lumibooks.util.epub.EpubRenderMode.READER_LAYOUT,
+        com.huangder.lumibooks.util.epub.EpubRenderMode.DEFAULT,
     val selectionMenuItems: SelectionMenuSettings = SelectionMenuSettings(),
     val longPressSelectionRange: com.huangder.lumibooks.domain.model.LongPressSelectionRange =
         com.huangder.lumibooks.domain.model.LongPressSelectionRange.DEFAULT,
@@ -114,6 +114,7 @@ data class SettingsUiState(
     val externalTtsHasToken: Boolean = false,
     val externalTtsSettingsLoaded: Boolean = false,
     val ttsStartChoice: com.huangder.lumibooks.tts.TtsStartChoice? = null,
+    val ttsAllowConcurrentPlayback: Boolean = false,
     val ttsContinueOnReaderExit: Boolean? = null,
     val ttsReaderResumeChoice: com.huangder.lumibooks.tts.TtsReaderResumeChoice? = null,
     val ttsProviderSelection: com.huangder.lumibooks.tts.TtsProviderSelection =

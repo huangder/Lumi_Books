@@ -15,6 +15,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.local.DataStoreManager
+import com.huangder.lumibooks.ui.bookshelf.spine.SpineArrangement
 import com.huangder.lumibooks.ui.reader.resolveOpeningPaperColor
 import com.huangder.lumibooks.data.sync.BookDownloadState
 import com.huangder.lumibooks.domain.model.Book
@@ -44,6 +45,7 @@ import com.huangder.lumibooks.util.parser.BookParserFactory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import com.huangder.lumibooks.util.performance.tracePerformance
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -124,8 +126,19 @@ data class HomeUiState(
     val searchQuery: String = "",
     val isSearchActive: Boolean = false,
     val sortBy: SortBy = SortBy.DATE_ADDED,
-    /** Spine shelf rows chosen by dragging (book id → row break); used with the custom sort. */
-    val spineRowBreaks: Map<String, Int> = emptyMap(),
+    val bookshelfCustomOrder: List<String>? = null,
+    val spineRowsByScene: Map<String, Map<String, Int>> = emptyMap(),
+    /** Per spine scene: items stacked on the flat book before them. */
+    val spineStackedByScene: Map<String, Set<String>> = emptyMap(),
+    /** Spine placement chosen per book ("upright", "leaning", "flat"); absent means automatic. */
+    val spinePoses: Map<String, String> = emptyMap(),
+    /** Bookshelf filter and folder last used, restored once when the bookshelf opens. */
+    val bookshelfLastFilter: String = "all",
+    val bookshelfLastFolderId: String? = null,
+    val bookshelfLocationLoaded: Boolean = false,
+    /** True once the tag and folder lists reflect the database, not the empty initial state. */
+    val tagsLoaded: Boolean = false,
+    val foldersLoaded: Boolean = false,
     val isLoading: Boolean = true,
     val bookshelfLayoutMode: Int = 2,
     val bookshelfLayoutModeLoaded: Boolean = false,
@@ -181,10 +194,6 @@ class HomeViewModel @Inject constructor(
     private val importPipeline: BookImportPipeline,
     private val openingSnapshotStore: com.huangder.lumibooks.ui.reader.ReaderOpeningSnapshotStore
 ) : ViewModel() {
-    /** Book ids in the user's dragged order; read on every sort. */
-    @Volatile
-    private var customOrder: List<String> = emptyList()
-
     /** Live WebDAV sync progress for the bookshelf banner and status sheet. */
     val webdavSyncStatus: StateFlow<com.huangder.lumibooks.data.sync.WebdavSyncStatus>
         get() = webdavSyncManager.status
@@ -216,6 +225,43 @@ class HomeViewModel @Inject constructor(
 
     fun resetWebdavOverview() {
         if (!_isDownloadingAllCloudBooks.value) _webdavOverview.value = WebdavOverviewState.Idle
+    }
+
+    private val _supersededCloudCopies = MutableStateFlow<Map<String, String>>(emptyMap())
+    /** Cloud-only copies left behind by earlier edits, mapped to the local book that replaced them. */
+    val supersededCloudCopies: StateFlow<Map<String, String>> = _supersededCloudCopies.asStateFlow()
+    private val _blockedUploadIds = MutableStateFlow<Set<String>>(emptySet())
+    /** Local books that stay off the cloud because their cloud copy was deleted. */
+    val blockedUploadIds: StateFlow<Set<String>> = _blockedUploadIds.asStateFlow()
+
+    fun loadCloudCopyState() {
+        viewModelScope.launch {
+            _supersededCloudCopies.value = runCatching { webdavSyncManager.supersededCloudCopies() }.getOrDefault(emptyMap())
+            _blockedUploadIds.value = runCatching { webdavSyncManager.blockedUploadIds() }.getOrDefault(emptySet())
+        }
+    }
+
+    fun cleanUpSupersededCloudCopies() {
+        val owners = _supersededCloudCopies.value
+        if (owners.isEmpty() || _uiState.value.isBookDeleteInProgress) return
+        viewModelScope.launch {
+            val copies = owners.keys.mapNotNull { bookRepository.getBookById(it) }
+                .filter { it.isCloudOnly && it.filePath.isBlank() }
+            webdavSyncManager.mergeSupersededCloudCopies(owners.filterKeys { id -> copies.any { it.id == id } })
+            deleteBooks(copies, BookDeleteMode.LOCAL_AND_CLOUD) {
+                loadCloudCopyState()
+                if (_webdavOverview.value !is WebdavOverviewState.Idle) loadWebdavOverview()
+            }
+        }
+    }
+
+    fun reuploadBook(book: Book) {
+        viewModelScope.launch {
+            webdavSyncManager.requestReupload(listOf(book.id))
+            _blockedUploadIds.value = _blockedUploadIds.value - book.id
+            webdavSyncManager.fullSync()
+            loadCloudCopyState()
+        }
     }
 
     fun downloadAllCloudBooks() {
@@ -268,6 +314,7 @@ class HomeViewModel @Inject constructor(
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
     private val _downloadedBooks = MutableSharedFlow<Book>(extraBufferCapacity = 1)
     private val coverRepairAttempted = mutableSetOf<String>()
+    private val validatedCovers = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val pendingCoverRepairs = ArrayDeque<Book>()
     private var coverRepairJob: Job? = null
     /** The one collector feeding [HomeUiState.books]: the full library or the current search. */
@@ -316,15 +363,57 @@ class HomeViewModel @Inject constructor(
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
                 bookRepository.getAllBooks().collectLatest { books ->
+                    val sortState = _uiState.value
+                    val library = withContext(Dispatchers.Default) {
+                        tracePerformance("Lumi.library.first_visible_books") {
+                            val ordered = sortBooksForLibrary(books, sortState.sortBy, sortState.bookshelfCustomOrder.orEmpty())
+                            val (hiddenBooks, visibleBooks) = ordered.partition { it.isHidden }
+                            val (archivedBooks, sortedBooks) = visibleBooks.partition { it.isArchived }
+                            LibrarySplit(
+                                books = sortedBooks,
+                                hiddenBooks = hiddenBooks,
+                                archivedBooks = archivedBooks,
+                                syncedBookIds = books.asSequence()
+                                    .filter { it.remoteFileName != null }
+                                    .mapTo(mutableSetOf()) { it.id }
+                            )
+                        }
+                    }
+                    val current = _uiState.value
+                    // A saved sort or a drag can arrive while the library is being sorted off-main.
+                    val sortChanged = current.sortBy != sortState.sortBy ||
+                        current.bookshelfCustomOrder != sortState.bookshelfCustomOrder
+                    val sortedBooks = if (sortChanged) sortBooks(library.books, current.sortBy) else library.books
+                    _uiState.value = current.copy(
+                        books = sortedBooks,
+                        hiddenBooks = if (sortChanged) sortBooks(library.hiddenBooks, current.sortBy) else library.hiddenBooks,
+                        archivedBooks = if (sortChanged) sortBooks(library.archivedBooks, current.sortBy) else library.archivedBooks,
+                        syncedBookIds = library.syncedBookIds,
+                        isLoading = false,
+                        error = null
+                    )
+                    scheduleFolderPreviewInitialization(
+                        books = sortedBooks,
+                        folders = _uiState.value.folders,
+                        links = _uiState.value.bookFolderLinks
+                    )
                     val missingCovers = withContext(Dispatchers.IO) {
-                        books.filter { book ->
-                            book.format.supportsEpubFeatures && !book.isMissing &&
-                                !FileUtils.isCustomCover(book.coverPath) &&
-                                (book.coverPath.isNullOrBlank() || !File(book.coverPath).isFile ||
+                        tracePerformance("Lumi.library.cover_validation") {
+                            books.filter { book ->
+                                if (!book.format.supportsEpubFeatures || book.isMissing ||
+                                    FileUtils.isCustomCover(book.coverPath)) return@filter false
+                                // The library re-emits on every progress save; a cover file
+                                // that decoded once is not opened again for the same path.
+                                val coverKey = book.id + "|" + book.coverPath
+                                if (coverKey in validatedCovers) return@filter false
+                                val broken = book.coverPath.isNullOrBlank() || !File(book.coverPath).isFile ||
                                     BitmapFactory.Options().apply { inJustDecodeBounds = true }.let { options ->
                                         BitmapFactory.decodeFile(book.coverPath, options)
                                         options.outWidth <= 0 || options.outHeight <= 0
-                                    })
+                                    }
+                                if (!broken) validatedCovers.add(coverKey)
+                                broken
+                            }
                         }
                     }.filter { coverRepairAttempted.add(it.id) }
                     if (missingCovers.isNotEmpty()) {
@@ -343,34 +432,9 @@ class HomeViewModel @Inject constructor(
                             }
                         }
                     }
-                    val sortBy = _uiState.value.sortBy
-                    val library = withContext(Dispatchers.Default) {
-                        val (hiddenBooks, visibleBooks) = sortBooks(books, sortBy).partition { it.isHidden }
-                        val (archivedBooks, sortedBooks) = visibleBooks.partition { it.isArchived }
-                        LibrarySplit(
-                            books = sortedBooks,
-                            hiddenBooks = hiddenBooks,
-                            archivedBooks = archivedBooks,
-                            syncedBookIds = books.asSequence()
-                                .filter { it.remoteFileName != null }
-                                .mapTo(mutableSetOf()) { it.id }
-                        )
-                    }
-                    val sortedBooks = library.books
-                    _uiState.value = _uiState.value.copy(
-                        books = sortedBooks,
-                        hiddenBooks = library.hiddenBooks,
-                        archivedBooks = library.archivedBooks,
-                        syncedBookIds = library.syncedBookIds,
-                        isLoading = false,
-                        error = null
-                    )
-                    scheduleFolderPreviewInitialization(
-                        books = sortedBooks,
-                        folders = _uiState.value.folders,
-                        links = _uiState.value.bookFolderLinks
-                    )
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -390,7 +454,8 @@ class HomeViewModel @Inject constructor(
             }.collectLatest { (tags, links) ->
                 _uiState.value = _uiState.value.copy(
                     tags = tags,
-                    bookTagLinks = links
+                    bookTagLinks = links,
+                    tagsLoaded = true
                 )
             }
         }
@@ -405,7 +470,8 @@ class HomeViewModel @Inject constructor(
                 .collectLatest { (folders, links) ->
                     _uiState.value = _uiState.value.copy(
                         folders = folders,
-                        bookFolderLinks = links
+                        bookFolderLinks = links,
+                        foldersLoaded = true
                     )
                     scheduleFolderPreviewInitialization(
                         books = _uiState.value.books,
@@ -505,6 +571,20 @@ class HomeViewModel @Inject constructor(
 
     private fun loadBookshelfLayoutMode() {
         viewModelScope.launch {
+            // Read once: afterwards the bookshelf itself owns the live location.
+            val location = dataStoreManager.bookshelfLocation.first()
+            _uiState.value = _uiState.value.copy(
+                bookshelfLastFilter = location.filter,
+                bookshelfLastFolderId = location.folderId,
+                bookshelfLocationLoaded = true
+            )
+        }
+        viewModelScope.launch {
+            dataStoreManager.spineItemPoses.collectLatest { poses ->
+                _uiState.value = _uiState.value.copy(spinePoses = poses)
+            }
+        }
+        viewModelScope.launch {
             dataStoreManager.spineSharpCovers.collectLatest { sharp ->
                 _uiState.value = _uiState.value.copy(spineSharpCovers = sharp)
             }
@@ -517,6 +597,21 @@ class HomeViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    fun saveBookshelfFilter(filter: String) {
+        viewModelScope.launch { dataStoreManager.saveBookshelfFilter(filter) }
+    }
+
+    fun saveBookshelfFolder(folderId: String?) {
+        viewModelScope.launch { dataStoreManager.saveBookshelfFolder(folderId) }
+    }
+
+    /** [pose] is "upright", "leaning" or "flat"; null returns the book to its automatic pose. */
+    fun setSpinePose(itemId: String, pose: String?) {
+        val poses = _uiState.value.spinePoses
+        _uiState.value = _uiState.value.copy(spinePoses = if (pose == null) poses - itemId else poses + (itemId to pose))
+        viewModelScope.launch { dataStoreManager.saveSpineItemPose(itemId, pose) }
     }
 
     fun setSpineSharpCovers(sharp: Boolean) {
@@ -614,25 +709,21 @@ class HomeViewModel @Inject constructor(
 
     private fun loadBookshelfSortMode() {
         viewModelScope.launch {
-            combine(
-                dataStoreManager.bookshelfSortMode,
-                dataStoreManager.bookshelfCustomOrder
-            ) { stored, order -> stored to order }.collectLatest { (stored, order) ->
+            dataStoreManager.bookshelfSort.collectLatest { (stored, order, rowsByScene, stackedByScene) ->
                 val sort = runCatching { SortBy.valueOf(stored) }.getOrDefault(SortBy.DATE_ADDED)
-                if (sort == _uiState.value.sortBy && order == customOrder) return@collectLatest
-                customOrder = order
-                _uiState.value = _uiState.value.copy(
+                val state = _uiState.value
+                if (sort == state.sortBy && order == state.bookshelfCustomOrder &&
+                    rowsByScene == state.spineRowsByScene && stackedByScene == state.spineStackedByScene
+                ) return@collectLatest
+                _uiState.value = state.copy(
                     sortBy = sort,
-                    books = sortBooks(_uiState.value.books, sort),
-                    hiddenBooks = sortBooks(_uiState.value.hiddenBooks, sort)
+                    bookshelfCustomOrder = order,
+                    spineRowsByScene = rowsByScene,
+                    spineStackedByScene = stackedByScene,
+                    books = sortBooksForLibrary(state.books, sort, order),
+                    hiddenBooks = sortBooksForLibrary(state.hiddenBooks, sort, order),
+                    archivedBooks = sortBooksForLibrary(state.archivedBooks, sort, order)
                 )
-            }
-        }
-        viewModelScope.launch {
-            dataStoreManager.spineRowBreaks.collectLatest { breaks ->
-                if (breaks != _uiState.value.spineRowBreaks) {
-                    _uiState.value = _uiState.value.copy(spineRowBreaks = breaks)
-                }
             }
         }
     }
@@ -694,11 +785,12 @@ class HomeViewModel @Inject constructor(
     }
 
     fun setSortBy(sortBy: SortBy) {
-        _uiState.value = _uiState.value.copy(sortBy = sortBy)
         val sortedBooks = sortBooks(_uiState.value.books, sortBy)
         _uiState.value = _uiState.value.copy(
+            sortBy = sortBy,
             books = sortedBooks,
-            hiddenBooks = sortBooks(_uiState.value.hiddenBooks, sortBy)
+            hiddenBooks = sortBooks(_uiState.value.hiddenBooks, sortBy),
+            archivedBooks = sortBooks(_uiState.value.archivedBooks, sortBy)
         )
         scheduleFolderPreviewInitialization(
             books = sortedBooks,
@@ -709,55 +801,54 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun sortBooks(books: List<Book>, sortBy: SortBy): List<Book> =
-        sortBooksForLibrary(books, sortBy, customOrder)
+        sortBooksForLibrary(books, sortBy, _uiState.value.bookshelfCustomOrder.orEmpty())
 
-    /**
-     * Commits a drag on the shelf. [orderedIds] is the new order of the books that were shown
-     * (the whole shelf or one folder); it is written into the global custom order and the shelf
-     * switches to the custom sort. From another sort, the order on screen becomes the start.
-     */
-    fun reorderBooks(orderedIds: List<String>) = commitShelfOrder(orderedIds, spineBreaks = null)
+    fun reorderBooks(orderedIds: List<String>) {
+        val reordered = orderedIds.toHashSet()
+        val rows = _uiState.value.spineRowsByScene.mapValues { (_, starts) -> starts - reordered }
+        saveShelfOrder(orderedIds, rows.filterValues { it.isNotEmpty() })
+    }
 
-    /**
-     * Commits a drag on the spine shelf: [orderedIds] as in [reorderBooks], plus the row breaks
-     * of those books ([breaks]; books left out flow on from their neighbour).
-     */
-    fun arrangeSpineShelf(orderedIds: List<String>, breaks: Map<String, Int>) =
-        commitShelfOrder(orderedIds, spineBreaks = breaks)
+    internal fun reorderSpines(scene: String, arrangement: SpineArrangement) {
+        val rows = _uiState.value.spineRowsByScene
+        val visibleRows = rows[scene].orEmpty() + arrangement.rowsByItem
+        val stacked = _uiState.value.spineStackedByScene
+        // Items of this scene not on screen keep their stacking; visible ones take the new set.
+        val sceneStacked = stacked[scene].orEmpty().filterNot { it in arrangement.order }.toSet() + arrangement.stacked
+        val newStacked = (stacked + (scene to sceneStacked)).filterValues { it.isNotEmpty() }
+        saveShelfOrder(arrangement.order, rows + (scene to visibleRows), newStacked)
+    }
 
-    private fun commitShelfOrder(orderedIds: List<String>, spineBreaks: Map<String, Int>?) {
+    private fun saveShelfOrder(
+        orderedIds: List<String>,
+        spineRowsByScene: Map<String, Map<String, Int>>,
+        spineStackedByScene: Map<String, Set<String>>? = null
+    ) {
         if (orderedIds.isEmpty()) return
         val state = _uiState.value
         val base = if (state.sortBy == SortBy.CUSTOM) {
-            customOrder
+            state.bookshelfCustomOrder.orEmpty()
         } else {
             (state.books + state.hiddenBooks + state.archivedBooks).map { it.id }
         }
-        customOrder = mergeCustomOrder(base, orderedIds)
-        val sortedBooks = sortBooks(state.books, SortBy.CUSTOM)
-        // Rows only mean something in the order they were chosen in: from another sort, start
-        // from no rows at all.
-        val previousBreaks = if (state.sortBy == SortBy.CUSTOM) state.spineRowBreaks else emptyMap()
-        val rowBreaks = if (spineBreaks == null) {
-            previousBreaks
-        } else {
-            val shown = orderedIds.toHashSet()
-            previousBreaks.filterKeys { it !in shown } + spineBreaks
-        }
+        val order = mergeCustomOrder(base, orderedIds)
+        val sortedBooks = sortBooksForLibrary(state.books, SortBy.CUSTOM, order)
         _uiState.value = state.copy(
-            spineRowBreaks = rowBreaks,
+            bookshelfCustomOrder = order,
+            spineRowsByScene = spineRowsByScene,
+            spineStackedByScene = spineStackedByScene ?: state.spineStackedByScene,
             sortBy = SortBy.CUSTOM,
             books = sortedBooks,
-            hiddenBooks = sortBooks(state.hiddenBooks, SortBy.CUSTOM)
+            hiddenBooks = sortBooksForLibrary(state.hiddenBooks, SortBy.CUSTOM, order),
+            archivedBooks = sortBooksForLibrary(state.archivedBooks, SortBy.CUSTOM, order)
         )
         scheduleFolderPreviewInitialization(
             books = sortedBooks,
             folders = state.folders,
             links = state.bookFolderLinks
         )
-        val order = customOrder
         viewModelScope.launch {
-            dataStoreManager.saveBookshelfCustomOrderAndSort(order, SortBy.CUSTOM.name, rowBreaks)
+            dataStoreManager.saveBookshelfCustomOrderAndSort(order, SortBy.CUSTOM.name, spineRowsByScene, spineStackedByScene)
         }
     }
 
@@ -2172,7 +2263,7 @@ class HomeViewModel @Inject constructor(
     ) {
         deleteBooks(listOf(book), mode) { message ->
             if (onFinished != null) {
-                val removed = message == null || bookRepository.getBookById(book.id) == null
+                val removed = (message == null && !mode.keepsLocalBook) || bookRepository.getBookById(book.id) == null
                 onFinished(removed, message)
             }
         }
@@ -2185,11 +2276,18 @@ class HomeViewModel @Inject constructor(
     ) {
         val booksToDelete = books.distinctBy { it.id }
         if (booksToDelete.isEmpty() || _uiState.value.isBookDeleteInProgress) return
-        openingSnapshotStore.delete(booksToDelete.map { it.id })
+        if (!mode.keepsLocalBook) openingSnapshotStore.delete(booksToDelete.map { it.id })
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isBookDeleteInProgress = true)
             try {
                 val failures = when (mode) {
+                    BookDeleteMode.CLOUD_ONLY -> {
+                        val uploaded = booksToDelete.filter { it.remoteFileName != null && !it.isCloudOnly }
+                        val result = if (uploaded.isEmpty()) null else {
+                            webdavSyncManager.deleteRemoteBooks(uploaded, detachLocal = true)
+                        }
+                        if (result == null || result.success) emptyList() else listOf(result.message)
+                    }
                     BookDeleteMode.LOCAL_ONLY -> deleteBooksAndManagedData(booksToDelete, mode)
                     BookDeleteMode.LOCAL_AND_CLOUD -> {
                         val remoteBooks = booksToDelete.filter { it.remoteFileName != null }

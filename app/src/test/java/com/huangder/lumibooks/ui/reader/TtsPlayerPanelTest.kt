@@ -27,6 +27,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import com.huangder.lumibooks.R
+import com.huangder.lumibooks.tts.TtsPauseDuration
 import com.huangder.lumibooks.tts.TtsPlaybackState
 import com.huangder.lumibooks.tts.TtsProsodyMode
 import com.huangder.lumibooks.ui.theme.*
@@ -50,6 +51,7 @@ class TtsPlayerPanelTest {
     private val readerMenu = mutableStateOf(false)
     private val playback = mutableStateOf(TtsPlaybackState.PAUSED)
     private val autoPageTurn = mutableStateOf(false)
+    private val allowConcurrentPlayback = mutableStateOf(false)
     private val fromPagePrompt = mutableStateOf(false)
     private var startsFromPage = 0
     private val chapterTitle = mutableStateOf("Chapter one")
@@ -59,6 +61,7 @@ class TtsPlayerPanelTest {
     private var next = 0
     private var stops = 0
     private var fullscreens = 0
+    private val pauseDuration = mutableStateOf(TtsPauseDuration.STANDARD)
     private var selectedRate: Float? = null
     private var selectedTimer: Int? = null
     private lateinit var menus: com.huangder.lumibooks.ui.components.LiquidGlassMenuHostState
@@ -71,7 +74,8 @@ class TtsPlayerPanelTest {
     private fun control(id: Int) = when (id) {
         R.string.tts_return_to_reading_page -> compose.onNodeWithText(label(R.string.tts_return_to_progress))
         R.string.tts_from_this_page, R.string.tts_speech_rate, R.string.tts_pitch_label,
-        R.string.tts_timer_label, R.string.tts_auto_page_turn -> compose.onNodeWithText(label(id))
+        R.string.tts_timer_label, R.string.tts_auto_page_turn,
+        R.string.tts_allow_concurrent_playback -> compose.onNodeWithText(label(id))
         else -> compose.onNodeWithContentDescription(label(id))
     }
     private fun more(id: Int) = control(id).performSemanticsAction(SemanticsActions.OnClick) { it() }
@@ -98,8 +102,12 @@ class TtsPlayerPanelTest {
                                 speechRate = 1f, speechRateMode = TtsProsodyMode.OVERRIDE,
                                 pitch = 1f, pitchMode = TtsProsodyMode.OVERRIDE, usesAndroidTts = androidTts,
                                 sleepTimerRemainingMs = null,
+                                pauseDuration = pauseDuration.value,
+                                onPauseDurationChange = { pauseDuration.value = it },
                                 autoPageTurn = autoPageTurn.value,
                                 onAutoPageTurnChange = { autoPageTurn.value = it },
+                                allowConcurrentPlayback = allowConcurrentPlayback.value,
+                                onAllowConcurrentPlaybackChange = { allowConcurrentPlayback.value = it },
                                 showFromCurrentPage = fromPagePrompt.value,
                                 onStartFromCurrentPage = { startsFromPage++; fromPagePrompt.value = false },
                                 onPlayPause = { plays++ }, onStop = { stops++ },
@@ -127,6 +135,19 @@ class TtsPlayerPanelTest {
         }
     }
 
+    @Test fun moreMenuLetsTheReaderChangePauseDuration() {
+        show()
+        more(R.string.tts_expand_controls)
+        compose.onNodeWithText(label(R.string.tts_pause_duration)).performClick()
+        val submenu = hasAnyAncestor(hasTestTag("menu-submenu"))
+        compose.onNode(hasText(label(R.string.tts_pause_standard)) and submenu).assertIsSelected()
+        compose.onNodeWithText(label(R.string.tts_pause_long)).performClick()
+        compose.runOnIdle { assertEquals(TtsPauseDuration.LONG, pauseDuration.value) }
+        more(R.string.tts_expand_controls)
+        compose.onNodeWithText(label(R.string.tts_pause_duration)).performClick()
+        compose.onNode(hasText(label(R.string.tts_pause_long)) and submenu).assertIsSelected()
+    }
+
     @Test fun autoPageTurnCheckUsesLiveStateAndSurvivesReaderPageChanges() {
         show()
         more(R.string.tts_expand_controls)
@@ -141,6 +162,19 @@ class TtsPlayerPanelTest {
         compose.runOnIdle { assertFalse(autoPageTurn.value) }
         more(R.string.tts_expand_controls)
         control(R.string.tts_auto_page_turn).assertIsNotSelected()
+    }
+
+    @Test fun concurrentPlaybackMenuUsesLivePreferenceAndTogglesIt() {
+        show()
+        more(R.string.tts_expand_controls)
+        val setting = control(R.string.tts_allow_concurrent_playback)
+        setting.assertIsNotSelected()
+        compose.runOnIdle { allowConcurrentPlayback.value = true }
+        setting.assertIsSelected().performClick()
+        compose.runOnIdle { assertFalse(allowConcurrentPlayback.value) }
+        more(R.string.tts_expand_controls)
+        setting.assertIsNotSelected().performClick()
+        compose.runOnIdle { assertTrue(allowConcurrentPlayback.value) }
     }
 
     @Test fun fromPagePromptOpensInwardAndLeavesTheDockedHandleInPlace() {

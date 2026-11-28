@@ -7,6 +7,7 @@ import com.huangder.lumibooks.domain.model.BookFormat
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
+import java.util.Locale
 import java.util.UUID
 
 object FileUtils {
@@ -307,12 +308,18 @@ object FileUtils {
         return if (file.exists()) file.length() else 0
     }
 
-    fun formatFileSize(sizeBytes: Long): String {
-        return when {
-            sizeBytes < 1024 -> "$sizeBytes B"
-            sizeBytes < 1024 * 1024 -> "${sizeBytes / 1024} KB"
-            sizeBytes < 1024 * 1024 * 1024 -> "${sizeBytes / (1024 * 1024)} MB"
-            else -> "${sizeBytes / (1024 * 1024 * 1024)} GB"
+    fun formatFileSize(sizeBytes: Long, decimalPlaces: Int = 0, locale: Locale = Locale.getDefault()): String {
+        val (bytesPerUnit, unit) = when {
+            sizeBytes < 1024L -> 1L to "B"
+            sizeBytes < 1024L * 1024 -> 1024L to "KB"
+            sizeBytes < 1024L * 1024 * 1024 -> (1024L * 1024) to "MB"
+            else -> (1024L * 1024 * 1024) to "GB"
         }
+        val size = if (decimalPlaces == 0) {
+            (sizeBytes / bytesPerUnit).toString()
+        } else {
+            String.format(locale, "%.${decimalPlaces}f", sizeBytes.toDouble() / bytesPerUnit)
+        }
+        return "$size $unit"
     }
 }

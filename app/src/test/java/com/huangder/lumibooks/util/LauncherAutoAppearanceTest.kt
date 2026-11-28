@@ -40,19 +40,28 @@ class LauncherAutoAppearanceTest {
                     else LauncherComponentNames.LUMI_2_AUTO_DIRECT,
                     launcher.activityInfo.name
                 )
-                assertEquals(R.mipmap.ic_launcher_lumi2_auto, launcher.activityInfo.icon)
+                assertEquals(R.mipmap.ic_launcher_lumi2_auto_adaptive, launcher.activityInfo.icon)
 
-                // Verify the actual manifest icon resolves to the right packaged artwork.
+                // Verify the manifest icon resolves to the adaptive icon for the current theme.
+                val layers = mutableMapOf<String, Int>()
                 context.resources.getXml(launcher.activityInfo.icon).use { icon ->
                     while (icon.eventType != XmlPullParser.START_TAG) icon.next()
-                    assertEquals("bitmap", icon.name)
-                    assertEquals(
-                        if (dark) R.mipmap.ic_launcher_lumi2_dark else R.mipmap.ic_launcher_lumi2,
-                        icon.getAttributeResourceValue(
-                            "http://schemas.android.com/apk/res/android", "src", 0
-                        )
-                    )
+                    assertEquals("adaptive-icon", icon.name)
+                    while (icon.next() != XmlPullParser.END_DOCUMENT) {
+                        if (icon.eventType == XmlPullParser.START_TAG) {
+                            layers[icon.name] = icon.getAttributeResourceValue(
+                                "http://schemas.android.com/apk/res/android", "drawable", 0
+                            )
+                        }
+                    }
                 }
+                assertEquals(
+                    if (dark) R.drawable.ic_lumi2_background_dark
+                    else R.drawable.ic_lumi2_background_light,
+                    layers["background"]
+                )
+                assertEquals(R.drawable.ic_lumi2_foreground, layers["foreground"])
+                assertEquals(R.drawable.ic_lumi2_monochrome, layers["monochrome"])
             }
         }
     }

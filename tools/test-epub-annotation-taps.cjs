@@ -7,7 +7,10 @@ const { pathToFileURL } = require('node:url');
 const { spawnSync } = require('node:child_process');
 const source = readFileSync(join(__dirname, '../app/src/main/java/com/huangder/lumibooks/util/epub/EpubDocumentTransformer.kt'), 'utf8');
 const css = source.match(/private const val READER_CSS = """([\s\S]*?)"""/)[1];
-const script = [...source.matchAll(/private const val READER_SCRIPT_PART_\w+ = """([\s\S]*?)"""/g)].map(m => m[1]).join('');
+const alignment = readFileSync(join(__dirname, '../app/src/main/java/com/huangder/lumibooks/util/epub/EpubReaderAlignment.kt'), 'utf8')
+  .match(/EPUB_READER_ALIGNMENT_SCRIPT = """([\s\S]*?)"""/)[1];
+const script = [...source.matchAll(/private const val (READER_SCRIPT_PART_\w+) = """([\s\S]*?)"""/g)]
+  .map(m => m[2] + (m[1] === 'READER_SCRIPT_PART_1' ? alignment : '')).join('');
 
 async function verify(flow) {
   const check = (condition, message) => { if (!condition) throw Error(message); };
@@ -88,6 +91,45 @@ async function verify(flow) {
     checks++;
     window.getSelection().removeAllRanges();
     window.LumiReader.setHighlights([]);
+
+    const startTextTouch = () => {
+      const touch = new Touch({ identifier: 1, target, clientX: 15, clientY: 15 });
+      target.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true,
+        touches: [touch], changedTouches: [touch] }));
+      return type => target.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true,
+        touches: [], changedTouches: [touch] }));
+    };
+    const touchClick = (reportSource = true) => target.dispatchEvent(new MouseEvent('click', {
+      bubbles: true, cancelable: true, clientX: 15, clientY: 15,
+      sourceCapabilities: reportSource ? new InputDeviceCapabilities({ firesTouchEvents: true }) : null,
+    }));
+    const selected = window.getSelection();
+    for (const selectionBeforeRelease of [true, false]) {
+      await wait(470);
+      window.messages.length = 0;
+      const endTouch = startTextTouch();
+      // Model native selection appearing before the reader's 520 ms tap cutoff.
+      await wait(400);
+      if (selectionBeforeRelease) {
+        selected.addRange(range.cloneRange());
+        endTouch('touchend');
+      } else {
+        endTouch('touchcancel');
+        selected.addRange(range.cloneRange());
+      }
+      check(touchClick(!selectionBeforeRelease) === false, 'Compatibility click from selection must be consumed');
+      await wait(250);
+      check(selected.toString() === exact, 'Long-press release or compatibility click cleared the new range');
+      check(window.messages.some(m => m.type === 'selection' && m.payload.text === exact),
+        'The new range must reach the reader menu');
+      check(!window.messages.some(m => ['selectionCleared', 'tap', 'manualScroll'].includes(m.type)),
+        'The selection gesture must not be handled as a reader tap or page turn');
+      startTextTouch()('touchend');
+      touchClick();
+      check(selected.isCollapsed, 'A separate tap must dismiss the existing range');
+      checks += 5;
+    }
+
     for (const nativePaging of [true, false]) {
       configure(nativePaging);
       for (const [ratio, zone] of [[0.1, 'left'], [0.5, 'center'], [0.9, 'right']]) {
@@ -123,7 +165,7 @@ try {
       <script>${script}</script><script>(${verify.toString()})(${JSON.stringify(flow)})</script></body></html>`);
     const result = spawnSync(process.env.EPUB_PROBE_BROWSER || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', [
       '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-      '--user-data-dir=' + join(directory, 'profile'), '--window-size=480,700', '--virtual-time-budget=14000',
+      '--user-data-dir=' + join(directory, 'profile'), '--window-size=480,700', '--virtual-time-budget=18000',
       '--dump-dom', pathToFileURL(file).href
     ], { windowsHide: true, encoding: 'utf8', timeout: 30000, maxBuffer: 8 * 1024 * 1024 });
     if (result.error) throw result.error;

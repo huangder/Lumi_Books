@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.reader
+import com.huangder.lumibooks.util.readerLetterSpacingEm
 import com.huangder.lumibooks.domain.model.LongPressSelectionRange
 import com.huangder.lumibooks.domain.model.selectionRangeAt
 
@@ -6,6 +7,7 @@ import android.content.Context
 import android.graphics.Typeface
 import android.text.SpannableStringBuilder
 import android.text.Spanned
+import com.huangder.lumibooks.ui.reader.engine.TtsSentenceHighlightSpan
 import android.text.style.BackgroundColorSpan
 import android.text.style.URLSpan
 import android.util.TypedValue
@@ -217,6 +219,11 @@ internal fun markdownWordRange(text: CharSequence, offset: Int): IntRange? {
 internal class MarkdownNativeSurface(context: Context, private val source: MarkdownBlockSource) : FrameLayout(context) {
     var selectionAccent: Int = android.graphics.Color.BLACK
     var paperColor: Int = android.graphics.Color.WHITE
+        set(value) {
+            if (field == value) return
+            field = value
+            if (tts != null) applySelection()
+        }
     var motionEnabled = true
     var transition = "slide"
     var transitionDuration = 260
@@ -356,6 +363,8 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
         selectionDragging(false)
     }
     private fun applySelection() {
+        val spoken = tts?.takeIf { it.chapterIndex == 0 }
+        val spokenColor = spoken?.let { TtsSentenceHighlightSpan.computeHighlightColor(paperColor) }
         for ((view, start) in textOwners) {
             // Compose's AndroidViewsHandler can have an empty global visible rect
             // while it draws this AndroidView normally. Refresh attached buffers,
@@ -365,7 +374,14 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
             applyMarkdownAnnotationSpans(text, start, notes, source.document.text)
             text.getSpans(0, text.length, SelectedRangeSpan::class.java).forEach(text::removeSpan)
             text.getSpans(0, text.length, ReadingRangeSpan::class.java).forEach(text::removeSpan)
-            listOfNotNull(tts?.let { it.startOffset until it.endOffset }, searchRange).forEach { range ->
+            text.getSpans(0, text.length, TtsSentenceHighlightSpan::class.java).forEach(text::removeSpan)
+            if (spoken != null && spokenColor != null) {
+                val a = maxOf(start, spoken.startOffset)
+                val b = minOf(start + text.length, spoken.endOffset)
+                if (a < b) text.setSpan(TtsSentenceHighlightSpan(spokenColor),
+                    a - start, b - start, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            searchRange?.let { range ->
                 val a = maxOf(start, range.first); val b = minOf(start + text.length, range.last + 1)
                 if (a < b) text.setSpan(ReadingRangeSpan(0x557fbb77), a - start, b - start, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
@@ -733,7 +749,7 @@ internal class MarkdownNativeSurface(context: Context, private val source: Markd
             else -> android.text.Layout.Alignment.ALIGN_NORMAL
         }
         provider = MarkdownPageProvider(source, MarkdownPageStyle(style, c.typeface, c.lineHeight,
-            c.spacing * density / style.fontSize, alignment))
+            readerLetterSpacingEm(c.spacing * density, style.fontSize), alignment))
         if (initialRestore) {
             current = locatorOffset(savedRestore) ?: (savedFraction * source.document.text.length).toInt()
             initialRestore = false

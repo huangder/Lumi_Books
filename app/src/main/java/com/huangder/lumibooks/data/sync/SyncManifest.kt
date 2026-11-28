@@ -145,6 +145,10 @@ data class SyncManifest(
         fun fromJson(jsonString: String): SyncManifest {
             if (jsonString.isBlank()) return SyncManifest()
             val root = JSONObject(jsonString)
+            require(root.has("version") || root.has("books") || root.has("data")) { "Invalid WebDAV manifest" }
+            for (key in listOf("books", "data", "deletedBooks", "bookIdentities")) {
+                require(!root.has(key) || root.optJSONObject(key) != null) { "Invalid WebDAV manifest field: $key" }
+            }
             fun readMap(key: String): Map<String, SyncFileEntry> {
                 val obj = root.optJSONObject(key) ?: return emptyMap()
                 val map = mutableMapOf<String, SyncFileEntry>()
@@ -260,7 +264,8 @@ internal fun SyncManifest.resolveBookDeletionIds(
     fileNames: Map<String, String>,
     aliases: Map<String, String>
 ): Map<String, String> = fileNames.mapValues { (localId, fileName) ->
-    aliases[localId]?.takeIf { books[it]?.fileName == fileName }
+    aliases[localId]?.takeIf { it in deletedBooks || books[it]?.fileName == fileName }
+        ?: localId.takeIf { it in deletedBooks }
         ?: localId.takeIf { it in books }
         ?: books.entries.singleOrNull { it.value.fileName == fileName }?.key
         ?: aliases[localId]

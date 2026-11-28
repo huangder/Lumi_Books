@@ -53,10 +53,13 @@ import kotlin.math.abs
 class FloatingSubtitleOverlayController @Inject constructor(
     @ApplicationContext private val context: Context,
     private val dataStoreManager: DataStoreManager,
-    private val ttsController: TtsController,
+    private val lazyTtsController: dagger.Lazy<TtsController>,
     private val bookRepository: BookRepository,
     private val notificationManager: TtsNotificationManager
 ) {
+    private val ttsController: TtsController
+        get() = lazyTtsController.get()
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val windowManager = context.getSystemService(WindowManager::class.java)
 
@@ -130,20 +133,17 @@ class FloatingSubtitleOverlayController @Inject constructor(
             }
         }
         scope.launch {
-            // Whole sentences follow the engine's start callback, so the text can no longer lag
-            // behind or skip the way word-range driven clauses did with coarse engine callbacks.
             combine(
                 dataStoreManager.floatingSubtitleSettings,
                 ttsController.playbackState,
-                ttsController.currentUtterance,
-                ttsController.upcomingUtterance,
+                ttsController.subtitleFrame,
                 dataStoreManager.motionPreference
-            ) { settings, state, utterance, upcoming, motionPreference ->
+            ) { settings, state, subtitle, motionPreference ->
                 OverlaySnapshot(
                     settings = settings,
                     playbackState = state,
-                    utterance = utterance,
-                    upcoming = upcoming,
+                    utterance = subtitle.current,
+                    upcoming = subtitle.next,
                     motionReduced = motionPreference == REDUCED_MOTION_VALUE
                 )
             }
@@ -211,6 +211,7 @@ class FloatingSubtitleOverlayController @Inject constructor(
     }
 
     fun setPreviewActive(active: Boolean) {
+        if (active) start()
         previewActive = active
         if (!active) previewSettings = null
         reconcile()
@@ -234,6 +235,7 @@ class FloatingSubtitleOverlayController @Inject constructor(
     }
 
     private fun reconcile(animateText: Boolean = false) {
+        if (!started) return
         val settings = effectiveSettings()
         val canDraw = Settings.canDrawOverlays(context)
         val shouldShowForPlayback = (!appInForeground || !readerVisible) &&
@@ -552,17 +554,15 @@ class FloatingSubtitleOverlayController @Inject constructor(
 
     private fun safeDisplayBounds(): Rect {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val metrics = windowManager.maximumWindowMetrics
+            val metrics = windowManager.currentWindowMetrics
             val bounds = Rect(metrics.bounds)
             val insets = metrics.windowInsets.getInsetsIgnoringVisibility(
                 WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()
             )
-            return Rect(
-                bounds.left + insets.left,
-                bounds.top + insets.top,
-                bounds.right - insets.right,
-                bounds.bottom - insets.bottom
-            )
+            // TOP/START offsets are relative to the frame already fitted by WindowManager.
+            return Rect(0, 0,
+                (bounds.width() - insets.left - insets.right).coerceAtLeast(1),
+                (bounds.height() - insets.top - insets.bottom).coerceAtLeast(1))
         }
         @Suppress("DEPRECATION")
         val metrics = context.resources.displayMetrics

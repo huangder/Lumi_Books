@@ -12,6 +12,7 @@ import kotlin.math.ceil
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 
+internal const val EXTERNAL_TTS_PCM_SAMPLE_RATE = 24_000
 internal const val EXTERNAL_TTS_MIN_PLAYBACK_RATE = 0.5f
 internal const val EXTERNAL_TTS_MAX_PLAYBACK_RATE = 5f
 
@@ -21,7 +22,10 @@ internal enum class ExternalTtsAudioFocusAction {
     GAIN
 }
 
-internal fun externalTtsAudioFocusAction(change: Int): ExternalTtsAudioFocusAction = when (change) {
+internal fun externalTtsAudioFocusAction(
+    change: Int,
+    allowConcurrentPlayback: Boolean = false
+): ExternalTtsAudioFocusAction = if (allowConcurrentPlayback) ExternalTtsAudioFocusAction.IGNORE else when (change) {
     AudioManager.AUDIOFOCUS_LOSS,
     AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> ExternalTtsAudioFocusAction.PAUSE
     AudioManager.AUDIOFOCUS_GAIN -> ExternalTtsAudioFocusAction.GAIN
@@ -59,6 +63,9 @@ class ExternalTtsAudioPlayer(
     private var focusGeneration = 0L
 
     @Volatile
+    private var allowConcurrentPlayback = false
+
+    @Volatile
     private var hasFocus = false
 
     @Volatile
@@ -76,7 +83,21 @@ class ExternalTtsAudioPlayer(
     @Volatile
     private var initialFrameOffset = 0L
 
+    @Volatile
+    private var speechFrameLimit: Long? = null
+
     private var onFocusLost: (() -> Unit)? = null
+
+    /** Applied on the audio handler, including while an utterance is playing. */
+    fun setAllowConcurrentPlayback(allow: Boolean) {
+        if (allowConcurrentPlayback == allow) return
+        allowConcurrentPlayback = allow
+        abandonFocus()
+        if (!allow && track != null && !paused && !requestFocus()) {
+            pause()
+            onFocusLost?.invoke()
+        }
+    }
 
     fun prepare(initialFrameOffset: Long = 0L): Boolean {
         abandonFocus()
@@ -96,6 +117,7 @@ class ExternalTtsAudioPlayer(
         }
         this.initialFrameOffset = initialFrameOffset.coerceAtLeast(0L)
         writtenFrames = 0L
+        speechFrameLimit = null
         paused = false
         applyRateToTrack(playbackRate)
         newTrack.play()
@@ -111,6 +133,15 @@ class ExternalTtsAudioPlayer(
     suspend fun drain(): Boolean {
         val activeTrack = track ?: return false
         val targetFrames = writtenFrames
+        speechFrameLimit = targetFrames
+        // Short clauses may never fill MODE_STREAM's start threshold. Prime with silence,
+        // while completion and resume positions remain bounded by the speech frames.
+        val threshold = if (android.os.Build.VERSION.SDK_INT >= 31) activeTrack.startThresholdInFrames
+            else activeTrack.bufferSizeInFrames
+        val paddingFrames = (threshold.toLong() - targetFrames).coerceAtLeast(0L)
+        if (targetFrames > 0L && paddingFrames > 0L &&
+            !writeInternal(activeTrack, ByteArray((paddingFrames * PCM_FRAME_BYTES).toInt()), 0,
+                (paddingFrames * PCM_FRAME_BYTES).toInt())) return false
         while (track === activeTrack) {
             if (!paused) {
                 try {
@@ -174,6 +205,7 @@ class ExternalTtsAudioPlayer(
         paused = true
         initialFrameOffset = 0L
         writtenFrames = 0L
+        speechFrameLimit = null
         releaseTrack()
         abandonFocus()
     }
@@ -188,15 +220,17 @@ class ExternalTtsAudioPlayer(
     /** Absolute rendered frame offset within the active cached utterance. */
     fun renderedFrameOffset(): Long {
         val activeTrack = track ?: return initialFrameOffset
-        return initialFrameOffset + activeTrack.playbackHeadPosition.toLong()
+        return initialFrameOffset + activeTrack.playbackHeadPosition.toLong().let {
+            head -> speechFrameLimit?.let { head.coerceAtMost(it) } ?: head
+        }
     }
 
     /** Number of frames currently queued for the active utterance. */
-    fun writtenFrameCount(): Long = initialFrameOffset + writtenFrames
+    fun writtenFrameCount(): Long = initialFrameOffset + (speechFrameLimit ?: writtenFrames)
 
     private fun createTrack(): AudioTrack? {
         val minimumBufferSize = AudioTrack.getMinBufferSize(
-            SAMPLE_RATE,
+            EXTERNAL_TTS_PCM_SAMPLE_RATE,
             CHANNEL_CONFIG,
             AUDIO_FORMAT
         )
@@ -210,7 +244,7 @@ class ExternalTtsAudioPlayer(
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                 .build(),
             AudioFormat.Builder()
-                .setSampleRate(SAMPLE_RATE)
+                .setSampleRate(EXTERNAL_TTS_PCM_SAMPLE_RATE)
                 .setChannelMask(CHANNEL_CONFIG)
                 .setEncoding(AUDIO_FORMAT)
                 .build(),
@@ -221,6 +255,7 @@ class ExternalTtsAudioPlayer(
     }
 
     private fun requestFocus(): Boolean {
+        if (allowConcurrentPlayback) return true
         val generation = ++focusGeneration
         val attributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -228,7 +263,7 @@ class ExternalTtsAudioPlayer(
             .build()
         val listener = AudioManager.OnAudioFocusChangeListener { change ->
             if (generation != focusGeneration) return@OnAudioFocusChangeListener
-            when (externalTtsAudioFocusAction(change)) {
+            when (externalTtsAudioFocusAction(change, allowConcurrentPlayback)) {
                 ExternalTtsAudioFocusAction.PAUSE -> {
                     hasFocus = false
                     paused = true
@@ -311,7 +346,6 @@ class ExternalTtsAudioPlayer(
     }
 
     private companion object {
-        const val SAMPLE_RATE = 24_000
         const val CHANNEL_CONFIG = AudioFormat.CHANNEL_OUT_MONO
         const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
         const val MIN_BUFFER_SIZE = 4_800

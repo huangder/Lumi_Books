@@ -376,39 +376,6 @@ class JustifiedTextView @JvmOverloads constructor(
         canvas.restoreToCount(save)
     }
 
-    private fun drawTtsHighlightBackground(canvas: Canvas) {
-        val tts = ttsHighlight ?: return
-        val sl = currentLayout() ?: return
-        val s = spannable ?: return
-        if (s.isEmpty()) return
-        val start = tts.first.coerceIn(0, s.length)
-        val end = tts.second.coerceIn(start, s.length)
-        if (start >= end) return
-        val firstLine = sl.getLineForOffset(start)
-        val lastLine = sl.getLineForOffset(end - 1)
-        val density = resources.displayMetrics.density
-        val gap = 1.5f * density
-        val radius = 12f * density
-        val top = sl.getLineTop(firstLine).toFloat() + gap
-        val glyphBottom = sl.getLineBaseline(lastLine).toFloat() +
-            sl.paint.fontMetrics.descent + 2f * density
-        val bottom = minOf(glyphBottom, sl.getLineBottom(lastLine).toFloat() - gap)
-        if (bottom <= top) return
-        val save = canvas.save()
-        canvas.translate(paddingLeft.toFloat(), paddingTop.toFloat())
-        val oldColor = textPaint.color
-        val oldStyle = textPaint.style
-        textPaint.style = Paint.Style.FILL
-        textPaint.color = tts.third
-        canvas.drawRoundRect(
-            android.graphics.RectF(0f, top, (width - paddingLeft - paddingRight).toFloat(), bottom),
-            radius, radius, textPaint
-        )
-        textPaint.color = oldColor
-        textPaint.style = oldStyle
-        canvas.restoreToCount(save)
-    }
-
     /** Maps offsets through the same per-character spacing used by [onDraw]. */
     private fun justifiedHorizontalRange(
         sl: Layout,
@@ -428,7 +395,6 @@ class JustifiedTextView @JvmOverloads constructor(
     private val readerTextPainter = ReaderTextPainter()
 
     override fun onDraw(canvas: Canvas) {
-        drawTtsHighlightBackground(canvas)
         drawWaveUnderlines(canvas)
         val sl = currentLayout() ?: return
         val s = spannable ?: return
@@ -450,6 +416,9 @@ class JustifiedTextView @JvmOverloads constructor(
         )
         // 高亮按行画圆角矩形（与选中态、已保存高亮同一套样式），
         // 逐字方块会在字与字之间留下缝隙、相邻行又贴在一起。
+        ttsHighlight?.let { (start, end, color) ->
+            readerHighlightPainter.drawRange(canvas, sl, s, geometry, start, end, color, singleBlock = true)
+        }
         drawHighlightBackgrounds(canvas, sl, s, geometry)
 
         readerTextPainter.draw(canvas, sl, s, geometry)

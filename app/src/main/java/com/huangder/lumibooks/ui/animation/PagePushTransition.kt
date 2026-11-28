@@ -40,7 +40,7 @@ internal class PageScene(val activity: Activity, val page: Boolean) {
     var corners: PageCorners? = null
     var progress by androidx.compose.runtime.mutableFloatStateOf(1f)
     var moving by androidx.compose.runtime.mutableStateOf(false)
-    var toolbarReady by androidx.compose.runtime.mutableStateOf(false)
+    var toolbarCapture by androidx.compose.runtime.mutableStateOf<PagePushToolbarCapture?>(null)
     var started by androidx.compose.runtime.mutableStateOf(false)
     var coveredBy by androidx.compose.runtime.mutableStateOf<PageScene?>(null)
     var opener: java.lang.ref.WeakReference<PageScene>? = null

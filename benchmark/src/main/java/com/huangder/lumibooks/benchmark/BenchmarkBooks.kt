@@ -2,6 +2,7 @@ package com.huangder.lumibooks.benchmark
 
 import android.content.ContentValues
 import android.content.Intent
+import android.graphics.Rect
 import android.os.SystemClock
 import android.provider.MediaStore
 import androidx.test.platform.app.InstrumentationRegistry
@@ -22,11 +23,11 @@ internal object BenchmarkBooks {
 
     val all = listOf(txtSmall, txtLarge, epubRegular, epubLarge)
 
-    fun prepareApp(device: UiDevice) {
+    fun prepareApp(device: UiDevice, splash: Boolean = false) {
         wakeAndDismissKeyguard(device)
         device.executeShellCommand(
-            "am broadcast -a com.huangder.lumibooks.benchmark.PREPARE_APP " +
-                "-p $PACKAGE_NAME"
+            "am broadcast --include-stopped-packages -a com.huangder.lumibooks.benchmark.PREPARE_APP " +
+                "-p $PACKAGE_NAME --ez splash $splash"
         )
         ensureAppForeground(device)
     }
@@ -85,6 +86,34 @@ internal object BenchmarkBooks {
         device.waitForIdle()
     }
 
+    fun prepareBookOpen(device: UiDevice, fixture: Fixture) {
+        showLibrary(device)
+        checkNotNull(findBook(device, fixture)) { "Book is not visible: ${fixture.title}" }
+    }
+
+    fun clickPreparedBook(device: UiDevice, fixture: Fixture) {
+        requireBookshelfForeground(device)
+        val book = checkNotNull(device.findObject(By.text(fixture.title))) {
+            "Prepared book no longer visible: ${fixture.title}"
+        }
+        book.click()
+    }
+
+    fun configureReader(
+        device: UiDevice,
+        fixture: Fixture,
+        renderMode: String = "reader_layout",
+        transition: String = "slide",
+        resume: Boolean = false
+    ) {
+        val result = device.executeShellCommand(
+            "am broadcast -a com.huangder.lumibooks.benchmark.CONFIGURE_READER -p $PACKAGE_NAME " +
+                "--es book_title '${fixture.title}' --es render_mode $renderMode " +
+                "--es transition $transition --ez resume $resume"
+        )
+        check("result=1" in result) { "Could not configure ${fixture.title}: $result" }
+    }
+
     fun clearReaderCache(device: UiDevice) {
         device.executeShellCommand(
             "am broadcast -a com.huangder.lumibooks.benchmark.CLEAR_READER_CACHE " +
@@ -94,6 +123,21 @@ internal object BenchmarkBooks {
 
     fun showBookshelf(device: UiDevice) {
         showLibrary(device)
+    }
+
+    fun prepareBookshelfFixture(device: UiDevice, glassQuality: String) {
+        val result = device.executeShellCommand(
+            "am broadcast -a com.huangder.lumibooks.benchmark.PREPARE_BOOKSHELF -p $PACKAGE_NAME " +
+                "--es glass_quality $glassQuality"
+        )
+        check("result=1" in result) { "Could not seed bookshelf: $result" }
+    }
+
+    fun scrollBookshelfToStart(device: UiDevice) {
+        repeat(8) {
+            swipeWithinTaggedSurface(device, BOOKSHELF_SCREEN_TAG, upward = false)
+            device.waitForIdle(1_000)
+        }
     }
 
     fun scrollHome(device: UiDevice) {
@@ -129,10 +173,50 @@ internal object BenchmarkBooks {
                 timeoutMs
             )
         ) { "Reader content did not draw within ${timeoutMs}ms" }
-        device.waitForIdle(timeoutMs)
-        // The marker is published after the measured first frame. Allow the retained cover
-        // transition to finish so book_open_to_interactive is closed in the same trace.
-        Thread.sleep(500)
+        awaitTag(device, "reader_content_interactive", timeoutMs)
+    }
+
+    fun awaitStartupContent(device: UiDevice) = awaitTag(device, "startup_content_interactive", 10_000)
+
+    private fun awaitTag(device: UiDevice, tag: String, timeoutMs: Long) {
+        check(device.wait(Until.hasObject(By.res(tag)), timeoutMs)) { "Missing $tag after ${timeoutMs}ms" }
+        requireAppForeground(device)
+    }
+
+    fun bookshelfBounds(device: UiDevice): Rect = gestureBounds(device, BOOKSHELF_SCREEN_TAG)
+
+    fun readerBounds(device: UiDevice): Rect = gestureBounds(device, READER_CONTENT_READY_TAG)
+
+    private fun gestureBounds(device: UiDevice, tag: String): Rect =
+        requireTaggedSurface(device, tag, "Missing input surface: $tag").visibleBounds.also { bounds ->
+            check(bounds.width() > MIN_INPUT_SURFACE_PX && bounds.height() > MIN_INPUT_SURFACE_PX)
+        }
+
+    fun swipeBurst(device: UiDevice, bounds: Rect, vertical: Boolean, forward: Int, reverse: Int) {
+        requireAppForeground(device)
+        val nearX = bounds.left + bounds.width() / 5
+        val farX = bounds.right - bounds.width() / 5
+        val nearY = bounds.top + bounds.height() / 4
+        val farY = bounds.bottom - bounds.height() / 4
+        repeat(forward + reverse) { index ->
+            val backwards = index >= forward
+            val expectedStart = SystemClock.uptimeMillis()
+            val accepted = if (vertical) {
+                device.swipe(bounds.centerX(), if (backwards) nearY else farY,
+                    bounds.centerX(), if (backwards) farY else nearY, 8)
+            } else {
+                device.swipe(if (backwards) nearX else farX, bounds.centerY(),
+                    if (backwards) farX else nearX, bounds.centerY(), 8)
+            }
+            check(accepted) { "Could not inject swipe ${index + 1}" }
+            SystemClock.sleep((expectedStart + 120L - SystemClock.uptimeMillis()).coerceAtLeast(0L))
+        }
+        requireAppForeground(device)
+    }
+
+    fun awaitBurstTail(device: UiDevice) {
+        SystemClock.sleep(800L)
+        requireAppForeground(device)
     }
 
     fun turnNextPage(device: UiDevice) {

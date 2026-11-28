@@ -45,7 +45,9 @@ class ReplacementRuleHelpTest {
         }
     }
 
-    @Test fun tabsAlignWithBackAndCopyTheEntirePromptInEveryTheme() {
+    // Software screenshots exercise the glass blur without API 33+ RuntimeShader.
+    @Test @Config(sdk = [31])
+    fun tabsAlignWithBackAndCopyTheEntirePromptInEveryTheme() {
         data class Scene(val theme: String, val dark: Boolean, val ink: Boolean = false)
         val scene = mutableStateOf(Scene("lumi", false))
         lateinit var view: View

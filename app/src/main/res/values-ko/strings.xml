@@ -460,6 +460,7 @@
     <string name="line_guide_dim_medium">보통</string>
     <string name="line_guide_dim_high">높음</string>
     <string name="line_guide_dim_very_high">매우 높음</string>
+    <string name="line_guide_show_all_features">모든 기능 표시</string>
     <string name="line_guide_close">한 줄씩 읽기 끄기</string>
     <string name="bionic_reading_hint">단어 앞부분을 굵게 표시해 시선 이동과 집중을 돕습니다</string>
     <string name="reader_page_bottom_aligned">페이지 아래쪽 맞추기</string>
@@ -1306,6 +1307,12 @@
     <string name="delete_cloud_book_choice">선택한 %1$d권에 클라우드 사본이 있습니다. 삭제 범위를 선택하세요.</string>
     <string name="delete_local_only">로컬에서만 삭제</string>
     <string name="delete_local_and_cloud">로컬과 클라우드에서 삭제</string>
+    <string name="delete_cloud_only">클라우드에서만 삭제</string>
+    <string name="book_detail_cloud_removed">클라우드에서 삭제됨 · 탭하여 다시 업로드</string>
+    <string name="webdav_status_clean_duplicates">중복된 이전 클라우드 버전 정리(%1$d)</string>
+    <string name="webdav_clean_duplicates_title">중복된 이전 클라우드 버전 정리</string>
+    <string name="webdav_clean_duplicates_message">다음 %1$d개의 클라우드 전용 사본은 이 기기의 책과 제목이 같으며, 본문을 수정하기 전에 남은 이전 버전일 가능성이 큽니다. 정리하면 클라우드에서 삭제되고 독서 데이터는 이 기기의 책에 병합됩니다. 기기의 책 파일은 영향을 받지 않습니다.\n\n%2$s</string>
+    <string name="webdav_clean_duplicates_confirm">정리</string>
     <string name="force_delete">강제 삭제</string>
     <string name="force_delete_hint">강제 삭제는 먼저 로컬 서재에서 제거한 다음 WebDAV 정리를 시도합니다. 클라우드 작업이 실패해도 로컬 삭제는 완료됩니다. 일반 삭제가 실패할 때만 사용하세요.</string>
     <string name="force_delete_cloud_failed">로컬 항목은 삭제했지만 클라우드 정리를 완료하지 못했습니다: %1$s</string>
@@ -1486,6 +1493,11 @@
     <string name="spine_shelf_folder_count">%1$d권</string>
     <string name="spine_menu_tags">태그</string>
     <string name="spine_menu_notes">메모</string>
+    <string name="spine_menu_pose">놓는 방식</string>
+    <string name="spine_pose_auto">자동</string>
+    <string name="spine_pose_flat">눕히기</string>
+    <string name="spine_pose_leaning">기울이기</string>
+    <string name="spine_pose_upright">세우기</string>
     <string name="spine_menu_edit">편집</string>
     <string name="spine_menu_cover">표지</string>
     <string name="spine_menu_restore_cover">원래 표지</string>
@@ -1565,4 +1577,5 @@
     <string name="floating_subtitle_locked_notification_text">탭하여 잠금 해제하면 이동하고 컨트롤을 열 수 있습니다</string>
     <string name="floating_subtitle_color_reset">기본값으로 재설정</string>
     <string name="webdav_sync_reader_theme_deferred">현재 독서 테마를 유지했습니다. 원본 이미지나 글꼴 파일이 있는 기기에서 다시 동기화해 주세요.</string>
+    <string name="tts_allow_concurrent_playback">다른 앱과 동시에 재생</string>
 </resources>

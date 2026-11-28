@@ -1,4 +1,5 @@
 package com.huangder.lumibooks.ui.reader.engine
+import com.huangder.lumibooks.util.readerLetterSpacingEm
 import com.huangder.lumibooks.domain.model.ReaderImageAdjustments
 import com.huangder.lumibooks.domain.model.LongPressSelectionRange
 import com.huangder.lumibooks.domain.model.selectionRangeAt
@@ -855,7 +856,7 @@ class PageContentView(context: Context) : FrameLayout(context) {
         this.writingMode = writingMode
         this.bottomAligned = bottomAligned
         configuredTextAlignment = textAlignment
-        val spacingRatio = if (fontSizePx > 0) letterSpacingPx / fontSizePx else 0f
+        val spacingRatio = readerLetterSpacingEm(letterSpacingPx, fontSizePx)
 
         // Native TextView is the visible renderer as well as the selection owner.
         if (textView.paint.textSize != fontSizePx) {

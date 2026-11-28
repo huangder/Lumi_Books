@@ -229,8 +229,11 @@ class EpubPerformanceActivity : ComponentActivity() {
                     Log.d("EpubPerfFixture", "intent=$index chapter=$chapter page=$page count=$count")
                     when (input) {
                         "drag_probe" -> injectHeldDrag()
-                        "swipe" -> injectSwipe(vertical = activeTransition == "scroll" || activeTransition == "continuous",
-                            direction = burstDirection)
+                        "swipe", "swipe_diagonal" -> injectSwipe(
+                            vertical = activeTransition == "scroll" || activeTransition == "continuous",
+                            direction = burstDirection,
+                            diagonal = input == "swipe_diagonal"
+                        )
                         "tap" -> injectTap(burstDirection)
                         else -> turn?.invoke(burstDirection)
                     }
@@ -353,13 +356,17 @@ class EpubPerformanceActivity : ComponentActivity() {
         Log.d("EpubPerfFixture", "DRAG_RELEASED")
     }
 
-    private suspend fun injectSwipe(vertical: Boolean = false, direction: Int = 1) {
+    private suspend fun injectSwipe(vertical: Boolean = false, direction: Int = 1, diagonal: Boolean = false) {
         val root = window.decorView
         // Next page: leftward swipe, or upward for vertical paging and scrolling.
         val forwardStart = if (vertical) root.width * 0.5f to root.height * 0.75f else root.width * 0.8f to root.height * 0.5f
         val forwardEnd = if (vertical) root.width * 0.5f to root.height * 0.25f else root.width * 0.2f to root.height * 0.5f
-        val start = if (direction < 0) forwardEnd else forwardStart
-        val end = if (direction < 0) forwardStart else forwardEnd
+        val startX = if (direction < 0) forwardEnd.first else forwardStart.first
+        val endX = if (direction < 0) forwardStart.first else forwardEnd.first
+        val startY = if (direction < 0) forwardEnd.second else forwardStart.second
+        val endY = if (direction < 0) forwardStart.second else forwardEnd.second
+        val start = startX to if (diagonal && !vertical) root.height * .84f else startY
+        val end = endX to if (diagonal && !vertical) root.height * .58f else endY
         val downTime = android.os.SystemClock.uptimeMillis()
         fun send(action: Int, point: Pair<Float, Float>, time: Long) {
             val event = android.view.MotionEvent.obtain(downTime, time, action, point.first, point.second, 0)

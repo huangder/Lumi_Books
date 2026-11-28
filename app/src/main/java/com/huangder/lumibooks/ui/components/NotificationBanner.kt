@@ -28,7 +28,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -67,7 +66,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import com.huangder.lumibooks.R
-import com.huangder.lumibooks.domain.model.LiquidGlassSamplingQuality
 import com.huangder.lumibooks.ui.animation.AppEasing
 import com.huangder.lumibooks.ui.theme.AppColors
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
@@ -80,7 +78,6 @@ import com.huangder.lumibooks.ui.theme.LocalMotionEnabled
 import com.huangder.lumibooks.ui.theme.LocalUseMaterial3Theme
 import com.huangder.lumibooks.ui.theme.cardOutline
 import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.LocalBackdropSamplingScale
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -353,26 +350,19 @@ private fun BannerSurface(
 
     when {
         isLiquidGlass -> {
-            // Heavily frosted on purpose: readable over busy covers. Its blur hides detail anyway,
-            // so sample the backdrop at the lowest resolution to keep the overlay cheap.
-            val baseSamplingScale = LocalBackdropSamplingScale.current
-            CompositionLocalProvider(
-                LocalBackdropSamplingScale provides min(baseSamplingScale, LiquidGlassSamplingQuality.PERFORMANCE.scale)
+            LiquidGlassSurface(
+                shape = shape,
+                fallbackColor = if (isDark) Color(0xFF1C1C1E) else Color.White,
+                backdrop = liquidGlassBackdrop,
+                contentScrimColor = if (isDark) Color(0xFF1C1C1E).copy(alpha = 0.82f) else Color.White.copy(alpha = 0.82f),
+                transparencyOverride = min(LocalLiquidGlassTransparency.current, 0.25f),
+                interactive = false,
+                pressFeedbackEnabled = false,
+                role = AppSurfaceRole.Overlay,
+                contentAlignment = Alignment.CenterStart,
+                modifier = shadow.fillMaxWidth()
             ) {
-                LiquidGlassSurface(
-                    shape = shape,
-                    fallbackColor = if (isDark) Color(0xFF1C1C1E) else Color.White,
-                    backdrop = liquidGlassBackdrop,
-                    contentScrimColor = if (isDark) Color(0xFF1C1C1E).copy(alpha = 0.82f) else Color.White.copy(alpha = 0.82f),
-                    transparencyOverride = min(LocalLiquidGlassTransparency.current, 0.25f),
-                    interactive = false,
-                    pressFeedbackEnabled = false,
-                    role = AppSurfaceRole.Overlay,
-                    contentAlignment = Alignment.CenterStart,
-                    modifier = shadow.fillMaxWidth()
-                ) {
-                    content(AppColors.TextPrimary, AppColors.TextSecondary)
-                }
+                content(AppColors.TextPrimary, AppColors.TextSecondary)
             }
         }
         eInk -> Box(

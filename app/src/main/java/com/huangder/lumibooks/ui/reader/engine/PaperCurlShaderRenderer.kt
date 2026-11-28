@@ -1,19 +1,25 @@
 package com.huangder.lumibooks.ui.reader.engine
 
+import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RenderEffect
 import android.graphics.RenderNode
 import android.graphics.RuntimeShader
+import android.graphics.Shader
 import android.util.Log
 import android.view.View
 import androidx.annotation.RequiresApi
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
- * GPU renderer: the turning sheet is recorded once into a [RenderNode] and bent
- * per pixel by a runtime shader, so a turn starts without copying page pixels
- * and every frame stays inside the normal HWUI frame.
+ * GPU renderer: bends a frozen page bitmap directly, or records live content
+ * into a [RenderNode] when no viewport-sized bitmap is available.
  */
 @RequiresApi(33)
 internal class PaperCurlShaderRenderer : PaperCurlRenderer {
@@ -25,9 +31,12 @@ internal class PaperCurlShaderRenderer : PaperCurlRenderer {
     private val underNode = RenderNode("PaperCurlUnder")
     private val shader = RuntimeShader(PAPER_CURL_SHADER)
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG)
+    private val curlPaint = Paint()
+    private val emptyInput = LinearGradient(0f, 0f, 1f, 0f, Color.TRANSPARENT, Color.TRANSPARENT, Shader.TileMode.CLAMP)
     private val destination = Rect()
     private var surface: PageAnimationSurface? = null
     private var recorded = false
+    private var directBitmap = false
 
     override fun capture(surface: PageAnimationSurface, turning: View, under: View): Boolean {
         val width = surface.width
@@ -37,9 +46,22 @@ internal class PaperCurlShaderRenderer : PaperCurlRenderer {
         this.turning.capture(turning)
         this.under.capture(under)
         destination.set(0, 0, width, height)
-        record(contentNode, this.turning, surface, width, height)
         record(underNode, this.under, surface, width, height)
         turningNode.setRenderEffect(null)
+        val bitmap = this.turning.bitmap?.takeIf { it.width == width && it.height == height }
+        if (bitmap != null) {
+            shader.setPageBitmap(bitmap)
+        } else {
+            if (directBitmap) shader.setInputShader("page", emptyInput)
+            recordTurning(surface, width, height)
+        }
+        directBitmap = bitmap != null
+        recorded = true
+        return true
+    }
+
+    private fun recordTurning(surface: PageAnimationSurface, width: Int, height: Int) {
+        record(contentNode, this.turning, surface, width, height)
         turningNode.setPosition(0, 0, width, height)
         val canvas = turningNode.beginRecording(width, height)
         try {
@@ -47,8 +69,22 @@ internal class PaperCurlShaderRenderer : PaperCurlRenderer {
         } finally {
             turningNode.endRecording()
         }
-        recorded = true
-        return true
+    }
+
+    /**
+     * HWUI destroys a node's display list, including one recorded but not yet
+     * synced, once a frame leaves it out of the tree. A quick re-lift captures
+     * during the previous turn and its first flat frame omits [underNode], so
+     * the page beneath would stay blank; re-record whatever was dropped.
+     */
+    private fun restoreDroppedRecordings() {
+        val active = surface ?: return
+        val width = destination.width()
+        val height = destination.height()
+        if (!underNode.hasDisplayList()) record(underNode, under, active, width, height)
+        if (!directBitmap && (!turningNode.hasDisplayList() || !contentNode.hasDisplayList())) {
+            recordTurning(active, width, height)
+        }
     }
 
     private fun record(node: RenderNode, frame: CurlPageFrame, surface: PageAnimationSurface, width: Int, height: Int) {
@@ -69,9 +105,14 @@ internal class PaperCurlShaderRenderer : PaperCurlRenderer {
             surface?.let { turning.draw(it, canvas, paint, destination) }
             return
         }
+        restoreDroppedRecordings()
         if (pose.isFlat) {
-            turningNode.setRenderEffect(null)
-            canvas.drawRenderNode(turningNode)
+            if (directBitmap) {
+                surface?.let { turning.draw(it, canvas, paint, destination) }
+            } else {
+                turningNode.setRenderEffect(null)
+                canvas.drawRenderNode(turningNode)
+            }
             return
         }
         canvas.drawRenderNode(underNode)
@@ -80,17 +121,27 @@ internal class PaperCurlShaderRenderer : PaperCurlRenderer {
         shader.setFloatUniform("foldN", pose.nx, pose.ny)
         shader.setFloatUniform("foldC", pose.c)
         shader.setFloatUniform("radius", pose.r)
-        shader.setFloatUniform("wrap", pose.alpha)
+        shader.setWrapGeometry(pose.alpha)
         shader.setFloatUniform("backInk", CurlLook.BACK_INK)
         shader.setFloatUniform("shadowReach", look.shadowReach)
         shader.setColorUniform("paper", look.paper or (0xFF shl 24))
-        // Uniforms are copied into each effect, so a new effect carries this frame's pose.
-        turningNode.setRenderEffect(RenderEffect.createRuntimeShaderEffect(shader, "page"))
-        canvas.drawRenderNode(turningNode)
+        if (directBitmap) {
+            curlPaint.shader = shader
+            try {
+                canvas.drawRect(destination, curlPaint)
+            } finally {
+                curlPaint.shader = null
+            }
+        } else {
+            turningNode.setRenderEffect(RenderEffect.createRuntimeShaderEffect(shader, "page"))
+            canvas.drawRenderNode(turningNode)
+        }
     }
 
     override fun release() {
         recorded = false
+        if (directBitmap) shader.setInputShader("page", emptyInput)
+        directBitmap = false
         turningNode.setRenderEffect(null)
         turningNode.discardDisplayList()
         contentNode.discardDisplayList()
@@ -106,10 +157,7 @@ internal class PaperCurlShaderRenderer : PaperCurlRenderer {
         @Volatile private var warmed = false
 
         /**
-         * Compiles the curl's GPU program before the first turn: one 1×1 frame with
-         * the same layer and effect structure, rendered off screen on a worker thread.
-         * HWUI shares its program cache across renderers, so the first real frame
-         * does not stall (about 100 ms on a Snapdragon 8 Elite otherwise).
+         * Warms both GPU draw paths in a tiny offscreen frame on a worker thread.
          */
         fun warmUp() {
             if (warmed) return
@@ -119,7 +167,7 @@ internal class PaperCurlShaderRenderer : PaperCurlRenderer {
                 var reader: android.media.ImageReader? = null
                 var renderer: android.graphics.HardwareRenderer? = null
                 try {
-                    reader = android.media.ImageReader.newInstance(1, 1, android.graphics.PixelFormat.RGBA_8888, 2,
+                    reader = android.media.ImageReader.newInstance(2, 1, android.graphics.PixelFormat.RGBA_8888, 2,
                         android.hardware.HardwareBuffer.USAGE_GPU_COLOR_OUTPUT or
                             android.hardware.HardwareBuffer.USAGE_GPU_SAMPLED_IMAGE)
                     reader.setOnImageAvailableListener({ it.acquireLatestImage()?.close() }, null)
@@ -135,7 +183,7 @@ internal class PaperCurlShaderRenderer : PaperCurlRenderer {
                         setFloatUniform("foldN", 1f, 0f)
                         setFloatUniform("foldC", 0.5f)
                         setFloatUniform("radius", 0.25f)
-                        setFloatUniform("wrap", PaperCurl.WRAP)
+                        setWrapGeometry(PaperCurl.WRAP)
                         setFloatUniform("backInk", CurlLook.BACK_INK)
                         setFloatUniform("shadowReach", 0.1f)
                         setColorUniform("paper", android.graphics.Color.WHITE)
@@ -146,9 +194,16 @@ internal class PaperCurlShaderRenderer : PaperCurlRenderer {
                         endRecording()
                         setRenderEffect(RenderEffect.createRuntimeShaderEffect(shader, "page"))
                     }
+                    shader.setPageBitmap(Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).apply {
+                        eraseColor(Color.WHITE)
+                    })
+                    val bitmapPaint = Paint().apply { this.shader = shader }
                     val root = RenderNode("PaperCurlWarmUp").apply {
-                        setPosition(0, 0, 1, 1)
-                        beginRecording(1, 1).drawRenderNode(sheet)
+                        setPosition(0, 0, 2, 1)
+                        val canvas = beginRecording(2, 1)
+                        canvas.drawRenderNode(sheet)
+                        canvas.translate(1f, 0f)
+                        canvas.drawRect(0f, 0f, 1f, 1f, bitmapPaint)
                         endRecording()
                     }
                     renderer = android.graphics.HardwareRenderer().apply {
@@ -168,6 +223,17 @@ internal class PaperCurlShaderRenderer : PaperCurlRenderer {
     }
 }
 
+@RequiresApi(33)
+private fun RuntimeShader.setWrapGeometry(wrap: Float) =
+    setFloatUniform("wrapGeometry", wrap, sin(wrap), cos(wrap))
+
+@RequiresApi(33)
+private fun RuntimeShader.setPageBitmap(bitmap: Bitmap) {
+    setInputShader("page", BitmapShader(bitmap, Shader.TileMode.DECAL, Shader.TileMode.DECAL).apply {
+        setFilterMode(BitmapShader.FILTER_MODE_LINEAR)
+    })
+}
+
 /**
  * Inverse of [PaperCurl.bend] per pixel. Layers from top: the flap and the roll
  * past its apex (paper back, mirrored ink), the flat sheet and rising roll
@@ -181,7 +247,7 @@ uniform float mirror;
 uniform float2 foldN;
 uniform float foldC;
 uniform float radius;
-uniform float wrap;
+uniform float3 wrapGeometry;
 uniform float backInk;
 uniform float shadowReach;
 layout(color) uniform half4 paper;
@@ -227,8 +293,11 @@ half4 main(float2 fragCoord) {
     float2 n = foldN;
     float d = dot(p, n) - foldC;
     float r = radius;
-    float sa = sin(wrap);
-    float ca = cos(wrap);
+    float wrap = wrapGeometry.x;
+    float sa = wrapGeometry.y;
+    float ca = wrapGeometry.z;
+    bool hasBack = wrap > HALF_PI + 0.001;
+    if (d <= 0.0 && !hasBack) return ink(p);
     float reach = rowReach(dot(p, float2(-n.y, n.x)));
 
     // How high this row of paper is lifted; scales both cast shadows.
@@ -250,32 +319,35 @@ half4 main(float2 fragCoord) {
         mid = ink(p);
         midCover = 1.0;
     } else if (d < r) {
-        float th = asin(d / r);
-        float2 q = p + n * (r * th - d);
-        float k = min(1.0 / max(cos(th), 0.02), 50.0);
+        float sine = d / r;
+        float cosine = sqrt(max(1.0 - sine * sine, 0.0));
+        float2 q = p + n * (r * asin(sine) - d);
+        float k = min(1.0 / max(cosine, 0.02), 50.0);
         midCover = clamp(edgeDist(q, k) + 0.5, 0.0, 1.0) * clamp(r - d + 0.5, 0.0, 1.0);
         half4 c = inkAcross(q, k);
-        mid = half4(shade(c.rgb, 1.0 - 0.22 * pow(sin(th), 4.0)), c.a);
+        float sineSquared = sine * sine;
+        mid = half4(shade(c.rgb, 1.0 - 0.22 * sineSquared * sineSquared), c.a);
     }
 
     // Back of the sheet: the roll past its apex, then the flap.
     half4 top = half4(0.0);
     float topCover = 0.0;
-    if (wrap > HALF_PI + 0.001 && d < r) {
-        float th = wrap;
+    if (hasBack && d < r) {
+        float cosine = ca;
         float s = wrap * r + (r * sa - d) / max(-ca, 0.02);
         if (d > r * sa) {
-            th = PI - asin(clamp(d / r, -1.0, 1.0));
-            s = r * th;
+            float sine = clamp(d / r, -1.0, 1.0);
+            s = r * (PI - asin(sine));
+            cosine = -sqrt(max(1.0 - sine * sine, 0.0));
         }
         float2 q = p + n * (s - d);
-        float k = min(1.0 / max(abs(cos(th)), 0.02), 50.0);
+        float k = min(1.0 / max(abs(cosine), 0.02), 50.0);
         float e = edgeDist(q, k);
         topCover = clamp(e + 0.5, 0.0, 1.0) * clamp(r - d + 0.5, 0.0, 1.0);
         if (topCover > 0.0) {
             half4 c = inkAcross(q, k);
             half3 back = mix(paper.rgb, c.rgb, backInk);
-            top = half4(shade(back, 0.86 + 0.14 * sqrt(max(-cos(th), 0.0))), 1.0);
+            top = half4(shade(back, 0.86 + 0.14 * sqrt(max(-cosine, 0.0))), 1.0);
         }
         // The lifted back shades the paper below it.
         float strength = 0.16 * lift;

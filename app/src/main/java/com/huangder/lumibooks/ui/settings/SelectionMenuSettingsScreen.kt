@@ -129,7 +129,8 @@ fun SelectionMenuSettingsScreen(
                 bandHeight = topBandHeight,
                 tint = AppColors.WindowBg.copy(
                     alpha = if (LocalIsDarkTheme.current) PROGRESSIVE_BLUR_TINT_ALPHA_DARK else PROGRESSIVE_BLUR_TINT_ALPHA
-                )
+                ),
+                sampleBlurOverLiveContent = true
             )
         } else if (scrimEnabled || blurEnabled) {
             ProgressiveTopScrim(

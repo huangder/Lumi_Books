@@ -105,6 +105,10 @@ fun CloudAwareBookDeleteDialog(
                     add(AppDialogAction(stringResource(R.string.delete_local_only),
                         { onDelete(BookDeleteMode.LOCAL_ONLY) }, AppDialogActionRole.Destructive))
                 }
+                if (hasLocalCopies) {
+                    add(AppDialogAction(stringResource(R.string.delete_cloud_only),
+                        { onDelete(BookDeleteMode.CLOUD_ONLY) }, AppDialogActionRole.Destructive))
+                }
                 add(AppDialogAction(stringResource(R.string.delete_local_and_cloud),
                     { onDelete(BookDeleteMode.LOCAL_AND_CLOUD) }, AppDialogActionRole.Destructive))
             } else {

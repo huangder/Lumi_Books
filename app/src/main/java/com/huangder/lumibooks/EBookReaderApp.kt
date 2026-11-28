@@ -21,12 +21,14 @@ import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import com.huangder.lumibooks.data.sync.WebdavAutoSyncScheduler
 import com.huangder.lumibooks.util.diagnostics.DiagnosticLevel
 import com.huangder.lumibooks.util.diagnostics.DiagnosticLogger
 import com.huangder.lumibooks.util.diagnostics.DiagnosticLoggerRegistry
 import com.huangder.lumibooks.util.ErrorHandler
+import com.huangder.lumibooks.util.performance.tracePerformance
 
 @HiltAndroidApp
 class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Configuration.Provider {
@@ -35,7 +37,7 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
     lateinit var workerFactory: HiltWorkerFactory
 
     @Inject
-    lateinit var widgetRefreshCoordinator: WidgetRefreshCoordinator
+    lateinit var widgetRefreshCoordinator: dagger.Lazy<WidgetRefreshCoordinator>
 
     @Inject
     lateinit var dataStoreManager: DataStoreManager
@@ -76,7 +78,7 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
 
     override fun onCreate() {
         super.onCreate()
-        dictionaryRepository.start()
+        tracePerformance("Lumi.start.dictionary") { dictionaryRepository.start() }
         installDiagnosticExceptionHandler()
         ErrorHandler.installDiagnosticLogger(diagnosticLogger)
         DiagnosticLoggerRegistry.logger = diagnosticLogger
@@ -88,15 +90,18 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
             "diagnosticBuild" to BuildConfig.DIAGNOSTIC_BUILD,
             "debuggable" to ((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0)
         ))
-        LaunchThemeController.synchronizeLauncherComponents(this)
         registerActivityLifecycleCallbacks(this)
         registerActivityLifecycleCallbacks(com.huangder.lumibooks.ui.animation.PagePushTransitions)
-        floatingSubtitleOverlayController.start()
-        webdavAutoSyncScheduler.start()
+        tracePerformance("Lumi.start.webdav_scheduler") { webdavAutoSyncScheduler.start() }
         applicationScope.launch(Dispatchers.IO) {
             dataStoreManager.launchThemeSnapshot.collectLatest { snapshot ->
                 LaunchThemeController.updateThemeSnapshot(this@EBookReaderApp, snapshot)
                 LaunchThemeController.synchronizeLauncherComponents(this@EBookReaderApp)
+            }
+        }
+        applicationScope.launch(Dispatchers.IO) {
+            dataStoreManager.startupNavigationSnapshot.distinctUntilChanged().collect { snapshot ->
+                LaunchThemeController.updateStartupNavigationSnapshot(this@EBookReaderApp, snapshot)
             }
         }
         applicationScope.launch(Dispatchers.IO) {
@@ -143,10 +148,9 @@ class EBookReaderApp : Application(), Application.ActivityLifecycleCallbacks, Co
         if (!postFirstFrameStarted.compareAndSet(false, true)) return
         activity.window.decorView.post {
             activity.window.decorView.post {
-                com.huangder.lumibooks.util.performance.ReaderClassWarmup.start(classLoader)
                 applicationScope.launch {
                     PDFBoxResourceLoader.init(this@EBookReaderApp)
-                    widgetRefreshCoordinator.start()
+                    widgetRefreshCoordinator.get().start()
                     readingJournalRecorder.get().start()
                     dataStoreManager.hasAcceptedBundledPolicies.first { it }
                     editionAccess.get().start()

@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -97,6 +98,7 @@ class PageSlotManager(
 
     /** 目标章节尚未分页时暂存章内比例，待 CUR 槽布局完成后换算实际页码。 */
     internal var pendingStartPageFraction: Float? = null
+    internal var openingPageResolver: ((ChapterLayout) -> Int?)? = null
 
     /** 文本内容提供者：根据章节索引返回文本 */
     var contentProvider: (suspend (Int) -> CharSequence?)? = null
@@ -119,6 +121,7 @@ class PageSlotManager(
     var onSpreadPageChangedCallback: ((rightGlobalPage: Int, rightChapterIdx: Int, rightPageInChapter: Int, rightChapterTotalPages: Int) -> Unit)? = null
 
     internal var onSlotReadyCallback: (() -> Unit)? = null
+    internal var onTypographyPositionChanged: ((chapter: Int, offset: Int) -> Unit)? = null
 
     internal var onJumpFinishedCallback: ((generation: Long, result: CurrentSlotLoadResult) -> Unit)? = null
     private var activeJumpGeneration: Long? = null
@@ -127,6 +130,113 @@ class PageSlotManager(
         val text: CharSequence,
         val layout: ChapterLayout
     )
+
+    private data class TypographyPosition(
+        val chapter: Int,
+        val source: CharSequence,
+        val anchor: Int
+    )
+
+    private var typographyPosition: TypographyPosition? = null
+    private var typographyLayout: ChapterLayout? = null
+    private var typographyOfficialLayout: ChapterLayout? = null
+    private var typographyHandoffJob: Job? = null
+    private var typographyPreviewBasePage: Int? = null
+    private var typographyPreviewChapter = -1
+
+    internal fun displayTypographyPreview(text: CharSequence, page: PageLayout, right: PageLayout?) {
+        val current = slots[SLOT_CUR]
+        val highlights = highlightProvider?.invoke(current.chapterIndex).orEmpty()
+        getPrimaryContentView().setPageContent(text, page.startCharOffset, page.endCharOffset,
+            highlights, page.verticalGeometry, endHyphenEdit = page.endHyphenEdit)
+        if (right != null) current.rightContentView?.setPageContent(
+            text, right.startCharOffset, right.endCharOffset, highlights, right.verticalGeometry,
+            endHyphenEdit = right.endHyphenEdit
+        )
+    }
+
+    internal fun reconcileTypography(chapter: Int, source: CharSequence, anchor: Int) {
+        typographyPosition = TypographyPosition(chapter, source, anchor)
+    }
+
+    internal fun displayedPage(): PageLayout? = slots[SLOT_CUR].let { current ->
+        readingLayout(current.chapterIndex)?.pages?.getOrNull(current.pageIndex)
+    }
+
+    internal fun startTypographyHandoff(
+        text: CharSequence,
+        window: ChapterLayout,
+        page: PageLayout,
+        oldPageIndex: Int,
+        idle: () -> Boolean
+    ) {
+        val chapter = window.chapterIndex
+        val step = if (spreadEnabled()) 2 else 1
+        val first = (page.pageIndex - step).coerceAtLeast(0)
+        val last = (page.pageIndex + step * 2 - 1).coerceAtMost(window.pages.lastIndex)
+        val nearby = window.pages.subList(first, last + 1).mapIndexed { index, value -> value.copy(pageIndex = index) }
+        val localPage = page.pageIndex - first
+        typographyLayout = window.copy(pages = nearby, totalPages = nearby.size)
+        typographyPreviewBasePage = oldPageIndex - localPage
+        typographyPreviewChapter = chapter
+        chapterTextCache[chapter] = text
+        pendingStartCharOffset = -1
+        initialize(chapter, localPage, preserveCurrentContent = true)
+        val preview = typographyLayout
+        typographyHandoffJob = scope.launch {
+            try {
+                // The window uses the same formatted text as the final chapter when the
+                // last painted slider value matches the committed value.
+                val exact = layoutEngine.layout(chapter, text)
+                while (!idle()) delay(32)
+                if (typographyLayout !== preview) return@launch
+                val current = slots[SLOT_CUR]
+                val visible = displayedPage() ?: return@launch
+                if (current.chapterIndex != chapter) return@launch
+                val held = listOfNotNull(visible, preview?.pages?.getOrNull(current.rightPageIndex)
+                    ?.takeIf { current.rightIsLoaded && current.rightChapterIndex == chapter })
+                val combined = retainTypographyPages(exact, held)
+                typographyLayout = combined
+                typographyOfficialLayout = exact
+                typographyPreviewBasePage = null
+                typographyPreviewChapter = -1
+                knownPageCounts[chapter] = combined.totalPages
+                val resolved = combined.pages.indexOfFirst { it.startCharOffset == visible.startCharOffset }
+                chapterTextCache[chapter] = text
+                if (resolved >= 0) initialize(chapter, resolved, preserveCurrentContent = true)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                Log.w(TAG, "Unable to finish typography pagination", failure)
+                val visible = displayedPage()?.startCharOffset ?: page.startCharOffset
+                clearTypographyLayout()
+                pendingStartCharOffset = visible
+                initialize(chapter, oldPageIndex.coerceAtLeast(0), preserveCurrentContent = true)
+            }
+        }
+    }
+
+    private fun readingLayout(chapter: Int): ChapterLayout? =
+        typographyLayout?.takeIf { it.chapterIndex == chapter } ?: layoutEngine.getChapterLayout(chapter)
+
+    internal fun publishedPageIndex(chapter: Int, page: Int): Int {
+        val reading = typographyLayout?.takeIf { it.chapterIndex == chapter } ?: return page
+        typographyPreviewBasePage?.let { return (it + page).coerceAtLeast(0) }
+        val start = reading.pages.getOrNull(page)?.startCharOffset ?: return page
+        return typographyOfficialLayout?.pages?.indexOfLast { it.startCharOffset <= start }
+            ?.takeIf { it >= 0 } ?: page
+    }
+
+    private fun clearTypographyLayout() {
+        typographyHandoffJob?.cancel()
+        typographyHandoffJob = null
+        typographyPreviewBasePage = null
+        typographyPreviewChapter = -1
+        typographyPosition = null
+        typographyLayout?.let { knownPageCounts.remove(it.chapterIndex) }
+        typographyLayout = null
+        typographyOfficialLayout = null
+    }
 
     fun setChapterCount(count: Int) {
         chapterCount = count
@@ -207,7 +317,7 @@ class PageSlotManager(
         // confirmed follow-up curl can keep the pointer stream instead of being
         // replayed after ACTION_UP on the next coroutine turn.
         val cachedText = chapterTextCache[chapterIndex]
-        val cachedLayout = layoutEngine.getChapterLayout(chapterIndex)
+        val cachedLayout = readingLayout(chapterIndex)
         if (!spreadEnabled() && cachedText != null && cachedLayout != null) {
             rememberPageCount(ChapterMaterial(cachedText, cachedLayout))
             populateSlot(
@@ -281,7 +391,7 @@ class PageSlotManager(
                         ?.takeUnless { it.isEmpty() }
                     ?: return@async null
                 chapterTextCache[chapterIndex] = text
-                val layout = layoutEngine.getChapterLayout(chapterIndex)
+                val layout = readingLayout(chapterIndex)
                     ?: layoutEngine.layout(chapterIndex, text)
                 ChapterMaterial(text, layout)
             } catch (e: CancellationException) {
@@ -302,13 +412,14 @@ class PageSlotManager(
     }
 
     private fun rememberPageCount(material: ChapterMaterial) {
+        if (typographyPreviewBasePage != null && material.layout === typographyLayout) return
         knownPageCounts[material.layout.chapterIndex] = material.layout.totalPages
     }
 
     private fun pageCountsSnapshot(): List<Int> = List(chapterCount) { chapter ->
-        knownPageCounts[chapter]
-            ?: layoutEngine.getChapterLayout(chapter)?.totalPages
-            ?: 0
+        if (typographyPreviewBasePage == null || chapter == typographyPreviewChapter) {
+            knownPageCounts[chapter] ?: readingLayout(chapter)?.totalPages ?: 0
+        } else 0
     }
 
     private fun planSpread(target: PageLocation): SpreadTarget? {
@@ -323,13 +434,22 @@ class PageSlotManager(
         requestToken: Long,
         primaryMaterial: ChapterMaterial
     ) {
+        if (slotIdx == SLOT_CUR) {
+            typographyPosition?.takeIf { it.chapter == chapterIndex }?.let {
+                pendingStartCharOffset = typographyOffset(it.source, primaryMaterial.text, it.anchor)
+                typographyPosition = null
+            }
+        }
         // Re-anchor the primary page after a relayout. The old page index is
         // only a hint; the character offset is stable across width/font changes.
         var resolvedPage = requestedPage
+        val openingPage = if (slotIdx == SLOT_CUR) openingPageResolver?.invoke(primaryMaterial.layout) else null
         val resolvesPendingAnchor = slotIdx == SLOT_CUR &&
-            (pendingStartCharOffset >= 0 || pendingStartPageFraction != null)
+            (openingPage != null || pendingStartCharOffset >= 0 || pendingStartPageFraction != null)
         if (slotIdx == SLOT_CUR) {
-            if (pendingStartCharOffset >= 0) {
+            if (openingPage != null) {
+                resolvedPage = openingPage
+            } else if (pendingStartCharOffset >= 0) {
                 primaryMaterial.layout.pages.indexOfFirst { page ->
                     pendingStartCharOffset >= page.startCharOffset &&
                         pendingStartCharOffset < page.endCharOffset
@@ -357,7 +477,7 @@ class PageSlotManager(
             // the next real page is known, otherwise a short run of empty
             // chapters would expose an avoidable blank half-screen.
             var nextChapter = chapterIndex + 1
-            while (target.right == null && nextChapter < chapterCount) {
+            while (target.right == null && nextChapter < chapterCount && typographyPreviewBasePage == null) {
                 getOrStartChapterLoad(nextChapter).await()?.let(::rememberPageCount)
                 target = planSpread(PageLocation(chapterIndex, resolvedPage)) ?: target
                 nextChapter++
@@ -416,7 +536,7 @@ class PageSlotManager(
         }
         slot.chapterIndex = left.chapterIndex
         slot.pageIndex = left.pageIndex
-        slot.globalPageIndex = layoutEngine.localToGlobal(left.chapterIndex, left.pageIndex)
+        slot.globalPageIndex = layoutEngine.localToGlobal(left.chapterIndex, publishedPageIndex(left.chapterIndex, left.pageIndex))
         slot.chapterTotalPages = leftMaterial.layout.totalPages
         slot.primaryIsRight = false
 
@@ -434,7 +554,7 @@ class PageSlotManager(
             }
             slot.rightChapterIndex = right.chapterIndex
             slot.rightPageIndex = right.pageIndex
-            slot.rightGlobalPageIndex = layoutEngine.localToGlobal(right.chapterIndex, right.pageIndex)
+            slot.rightGlobalPageIndex = layoutEngine.localToGlobal(right.chapterIndex, publishedPageIndex(right.chapterIndex, right.pageIndex))
             slot.rightIsLoaded = true
             slot.rightChapterTotalPages = rightMaterial.layout.totalPages
         } else {
@@ -472,6 +592,12 @@ class PageSlotManager(
     ) {
         val slot = slots[slotIdx]
         if (!isCurrentRequest(slotIdx, requestToken)) return
+        val typography = typographyPosition?.takeIf { slotIdx == SLOT_CUR && it.chapter == chapterIndex }
+        if (typography != null) {
+            typographyPosition = null
+            pendingStartCharOffset = typographyOffset(typography.source, text, typography.anchor)
+                .coerceAtMost((text.length - 1).coerceAtLeast(0))
+        }
         if (chapterLayout.totalPages <= 0) {
             slot.isLoaded = false
             if (slotIdx == SLOT_CUR) {
@@ -480,8 +606,11 @@ class PageSlotManager(
             return
         }
 
-        var actualPage = requestedPage
-        if (slotIdx == SLOT_CUR && pendingStartCharOffset >= 0) {
+        val openingPage = if (slotIdx == SLOT_CUR) openingPageResolver?.invoke(chapterLayout) else null
+        var actualPage = openingPage ?: requestedPage
+        if (openingPage != null) {
+            slot.pageIndex = openingPage
+        } else if (slotIdx == SLOT_CUR && pendingStartCharOffset >= 0) {
             val correctedPage = chapterLayout.pages.indexOfFirst { page ->
                 pendingStartCharOffset >= page.startCharOffset &&
                     pendingStartCharOffset < page.endCharOffset
@@ -530,7 +659,7 @@ class PageSlotManager(
         ) return
         if (slot.pageIndex != actualPage) return
 
-        slot.globalPageIndex = layoutEngine.localToGlobal(chapterIndex, slot.pageIndex)
+        slot.globalPageIndex = layoutEngine.localToGlobal(chapterIndex, publishedPageIndex(chapterIndex, slot.pageIndex))
         slot.chapterTotalPages = chapterLayout.totalPages
         slot.isLoaded = true
         onSlotReadyCallback?.invoke()
@@ -550,7 +679,7 @@ class PageSlotManager(
      * 低优先级 fire-and-forget，不阻塞主流程，失败静默忽略。
      */
     private fun eagerPreloadUpcoming(currentChapter: Int) {
-        if (!backgroundPreparationEnabled || contentProvider == null) return
+        if (!backgroundPreparationEnabled || contentProvider == null || typographyPreviewBasePage != null) return
         prefetchJob?.cancel()
         prefetchJob = scope.launch {
             for (ahead in 1..2) {
@@ -579,7 +708,7 @@ class PageSlotManager(
     /** Resolve a previous spread after a direct jump when earlier page counts
      * are not cached yet. The current page remains visible while this runs. */
     private fun ensurePreviousSlotLoaded() {
-        if (!backgroundPreparationEnabled) return
+        if (!backgroundPreparationEnabled || typographyPreviewBasePage != null) return
         if (!spreadEnabled() || previousPrefetchJob?.isActive == true) return
         val current = slots[SLOT_CUR]
         if (!current.isLoaded || current.chapterIndex <= 0) return
@@ -612,7 +741,7 @@ class PageSlotManager(
      * chapter and retry the same target once its count is known.
      */
     private fun ensureNextSlotLoaded() {
-        if (!backgroundPreparationEnabled) return
+        if (!backgroundPreparationEnabled || typographyPreviewBasePage != null) return
         if (!spreadEnabled() || nextPrefetchJob?.isActive == true) return
         val current = slots[SLOT_CUR]
         if (!current.isLoaded || chapterCount <= 0) return
@@ -709,7 +838,7 @@ class PageSlotManager(
     ): Boolean {
         if (view == null || location.chapterIndex < 0 || location.pageIndex < 0) return false
         val text = textOverride ?: chapterTextCache[location.chapterIndex] ?: return false
-        val layout = layoutOverride ?: layoutEngine.getChapterLayout(location.chapterIndex) ?: return false
+        val layout = layoutOverride ?: readingLayout(location.chapterIndex) ?: return false
         val page = layout.pages.getOrNull(location.pageIndex) ?: return false
         view.setPageContent(
             text,
@@ -910,6 +1039,8 @@ class PageSlotManager(
     }
 
     internal fun jumpTo(chapterIndex: Int, pageInChapter: Int, generation: Long?) {
+        clearTypographyLayout()
+        openingPageResolver = null
         cancelActiveJump()
         previousPrefetchJob?.cancel()
         previousPrefetchJob = null
@@ -940,6 +1071,10 @@ class PageSlotManager(
 
         val ci = cur.chapterIndex
         val pi = cur.pageIndex
+        if (typographyPreviewBasePage != null) {
+            val next = (cur.rightPageIndex.takeIf { cur.rightIsLoaded } ?: pi) + 1
+            return if (next <= (typographyLayout?.pages?.lastIndex ?: 0)) ci to next else -1 to -1
+        }
 
         if (spreadEnabled()) {
             val next = ReaderSpreadPlanner.next(
@@ -947,7 +1082,7 @@ class PageSlotManager(
             )?.primary
             return (next?.chapterIndex ?: -1) to (next?.pageIndex ?: -1)
         }
-        val cachedTotal = layoutEngine.getChapterLayout(ci)?.totalPages
+        val cachedTotal = readingLayout(ci)?.totalPages
         val chapterTotal = stableChapterPageCount(
             cachedPageCount = cachedTotal,
             slotPageCount = cur.chapterTotalPages,
@@ -973,12 +1108,15 @@ class PageSlotManager(
         }
         val ci = cur.chapterIndex
         val pi = cur.pageIndex
+        if (typographyPreviewBasePage != null) {
+            return if (pi > 0) ci to (pi - if (spreadEnabled()) 2 else 1).coerceAtLeast(0) else -1 to -1
+        }
         if (pi - 1 >= 0) {
             return ci to pi - 1
         }
         val prevCh = ci - 1
         if (prevCh >= 0) {
-            val cl = layoutEngine.getChapterLayout(prevCh)
+            val cl = readingLayout(prevCh)
             if (cl != null) {
                 return prevCh to cl.totalPages - 1
             }
@@ -1123,6 +1261,7 @@ class PageSlotManager(
         activeJumpGeneration = null
         pendingStartCharOffset = -1
         pendingStartPageFraction = null
+        if (result == CurrentSlotLoadResult.LOADED) openingPageResolver = null
         notifyPageChanged()
         if (completedGeneration != null) {
             onJumpFinishedCallback?.invoke(completedGeneration, result)
@@ -1149,6 +1288,10 @@ class PageSlotManager(
 
     private fun notifyPageChanged() {
         val cur = slots[SLOT_CUR]
+        if (typographyPreviewBasePage != null) {
+            displayedPage()?.let { onTypographyPositionChanged?.invoke(cur.chapterIndex, it.startCharOffset) }
+            return
+        }
         val chapterLayout = layoutEngine.getChapterLayout(cur.chapterIndex)
         val chapterTotal = stableChapterPageCount(
             cachedPageCount = chapterLayout?.totalPages,
@@ -1156,13 +1299,16 @@ class PageSlotManager(
             visiblePageIndex = cur.pageIndex,
             isLoaded = cur.isLoaded
         )
-        onPageChangedCallback?.invoke(cur.globalPageIndex, cur.chapterIndex, cur.pageIndex, chapterTotal)
+        onPageChangedCallback?.invoke(cur.globalPageIndex, cur.chapterIndex,
+            publishedPageIndex(cur.chapterIndex, cur.pageIndex),
+            typographyOfficialLayout?.takeIf { it.chapterIndex == cur.chapterIndex }?.totalPages ?: chapterTotal)
         if (cur.rightIsLoaded && cur.rightPageIndex >= 0) {
             onSpreadPageChangedCallback?.invoke(
                 cur.rightGlobalPageIndex,
                 cur.rightChapterIndex,
-                cur.rightPageIndex,
-                cur.rightChapterTotalPages
+                publishedPageIndex(cur.rightChapterIndex, cur.rightPageIndex),
+                typographyOfficialLayout?.takeIf { it.chapterIndex == cur.rightChapterIndex }?.totalPages
+                    ?: cur.rightChapterTotalPages
             )
         }
     }
@@ -1173,18 +1319,22 @@ class PageSlotManager(
 
     fun isAtBookStart(): Boolean {
         val cur = slots[SLOT_CUR]
+        if (typographyPreviewBasePage != null) return cur.chapterIndex == 0 &&
+            displayedPage()?.startCharOffset == 0
         return isAbsoluteBookStart(cur.chapterIndex, cur.pageIndex, cur.isLoaded)
     }
 
     fun isAtBookEnd(): Boolean {
         val cur = slots[SLOT_CUR]
+        if (typographyPreviewBasePage != null) return cur.chapterIndex == chapterCount - 1 &&
+            displayedPage()?.endCharOffset == chapterTextCache[cur.chapterIndex]?.length
         if (!cur.isLoaded || chapterCount <= 0) return false
         fun isLastPage(chapter: Int, page: Int, slotCount: Int = 0): Boolean {
             if (chapter != chapterCount - 1 || page < 0) return false
             val count = maxOf(
                 slotCount,
                 knownPageCounts[chapter] ?: 0,
-                layoutEngine.getChapterLayout(chapter)?.totalPages ?: 0
+                readingLayout(chapter)?.totalPages ?: 0
             )
             return count > 0 && page >= count - 1
         }
@@ -1199,6 +1349,7 @@ class PageSlotManager(
 
     /** True when a following chapter may provide a page but its layout is unknown. */
     fun hasPotentialNextPage(): Boolean {
+        if (typographyPreviewBasePage != null) return getNextPageLocation().first >= 0
         if (!spreadEnabled()) return getNextPageLocation().first >= 0
         val resolved = resolveNextPage()
         if (resolved.first >= 0 && resolved.second >= 0) return true
@@ -1246,6 +1397,7 @@ class PageSlotManager(
     fun cachedChapterText(chapterIndex: Int): CharSequence? = chapterTextCache[chapterIndex]
 
     fun clearContentCache() {
+        clearTypographyLayout()
         val loadingChapters = chapterLoadJobs.values.toList()
         chapterLoadJobs.clear()
         loadingChapters.forEach { it.cancel() }
@@ -1258,6 +1410,7 @@ class PageSlotManager(
     }
 
     fun destroy() {
+        clearTypographyLayout()
         refreshJob?.cancel()
         prefetchJob?.cancel()
         cancelActiveJump()

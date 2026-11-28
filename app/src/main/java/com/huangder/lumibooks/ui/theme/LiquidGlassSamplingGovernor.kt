@@ -46,7 +46,7 @@ internal fun rememberAdaptiveLiquidGlassSamplingQuality(
             null
         }
 
-        if (!enabled || selected == LiquidGlassSamplingQuality.PERFORMANCE || window == null ||
+        if (!enabled || !selected.adaptive || window == null ||
             (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && fallbackBudgetNanos == null)
         ) {
             onDispose { }
@@ -131,7 +131,7 @@ internal class LiquidGlassSamplingGovernor(
 
     @Synchronized
     fun recordFrame(durationNanos: Long, budgetNanos: Long, nowMs: Long): LiquidGlassSamplingQuality {
-        if (durationNanos <= 0L || budgetNanos <= 0L) return quality
+        if (!ceiling.adaptive || durationNanos <= 0L || budgetNanos <= 0L) return quality
         if (windowStartMs < 0L || nowMs < windowStartMs) windowStartMs = nowMs
 
         frames++

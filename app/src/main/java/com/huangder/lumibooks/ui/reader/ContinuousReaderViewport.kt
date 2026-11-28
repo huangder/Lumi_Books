@@ -3,6 +3,7 @@ package com.huangder.lumibooks.ui.reader
 import android.text.Layout
 import android.text.Spanned
 import android.text.style.ImageSpan
+import android.util.LruCache
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
@@ -55,11 +56,16 @@ internal fun rememberContinuousReturnSide(
     }
 }
 
-private data class ImagePosition(val character: Int, val top: Int, val height: Int)
+internal data class ContinuousImagePosition(val character: Int, val top: Int, val height: Int)
 
-private fun imagePositions(text: CharSequence, width: Int, gap: Int, viewportHeight: Int): List<ImagePosition> {
+private fun imagePositions(
+    text: CharSequence,
+    width: Int,
+    gap: Int,
+    viewportHeight: Int,
+    images: List<ImageSpan> = continuousChapterImages(text),
+): List<ContinuousImagePosition> {
     if (width <= 0) return emptyList()
-    val images = continuousChapterImages(text)
     val spanned = text as? Spanned ?: return emptyList()
     var top = 0
     return images.mapIndexed { index, image ->
@@ -69,7 +75,30 @@ private fun imagePositions(text: CharSequence, width: Int, gap: Int, viewportHei
         if (index == 0 && images.size == 1 && continuousChapterIsCover(text)) {
             top = ((viewportHeight - height) / 2).coerceAtLeast(0)
         }
-        ImagePosition(spanned.getSpanStart(image), top, height).also { top += height + gap }
+        ContinuousImagePosition(spanned.getSpanStart(image), top, height).also { top += height + gap }
+    }
+}
+
+/** Shared by both viewport observers. The reader recreates this cache when its geometry changes. */
+internal class ContinuousViewportImageCache(
+    private val viewportWidth: Int,
+    private val contentWidth: Int,
+    private val gap: Int,
+    private val coverHeight: Int,
+    private val comic: Boolean,
+) {
+    private data class Entry(val source: CharSequence, val positions: List<ContinuousImagePosition>)
+    private val entries = LruCache<Int, Entry>(8)
+
+    fun positions(chapter: Int, text: CharSequence): List<ContinuousImagePosition> {
+        entries.get(chapter)?.takeIf { it.source === text }?.let { return it.positions }
+        val spans = continuousChapterImages(text)
+        val positions = if (spans.isEmpty()) emptyList() else {
+            val width = if (comic || continuousChapterIsCover(text)) viewportWidth else contentWidth
+            imagePositions(text, width, gap, if (chapter == 0) coverHeight else 0, spans)
+        }
+        entries.put(chapter, Entry(text, positions))
+        return positions
     }
 }
 
@@ -78,11 +107,19 @@ internal fun continuousVisibleCharacters(
     chapter: Int, itemOffset: Int, text: CharSequence, layout: Layout?,
     imageWidth: Int, imageGap: Int, coverHeight: Int,
     viewportStart: Int, viewportEnd: Int
+): List<ReaderVisibleCharacters> = continuousVisibleCharacters(
+    chapter, itemOffset, text, layout,
+    imagePositions(text, imageWidth, imageGap, if (chapter == 0) coverHeight else 0),
+    viewportStart, viewportEnd,
+)
+
+internal fun continuousVisibleCharacters(
+    chapter: Int, itemOffset: Int, text: CharSequence, layout: Layout?,
+    images: List<ContinuousImagePosition>, viewportStart: Int, viewportEnd: Int,
 ): List<ReaderVisibleCharacters> {
     if (viewportEnd <= viewportStart) return emptyList()
     val top = viewportStart - itemOffset
     val bottom = viewportEnd - itemOffset
-    val images = imagePositions(text, imageWidth, imageGap, if (chapter == 0) coverHeight else 0)
     if (images.isNotEmpty()) {
         return images.mapIndexedNotNull { index, image ->
             if (image.top >= bottom || image.top + image.height <= top) null
@@ -100,9 +137,14 @@ internal fun continuousVisibleCharacters(
 internal fun captureContinuousViewportAnchor(
     chapter: Int, itemOffset: Int, text: CharSequence, layout: Layout?,
     imageWidth: Int, imageGap: Int, viewportHeight: Int
+): ContinuousViewportAnchor? = captureContinuousViewportAnchor(
+    chapter, itemOffset, layout, imagePositions(text, imageWidth, imageGap, if (chapter == 0) viewportHeight else 0),
+)
+
+internal fun captureContinuousViewportAnchor(
+    chapter: Int, itemOffset: Int, layout: Layout?, images: List<ContinuousImagePosition>,
 ): ContinuousViewportAnchor? {
     val y = (-itemOffset).coerceAtLeast(0)
-    val images = imagePositions(text, imageWidth, imageGap, if (chapter == 0) viewportHeight else 0)
     if (images.isNotEmpty()) {
         val index = images.indexOfLast { it.top <= y }.coerceAtLeast(0)
         val image = images[index]

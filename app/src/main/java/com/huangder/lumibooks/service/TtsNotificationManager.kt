@@ -16,6 +16,17 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
+internal fun ttsOpenBookPendingIntent(context: Context, bookId: String?): PendingIntent =
+    PendingIntent.getActivity(
+        context,
+        0,
+        Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(MainActivity.EXTRA_OPEN_BOOK_ID, bookId)
+        },
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+
 @Singleton
 class TtsNotificationManager @Inject constructor(
     @ApplicationContext private val context: Context
@@ -84,20 +95,15 @@ class TtsNotificationManager @Inject constructor(
 
     fun buildNotification(
         bookTitle: String,
+        bookId: String?,
         chapterIndex: Int,
         isPlaying: Boolean,
         mediaSessionToken: MediaSession.Token,
         largeIcon: Bitmap? = null,
+        spokenClause: String? = null,
         floatingLocked: Boolean = false
     ): Notification {
-        val contentIntent = PendingIntent.getActivity(
-            context,
-            0,
-            Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val contentIntent = ttsOpenBookPendingIntent(context, bookId)
 
         val previousIntent = serviceAction(TtsForegroundService.ACTION_PREVIOUS, 1)
         val playPauseIntent = serviceAction(TtsForegroundService.ACTION_PLAY_PAUSE, 2)
@@ -116,7 +122,7 @@ class TtsNotificationManager @Inject constructor(
             .setSmallIcon(R.mipmap.ic_launcher)
             .apply { largeIcon?.let(::setLargeIcon) }
             .setContentTitle(bookTitle.ifBlank { context.getString(R.string.app_name) })
-            .setContentText(context.getString(R.string.tts_notification_chapter, chapterIndex + 1))
+            .setContentText(spokenClause ?: context.getString(R.string.tts_notification_chapter, chapterIndex + 1))
             .setContentIntent(contentIntent)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setOnlyAlertOnce(true)

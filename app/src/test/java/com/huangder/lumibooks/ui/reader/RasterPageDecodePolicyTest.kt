@@ -118,6 +118,28 @@ class RasterPageDecodePolicyTest {
     }
 
     @Test
+    fun `pdf tiers stay distinct at heap and texture limits`() {
+        val pages = listOf(612 to 792, 1782 to 2500, 1200 to 20000, 14400 to 14400)
+        for (heapMiB in listOf(128L, 256L, 512L)) {
+            val budget = pdfMemoryPixelBudget(heapMiB * 1024 * 1024)
+            for ((width, height) in pages) {
+                for (viewportWidth in listOf(1080, 1440, 1440 * 5)) {
+                    val widths = PageRenderMode.entries.map { mode ->
+                        val scale = pdfRenderScale(width, height, pageRenderTargetWidth(viewportWidth), mode, budget)
+                        val outputWidth = (width * scale).toInt()
+                        val outputHeight = (height * scale).toInt()
+                        assertTrue(outputWidth.toLong() * outputHeight <= budget)
+                        assertTrue(maxOf(outputWidth, outputHeight) <= PDF_RENDER_MAX_DIMENSION)
+                        outputWidth
+                    }
+                    assertTrue("$heapMiB MiB, ${width}x$height, viewport $viewportWidth: $widths",
+                        widths.zipWithNext().all { (lower, higher) -> lower < higher })
+                }
+            }
+        }
+    }
+
+    @Test
     fun `pdf normal mode respects its pixel budget`() {
         val scale = pdfRenderScale(612, 792, phoneWidthPx * 5, PageRenderMode.NORMAL)
         val pixels = 612.0 * 792.0 * scale * scale

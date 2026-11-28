@@ -37,12 +37,15 @@ class ListeningPageSettingsActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val initial = LaunchThemeController.themeSnapshot(this)
         setContent {
+            val allowConcurrentPlayback by settings.ttsAllowConcurrentPlayback.collectAsState(false)
             val pageSettings by settings.listeningPageSettings.collectAsState(ListeningPageSettings())
             val predictiveBack by settings.predictiveBackEnabled.collectAsState(initial.predictiveBackEnabled)
             ReadingFeatureTheme(settings) {
                 ConfigurableActivityBack(predictiveBackEnabled = predictiveBack, onBack = { finishWithPush() })
                 ListeningPageSettingsScreen(
                     settings = pageSettings,
+                    allowConcurrentPlayback = allowConcurrentPlayback,
+                    onAllowConcurrentPlayback = { lifecycleScope.launch { settings.saveTtsAllowConcurrentPlayback(it) } },
                     onStyle = { lifecycleScope.launch { settings.saveListeningDisplayStyle(it) } },
                     onGesture = { lifecycleScope.launch { settings.saveSubtitleSeekGesture(it) } },
                     onBack = { finishWithPush() }
@@ -57,10 +60,18 @@ internal fun ListeningPageSettingsScreen(
     settings: ListeningPageSettings,
     onStyle: (ListeningDisplayStyle) -> Unit,
     onGesture: (SubtitleSeekGesture) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    allowConcurrentPlayback: Boolean = false,
+    onAllowConcurrentPlayback: (Boolean) -> Unit = {}
 ) {
     DetailPage(stringResource(R.string.tts_page_settings_title), onBack) {
         DetailCard {
+            SettingsSwitchRow(
+                label = stringResource(R.string.tts_allow_concurrent_playback),
+                checked = allowConcurrentPlayback,
+                onCheckedChange = onAllowConcurrentPlayback
+            )
+            SettingsDivider()
             DropdownSettingRow(
                 label = stringResource(R.string.tts_page_default_style),
                 options = listOf(

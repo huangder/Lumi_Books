@@ -9,6 +9,14 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 class ExternalTtsAudioPlayerTest {
+    @Test
+    fun concurrentPlaybackIgnoresAllFocusChanges() {
+        for (change in listOf(AudioManager.AUDIOFOCUS_LOSS, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK, AudioManager.AUDIOFOCUS_GAIN)) {
+            assertEquals(ExternalTtsAudioFocusAction.IGNORE, externalTtsAudioFocusAction(change, true))
+        }
+    }
+
     @get:Rule
     val temporaryFolder = TemporaryFolder()
 

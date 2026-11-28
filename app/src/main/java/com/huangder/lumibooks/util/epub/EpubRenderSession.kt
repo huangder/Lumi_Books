@@ -55,9 +55,10 @@ class EpubRenderSession private constructor(
     private val readerFontKeysByPath = mutableMapOf<String, String>()
     private val readerBackgroundFiles = mutableMapOf<String, File>()
     private val readerBackgroundKeysByPath = mutableMapOf<String, String>()
-    private val cssIndexByChapterPath = mutableMapOf<String, EpubCssIndex>()
+    private val cssIndexByChapterPath = java.util.concurrent.ConcurrentHashMap<String, EpubCssIndex>()
     private val mediaOnlyByChapter = java.util.concurrent.ConcurrentHashMap<Int, Boolean>()
     private val replacementCache = android.util.LruCache<Int, ReplacementResult>(6)
+    private val nativeCompilationCache = android.util.LruCache<Int, NativeEpubCompilation>(2)
     private val presentationByChapter = mutableMapOf<Int, EpubPagePresentation>()
     private data class CoverReference(val path: String, val fragment: String?)
     private data class CoverMetadata(
@@ -70,7 +71,11 @@ class EpubRenderSession private constructor(
     // Images, fonts and styles are requested again by every WebView that loads a chapter;
     // keep their inflated bytes so a repeat request skips the ZIP and the session lock.
     private val resourceCache = EpubDocumentCache(maximumBytes = 24 * 1024 * 1024)
-    private val documentPreparationLock = Any()
+    // Striped by chapter: preparing the next chapter in the background must not hold up
+    // the document request of the chapter a WebView is loading right now.
+    private val documentPreparationLocks = Array(8) { Any() }
+    private fun documentPreparationLock(chapterIndex: Int) =
+        documentPreparationLocks[Math.floorMod(chapterIndex, documentPreparationLocks.size)]
     @Volatile private var closed = false
 
     override val assetLoader: WebViewAssetLoader = WebViewAssetLoader.Builder()
@@ -493,7 +498,7 @@ class EpubRenderSession private constructor(
     }
 
     /** Raw logical DOM and ordered local styles for the optional native CSS reader. */
-    internal fun nativeChapterSource(chapterIndex: Int): NativeEpubSource? = synchronized(documentPreparationLock) {
+    internal fun nativeChapterSource(chapterIndex: Int): NativeEpubSource? = synchronized(documentPreparationLock(chapterIndex)) {
         if (closed) return@synchronized null
         val chapter = logicalChapters.getOrNull(chapterIndex) ?: return@synchronized null
         val resource = readLogicalSource(chapterIndex)?.let { replaceBody(chapterIndex, it) } ?: return@synchronized null
@@ -504,7 +509,7 @@ class EpubRenderSession private constructor(
         fun load(path: String, chain: Set<String>) {
             if (path in chain || chain.size >= 8 || sheets.size >= 64) { failure = "CSS import limit"; return }
             val css = synchronized(this) { if (closed) null else readStyleSheet(path) }
-            if (css == null) { failure = "missing stylesheet"; return }
+            if (css == null) return
             totalCssBytes += css.length
             if (totalCssBytes > 1024 * 1024) { failure = "CSS size limit"; return }
             EpubCssIndex.imports(css).forEach { reference ->
@@ -530,7 +535,23 @@ class EpubRenderSession private constructor(
             }))
     }
 
-    internal fun nativeResource(path: String): EpubResource? = readRawChapter(path)
+    internal fun compileNativeChapter(chapterIndex: Int): NativeEpubCompilation? {
+        if (closed) return null
+        nativeCompilationCache.get(chapterIndex)?.let { return it }
+        val source = nativeChapterSource(chapterIndex) ?: return null
+        val result = NativeEpubCompiler.compile(source, ::nativeResource)
+        synchronized(this) { if (!closed) nativeCompilationCache.put(chapterIndex, result) }
+        return result
+    }
+
+    internal fun nativeResource(path: String): EpubResource? {
+        val normalized = EpubPathResolver.normalize(path) ?: return null
+        val key = "native:$normalized"
+        resourceCache[key]?.let { return it }
+        val resource = readRawChapter(normalized) ?: return null
+        if (!closed) resourceCache.put(key, resource)
+        return resource
+    }
     internal fun nativeImageUrl(path: String): String = physicalChapterUrl(path)
 
     private fun readLogicalSource(chapterIndex: Int): EpubResource? {
@@ -577,7 +598,11 @@ class EpubRenderSession private constructor(
         return source.copy(bytes = document.outerHtml().toByteArray(Charsets.UTF_8))
     }
 
-    private fun readLogicalChapter(chapterIndex: Int): EpubResource? = synchronized(documentPreparationLock) {
+    internal fun prepareWebChapter(chapterIndex: Int) {
+        readLogicalChapter(chapterIndex)
+    }
+
+    private fun readLogicalChapter(chapterIndex: Int): EpubResource? = synchronized(documentPreparationLock(chapterIndex)) {
         if (closed) return@synchronized null
         val cacheKey = "logical:$chapterIndex"
         documentCache[cacheKey]?.let { return@synchronized it }
@@ -698,6 +723,7 @@ class EpubRenderSession private constructor(
         closed = true
         documentCache.clear()
         replacementCache.evictAll()
+        nativeCompilationCache.evictAll()
         resourceCache.clear()
         mediaOnlyByChapter.clear()
         presentationByChapter.clear()

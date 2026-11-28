@@ -306,28 +306,6 @@ class EpubPageTurnHostTest {
     }
 
     @Test
-    fun curlDoesNotQueueAnOppositeTurnDuringHandoff() {
-        assertTrue(
-            curlTurnDirectionIsCompatible(
-                PageAnimationController.Direction.NONE,
-                PageAnimationController.Direction.PREV
-            )
-        )
-        assertTrue(
-            curlTurnDirectionIsCompatible(
-                PageAnimationController.Direction.NEXT,
-                PageAnimationController.Direction.NEXT
-            )
-        )
-        assertFalse(
-            curlTurnDirectionIsCompatible(
-                PageAnimationController.Direction.NEXT,
-                PageAnimationController.Direction.PREV
-            )
-        )
-    }
-
-    @Test
     fun centerTapIsForwardedWhileCurlIsSettling() {
         assertTrue(
             isCapturedBusyCurlCenterTap(

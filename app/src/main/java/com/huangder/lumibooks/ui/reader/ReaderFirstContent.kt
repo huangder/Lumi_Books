@@ -9,7 +9,9 @@ internal fun readerFirstContentReady(
 ): Boolean {
     if (state.isLoading) return false
     if (state.error != null) return true
-    if (state.pendingReaderPosition != null || state.pendingPageFraction > 0f || !state.pageReady) return false
+    if (state.preparingSavedReaderPosition ||
+        hasPendingReaderRestore(state.pendingReaderPosition, state.pendingPageFraction) || !state.pageReady
+    ) return false
     // Markdown publishes pageReady after its native viewport has rendered and restored its
     // anchor. The separate draw callback belongs to the Canvas continuous text reader.
     return !continuous || state.book?.format == BookFormat.MARKDOWN || continuousContentDrawn

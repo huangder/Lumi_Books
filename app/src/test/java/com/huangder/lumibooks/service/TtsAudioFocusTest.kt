@@ -7,6 +7,14 @@ import org.junit.Test
 
 class TtsAudioFocusTest {
     @Test
+    fun concurrentPlaybackNeverHoldsFocusEvenAfterTransientLoss() {
+        for (state in TtsPlaybackState.entries) {
+            assertEquals(false, shouldHoldTtsAudioFocus(state, true, true, true))
+        }
+        assertEquals(true, shouldHoldTtsAudioFocus(TtsPlaybackState.PLAYING, true, false))
+    }
+
+    @Test
     fun permanentAndExclusiveTransientLossPausePlayback() {
         assertEquals(
             TtsAudioFocusAction.PAUSE_FOR_PERMANENT_LOSS,

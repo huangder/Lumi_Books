@@ -42,7 +42,7 @@
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:enableOnBackInvokedCallback="true"
-        android:icon="@mipmap/ic_launcher_lumi2"
+        android:icon="@mipmap/ic_launcher_lumi2_adaptive"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.EBookReader"
@@ -94,7 +94,7 @@
             android:name=".ui.splash.SplashLauncherActivity"
             android:enabled="true"
             android:exported="true"
-            android:icon="@mipmap/ic_launcher_lumi2"
+            android:icon="@mipmap/ic_launcher_lumi2_adaptive"
             android:label="@string/app_name"
             android:targetActivity=".ui.splash.SplashLaunchActivity"
             android:theme="@style/Theme.EBookReader.Launch">
@@ -108,7 +108,7 @@
             android:name=".ui.splash.DirectLauncherActivity"
             android:enabled="false"
             android:exported="true"
-            android:icon="@mipmap/ic_launcher_lumi2"
+            android:icon="@mipmap/ic_launcher_lumi2_adaptive"
             android:label="@string/app_name"
             android:targetActivity=".ui.splash.DirectLaunchActivity"
             android:theme="@style/Theme.EBookReader">
@@ -152,7 +152,7 @@
             android:name=".ui.splash.Lumi2DarkSplashLauncherActivity"
             android:enabled="false"
             android:exported="true"
-            android:icon="@mipmap/ic_launcher_lumi2_dark"
+            android:icon="@mipmap/ic_launcher_lumi2_dark_adaptive"
             android:label="@string/app_name"
             android:targetActivity=".ui.splash.SplashLaunchActivity"
             android:theme="@style/Theme.EBookReader.Launch">
@@ -166,7 +166,7 @@
             android:name=".ui.splash.Lumi2DarkDirectLauncherActivity"
             android:enabled="false"
             android:exported="true"
-            android:icon="@mipmap/ic_launcher_lumi2_dark"
+            android:icon="@mipmap/ic_launcher_lumi2_dark_adaptive"
             android:label="@string/app_name"
             android:targetActivity=".ui.splash.DirectLaunchActivity"
             android:theme="@style/Theme.EBookReader">
@@ -180,7 +180,7 @@
             android:name=".ui.splash.Lumi2AutoSplashLauncherActivity"
             android:enabled="false"
             android:exported="true"
-            android:icon="@mipmap/ic_launcher_lumi2_auto"
+            android:icon="@mipmap/ic_launcher_lumi2_auto_adaptive"
             android:label="@string/app_name"
             android:targetActivity=".ui.splash.SplashLaunchActivity"
             android:theme="@style/Theme.EBookReader.Launch">
@@ -194,7 +194,7 @@
             android:name=".ui.splash.Lumi2AutoDirectLauncherActivity"
             android:enabled="false"
             android:exported="true"
-            android:icon="@mipmap/ic_launcher_lumi2_auto"
+            android:icon="@mipmap/ic_launcher_lumi2_auto_adaptive"
             android:label="@string/app_name"
             android:targetActivity=".ui.splash.DirectLaunchActivity"
             android:theme="@style/Theme.EBookReader">
@@ -371,7 +371,7 @@
         <activity
             android:name=".ui.settings.WebViewActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|mnc|colorMode|density|fontScale|fontWeightAdjustment|keyboard|layoutDirection|locale|mcc|navigation|smallestScreenSize|touchscreen|uiMode"
-            android:theme="@style/Theme.EBookReader.Page"
+            android:theme="@style/Theme.EBookReader.Page.NoPreview"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
@@ -552,6 +552,12 @@
                 android:value="androidx.startup"
                 tools:node="remove" />
         </provider>
+
+        <!-- Markdown initializes JLatexMath when it first renders a formula. -->
+        <provider
+            android:name="ru.noties.jlatexmath.JLatexMathInitProvider"
+            android:authorities="${applicationId}.jlatexmathinitprovider"
+            tools:node="remove" />
 
         <!-- 文件提供者 -->
         <provider

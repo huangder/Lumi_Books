@@ -5,9 +5,11 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -86,6 +88,41 @@ class WelcomeThemeRenderTest {
             File(dir, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
             bitmap.recycle()
         }
+    }
+
+    @Test
+    fun completedLanguageSetupIsNotDrawnWhenWelcomeStateIsRestored() {
+        var shouldShowLanguageSetup = true
+        val restoration = StateRestorationTester(compose)
+        restoration.setContent {
+            DisposableEffect(Unit) {
+                onDispose { compose.mainClock.autoAdvance = false }
+            }
+            EBookReaderTheme(darkTheme = false, eInkMode = false) {
+                WelcomeScreen(
+                    isNewInstallation = true,
+                    shouldShowLanguageSetup = shouldShowLanguageSetup,
+                    initialLanguage = "zh-CN",
+                    initialEInkMode = false,
+                    isEInkMode = false,
+                    isDark = false,
+                    isLiquidGlass = false,
+                    onFinished = {},
+                    onOpenSponsor = {},
+                    onLanguageSetupComplete = { _, _ -> }
+                )
+            }
+        }
+        val languageTitle = context.getString(R.string.welcome_language_title)
+        compose.onNodeWithText(languageTitle).assertExists()
+
+        // Activity recreation sees the persisted completion flag but restores the old page.
+        // Let the tester dispose the old content before freezing the restored page's animation.
+        compose.runOnIdle { shouldShowLanguageSetup = false }
+        restoration.emulateSavedInstanceStateRestore()
+        compose.mainClock.advanceTimeByFrame()
+        compose.onNodeWithText(languageTitle).assertDoesNotExist()
+        compose.onNodeWithText(context.getString(R.string.welcome_title)).assertExists()
     }
 
     @Test fun lumiLight() = verify("lumi")

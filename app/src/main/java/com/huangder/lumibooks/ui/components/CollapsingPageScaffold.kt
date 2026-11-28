@@ -206,7 +206,8 @@ internal fun CollapsingPageScaffold(
                     val band = bottomBarHeight * .8f
                     if (blurEnabled) {
                         ProgressiveBottomBlur(backdrop = backdrop, bandHeight = band, modifier = Modifier.align(Alignment.BottomCenter),
-                            tint = AppColors.WindowBg.copy(alpha = 4f * if (LocalIsDarkTheme.current) PROGRESSIVE_BLUR_TINT_ALPHA_DARK else PROGRESSIVE_BLUR_TINT_ALPHA))
+                            tint = AppColors.WindowBg.copy(alpha = 4f * if (LocalIsDarkTheme.current) PROGRESSIVE_BLUR_TINT_ALPHA_DARK else PROGRESSIVE_BLUR_TINT_ALPHA),
+                            sampleBlurOverLiveContent = glassBackdropEnabled)
                     } else if (progressiveTopScrimEnabled(capability.supported, eInkMode, LocalReduceTransparency.current)) {
                         ProgressiveBottomScrim(bandHeight = band, tint = AppColors.WindowBg, modifier = Modifier.align(Alignment.BottomCenter))
                     } else if (eInkMode) {
@@ -220,7 +221,8 @@ internal fun CollapsingPageScaffold(
         if (blurEnabled) {
             ProgressiveTopBlur(backdrop = backdrop, strength = strength,
                 bandHeight = toolbarHeight + remainingTitleHeight + pinnedHeight + 56.dp,
-                tint = AppColors.WindowBg.copy(alpha = if (LocalIsDarkTheme.current) PROGRESSIVE_BLUR_TINT_ALPHA_DARK else PROGRESSIVE_BLUR_TINT_ALPHA))
+                tint = AppColors.WindowBg.copy(alpha = if (LocalIsDarkTheme.current) PROGRESSIVE_BLUR_TINT_ALPHA_DARK else PROGRESSIVE_BLUR_TINT_ALPHA),
+                sampleBlurOverLiveContent = glassBackdropEnabled)
         } else {
             val headerHeight = toolbarHeight + remainingTitleHeight + pinnedHeight
             val bandHeight = headerHeight + if (eInkMode) 0.dp else 56.dp

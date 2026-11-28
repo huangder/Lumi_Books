@@ -22,13 +22,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.inset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -563,26 +564,23 @@ internal fun periodLabel(period: StatisticsPeriod): String {
                                 .then(if (onDay != null && !future) Modifier.clickable(interaction, indication = null) { onDay(day) } else Modifier),
                                 Alignment.BottomCenter) {
                                 if (values[index] > 0) {
-                                    Box(Modifier.width(barWidth).fillMaxHeight()
-                                        .layout { measurable, constraints ->
-                                            val fractionHeight = (constraints.maxHeight * fraction.value.coerceIn(.015f, 1f))
-                                                .roundToInt().coerceIn(0, constraints.maxHeight)
-                                            val placeable = measurable.measure(
-                                                constraints.copy(minHeight = fractionHeight, maxHeight = fractionHeight)
-                                            )
-                                            layout(constraints.maxWidth, constraints.maxHeight) {
-                                                placeable.placeRelative(0, constraints.maxHeight - placeable.height)
-                                            }
-                                        }
+                                    val highlighted = day == today || monthly && YearMonth.from(day) == YearMonth.from(today)
+                                    val barFill = if (highlighted) remember(accent) {
+                                        Brush.verticalGradient(listOf(accent, accent))
+                                    } else brush
+                                    Canvas(Modifier.width(barWidth).fillMaxHeight()
                                         .graphicsLayer {
-                                            // Grow from the baseline with a small overshoot, in the layer phase only.
                                             transformOrigin = androidx.compose.ui.graphics.TransformOrigin(.5f, 1f)
                                             scaleY = if (motion) InsightsOvershoot.transform(((grow.value - lag) / (1f - .45f)).coerceIn(0f, 1f)) else 1f
                                         }
-                                        .lumiPressable(interaction, pressedScale = .92f)
-                                        .clip(AppRoundedCornerShape(AppRadius.full))
-                                        .background(if (day == today || monthly && YearMonth.from(day) == YearMonth.from(today)) Brush.verticalGradient(listOf(accent, accent)) else brush)
-                                        .graphicsLayer { alpha = if (day == today) 1f else .92f })
+                                        .lumiPressable(interaction, pressedScale = .92f)) {
+                                        // Changing the period updates only the painted height.
+                                        val height = (size.height * fraction.value.coerceIn(.015f, 1f)).roundToInt().toFloat()
+                                        inset(top = size.height - height, left = 0f, right = 0f, bottom = 0f) {
+                                            drawRoundRect(barFill, cornerRadius = CornerRadius(minOf(size.width, size.height) / 2f),
+                                                alpha = if (day == today) 1f else .92f)
+                                        }
+                                    }
                                 } else Box(Modifier.padding(bottom = 1.dp).size(minOf(barWidth, 5.dp)).clip(CircleShape)
                                     .background(if (future) divider.copy(alpha = .5f) else divider))
                             }

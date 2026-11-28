@@ -68,6 +68,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -126,6 +127,7 @@ import androidx.lifecycle.viewModelScope
 import java.io.File
 import java.text.DateFormat
 import java.util.Date
+import java.util.Locale
 import javax.inject.Inject
 import com.huangder.lumibooks.ui.animation.finishWithPush
 
@@ -269,6 +271,8 @@ fun BookDetailsScreen(
     var moveOpen by remember { mutableStateOf(false) }
     var coverOpen by remember { mutableStateOf(false) }
     var deleteOpen by remember { mutableStateOf(false) }
+    val blockedUploads by homeViewModel.blockedUploadIds.collectAsState()
+    LaunchedEffect(bookId, details.book?.remoteFileName) { homeViewModel.loadCloudCopyState() }
     val context = LocalContext.current
     LaunchedEffect(bookId) { detailsViewModel.load(bookId) }
     val book = details.book ?: return
@@ -368,7 +372,9 @@ fun BookDetailsScreen(
                     tags.joinToString { it.name },
                     onEdit = { editing = true },
                     onTags = { tagsOpen = true },
-                    onMove = { moveOpen = true }
+                    onMove = { moveOpen = true },
+                    cloudRemoved = book.id in blockedUploads,
+                    onReupload = { homeViewModel.reuploadBook(book) }
                 )
             }
         }
@@ -436,20 +442,26 @@ fun BookDetailsScreen(
 
 @Composable private fun MetricGrid(book: Book, duration: Long, days: Int, bookmarks: Int, notes: Int) {
     val context = LocalContext.current
+    val locale = LocalConfiguration.current.locales[0] ?: Locale.getDefault()
     val metrics = listOf(
         stringResource(R.string.book_detail_progress) to AnnotatedString("${(book.readingProgress * 100).toInt()}%"),
         stringResource(R.string.book_detail_reading_time) to compactReadingDuration(duration, AppColors.TextSecondary),
         stringResource(R.string.book_detail_notes) to AnnotatedString(notes.toString()),
         stringResource(R.string.book_detail_bookmarks) to AnnotatedString(bookmarks.toString()),
         stringResource(R.string.book_detail_active_days) to AnnotatedString(days.toString()),
-        stringResource(R.string.book_detail_file_size) to AnnotatedString(remember(book.filePath, book.remoteFileSize) { fileSize(context, book) })
+        stringResource(R.string.book_detail_file_size) to AnnotatedString(
+            remember(book.filePath, book.remoteFileSize, locale) { fileSize(context, book, locale) }
+        )
     )
     LiquidGlassSurface(AppRoundedCornerShape(AppRadius.lg), AppColors.CardBg, Modifier.fillMaxWidth(), contentScrimColor = Color.Transparent) {
         Column(Modifier.padding(AppSpace.sm)) { metrics.chunked(3).forEach { row -> Row(Modifier.fillMaxWidth()) { row.forEach { (label, value) -> Column(Modifier.weight(1f).padding(AppSpace.sm), horizontalAlignment = Alignment.CenterHorizontally) { Text(value, fontSize = AppType.Section, fontWeight = FontWeight.Bold, color = AppColors.TextPrimary); Text(label, fontSize = AppType.Caption, color = AppColors.TextSecondary) } } } } }
     }
 }
 
-@Composable private fun InfoCard(book: Book, folder: String, tags: String, onEdit: () -> Unit, onTags: () -> Unit, onMove: () -> Unit) {
+@Composable private fun InfoCard(
+    book: Book, folder: String, tags: String, onEdit: () -> Unit, onTags: () -> Unit, onMove: () -> Unit,
+    cloudRemoved: Boolean, onReupload: () -> Unit
+) {
     val context = LocalContext.current
     LiquidGlassSurface(AppRoundedCornerShape(AppRadius.lg), AppColors.CardBg, Modifier.fillMaxWidth(), contentScrimColor = Color.Transparent) {
         Column {
@@ -470,9 +482,11 @@ fun BookDetailsScreen(
                 when {
                     book.isCloudOnly -> stringResource(R.string.book_detail_cloud_only)
                     book.remoteFileName != null -> stringResource(R.string.book_detail_synced)
+                    cloudRemoved -> stringResource(R.string.book_detail_cloud_removed)
                     else -> stringResource(R.string.book_detail_local)
                 },
-                false
+                cloudRemoved && !book.isCloudOnly && book.remoteFileName == null,
+                onReupload
             )
             DetailRow(stringResource(R.string.book_detail_imported), dateText(book.createdAt), false)
             DetailRow(stringResource(R.string.book_detail_last_read), dateText(book.lastReadTime), false)
@@ -785,11 +799,13 @@ internal fun shouldStackDetailRow(
     }
 }
 
-private fun fileSize(context: Context, book: Book): String = when {
-    book.remoteFileSize > 0 -> FileUtils.formatFileSize(book.remoteFileSize)
-    book.filePath.startsWith("content://") -> queryOpenable(context, book.filePath, OpenableColumns.SIZE)
-        ?.toLongOrNull()?.let(FileUtils::formatFileSize) ?: "?"
-    else -> runCatching { File(book.filePath).length() }.getOrDefault(0L).takeIf { it > 0 }?.let(FileUtils::formatFileSize) ?: "?"
+private fun fileSize(context: Context, book: Book, locale: Locale): String {
+    val sizeBytes = when {
+        book.remoteFileSize > 0 -> book.remoteFileSize
+        book.filePath.startsWith("content://") -> queryOpenable(context, book.filePath, OpenableColumns.SIZE)?.toLongOrNull()
+        else -> runCatching { File(book.filePath).length() }.getOrNull()?.takeIf { it > 0 }
+    }
+    return sizeBytes?.let { FileUtils.formatFileSize(it, decimalPlaces = 2, locale = locale) } ?: "?"
 }
 
 private fun fileName(context: Context, book: Book): String {

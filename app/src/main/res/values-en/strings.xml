@@ -625,6 +625,7 @@
     <string name="line_guide_dim_medium">Medium</string>
     <string name="line_guide_dim_high">High</string>
     <string name="line_guide_dim_very_high">Very high</string>
+    <string name="line_guide_show_all_features">Show all features</string>
     <string name="line_guide_close">Turn off line guide</string>
     <string name="bionic_reading_hint">Bold the first part of each word to guide your eyes and improve focus</string>
     <string name="reader_page_bottom_aligned">Align page bottoms</string>
@@ -1481,6 +1482,12 @@
     <string name="delete_cloud_book_choice">The selected %1$d books include cloud copies. Choose where to delete them.</string>
     <string name="delete_local_only">Delete local only</string>
     <string name="delete_local_and_cloud">Delete local and cloud</string>
+    <string name="delete_cloud_only">Delete cloud copy only</string>
+    <string name="book_detail_cloud_removed">Removed from cloud · Tap to upload again</string>
+    <string name="webdav_status_clean_duplicates">Clean up old cloud versions (%1$d)</string>
+    <string name="webdav_clean_duplicates_title">Clean up old cloud versions</string>
+    <string name="webdav_clean_duplicates_message">These %1$d cloud-only copies share a title with a book on this device and are most likely versions left behind before its text was edited. Cleaning up deletes them from the cloud and merges their reading data into the book on this device. Book files on this device are not affected.\n\n%2$s</string>
+    <string name="webdav_clean_duplicates_confirm">Clean up</string>
     <string name="force_delete">Force delete</string>
     <string name="force_delete_hint">Force delete removes the local library entry first and then attempts WebDAV cleanup. Local deletion still completes if the cloud operation fails. Use it only when normal deletion fails.</string>
     <string name="force_delete_cloud_failed">The local entry was deleted, but cloud cleanup did not finish: %1$s</string>
@@ -1659,6 +1666,11 @@
     <string name="spine_shelf_folder_count">%1$d books</string>
     <string name="spine_menu_tags">Tags</string>
     <string name="spine_menu_notes">Notes</string>
+    <string name="spine_menu_pose">Placement</string>
+    <string name="spine_pose_auto">Auto</string>
+    <string name="spine_pose_flat">Flat</string>
+    <string name="spine_pose_leaning">Leaning</string>
+    <string name="spine_pose_upright">Upright</string>
     <string name="spine_menu_edit">Edit</string>
     <string name="spine_menu_cover">Cover</string>
     <string name="spine_menu_restore_cover">Original</string>
@@ -1814,4 +1826,5 @@
     <string name="floating_subtitle_locked_notification_text">Tap to unlock so you can drag it and open the controls</string>
     <string name="floating_subtitle_color_reset">Reset to default</string>
     <string name="webdav_sync_reader_theme_deferred">Your reading theme was kept. Sync again from a device that still has the original images or fonts.</string>
+    <string name="tts_allow_concurrent_playback">Allow playback with other apps</string>
 </resources>

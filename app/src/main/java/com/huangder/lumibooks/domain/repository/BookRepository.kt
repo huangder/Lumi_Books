@@ -2,9 +2,12 @@ package com.huangder.lumibooks.domain.repository
 
 import com.huangder.lumibooks.domain.model.Book
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 
 interface BookRepository {
     fun getAllBooks(): Flow<List<Book>>
+    /** Includes archived and locally suppressed rows for reconciliation. */
+    suspend fun getBooksForWebdav(): List<Book> = getAllBooks().first()
     fun searchBooks(query: String): Flow<List<Book>>
     suspend fun getBookById(bookId: String): Book?
     suspend fun getBookBySourceDocumentKey(key: String): Book?

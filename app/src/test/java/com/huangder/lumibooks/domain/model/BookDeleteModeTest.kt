@@ -15,6 +15,17 @@ class BookDeleteModeTest {
     }
 
     @Test
+    fun cloudOnlyDeleteKeepsTheLocalBook() {
+        val mode = BookDeleteMode.CLOUD_ONLY
+
+        assertTrue(mode.attemptsCloudDelete)
+        assertTrue(mode.keepsLocalBook)
+        assertFalse(mode.forcesLocalDelete)
+        assertFalse(mode.cloudFailureBlocksLocalDelete)
+        assertTrue(BookDeleteMode.entries.filter { it.keepsLocalBook } == listOf(mode))
+    }
+
+    @Test
     fun regularCloudDeleteStillRequiresRemoteSuccessFirst() {
         val mode = BookDeleteMode.LOCAL_AND_CLOUD
 

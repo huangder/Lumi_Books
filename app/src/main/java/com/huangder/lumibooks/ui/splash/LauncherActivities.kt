@@ -9,12 +9,13 @@ import com.huangder.lumibooks.ui.welcome.readWelcomeInstallState
 import com.huangder.lumibooks.ui.welcome.resolveWelcomeLaunchSnapshot
 import com.huangder.lumibooks.ui.welcome.WelcomeActivity
 import com.huangder.lumibooks.util.LaunchThemeController
+import com.huangder.lumibooks.util.performance.tracePerformance
 
 abstract class BaseLauncherActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         StartupTrace.activity(this, "launcher_entry", savedInstanceState != null)
-        val destination = createDestinationIntent()
+        val destination = tracePerformance("Lumi.start.launcher_route") { createDestinationIntent() }
         StartupTrace.event("launcher_destination", StartupTrace.intentFields(destination))
         startActivity(destination)
         finish()

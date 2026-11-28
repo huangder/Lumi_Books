@@ -23,7 +23,8 @@ internal data class QueuedCurlTurn(
     val input: CurlTurnInput = CurlTurnInput.TAP,
     val expedited: Boolean = false,
     val pageGeneration: Long = 0L,
-    val expiresAtMs: Long = Long.MAX_VALUE
+    val expiresAtMs: Long = Long.MAX_VALUE,
+    val deferredSwipe: DeferredCurlSwipe? = null
 )
 
 internal enum class CurlTurnInput { TAP, SWIPE }
@@ -35,12 +36,13 @@ internal enum class CurlTurnInput { TAP, SWIPE }
  * turn that has not started yet, so changing direction cannot create a delayed
  * back-and-forth animation through pages the user has not seen.
  */
-internal class ReaderCurlTurnSequencer {
+internal class ReaderCurlTurnSequencer(private val boundTapBacklog: Boolean = false) {
     enum class State { IDLE, DRAGGING, SETTLING, WAITING_FOR_TARGET, DESTROYED }
 
     var state: State = State.IDLE
         private set
     private val pendingTurns = ArrayDeque<QueuedCurlTurn>()
+    private var lastTapAtMs: Long? = null
 
     val pendingSteps: Int
         get() {
@@ -58,15 +60,23 @@ internal class ReaderCurlTurnSequencer {
         input: CurlTurnInput = CurlTurnInput.TAP,
         expedited: Boolean = false,
         pageGeneration: Long = 0L,
-        expiresAtMs: Long = Long.MAX_VALUE
+        expiresAtMs: Long = Long.MAX_VALUE,
+        nowMs: Long = 0L,
+        deferredSwipe: DeferredCurlSwipe? = null
     ) {
         if (state == State.DESTROYED) return
         if (direction == PageAnimationController.Direction.NONE) return
+        discardStaleBurstTaps(nowMs)
+        val boundTap = boundTapBacklog && input == CurlTurnInput.TAP
+        val inTapBurst = boundTap && lastTapAtMs?.let { nowMs - it <= BURST_TAP_MAX_WAIT_MS } == true
+        if (boundTap) recordTap(nowMs)
         val newest = pendingTurns.lastOrNull()
         if (newest != null && newest.direction != direction) {
             pendingTurns.removeLast()
             return
         }
+        val replacedTap = boundTap &&
+            pendingTurns.removeAll { it.input == CurlTurnInput.TAP }
         pendingTurns.addLast(
             QueuedCurlTurn(
                 direction = direction,
@@ -74,7 +84,8 @@ internal class ReaderCurlTurnSequencer {
                 input = input,
                 expedited = expedited,
                 pageGeneration = pageGeneration,
-                expiresAtMs = expiresAtMs
+                expiresAtMs = if (replacedTap || inTapBurst) nowMs + BURST_TAP_MAX_WAIT_MS else expiresAtMs,
+                deferredSwipe = deferredSwipe
             )
         )
     }
@@ -99,6 +110,14 @@ internal class ReaderCurlTurnSequencer {
     }
 
     fun peekTurn(): QueuedCurlTurn? = pendingTurns.firstOrNull()
+
+    fun recordTap(nowMs: Long) {
+        if (boundTapBacklog) lastTapAtMs = nowMs
+    }
+
+    fun discardStaleBurstTaps(nowMs: Long) {
+        if (boundTapBacklog) pendingTurns.removeAll { it.input == CurlTurnInput.TAP && it.expiresAtMs <= nowMs }
+    }
 
     fun pollTurn(): QueuedCurlTurn {
         if (state == State.DESTROYED || pendingTurns.isEmpty()) {
@@ -136,6 +155,7 @@ internal class ReaderCurlTurnSequencer {
     fun clear() {
         if (state == State.DESTROYED) return
         pendingTurns.clear()
+        lastTapAtMs = null
         state = State.IDLE
     }
 
@@ -146,5 +166,9 @@ internal class ReaderCurlTurnSequencer {
 
     private fun moveTo(next: State) {
         if (state != State.DESTROYED) state = next
+    }
+
+    private companion object {
+        const val BURST_TAP_MAX_WAIT_MS = 350L
     }
 }

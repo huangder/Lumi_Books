@@ -84,6 +84,11 @@ internal class BookmarkPullGestureTracker {
         )
     }
 
+    /** Stops an unclaimed press from becoming a pull; a pull already in progress continues. */
+    fun abandonCandidate() {
+        if (!active) candidate = false
+    }
+
     fun finish(cancelled: Boolean): BookmarkPullFinish {
         val result = BookmarkPullFinish(
             wasActive = active,

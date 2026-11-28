@@ -180,34 +180,24 @@ internal class VerticalTextView(context: Context) : View(context) {
         if (start >= end) return
         val density = resources.displayMetrics.density
         val gap = 1.5f * density
-        val radius = 12f * density
-        var minLeft = Float.MAX_VALUE
-        var minTop = Float.MAX_VALUE
-        var maxRight = Float.MIN_VALUE
-        var maxBottom = Float.MIN_VALUE
-        var found = false
+        val bounds = RectF()
         page.glyphs.forEach { glyph ->
             val localStart = glyph.startOffset - chapterStartOffset
             val localEnd = glyph.endOffset - chapterStartOffset
             if (localEnd > start && localStart < end) {
-                found = true
-                minLeft = minOf(minLeft, glyph.bounds.left)
-                minTop = minOf(minTop, glyph.bounds.top)
-                maxRight = maxOf(maxRight, glyph.bounds.right)
-                maxBottom = maxOf(maxBottom, glyph.bounds.bottom)
+                bounds.union(glyph.bounds.left, glyph.bounds.top, glyph.bounds.right, glyph.bounds.bottom)
             }
         }
-        if (!found) return
-        minTop += gap
-        maxBottom -= gap
-        if (maxBottom <= minTop) return
+        if (bounds.isEmpty) return
+        val inlinePadding = 3f * density
+        bounds.set(bounds.left + gap, (bounds.top - inlinePadding).coerceAtLeast(0f),
+            bounds.right - gap, (bounds.bottom + inlinePadding).coerceAtMost(page.height))
+        if (bounds.isEmpty) return
         val oldColor = paint.color
         paint.style = Paint.Style.FILL
         paint.color = tts.third
-        canvas.drawRoundRect(
-            android.graphics.RectF(minLeft, minTop, maxRight, maxBottom),
-            radius, radius, paint
-        )
+        val radius = minOf(6f * density, bounds.width() / 2f, bounds.height() / 2f)
+        canvas.drawRoundRect(bounds, radius, radius, paint)
         paint.color = oldColor
     }
 

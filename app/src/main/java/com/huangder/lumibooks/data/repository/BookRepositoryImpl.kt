@@ -32,6 +32,8 @@ class BookRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun getBooksForWebdav(): List<Book> = bookDao.getAllBooksSnapshot().map { it.toDomain() }
+
     override suspend fun getBookById(bookId: String): Book? {
         return bookDao.getBookById(bookId)?.toDomain()
     }

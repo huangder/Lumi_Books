@@ -2,7 +2,6 @@ package com.huangder.lumibooks.service
 
 import android.annotation.SuppressLint
 import android.app.Service
-import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -17,8 +16,8 @@ import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.content.IntentCompat
 import android.view.KeyEvent
-import com.huangder.lumibooks.MainActivity
 import com.huangder.lumibooks.R
+import com.huangder.lumibooks.data.local.DataStoreManager
 import com.huangder.lumibooks.domain.model.Book
 import com.huangder.lumibooks.domain.repository.BookRepository
 import com.huangder.lumibooks.tts.TtsController
@@ -30,7 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -55,6 +54,7 @@ class TtsForegroundService : Service() {
         }
     }
 
+    @Inject lateinit var dataStoreManager: DataStoreManager
     @Inject lateinit var ttsController: TtsController
     @Inject lateinit var notificationManager: TtsNotificationManager
     @Inject lateinit var floatingSubtitleOverlayController: FloatingSubtitleOverlayController
@@ -68,11 +68,13 @@ class TtsForegroundService : Service() {
     private var foregroundStarted = false
     private var awaitingSessionStart = false
     private var sessionBookId: String? = null
+    private var metadataBook: Book? = null
     private var coverBitmap: Bitmap? = null
     private var placeholderBitmap: Bitmap? = null
 
     override fun onCreate() {
         super.onCreate()
+        floatingSubtitleOverlayController.start()
         logTtsServiceEvent("foreground_service_created", ttsController)
         notificationManager.createChannel()
         audioFocusController = TtsAudioFocusController(this, ttsController)
@@ -91,7 +93,7 @@ class TtsForegroundService : Service() {
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build()
             )
-            setSessionActivity(openAppIntent())
+            setSessionActivity(ttsOpenBookPendingIntent(this@TtsForegroundService, ttsController.activeBookId.value))
             // Android 12+：注册系统用于恢复最近媒体会话的广播接收器。
             // 活跃播放时的按键仍由系统选择当前媒体会话后投递。
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -165,49 +167,55 @@ class TtsForegroundService : Service() {
         }
 
         serviceScope.launch {
-            combine(ttsController.playbackState, ttsController.currentPage) { state, page -> state to page }
-                .collect { (state, page) ->
-                    updateMediaSessionState(state)
-                    updatePlaybackWakeLock(state)
-                    if (!foregroundStarted) return@collect
-                    if (state == TtsPlaybackState.IDLE) {
-                        if (!awaitingSessionStart) {
-                            stopForeground(STOP_FOREGROUND_REMOVE)
-                            foregroundStarted = false
-                            stopSelf()
-                        }
-                    } else {
-                        awaitingSessionStart = false
-                        postPlaybackNotification(
-                            state = state,
-                            chapterIndex = page?.location?.chapterIndex ?: 0
-                        )
+            ttsController.playbackState.collect { state ->
+                updateMediaSessionState(state)
+                updatePlaybackWakeLock(state)
+                if (!foregroundStarted) return@collect
+                if (state == TtsPlaybackState.IDLE) {
+                    if (!awaitingSessionStart) {
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        foregroundStarted = false
+                        stopSelf()
                     }
+                } else {
+                    awaitingSessionStart = false
+                    postPlaybackNotification(
+                        state = state,
+                        chapterIndex = ttsController.currentPage.value?.location?.chapterIndex ?: 0
+                    )
                 }
+            }
         }
         serviceScope.launch {
             combine(
                 ttsController.playbackState,
-                ttsController.usesAndroidTts
-            ) { state, usesAndroidTts -> state to usesAndroidTts }
-                .collect { (state, usesAndroidTts) ->
+                ttsController.usesAndroidTts,
+                dataStoreManager.ttsAllowConcurrentPlayback
+            ) { state, usesAndroidTts, allow -> Triple(state, usesAndroidTts, allow) }
+                .collect { (state, usesAndroidTts, allow) ->
                     audioFocusController.update(
                         playbackState = state,
-                        usesSystemEngine = usesAndroidTts
+                        usesSystemEngine = usesAndroidTts,
+                        allowConcurrentPlayback = allow
                     )
                 }
         }
         serviceScope.launch {
             ttsController.activeBookId.collectLatest { bookId ->
+                mediaSession.setSessionActivity(ttsOpenBookPendingIntent(this@TtsForegroundService, bookId))
                 applyBookMetadata(bookId)
             }
         }
         serviceScope.launch {
-            floatingSubtitleOverlayController.overlayLocked.drop(1).collect {
-                val state = ttsController.playbackState.value
-                if (foregroundStarted && state != TtsPlaybackState.IDLE) {
-                    postPlaybackNotification(state, ttsController.currentPage.value?.location?.chapterIndex ?: 0)
-                }
+            combine(
+                ttsController.subtitleFrame,
+                ttsController.currentPage,
+                floatingSubtitleOverlayController.overlayLocked
+            ) { frame, page, locked ->
+                Triple(frame.current?.text.takeIf { frame.bookId == sessionBookId },
+                    page?.location?.chapterIndex ?: 0, locked)
+            }.distinctUntilChanged().collect { (_, chapter, _) ->
+                updateMediaPresentation(chapter)
             }
         }
     }
@@ -261,6 +269,19 @@ class TtsForegroundService : Service() {
         return START_NOT_STICKY
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        logTtsServiceEvent(
+            "foreground_service_task_removed",
+            ttsController,
+            mapOf("stateBefore" to ttsController.playbackState.value.name)
+        )
+        ttsController.stop()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        foregroundStarted = false
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun togglePlayback() {
@@ -282,11 +303,13 @@ class TtsForegroundService : Service() {
 
     private fun buildPlaybackNotification(state: TtsPlaybackState, chapterIndex: Int) =
         notificationManager.buildNotification(
-            bookTitle = bookTitle,
+            bookTitle = metadataBook?.title?.takeIf { it.isNotBlank() } ?: bookTitle,
+            bookId = ttsController.activeBookId.value,
             chapterIndex = chapterIndex,
             isPlaying = state == TtsPlaybackState.PLAYING,
             mediaSessionToken = mediaSession.sessionToken,
             largeIcon = coverBitmap,
+            spokenClause = spokenClause(),
             floatingLocked = floatingSubtitleOverlayController.overlayLocked.value
         )
 
@@ -305,37 +328,31 @@ class TtsForegroundService : Service() {
     private suspend fun applyBookMetadata(bookId: String?) {
         if (sessionBookId == bookId && bookId != null) return
         sessionBookId = bookId
+        metadataBook = null
+        coverBitmap = null
+        updateMediaPresentation()
         val book = bookId?.let { id ->
             withContext(Dispatchers.IO) { runCatching { bookRepository.getBookById(id) }.getOrNull() }
         }
         val artwork = withContext(Dispatchers.IO) { loadCoverArtwork(book) }
+        metadataBook = book
         coverBitmap = artwork
-        mediaSession.setMetadata(buildMediaMetadata(book, artwork))
-        if (foregroundStarted && ttsController.playbackState.value != TtsPlaybackState.IDLE) {
-            postPlaybackNotification(
-                state = ttsController.playbackState.value,
-                chapterIndex = ttsController.currentPage.value?.location?.chapterIndex ?: 0
-            )
+        updateMediaPresentation()
+    }
+
+    private fun spokenClause(): String? {
+        val frame = ttsController.subtitleFrame.value
+        return frame.current?.text?.takeIf {
+            frame.bookId == sessionBookId && frame.bookId == ttsController.activeBookId.value
         }
     }
 
-    private fun buildMediaMetadata(book: Book?, artwork: Bitmap?): MediaMetadata {
-        val builder = MediaMetadata.Builder()
-            .putString(
-                MediaMetadata.METADATA_KEY_TITLE,
-                book?.title?.takeIf { it.isNotBlank() } ?: bookTitle.ifBlank { getString(R.string.app_name) }
-            )
-            .putString(
-                MediaMetadata.METADATA_KEY_ARTIST,
-                book?.author?.takeIf { it.isNotBlank() } ?: getString(R.string.app_name)
-            )
-            .putString(MediaMetadata.METADATA_KEY_ALBUM, getString(R.string.app_name))
-        artwork?.let { bitmap ->
-            // 同时提供 ART 与 ALBUM_ART：不同系统媒体界面读取的键不同。
-            builder.putBitmap(MediaMetadata.METADATA_KEY_ART, bitmap)
-            builder.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, bitmap)
-        }
-        return builder.build()
+    private fun updateMediaPresentation(chapterIndex: Int = ttsController.currentPage.value?.location?.chapterIndex ?: 0) {
+        val title = metadataBook?.title?.takeIf { it.isNotBlank() } ?: bookTitle.ifBlank { getString(R.string.app_name) }
+        val subtitle = spokenClause() ?: getString(R.string.tts_notification_chapter, chapterIndex + 1)
+        mediaSession.setMetadata(ttsMediaMetadata(title, subtitle, metadataBook?.author, getString(R.string.app_name), coverBitmap))
+        val state = ttsController.playbackState.value
+        if (foregroundStarted && state != TtsPlaybackState.IDLE) postPlaybackNotification(state, chapterIndex)
     }
 
     private fun loadCoverArtwork(book: Book?): Bitmap? {
@@ -366,16 +383,6 @@ class TtsForegroundService : Service() {
         if (scaled !== bitmap) bitmap.recycle()
         return scaled
     }
-
-    /** 会话被系统（锁屏/蓝牙媒体界面）点击时打开应用。 */
-    private fun openAppIntent(): PendingIntent = PendingIntent.getActivity(
-        this,
-        0,
-        Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        },
-        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-    )
 
     override fun onDestroy() {
         logTtsServiceEvent(
@@ -447,4 +454,21 @@ class TtsForegroundService : Service() {
         )
     }
 
+}
+
+internal fun ttsMediaMetadata(title: String, subtitle: String, author: String?, album: String, artwork: Bitmap?): MediaMetadata {
+    val builder = MediaMetadata.Builder()
+        .putString(MediaMetadata.METADATA_KEY_TITLE, title)
+        .putString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE, title)
+        .putString(MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE, subtitle)
+        // HyperOS and other SystemUI media cards read ARTIST for their second line.
+        .putString(MediaMetadata.METADATA_KEY_ARTIST, subtitle)
+        .putString(MediaMetadata.METADATA_KEY_AUTHOR, author)
+        .putString(MediaMetadata.METADATA_KEY_ALBUM, album)
+    artwork?.let { bitmap ->
+        // 同时提供 ART 与 ALBUM_ART：不同系统媒体界面读取的键不同。
+        builder.putBitmap(MediaMetadata.METADATA_KEY_ART, bitmap)
+        builder.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, bitmap)
+    }
+    return builder.build()
 }

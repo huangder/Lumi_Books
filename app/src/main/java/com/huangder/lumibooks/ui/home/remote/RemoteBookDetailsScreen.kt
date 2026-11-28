@@ -41,6 +41,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
@@ -60,10 +61,12 @@ import com.huangder.lumibooks.ui.theme.AppRadius
 import com.huangder.lumibooks.ui.theme.AppRoundedCornerShape
 import com.huangder.lumibooks.ui.theme.AppSpace
 import com.huangder.lumibooks.ui.theme.AppType
+import com.huangder.lumibooks.util.FileUtils
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import java.text.DateFormat
 import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -83,7 +86,10 @@ internal fun RemoteBookDetailsScreen(
     val source = state.source
     val metadata = state.localMetadata
     val format = state.selectedFormat
-    val size = state.sizeOf(format)
+    val locale = LocalConfiguration.current.locales[0] ?: Locale.getDefault()
+    val formattedSize = state.sizeOf(format).takeIf { it > 0L }?.let {
+        FileUtils.formatFileSize(it, decimalPlaces = 2, locale = locale)
+    }
     val title = metadata?.title?.takeIf { item.fileName != null } ?: item.title
     val authors = item.authors.ifEmpty { metadata?.authors.orEmpty() }
     val summary = item.summary ?: metadata?.summary
@@ -161,7 +167,7 @@ internal fun RemoteBookDetailsScreen(
                 Spacer(Modifier.height(AppSpace.lg))
                 val rows = buildList {
                     format?.let { add(stringResource(R.string.remote_book_format) to RemoteBookFiles.displayFormat(it.extension)) }
-                    add(stringResource(R.string.remote_book_size) to (formatRemoteSize(size) ?: stringResource(R.string.book_download_size_unknown)))
+                    add(stringResource(R.string.remote_book_size) to (formattedSize ?: stringResource(R.string.book_download_size_unknown)))
                     (item.publisher ?: metadata?.publisher)?.let { add(stringResource(R.string.remote_book_publisher) to it) }
                     (item.language ?: metadata?.language)?.let { add(stringResource(R.string.remote_book_language) to it) }
                     (item.published ?: metadata?.published)?.let { add(stringResource(R.string.remote_book_published) to it.take(10)) }
@@ -230,7 +236,7 @@ internal fun RemoteBookDetailsScreen(
         RemoteBottomBar(blurBackdrop = blurBackdrop) {
             DownloadBar(
                 state = state,
-                size = size,
+                formattedSize = formattedSize,
                 hasFormat = format != null,
                 onDownload = onDownload,
                 onCancel = onCancel,
@@ -244,7 +250,7 @@ internal fun RemoteBookDetailsScreen(
 @Composable
 private fun DownloadBar(
     state: RemoteBookDetailsUiState,
-    size: Long,
+    formattedSize: String?,
     hasFormat: Boolean,
     onDownload: () -> Unit,
     onCancel: () -> Unit,
@@ -319,7 +325,7 @@ private fun DownloadBar(
                 onClick = {}
             )
             else -> RemotePrimaryButton(
-                text = formatRemoteSize(size)?.let { stringResource(R.string.remote_book_download_with_size, it) }
+                text = formattedSize?.let { stringResource(R.string.remote_book_download_with_size, it) }
                     ?: stringResource(R.string.remote_book_download),
                 enabled = true,
                 floating = false,

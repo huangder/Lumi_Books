@@ -16,6 +16,7 @@ import com.huangder.lumibooks.domain.model.LiquidGlassSamplingQuality
 import com.huangder.lumibooks.ui.theme.EBookReaderTheme
 import com.huangder.lumibooks.ui.theme.LocalLiquidGlassSamplingQuality
 import com.huangder.lumibooks.ui.theme.LocalAppTheme
+import com.huangder.lumibooks.ui.theme.LocalSelectedLiquidGlassSamplingQuality
 import com.huangder.lumibooks.util.LaunchThemeController
 import com.kyant.backdrop.LocalBackdropSamplingScale
 import kotlinx.coroutines.launch
@@ -39,6 +40,7 @@ class LiquidGlassSamplingSettingTest {
         context.dataStore.edit { it.clear() }
         val manager = DataStoreManager(context)
         var activeQuality = LiquidGlassSamplingQuality.BALANCED
+        var selectedQuality: LiquidGlassSamplingQuality? = null
         var bufferScale = 1f
         var glassActive = false
         compose.setContent {
@@ -48,6 +50,7 @@ class LiquidGlassSamplingSettingTest {
                 // Reader and other nested themes must inherit the setting.
                 EBookReaderTheme(appTheme = "liquid_glass") {
                     activeQuality = LocalLiquidGlassSamplingQuality.current
+                    selectedQuality = LocalSelectedLiquidGlassSamplingQuality.current
                     bufferScale = LocalBackdropSamplingScale.current
                     glassActive = LocalAppTheme.current == "liquid_glass"
                     LiquidGlassSamplingSettingRow(quality) { value ->
@@ -69,7 +72,10 @@ class LiquidGlassSamplingSettingTest {
             compose.onNodeWithText(labels.getValue(selected)).performClick()
             compose.onNodeWithText(labels.getValue(quality)).performClick()
             compose.waitUntil { activeQuality == quality }
-            compose.runOnIdle { assertEquals(if (glassActive) quality.scale else 1f, bufferScale, 0f) }
+            compose.runOnIdle {
+                assertEquals(quality, selectedQuality)
+                assertEquals(if (glassActive) quality.frostedSurfaceScale else 1f, bufferScale, 0f)
+            }
             compose.waitUntil { LaunchThemeController.themeSnapshot(context).liquidGlassSamplingQuality == quality }
             assertEquals(quality, LaunchThemeController.themeSnapshot(context).liquidGlassSamplingQuality)
             selected = quality

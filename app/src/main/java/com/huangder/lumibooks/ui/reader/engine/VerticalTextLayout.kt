@@ -7,6 +7,7 @@ import android.text.style.AbsoluteSizeSpan
 import android.text.style.ImageSpan
 import android.text.style.LeadingMarginSpan
 import android.text.style.RelativeSizeSpan
+import com.huangder.lumibooks.util.parser.EpubParser.ParagraphLineHeightSpan
 import java.util.Locale
 import kotlin.math.max
 
@@ -160,6 +161,7 @@ internal object VerticalTextLayouter {
             }
 
             var column = 0
+            var paragraphGapPx = 0
             var y = paragraphIndent(text, pageStart)
             var pageEnd = pageStart
             var pendingImagePage: VerticalPageSlice? = null
@@ -202,7 +204,13 @@ internal object VerticalTextLayouter {
                 if (cluster == "\n" || cluster == "\r\n") {
                     pageEnd = end
                     rangeIndex++
-                    column++
+                    val spacer = (text as? Spanned)?.getSpans(start, end, ParagraphLineHeightSpan::class.java)
+                        ?.firstOrNull()
+                    if (spacer == null) {
+                        column++
+                    } else if (pageItems.isNotEmpty()) {
+                        paragraphGapPx += spacer.extraHeightPx
+                    }
                     y = if (rangeIndex < graphemes.size) paragraphIndent(text, graphemes[rangeIndex].first) else 0f
                     continue
                 }
@@ -234,7 +242,8 @@ internal object VerticalTextLayouter {
                 }
 
                 if (column >= columnCount) break
-                val left = width - (column + 1) * columnAdvance
+                val left = width - (column + 1) * columnAdvance - paragraphGapPx
+                if (left < 0f && paragraphGapPx > 0 && pageItems.isNotEmpty()) break
                 val bounds = VerticalRect(
                     left = left,
                     top = y,

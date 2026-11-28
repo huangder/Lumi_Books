@@ -2,14 +2,38 @@ package com.huangder.lumibooks.ui.reader
 
 import com.huangder.lumibooks.domain.model.ReaderLayoutTarget
 import com.huangder.lumibooks.domain.model.ReaderCornerMargins
+import com.huangder.lumibooks.domain.model.ReaderPageTransition
 import com.huangder.lumibooks.domain.model.ReaderThemeSettings
 import com.huangder.lumibooks.domain.model.ReaderThemeSuite
+import com.huangder.lumibooks.domain.model.ReaderWritingMode
 import com.huangder.lumibooks.util.epub.EpubRenderMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 class ReaderStateSlicesTest {
+    @Test
+    fun autoReadingOverridesTheRenderingModeOnlyForTheActiveSession() {
+        val original = ReaderUiState(
+            preferredPageTransition = ReaderPageTransition.CURL.key,
+            preferredReaderWritingMode = ReaderWritingMode.VERTICAL_RL
+        )
+        val active = original.copy(autoReadingActive = true)
+        val updated = active.copy(lineGuideDimLevel = 3, autoReadingSpeed = 2f)
+
+        assertEquals(ReaderPageTransition.CONTINUOUS.key, updated.toRenderSettingsState().pageTransition)
+        assertEquals(ReaderWritingMode.HORIZONTAL, updated.toRenderSettingsState().readerWritingMode)
+        assertEquals(original.preferredPageTransition, updated.preferredPageTransition)
+        assertEquals(original.preferredReaderWritingMode, updated.preferredReaderWritingMode)
+
+        val reopened = ReaderUiState(
+            preferredPageTransition = updated.preferredPageTransition,
+            preferredReaderWritingMode = updated.preferredReaderWritingMode
+        )
+        assertEquals(original.toRenderSettingsState(), reopened.toRenderSettingsState())
+        assertEquals(original.toRenderSettingsState(), updated.copy(autoReadingActive = false).toRenderSettingsState())
+    }
+
     @Test
     fun displayUsesTheActiveSuitesCornerMarginsForTheActualMode() {
         val light = ReaderCornerMargins(leftDp = 0f, topDp = 40f)

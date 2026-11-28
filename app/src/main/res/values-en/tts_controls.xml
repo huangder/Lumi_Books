@@ -14,4 +14,10 @@
     <string name="tts_return_to_book">Return to the playing book</string>
     <string name="tts_return_reading_progress">Return to reading position</string>
     <string name="tts_restore_subtitle">Expand floating subtitles</string>
+    <string name="tts_pause_duration">Pause duration</string>
+    <string name="tts_pause_standard">Standard</string>
+    <string name="tts_pause_long">Long</string>
+    <string name="tts_pause_short">Short</string>
+    <string name="tts_pause_very_short">Very short</string>
+    <string name="tts_listening_more">More</string>
 </resources>

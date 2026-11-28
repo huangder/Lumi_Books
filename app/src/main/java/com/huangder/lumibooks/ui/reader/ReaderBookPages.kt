@@ -52,10 +52,9 @@ internal fun readerBookPageLabel(
     rightChapter: Int? = null,
     rightPage: Int? = null
 ): String? {
-    val total = pages.totalPages?.takeIf { it > 0 } ?: return null
     val first = pages.pageNumber(chapter, page) ?: return null
-    val last = if (rightPage != null) pages.pageNumber(rightChapter ?: chapter, rightPage) else null
-    if (rightPage != null && last == null) return null
+    val last = rightPage?.let { pages.pageNumber(rightChapter ?: chapter, it) }
+    val total = pages.totalPages?.toString() ?: "…"
     return if (last != null && last != first) "$first–$last / $total" else "$first / $total"
 }
 

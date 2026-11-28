@@ -6,8 +6,10 @@ import android.os.HandlerThread
 import com.huangder.lumibooks.data.local.DataStoreManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -64,11 +66,14 @@ class ExternalTtsEngine @Inject constructor(
             engineDispatcher = audioHandler.asCoroutineDispatcher("ExternalTtsEngine")
             audioPlayer = ExternalTtsAudioPlayer(context, audioHandler)
             scope = CoroutineScope(SupervisorJob() + engineDispatcher)
+            scope.launch {
+                dataStoreManager.ttsAllowConcurrentPlayback.collect { allow ->
+                    audioPlayer.setAllowConcurrentPlayback(allow)
+                }
+            }
             audioInit = true
         }
     }
-
-    private val prefetchLock = Any()
 
     @Volatile
     private var listener: TtsPlaybackListener? = null
@@ -77,8 +82,11 @@ class ExternalTtsEngine @Inject constructor(
     private var activityJob: Job? = null
     private var renderActivity: RenderedAudioActivity? = null
     private var currentSessionId = 0L
-    private var prefetchJob: Job? = null
-    private var prefetchedKey: String? = null
+
+    // Prefetch state is only touched on engineDispatcher (a single audio HandlerThread).
+    private val prefetchQueue = ArrayDeque<PrefetchItem>()
+    private var prefetchWorker: Job? = null
+    private var inFlightPrefetch: InFlightPrefetch? = null
 
     @Volatile
     private var activeUtteranceId: String? = null
@@ -88,6 +96,9 @@ class ExternalTtsEngine @Inject constructor(
 
     @Volatile
     private var lastReportedFrame = -1L
+
+    @Volatile
+    private var completedPcmFrameCount = 0L
 
     @Volatile
     private var pauseRequested = false
@@ -146,9 +157,11 @@ class ExternalTtsEngine @Inject constructor(
                     activeUtteranceId?.let { listener?.onPlaybackActivity(it, false) }
                     scope.launch { listener?.onPlaybackInterrupted() }
                 }
+                if (cachedFrames == 0L) claimPrefetch(resolvedCacheKey)
                 activeUtteranceId = utteranceId
                 activeCacheKey = resolvedCacheKey
                 lastReportedFrame = -1L
+                completedPcmFrameCount = 0L
                 pauseRequested = false
 
                 sessionJob = scope.launch {
@@ -193,41 +206,80 @@ class ExternalTtsEngine @Inject constructor(
     override fun currentPcmFrameCount(): Long {
         if (!audioInit) return 0L
         val key = activeCacheKey ?: return 0L
-        return maxOf(audioCache.frameCount(key), audioPlayer.writtenFrameCount())
+        return maxOf(audioCache.frameCount(key), completedPcmFrameCount)
     }
 
-    override suspend fun prefetch(text: String) {
-        if (text.isBlank()) return
+    override val prefetchDepth: Int = PREFETCH_DEPTH
+
+    override suspend fun prefetch(text: String) = prefetchAll(listOf(text))
+
+    /**
+     * Synthesizes the following sentences one at a time, nearest first. A request that is
+     * already running for a still-wanted sentence keeps going instead of being restarted.
+     */
+    override suspend fun prefetchAll(texts: List<String>) {
+        if (texts.none { it.isNotBlank() }) return
         ensureAudioInitialized()
         withContext(engineDispatcher) {
             val settings = effectiveSettings()
-            val key = audioCache.createKey(settings, text)
-            if (audioCache.contains(key)) return@withContext
-            synchronized(prefetchLock) {
-                if (prefetchedKey == key && prefetchJob?.isActive == true) return@synchronized
-                prefetchJob?.cancel()
-                prefetchedKey = key
-                prefetchJob = scope.launch {
-                    try {
-                        audioCache.store(
-                            key = key,
-                            source = httpClient.synthesizeAsPcm(settings, text),
-                            maxBytes = cacheLimitBytes()
-                        )
-                    } catch (error: CancellationException) {
-                        throw error
-                    } catch (_: Throwable) {
-                    } finally {
-                        synchronized(prefetchLock) {
-                            if (prefetchedKey == key) {
-                                prefetchedKey = null
-                                prefetchJob = null
-                            }
-                        }
-                    }
+            val wanted = texts.asSequence()
+                .filter { it.isNotBlank() }
+                .map { PrefetchItem(audioCache.createKey(settings, it), it, settings) }
+                .distinctBy { it.key }
+                .filterNot { audioCache.contains(it.key) }
+                .toList()
+            val inFlight = inFlightPrefetch
+            if (inFlight != null && !inFlight.claimed && wanted.none { it.key == inFlight.key }) {
+                // The running request is for a sentence that is no longer upcoming.
+                prefetchWorker?.cancel()
+                prefetchWorker = null
+                inFlightPrefetch = null
+            }
+            prefetchQueue.clear()
+            prefetchQueue.addAll(wanted.filter { it.key != inFlightPrefetch?.key })
+            if (prefetchWorker?.isActive != true && prefetchQueue.isNotEmpty()) {
+                val worker = scope.launch(start = CoroutineStart.LAZY) { runPrefetchQueue() }
+                prefetchWorker = worker
+                worker.invokeOnCompletion {
+                    audioHandler.post { if (prefetchWorker === worker) prefetchWorker = null }
                 }
+                worker.start()
             }
         }
+    }
+
+    private suspend fun runPrefetchQueue() {
+        while (true) {
+            val item = prefetchQueue.removeFirstOrNull() ?: return
+            if (audioCache.contains(item.key)) continue
+            val stream = InFlightTtsPcm(
+                CoroutineScope(currentCoroutineContext()),
+                audioCache.writeThrough(item.key,
+                    httpClient.synthesizeAsPcm(item.settings, item.text), cacheLimitBytes())
+            )
+            val inFlight = InFlightPrefetch(item.key, stream)
+            inFlightPrefetch = inFlight
+            try {
+                stream.awaitCompletion()
+            } finally {
+                if (inFlightPrefetch === inFlight) inFlightPrefetch = null
+                if (!currentCoroutineContext().isActive) stream.cancel()
+            }
+        }
+    }
+
+    /** Keeps a running request alive for playback; drops a queued one playback will fetch. */
+    private fun claimPrefetch(cacheKey: String) {
+        prefetchQueue.removeAll { it.key == cacheKey }
+        inFlightPrefetch?.takeIf { it.key == cacheKey }?.claimed = true
+    }
+
+    /** Claims already-received PCM and the rest of the same request without waiting for EOF. */
+    private fun awaitPrefetchedAudio(cacheKey: String): Flow<PcmChunk>? {
+        val inFlight = inFlightPrefetch?.takeIf { it.key == cacheKey } ?: return null
+        inFlight.claimed = true
+        inFlightPrefetch = null // A later session must not claim this single-consumer stream again.
+        return inFlight.stream.chunks
     }
 
     override suspend fun pause() {
@@ -312,22 +364,12 @@ class ExternalTtsEngine @Inject constructor(
         var failure: Throwable? = null
         var readHandle: ExternalTtsAudioCache.ReadHandle? = null
         try {
-            val cachedRead = if (useCachedAudio) {
-                audioCache.open(cacheKey, startFrame)
-            } else {
-                null
-            }
-            readHandle = cachedRead ?: run {
-                val stored = audioCache.store(
-                    key = cacheKey,
-                    source = httpClient.synthesizeAsPcm(settings, text),
-                    maxBytes = cacheLimitBytes()
-                )
-                if (!stored) throw ExternalTtsException.InvalidAudio
-                audioCache.open(cacheKey, 0L) ?: throw ExternalTtsException.InvalidAudio
-            }
-            val playbackStartFrame = if (cachedRead != null) startFrame else 0L
-            val pcmFlow = checkNotNull(readHandle).chunks
+            val cachedRead = audioCache.open(cacheKey, if (useCachedAudio) startFrame else 0L)
+            readHandle = cachedRead
+            val playbackStartFrame = if (cachedRead != null && useCachedAudio) startFrame else 0L
+            val pcmFlow = cachedRead?.chunks ?: awaitPrefetchedAudio(cacheKey)
+                ?: audioCache.writeThrough(cacheKey, httpClient.synthesizeAsPcm(settings, text), cacheLimitBytes())
+            audioPlayer.setAllowConcurrentPlayback(dataStoreManager.ttsAllowConcurrentPlayback.first())
             if (!audioPlayer.prepare(playbackStartFrame)) {
                 throw ExternalTtsException.Network(
                     IllegalStateException("Audio focus is unavailable")
@@ -336,11 +378,18 @@ class ExternalTtsEngine @Inject constructor(
             if (pauseRequested) audioPlayer.pause()
             val activity = RenderedAudioActivity(android.os.SystemClock::elapsedRealtime, audioPlayer.renderedFrameOffset())
             renderActivity = activity
+            var startReported = false
             activityJob = scope.launch {
                 while (currentSessionId == sessionId) {
                     activity.update(audioPlayer.renderedFrameOffset(), pauseRequested)?.let { active ->
                         withContext(Dispatchers.Main) {
-                            if (currentSessionId == sessionId) listener?.onPlaybackActivity(utteranceId, active)
+                            if (currentSessionId == sessionId) {
+                                if (active && !pauseRequested && !startReported) {
+                                    startReported = true
+                                    listener?.onStart(utteranceId)
+                                }
+                                listener?.onPlaybackActivity(utteranceId, active)
+                            }
                         }
                     }
                     delay(10)
@@ -352,14 +401,18 @@ class ExternalTtsEngine @Inject constructor(
                 if (chunk.isEmpty()) return@collect
                 if (!audioPlayer.write(chunk)) throw ExternalTtsException.InvalidAudio
                 chunkCount++
-                if (chunkCount == 1) {
-                    withContext(Dispatchers.Main) {
-                        if (currentSessionId == sessionId) listener?.onStart(utteranceId)
-                    }
-                }
             }
             if (currentSessionId != sessionId) throw CancellationException("TTS session superseded")
-            if (chunkCount == 0 || !audioPlayer.drain()) throw ExternalTtsException.InvalidAudio
+            if (chunkCount == 0) throw ExternalTtsException.InvalidAudio
+            completedPcmFrameCount = audioPlayer.writtenFrameCount()
+            if (!audioPlayer.drain()) throw ExternalTtsException.InvalidAudio
+            withContext(Dispatchers.Main) {
+                if (currentSessionId == sessionId && !pauseRequested && !startReported &&
+                    audioPlayer.renderedFrameOffset() > playbackStartFrame) {
+                    startReported = true
+                    listener?.onStart(utteranceId)
+                }
+            }
             reportActiveProgress(sessionId, force = true)
             completed = currentSessionId == sessionId && currentCoroutineContext().isActive
         } catch (error: CancellationException) {
@@ -457,15 +510,32 @@ class ExternalTtsEngine @Inject constructor(
     }
 
     private fun clearPrefetch() {
-        synchronized(prefetchLock) {
-            prefetchJob?.cancel()
-            prefetchJob = null
-            prefetchedKey = null
-        }
+        prefetchQueue.clear()
+        prefetchWorker?.cancel()
+        prefetchWorker = null
+        inFlightPrefetch?.stream?.cancel()
+        inFlightPrefetch = null
+    }
+
+    private class PrefetchItem(
+        val key: String,
+        val text: String,
+        val settings: ExternalTtsSettings
+    )
+
+    private class InFlightPrefetch(
+        val key: String,
+        val stream: InFlightTtsPcm
+    ) {
+        /** Set when playback waits for this audio, so a newer lookahead must not cancel it. */
+        var claimed = false
     }
 
     private companion object {
         const val PROGRESS_INTERVAL_MS = 500L
+
+        /** Several short sentences can finish faster than one MiMo request returns. */
+        const val PREFETCH_DEPTH = 3
         const val BYTES_PER_MEBIBYTE = 1_048_576L
     }
 }

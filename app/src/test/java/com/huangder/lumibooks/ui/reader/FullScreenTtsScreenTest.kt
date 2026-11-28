@@ -4,9 +4,11 @@ import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.drawable.BitmapDrawable
 import android.view.View
 import androidx.compose.runtime.*
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.*
@@ -14,6 +16,10 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.activity.OnBackPressedDispatcher
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
+import coil.Coil
+import coil.ImageLoader
+import coil.decode.DataSource
+import coil.request.SuccessResult
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.tts.*
 import com.huangder.lumibooks.ui.components.LiquidGlassMenuHost
@@ -38,6 +44,7 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class FullScreenTtsScreenTest {
     @get:Rule val compose = createComposeRule()
+    private val darkTheme = mutableStateOf(true)
     private val chapter = TtsChapterSnapshot(0, 3,
         "一句话读完，下一句话依次跟上来。每一行带着轻轻的弹性，进入焦点。后面的句子依次跟随，保持自然的节奏。现在可以双击任何一句，从这里继续听。")
     private val initialText = listeningText(chapter, TtsPageContent(TtsPageLocation(0, 0), chapter.text, null, null), null)
@@ -56,7 +63,7 @@ class FullScreenTtsScreenTest {
     private fun control(id: Int) = compose.onNodeWithContentDescription(RuntimeEnvironment.getApplication().getString(id))
     private fun show(animated: Boolean = false, entered: Boolean = true, ended: State<Boolean>? = null) {
         compose.setContent {
-            EBookReaderTheme(darkTheme = true) {
+            EBookReaderTheme(darkTheme = darkTheme.value) {
                 CompositionLocalProvider(LocalMotionEnabled provides animated, LocalPredictiveBackEnabled provides false) {
                     view = LocalView.current
                     dispatcher = LocalOnBackPressedDispatcherOwner.current!!.onBackPressedDispatcher
@@ -65,7 +72,8 @@ class FullScreenTtsScreenTest {
                         FullScreenTtsScreen(state.value, ListeningActions(
                             toggleMode = { state.value = state.value.copy(subtitles = !state.value.subtitles) },
                             togglePlayback = { plays++ }, seek = { seeks++ }, progress = { progressSeeks++; lastProgress = it },
-                            openSettings = { settingsOpened++ }),
+                            openSettings = { settingsOpened++ },
+                            pauseDuration = { state.value = state.value.copy(pauseDuration = it) }),
                             entered = entered, sessionEnded = ended?.value == true, onExit = { exits++ })
                     }
                 }
@@ -93,12 +101,81 @@ class FullScreenTtsScreenTest {
         capture("subtitles")
     }
 
-    @Test fun settingsButtonIsToTheRightOfLyricsAndDoesNotSwitchDisplayMode() {
+    @Test fun listeningBackgroundFollowsAppAppearanceInBothDisplayModes() {
+        state.value = state.value.copy(cover = null)
+        darkTheme.value = false
         show()
-        val lyrics = control(R.string.tts_full_subtitles).fetchSemanticsNode().boundsInRoot
-        val settings = control(R.string.tts_page_settings_title)
-        assertTrue(settings.fetchSemanticsNode().boundsInRoot.left >= lyrics.right)
-        settings.performTouchInput { click() }
+        fun backgroundLuminance() = compose.runOnIdle {
+            val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap))
+            val color = androidx.compose.ui.graphics.Color(bitmap.getPixel(2, bitmap.height / 2))
+            bitmap.recycle()
+            color.luminance()
+        }
+        assertTrue(backgroundLuminance() > .5f)
+        compose.runOnIdle { darkTheme.value = true }
+        assertTrue(backgroundLuminance() < .1f)
+        control(R.string.tts_full_subtitles).performClick()
+        assertTrue(backgroundLuminance() < .1f)
+        compose.runOnIdle { darkTheme.value = false }
+        assertTrue(backgroundLuminance() > .5f)
+    }
+
+    @Test fun whiteCoverStaysBrightWhileItsBackdropKeepsDarkModeContrast() {
+        val context = RuntimeEnvironment.getApplication()
+        val source = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.WHITE) }
+        val whiteCover = BitmapDrawable(context.resources, source)
+        val coverId = "white-listening-cover"
+        val loader = ImageLoader.Builder(context).components {
+            add { chain ->
+                if (chain.request.data == coverId) {
+                    SuccessResult(whiteCover, chain.request, DataSource.MEMORY)
+                } else {
+                    chain.proceed(chain.request)
+                }
+            }
+        }.build()
+        Coil.setImageLoader(loader)
+        try {
+            state.value = state.value.copy(cover = coverId)
+            show()
+
+            fun luminances() = compose.runOnUiThread {
+                val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+                view.draw(Canvas(bitmap))
+                val artwork = androidx.compose.ui.graphics.Color(bitmap.getPixel(bitmap.width / 2, bitmap.height / 4))
+                val backdrop = androidx.compose.ui.graphics.Color(bitmap.getPixel(2, bitmap.height / 10))
+                bitmap.recycle()
+                artwork.luminance() to backdrop.luminance()
+            }
+            // A uniformly white image stays white after blurring.
+            compose.waitUntil(timeoutMillis = 10_000) {
+                val (artwork, backdrop) = luminances()
+                artwork > .95f && backdrop > .05f
+            }
+            val foreground = androidx.compose.ui.graphics.Color(0xFFF5F7FA).luminance()
+            assertTrue((foreground + .05f) / (luminances().second + .05f) >= 4.5f)
+            capture("white-cover-dark")
+            control(R.string.tts_full_subtitles).performClick()
+            assertTrue((foreground + .05f) / (luminances().second + .05f) >= 4.5f)
+            capture("white-cover-dark-subtitles")
+        } finally {
+            Coil.reset()
+            loader.shutdown()
+        }
+    }
+
+    @Test fun moreOpensPauseAndEngineSubmenusAndListeningPageSettings() {
+        show()
+        control(R.string.tts_full_subtitles).assertIsDisplayed()
+        control(R.string.tts_page_settings_title).assertDoesNotExist()
+        control(R.string.tts_listening_more).performClick()
+        compose.onNodeWithText("Engine").assertIsDisplayed()
+        compose.onNodeWithText("Pause duration").performClick()
+        compose.onNodeWithText("Very short").performClick()
+        compose.runOnIdle { assertEquals(TtsPauseDuration.VERY_SHORT, state.value.pauseDuration) }
+        control(R.string.tts_listening_more).performClick()
+        compose.onNodeWithText("Listening page settings").performClick()
         compose.runOnIdle {
             assertEquals(1, settingsOpened)
             assertFalse(state.value.subtitles)

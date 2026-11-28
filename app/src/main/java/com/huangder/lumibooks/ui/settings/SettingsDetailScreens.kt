@@ -379,6 +379,12 @@ fun ReadingSettingsDetail(viewModel: SettingsViewModel) {
             value = selectedEngineLabel
         ) { showEngineDialog = true }
         SettingsDivider()
+        SettingsSwitchRow(
+            label = stringResource(R.string.tts_allow_concurrent_playback),
+            checked = uiState.ttsAllowConcurrentPlayback,
+            onCheckedChange = viewModel::saveTtsAllowConcurrentPlayback
+        )
+        SettingsDivider()
         SettingsNavigationRow(
             label = stringResource(R.string.title_floating_subtitle_settings)
         ) {

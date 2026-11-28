@@ -124,6 +124,10 @@ android {
                 if (premiumEdition) java.srcDir("src/premium/nonDebug/java")
             }
         }
+        // The benchmark build measures what release ships, including its Baseline Profile.
+        getByName("benchmark") {
+            baselineProfiles.srcDir("src/release/generated/baselineProfiles")
+        }
         getByName("testDebug") {
             if (premiumEdition) java.srcDir("src/premium/debug/test")
         }
@@ -157,6 +161,10 @@ android {
 }
 
 androidComponents {
+    onVariants(selector().withBuildType("debug")) { variant ->
+        // Map debug DEX directly from the APK instead of inflating it at process start.
+        variant.packaging.dex.useLegacyPackaging.set(false)
+    }
     onVariants { variant ->
         if (premiumEdition) variant.sources.manifests.addStaticManifestFile("src/premium/AndroidManifest.xml")
     }
@@ -165,6 +173,17 @@ androidComponents {
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
+    }
+}
+
+// Baseline Profile generation runs against the plugin-created nonMinifiedRelease variant.
+// It needs the benchmark receiver that skips onboarding and prepares fixtures; the variant
+// is never shipped. The plugin rewrites that build type's source set, so add per variant.
+androidComponents {
+    onVariants(selector().withBuildType("nonMinifiedRelease")) { variant ->
+        variant.sources.java?.addStaticSourceDirectory("src/benchmark/java")
+        variant.sources.kotlin?.addStaticSourceDirectory("src/benchmark/java")
+        variant.sources.manifests.addStaticManifestFile("src/benchmark/AndroidManifest.xml")
     }
 }
 
@@ -268,6 +287,8 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+    // Installs the bundled Baseline Profile on devices where the store does not.
+    implementation("androidx.profileinstaller:profileinstaller:1.4.0")
     baselineProfile(project(":benchmark"))
 }
 

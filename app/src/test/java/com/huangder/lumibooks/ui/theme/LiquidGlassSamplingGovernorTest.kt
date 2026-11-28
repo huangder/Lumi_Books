@@ -6,34 +6,41 @@ import org.junit.Test
 
 class LiquidGlassSamplingGovernorTest {
     @Test fun isolatedJankDoesNotChangeTheSelectedQuality() {
-        val governor = LiquidGlassSamplingGovernor(LiquidGlassSamplingQuality.ORIGINAL)
+        val governor = LiquidGlassSamplingGovernor(LiquidGlassSamplingQuality.CLEAR)
         feedWindow(governor, 0L, missedFrames = 1)
         feedWindow(governor, 1_001L, missedFrames = 0)
         feedWindow(governor, 2_002L, missedFrames = 0)
 
-        assertEquals(LiquidGlassSamplingQuality.ORIGINAL, governor.quality)
+        assertEquals(LiquidGlassSamplingQuality.CLEAR, governor.quality)
     }
 
     @Test fun sustainedJankStepsDownOneTierAtATimeAndStopsAtPerformanceFloor() {
-        val governor = LiquidGlassSamplingGovernor(LiquidGlassSamplingQuality.ORIGINAL)
-        var start = 0L
-        repeat(6) {
-            feedWindow(governor, start, missedFrames = 10)
-            start += 1_001L
-        }
+        val governor = LiquidGlassSamplingGovernor(LiquidGlassSamplingQuality.CLEAR)
+        feedWindow(governor, 0L, missedFrames = 10)
+        feedWindow(governor, 1_001L, missedFrames = 10)
+        assertEquals(LiquidGlassSamplingQuality.BALANCED, governor.quality)
+
+        repeat(4) { feedWindow(governor, (it + 2) * 1_001L, missedFrames = 10) }
 
         assertEquals(LiquidGlassSamplingQuality.PERFORMANCE, governor.quality)
     }
 
     @Test fun stableWindowsRestoreQualityTowardTheUserSelectedCeiling() {
-        val governor = LiquidGlassSamplingGovernor(LiquidGlassSamplingQuality.ORIGINAL)
+        val governor = LiquidGlassSamplingGovernor(LiquidGlassSamplingQuality.CLEAR)
         feedWindow(governor, 0L, missedFrames = 10)
         feedWindow(governor, 1_001L, missedFrames = 10)
-        assertEquals(LiquidGlassSamplingQuality.CLEAR, governor.quality)
+        assertEquals(LiquidGlassSamplingQuality.BALANCED, governor.quality)
 
         feedWindow(governor, 2_002L, missedFrames = 0)
         feedWindow(governor, 3_003L, missedFrames = 0)
         feedWindow(governor, 4_004L, missedFrames = 0)
+
+        assertEquals(LiquidGlassSamplingQuality.CLEAR, governor.quality)
+    }
+
+    @Test fun originalQualityStaysAtNativeResolutionUnderSustainedJank() {
+        val governor = LiquidGlassSamplingGovernor(LiquidGlassSamplingQuality.ORIGINAL)
+        repeat(5) { feedWindow(governor, it * 1_001L, missedFrames = 20) }
 
         assertEquals(LiquidGlassSamplingQuality.ORIGINAL, governor.quality)
     }

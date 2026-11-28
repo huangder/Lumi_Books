@@ -60,7 +60,8 @@ internal fun BoxScope.RemoteBottomBar(
                 backdrop = blurBackdrop,
                 bandHeight = bandHeight,
                 tint = tint.copy(alpha = tintAlpha * 4f),
-                modifier = Modifier.align(Alignment.BottomCenter)
+                modifier = Modifier.align(Alignment.BottomCenter),
+                sampleBlurOverLiveContent = true
             )
         } else if ((blurBackdrop == null && !eInkMode) || progressiveTopScrimEnabled(supported, eInkMode, LocalReduceTransparency.current)) {
             ProgressiveBottomScrim(

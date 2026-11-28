@@ -1,5 +1,12 @@
 package com.huangder.lumibooks.ui.reader.engine
 
+internal data class DeferredCurlSwipe(
+    val startX: Float,
+    val startY: Float,
+    val endX: Float,
+    val endY: Float
+)
+
 /** A waiting swipe must still point towards its queued page when released. */
 internal fun shouldCommitDeferredCurlGesture(
     deltaX: Float,

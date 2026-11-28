@@ -17,6 +17,33 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SystemTtsAudioPlayerTest {
+    @Test fun delayedNetworkAndAudioBufferingNeverPublishStartBeforeRenderedFrames() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val track = BufferedTrack(frameBytes = 2)
+        val player = SystemTtsAudioPlayer(backgroundScope) { track }
+        val events = mutableListOf<String>()
+        player.setCallbacks(onDone = { events += "done" }, onError = { throw it },
+            onRenderedStart = { events += "start" })
+        try {
+            assertTrue(player.begin(24_000, AudioFormat.ENCODING_PCM_16BIT, 1))
+            advanceTimeBy(2_000) // Network has not delivered the first chunk.
+            runCurrent()
+            assertTrue(events.isEmpty())
+            player.append(ByteArray(8))
+            runCurrent()
+            advanceTimeBy(500) // PCM is queued but AudioTrack has not rendered it.
+            runCurrent()
+            assertTrue(events.isEmpty())
+            track.render(4)
+            player.finish()
+            runCurrent()
+            advanceTimeBy(20)
+            runCurrent()
+            assertEquals(listOf("start", "done"), events)
+        } finally { player.stop(); runCurrent(); Dispatchers.resetMain() }
+    }
+
+
     @Test
     fun busyMainThreadDoesNotBlockAudioWritesForRenderedRanges() = runTest {
         val mainQueue = ArrayDeque<Runnable>()

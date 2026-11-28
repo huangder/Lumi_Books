@@ -1157,9 +1157,11 @@ class ContinuousScrollReaderTest {
             val left = with(compose.density) { leftMargin.value.dp.roundToPx() }
             val right = with(compose.density) { 16.dp.roundToPx() }
             val vertical = with(compose.density) { 20.dp.roundToPx() }
-            assertEquals("text starts at the configured left margin", left, textLocation[0] - rootLocation[0])
-            assertEquals("text ends at the configured right margin", right,
-                composeRoot.width - left - textView.width)
+            val viewLeft = textLocation[0] - rootLocation[0]
+            val textLeft = viewLeft + textView.compoundPaddingLeft
+            val textRight = viewLeft + textView.width - textView.compoundPaddingRight
+            assertEquals("text starts at the configured left margin", left, textLeft)
+            assertEquals("text ends at the configured right margin", right, composeRoot.width - textRight)
             assertEquals("vertical margins belong to the viewport and survive scrolling",
                 composeRoot.height - 2 * vertical, list.layoutInfo.viewportSize.height)
             assertEquals(0, list.layoutInfo.beforeContentPadding)
@@ -1278,9 +1280,13 @@ class ContinuousScrollReaderTest {
             val bounds = android.graphics.Rect(drawable.bounds)
             drawable.setBounds(0, 0, 5, 3)
             val output = Bitmap.createBitmap(5, 3, Bitmap.Config.ARGB_8888)
-            drawable.draw(Canvas(output))
-            drawable.bounds = bounds
-            return Color.red(output.getPixel(1, 1))
+            return try {
+                drawable.draw(Canvas(output))
+                Color.red(output.getPixel(1, 1))
+            } finally {
+                drawable.bounds = bounds
+                output.recycle()
+            }
         }
         var originalHeight = 0
         compose.runOnIdle {
@@ -1288,12 +1294,18 @@ class ContinuousScrollReaderTest {
             assertEquals(80, pixels())
             settings.value = ReaderImageAdjustments(brightness = 1f)
         }
-        compose.runOnIdle { assertEquals(255, pixels()); settings.value = ReaderImageAdjustments(contrast = 2f) }
-        compose.runOnIdle { assertTrue(pixels() < 80); settings.value = ReaderImageAdjustments(sharpen = 1f) }
-        compose.waitUntil(10_000) { pixels() < 80 }
+        fun awaitPixel(value: Int) = compose.waitUntil(10_000) {
+            compose.runOnIdle { pixels() == value }
+        }
+        awaitPixel(255)
+        compose.runOnIdle { settings.value = ReaderImageAdjustments(contrast = 2f) }
+        compose.waitUntil(10_000) { compose.runOnIdle { pixels() < 40 } }
+        compose.runOnIdle { settings.value = ReaderImageAdjustments(sharpen = 1f) }
+        // At x=1 the right neighbour is 40 brighter and the other three match.
+        awaitPixel(40)
         compose.runOnIdle { settings.value = ReaderImageAdjustments() }
+        awaitPixel(80)
         compose.runOnIdle {
-            assertEquals(80, pixels())
             assertEquals(originalHeight, list.layoutInfo.visibleItemsInfo.first().size)
             assertEquals(0, list.firstVisibleItemScrollOffset)
         }
@@ -1379,13 +1391,19 @@ class ContinuousScrollReaderTest {
     @Test fun noteRequestedDuringReaderModeTransitionSurvivesMounting() {
         val mounted = mutableStateOf(false)
         show(mounted = mounted)
+        compose.mainClock.autoAdvance = false
         compose.runOnIdle {
-            requests.tryEmit(ContinuousScrollRequest(2, characterOffset = targetOffset))
+            requests.value = ContinuousScrollRequest(2, characterOffset = targetOffset)
             mounted.value = true
         }
-        compose.waitForIdle()
-        compose.waitUntil(15_000) { restored }
-        compose.waitUntil(15_000) { list.firstVisibleItemIndex == 2 && list.firstVisibleItemScrollOffset > 1000 }
+        // Give the background chapter decode time to run between virtual frames.
+        compose.waitUntil(15_000) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.runOnIdle {
+                restored && requests.value == null && list.firstVisibleItemIndex == 2 &&
+                    list.firstVisibleItemScrollOffset > 1000
+            }
+        }
     }
 
     /**

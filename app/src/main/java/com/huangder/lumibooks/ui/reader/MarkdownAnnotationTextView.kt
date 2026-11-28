@@ -19,6 +19,7 @@ import com.huangder.lumibooks.ui.reader.engine.hasReaderNoteMarker
 import com.huangder.lumibooks.ui.reader.engine.readerNoteMarkerEnd
 import com.huangder.lumibooks.ui.reader.engine.ReaderLineGeometry
 import com.huangder.lumibooks.ui.reader.engine.ReaderTextPainter
+import com.huangder.lumibooks.ui.reader.engine.TtsSentenceHighlightSpan
 import com.huangder.lumibooks.ui.reader.engine.WaveUnderlineSpan
 import com.huangder.lumibooks.ui.reader.engine.drawReaderUnderline
 import com.huangder.lumibooks.ui.reader.engine.readerLineContentEnd
@@ -94,11 +95,16 @@ internal open class MarkdownAnnotationTextView(context: Context) : TextView(cont
             val end = layout.getLineEnd(visible.last)
             if (!underlines) {
                 val spans = text.getSpans(start, end, ReaderHighlightSpan::class.java)
-                if (spans.isEmpty()) return
+                val speech = text.getSpans(start, end, TtsSentenceHighlightSpan::class.java)
+                if (spans.isEmpty() && speech.isEmpty()) return
                 val lineGeometry = geometryFor(layout, text)
                 spans.forEach { span ->
                     highlightPainter.drawRange(canvas, layout, text, lineGeometry,
                         text.getSpanStart(span), text.getSpanEnd(span), span.color, style = annotationStyle)
+                }
+                speech.forEach { span ->
+                    highlightPainter.drawRange(canvas, layout, text, lineGeometry,
+                        text.getSpanStart(span), text.getSpanEnd(span), span.color, singleBlock = true)
                 }
                 return
             }

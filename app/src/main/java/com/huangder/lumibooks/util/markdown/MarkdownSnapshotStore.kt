@@ -38,7 +38,9 @@ object MarkdownSnapshotStore {
 
     internal data class CreatedSnapshot(val file: File, val metadata: BookNameMetadata)
 
-    internal fun createWithMetadata(context: Context, bookId: String, source: String, parentUri: String?): CreatedSnapshot {
+    internal fun createWithMetadata(
+        context: Context, bookId: String, source: String, parentUri: String?, isolated: Boolean = false
+    ): CreatedSnapshot {
         val stage = File(bookRoot(context, bookId), "stage-${UUID.randomUUID()}").apply { mkdirs() }
         try {
             val markdown = File(stage, "document.md")
@@ -64,13 +66,13 @@ object MarkdownSnapshotStore {
                 .put("title", parsed.title ?: BookFileAccess.displayName(context, source)?.substringBeforeLast('.').orEmpty())
                 .put("author", parsed.author.orEmpty()).put("assets", assets)
             File(stage, "manifest.json").writeText(manifest.toString())
-            return CreatedSnapshot(commit(stage, bookRoot(context, bookId)), BookNameMetadata(parsed.title, parsed.author))
+            return CreatedSnapshot(commit(stage, bookRoot(context, bookId), isolated), BookNameMetadata(parsed.title, parsed.author))
         } catch (error: Throwable) { stage.deleteRecursively(); throw error }
     }
 
-    private fun commit(stage: File, root: File): File {
+    private fun commit(stage: File, root: File, isolated: Boolean = false): File {
         val manifest = File(stage, "manifest.json").readText()
-        val key = sha256(manifest.toByteArray())
+        val key = if (isolated) "webdav-${UUID.randomUUID()}" else sha256(manifest.toByteArray())
         val destination = File(root, key)
         if (destination.isDirectory) stage.deleteRecursively()
         else check(stage.renameTo(destination)) { "Unable to install Markdown snapshot" }
@@ -117,7 +119,7 @@ object MarkdownSnapshotStore {
         } finally { temporary.delete() }
     }
 
-    fun unpack(context: Context, bookId: String, archive: File): File {
+    fun unpack(context: Context, bookId: String, archive: File, isolated: Boolean = false): File {
         val root = bookRoot(context, bookId)
         val stage = File(root, "stage-${UUID.randomUUID()}").apply { mkdirs() }
         try {
@@ -150,7 +152,7 @@ object MarkdownSnapshotStore {
                 it.relativeTo(stage).invariantSeparatorsPath in allowedFiles
             }) { "Markdown package has undeclared resources" }
             assets(document).forEach { (path, file) -> require(sha256(file) == files.getString(path)) { "Markdown asset checksum mismatch" } }
-            return commit(stage, root)
+            return commit(stage, root, isolated)
         } catch (error: Throwable) { stage.deleteRecursively(); throw error }
     }
 
