@@ -73,7 +73,7 @@ data class RemoteFormat(
 /** A book offered by a remote library: everything the details page and the download queue need. */
 data class RemoteBookItem(
     val sourceId: String,
-    /** Stable identity used to remember which remote books were already imported. */
+    /** Stable identity within this source's catalog. */
     val key: String,
     val title: String,
     val authors: List<String> = emptyList(),
@@ -91,6 +91,8 @@ data class RemoteBookItem(
     val remotePath: String? = null,
     val lastModified: Long = 0L
 ) {
+    /** Shared by the download queue, catalog screens and persisted imports across all sources. */
+    val documentKey: String by lazy { RemoteBookFiles.remoteDocumentKey(sourceId, key) }
     val supportedFormats: List<RemoteFormat> get() = formats.filter { it.isSupported }
     val preferredFormat: RemoteFormat? get() = supportedFormats.firstOrNull()
     val authorLabel: String get() = authors.joinToString(", ")

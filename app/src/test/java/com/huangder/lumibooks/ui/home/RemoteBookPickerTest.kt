@@ -13,6 +13,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.core.app.ApplicationProvider
 import com.huangder.lumibooks.R
 import com.huangder.lumibooks.data.remote.RemoteBookItem
+import com.huangder.lumibooks.data.remote.RemoteDownloadState
 import com.huangder.lumibooks.data.remote.RemoteFolder
 import com.huangder.lumibooks.data.remote.RemoteFormat
 import com.huangder.lumibooks.data.remote.RemotePage
@@ -46,6 +47,8 @@ class RemoteBookPickerTest {
     private var downloads = 0
     private lateinit var view: View
 
+    private var downloadStates by mutableStateOf(emptyMap<String, RemoteDownloadState>())
+
     private fun page(layout: Int = 1, books: List<RemoteBookItem> = listOf(first, second)) {
         compose.setContent {
             view = LocalView.current
@@ -55,7 +58,7 @@ class RemoteBookPickerTest {
                         page = RemotePage("Remote library", "https://example.com",
                             folders = listOf(RemoteFolder("Fiction", "https://example.com/fiction")), books = books))),
                     searchAvailable = false, searchQuery = query, selection = selection,
-                    importedKeys = emptySet(), downloadStates = emptyMap(), layoutMode = layout,
+                    importedKeys = emptySet(), downloadStates = downloadStates, layoutMode = layout,
                     sortMode = RemoteSortMode.DEFAULT, sortAscending = true, navigatedForward = true,
                     contentBackdrop = null, onBack = {}, onSearchOpen = { query = "" },
                     onSearchQueryChange = { query = it }, onSearchSubmit = {}, onSearchClose = { query = null },
@@ -84,6 +87,18 @@ class RemoteBookPickerTest {
         }
         capture("remote-list-selected")
         compose.onNodeWithText(first.title).performClick().assertIsNotSelected()
+    }
+
+    @Test fun completedDownloadDoesNotMarkSameCatalogIdInAnotherSourceAsImported() {
+        val otherSource = first.copy(sourceId = "another-library")
+        val completed = RemoteDownloadState.Completed("first-local-id", false)
+        downloadStates = mapOf(otherSource.documentKey to completed)
+        page(books = listOf(first))
+        compose.onNodeWithText(first.title).assertIsDisplayed()
+        val badge = compose.onNodeWithText(context.getString(R.string.import_folder_books_imported))
+        badge.assertDoesNotExist()
+        compose.runOnIdle { downloadStates = mapOf(first.documentKey to completed) }
+        badge.assertIsDisplayed()
     }
 
     @Test fun localSearchAndSelectAllUseVisibleBooks() {

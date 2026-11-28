@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.json.JSONObject
 import org.junit.Test
 
 class RemoteBookFilesTest {
@@ -91,6 +92,24 @@ class RemoteBookFilesTest {
         assertEquals(key, RemoteBookFiles.remoteDocumentKey("source", "webdav:/secret/path.epub"))
         assertTrue(key.startsWith("remote:"))
         assertFalse(key.contains("secret"))
+    }
+
+    @Test
+    fun `restored details items find only their own downloads and older imports`() {
+        val catalogKey = "webdav:book.epub"
+        val first = RemoteBookItem("first-library", catalogKey, "First book")
+        val oldImports = mapOf(RemoteBookFiles.remoteDocumentKey(first.sourceId, catalogKey) to "local-A")
+        val oldIntent = JSONObject().put("sourceId", first.sourceId).put("key", catalogKey).put("title", first.title)
+        val restored = requireNotNull(RemoteBookItem.fromJson(oldIntent))
+        val second = restored.copy(sourceId = "second-library")
+        val completed = mapOf(first.documentKey to "local-A")
+
+        assertEquals("local-A", completed[restored.documentKey])
+        assertNull(completed[second.documentKey])
+        assertEquals("local-A", oldImports[restored.documentKey])
+        assertNull(oldImports[second.documentKey])
+        assertEquals(catalogKey, restored.key)
+        assertEquals(catalogKey, restored.toJson().getString("key"))
     }
 
     @Test
